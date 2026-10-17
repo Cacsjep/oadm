@@ -7,7 +7,8 @@ name: release
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
 #                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
 #                 plus the portable ZIPs of the server and client publish folders per platform (plugin development)
-#   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (installers are not signed;
+#   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (a tag with a pre-release
+#                 part, v1.2.0-rc.1, is a pre-release and never the latest; installers are not signed;
 #                 the checksums are published instead)
 #   nuget-pack    (with the installers) the plugin SDK packages, every template built and tested with them
 #   4. nuget      the plugin SDK packages on nuget.org (Trusted Publishing), after the release; skipped without the
@@ -388,11 +389,15 @@ jobs:
           version="${tag#v}"
           ls -l installers
           if [ -f release-notes.md ]; then notes=(--notes-file release-notes.md); else notes=(--generate-notes); fi
+          # A pre-release (v3.5.0-rc.1) never becomes the latest release: the website's download buttons and the
+          # "latest" links stay on the last real release.
+          case "$version" in *-*) kind=(--prerelease --latest=false) ;; *) kind=(--latest) ;; esac
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" installers/* --clobber
+            gh release edit "$tag" "${kind[@]}"
             if [ -f release-notes.md ]; then gh release edit "$tag" --notes-file release-notes.md; fi
           else
-            gh release create "$tag" installers/* --title "OADM $version" "${notes[@]}" --verify-tag
+            gh release create "$tag" installers/* --title "OADM $version" "${notes[@]}" "${kind[@]}" --verify-tag
           fi
 
   # The plugin SDK on nuget.org (docs/plugin-sdk.md), only after the release exists: the packages job nuget-pack built

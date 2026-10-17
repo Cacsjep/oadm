@@ -113,6 +113,9 @@ portable ZIPs are their own artifact (`portable-<version>-<rid>`; smoke-windows 
   only the service account can write (`%ProgramData%\OADM\runtime`, `/var/cache/oadm`,
   `/Library/Application Support/OADM/runtime`), never a shared temp folder.
 - Version from the tag (`v1.2.0` -> `1.2.0`), else `0.1.0-dev`; MSI and .pkg use the numeric part.
+- A tag with a pre-release part (`v3.5.0-rc.1`) makes a GitHub pre-release that never becomes the latest release, so the
+  website's download buttons (`/releases/latest`) and "latest" links stay on the last real release; its NuGet packages are
+  pre-release packages (only installed when asked for by version).
 - Icons: the app icon is `icon/oadm-app-icon-<size>.png` (16-1024); `packaging/icons/make-icons.py`
   builds `oadm.ico` (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of
   every client window) from it.
