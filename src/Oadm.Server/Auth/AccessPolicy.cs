@@ -100,6 +100,11 @@ public static class AccessPolicy
         ["/oadm.v1.AddDevicesService/RetryAuth"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
 
         // Tags.
+        ["/oadm.v1.WaitingDeviceService/Add"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
+        ["/oadm.v1.WaitingDeviceService/List"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
+        ["/oadm.v1.WaitingDeviceService/Watch"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
+        ["/oadm.v1.WaitingDeviceService/Remove"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
+        ["/oadm.v1.WaitingDeviceService/TryNow"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
         ["/oadm.v1.TagService/List"] = AccessRule.SignedIn,
         ["/oadm.v1.TagService/Watch"] = AccessRule.SignedIn,
         ["/oadm.v1.TagService/Create"] = AccessRule.Needs(HostPermissions.TagsAssign),

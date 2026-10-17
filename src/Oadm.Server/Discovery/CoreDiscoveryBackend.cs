@@ -44,7 +44,7 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         return discovery.StartRangeScan(range!, options);
     }
 
-    public async Task<DiscoverySession> StartAddressProbeAsync(string input, CancellationToken ct)
+    public async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct)
     {
         if (!EnteredAddress.TryParse(input, out var entered, out var error))
         {
@@ -53,9 +53,16 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
 
         var ip = await ResolveAsync(entered!.Host, ct).ConfigureAwait(false);
         string[]? schemes = entered.Scheme is null ? null : [entered.Scheme];
+        TimeSpan? timeout = null;
+        if (importLine)
+        {
+            var current = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
+            timeout = TimeSpan.FromMilliseconds(current.ScanTimeoutMs);
+        }
+
         return discovery.StartAddressProbe(entered.DeviceAddress, async token =>
         {
-            var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes).ConfigureAwait(false);
+            var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes, timeout).ConfigureAwait(false);
             return result is null ? null : ToDiscovery(result, ip);
         });
     }

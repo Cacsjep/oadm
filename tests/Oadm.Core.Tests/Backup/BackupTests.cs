@@ -149,7 +149,10 @@ public sealed class BackupTests
             Assert.Equal(1, contents.Manifest.Counts.Devices);
             Assert.Equal(1, contents.Manifest.Counts.DeviceLogins);
             Assert.Equal(["oadm.pki"], contents.Manifest.PluginData);
-            Assert.EndsWith("_Roles", contents.Header.Migration, StringComparison.Ordinal);
+            string newest = typeof(Oadm.Core.Persistence.OadmDbContext).Assembly.GetTypes()
+                .Select(t => System.Reflection.CustomAttributeExtensions.GetCustomAttribute<Microsoft.EntityFrameworkCore.Migrations.MigrationAttribute>(t)?.Id)
+                .OfType<string>().Max(StringComparer.Ordinal)!;
+            Assert.Equal(newest, contents.Header.Migration); // the last migration of this build
 
             // Server B: another master key, another device; the restore replaces both.
             var b = await TestDatabase.CreateAsync(targetDir);

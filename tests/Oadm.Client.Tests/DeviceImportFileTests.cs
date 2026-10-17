@@ -184,7 +184,7 @@ public sealed class DeviceImportFileTests
         Assert.NotNull(shown);
         Assert.True(shown.IsImportMode);
         Assert.Equal(["10.0.0.48", "10.0.0.49", "bad address"], shown.FilteredRows.Select(r => r.Address));
-        Assert.Equal(["Waiting", "Waiting", "Not added"], shown.FilteredRows.Select(r => r.ChipText));
+        Assert.Equal(["Queued", "Queued", "Not added"], shown.FilteredRows.Select(r => r.ChipText));
 
         // An unusable file: one message, no page.
         shown = null;

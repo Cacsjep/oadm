@@ -42,6 +42,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         ScanTimeoutMs = 1500,
         ZeroConfSeconds = 30,
         MaxParallelTasksPerPlugin = 16,
+        WaitingRetryMinutes = 15,
         ServerName = "acs",
         ListenUrl = "https://0.0.0.0:5080",
         ServerVersion = FakeServerVersion,
@@ -959,7 +960,9 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             }
 
             int maxParallel = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : _settings.MaxParallelTasksPerPlugin;
+            int waitingRetry = settings.HasWaitingRetryMinutes ? settings.WaitingRetryMinutes : _settings.WaitingRetryMinutes;
             _settings = settings.Clone();
+            _settings.WaitingRetryMinutes = waitingRetry;
             _settings.ClearUseHostName(); // no longer a server setting
             _settings.MaxParallelTasksPerPlugin = maxParallel;
             _settings.ServerVersion = FakeServerVersion;

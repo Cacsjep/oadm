@@ -29,6 +29,9 @@ public interface IDialogService
     /// <summary>The "RTSP port in OADM" dialog of the context menu's OADM submenu; true when saved.</summary>
     Task<bool> ShowRtspPortAsync(Oadm.Client.Devices.RtspPortViewModel rtspPort);
 
+    /// <summary>The "Waiting devices" dialog of the Devices page (the import's waiting list).</summary>
+    Task ShowWaitingDevicesAsync(Oadm.Client.Devices.WaitingDevicesViewModel waiting);
+
     /// <summary>Shows the Tags dialog of the selected devices; true when tags were applied.</summary>
     Task<bool> ShowDeviceTagsAsync(Oadm.Client.Tags.DeviceTagsViewModel tags);
 

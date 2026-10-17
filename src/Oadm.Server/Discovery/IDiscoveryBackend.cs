@@ -26,8 +26,12 @@ public interface IDiscoveryBackend
     /// Starts a session that probes one address the user entered (IP or host name, optional port
     /// and scheme). Finishes like a range scan, with at most one device.
     /// </summary>
+    /// <param name="input">The address as entered or read from the file.</param>
+    /// <param name="importLine">A line of an imported file: the first contact waits only the range scan's time (Scan.TimeoutMs),
+    /// so addresses that do not answer cost little. "Add manually" keeps the longer time for slow links.</param>
+    /// <param name="ct">Cancellation.</param>
     /// <exception cref="ArgumentException">Unusable address or unresolvable host name (message for the user).</exception>
-    Task<DiscoverySession> StartAddressProbeAsync(string input, CancellationToken ct);
+    Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct);
 
     /// <summary>
     /// Replays the devices known in the session, then streams changes and range-scan progress.

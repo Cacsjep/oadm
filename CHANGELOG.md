@@ -6,10 +6,18 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- **Waiting list for imports**: devices of an import that do not answer are kept and added automatically once they come
+  online, with the login and tags of their line. The Devices page shows how many are waiting; the list lets you try them
+  now, export or remove them. Settings: "Try waiting devices every (min)", 15 by default.
+
 ### Changed
 
 - **Import from file and Import from ADM** take up to 30,000 devices per file, as many as one server manages. The file
   size no longer gets in the way: long host names, passwords and tags fit.
+- **Imports are faster**: 64 addresses are checked at a time, logins run 32 at a time, and an address that does not
+  answer is given up after the scan timeout (1.5 s). 30,000 devices with 10 % off take about 12 to 15 minutes on a LAN.
 - **Tags** can have up to 64 characters. Longer tags in an imported file are shortened to 64 instead of stopping the
   device from being added. Long tags in the device list end with "…".
 

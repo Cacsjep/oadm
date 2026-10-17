@@ -49,6 +49,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<DeviceRepository>();
         services.AddSingleton<IDeviceRepository>(sp => sp.GetRequiredService<DeviceRepository>());
         services.AddSingleton<DeviceTagStore>();
+        services.AddSingleton<WaitingDeviceStore>();
 
         services.AddSingleton<EfTaskStore>();
         services.AddSingleton<ITaskStore>(sp => sp.GetRequiredService<EfTaskStore>());

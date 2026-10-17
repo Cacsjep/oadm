@@ -393,6 +393,7 @@ public static class Mappers
             FullRefreshMinutes = settings.FullRefreshMinutes,
             ZeroConfSeconds = settings.ZeroConfSeconds,
             MaxParallelTasksPerPlugin = settings.MaxParallelTasksPerPlugin,
+            WaitingRetryMinutes = settings.WaitingRetryMinutes,
             ServerVersion = ServerVersion,
         };
     }
@@ -415,7 +416,8 @@ public static class Mappers
             string.IsNullOrWhiteSpace(proto.ListenUrl) ? current.ListenUrl : proto.ListenUrl.Trim(),
             proto.FullRefreshMinutes == 0 ? current.FullRefreshMinutes : proto.FullRefreshMinutes,
             proto.ZeroConfSeconds == 0 ? current.ZeroConfSeconds : proto.ZeroConfSeconds,
-            proto.HasMaxParallelTasksPerPlugin ? proto.MaxParallelTasksPerPlugin : current.MaxParallelTasksPerPlugin);
+            proto.HasMaxParallelTasksPerPlugin ? proto.MaxParallelTasksPerPlugin : current.MaxParallelTasksPerPlugin,
+            proto.HasWaitingRetryMinutes ? proto.WaitingRetryMinutes : current.WaitingRetryMinutes);
     }
 
     public static Proto.DeviceStatus ToProto(DiscoveredDeviceStatus status) => status switch

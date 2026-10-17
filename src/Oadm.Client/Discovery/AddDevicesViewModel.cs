@@ -59,7 +59,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     public const int MaxRangeSize = 65536;
 
     /// <summary>Import: addresses probed at the same time (a probe holds its slot until its logins finished).</summary>
-    public const int MaxImportProbes = 16;
+    public const int MaxImportProbes = 64;
 
     private readonly IOadmApi _api;
     private readonly IUiDispatcher _ui;
@@ -263,6 +263,22 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     [ObservableProperty] public partial string AddButtonText { get; private set; } = "Add";
 
+    /// <summary>
+    /// Import: keep the lines whose device did not answer on the server's waiting list; the server adds them once they
+    /// answer. Checked by default.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddCommand))]
+    public partial bool KeepWaiting { get; set; } = true;
+
+    /// <summary>Import lines that would be kept waiting now (<see cref="DiscoveredRowViewModel.CanWait"/>).</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddCommand))]
+    public partial int WaitingCount { get; private set; }
+
+    /// <summary>Lines in one call of the waiting list (a 30,000-line import is six calls).</summary>
+    public const int WaitingBatch = 5_000;
+
     /// <summary>The row the user clicked; opens the matching inline editor.</summary>
     [ObservableProperty] public partial DiscoveredRowViewModel? FocusedRow { get; set; }
 
@@ -419,7 +435,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                     slots.Release();
                     _ui.Post(() =>
                     {
-                        row.SetImportProblem("Not found", Message(ex)); // e.g. a host name that does not resolve
+                        row.SetImportProblem(DiscoveredRowViewModel.NotFoundChip, Message(ex)); // e.g. a host name that does not resolve
                         ImportLineDone();
                     });
                     continue;
@@ -614,7 +630,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private async Task AddAsync()
     {
         List<DiscoveredRowViewModel> selected = Rows.Where(r => r.IsSelected && r.CanAdd).ToList();
-        if (selected.Count == 0)
+        List<DiscoveredRowViewModel> waiting = IsImportMode && KeepWaiting ? Rows.Where(r => r.CanWait).ToList() : [];
+        if (selected.Count == 0 && waiting.Count == 0)
         {
             return;
         }
@@ -624,8 +641,15 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         var importedTags = new List<(string DeviceId, IReadOnlyList<string> Tags)>();
         try
         {
-            AddingText = selected.Count == 1 ? "Adding the device" : string.Create(CultureInfo.CurrentCulture, $"Adding {selected.Count:N0} devices");
             IsBusy = true;
+            if (waiting.Count > 0)
+            {
+                // First: a failure here adds nothing yet, so the user can simply click again.
+                AddingText = string.Create(CultureInfo.CurrentCulture, $"Keeping {waiting.Count:N0} devices that did not answer");
+                await KeepWaitingAsync(waiting).ConfigureAwait(true);
+            }
+
+            AddingText = selected.Count == 1 ? "Adding the device" : string.Create(CultureInfo.CurrentCulture, $"Adding {selected.Count:N0} devices");
             foreach (IGrouping<string, DiscoveredRowViewModel> session in selected.GroupBy(r => r.SessionId))
             {
                 var request = new CommitRequest { SessionId = session.Key, UseHostName = ShowDnsNameChoice && UseDnsNames };
@@ -690,7 +714,35 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         CloseRequested?.Invoke(this, AddedDeviceIds.Count > 0);
     }
 
-    private bool CanAdd() => SelectedCount > 0 && !IsBusy;
+    partial void OnKeepWaitingChanged(bool value) => UpdateSummary();
+
+    private bool CanAdd() => !IsBusy && (SelectedCount > 0 || (IsImportMode && KeepWaiting && WaitingCount > 0));
+
+    /// <summary>The lines whose device did not answer go to the server's waiting list, in batches.</summary>
+    private async Task KeepWaitingAsync(List<DiscoveredRowViewModel> rows)
+    {
+        string source = (ImportFromAdm ? "Import from ADM " : "Import from file ") + ImportFileName;
+        foreach (DiscoveredRowViewModel[] batch in rows.Chunk(WaitingBatch))
+        {
+            var lines = new List<WaitingLine>(batch.Length);
+            foreach (ImportLine line in batch.Select(r => r.ImportLine!))
+            {
+                var waitingLine = new WaitingLine
+                {
+                    Address = line.Address,
+                    UserName = line.UserName ?? "",
+                    Password = line.Password ?? "",
+                    ExpectedSerial = line.ExpectedSerial ?? "",
+                };
+                waitingLine.Tags.AddRange(line.Tags);
+                lines.Add(waitingLine);
+            }
+
+            await _api.AddWaitingAsync(lines, source, _cts.Token).ConfigureAwait(true);
+        }
+
+        LogKeptWaiting(_logger, rows.Count);
+    }
 
     /// <summary>
     /// Import: the "Tags" column of the file for the devices that were added. One SetDeviceTags call per distinct tag set
@@ -1015,7 +1067,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
             if (_importRows.Remove(sessionId, out DiscoveredRowViewModel? notFound))
             {
-                notFound.SetImportProblem("Not found", $"No Axis device answered at {notFound.Address}.");
+                notFound.SetImportProblem(DiscoveredRowViewModel.NotFoundChip, $"No Axis device answered at {notFound.Address}.");
             }
 
             if (IsImportMode && _scanning.Contains(sessionId))
@@ -1113,7 +1165,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private bool Recount(DiscoveredRowViewModel row)
     {
         var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd, row.IsAlreadyManaged,
-            row.IsImportPlaceholder, row.HasImportProblem);
+            row.IsImportPlaceholder, row.HasImportProblem, row.CanWait);
         if (_counted.TryGetValue(row, out RowCounts old))
         {
             if (old == now)
@@ -1138,10 +1190,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         _hidden += counts.Hidden ? delta : 0;
         _noDevice += counts.NoDevice ? delta : 0;
         _problems += counts.Problem ? delta : 0;
+        _waiting += counts.Waiting ? delta : 0;
     }
 
     /// <summary>What a row adds to the summary ("ready to add", "need a login", "need a password", "selected").</summary>
-    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden, bool NoDevice, bool Problem);
+    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden, bool NoDevice, bool Problem, bool Waiting);
 
     // Scale: per-row bookkeeping so a discovered device, a login result or a checkbox costs O(1), not a
     // scan of every row (4 counts over 5,000 rows per change made "select all" O(n^2)).
@@ -1155,6 +1208,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private int _hidden;
     private int _noDevice;
     private int _problems;
+    private int _waiting;
 
     /// <summary>
     /// Devices OADM already manages are not listed at all; only the scan status
@@ -1183,6 +1237,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         int failed = _failed;
         int factory = _factory;
         SelectedCount = _selected;
+        WaitingCount = IsImportMode ? _waiting : 0;
         var parts = new List<string> { string.Create(CultureInfo.CurrentCulture, $"{Rows.Count - _hidden - _noDevice} found"), string.Create(CultureInfo.CurrentCulture, $"{ready} ready to add") };
         if (failed > 0)
         {
@@ -1203,6 +1258,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         SummaryText = string.Join(" · ", parts);
         AddButtonText = SelectedCount switch
         {
+            0 when KeepWaiting && WaitingCount > 0 => string.Create(CultureInfo.CurrentCulture, $"Keep {WaitingCount:N0} waiting"),
             0 => "Add",
             1 => "Add 1 device",
             _ => string.Create(CultureInfo.CurrentCulture, $"Add {SelectedCount} devices"),
@@ -1291,6 +1347,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Add devices page added {Count} device(s)")]
     private static partial void LogAdded(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Add devices page kept {Count} device(s) on the waiting list")]
+    private static partial void LogKeptWaiting(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tagging {Count} imported device(s) failed: {Reason}")]
     private static partial void LogTagsFailed(ILogger logger, int count, string reason);

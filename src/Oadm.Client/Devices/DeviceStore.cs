@@ -39,6 +39,9 @@ public sealed class DeviceStore
     /// <summary>The client's tag definitions (TagService.Watch), shared by every row's chips.</summary>
     public TagStore Tags { get; }
 
+    /// <summary>The server's waiting list of imports (WaitingDeviceService.Watch).</summary>
+    public WaitingDevicesState Waiting { get; } = new();
+
     public RangeObservableCollection<DeviceRowViewModel> Devices { get; } = [];
 
     /// <summary>

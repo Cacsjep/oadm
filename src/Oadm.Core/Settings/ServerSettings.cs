@@ -37,6 +37,9 @@ public static class SettingKeys
     /// </summary>
     public const string TasksMaxParallelPerPlugin = "Tasks.MaxParallelPerPlugin";
 
+    /// <summary>How often the server tries the devices of the waiting list again (minutes). Int, default 15, 1..1440.</summary>
+    public const string DevicesWaitingRetryMinutes = "Devices.WaitingRetryMinutes";
+
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
 
@@ -86,7 +89,8 @@ public sealed record ServerSettings(
     string ListenUrl,
     int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
     int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds,
-    int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin)
+    int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin,
+    int WaitingRetryMinutes = ServerSettings.DefaultWaitingRetryMinutes)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
@@ -115,6 +119,9 @@ public sealed record ServerSettings(
     public const int DefaultMaxParallelTasksPerPlugin = 16;
     public const int MinMaxParallelTasksPerPlugin = 1;
     public const int MaxMaxParallelTasksPerPlugin = 256;
+    public const int DefaultWaitingRetryMinutes = 15;
+    public const int MinWaitingRetryMinutes = 1;
+    public const int MaxWaitingRetryMinutes = 1440;
 
     public static ServerSettings Defaults => new(
         DefaultPollingIntervalSeconds,
@@ -124,7 +131,8 @@ public sealed record ServerSettings(
         DefaultListenUrl,
         DefaultFullRefreshMinutes,
         DefaultZeroConfSeconds,
-        DefaultMaxParallelTasksPerPlugin);
+        DefaultMaxParallelTasksPerPlugin,
+        DefaultWaitingRetryMinutes);
 
     /// <summary>The machine host name (DNS host name, falling back to the NetBIOS/machine name).</summary>
     public static string DefaultServerName()

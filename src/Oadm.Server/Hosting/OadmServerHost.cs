@@ -125,6 +125,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<AuditGrpcService>();
         app.MapGrpcService<DeviceGrpcService>();
         app.MapGrpcService<TagGrpcService>();
+        app.MapGrpcService<WaitingDeviceGrpcService>();
         app.MapGrpcService<TaskGrpcService>();
         app.MapGrpcService<SettingsGrpcService>();
         app.MapGrpcService<PluginGrpcService>();
@@ -349,6 +350,9 @@ public static partial class OadmServerHost
         services.AddSingleton<DeviceAdder>();
         services.AddSingleton<DeviceAutoAddService>();
         services.AddSingleton<Sdk.Devices.IDeviceAutoAdd>(sp => sp.GetRequiredService<DeviceAutoAddService>());
+        // The import's waiting list: devices that did not answer, tried again and added once they do.
+        services.AddSingleton<WaitingDeviceRunner>();
+        services.AddHostedService(sp => sp.GetRequiredService<WaitingDeviceRunner>());
         return services;
     }
 

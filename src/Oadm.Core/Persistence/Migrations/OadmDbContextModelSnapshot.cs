@@ -328,6 +328,71 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("TagDefinitions", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.Devices.WaitingDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("EncryptedPassword")
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("ExpectedSerial")
+                        .HasMaxLength(12)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastResult")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastTryUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("LoginFailed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("NormalizedAddress")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Tries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedAddress")
+                        .IsUnique();
+
+                    b.ToTable("WaitingDevices", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.Events.EventLogEntryEntity", b =>
                 {
                     b.Property<long>("Id")

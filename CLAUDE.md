@@ -438,6 +438,7 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   Amber, Orange, Red, Pink, Violet; stored as string), CreatedUtc. At most 500 definitions; a device has at most 20 tags.
   `Oadm.Core.Devices.DeviceTagStore` owns both (serialized writes, one transaction per call, rewrites read only the Tags
   column and load just the changed rows), `TagNames` the rules.
+- `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see "Waiting list".
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),
   UserName (max 64), EncryptedPassword (AES-GCM with the entry id as associated data), CreatedUtc.
   The technician's credential list (Credentials page), at most 20 entries, tried in the order added.
@@ -614,8 +615,8 @@ controls: title bar, one card, footer) in four modes:
   Problems of single lines stay in their row (chip "Not added" + detail): no address, not an IP address or host
   name (http/https, port, no path), "Listed before in line N." (same address), line longer than 4,096
   characters, unclosed quote, user name > 64 / password > 256. The page (header "Import from file", "Addresses from
-  <file>. Logins in the file are tried first.") shows one row per line at once in file order ("Waiting"), then probes the
-  addresses with `ProbeAddress(address, user, password)`, at most `MaxImportProbes` = 16 at a time (a probe holds
+  <file>. Logins in the file are tried first.") shows one row per line at once in file order ("Queued"), then probes the
+  addresses with `ProbeAddress(address, user, password, import_line)`, at most `MaxImportProbes` = 64 at a time (a probe holds
   its slot until its watch stream ended, i.e. its logins finished): the row becomes "Checking...", then shows
   the device it found (`DiscoveredRowViewModel.Adopt`, the line's row keeps its place) with the login result;
   "Not found: No Axis device answered at X." (also for a host name that does not resolve), "Not added: Same
@@ -625,7 +626,39 @@ controls: title bar, one card, footer) in four modes:
   Summary adds "N not added". Credentials of the file stay in client memory until their probe, go to the server
   only, are never logged and never saved to the credential list (the inline login editor keeps its own "Save to
   credential list"). Then the technician reviews and clicks Add as usual. Scale: 30,000 lines are listed,
-  filtered and selected in one reset each (test).
+  filtered and selected in one reset each (test). The first contact of an imported line waits only `Scan.TimeoutMs`
+  (1.5 s, like the range scan; `ProbeAddressRequest.import_line = 5`), Add manually keeps 3 s: 30,000 lines with 10 % off
+  take about 12 to 15 minutes on a LAN.
+
+**Waiting list** ("Keep devices that do not answer and add them when they come online", check box of the import page,
+Import from file and Import from ADM, checked by default; `AddDevicesViewModel.KeepWaiting`): on Add the lines whose device
+did not answer or did not identify itself as an Axis device (`DiscoveredRowViewModel.CanWait`: "Not found" or Unreachable;
+not file problems, not Login failed, not "Not checked") go to the server in batches of 5,000 (`WaitingDeviceService.Add`)
+with their address, login, expected MAC address and tags, before the found devices are committed; without checked rows the
+button reads "Keep 3,000 waiting". Server: `Oadm.Core.Devices.WaitingDeviceStore` (table WaitingDevices, migration
+`WaitingDevices`: one entry per address (upper case), an address kept again replaces login, MAC address and tags and is
+tried like new; password AES-GCM with the master key, entry id as associated data, never listed or logged; at most 30,000,
+over it the whole call is refused "The waiting list holds at most 30,000 devices. Remove devices from it first.") and
+`Oadm.Server.AddDevices.WaitingDeviceRunner` (hosted): a round every `Devices.WaitingRetryMinutes` (15, 1..1440, Settings
+page "Try waiting devices every (min)", first round a minute after the start) or at once for `TryNow`; each round first
+drops the entries whose address or MAC address OADM manages by now, then tries every entry 32 at a time the import's way
+(`StartAddressProbeAsync(importLine: true)`, the expected MAC address and the line's login in the session, the Axis check
+before any password, then the credential list, at most 10 rejected per device) and stores a device that answers with
+`DeviceAdder` like the add page (the login that worked; factory default as Password not set), its tags, a full refresh and
+the audit entry "Device added automatically" (user "system", "<source> (waiting list, kept by <user>): ..."); a device that
+answers but rejects every login is marked Login failed and **not tried again by itself** (no repeated wrong passwords) until
+Try now; results are written in batches of 256. Nothing drops off by itself: an entry stays until its device is added (also
+another way) or a user removes it. gRPC `WaitingDeviceService` (`waiting.proto`, all "Add and remove devices"): `Add`,
+`List(offset, limit)`, `Watch` (summary {count, login_failed, trying, next_try}, at most once a second), `Remove(ids | all)`,
+`TryNow(ids | all; all also tries the failed logins)`; audited "Kept devices waiting" and "Removed waiting devices". Client:
+`ServerConnection` watches the summary for roles with the right into `DeviceStore.Waiting` (`WaitingDevicesState`); the
+Devices page shows the link "2,412 devices waiting to be added" next to "N devices, M selected" while the list is not empty;
+it opens `Devices/WaitingDevicesWindow` (`WaitingDevicesViewModel`: "Next try at 14:35", toolbar Try now, Export, Remove (red,
+confirmed; needs a selection), count and search; grid Address, MAC address, Tags, Kept, Last try, Result (warning chip for a
+failed login); read in pages of 5,000, read again after each round; Try now and Export take the selection, else every row
+the search shows; the export is the import's format without passwords). Fake mode keeps the list in memory
+(`FakeOadmApi.Waiting.cs`, nothing ever answers). Tests: `WaitingDeviceStoreTests` (+ Perf 30,000), server
+`WaitingDeviceTests`, client `WaitingDevicesTests` (+ Perf 30,000, screenshots), `AddDevicesPageTests`.
 
 **Import from ADM** (Add menu, `HostPages.AddImportAdm`): the same help dialog in its ADM mode (`ImportHelpViewModel.ForAdm`:
 addresses, logins, tags, everything else read from the devices, OADM is one server, an amber warning that the export holds
@@ -702,8 +735,8 @@ device did not identify itself as an Axis device. No password was sent." (logged
 device allows anonymous access); 401 = next, a scheme that does not answer = the next scheme, no scheme
 answering = UNREACHABLE, another serial at the address = UNREACHABLE. A device that logged in over HTTP
 with Basic only is stored with scheme http and then needs Digest like every managed device (Basic stays
-HTTPS only outside the add page's login). At most 8 devices log
-in at the same time. Results live per (session, serial) for 30 min after the last use together with
+HTTPS only outside the add page's login). At most 32 devices log
+in at the same time (`DiscoveryAuthenticator.Parallelism`; each device still gets one login after another). Results live per (session, serial) for 30 min after the last use together with
 the credential that worked (server memory); `Commit` stores that credential for the new device
 (explicit `credentials` in the request still win, legacy). Passwords never leave the server once
 stored; RetryAuth credentials travel only client -> server and are kept in server memory (or the
@@ -1974,7 +2007,10 @@ or on their own, matched by the MAC address in the key). Decision table and rese
 
 Server-side in `Setting`. Keys: `Polling.IntervalSeconds` (60, 5..86400),
 `Polling.FullRefreshMinutes` (10, 1..1440), `Events.LogRetentionDays` (30, 0..3650) and `Events.LogMaxEntries` (100000, 0 or
-100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500),
+100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500,
+Settings page "Scan timeout (ms)": range scans and the first contact of imported lines), `Devices.WaitingRetryMinutes` (15,
+1..1440, Settings page "Try waiting devices every (min)", proto `optional int32 waiting_retry_minutes = 10`; see "Waiting
+list"),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
 page "Discovery duration (s)"), `Server.Name` (hostname),
 `Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
@@ -2149,7 +2185,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   entries. Logged: login ok / failed, logout, user changes, roles ("Created role", "Changed role" with "+Web View: Open
   devices, -Restart", "Deleted role"), settings changes, credential list add / remove / reveal, PKI
   actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
-  (counts), devices added or moved automatically (user "system"), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
+  (counts), devices added or moved automatically (user "system"), the waiting list (kept, removed), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
   on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device), zoom and focus ("Changed zoom or
   focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"). The Logs page has an **Audit** tab (Admin only, newest 10,000,
   virtualized, search).

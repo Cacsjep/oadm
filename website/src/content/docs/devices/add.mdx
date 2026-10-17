@@ -58,6 +58,11 @@ Devices without a DNS name are added by IP address. OADM keeps the address a dev
   are ignored. Comma or semicolon.
 - A password without a user name is for `root`. Logins in the file are tried first and are never saved.
 - Up to 30,000 addresses per file. A line with a problem shows **Not added** and the reason in its row.
+- **Keep devices that do not answer and add them when they come online** (checked by default): on **Add**, OADM keeps
+  the addresses that did not answer and tries them again every 15 minutes (Settings, "Try waiting devices every"). Each
+  device is added once it answers, with the login and tags of its line. The Devices page shows how many are waiting;
+  click it to see them, try them now, export or remove them. A device that answers but rejects every password waits until
+  you click **Try now**.
 - Tags in the file are given to the devices you add. Several tags in one cell are separated with `;`.
 
 Example:

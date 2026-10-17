@@ -75,7 +75,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     public const int MaxAttemptsPerDevice = 10;
 
     /// <summary>Devices logged in to at the same time.</summary>
-    public const int Parallelism = 8;
+    public const int Parallelism = 32;
 
     /// <summary>Credential id of credentials the technician typed (RetryAuth) and did not save.</summary>
     public const string EnteredCredentialId = "entered";

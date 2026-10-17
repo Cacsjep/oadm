@@ -72,7 +72,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             ListenUrlOf(Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl)),
             Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
             Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds),
-            Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin));
+            Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin),
+            Read(rows, SettingKeys.DevicesWaitingRetryMinutes, defaults.WaitingRetryMinutes));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -89,6 +90,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(settings.FullRefreshMinutes),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(settings.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(settings.MaxParallelTasksPerPlugin),
+            [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(settings.WaitingRetryMinutes),
         };
         foreach (var (key, json) in values)
         {
@@ -200,6 +202,9 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.TasksMaxParallelPerPlugin:
                 RequireInt(key, value, ServerSettings.MinMaxParallelTasksPerPlugin, ServerSettings.MaxMaxParallelTasksPerPlugin);
                 break;
+            case SettingKeys.DevicesWaitingRetryMinutes:
+                RequireInt(key, value, ServerSettings.MinWaitingRetryMinutes, ServerSettings.MaxWaitingRetryMinutes);
+                break;
             case SettingKeys.ServerName:
                 if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -248,6 +253,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.EventsLogMaxEntries] = JsonSerializer.Serialize(ServerSettings.DefaultEventsLogMaxEntries),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(d.MaxParallelTasksPerPlugin),
+            [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(d.WaitingRetryMinutes),
         };
     }
 }

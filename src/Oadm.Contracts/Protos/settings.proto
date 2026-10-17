@@ -37,6 +37,9 @@ message ServerSettings {
   // Default 16, 1..256; a plugin's MaxParallelDevices can only lower it. Applies to tasks started after
   // the change. optional so a partial Set without it keeps the stored value.
   optional int32 max_parallel_tasks_per_plugin = 9;
+  // Devices.WaitingRetryMinutes: how often the server tries the waiting list again. Default 15, 1..1440; optional so a
+  // partial Set without it keeps the stored value.
+  optional int32 waiting_retry_minutes = 10;
   // Read only (Get and Set replies), production hardening 3: set after the server had to replace its master key.
   // Clients show it as a banner until the user dismisses it (remembered per client by id). Field number kept high
   // on purpose (other settings use the low numbers).

@@ -168,6 +168,36 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<TagList> WatchTagsAsync(CancellationToken ct) =>
         ReadAll(C.Tags.Watch(new Empty(), cancellationToken: ct), ct);
 
+    public async Task<AddWaitingReply> AddWaitingAsync(IReadOnlyCollection<WaitingLine> lines, string source, CancellationToken ct)
+    {
+        var request = new AddWaitingRequest { Source = source };
+        request.Lines.AddRange(lines);
+        return await C.Waiting.AddAsync(request, cancellationToken: ct);
+    }
+
+    public async Task<WaitingList> ListWaitingAsync(int offset, int limit, CancellationToken ct) =>
+        await C.Waiting.ListAsync(new ListWaitingRequest { Offset = offset, Limit = limit }, cancellationToken: ct);
+
+    public IAsyncEnumerable<WaitingSummary> WatchWaitingAsync(CancellationToken ct) =>
+        ReadAll(C.Waiting.Watch(new Empty(), cancellationToken: ct), ct);
+
+    public async Task<WaitingSummary> RemoveWaitingAsync(IReadOnlyCollection<string> ids, bool all, CancellationToken ct) =>
+        await C.Waiting.RemoveAsync(WaitingIdsOf(ids, all), cancellationToken: ct);
+
+    public async Task<WaitingSummary> TryWaitingNowAsync(IReadOnlyCollection<string> ids, bool all, CancellationToken ct) =>
+        await C.Waiting.TryNowAsync(WaitingIdsOf(ids, all), cancellationToken: ct);
+
+    private static WaitingIds WaitingIdsOf(IReadOnlyCollection<string> ids, bool all)
+    {
+        var message = new WaitingIds { All = all };
+        if (!all)
+        {
+            message.Ids.AddRange(ids);
+        }
+
+        return message;
+    }
+
     public async Task<DeviceTag> CreateTagAsync(string name, TagColor color, CancellationToken ct) =>
         await C.Tags.CreateAsync(new CreateTagRequest { Name = name, Color = color }, cancellationToken: ct);
 
@@ -270,16 +300,18 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct) =>
         (await C.Discovery.StartRangeScanAsync(new RangeScanRequest { From = firstAddress, To = lastAddress }, cancellationToken: ct)).SessionId;
 
-    public Task<string> ProbeAddressAsync(string address, CancellationToken ct) => ProbeAddressAsync(address, null, null, ct);
+    public async Task<string> ProbeAddressAsync(string address, CancellationToken ct) =>
+        (await C.Discovery.ProbeAddressAsync(new ProbeAddressRequest { Address = address }, cancellationToken: ct)).SessionId;
 
+    // The overloads with a login are the import's lines: a short first contact (import_line).
     public async Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct) =>
         (await C.Discovery.ProbeAddressAsync(
-            new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "" },
+            new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "", ImportLine = true },
             cancellationToken: ct)).SessionId;
 
     public async Task<string> ProbeAddressAsync(string address, string? userName, string? password, string expectedSerial, CancellationToken ct) =>
         (await C.Discovery.ProbeAddressAsync(
-            new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "", ExpectedSerial = expectedSerial },
+            new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "", ExpectedSerial = expectedSerial, ImportLine = true },
             cancellationToken: ct)).SessionId;
 
     public IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct) =>
@@ -572,6 +604,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public LiveViewService.LiveViewServiceClient LiveView { get; } = new(channel);
         public DeviceWebService.DeviceWebServiceClient DeviceWeb { get; } = new(channel);
         public TagService.TagServiceClient Tags { get; } = new(channel);
+        public WaitingDeviceService.WaitingDeviceServiceClient Waiting { get; } = new(channel);
         public EventService.EventServiceClient Events { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
     }

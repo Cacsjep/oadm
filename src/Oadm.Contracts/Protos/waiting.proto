@@ -1,0 +1,80 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// The waiting list of the import: lines of an imported file whose device did not answer. The server tries them again
+// every Devices.WaitingRetryMinutes and adds each device once it answers (like the add page: Axis check first, the
+// line's login, then the credential list). An entry stays until its device is added (also another way) or it is removed.
+// A device that answers but rejects every login is not tried again by itself (no repeated wrong passwords); TryNow
+// tries it once more. Passwords travel client -> server only and are never listed.
+service WaitingDeviceService {
+  // Keeps the lines (one entry per address; an address kept already gets the new login, MAC address and tags).
+  // RESOURCE_EXHAUSTED when the list would hold more than 30,000 devices (nothing is stored), INVALID_ARGUMENT for a
+  // line without an address or with a login that is too long.
+  rpc Add (AddWaitingRequest) returns (AddWaitingReply);
+  // A page in the order the lines were kept; limit 0 = all.
+  rpc List (ListWaitingRequest) returns (WaitingList);
+  // The summary on subscribe and after every change, at most every second.
+  rpc Watch (Empty) returns (stream WaitingSummary);
+  rpc Remove (WaitingIds) returns (WaitingSummary);
+  // Tries the entries now (also those whose login failed), once the round that may be running ended.
+  rpc TryNow (WaitingIds) returns (WaitingSummary);
+}
+
+message WaitingLine {
+  string address = 1;          // as in the file: IP or host name, optional scheme and port
+  string user_name = 2;        // with password: tried first; a password alone is for root
+  string password = 3;
+  string expected_serial = 4;  // MAC address of an AXIS Device Manager export: another device gets no password
+  repeated string tags = 5;    // given to the device when it is added
+}
+
+message AddWaitingRequest {
+  repeated WaitingLine lines = 1;
+  string source = 2;           // "Import from file site.csv"
+}
+
+message AddWaitingReply {
+  int32 added = 1;
+  int32 updated = 2;
+  int32 total = 3;
+}
+
+message ListWaitingRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message WaitingDevice {
+  string id = 1;
+  string address = 2;
+  string expected_serial = 3;
+  repeated string tags = 4;
+  string source = 5;
+  string added_by = 6;
+  google.protobuf.Timestamp created = 7;
+  google.protobuf.Timestamp last_try = 8;   // unset before the first try
+  string last_result = 9;                   // plain words, empty before the first try
+  bool login_failed = 10;                   // answered but rejected every login: waits for Try now
+  int32 tries = 11;
+  bool has_login = 12;                      // the line brought a login (never the password)
+}
+
+message WaitingList {
+  repeated WaitingDevice devices = 1;
+  int32 total_count = 2;
+}
+
+message WaitingIds {
+  repeated string ids = 1;
+  bool all = 2;                // every entry; ids are ignored
+}
+
+message WaitingSummary {
+  int32 count = 1;
+  int32 login_failed = 2;
+  bool trying = 3;             // a round runs now
+  google.protobuf.Timestamp next_try = 4;  // when the next round starts (unset while one runs)
+}

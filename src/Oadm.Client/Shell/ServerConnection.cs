@@ -68,6 +68,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _ = Task.Run(() => DeviceLoopAsync(ct), ct);
         _ = Task.Run(() => TaskLoopAsync(ct), ct);
         _ = Task.Run(() => TagLoopAsync(ct), ct);
+        _ = Task.Run(() => WaitingLoopAsync(ct), ct);
         if (_session is not null)
         {
             _ = Task.Run(() => SessionLoopAsync(_session, ct), ct);
@@ -238,6 +239,51 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                 // the device loop reports the connection state; just retry
             }
 
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
+    }
+
+    /// <summary>
+    /// The waiting list summary (WaitingDeviceService.Watch) for the Devices page line. Only for a role with "Add and remove
+    /// devices" (others are refused by the server, so they do not ask); an older server without the list is retried like
+    /// the other streams.
+    /// </summary>
+    private async Task WaitingLoopAsync(CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<WaitingSummary>(_ui, summaries => _devices.Waiting.Apply(summaries[^1]));
+        while (!ct.IsCancellationRequested)
+        {
+            if (_session is null || _session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.DevicesAddRemove))
+            {
+                try
+                {
+                    await foreach (WaitingSummary summary in _api.WatchWaitingAsync(ct).ConfigureAwait(false))
+                    {
+                        batcher.Add(summary);
+                        delay = MinDelay;
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // the device loop reports the connection state; just retry
+                }
+            }
+
+            _ui.Post(_devices.Waiting.Clear);
             try
             {
                 await Task.Delay(delay, ct).ConfigureAwait(false);

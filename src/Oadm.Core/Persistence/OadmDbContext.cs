@@ -15,6 +15,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<DeviceCredential> DeviceCredentials => Set<DeviceCredential>();
     public DbSet<CredentialListEntry> CredentialListEntries => Set<CredentialListEntry>();
+    public DbSet<WaitingDevice> WaitingDevices => Set<WaitingDevice>();
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
     public DbSet<TaskDeviceResultEntity> TaskDeviceResults => Set<TaskDeviceResultEntity>();
     public DbSet<TaskLogEntryEntity> TaskLogEntries => Set<TaskLogEntryEntity>();
@@ -101,6 +102,24 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(c => c.UserName).IsRequired().HasMaxLength(64);
             e.Property(c => c.EncryptedPassword).IsRequired();
             e.HasOne<Device>().WithOne().HasForeignKey<DeviceCredential>(c => c.DeviceId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WaitingDevice>(e =>
+        {
+            e.ToTable("WaitingDevices");
+            e.HasKey(w => w.Id);
+            e.Property(w => w.Id).ValueGeneratedNever();
+            e.Property(w => w.Address).IsRequired().HasMaxLength(WaitingDeviceStore.MaxAddressLength);
+            e.Property(w => w.NormalizedAddress).IsRequired().HasMaxLength(WaitingDeviceStore.MaxAddressLength);
+            e.HasIndex(w => w.NormalizedAddress).IsUnique();
+            e.Property(w => w.ExpectedSerial).HasMaxLength(12);
+            e.Property(w => w.UserName).HasMaxLength(CredentialListStore.MaxUserNameLength);
+            e.Property(w => w.Tags).HasConversion(TagsConverter, TagsComparer).IsRequired();
+            e.Property(w => w.Source).IsRequired().HasMaxLength(WaitingDeviceStore.MaxSourceLength);
+            e.Property(w => w.AddedBy).IsRequired().HasMaxLength(64);
+            e.Property(w => w.LastResult).IsRequired().HasMaxLength(WaitingDeviceStore.MaxResultLength);
+            e.Property(w => w.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(w => w.LastTryUtc).HasConversion(NullableUtcConverter);
         });
 
         modelBuilder.Entity<CredentialListEntry>(e =>

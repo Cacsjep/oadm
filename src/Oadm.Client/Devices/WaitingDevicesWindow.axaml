@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:c="using:Oadm.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Devices"
+        x:Class="Oadm.Client.Devices.WaitingDevicesWindow"
+        x:DataType="vm:WaitingDevicesViewModel"
+        Title="Waiting devices"
+        Width="1100" Height="640" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- The import's waiting list: title bar, one card (intro and next try, toolbar with search, the list, progress or error), footer. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Waiting devices" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="secondary" TextWrapping="Wrap" Text="Devices of imports that did not answer. OADM adds each one once it answers." />
+          <TextBlock Grid.Column="1" Classes="secondary" Margin="16,0,0,0" Text="{Binding ScheduleText}" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,10">
+          <ui:ToolbarOverflowPanel x:Name="ToolbarPanel" Spacing="4">
+            <ui:ToolbarButton x:Name="TryNowButton" Text="Try now" IconKey="refresh" Command="{Binding TryNowCommand}" ToolTip.Tip="{Binding TryNowTip}" />
+            <ui:ToolbarButton x:Name="ExportButton" Text="Export" IconKey="export" Command="{Binding ExportCommand}" ToolTip.Tip="{Binding ExportTip}" />
+            <ui:ToolbarSeparator />
+            <Button x:Name="RemoveButton" Classes="toolbar danger" Command="{Binding RemoveCommand}" ToolTip.Tip="OADM stops trying to add them"
+                    ToolTip.ShowOnDisabled="False">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Remove" Spacing="8" />
+            </Button>
+          </ui:ToolbarOverflowPanel>
+          <TextBlock Grid.Column="1" Classes="secondary" VerticalAlignment="Center" Margin="12,0" Text="{Binding CountText}" />
+          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
+        </Grid>
+
+        <!-- Virtualized; 30,000 rows read in pages -->
+        <DataGrid x:Name="WaitingGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Rows}"
+                  c:GridSelection.SelectedItems="{Binding Selected}" SelectionMode="Extended" IsReadOnly="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="200" MinWidth="140" />
+            <DataGridTextColumn Header="MAC address" Binding="{Binding MacAddress}" Width="130" MinWidth="120" />
+            <DataGridTextColumn Header="Tags" Binding="{Binding TagsText}" Width="150" MinWidth="90" />
+            <DataGridTextColumn Header="Kept" Binding="{Binding KeptText}" Width="140" MinWidth="120" SortMemberPath="Device.Created" />
+            <DataGridTextColumn Header="Last try" Binding="{Binding LastTryText}" Width="140" MinWidth="120" />
+            <DataGridTemplateColumn Header="Result" Width="*" MinWidth="220" SortMemberPath="ResultText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:WaitingRowViewModel">
+                  <ui:StatusChip Text="{Binding ResultText}" IsWarning="{Binding IsLoginFailed}" MaxLines="2" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="3">
+          <ui:ProgressRow Margin="0,10,0,0" Text="{Binding BusyText}" IsActive="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+          <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding ErrorText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}" />
+  </Grid>
+</Window>

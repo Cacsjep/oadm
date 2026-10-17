@@ -73,23 +73,29 @@
               <ui:FormField Label="Addresses scanned at once">
                 <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
               </ui:FormField>
-              <ui:FormField Label="IP range scan timeout (ms)">
+              <ui:FormField Label="Scan timeout (ms)" Hint="Network range and imports wait this long for an address to answer">
                 <NumericUpDown Minimum="100" Maximum="30000" Increment="100" FormatString="0" Value="{Binding ScanTimeoutMs}" />
               </ui:FormField>
               <ui:FormField Label="Discovery duration (s)"
                             Hint="Discovery on the add devices page ends after this time; Scan again starts it again">
                 <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
               </ui:FormField>
+              <ui:FormField Label="Try waiting devices every (min)" Hint="Devices of an import that did not answer">
+                <NumericUpDown Minimum="1" Maximum="1440" Increment="5" FormatString="0" Value="{Binding WaitingRetryMinutes}" />
+              </ui:FormField>
             </StackPanel>
             <StackPanel Classes="form" IsVisible="{Binding IsOperator}">
               <ui:FormField Label="Addresses scanned at once">
                 <TextBlock Text="{Binding ScanParallelism}" />
               </ui:FormField>
-              <ui:FormField Label="IP range scan timeout (ms)">
+              <ui:FormField Label="Scan timeout (ms)">
                 <TextBlock Text="{Binding ScanTimeoutMs}" />
               </ui:FormField>
               <ui:FormField Label="Discovery duration (s)">
                 <TextBlock Text="{Binding ZeroConfSeconds}" />
+              </ui:FormField>
+              <ui:FormField Label="Try waiting devices every (min)">
+                <TextBlock Text="{Binding WaitingRetryMinutes}" />
               </ui:FormField>
             </StackPanel>
           </StackPanel>

@@ -96,6 +96,22 @@ public interface IOadmApi
     /// <summary>Adds and removes tags on many devices: one call, one server transaction.</summary>
     Task<SetDeviceTagsReply> SetDeviceTagsAsync(IReadOnlyCollection<string> deviceIds, IReadOnlyCollection<string> add, IReadOnlyCollection<string> remove, CancellationToken ct);
 
+    // WaitingDeviceService: lines of an import whose device did not answer, tried again by the server
+    /// <summary>Keeps the lines on the server's waiting list (one entry per address).</summary>
+    Task<AddWaitingReply> AddWaitingAsync(IReadOnlyCollection<WaitingLine> lines, string source, CancellationToken ct);
+
+    /// <summary>A page of the waiting list in the order the lines were kept; limit 0 = all.</summary>
+    Task<WaitingList> ListWaitingAsync(int offset, int limit, CancellationToken ct);
+
+    /// <summary>The waiting summary now and after every change.</summary>
+    IAsyncEnumerable<WaitingSummary> WatchWaitingAsync(CancellationToken ct);
+
+    /// <summary>Removes entries (<paramref name="all"/>: every entry).</summary>
+    Task<WaitingSummary> RemoveWaitingAsync(IReadOnlyCollection<string> ids, bool all, CancellationToken ct);
+
+    /// <summary>Tries entries now (<paramref name="all"/>: every entry, also those whose login failed).</summary>
+    Task<WaitingSummary> TryWaitingNowAsync(IReadOnlyCollection<string> ids, bool all, CancellationToken ct);
+
     // DiscoveryService
     Task<string> StartZeroConfAsync(CancellationToken ct);
     Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct);

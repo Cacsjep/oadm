@@ -21,7 +21,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// A row for one line of an imported device list, before its address was probed ("Waiting"), or with
+    /// A row for one line of an imported device list, before its address was probed ("Queued"), or with
     /// the line's problem (invalid address, duplicate, too long). It shows the found device once the
     /// probe answers (<see cref="Adopt"/>).
     /// </summary>
@@ -41,7 +41,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         SessionId = sessionId;
         ImportLine = line;
         IsImportPlaceholder = true;
-        _importChip = line.Problem is null ? ("Waiting", PillKind.Neutral) : ("Not added", PillKind.Warning);
+        _importChip = line.Problem is null ? ("Queued", PillKind.Neutral) : ("Not added", PillKind.Warning);
         Update(device);
         if (line.Problem is not null)
         {
@@ -62,6 +62,17 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     [ObservableProperty] public partial bool HasImportProblem { get; private set; }
 
     private (string Text, PillKind Kind)? _importChip;
+    private bool _notFound;
+
+    /// <summary>The chip of an import line whose address did not answer.</summary>
+    public const string NotFoundChip = "Not found";
+
+    /// <summary>
+    /// Import: the line's device did not answer, or did not identify itself as an Axis device (no password was sent). The
+    /// page keeps such lines on the server's waiting list when "Keep devices that do not answer" is checked.
+    /// </summary>
+    public bool CanWait => ImportLine is { Problem: null } && !IsAdded && !IsAlreadyManaged
+        && (HasImportProblem ? _notFound : !IsImportPlaceholder && AuthState == AuthState.Unreachable);
 
     /// <summary>Import: the address is being probed now.</summary>
     public void MarkImportChecking()
@@ -77,6 +88,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     public void SetImportProblem(string chip, string detail, PillKind kind = PillKind.Error)
     {
         _importChip = (chip, kind);
+        _notFound = chip == NotFoundChip;
         AuthDetail = detail;
         HasImportProblem = true;
         Refresh();

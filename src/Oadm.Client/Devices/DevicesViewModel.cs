@@ -197,6 +197,17 @@ public sealed partial class DevicesViewModel : ObservableObject
     public string StatusLine =>
         string.Create(CultureInfo.CurrentCulture, $"{_store.Devices.Count} devices, {SelectedDevices.Count} selected");
 
+    /// <summary>The server's waiting list of imports: the line "2,412 devices waiting to be added" next to <see cref="StatusLine"/>.</summary>
+    public WaitingDevicesState Waiting => _store.Waiting;
+
+    /// <summary>The "Waiting devices" dialog: the devices of imports that did not answer yet.</summary>
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private async Task OpenWaitingAsync()
+    {
+        var waiting = new WaitingDevicesViewModel(_api, _dialogs, _store.Waiting);
+        await _dialogs.ShowWaitingDevicesAsync(waiting).ConfigureAwait(true);
+    }
+
     public bool HasSearch => SearchText.Length > 0;
 
     /// <summary>The progress row below the toolbar for actions on many devices (remove, start tasks, export).</summary>

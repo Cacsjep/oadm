@@ -35,7 +35,8 @@ public sealed class VapixProbe
     /// <param name="address">Host name or IP, optionally with a port ("cam.local:8443").</param>
     /// <param name="ct">Cancellation.</param>
     /// <param name="schemes">Schemes to try in order; default HTTPS then HTTP.</param>
-    public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct, IReadOnlyList<string>? schemes = null)
+    /// <param name="timeout">Per-request timeout of this probe; default the one of the constructor.</param>
+    public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct, IReadOnlyList<string>? schemes = null, TimeSpan? timeout = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
 
@@ -44,7 +45,7 @@ public sealed class VapixProbe
             ct.ThrowIfCancellationRequested();
             var baseAddress = VapixClient.BuildBaseAddress(scheme, address);
             var pinning = new CertificatePinning();
-            using var client = new VapixClient(baseAddress, _handlerFactory(baseAddress, pinning), pinning, _timeout);
+            using var client = new VapixClient(baseAddress, _handlerFactory(baseAddress, pinning), pinning, timeout ?? _timeout);
 
             HttpResponseMessage response;
             try

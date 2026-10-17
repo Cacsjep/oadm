@@ -68,7 +68,7 @@ public sealed class DiscoveryGrpcService(
 
         try
         {
-            var session = await discovery.StartAddressProbeAsync(request.Address, context.CancellationToken).ConfigureAwait(false);
+            var session = await discovery.StartAddressProbeAsync(request.Address, request.ImportLine, context.CancellationToken).ConfigureAwait(false);
             if (expectedSerial.Length > 0)
             {
                 // Before the watch starts the automatic login: another device at this address gets no password.

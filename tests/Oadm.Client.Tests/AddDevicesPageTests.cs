@@ -372,6 +372,47 @@ public sealed class AddDevicesPageTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_lines_that_do_not_answer_are_kept_waiting_on_add()
+    {
+        string csv = string.Join("\n",
+            "Address,User name,Password,Tags",
+            "10.0.0.93,admin,right-Pass1,Lobby",
+            "10.0.0.199,root,File-Pass-1,Building A; PTZ",
+            "10.99.0.1,,,",
+            "not an address,,,");
+
+        await using AddDevicesViewModel page = await OpenImportAsync(csv);
+        await page.ImportCompletion!;
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder ? r.HasImportProblem : r.AuthState != AuthState.Pending));
+
+        // The two that did not answer can wait; the invalid line cannot.
+        Assert.True(page.KeepWaiting);
+        Assert.Equal(2, page.WaitingCount);
+        Assert.Equal(["10.0.0.199", "10.99.0.1"], page.Rows.Where(r => r.CanWait).Select(r => r.Address));
+        Assert.Equal("Keep 2 waiting", page.AddButtonText);
+        Assert.True(page.AddCommand.CanExecute(null));
+        page.KeepWaiting = false;
+        Assert.Equal("Add", page.AddButtonText);
+        Assert.False(page.AddCommand.CanExecute(null));
+        page.KeepWaiting = true;
+
+        page.SelectAllAuthenticatedCommand.Execute(null);
+        Assert.Equal("Add 1 device", page.AddButtonText);
+        bool closed = false;
+        page.CloseRequested += (_, _) => closed = true;
+        await page.AddCommand.ExecuteAsync(null);
+
+        Assert.True(closed);
+        Assert.Contains(await _api.ListDevicesAsync(CancellationToken.None), d => d.Address == "10.0.0.93");
+        Assert.Equal(["10.0.0.199", "10.99.0.1"], _api.KeptWaitingLines.Select(l => l.Address));
+        WaitingLine kept = _api.KeptWaitingLines[0];
+        Assert.Equal(("root", "File-Pass-1"), (kept.UserName, kept.Password)); // the line's login goes along, to the server only
+        Assert.Equal(["Building A", "PTZ"], kept.Tags);
+        WaitingList list = await _api.ListWaitingAsync(0, 0, CancellationToken.None);
+        Assert.Equal("Import from file site.csv", list.Devices[0].Source);
+    }
+
+    [Fact]
     public async Task An_ADM_export_line_whose_address_now_has_another_device_is_not_added()
     {
         // 10.0.0.97 answers, but the export names another MAC address: not added (the server sends that device no password).

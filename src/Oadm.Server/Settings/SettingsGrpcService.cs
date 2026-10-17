@@ -143,6 +143,7 @@ public sealed partial class SettingsGrpcService(
         Add("Scan timeout (ms)", before.ScanTimeoutMs, after.ScanTimeoutMs);
         Add("Discovery duration (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);
         Add("Parallel tasks per plugin", before.MaxParallelTasksPerPlugin, after.MaxParallelTasksPerPlugin);
+        Add("Try waiting devices every (min)", before.WaitingRetryMinutes, after.WaitingRetryMinutes);
         Add("Server name", before.ServerName, after.ServerName);
         Add("Listen URL", before.ListenUrl, after.ListenUrl);
         return changes.Count == 0 ? "No change" : string.Join(", ", changes);

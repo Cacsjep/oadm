@@ -163,6 +163,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             .Rule(nameof(ScanParallelism), () => RangeError(ScanParallelism, 1, 256))
             .Rule(nameof(ScanTimeoutMs), () => RangeError(ScanTimeoutMs, 100, 30000))
             .Rule(nameof(ZeroConfSeconds), () => RangeError(ZeroConfSeconds, 5, 300))
+            .Rule(nameof(WaitingRetryMinutes), () => RangeError(WaitingRetryMinutes, 1, 1440))
             .Rule(nameof(MaxParallelTasksPerPlugin), () => RangeError(MaxParallelTasksPerPlugin, MinParallelTasks, MaxParallelTasks))
             .Rule(nameof(ServerName), () => ServerName.Trim().Length == 0 ? "Enter a server name." : null)
             .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl));
@@ -173,7 +174,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private static readonly string[] ServerFields =
     [
         nameof(PollingIntervalSeconds), nameof(FullRefreshMinutes), nameof(ScanParallelism), nameof(ScanTimeoutMs),
-        nameof(ZeroConfSeconds), nameof(MaxParallelTasksPerPlugin), nameof(ServerName), nameof(ListenUrl),
+        nameof(ZeroConfSeconds), nameof(WaitingRetryMinutes), nameof(MaxParallelTasksPerPlugin), nameof(ServerName), nameof(ListenUrl),
     ];
 
     /// <summary>Range and default of Tasks.MaxParallelPerPlugin (same as the server).</summary>
@@ -219,6 +220,9 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     /// <summary>Discovery.ZeroConfSeconds: a zero-conf scan of the add page ends after this many seconds (5..300).</summary>
     [ObservableProperty] public partial decimal? ZeroConfSeconds { get; set; } = 30;
+
+    /// <summary>Devices.WaitingRetryMinutes: how often the server tries the waiting devices of imports again (1..1440).</summary>
+    [ObservableProperty] public partial decimal? WaitingRetryMinutes { get; set; } = 15;
 
     /// <summary>
     /// Tasks.MaxParallelPerPlugin: how many devices a task (restart, firmware update, ...) runs on at the same
@@ -284,6 +288,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             ScanParallelism = (int)(ScanParallelism ?? 32),
             ScanTimeoutMs = (int)(ScanTimeoutMs ?? 1500),
             ZeroConfSeconds = (int)(ZeroConfSeconds ?? 30),
+            WaitingRetryMinutes = (int)(WaitingRetryMinutes ?? 15),
             MaxParallelTasksPerPlugin = (int)(MaxParallelTasksPerPlugin ?? DefaultParallelTasks),
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
@@ -316,6 +321,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         ScanTimeoutMs = settings.ScanTimeoutMs;
         ZeroConfSeconds = settings.ZeroConfSeconds > 0 ? settings.ZeroConfSeconds : 30; // 0 = older server without the setting
         MaxParallelTasksPerPlugin = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : DefaultParallelTasks; // unset = older server
+        WaitingRetryMinutes = settings.HasWaitingRetryMinutes ? settings.WaitingRetryMinutes : 15; // unset = older server
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
     }

@@ -57,7 +57,13 @@
           </StackPanel>
         </Grid>
 
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" IsVisible="{Binding !Work.IsActive}" />
+        <!-- "N devices, M selected", then the import's waiting list while it is not empty (opens the Waiting devices dialog) -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="2,14,0,8" IsVisible="{Binding !Work.IsActive}">
+          <TextBlock Classes="secondary" Text="{Binding StatusLine}" VerticalAlignment="Center" />
+          <Button x:Name="WaitingLink" Classes="link" Margin="16,0,0,0" Padding="0" VerticalAlignment="Center"
+                  IsVisible="{Binding Waiting.HasAny}" Command="{Binding OpenWaitingCommand}" Content="{Binding Waiting.Text}"
+                  ToolTip.Tip="Added once they answer" />
+        </StackPanel>
         <ui:ProgressRow Grid.Row="1" Margin="2,10,0,4" Text="{Binding Work.Text}" IsActive="{Binding Work.IsActive}" IsVisible="{Binding Work.IsActive}" />
 
         <Panel Grid.Row="2">

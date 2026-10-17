@@ -78,6 +78,10 @@
           <CheckBox Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0" IsVisible="{Binding ShowDnsNameChoice}"
                     IsChecked="{Binding UseDnsNames}" Content="Use DNS names instead of IP addresses"
                     ToolTip.Tip="Devices without a DNS name are added by IP address" />
+          <!-- Import: the lines whose device does not answer go to the server's waiting list on Add -->
+          <CheckBox x:Name="KeepWaitingBox" Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0" IsVisible="{Binding IsImportMode}"
+                    IsChecked="{Binding KeepWaiting}" Content="Keep devices that do not answer and add them when they come online"
+                    ToolTip.Tip="OADM tries them again on its own" />
           <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="2" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
                             IsVisible="{Binding ShowStop}" ToolTip.Tip="Found devices stay in the list" />
           <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="2" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
