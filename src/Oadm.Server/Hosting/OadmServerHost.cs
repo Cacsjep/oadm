@@ -399,6 +399,20 @@ public static partial class OadmServerHost
             loader.FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder));
         }
 
+        // A plugin straight from its build output (Oadm:PluginDir, plugin development): loaded first, so it wins over an
+        // installed copy of the same package. Never as a service: a service loads only admin-only folders.
+        foreach (var directory in PluginDirectories(app.Configuration))
+        {
+            if (sp.GetRequiredService<ServerRunMode>().IsService)
+            {
+                LogPluginDirIgnored(logger, directory);
+            }
+            else if (loader.LoadPackage(directory) is not null)
+            {
+                LogPluginDirLoaded(logger, directory);
+            }
+        }
+
         loader.LoadFromRoots(roots);
         foreach (var plugin in registry.TaskPlugins)
         {
@@ -502,6 +516,25 @@ public static partial class OadmServerHost
 
         return roots;
     }
+
+    /// <summary>The configuration key of plugin folders loaded straight from a build output (several separated by ";").</summary>
+    public const string PluginDirKey = "Oadm:PluginDir";
+
+    /// <summary>The folders of <see cref="PluginDirKey"/> (<c>--Oadm:PluginDir=&lt;folder&gt;</c>), full paths, in order.</summary>
+    public static IReadOnlyList<string> PluginDirectories(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        return [.. (configuration[PluginDirKey] ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Plugin loaded from the development folder {Directory}; it wins over an installed copy")]
+    private static partial void LogPluginDirLoaded(ILogger logger, string directory);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Oadm:PluginDir {Directory} is ignored: the server runs as a service, which loads only its own plugin folders")]
+    private static partial void LogPluginDirIgnored(ILogger logger, string directory);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OADM server {Version} starting, data folder {DataDirectory}")]
     private static partial void LogStarting(ILogger logger, string version, string dataDirectory);

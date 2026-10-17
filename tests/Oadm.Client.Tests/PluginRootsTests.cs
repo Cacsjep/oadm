@@ -25,4 +25,17 @@ public sealed class PluginRootsTests
         Assert.Null(ClientPluginLoader.AppBundleResources(Path.Combine(Path.GetTempPath(), "MacOS")));
         Assert.DoesNotContain(ClientPluginLoader.DefaultRoots(new AppOptions(), plain), r => r.Contains("Resources", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Plugin_dirs_of_the_command_line_come_first()
+    {
+        string build = Path.Combine(Path.GetTempPath(), "acme", "bin", "Debug");
+        var options = AppOptions.Parse(["--plugin-dir", build, "--server", "localhost:5080", "--plugin-dir", "other"]);
+
+        Assert.Equal([Path.GetFullPath(build), Path.GetFullPath("other")], options.PluginDirs);
+        var roots = ClientPluginLoader.DefaultRoots(options, Path.Combine(Path.GetTempPath(), "oadm", "client"));
+        Assert.Equal(Path.GetFullPath(build), roots[0]); // a build output wins over installed copies
+        Assert.Equal(Path.GetFullPath("other"), roots[1]);
+        Assert.Empty(AppOptions.Parse([]).PluginDirs);
+    }
 }

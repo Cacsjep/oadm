@@ -1539,6 +1539,11 @@ answers is unchanged. Used by the System report for server reports.
   `ICorePlugin` implementations via reflection, then registers the Core plugins' `TaskPlugins`
   too. Client does the same for `*.Client.dll` with `ITaskPluginDialog`, `ICorePluginPage` and
   `IToolbarPlugin` over the same three roots (`ClientPluginLoader.DefaultRoots`).
+- Plugin development without installing (spec `docs/plugin-sdk.md`: NuGet packages, templates, the `oadm` tool): server
+  `--Oadm:PluginDir=<folder>` (several separated by ";", `OadmServerHost.PluginDirKey`) and client `--plugin-dir <folder>`
+  (repeatable, `AppOptions.PluginDirs`) load a plugin package straight from a build output, before every other folder, so it
+  wins over an installed copy of the same package (the server's later copy is a load error "already loaded from another
+  folder", the client skips it); as a service the server ignores the option and logs a warning.
 - Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, description, optional `enabledByDefault`,
   default true, and `alwaysOn`, default false),
   `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the

@@ -51,7 +51,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
     public static IReadOnlyList<string> DefaultRoots(AppOptions? options, string? appDirectory = null)
     {
         string baseDirectory = appDirectory ?? AppContext.BaseDirectory;
-        var roots = new List<string>
+        var roots = new List<string>(options?.PluginDirs ?? []) // --plugin-dir first: a build output wins over installed copies
         {
             Path.Combine(baseDirectory, "plugins"),
             Path.Combine(options?.DataFolder ?? AppOptions.DefaultDataFolder, "plugins"),
@@ -108,6 +108,8 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
         foreach (string root in pluginRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             LoadFrom(root);
+            _loadedPackages.UnionWith(_rootPackages);
+            _rootPackages.Clear();
         }
     }
 
@@ -134,10 +136,23 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
         {
             try
             {
+                string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
+                if (packageId is not null && _loadedPackages.Contains(packageId))
+                {
+                    // An earlier root (a --plugin-dir build output) has this package already: that copy wins.
+                    LogSkipped(_logger, packageId, dll);
+                    continue;
+                }
+
+                if (packageId is not null)
+                {
+                    _rootPackages.Add(packageId);
+                }
+
                 var context = new PluginLoadContext(dll);
                 _contexts.Add(context);
                 Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
-                string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
+
                 foreach (Type type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
                 {
                     if (typeof(ITaskPluginDialog).IsAssignableFrom(type) && Activator.CreateInstance(type) is ITaskPluginDialog dialog)
@@ -194,6 +209,15 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
             return null;
         }
     }
+
+    /// <summary>Packages of the roots loaded so far; a later root never loads the same package again.</summary>
+    private readonly HashSet<string> _loadedPackages = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Packages of the root being loaded (one package may have several client dlls).</summary>
+    private readonly HashSet<string> _rootPackages = new(StringComparer.OrdinalIgnoreCase);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client plugin {PackageId} in {Path} skipped: an earlier folder (--plugin-dir) has it")]
+    private static partial void LogSkipped(ILogger logger, string packageId, string path);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Loaded client plugin {Kind} for {PluginId} from {Path}")]
     private static partial void LogLoaded(ILogger logger, string kind, string pluginId, string path);
