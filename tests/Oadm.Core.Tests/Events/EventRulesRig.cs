@@ -86,13 +86,16 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public string DataDirectory => _db.Paths.DataDirectory;
 
+    /// <summary>What the runner wrote to the server log (level and text).</summary>
+    public CapturingLoggerFactory ServerLog { get; } = new();
+
     public async Task StartEngineAsync()
     {
         var dbFactory = _db.Get<IDbContextFactory<OadmDbContext>>();
         Catalog = new EventCatalog(Registry);
         Store = new RuleStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Log = new EventLog(dbFactory, Time);
-        Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>());
+        Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
         Engine = new RuleEngine(Catalog, Store, Log, Runner, Devices, _db.Get<IDeviceChangeFeed>(), Time,
             new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity });
         Rules = new EventRulesService(Catalog, Store, Engine, Devices);
@@ -277,5 +280,31 @@ internal sealed class FakeVapixFactory : IVapixClientFactory
         public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => throw new NotSupportedException();
 
         public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => throw new NotSupportedException();
+    }
+}
+
+/// <summary>Keeps every log line (level and formatted text) of every logger it creates.</summary>
+public sealed class CapturingLoggerFactory : Microsoft.Extensions.Logging.ILoggerFactory
+{
+    public System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Text, Exception? Error)> Lines { get; } = new();
+
+    public void AddProvider(Microsoft.Extensions.Logging.ILoggerProvider provider)
+    {
+    }
+
+    public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(this);
+
+    public void Dispose()
+    {
+    }
+
+    private sealed class Logger(CapturingLoggerFactory owner) : Microsoft.Extensions.Logging.ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            owner.Lines.Enqueue((logLevel, formatter(state, exception), exception));
     }
 }

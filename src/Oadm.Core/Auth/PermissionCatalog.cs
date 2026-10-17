@@ -27,6 +27,7 @@ public static class HostPermissions
     public const string DevicesGroup = "Devices";
     public const string TasksGroup = "Tasks";
     public const string EventRulesGroup = "Event rules";
+    public const string LogsGroup = "Logs";
 
     public const string DevicesAddRemove = HostPermissionKeys.DevicesAddRemove;
     public const string DevicesRefresh = HostPermissionKeys.DevicesRefresh;
@@ -43,6 +44,7 @@ public static class HostPermissions
     public const string EventsView = HostPermissionKeys.EventsView;
     public const string EventsManage = HostPermissionKeys.EventsManage;
     public const string EventsClearLog = HostPermissionKeys.EventsClearLog;
+    public const string LogsServer = HostPermissionKeys.LogsServer;
 
     /// <summary>The host rows of the matrix, in order.</summary>
     public static IReadOnlyList<PermissionEntry> All { get; } =
@@ -62,6 +64,7 @@ public static class HostPermissions
         Host(EventsView, "See event rules", "See the event rules and the event log.", EventRulesGroup, 2, true, false),
         Host(EventsManage, "Change event rules", "Create, change, turn on or off and delete event rules. Rules act on devices on their own.", EventRulesGroup, 2, false, false, fullControl: true),
         Host(EventsClearLog, "Delete the event log", "Delete every entry of the event log.", EventRulesGroup, 2, false, false),
+        Host(LogsServer, "See the server log", "Read the server's log on the Logs page. It shows device addresses and user names.", LogsGroup, 3, false, false),
     ];
 
     private static PermissionEntry Host(string key, string name, string description, string group, int order, bool operatorDefault, bool viewerDefault, bool fullControl = false) =>

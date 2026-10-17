@@ -60,6 +60,8 @@ public static class HostPermissionKeys
     public const string EventsManage = "events.manage";
     /// <summary>Clear the event log.</summary>
     public const string EventsClearLog = "events.clearLog";
+    /// <summary>Read the server's log on the Logs page.</summary>
+    public const string LogsServer = "logs.server";
 }
 
 /// <summary>Keys of permissions: the format the host stores and checks.</summary>

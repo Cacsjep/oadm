@@ -352,6 +352,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             _ = credentials.LoadAsync();
         }
+
+        // The server log is read when the page opens (newest page first).
+        if (item.Page is Logging.LogsViewModel logs)
+        {
+            _ = logs.OnShownAsync();
+        }
     }
 
     /// <summary>

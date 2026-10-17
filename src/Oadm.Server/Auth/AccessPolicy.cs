@@ -141,6 +141,7 @@ public static class AccessPolicy
         ["/oadm.v1.EventService/ListActionChoices"] = AccessRule.Needs(HostPermissions.EventsManage),
         ["/oadm.v1.EventService/TestAction"] = AccessRule.Needs(HostPermissions.EventsManage),
         ["/oadm.v1.EventService/ClearLog"] = AccessRule.Needs(HostPermissions.EventsClearLog),
+        ["/oadm.v1.ServerLogService/List"] = AccessRule.Needs(HostPermissions.LogsServer),
 
         // Plugins: pages per plugin (in the call); turning packages on or off is Administrator only.
         ["/oadm.v1.PluginService/ListCorePlugins"] = AccessRule.SignedIn,
@@ -204,7 +205,7 @@ public static class AccessPolicy
         ArgumentNullException.ThrowIfNull(catalog);
         var entry = catalog.Find(permission);
         var name = entry is null ? permission
-            : entry.Group is HostPermissions.DevicesGroup or HostPermissions.TasksGroup or HostPermissions.EventRulesGroup ? entry.Name
+            : entry.Group is HostPermissions.DevicesGroup or HostPermissions.TasksGroup or HostPermissions.EventRulesGroup or HostPermissions.LogsGroup ? entry.Name
             : entry.Group + ": " + entry.Name;
         return $"Your role does not allow: {name}.";
     }

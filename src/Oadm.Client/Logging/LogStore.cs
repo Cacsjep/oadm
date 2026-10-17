@@ -21,7 +21,7 @@ public sealed record LogEntry(DateTime Time, string Level, string Message)
 /// <summary>Recent client log lines for the Log tab. Fed by a Serilog sink.</summary>
 public sealed class LogStore(IUiDispatcher dispatcher)
 {
-    public const int Capacity = 500;
+    public const int Capacity = 10_000;
 
     public ObservableCollection<LogEntry> Entries { get; } = [];
 

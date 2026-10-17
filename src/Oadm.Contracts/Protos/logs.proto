@@ -1,0 +1,31 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+
+// The server's own log (the log files in <datafolder>/logs) for the Logs page. Needs the permission "logs.server".
+service ServerLogService {
+  // One page of entries, newest first: offset and limit (at most 500) over the entries at or above min_level
+  // ("Information", "Warning", "Error"; empty = all) that contain search (any case, in source, message or exception).
+  rpc List (ListServerLogRequest) returns (ServerLogPage);
+}
+
+message ListServerLogRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+  string min_level = 3;
+  string search = 4;
+}
+
+// time: ISO 8601 with the server's offset; level: "Information", "Warning" ...; source: the class that logged it.
+message ServerLogEntry {
+  string time = 1;
+  string level = 2;
+  string source = 3;
+  string message = 4;
+  string exception = 5;
+}
+
+message ServerLogPage {
+  repeated ServerLogEntry entries = 1;
+  bool has_more = 2;   // older entries match too
+}

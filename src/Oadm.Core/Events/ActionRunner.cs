@@ -438,7 +438,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            Write(job, deviceId, plugin.DisplayName, EventLogResult.Failed, Joined(lines, ex.Message), device);
+            Write(job, deviceId, plugin.DisplayName, EventLogResult.Failed, Joined(lines, ex.Message), device, error: ex);
         }
         finally
         {
@@ -541,8 +541,30 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private static string Joined(List<string> lines, string result) =>
         lines.Count == 0 ? result : result + ": " + string.Join(" · ", lines);
 
-    private void Write(RuleEdgeJob job, Guid? deviceId, string what, EventLogResult result, string message, IDeviceInfo? device = null, string? deviceText = null) =>
-        _log.Write(EventLogKind.Action, result, what, deviceId, deviceText ?? (device is null ? string.Empty : DeviceRef.Text(device.Address, device.Model)), job.Rule.Id, job.Rule.Name, message);
+    /// <summary>
+    /// One action run in the event log; failures also reach the server log as warnings (with the exception when the action
+    /// threw something else than its own refusal) and skipped runs as information, so the Logs page shows every problem.
+    /// </summary>
+    private void Write(RuleEdgeJob job, Guid? deviceId, string what, EventLogResult result, string message, IDeviceInfo? device = null, string? deviceText = null, Exception? error = null)
+    {
+        var target = deviceText ?? (device is null ? string.Empty : DeviceRef.Text(device.Address, device.Model));
+        _log.Write(EventLogKind.Action, result, what, deviceId, target, job.Rule.Id, job.Rule.Name, message);
+        var on = target.Length == 0 ? string.Empty : " on " + target;
+        if (result == EventLogResult.Failed)
+        {
+            LogActionFailed(error is null or InvalidOperationException ? null : error, job.Rule.Name, what, on, message);
+        }
+        else if (result == EventLogResult.Skipped)
+        {
+            LogActionSkipped(job.Rule.Name, what, on, message);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Event rule {Rule}: action {Action}{On} failed: {Reason}")]
+    private partial void LogActionFailed(Exception? ex, string rule, string action, string on, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Event rule {Rule}: action {Action}{On} skipped: {Reason}")]
+    private partial void LogActionSkipped(string rule, string action, string on, string reason);
 
     /// <summary>Contributed actions share their core plugin's settings; standalone ones use their package's.</summary>
     private static string SettingsId(RegisteredActionPlugin action) => action.Owner?.Id ?? action.Origin.PackageId;

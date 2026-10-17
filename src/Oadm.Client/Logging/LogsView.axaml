@@ -5,20 +5,73 @@
              xmlns:log="using:Oadm.Client.Logging"
              x:Class="Oadm.Client.Logging.LogsView"
              x:DataType="log:LogsViewModel">
+  <!-- Logs page: the switch Server | Client | Audit on top of each card; Server and Client page 200 entries at a time. -->
+  <UserControl.Resources>
+    <ControlTemplate x:Key="LogSwitch" TargetType="ContentControl">
+      <Border Classes="segmented" IsVisible="{Binding ShowSwitch}" x:DataType="log:LogsViewModel">
+        <StackPanel Orientation="Horizontal">
+          <Button Classes="segment" Classes.selected="{Binding IsServerTab}" Content="Server" Command="{Binding ShowServerLogCommand}"
+                  IsVisible="{Binding CanSeeServer}" />
+          <Button Classes="segment" Classes.selected="{Binding IsClientTab}" Content="Client" Command="{Binding ShowClientLogCommand}" />
+          <Button Classes="segment" Classes.selected="{Binding IsAuditTab}" Content="Audit" Command="{Binding ShowAuditCommand}"
+                  IsVisible="{Binding CanSeeAudit}" ToolTip.Tip="Who did what on the server" />
+        </StackPanel>
+      </Border>
+    </ControlTemplate>
+  </UserControl.Resources>
+
   <Grid RowDefinitions="Auto,*">
-    <c:PageTitleBar Grid.Row="0" Title="Logs" Subtitle="What this client did, and who changed what on the server." Margin="0,0,0,16" />
+    <c:PageTitleBar Grid.Row="0" Title="Logs" Subtitle="What the server and this client did, and who changed what." Margin="0,0,0,16" />
+
+    <!-- Server log (permission "See the server log") -->
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsServerTab}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="16">
+          <ContentControl Grid.Column="0" Template="{StaticResource LogSwitch}" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+            <TextBlock Classes="fieldLabel" Text="Level" />
+            <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding Server.SelectedLevel}" MinWidth="200" />
+          </StackPanel>
+          <ui:ToolbarButton Grid.Column="2" Text="Refresh" IconKey="refresh" Command="{Binding Server.RefreshCommand}" />
+          <ui:SearchBox Grid.Column="4" Text="{Binding Server.SearchText}" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="2,14,0,8">
+          <ui:ProgressRow Text="Reading the server log" IsVisible="{Binding Server.IsLoading}" />
+          <log:LogPager Grid.Column="1" DataContext="{Binding Server}" />
+        </Grid>
+
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Server.Entries}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="log:ServerLogRow" />
+            <DataGridTemplateColumn Header="Level" Width="120">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="log:ServerLogRow">
+                  <ui:StatusChip Text="{Binding Level}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" IsInfo="{Binding IsInfo}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Source" Width="170" Binding="{Binding SourceText}" x:DataType="log:ServerLogRow" />
+            <DataGridTemplateColumn Header="Message" Width="*">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="log:ServerLogRow">
+                  <TextBlock Classes="besideChips" Text="{Binding Message}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DetailText}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock Grid.Row="3" Classes="error" TextWrapping="Wrap" Text="{Binding Server.Error}" IsVisible="{Binding Server.HasError}" Margin="0,8,0,0" />
+      </Grid>
+    </Border>
 
     <!-- Client log -->
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsClientTab}">
       <Grid RowDefinitions="Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
-          <Border Grid.Column="0" Classes="segmented" IsVisible="{Binding CanSeeAudit}">
-            <StackPanel Orientation="Horizontal">
-              <Button Classes="segment" Classes.selected="{Binding IsClientTab}" Content="Client log" Command="{Binding ShowClientLogCommand}" />
-              <Button Classes="segment" Classes.selected="{Binding IsAuditTab}" Content="Audit" Command="{Binding ShowAuditCommand}"
-                      ToolTip.Tip="Who did what on the server: logins, user and settings changes, task runs" />
-            </StackPanel>
-          </Border>
+          <ContentControl Grid.Column="0" Template="{StaticResource LogSwitch}" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
             <TextBlock Classes="fieldLabel" Text="Level" />
             <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding SelectedLevel}" MinWidth="200" />
@@ -26,7 +79,10 @@
           <ui:SearchBox Grid.Column="3" Text="{Binding SearchText}" />
         </Grid>
 
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="2,14,0,8">
+          <TextBlock Classes="secondary" Text="{Binding StatusLine}" VerticalAlignment="Center" />
+          <log:LogPager Grid.Column="1" />
+        </Grid>
 
         <DataGrid Grid.Row="2" ItemsSource="{Binding Entries}" IsReadOnly="True" SelectionMode="Extended"
                   CanUserSortColumns="False" CanUserReorderColumns="False">
@@ -50,13 +106,7 @@
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsAuditTab}">
       <Grid RowDefinitions="Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
-          <Border Grid.Column="0" Classes="segmented">
-            <StackPanel Orientation="Horizontal">
-              <Button Classes="segment" Classes.selected="{Binding IsClientTab}" Content="Client log" Command="{Binding ShowClientLogCommand}" />
-              <Button Classes="segment" Classes.selected="{Binding IsAuditTab}" Content="Audit" Command="{Binding ShowAuditCommand}"
-                      ToolTip.Tip="Who did what on the server: logins, user and settings changes, task runs" />
-            </StackPanel>
-          </Border>
+          <ContentControl Grid.Column="0" Template="{StaticResource LogSwitch}" />
           <ui:ToolbarButton Grid.Column="1" Text="Refresh" IconKey="refresh" Command="{Binding Audit.RefreshCommand}" />
           <ui:SearchBox Grid.Column="3" Text="{Binding Audit.SearchText}" />
         </Grid>

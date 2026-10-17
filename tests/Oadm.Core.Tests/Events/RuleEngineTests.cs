@@ -416,6 +416,10 @@ public sealed class RuleEngineTests
         var actions = (await rig.LogLinesAsync()).Where(l => l.Kind == EventLogKind.Action).ToList();
         Assert.Equal([EventLogResult.Failed, EventLogResult.Ok], actions.Select(a => a.Result));
         Assert.Equal("Boom", actions[0].Message);
+
+        // The failure is in the server log too (Logs page), with the rule, the device and the reason.
+        var warning = Assert.Single(rig.ServerLog.Lines, l => l.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Matches(@"^Event rule .+: action .+ on 10\.0\.0\.1.* failed: Boom$", warning.Text);
     }
 
     [Fact]

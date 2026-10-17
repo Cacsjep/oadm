@@ -14,8 +14,18 @@ Logs roll daily or at 20 MB (server) / 10 MB (client). OADM keeps the last 14 da
 | macOS | `/Library/Application Support/OADM/logs/` | `/Library/Logs/OADM/oadm-server.err.log` |
 
 The client writes `client-<date>.log` to `%LOCALAPPDATA%\Oadm\logs`, `~/.local/share/Oadm/logs` or
-`~/Library/Application Support/Oadm/logs`. The **Logs** page shows the client log live. Client error messages name
-the log file.
+`~/Library/Application Support/Oadm/logs`. Client error messages name the log file.
+
+The **Logs** page shows them without opening a file:
+
+- **Server**: the server's log, 200 entries a page, newest first, with **Newer** and **Older**. Filter by level and
+  search; the tooltip of a message shows the whole entry. Every failed event rule action is here with its reason, also
+  when the event log was already cleared. Administrators see it; other roles need **See the server log** (Users page,
+  roles).
+- **Client**: what this client did since it started, the same way.
+- **Audit** (administrators): who did what on the server.
+
+![The server log on the Logs page](../../../assets/screens/client-logs-server.png)
 
 ## Common problems
 

@@ -11,6 +11,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Send TCP message**: a new event rule action that sends a message to a host and port, for building, alarm and video
   systems that listen on a TCP port. Text, JSON, XML or hex bytes with the event's values, an optional line end and TLS,
   and optionally waits for an answer that must contain a given text.
+- **Server log on the Logs page**: the switch Server, Client, Audit. The server's log shows 200 entries a page with level
+  filter and search; the client log pages the same way. Other roles than administrators need the new permission "See the
+  server log". Failed event rule actions are written to the server log with their reason.
 
 ## [3.4.0] - 2026-10-17
 

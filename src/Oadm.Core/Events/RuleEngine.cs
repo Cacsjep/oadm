@@ -1135,8 +1135,19 @@ public sealed partial class RuleEngine : IAsyncDisposable
             message: isOn is null ? "Happened" : isOn.Value ? "On" : "Off");
     }
 
-    private void LogRule(Runtime runtime, Guid subject, string what, string message, EventLogResult result) =>
-        _log.Write(EventLogKind.Rule, result, what, subject == Guid.Empty ? null : subject, DeviceText(subject), runtime.Id, runtime.Name, message);
+    private void LogRule(Runtime runtime, Guid subject, string what, string message, EventLogResult result)
+    {
+        var device = DeviceText(subject);
+        _log.Write(EventLogKind.Rule, result, what, subject == Guid.Empty ? null : subject, device, runtime.Id, runtime.Name, message);
+        if (result == EventLogResult.Skipped)
+        {
+            // A limit held the rule back (dead time, max per minute): the server log says so too.
+            LogRuleSkipped(runtime.Name, device.Length == 0 ? string.Empty : " for " + device, message);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Event rule {Rule}{For} held back: {Reason}")]
+    private partial void LogRuleSkipped(string rule, string @for, string reason);
 
     private string EventName(string typeId) => _catalog.FindEventType(typeId)?.Info.DisplayName ?? typeId;
 
