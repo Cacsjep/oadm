@@ -60,7 +60,7 @@ Keep each answer small. Hand out large results in parts and run long work as a b
 through events or polls.
 
 Step by step, with every file: the [plugin page tutorial](../tutorial-page/). Create a working copy with
-`./manage.sh new page --name "My page"`.
+`dotnet new oadm-page -n MyPage` (in a checkout of OADM: `./manage.sh new page --name "My page"`).
 
 ## The page: `ICorePluginPage`
 

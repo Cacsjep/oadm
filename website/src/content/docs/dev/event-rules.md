@@ -28,7 +28,8 @@ Plugin A and plugin B never know about each other: an administrator connects the
 
 An action is one class that implements `IActionPlugin` in a `*.Server.dll`. It needs no client part: the rule dialog
 draws its settings form from `Fields`. The [event rule action tutorial](../tutorial-action/) builds one with every file
-and its tests; `./manage.sh new action --name "My action"` creates a working copy.
+and its tests; `dotnet new oadm-action -n MyAction` creates a working copy (in a checkout of OADM:
+`./manage.sh new action --name "My action"`).
 
 ### The parts
 

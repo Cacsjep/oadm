@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-17
+
 ### Added
 
 - **Send TCP message**: a new event rule action that sends a message to a host and port, for building, alarm and video
@@ -13,7 +15,7 @@ version and date, and the release workflow copies it into the GitHub release.
   and optionally waits for an answer that must contain a given text.
 - **Licenses for commercial plugins**: plugin makers can sell plugins without a license system of their own. The Plugins
   page shows this server's ID, the license state of every plugin that needs one and lets administrators enter or remove
-  a license key. The Settings page shows the server ID too. `manage license keys` and `manage license sign` make the
+  a license key. The Settings page shows the server ID too. `oadm license keys` and `oadm license sign` make the
   vendor's keys and the license keys; the plugin reads the result (valid, trial, features) and decides what runs.
 - **Plugin SDK on NuGet**: plugins are written with the .NET SDK alone, no checkout of OADM needed.
   `dotnet new oadm-task`, `oadm-page` or `oadm-action` creates a working plugin with its tests (the tutorials' plugins);
@@ -34,8 +36,15 @@ version and date, and the release workflow copies it into the GitHub release.
 - Plugins load whatever SDK version they were built against as long as their `minSdkVersion` fits: the SDK, Avalonia and
   the other shared assemblies always come from OADM. The client no longer locks a plugin's file, so a plugin can be
   rebuilt while the client runs.
+- Settings: "Full refresh interval (min)" is now called **Read device details every (min)**.
+- Action Rule Editor: grouping by the rules' event is called **Event**, like the column and the dialogs.
 - `manage license keys|sign` runs the license commands of the `oadm` tool (`tools/Oadm.Tools`). The
   tutorials' plugins write their `plugin.json` from their project file.
+
+### Fixed
+
+- Add devices: a **Retry** of a login at the moment a search ended lost the results of the logins it starts on the other
+  devices of the page.
 
 ## [3.4.0] - 2026-10-17
 

@@ -8,4 +8,14 @@
     <None Remove="$(NuGetPackageRoot)xunit.runner.visualstudio\*\build\*\xunit.abstractions.dll" />
   </ItemGroup>
 
+  <!-- NuGet packages (the plugin SDK, "manage package nuget"): one README and the app icon for every package page. -->
+  <PropertyGroup Condition="'$(IsPackable)' == 'true'">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)packaging/nuget/README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)icon/oadm-app-icon-128.png" Pack="true" PackagePath="icon.png" Visible="false" />
+  </ItemGroup>
+
 </Project>
