@@ -196,6 +196,8 @@ internal sealed class MiniTcpServer : IAsyncDisposable
 
     private async Task HandleAsync(TcpClient client)
     {
+        // What the connection sent, kept also when it ends with a reset (Windows closes a TLS connection that way).
+        using var data = new MemoryStream();
         using (client)
         {
             try
@@ -211,7 +213,6 @@ internal sealed class MiniTcpServer : IAsyncDisposable
                 await using (stream)
                 {
                     var buffer = new byte[8192];
-                    using var data = new MemoryStream();
                     var read = await stream.ReadAsync(buffer, _stop.Token);
                     data.Write(buffer, 0, read);
                     var answer = Answer;
@@ -234,6 +235,11 @@ internal sealed class MiniTcpServer : IAsyncDisposable
             }
             catch (Exception ex) when (ex is IOException or OperationCanceledException or System.Security.Authentication.AuthenticationException)
             {
+                if (ex is IOException && data.Length > 0)
+                {
+                    _received.Writer.TryWrite(data.ToArray()); // the client closed with a reset after sending
+                }
+
                 // a refused TLS handshake or a test that ended
             }
         }

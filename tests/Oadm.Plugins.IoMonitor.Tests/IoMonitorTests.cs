@@ -140,7 +140,9 @@ public sealed class ServerTests
     public async Task Two_pages_of_one_device_share_one_reading()
     {
         var time = new CountingTimeProvider();
-        await using var rig = await new Rig(time: time).StartAsync();
+        // A lease far beyond the clock steps of this test: on a busy machine ReadUntilAsync may step the clock many times
+        // while it waits for the change, and the pages send no keep-alives here (the lease has its own test).
+        await using var rig = await new Rig(leaseTimeout: TimeSpan.FromDays(1), time: time).StartAsync();
         var device = new TestDevice("10.0.0.70", "A9210");
         rig.Devices.Items.Add(device);
         var events = await WatchAsync(rig);
