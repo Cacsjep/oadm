@@ -1,6 +1,6 @@
 ---
-// The landing page's top bar (the docs header is hidden there): social links (GitHub, LinkedIn, Discord) on the left, Documentation, Support Forum
-// and Bug report on the right. Fixed at the top, so it stays while the page scrolls.
+// The landing page's top bar (the docs header is hidden there): social links (GitHub, LinkedIn, Discord) on the left, Documentation and Bug
+// report (a menu: Support Forum, GitHub issue) on the right. Fixed at the top, so it stays while the page scrolls.
 import { Icon } from '@astrojs/starlight/components';
 
 const repo = 'Cacsjep/oadm';
@@ -16,13 +16,26 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 			<a href="https://discord.gg/j4FNjg5VvK" aria-label="Discord"><Icon name="discord" /></a>
 		</div>
 		<div class="top-bar-links">
-			<a href={`${base}tools/overview/`}><Icon name="puzzle" />Plugins</a>
-			<a href={`${base}start/install/`}><Icon name="open-book" />Documentation</a>
-			<a href="https://support.oadm.app/"><Icon name="comment-alt" class="support-icon" />Support Forum</a>
-			<a href={`https://github.com/${repo}/issues/new/choose`}><Icon name="comment" />Bug report</a>
+			<a href={`${base}tools/overview/`}><Icon name="puzzle" /><span class="label">Plugins</span></a>
+			<a href={`${base}start/install/`}><Icon name="open-book" /><span class="label">Documentation</span></a>
+			<details class="bug-menu">
+				<summary><Icon name="comment" /><span class="label">Bug report</span><Icon name="down-caret" class="caret" /></summary>
+				<div class="menu">
+					<a href="https://support.oadm.app/"><Icon name="comment-alt" class="support-icon" /><span>Support Forum<small>Questions and problems</small></span></a>
+					<a href={`https://github.com/${repo}/issues/new/choose`}><Icon name="github" /><span>GitHub issue<small>For developers</small></span></a>
+				</div>
+			</details>
 		</div>
 	</div>
 </nav>
+
+<script>
+	// The Bug report menu closes on a click elsewhere.
+	const bugMenu = document.querySelector<HTMLDetailsElement>('.bug-menu');
+	document.addEventListener('click', (event) => {
+		if (bugMenu?.open && !bugMenu.contains(event.target as Node)) bugMenu.open = false;
+	});
+</script>
 
 <style>
 	.top-bar {
@@ -53,6 +66,67 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 		text-decoration: none;
 		transition: color 0.15s;
 	}
+	.top-bar summary {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		font-weight: 500;
+		cursor: pointer;
+		list-style: none;
+		transition: color 0.15s;
+	}
+	.top-bar summary::-webkit-details-marker {
+		display: none;
+	}
+	.top-bar summary:hover,
+	.bug-menu[open] summary {
+		color: var(--sl-color-white);
+	}
+	.bug-menu {
+		position: relative;
+		display: flex; /* no line box around the summary, so it centers like the links */
+	}
+	.bug-menu .caret {
+		width: 0.85rem;
+		height: 0.85rem;
+		transition: transform 0.15s;
+	}
+	.bug-menu[open] .caret {
+		transform: rotate(180deg);
+	}
+	.menu {
+		position: absolute;
+		top: calc(100% + 0.6rem);
+		right: 0;
+		display: flex;
+		flex-direction: column;
+		min-width: 14rem;
+		padding: 0.25rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 8px;
+		background: var(--sl-color-gray-6);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+	}
+	.top-bar .menu a {
+		gap: 0.6rem;
+		padding: 0.5rem 0.7rem;
+		border-radius: 4px;
+		color: var(--sl-color-white);
+	}
+	.top-bar .menu a:hover {
+		background: var(--sl-color-gray-5);
+	}
+	.menu span {
+		display: flex;
+		flex-direction: column;
+	}
+	.menu small {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-xs);
+		font-weight: 400;
+	}
 	.top-bar a:hover {
 		color: var(--sl-color-white);
 	}
@@ -64,6 +138,25 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 	}
 	.top-bar-social {
 		gap: 1rem;
+	}
+	/* Phones: icons only in the top bar; the names stay for screen readers. */
+	@media (max-width: 40rem) {
+		.top-bar-links .label {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip: rect(0 0 0 0);
+			white-space: nowrap;
+		}
+		.bug-menu .caret {
+			display: none;
+		}
+		.top-bar-links > a :global(svg),
+		.top-bar-links summary > :global(svg:first-child) {
+			width: 1.25rem;
+			height: 1.25rem;
+		}
 	}
 	.top-bar-social :global(svg) {
 		width: 1.25rem;

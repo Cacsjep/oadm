@@ -495,3 +495,139 @@ header .social-icons::after {
 .support-icon {
 	color: var(--sl-color-accent);
 }
+
+/* Download buttons: each system's icon in its own color. */
+.dl .os-windows {
+	color: #00a4ef;
+}
+
+.dl .os-linux {
+	color: #fcc624;
+}
+
+.dl .os-macos {
+	color: #a2aaad;
+}
+
+/* Linux: one button with a menu for the architecture. */
+.dl-linux {
+	position: relative;
+}
+
+.dl-linux summary::-webkit-details-marker {
+	display: none;
+}
+
+.dl-linux[open] summary {
+	border-color: var(--sl-color-accent);
+}
+
+.dl .dl-caret {
+	width: 0.9rem;
+	height: 0.9rem;
+	color: var(--sl-color-gray-3);
+	transition: transform 0.15s;
+}
+
+.dl-linux[open] .dl-caret {
+	transform: rotate(180deg);
+}
+
+.dl-menu {
+	position: absolute;
+	top: calc(100% + 0.3rem);
+	left: 0;
+	z-index: 5;
+	display: flex;
+	flex-direction: column;
+	min-width: 100%;
+	padding: 0.25rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 8px;
+	background: var(--sl-color-gray-6);
+	box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+}
+
+.dl-menu a {
+	padding: 0.4rem 0.7rem;
+	border-radius: 4px;
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-sm);
+	font-weight: 500;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.dl-menu a:hover {
+	background: var(--sl-color-gray-5);
+}
+
+/* Newsletter form below the Support Forum and newsletter buttons. */
+.newsletter {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	width: min(100%, 26rem);
+}
+
+.newsletter[hidden] {
+	display: none;
+}
+
+.newsletter-row {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.newsletter input {
+	flex: 1;
+	min-width: 0;
+	padding: 0.45rem 0.75rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 8px;
+	background: var(--sl-color-black);
+	color: var(--sl-color-white);
+	font: inherit;
+	font-size: var(--sl-text-sm);
+}
+
+.newsletter input:focus {
+	border-color: var(--sl-color-accent);
+	outline: none;
+}
+
+.newsletter button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.newsletter-hint,
+.newsletter-message {
+	margin: 0;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-xs);
+	text-align: center;
+}
+
+.newsletter-hint a {
+	color: var(--sl-color-gray-2);
+}
+
+.newsletter-message {
+	color: #f87171;
+	font-size: var(--sl-text-sm);
+}
+
+.newsletter-message.ok {
+	color: var(--sl-color-white);
+}
+
+.downloads .community-label {
+	margin-top: 0.25rem;
+}
+
+/* "Download" sits close to its buttons. */
+.downloads .dl-label {
+	margin-bottom: calc(5px - 0.75rem);
+	line-height: 1;
+}

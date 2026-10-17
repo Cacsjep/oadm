@@ -5,11 +5,10 @@ import { Icon } from '@astrojs/starlight/components';
 
 import { latestRelease, releasePage, repo } from '../lib/release';
 
-const { version, assets } = await latestRelease();
+const { assets } = await latestRelease();
 
-// "What's new" opens the changelog page; the newest release is on top.
-const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const changelog = `${base}project/changelog/`;
+// The newsletter lives on the support forum; the form here subscribes without an account there.
+const portal = 'https://support.oadm.app/';
 
 const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
 const links = {
@@ -25,15 +24,30 @@ const links = {
 <div class="downloads not-content" data-repo={repo}>
 	<span class="dl-label">Download</span>
 	<div class="download-buttons">
-		<a class="dl" data-asset="win-x64\.msi$" href={links.windows}><Icon name="seti:windows" />Windows</a>
-		<a class="dl" data-linux="amd64" data-asset="^oadm-server_.*_amd64\.deb$" data-client={links.client} href={links.server}><Icon name="linux" />Linux x64</a>
-		<a class="dl" data-linux="arm64" data-asset="^oadm-server_.*_arm64\.deb$" data-client={links.clientArm} href={links.serverArm}><Icon name="linux" />Linux ARM64</a>
-		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" />macOS</a>
+		<a class="dl" data-asset="win-x64\.msi$" href={links.windows}><Icon name="seti:windows" class="os-windows" />Windows</a>
+		<details class="dl-linux">
+			<summary class="dl"><Icon name="linux" class="os-linux" />Linux<Icon name="down-caret" class="dl-caret" /></summary>
+			<div class="dl-menu">
+				<a data-linux="amd64" data-asset="^oadm-server_.*_amd64\.deb$" data-client={links.client} href={links.server}>x64</a>
+				<a data-linux="arm64" data-asset="^oadm-server_.*_arm64\.deb$" data-client={links.clientArm} href={links.serverArm}>ARM64</a>
+			</div>
+		</details>
+		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" class="os-macos" />macOS</a>
 	</div>
-	<p class="dl-meta">
-		<a class="dl-version" href={changelog}>{version ? `What's new in ${version}` : 'Changelog'}</a>
-	</p>
-	<a class="dl" href="https://support.oadm.app/"><Icon name="comment-alt" class="support-icon" />Support Forum</a>
+	<span class="dl-label community-label">Community</span>
+	<div class="download-buttons">
+		<a class="dl" href={portal}><Icon name="comment-alt" class="support-icon" />Support Forum</a>
+		<button class="dl newsletter-toggle" type="button" aria-expanded="false" aria-controls="newsletter"><Icon name="email" class="support-icon" />Subscribe to newsletter</button>
+	</div>
+	<form id="newsletter" class="newsletter" data-portal={portal} hidden>
+		<div class="newsletter-row">
+			<input type="email" name="email" autocomplete="email" placeholder="you@company.com" aria-label="Email" required />
+			<button class="dl" type="submit">Subscribe</button>
+		</div>
+		<p class="newsletter-message" role="status" hidden></p>
+		<p class="newsletter-hint"><a href={`${portal}privacy/`}>Privacy notice</a></p>
+		<p class="newsletter-hint newsletter-after" hidden>Every newsletter has a one-click unsubscribe link. No account needed.</p>
+	</form>
 </div>
 
 <script>
@@ -41,7 +55,13 @@ const links = {
 	const root = document.querySelector<HTMLElement>('.downloads');
 
 	// Linux has two packages: each Linux button downloads the server and the client .deb of its architecture.
+	// The Linux menu closes after a choice and on a click elsewhere.
+	const linuxMenu = root?.querySelector<HTMLDetailsElement>('.dl-linux');
+	document.addEventListener('click', (event) => {
+		if (linuxMenu?.open && !linuxMenu.contains(event.target as Node)) linuxMenu.open = false;
+	});
 	root?.querySelectorAll<HTMLAnchorElement>('a[data-linux]').forEach((button) => button.addEventListener('click', (event) => {
+		if (linuxMenu) linuxMenu.open = false;
 		const link = event.currentTarget as HTMLAnchorElement;
 		const client = link.dataset.client;
 		if (!client || client === link.href || !client.endsWith('.deb')) return;
@@ -54,6 +74,50 @@ const links = {
 			setTimeout(() => frame.remove(), 60_000);
 		}
 	}));
+
+	// Newsletter: the button opens the form, which posts to the support forum (double opt-in by mail).
+	const toggle = root?.querySelector<HTMLButtonElement>('.newsletter-toggle');
+	const form = root?.querySelector<HTMLFormElement>('.newsletter');
+	toggle?.addEventListener('click', () => {
+		if (!form) return;
+		form.hidden = !form.hidden;
+		toggle.setAttribute('aria-expanded', String(!form.hidden));
+		if (!form.hidden) form.querySelector('input')?.focus();
+	});
+	form?.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		const input = form.querySelector('input')!;
+		const button = form.querySelector<HTMLButtonElement>('button[type=submit]')!;
+		const message = form.querySelector<HTMLElement>('.newsletter-message')!;
+		const show = (text: string, ok: boolean) => {
+			message.textContent = text;
+			message.classList.toggle('ok', ok);
+			message.hidden = false;
+		};
+		const email = input.value.trim();
+		button.disabled = true;
+		try {
+			const response = await fetch(`${form.dataset.portal}api/portal/subscribe`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email }),
+			});
+			if (response.ok) {
+				form.querySelector('.newsletter-row')?.remove();
+				show(`Almost done: we sent a confirmation link to ${email}. Your subscription starts when you click it.`, true);
+				form.querySelector<HTMLElement>('.newsletter-after')!.hidden = false;
+			} else if (response.status === 429) {
+				show('Too many tries. Wait a minute and try again.', false);
+			} else {
+				const answer = await response.json().catch(() => null);
+				show(answer?.message || 'The subscription failed. Try again later.', false);
+			}
+		} catch {
+			show('The support forum cannot be reached. Try again later.', false);
+		} finally {
+			button.disabled = false;
+		}
+	});
 
 	if (root) {
 		// no-store: never a cached answer, so a new release shows on the next page load.
@@ -71,8 +135,6 @@ const links = {
 					const client = assets.find((a) => a.name.startsWith('oadm-client_') && a.name.endsWith(`_${linux.dataset.linux}.deb`));
 					if (client) linux.dataset.client = client.browser_download_url;
 				});
-				const label = root.querySelector<HTMLAnchorElement>('.dl-version');
-				if (label && release.tag_name) label.textContent = `What's new in ${release.tag_name}`;
 			})
 			.catch(() => {});
 	}
