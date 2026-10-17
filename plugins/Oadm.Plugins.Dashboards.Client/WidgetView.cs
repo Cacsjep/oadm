@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Dashboards.Client;
 
 /// <summary>
 /// One value widget: its name at the top (small, grey, one line), the value in the middle sized as a share of the widget
-/// (<see cref="FitText"/>, or the icon and caption of an On / Off widget), the note below it ("Connection lost", "No value
+/// (<see cref="FitText"/>, the icon and caption of an On / Off widget, or the <see cref="GaugeView"/>), the note below it ("Connection lost", "No value
 /// yet"). A dimmed value is drawn at 45 %. Colors are theme brushes, so dark and light both work. Theme class
 /// <c>Border.dashboardWidget</c>.
 /// </summary>
@@ -23,6 +23,7 @@ public sealed class WidgetView : Border
     private readonly OadmIcon _icon = new();
     private readonly TextBlock _caption = new() { TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly Grid _onOff = new() { RowDefinitions = new RowDefinitions("*,Auto") };
+    private readonly GaugeView _gauge = new();
     private readonly Panel _body = new();
     private readonly TextBlock _note = new() { TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center };
     private IDisposable? _valueBrush;
@@ -45,6 +46,7 @@ public sealed class WidgetView : Border
         _onOff.Children.Add(_caption);
         _body.Children.Add(_value);
         _body.Children.Add(_onOff);
+        _body.Children.Add(_gauge);
         var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         Grid.SetRow(_body, 1);
         Grid.SetRow(_note, 2);
@@ -64,8 +66,11 @@ public sealed class WidgetView : Border
         _name.IsVisible = widget.ShowName && !string.IsNullOrEmpty(widget.Name);
         _name.Opacity = showName ? 1 : 0; // while editing the frame names the widget; the row stays, so nothing moves
         var isOnOff = widget.Kind == WidgetKind.OnOff && display.HasValue && display.Icon is not null;
+        var isGauge = widget.Kind == WidgetKind.Gauge; // the scale shows also before the first value
         _onOff.IsVisible = isOnOff;
-        _value.IsVisible = !isOnOff && display.Text is not null;
+        _gauge.IsVisible = isGauge;
+        _gauge.Show(widget, display);
+        _value.IsVisible = !isOnOff && !isGauge && display.Text is not null;
         _value.Text = display.Text;
         _value.Unit = display.Unit;
         _value.Share = widget.FontSize / 100.0;
@@ -90,6 +95,9 @@ public sealed class WidgetView : Border
 
     /// <summary>The text shown (tests).</summary>
     internal WidgetDisplay Display => _display;
+
+    /// <summary>The gauge of a Gauge widget (tests).</summary>
+    internal GaugeView Gauge => _gauge;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {

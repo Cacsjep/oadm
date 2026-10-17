@@ -8,6 +8,9 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- **Gauge widget on dashboards**: a number on an arc from Min to Max, with the Number widget's decimals, unit, color and
+  thresholds; the thresholds color the arc, the ticks follow Min and Max by themselves.
+
 - **Waiting list for imports**: devices of an import that do not answer are kept and added automatically once they come
   online, with the login and tags of their line. The Devices page shows how many are waiting; the list lets you try them
   now, export or remove them. Settings: "Try waiting devices every (min)", 15 by default.

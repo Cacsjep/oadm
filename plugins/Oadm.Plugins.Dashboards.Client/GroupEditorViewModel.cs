@@ -9,8 +9,8 @@ namespace Oadm.Plugins.Dashboards.Client;
 
 /// <summary>
 /// The panel of several selected widgets while a dashboard is edited: what they share. Width and Height in cells for all;
-/// Show name for value widgets; the On / Off settings when all are On / Off; font size and color when all are Text or
-/// Number; decimals and unit when all are Number. A setting where they differ shows "Mixed" (an empty select or field)
+/// Show name for value widgets; the On / Off settings when all are On / Off; font size when all are Text or Number,
+/// color when all are Text, Number or Gauge; decimals and unit when all are Number or Gauge; Min and Max when all are Gauge. A setting where they differ shows "Mixed" (an empty select or field)
 /// until it is changed; a change goes to every selected widget at once, nothing else of them changes. Copy and remove act
 /// on the whole selection.
 /// </summary>
@@ -30,7 +30,13 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
         ShowValueSettings = all.All(w => w.IsValue);
         ShowOnOff = all.All(w => w.Kind == WidgetKind.OnOff);
         ShowText = all.All(w => w.Kind is WidgetKind.Text or WidgetKind.Number);
-        ShowNumber = all.All(w => w.Kind == WidgetKind.Number);
+        ShowColor = all.All(w => w.Kind is WidgetKind.Text or WidgetKind.Number or WidgetKind.Gauge);
+        ShowNumber = all.All(w => w.Kind is WidgetKind.Number or WidgetKind.Gauge);
+        ShowGauge = all.All(w => w.Kind == WidgetKind.Gauge);
+        MinText = Same(all, w => (double?)w.Min)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        MaxText = Same(all, w => (double?)w.Max)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        MinWatermark = MinText.Length == 0 ? MixedText : string.Empty;
+        MaxWatermark = MaxText.Length == 0 ? MixedText : string.Empty;
 
         WidthText = Same(all, w => (int?)w.Width)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         HeightText = Same(all, w => (int?)w.Height)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
@@ -59,6 +65,10 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
         Validation.Rule(nameof(WidthText), () => SizeProblem(WidthText));
         Validation.Rule(nameof(HeightText), () => SizeProblem(HeightText));
         Validation.Rule(nameof(Unit), () => Unit.Length > DashboardsPluginInfo.MaxUnitLength ? DashboardRules.UnitTooLong : null);
+        Validation.Rule(nameof(MinText), () => MinText.Trim().Length == 0 || Number(MinText) is { } m && Math.Abs(m) <= DashboardRules.MaxRange ? null : DashboardRules.NotANumber);
+        Validation.Rule(nameof(MaxText), () => MaxText.Trim().Length == 0 ? null
+            : Number(MaxText) is not { } max || Math.Abs(max) > DashboardRules.MaxRange ? DashboardRules.NotANumber
+            : _widgets.Any(w => (Number(MinText) ?? w.Widget.Min) >= max) ? DashboardRules.RangeWrong : null);
         _loading = false;
     }
 
@@ -71,7 +81,22 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
 
     public bool ShowText { get; }
 
+    public bool ShowColor { get; }
+
     public bool ShowNumber { get; }
+
+    public bool ShowGauge { get; }
+
+    /// <summary>Min of every selected gauge; empty while they differ ("Mixed").</summary>
+    [ObservableProperty]
+    public partial string MinText { get; set; }
+
+    [ObservableProperty]
+    public partial string MaxText { get; set; }
+
+    public string MinWatermark { get; private init; } = string.Empty;
+
+    public string MaxWatermark { get; private init; } = string.Empty;
 
     /// <summary>Every selected widget has a device: they can be copied for other devices.</summary>
     public bool CanCopy => _widgets.All(w => w.CanCopy);
@@ -237,6 +262,44 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
     }
 
     partial void OnDecimalsChanged(Choice<int?>? value) => Set(value, v => w => w with { Decimals = v.Value });
+
+    partial void OnMinTextChanged(string value)
+    {
+        if (!_loading)
+        {
+            Validation.Validate(); // Max is checked against Min
+            SetRange();
+        }
+    }
+
+    partial void OnMaxTextChanged(string value)
+    {
+        if (!_loading)
+        {
+            SetRange();
+        }
+    }
+
+    /// <summary>A typed Min and / or Max goes to every gauge whose range stays valid with it (an empty field keeps each own).</summary>
+    private void SetRange()
+    {
+        var min = MinText.Trim().Length == 0 ? null : Number(MinText);
+        var max = MaxText.Trim().Length == 0 ? null : Number(MaxText);
+        if ((MinText.Trim().Length > 0 && min is null) || (MaxText.Trim().Length > 0 && max is null))
+        {
+            return;
+        }
+
+        Each(w =>
+        {
+            var next = w with { Min = min ?? w.Min, Max = max ?? w.Max };
+            return DashboardRules.RangeProblem(next.Min, next.Max) is null ? next : w;
+        });
+    }
+
+    private static double? Number(string? text) =>
+        double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var n) && double.IsFinite(n) ? n
+        : FieldValues.TryNumber(text, out var invariant) ? invariant : null;
 
     partial void OnIconSizeChanged(int value)
     {

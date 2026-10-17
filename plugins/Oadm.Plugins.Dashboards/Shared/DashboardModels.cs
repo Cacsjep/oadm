@@ -120,6 +120,9 @@ public enum WidgetKind
 
     /// <summary>The live video of a camera (no event).</summary>
     Video = 3,
+
+    /// <summary>A number on an arc from <see cref="Widget.Min"/> to <see cref="Widget.Max"/>, with the Number widget's settings.</summary>
+    Gauge = 4,
 }
 
 /// <summary>The type the user chose for a field; Automatic takes the declared or suggested one.</summary>
@@ -131,7 +134,10 @@ public enum FieldType
     Text = 3,
 }
 
-/// <summary>A threshold of a Number widget: from <see cref="Value"/> on the number takes <see cref="Color"/>.</summary>
+/// <summary>
+/// A threshold of a Number or Gauge widget: from <see cref="Value"/> on the number takes <see cref="Color"/> (a gauge also
+/// colors its arc from there up to the next threshold).
+/// </summary>
 public sealed record Threshold(double Value, string Color);
 
 /// <summary>
@@ -196,6 +202,12 @@ public sealed record Widget
     public string Unit { get; init; } = string.Empty;
 
     public IReadOnlyList<Threshold> Thresholds { get; init; } = [];
+
+    /// <summary>The start of a gauge's arc.</summary>
+    public double Min { get; init; }
+
+    /// <summary>The end of a gauge's arc; more than <see cref="Min"/>.</summary>
+    public double Max { get; init; } = 100;
 
     [JsonIgnore]
     public TileRect Rect => new(X, Y, Width, Height);
@@ -313,7 +325,7 @@ public static class FieldValues
     public static IReadOnlyList<WidgetKind> WidgetsFor(EventValueKind kind) => kind switch
     {
         EventValueKind.YesNo => [WidgetKind.OnOff, WidgetKind.Text],
-        EventValueKind.Number => [WidgetKind.Number, WidgetKind.Text],
+        EventValueKind.Number => [WidgetKind.Number, WidgetKind.Gauge, WidgetKind.Text],
         _ => [WidgetKind.Text],
     };
 
@@ -349,6 +361,121 @@ public static class FieldValues
 
         var dot = text.IndexOf('.', StringComparison.Ordinal);
         return dot < 0 ? 0 : Math.Min(text.Length - dot - 1, DashboardsPluginInfo.MaxDecimals);
+    }
+}
+
+/// <summary>The labelled and the small ticks of a gauge, and the decimal places its labels need.</summary>
+public sealed record GaugeTicks(double Step, IReadOnlyList<double> Major, IReadOnlyList<double> Minor, int Decimals);
+
+/// <summary>A stretch of a gauge's arc in one color.</summary>
+public sealed record GaugeBand(double From, double To, string Color);
+
+/// <summary>
+/// The scale of a gauge, without UI: "nice" steps from Min and Max (1, 2 or 5 times a power of ten, 4 to 10 labelled
+/// ticks; 0 to 100 gives 0, 10, 20 ..., 0 to 3,000 gives 0, 500, 1,000 ...), small ticks between them, where a value sits on
+/// the arc and the colored bands of the thresholds.
+/// </summary>
+public static class GaugeScale
+{
+    /// <summary>Most labelled ticks (intervals between them).</summary>
+    public const int MaxIntervals = 10;
+
+    public static GaugeTicks Ticks(double min, double max)
+    {
+        if (DashboardRules.RangeProblem(min, max) is not null)
+        {
+            return new GaugeTicks(1, [], [], 0);
+        }
+
+        var rough = (max - min) / MaxIntervals;
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(rough)));
+        var factor = rough / magnitude;
+        var nice = factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 5 ? 5 : 10;
+        var step = nice * magnitude;
+        var decimals = DecimalsOf(step);
+        var minorStep = step / (nice == 2 ? 4 : 5);
+
+        var major = new List<double>();
+        var first = Math.Ceiling(min / step - 1e-9);
+        for (var i = 0; ; i++)
+        {
+            var value = Math.Round((first + i) * step, 9);
+            if (value > max + step * 1e-9)
+            {
+                break;
+            }
+
+            major.Add(value);
+        }
+
+        var minor = new List<double>();
+        var firstMinor = Math.Ceiling(min / minorStep - 1e-9);
+        for (var i = 0; ; i++)
+        {
+            var value = Math.Round((firstMinor + i) * minorStep, 9);
+            if (value > max + minorStep * 1e-9)
+            {
+                break;
+            }
+
+            if (major.All(m => Math.Abs(m - value) > minorStep * 1e-6))
+            {
+                minor.Add(value);
+            }
+        }
+
+        return new GaugeTicks(step, major, minor, decimals);
+    }
+
+    /// <summary>Where <paramref name="value"/> sits on the arc, 0 (Min) to 1 (Max); outside the range it stops at the end.</summary>
+    public static double Fraction(double value, double min, double max) =>
+        max > min && double.IsFinite(value) ? Math.Clamp((value - min) / (max - min), 0, 1) : 0;
+
+    /// <summary>
+    /// The arc in colors: <paramref name="normal"/> up to the first threshold, then each threshold's color up to the next one.
+    /// Thresholds outside Min and Max only color from the edge on.
+    /// </summary>
+    public static IReadOnlyList<GaugeBand> Bands(double min, double max, IReadOnlyList<Threshold> thresholds, string normal)
+    {
+        ArgumentNullException.ThrowIfNull(thresholds);
+        var bands = new List<GaugeBand>();
+        var from = min;
+        var color = normal;
+        foreach (var threshold in thresholds.Where(t => t is not null).OrderBy(t => t.Value))
+        {
+            var at = Math.Clamp(threshold.Value, min, max);
+            if (at > from)
+            {
+                bands.Add(new GaugeBand(from, at, color));
+                from = at;
+            }
+
+            color = threshold.Color;
+        }
+
+        if (max > from)
+        {
+            bands.Add(new GaugeBand(from, max, color));
+        }
+
+        return bands;
+    }
+
+    /// <summary>A tick label: as many decimals as the step needs, grouped ("1,000").</summary>
+    public static string Label(double value, int decimals) =>
+        (Math.Abs(value) < 1e-12 ? 0 : value).ToString("N" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.CurrentCulture);
+
+    private static int DecimalsOf(double step)
+    {
+        for (var places = 0; places < DashboardsPluginInfo.MaxDecimals; places++)
+        {
+            if (Math.Abs(Math.Round(step, places) - step) < step * 1e-6)
+            {
+                return places;
+            }
+        }
+
+        return DashboardsPluginInfo.MaxDecimals;
     }
 }
 
@@ -464,6 +591,18 @@ public static class DashboardRules
     public static readonly string TooManyThresholds = $"Use at most {DashboardsPluginInfo.MaxThresholds} thresholds.";
 
     public const string BadSetting = "A widget has a setting OADM does not know.";
+
+    public const string RangeWrong = "Min must be less than Max.";
+
+    public const string NotANumber = "Enter a number.";
+
+    /// <summary>The largest Min or Max (a gauge of a temperature, a count, a level; never astronomic).</summary>
+    public const double MaxRange = 1e12;
+
+    /// <summary>The problem of a gauge's Min and Max, or null.</summary>
+    public static string? RangeProblem(double min, double max) =>
+        !double.IsFinite(min) || !double.IsFinite(max) || Math.Abs(min) > MaxRange || Math.Abs(max) > MaxRange ? NotANumber
+        : min < max ? null : RangeWrong;
 
     public static string NameTaken(string name) => $"A dashboard named {name} exists already.";
 
@@ -597,6 +736,17 @@ public static class DashboardRules
         if (widget.Thresholds.Count > DashboardsPluginInfo.MaxThresholds)
         {
             return TooManyThresholds;
+        }
+
+        // Min and Max are kept for every kind: always numbers, and in order where a gauge uses them.
+        if (!double.IsFinite(widget.Min) || !double.IsFinite(widget.Max))
+        {
+            return BadSetting;
+        }
+
+        if (widget.Kind == WidgetKind.Gauge && RangeProblem(widget.Min, widget.Max) is { } range)
+        {
+            return range;
         }
 
         var shares = new[] { widget.IconSize, widget.FontSize };

@@ -205,7 +205,13 @@ public sealed partial class FakeOadmApi
             Widget("t2", "Number", 5, 0, 5, 5, "Gate house", FakeTemperatureType, "temperature", second, new JsonObject { ["unit"] = "°C", ["decimals"] = 1 }),
             Widget("g", "OnOff", 0, 5, 5, 5, "Gate", FakeGateType, "@active", second,
                 new JsonObject { ["onIcon"] = "lockOpen", ["onColor"] = "Amber", ["onText"] = "Open", ["offIcon"] = "lock", ["offColor"] = "Green", ["offText"] = "Closed" }),
-            Widget("p", "Text", 5, 5, 5, 5, "Last plate", FakePlateType, "plate", first, new JsonObject { ["fontSize"] = 50 }));
+            Widget("p", "Text", 5, 5, 5, 5, "Last plate", FakePlateType, "plate", first, new JsonObject { ["fontSize"] = 50 }),
+            Widget("s", "Gauge", 0, 10, 6, 6, "Speed", FakePlateType, "speed", first,
+                new JsonObject
+                {
+                    ["unit"] = "km/h", ["color"] = "Green", ["min"] = 0, ["max"] = 120,
+                    ["thresholds"] = new JsonArray(new JsonObject { ["value"] = 50, ["color"] = "Amber" }, new JsonObject { ["value"] = 80, ["color"] = "Red" }),
+                }));
         if (camera is not null)
         {
             widgets.Add(Widget("v", "Video", 10, 0, 10, 10, camera.Address, null, null, camera.Id));

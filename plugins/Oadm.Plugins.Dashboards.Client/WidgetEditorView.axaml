@@ -91,17 +91,25 @@
       </ui:FormField>
     </StackPanel>
 
-    <!-- Text and Number: size and color -->
-    <StackPanel Spacing="10" IsVisible="{Binding ShowText}">
-      <ui:FormField Classes="wide" Label="Font size" Hint="{Binding FontSizeText}">
-        <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding FontSizeValue}" />
+    <!-- Text and Number: size; Text, Number and Gauge: color -->
+    <ui:FormField Classes="wide" Label="Font size" Hint="{Binding FontSizeText}" IsVisible="{Binding ShowText}">
+      <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding FontSizeValue}" />
+    </ui:FormField>
+    <ui:FormField Classes="wide" Label="Color" IsVisible="{Binding ShowColor}">
+      <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+    </ui:FormField>
+
+    <!-- Gauge: the range of the arc (the ticks follow it) -->
+    <StackPanel Spacing="10" IsVisible="{Binding ShowGauge}">
+      <ui:FormField Classes="wide" Label="Min">
+        <TextBox Text="{Binding MinText}" />
       </ui:FormField>
-      <ui:FormField Classes="wide" Label="Color">
-        <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+      <ui:FormField Classes="wide" Label="Max">
+        <TextBox Text="{Binding MaxText}" />
       </ui:FormField>
     </StackPanel>
 
-    <!-- Number: decimals, unit, thresholds -->
+    <!-- Number and Gauge: decimals, unit, thresholds -->
     <StackPanel Spacing="10" IsVisible="{Binding ShowNumber}">
       <ui:FormField Classes="wide" Label="Decimal places">
         <ComboBox ItemsSource="{Binding DecimalChoices}" SelectedItem="{Binding Decimals}" />
@@ -109,7 +117,7 @@
       <ui:FormField Classes="wide" Label="Unit" Hint="Optional">
         <TextBox Text="{Binding Unit}" MaxLength="10" />
       </ui:FormField>
-      <ui:FormField Classes="wide" Label="Thresholds" Hint="From this value on, the number takes the color.">
+      <ui:FormField Classes="wide" Label="Thresholds" Hint="{Binding ThresholdHint}">
         <StackPanel Spacing="6">
           <ItemsControl ItemsSource="{Binding Thresholds}">
             <ItemsControl.ItemsPanel>

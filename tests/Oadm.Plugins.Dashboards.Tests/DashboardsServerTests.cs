@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -95,6 +96,10 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         // Whatever a request sends is checked, also settings the widget's kind does not use.
         Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Unit = null! })));
         Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Thresholds = null! })));
+        Assert.Equal(DashboardRules.RangeWrong, await Refused(New("X", Value("a", 0, 0) with { Kind = WidgetKind.Gauge, Min = 50, Max = 50 })));
+        Assert.Equal(DashboardRules.NotANumber, await Refused(New("X", Value("a", 0, 0) with { Kind = WidgetKind.Gauge, Max = 1e15 })));
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Min = double.NaN }))); // every kind
+        Assert.Null(DashboardRules.WidgetProblem(Value("a", 0, 0) with { Min = 50, Max = 10 })); // a Number keeps an unused range
         Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Video("v", 0, 0, B) with { OnColor = "#fff" })));
         Assert.Equal(DashboardRules.UnitTooLong, await Refused(New("X", Video("v", 0, 0, B) with { Unit = "far too long a unit" })));
         Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { TypeId = new string('x', 300) })));
@@ -240,9 +245,50 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Equal("Orange", FieldValues.ColorOf(50, [new(50, "Orange"), new(20, "Green"), new(100, "Red")], "Text"));
         Assert.Equal("Text", FieldValues.ColorOf(10, [new(50, "Orange"), new(20, "Green")], "Text"));
         Assert.Equal([WidgetKind.OnOff, WidgetKind.Text], FieldValues.WidgetsFor(EventValueKind.YesNo));
-        Assert.Equal([WidgetKind.Number, WidgetKind.Text], FieldValues.WidgetsFor(EventValueKind.Number));
+        Assert.Equal([WidgetKind.Number, WidgetKind.Gauge, WidgetKind.Text], FieldValues.WidgetsFor(EventValueKind.Number));
         Assert.Equal(EventValueKind.Number, FieldValues.Effective(FieldType.Number, EventValueKind.Text));
         Assert.Equal(EventValueKind.YesNo, FieldValues.Effective(FieldType.Automatic, EventValueKind.YesNo));
+    }
+
+    // ------------------------------------------------------------------ gauge scale
+
+    [Theory]
+    [InlineData(0, 100, 10, 11, 0)]
+    [InlineData(0, 3000, 500, 7, 0)]
+    [InlineData(-20, 60, 10, 9, 0)]
+    [InlineData(0, 1, 0.1, 11, 1)]
+    [InlineData(0, 37, 5, 8, 0)]
+    [InlineData(12.5, 13.1, 0.1, 7, 1)]
+    [InlineData(0, 250_000, 50_000, 6, 0)]
+    public void Gauge_ticks_take_nice_steps(double min, double max, double step, int labels, int decimals)
+    {
+        var ticks = GaugeScale.Ticks(min, max);
+        Assert.Equal(step, ticks.Step, 9);
+        Assert.Equal(labels, ticks.Major.Count);
+        Assert.Equal(decimals, ticks.Decimals);
+        Assert.InRange(ticks.Major.Count - 1, 3, GaugeScale.MaxIntervals);
+        Assert.All(ticks.Major, v => Assert.InRange(v, min, max));
+        Assert.All(ticks.Minor, v => Assert.InRange(v, min, max));
+        Assert.DoesNotContain(ticks.Minor, m => ticks.Major.Any(v => Math.Abs(v - m) < step * 1e-6)); // no small tick under a label
+        Assert.Empty(GaugeScale.Ticks(10, 10).Major); // no range: nothing to draw
+    }
+
+    [Fact]
+    public void Gauge_values_stop_at_the_ends_and_thresholds_color_bands()
+    {
+        Assert.Equal(0.7, GaugeScale.Fraction(70, 0, 100), 9);
+        Assert.Equal(1, GaugeScale.Fraction(112, 0, 100));
+        Assert.Equal(0, GaugeScale.Fraction(-5, 0, 100));
+        Assert.Equal(0.25, GaugeScale.Fraction(0, -20, 60), 9);
+
+        Assert.Equal([new GaugeBand(0, 100, "Accent")], GaugeScale.Bands(0, 100, [], "Accent"));
+        Assert.Equal(
+            [new GaugeBand(0, 30, "Red"), new GaugeBand(30, 50, "Amber"), new GaugeBand(50, 75, "Blue"), new GaugeBand(75, 100, "Green")],
+            GaugeScale.Bands(0, 100, [new(75, "Green"), new(0, "Red"), new(50, "Blue"), new(30, "Amber")], "Accent"));
+        // Thresholds outside the range color from the edge on; one above Max colors nothing.
+        Assert.Equal([new GaugeBand(0, 100, "Amber")], GaugeScale.Bands(0, 100, [new(-10, "Amber"), new(150, "Red")], "Accent"));
+        Assert.Equal(1000.ToString("N0", CultureInfo.CurrentCulture), GaugeScale.Label(1000, 0));
+        Assert.Equal(0.5.ToString("N1", CultureInfo.CurrentCulture), GaugeScale.Label(0.5, 1));
     }
 
     // ------------------------------------------------------------------ catalog

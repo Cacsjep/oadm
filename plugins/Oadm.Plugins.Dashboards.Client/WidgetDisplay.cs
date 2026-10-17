@@ -17,6 +17,9 @@ namespace Oadm.Plugins.Dashboards.Client;
 /// <param name="ToolTip">"41.5 at 14:02:17".</param>
 public sealed record WidgetDisplay(bool HasValue, string? Text, string? Unit, string Color, string? Icon, string? Caption, bool Dimmed, string? Note, string? ToolTip)
 {
+    /// <summary>The number of a Number or Gauge widget (the gauge's marker); null when the value is no number.</summary>
+    public double? Number { get; init; }
+
     /// <summary>Nothing to show yet (before the first values arrived).</summary>
     public static readonly WidgetDisplay Empty = new(false, null, null, "Secondary", null, null, false, DashboardTexts.NoValue, null);
 
@@ -57,14 +60,14 @@ public sealed record WidgetDisplay(bool HasValue, string? Text, string? Unit, st
                 return new WidgetDisplay(true, null, null, isOn ? widget.OnColor : widget.OffColor, isOn ? widget.OnIcon : widget.OffIcon,
                     NullIfEmpty(isOn ? widget.OnText : widget.OffText), stale is not null, stale, tip);
 
-            case WidgetKind.Number:
+            case WidgetKind.Number or WidgetKind.Gauge:
                 if (!FieldValues.TryNumber(raw, out var number))
                 {
                     return new WidgetDisplay(true, raw, null, widget.Color, null, null, true, stale ?? DashboardTexts.NotANumber, tip);
                 }
 
                 return new WidgetDisplay(true, FieldValues.FormatNumber(raw, number, widget.Decimals), NullIfEmpty(widget.Unit),
-                    FieldValues.ColorOf(number, widget.Thresholds, widget.Color), null, null, stale is not null, stale, tip);
+                    FieldValues.ColorOf(number, widget.Thresholds, widget.Color), null, null, stale is not null, stale, tip) { Number = number };
 
             default:
                 return new WidgetDisplay(true, raw, null, widget.Color, null, null, stale is not null, stale, tip);

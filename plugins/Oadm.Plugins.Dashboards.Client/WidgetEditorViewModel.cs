@@ -119,6 +119,8 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         OffText = w.OffText;
         Decimals = DecimalOptions.FirstOrDefault(d => d.Value == w.Decimals) ?? DecimalOptions[0];
         Unit = w.Unit;
+        MinText = w.Min.ToString(CultureInfo.InvariantCulture);
+        MaxText = w.Max.ToString(CultureInfo.InvariantCulture);
         foreach (var threshold in w.Thresholds)
         {
             Thresholds.Add(new ThresholdRow(this, threshold.Value.ToString(CultureInfo.InvariantCulture), ColorNamed(threshold.Color)));
@@ -126,6 +128,9 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
         Validation.Rule(nameof(Name), () => DashboardRules.WidgetNameProblem(Name));
         Validation.Rule(nameof(Unit), () => Unit.Length > DashboardsPluginInfo.MaxUnitLength ? DashboardRules.UnitTooLong : null);
+        Validation.Rule(nameof(MinText), () => ParseNumber(MinText) is { } min && Math.Abs(min) <= DashboardRules.MaxRange ? null : DashboardRules.NotANumber);
+        Validation.Rule(nameof(MaxText), () => ParseNumber(MaxText) is not { } max || Math.Abs(max) > DashboardRules.MaxRange ? DashboardRules.NotANumber
+            : ParseNumber(MinText) is { } min && min >= max ? DashboardRules.RangeWrong : null);
         RefreshCatalog();
         _defaultName = DefaultName();
         if (string.IsNullOrWhiteSpace(Name))
@@ -170,14 +175,31 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     public ObservableCollection<Choice<WidgetKind>> Kinds { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowOnOff), nameof(ShowText), nameof(ShowNumber))]
+    [NotifyPropertyChangedFor(nameof(ShowOnOff), nameof(ShowText), nameof(ShowColor), nameof(ShowNumber), nameof(ShowGauge), nameof(ThresholdHint))]
     public partial Choice<WidgetKind>? SelectedKind { get; set; }
 
     public bool ShowOnOff => IsValue && SelectedKind?.Value == WidgetKind.OnOff;
 
+    /// <summary>Font size: Text and Number (a gauge sizes itself).</summary>
     public bool ShowText => IsValue && SelectedKind?.Value is WidgetKind.Text or WidgetKind.Number;
 
-    public bool ShowNumber => IsValue && SelectedKind?.Value == WidgetKind.Number;
+    public bool ShowColor => IsValue && SelectedKind?.Value is WidgetKind.Text or WidgetKind.Number or WidgetKind.Gauge;
+
+    /// <summary>Decimals, unit and thresholds: Number and Gauge share them (switching keeps them).</summary>
+    public bool ShowNumber => IsValue && SelectedKind?.Value is WidgetKind.Number or WidgetKind.Gauge;
+
+    public bool ShowGauge => IsValue && SelectedKind?.Value == WidgetKind.Gauge;
+
+    public string ThresholdHint => ShowGauge
+        ? "From this value on, the arc and the number take the color."
+        : "From this value on, the number takes the color.";
+
+    /// <summary>The start of a gauge's arc (text, so a half typed number is no error yet).</summary>
+    [ObservableProperty]
+    public partial string MinText { get; set; } = "0";
+
+    [ObservableProperty]
+    public partial string MaxText { get; set; } = "100";
 
     [ObservableProperty]
     public partial string Name { get; set; } = string.Empty;
@@ -382,8 +404,31 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             return;
         }
 
+        // A gauge in the text color looks unfinished: it starts in the accent color (any color stays choosable).
+        if (!_loading && newValue?.Value == WidgetKind.Gauge && oldValue?.Value != WidgetKind.Gauge && Color.Name == "Text")
+        {
+            _loading = true;
+            Color = ColorNamed("Accent");
+            _loading = false;
+        }
+
         Apply();
     }
+
+    partial void OnMinTextChanged(string value)
+    {
+        if (!_loading)
+        {
+            Validation.Validate(); // Max is checked against Min
+            Apply();
+        }
+    }
+
+    partial void OnMaxTextChanged(string value) => Apply();
+
+    private static double? ParseNumber(string? text) =>
+        double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var n) && double.IsFinite(n) ? n
+        : FieldValues.TryNumber(text, out var invariant) ? invariant : null;
 
     partial void OnNameChanged(string value) => Apply();
 
@@ -484,6 +529,8 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             OffText = OffText.Trim(),
             Decimals = Decimals.Value,
             Unit = Unit.Trim().Length <= DashboardsPluginInfo.MaxUnitLength ? Unit.Trim() : Target.Widget.Unit,
+            Min = GaugeRange() is { } range ? range.Min : Target.Widget.Min,
+            Max = GaugeRange() is { } range2 ? range2.Max : Target.Widget.Max,
             Thresholds = [.. Thresholds
                 .Where(t => FieldValues.TryNumber(t.ValueText, out _))
                 .Select(t => new Threshold(FieldValues.TryNumber(t.ValueText, out var v) ? v : 0, t.Color.Name))
@@ -497,6 +544,10 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         Target.Update(widget);
         _page.EditorChanged();
     }
+
+    /// <summary>Min and Max of the fields while they form a range; else null (the widget keeps the last good one).</summary>
+    private (double Min, double Max)? GaugeRange() =>
+        ParseNumber(MinText) is { } min && ParseNumber(MaxText) is { } max && DashboardRules.RangeProblem(min, max) is null ? (min, max) : null;
 
     internal void ShowAllErrors()
     {
@@ -549,6 +600,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     {
         WidgetKind.OnOff => "On / Off",
         WidgetKind.Number => "Number",
+        WidgetKind.Gauge => "Gauge",
         WidgetKind.Video => "Live video",
         _ => "Text",
     };

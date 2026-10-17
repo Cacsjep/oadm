@@ -64,6 +64,56 @@ public sealed class DashboardsPageTests
         Assert.Equal(("W-123", "Blue"), (text.Text, text.Color));
     }
 
+    [Fact]
+    public void A_gauge_shows_the_number_like_the_number_widget_and_where_it_sits()
+    {
+        var gauge = new Widget { Kind = WidgetKind.Gauge, TypeId = Types.Temperature, Field = "temperature", Unit = "°C", Min = 0, Max = 50, Thresholds = [new(30, "Orange")] };
+        var shown = WidgetDisplay.Of(gauge, Snapshot(Types.Temperature, data: ("temperature", "41.5")));
+        Assert.Equal((41.5.ToString("N1", CultureInfo.CurrentCulture), "°C", "Orange", (double?)41.5), (shown.Text, shown.Unit, shown.Color, shown.Number));
+        var wrong = WidgetDisplay.Of(gauge, Snapshot(Types.Temperature, data: ("temperature", "hot")));
+        Assert.Equal(((double?)null, DashboardTexts.NotANumber), (wrong.Number, wrong.Note));
+    }
+
+    [Fact]
+    public Task Gauges_draw_their_scale_and_follow_the_size() => OnUi(() =>
+    {
+        WidgetView Gauge(Widget widget, string? value, int width, int height)
+        {
+            var view = new WidgetView { Width = width, Height = height };
+            view.Show(widget, value is null ? WidgetDisplay.Empty : WidgetDisplay.Of(widget, Snapshot(Types.Temperature, data: ("temperature", value))));
+            return view;
+        }
+
+        var grade = new Widget
+        {
+            Kind = WidgetKind.Gauge, TypeId = Types.Temperature, Field = "temperature", Name = "Grade", Color = "Accent",
+            Thresholds = [new(0, "Red"), new(30, "Amber"), new(50, "Blue"), new(75, "Green")],
+        };
+        var power = grade with { Name = "Power", Unit = "W", Min = 0, Max = 3000, Thresholds = [new(2500, "Red")], Decimals = 0 };
+        var cold = grade with { Name = "Cold room", Unit = "°C", Min = -20, Max = 10, Decimals = 1, Thresholds = [new(-18, "Blue"), new(-5, "Red")] };
+        var big = Gauge(grade, "70", 300, 260);
+        var watts = Gauge(power, "1250", 300, 260);
+        var over = Gauge(grade with { Name = "Out of range" }, "112", 300, 260);
+        var none = Gauge(cold, null, 300, 260);
+        var tiny = Gauge(grade with { Name = "Small" }, "70", 110, 90);
+        var row = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, Children = { big, watts, over, none, tiny } };
+        var window = Headless.Host(new Border { Classes = { "card" }, Padding = new Thickness(12), Child = row });
+        window.Show();
+        Headless.Pump();
+
+        Assert.Equal(11, big.Gauge.LabelsDrawn); // 0, 10 ... 100
+        Assert.Equal(0.7, big.Gauge.MarkerFraction!.Value, 9);
+        Assert.Equal(7, watts.Gauge.LabelsDrawn); // 0, 500 ... 3,000
+        Assert.Equal(1, over.Gauge.MarkerFraction); // stops at the end, the number stays 112
+        Assert.Equal("112", over.Display.Text);
+        Assert.Null(none.Gauge.MarkerFraction); // no value yet: the scale only
+        Assert.True(none.Gauge.LabelsDrawn > 0);
+        Assert.True(tiny.Gauge.LabelsDrawn < 11); // small: labels thin out or go
+        Headless.Capture(window, "plugin-dashboards-gauge.png");
+        window.Close();
+        return Task.CompletedTask;
+    });
+
     // ------------------------------------------------------------------ page
 
     private static (PluginHost Host, TestContext Ctx, DashboardsPageViewModel Vm, TestDevice Camera, TestDevice Io) Page()
@@ -132,7 +182,7 @@ public sealed class DashboardsPageTests
             var editor = tab.Editor!;
             Assert.Same(widget, editor.Target);
             Assert.Equal(("temperature", WidgetKind.Number), (widget.Widget.Field, widget.Widget.Kind)); // the number widget for a number
-            Assert.Equal(["Number", "Text"], editor.Kinds.Select(k => k.Label));
+            Assert.Equal(["Number", "Gauge", "Text"], editor.Kinds.Select(k => k.Label));
             Assert.Equal("Automatic (Number)", editor.SelectedType!.Label);
             Assert.True(editor.NeedsDevice);
             Assert.False(vm.SaveDashboardCommand.CanExecute(null) && tab.WidgetList().All(w => w.DeviceId is not null));
@@ -150,6 +200,28 @@ public sealed class DashboardsPageTests
             editor.AddThresholdCommand.Execute(null);
             editor.Thresholds[0].ValueText = "30";
             Assert.Equal([new Threshold(30, "Amber")], widget.Widget.Thresholds);
+
+            // Gauge: the Number settings stay, Min and Max are its own; a gauge in the text color starts in the accent.
+            Assert.Equal("Text", widget.Widget.Color);
+            editor.SelectedKind = editor.Kinds.First(k => k.Value == WidgetKind.Gauge);
+            Assert.Equal((WidgetKind.Gauge, "°C", "Accent"), (widget.Widget.Kind, widget.Widget.Unit, widget.Widget.Color));
+            Assert.Equal([new Threshold(30, "Amber")], widget.Widget.Thresholds);
+            Assert.True(editor.ShowGauge && editor.ShowNumber && editor.ShowColor);
+            Assert.False(editor.ShowText); // a gauge sizes itself
+            Assert.Equal("From this value on, the arc and the number take the color.", editor.ThresholdHint);
+            Assert.Equal((0d, 100d), (widget.Widget.Min, widget.Widget.Max));
+            editor.MaxText = "-5";
+            editor.ShowAllErrors();
+            Assert.Equal(DashboardRules.RangeWrong, editor.ErrorOf(nameof(WidgetEditorViewModel.MaxText)));
+            Assert.Equal(100d, widget.Widget.Max); // the widget keeps the last good range
+            editor.MinText = "-40";
+            Assert.Null(editor.ErrorOf(nameof(WidgetEditorViewModel.MaxText))); // Max is checked again against the new Min
+            Assert.Equal((-40d, -5d), (widget.Widget.Min, widget.Widget.Max));
+            editor.MaxText = "60";
+            editor.MinText = "abc";
+            Assert.Equal(DashboardRules.NotANumber, editor.ErrorOf(nameof(WidgetEditorViewModel.MinText)));
+            editor.MinText = "-20";
+            Assert.Equal((-20d, 60d), (widget.Widget.Min, widget.Widget.Max));
             editor.SelectedKind = editor.Kinds.First(k => k.Value == WidgetKind.Text);
             Assert.Equal(WidgetKind.Text, widget.Widget.Kind);
             editor.SelectedKind = editor.Kinds.First(k => k.Value == WidgetKind.Number);

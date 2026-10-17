@@ -1895,7 +1895,7 @@ tab. Decisions, methods and tests: plugin `README.md`.
 `plugins/Oadm.Plugins.Dashboards` (+ `.Client`), id `oadm.dashboards`, rail page **Dashboards** (group Monitoring, icon
 `gauge`), **off by default**, switchable. Live values of OADM's events (mostly device triggers: a temperature, a plate, a
 gate open) and live video on saved dashboards: a grid of widgets, each one value of one device (On / Off, Text, Number,
-Live video). Decisions, methods and tests: plugin `README.md`.
+Gauge, Live video; a gauge has the Number settings plus Min and Max only, ticks, sizes and labels are automatic). Decisions, methods and tests: plugin `README.md`.
 
 - Rules that must hold: the plugin never talks to a device; the values come from `ICorePluginContext.EventSubscriptions`
   and live in server memory only (latest per event type and device, at most 100,000 keys, least recently updated dropped

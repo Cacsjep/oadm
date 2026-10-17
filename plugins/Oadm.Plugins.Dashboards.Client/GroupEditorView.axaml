@@ -67,12 +67,19 @@
       </ui:FormField>
     </StackPanel>
 
-    <StackPanel Spacing="10" IsVisible="{Binding ShowText}">
-      <ui:FormField Classes="wide" Label="Font size" Hint="{Binding FontSizeText}">
-        <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding FontSizeValue}" />
+    <ui:FormField Classes="wide" Label="Font size" Hint="{Binding FontSizeText}" IsVisible="{Binding ShowText}">
+      <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding FontSizeValue}" />
+    </ui:FormField>
+    <ui:FormField Classes="wide" Label="Color" IsVisible="{Binding ShowColor}">
+      <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" PlaceholderText="Mixed" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+    </ui:FormField>
+
+    <StackPanel Spacing="10" IsVisible="{Binding ShowGauge}">
+      <ui:FormField Classes="wide" Label="Min">
+        <TextBox Text="{Binding MinText}" Watermark="{Binding MinWatermark}" />
       </ui:FormField>
-      <ui:FormField Classes="wide" Label="Color">
-        <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" PlaceholderText="Mixed" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+      <ui:FormField Classes="wide" Label="Max">
+        <TextBox Text="{Binding MaxText}" Watermark="{Binding MaxWatermark}" />
       </ui:FormField>
     </StackPanel>
 
