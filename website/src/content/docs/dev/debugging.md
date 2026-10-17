@@ -4,9 +4,21 @@ description: Breakpoints in the server and the client, the logs, and what to che
 ---
 
 Your plugin runs inside the OADM server (its server part) and inside the client (its dialog or page). You debug it by
-running OADM from your checkout and attaching the debugger to the process that runs the part you want to stop in.
+attaching the debugger to the process that runs the part you want to stop in.
 
-## Breakpoints
+## With the .NET SDK
+
+1. `dotnet oadm dev start` runs the development server with your plugin from `.oadm/plugins/`, with its symbols.
+2. `dotnet oadm dev client` opens the client with your client part.
+3. Attach the debugger of Visual Studio, Rider or VS Code (C# Dev Kit) to **`Oadm.Server`** (tasks, queries, core
+   plugins, actions) or **`Oadm.Client`** (dialogs, pages, toolbar entries), then trigger your code.
+
+A build restarts the development server when the server part changed; attach again after it. To stop in your code with
+the data and devices of the OADM installed on your computer, `dotnet oadm debug --installed` runs the installed server in
+your terminal with your build (the service starts again afterwards). The development server's log: `dotnet oadm dev logs`,
+or `.oadm/server-data/logs/`. More: [Develop with the .NET SDK](../plugin-sdk/#debug).
+
+## In a checkout of OADM
 
 Plugins built in your checkout are copied with their `.pdb` files to `artifacts/plugins/<id>/`, and OADM loads them with
 their symbols, so breakpoints in your code work.
@@ -51,8 +63,8 @@ Plugin problem in G:\odam\artifacts\plugins\acme.hello: Plugin acme.hello requir
 
 | You see | Check |
 |---|---|
-| No line for your plugin | The folder `artifacts/plugins/<id>/` exists and holds `plugin.json` and a `*.Server.dll` (the build copies them; a build with `OadmSkipPluginDeploy=true` does not) |
-| "requires SDK ..." | `minSdkVersion` in `plugin.json` is newer than the server's SDK |
+| No line for your plugin | The plugin folder (`.oadm/plugins/<id>/`, in a checkout `artifacts/plugins/<id>/`) exists and holds `plugin.json` and a `*.Server.dll` (the build copies them; a build with `OadmSkipPluginDeploy=true` does not) |
+| "requires SDK ..." | `minSdkVersion` in `plugin.json` is newer than the server's SDK: update OADM, or build with the packages of an older release |
 | "is already loaded from another folder" | The same id in two plugin folders: remove one |
 | Loaded, but no menu entry | The plugin is off on the **Plugins** page; your class needs to be public with a public parameterless constructor; `ShowInMenus` must be true; the user's role needs the task's permission |
 | The menu entry is grey | `CanRun` returned false: the tooltip shows your `NotSupportedReason` |

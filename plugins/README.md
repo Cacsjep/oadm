@@ -7,9 +7,14 @@ RULE are in `CLAUDE.md` ("Plugin System").
 
 ## Start a plugin
 
-`./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the plugin of the matching
-developer tutorial (`samples/`) under your name into `plugins/` and `tests/` and adds it to `Oadm.sln`. It builds, its
-tests pass and it runs; then change it. The tutorials on the website explain every file.
+Outside this repository (spec `docs/plugin-sdk.md`, guide on the website: Developers > Develop with the .NET SDK):
+`dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task|oadm-page|oadm-action -n <Name>`, then
+`dotnet oadm dev start` (a portable server with the plugin, restarted after every build), `dotnet oadm deploy --installed`,
+`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release.
+
+In this repository: `./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the
+plugin of the matching developer tutorial under your name into `plugins/` and `tests/` and adds it to `Oadm.sln`. It
+builds, its tests pass and it runs; then change it. The tutorials on the website explain every file.
 
 ## Project layout
 
@@ -30,7 +35,9 @@ tests/
 ```
 
 Both projects copy their output to `artifacts/plugins/<plugin id>/` (MSBuild target `OadmDeployPlugin`, see
-`Oadm.Plugins.Restart.csproj`). In a repository checkout the server (`PluginPaths.Development`) and the client
+`Oadm.Plugins.Restart.csproj`; the samples and the plugins of `manage new` use the plugin project SDK from source,
+`src/Oadm.Plugin.Sdk/targets` via their `Directory.Build.props`: plugin.json from `OadmPluginId`, `Version`,
+`OadmDisplayName`, `OadmDescription`, `OadmEnabledByDefault`, `OadmLicense*`). In a repository checkout the server (`PluginPaths.Development`) and the client
 (`ClientPluginLoader.DefaultRoots`) scan `artifacts/plugins/*/`, so `dotnet build` of the plugin is enough to try it
 with `dotnet run` of server and client. Installed plugins live in `<datafolder>/plugins/<id>/` or in `plugins/<id>/`
 next to the published exe.
@@ -102,7 +109,8 @@ shared payload types; it then ships in the same folder.
   short imperatives with the article ("Set DNS", "Wait for the device to come back"); no secrets in names or details.
   When the task succeeds (Done or Done with warnings) the engine appends the step **Completed**; failed and cancelled
   tasks get none (the failed step stays current). Plugins never add it. Test with `TaskStepList` +
-  `tests/Shared/StepRun.cs` (the server's end rules, including "Completed: Done").
+  `Oadm.Sdk.Testing.StepRun` (`src/Oadm.Sdk.Testing`: the server's end rules, including "Completed: Done"; also
+  `FakeCamera`, `FakeDevice`, `FakeTaskContext`, `FakeActionContext`, `FakeCoreContext`).
 - `ctx.ReportProgress(percent, message)` (optional: progress comes from the steps), `ctx.ReportWarning(message)`
   (Done with warnings), `ctx.Log(level, message)` (task log in the task details). No secrets.
 - `ctx.Files.FindAsync / OpenReadAsync(fileId)`: files the dialog uploaded.
@@ -404,10 +412,12 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
 
 ### Licenses (commercial plugins)
 
-A plugin you sell declares `"license": {"publicKey": "...", "features": [...], "trialDays": 30}` in plugin.json and reads
+A plugin you sell declares `"license": {"publicKey": "...", "features": [...], "trialDays": 30}` in plugin.json (with the
+project SDK: `OadmLicensePublicKey`, `OadmLicenseFeatures` "a;b", `OadmLicenseTrialDays`) and reads
 `ctx.License` (`IPluginLicense`: `IsValid`, `Has(feature)`, `Limit(name)`, `Current.Reason`, `Changed`) in its core plugin,
 task and action contexts; pages use `ICorePluginClientContext.LicenseOf(packageId)`. OADM checks the signed license key
-offline; the plugin decides what runs. Vendor keys and license keys: `manage license keys` / `manage license sign`. Guide:
+offline; the plugin decides what runs. Vendor keys and license keys: `oadm license keys` / `oadm license sign` (in this
+repository `manage license ...`). Guide:
 website `dev/licenses.md`.
 
 ### Permissions

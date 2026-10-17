@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The "oadm" command for plugin developers (NuGet package Oadm.Tools: dotnet tool install -g Oadm.Tools, or the local tool
+    manifest of a plugin made with dotnet new oadm-*): a development server and client, deploy into and debug with an
+    installed OADM, the .oadmplugin file, licenses ("manage license" runs "oadm license"). Spec: docs/plugin-sdk.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>oadm</ToolCommandName>
+    <PackageId>Oadm.Tools</PackageId>
+    <AssemblyName>Oadm.Tools</AssemblyName>
+    <RollForward>Major</RollForward>
+    <Description>The oadm command for OADM plugin developers: a development server, deploy and debug with an installed OADM, plugin files and licenses.</Description>
+    <PackageTags>oadm;axis;plugin;tool</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Tools.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
+  </ItemGroup>
+</Project>

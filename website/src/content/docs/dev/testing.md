@@ -21,8 +21,10 @@ Mark a test with `[Trait("Category", "Perf")]` and so on. A pull request runs th
 ## Task plugins with fakes
 
 A task plugin needs two fakes: an `IVapixClient` that answers like the device, and an `ITaskExecutionContext` that
-records the steps. `tests/Shared/StepRun.cs` (link it into your test project) ends the task exactly like the server:
-success adds the step Completed, a failure fails the running step and skips the rest.
+records the steps. The package `Oadm.Sdk.Testing` has both (`FakeCamera`, `FakeTaskContext`), a device (`FakeDevice`)
+and `StepRun`, which ends the task exactly like the server: success adds the step Completed, a failure fails the running
+step and skips the rest. `FakeCamera` answers parameter reads and writes, basic device information and the API list
+itself, and records every request; `Respond` answers anything else.
 
 ```csharp
 var camera = new FakeCamera();
@@ -35,7 +37,7 @@ Assert.Equal(
     StepRun.Lines(ctx.Steps));
 ```
 
-The [task plugin tutorial](../tutorial-task/#8-the-tests) has the complete fakes. Test at least:
+The [task plugin tutorial](../tutorial-task/#7-the-tests) has the complete tests. Test at least:
 
 - the happy path, step by step;
 - a device without the API: nothing is written, the error says "Nothing was changed";
@@ -53,7 +55,8 @@ category.
 
 ## Core plugins
 
-Start the server part with a fake `ICorePluginContext` and call `InvokeAsync` like the page would. For events, the
+Start the server part with `FakeCoreContext` (`Oadm.Sdk.Testing`: devices, a `FakeCamera` per device, settings, the
+published events, the tasks it starts) and call `InvokeAsync` like the page would. For events, the
 plugin test projects use the server's real `PluginEventHub` and an in-memory page context; the I/O Monitor and Image
 Health tests show the pattern. For the page, construct the view model with a fake `ICorePluginClientContext` and check
 what it shows after each answer and event.

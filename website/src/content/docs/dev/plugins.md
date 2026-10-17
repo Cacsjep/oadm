@@ -1,6 +1,6 @@
 ---
 title: Plugin basics
-description: Project layout, plugin.json, loading and the rules every plugin follows.
+description: Project layout, the project SDK and plugin.json, loading and the rules every plugin follows.
 ---
 
 A plugin is a folder with a `plugin.json`, a server assembly and, when it has a UI, a client assembly. The server
@@ -46,116 +46,69 @@ flowchart TB
 ## Start from a working plugin
 
 ```sh
-./manage.sh new task --name "My plugin"      # or page, or action; PowerShell: .\manage.ps1 new ...
+dotnet new install Oadm.Plugin.Templates
+dotnet new oadm-task -n MyPlugin      # or oadm-page, oadm-action
 ```
 
-This creates the plugin of the matching tutorial under your name in `plugins/` and `tests/` and adds it to the
-solution: it builds, its tests pass, and it runs. The tutorials explain every file:
-[task plugin](../tutorial-task/), [plugin page](../tutorial-page/), [event rule action](../tutorial-action/).
+This creates the plugin of the matching tutorial under your name, with its tests: it builds, its tests pass, and it runs
+on the development server (`dotnet oadm dev start`). The tutorials explain every file:
+[task plugin](../tutorial-task/), [plugin page](../tutorial-page/), [event rule action](../tutorial-action/). The tools
+around it: [Develop with the .NET SDK](../plugin-sdk/).
 
 ## Project layout
 
-Plugins are built inside a checkout of the repository: they reference the SDK projects, which the host ships. There is
-no NuGet package of the SDK yet.
-
 ```text
-plugins/
-  Oadm.Plugins.Hello/                 server part
-    Oadm.Plugins.Hello.csproj         AssemblyName Oadm.Plugins.Hello.Server
-    plugin.json
-    HelloTaskPlugin.cs
-  Oadm.Plugins.Hello.Client/          client part (optional)
-    Oadm.Plugins.Hello.Client.csproj  AssemblyName Oadm.Plugins.Hello.Client
-    HelloDialog.cs
-tests/
-  Oadm.Plugins.Hello.Tests/
+MyPlugin/
+  MyPlugin.slnx
+  Directory.Build.props          .NET 10, the plugin folder .oadm/plugins/
+  MyPlugin/                      server part: MyPlugin.Server.dll
+    MyPlugin.csproj
+    MyPluginTaskPlugin.cs
+  MyPlugin.Client/               client part (optional): MyPlugin.Client.dll
+    MyPlugin.Client.csproj
+    MyPluginDialog.cs
+  MyPlugin.Tests/
 ```
 
-Add every project to `Oadm.sln`. The build then picks them up, and so does `manage build plugins`.
+### The project files
 
-### plugin.json
-
-```json
-{
-  "id": "acme.hello",
-  "version": "1.0.0",
-  "minSdkVersion": "0.1.0",
-  "displayName": "Hello",
-  "description": "Says hello to devices.",
-  "enabledByDefault": true,
-  "alwaysOn": false
-}
-```
-
-| Field | Meaning |
-|---|---|
-| `id` | Unique and stable. It names the folder, the settings and the permissions. Never change it |
-| `version` | Your plugin's version |
-| `minSdkVersion` | The oldest SDK your plugin works with (`SdkInfo.Version`). An older host skips the plugin and logs why |
-| `displayName`, `description` | The row on the **Plugins** page: the name and one short sentence |
-| `enabledByDefault` | `false`: off until an administrator turns it on. Use it for anything that runs in the background |
-| `alwaysOn` | `true`: it cannot be turned off. Reserved for core functionality |
-
-### Server project
+Both parts use the project SDK `Oadm.Plugin.Sdk`. It names the assemblies after the project (`.Server.dll`, and
+`.Client.dll` for a project ending in `.Client`), references the OADM SDK without copying it (the host has it), writes
+`plugin.json` from the server project's properties and copies the plugin folder to `.oadm/plugins/<id>/` after every
+build:
 
 ```xml
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Oadm.Plugin.Sdk/1.2.0">
   <PropertyGroup>
-    <AssemblyName>Oadm.Plugins.Hello.Server</AssemblyName>
-    <RootNamespace>Oadm.Plugins.Hello</RootNamespace>
-    <EnableDynamicLoading>true</EnableDynamicLoading>
     <OadmPluginId>acme.hello</OadmPluginId>
-    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+    <Version>1.0.0</Version>
+    <OadmDisplayName>Hello</OadmDisplayName>
+    <OadmDescription>Says hello to devices.</OadmDescription>
   </PropertyGroup>
-
-  <ItemGroup>
-    <!-- The SDK comes from the host: compile against it, never copy it. -->
-    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
-      <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </ProjectReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <!-- Copy the output to artifacts/plugins/<id>/, where a checkout loads plugins from. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
-    <ItemGroup>
-      <_OadmPluginFiles Include="$(OutDir)**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_OadmPluginFiles)"
-          DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
 </Project>
 ```
 
-The client project is the same with `AssemblyName` and `RootNamespace` `Oadm.Plugins.Hello.Client`, the same
-`OadmPluginId`, `<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>`, and these references
-instead (all shared by the client host, so none of them is copied):
+The client project names the same `OadmPluginId` and references the server project to share the payload types. Avalonia,
+the MVVM toolkit and `Avalonia.Controls.DataGrid` (without a version) come from the OADM client and are never copied;
+other packages go into the plugin folder with your plugin.
 
-```xml
-<PackageReference Include="Avalonia" Version="12.1.4" ExcludeAssets="runtime" />
-<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
-<ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj">
-  <Private>false</Private>
-  <ExcludeAssets>runtime</ExcludeAssets>
-</ProjectReference>
-<ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
-  <Private>false</Private>
-  <ExcludeAssets>runtime</ExcludeAssets>
-</ProjectReference>
-<!-- Optional: share the payload types with the server part. It then ships in the same folder. -->
-<ProjectReference Include="..\Oadm.Plugins.Hello\Oadm.Plugins.Hello.csproj" />
-```
+### plugin.json
 
-Copy the versions from a built-in plugin's project file; they follow the host.
+| Property | Field | Meaning |
+|---|---|---|
+| `OadmPluginId` | `id` | Unique and stable. It names the folder, the settings and the permissions. Never change it |
+| `Version` | `version` | Your plugin's version |
+| (the SDK's) | `minSdkVersion` | The SDK your plugin is built with (`SdkInfo.Version`). An older host skips the plugin and logs why |
+| `OadmDisplayName`, `OadmDescription` | `displayName`, `description` | The row on the **Plugins** page: the name and one short sentence |
+| `OadmEnabledByDefault` | `enabledByDefault` | `false`: off until an administrator turns it on. Use it for anything that runs in the background |
+| `OadmLicense...` | `license` | A plugin you sell: [Sell a plugin with a license](../licenses/) |
+
+A `plugin.json` of your own in the server project is used as it is instead. `alwaysOn` (it cannot be turned off) is
+reserved for the plugins of OADM.
 
 ## How plugins load
 
-- The server looks in `plugins/<id>/` next to its exe, in `<data folder>/plugins/<id>/` and, in a checkout, in
+- The server looks in `plugins/<id>/` next to its exe, in `<data folder>/plugins/<id>/` and, in a checkout of OADM, in
   `artifacts/plugins/<id>/`. The client looks in the same three places.
 - Each plugin folder loads in its own load context. Your private dependencies (NuGet packages the host does not have) go into
   the plugin folder with it.
@@ -165,15 +118,12 @@ Copy the versions from a built-in plugin's project file; they follow the host.
 - Administrators turn plugins on and off on the **Plugins** page. A plugin that is off has no page, menu entry or toolbar
   button, and its core plugins are stopped. Tasks already running finish.
 
-To try a plugin, build it and start OADM from the checkout:
+- `--Oadm:PluginDir=<folder>` (server) and `--plugin-dir <folder>` (client) load one plugin folder straight from a build,
+  before the others: the development server and `oadm debug --installed` use them. An installed service ignores them.
 
-```sh
-./manage.sh build plugins
-./manage.sh run dev
-```
-
-To install it on a running OADM, copy the folder `artifacts/plugins/<id>/` into `plugins/` next to the server and the
-client (or into the data folder's `plugins/`) and restart both.
+To try a plugin, build it and start the development server in its folder (`dotnet oadm dev start`, then
+`dotnet oadm dev client`). To install it in the OADM on your computer, run `dotnet oadm deploy --installed`; for others,
+`dotnet oadm pack` writes the `.oadmplugin` file. See [Develop with the .NET SDK](../plugin-sdk/).
 
 ## Rules every plugin follows
 

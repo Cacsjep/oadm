@@ -4,10 +4,10 @@ description: Build something the event rules can do when an event happens, step 
 ---
 
 import { Code, FileTree, Aside } from '@astrojs/starlight/components';
-import pluginJson from '../../../../../samples/Oadm.Samples.VirtualInput/plugin.json?raw';
 import project from '../../../../../samples/Oadm.Samples.VirtualInput/Oadm.Samples.VirtualInput.csproj?raw';
 import action from '../../../../../samples/Oadm.Samples.VirtualInput/VirtualInputAction.cs?raw';
 import tests from '../../../../../samples/Oadm.Samples.VirtualInput.Tests/VirtualInputActionTests.cs?raw';
+import { template } from '../../../components/templateCode';
 
 The event rules of OADM say "**when** this happens, **then** do that". An action is a "then": send an email, switch a
 relay, run a VAPIX command. Your plugin can add one. The rule dialog draws its settings form from a short list of
@@ -19,25 +19,34 @@ recording.
 
 ## 1. Create it
 
-You need a checkout of OADM that builds (`./manage.sh build` works) and the .NET 10 SDK. In the repository root, run:
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and an editor. Run:
 
 ```sh
-./manage.sh new action --name "My cool action"      # PowerShell: .\manage.ps1 new action --name "My cool action"
+dotnet new install Oadm.Plugin.Templates
+dotnet new oadm-action -n MyCoolAction
+cd MyCoolAction
+dotnet tool restore
+dotnet build
 ```
 
-This copies the tutorial's plugin under your name and adds it to the solution. It builds, its tests pass, and it runs.
-The code below is the original; in your copy every `VirtualInput` reads `MyCoolAction`.
+This creates the tutorial's plugin under your name. It builds, its tests pass, and it runs. The code below is the
+original; in your copy every `VirtualInput` reads `MyCoolAction` and the id is `community.my-cool-action`.
 
 <FileTree>
-- plugins/
-  - Oadm.Plugins.MyCoolAction/ server only: actions need no client part
-    - plugin.json
-    - Oadm.Plugins.MyCoolAction.csproj
+- MyCoolAction/
+  - MyCoolAction.slnx
+  - MyCoolAction/ server only: actions need no client part
+    - MyCoolAction.csproj
     - MyCoolActionAction.cs
-- tests/
-  - Oadm.Plugins.MyCoolAction.Tests/
+  - MyCoolAction.Tests/
     - MyCoolActionActionTests.cs
+  - .oadm/plugins/community.my-cool-action/ after a build: the plugin folder OADM loads
 </FileTree>
+
+<Aside title="In a checkout of OADM">
+`./manage.sh new action --name "My cool action"` creates the same plugin in `plugins/` and `tests/` of the repository
+and adds it to the solution; `./manage.sh run dev` then starts OADM with it.
+</Aside>
 
 ## 2. How an action runs
 
@@ -58,21 +67,16 @@ flowchart LR
 4. Each run gets 30 seconds. A run that throws is logged as failed with its message in the event log; there is no
    retry. At most 16 runs go at once for all rules.
 
-## 3. The plugin description
+## 3. The project file
 
-The `id` is the plugin's key everywhere and never changes. `displayName` and `description` are its row on the
-**Plugins** page.
+Only a server part, on the plugin project SDK `Oadm.Plugin.Sdk` (the template writes the version you installed). It
+compiles against the OADM SDK but never copies it: OADM provides it at runtime. Its properties become the plugin's
+`plugin.json`: the `OadmPluginId` is the plugin's key everywhere and never changes, the display name and description are
+its row on the **Plugins** page. After each build the plugin folder is `.oadm/plugins/<id>/`.
 
-<Code code={pluginJson} lang="json" title="plugin.json" />
+<Code code={template(project)} lang="xml" title="MyCoolAction.csproj" />
 
-## 4. The project file
-
-Only a server part. It compiles against the SDK but never copies it: OADM provides it at runtime. After each build the
-output is copied to `artifacts/plugins/<id>/`, where OADM loads plugins from when it runs from your checkout.
-
-<Code code={project} lang="xml" title="Oadm.Plugins.MyCoolAction.csproj" />
-
-## 5. The action
+## 4. The action
 
 - **`Id`, `DisplayName`, `Group`, `Description`**: the action in the "Then" list of the rule dialog.
 - **`NeedsDevice`**: true means the rule chooses target devices and your action runs once per device, with
@@ -86,7 +90,7 @@ output is copied to `artifacts/plugins/<id>/`, where OADM loads plugins from whe
   line to the event log with `ctx.Log`. `ctx.Text(...)` fills placeholders such as `{rule}`, `{event}`, `{device}`,
   `{address}` and every value of the event (`{port}`); `UsesPlaceholders` makes the dialog list them.
 
-<Code code={action} lang="csharp" title="MyCoolActionAction.cs" />
+<Code code={template(action)} lang="csharp" title="MyCoolActionAction.cs" />
 
 <Aside title="Actions without devices">
 Set `NeedsDevice => false` for actions that talk to other systems (a web hook, a chat, a ticket system). `ctx.Vapix` is
@@ -95,25 +99,29 @@ address, login and body into fields: `Password` for secrets, `Code` with a langu
 into such a body with `ctx.Text(text, PlaceholderEscape.Json)` so an event value can never break the format.
 </Aside>
 
-## 6. The tests
+## 5. The tests
 
-The tests need no camera and no rules: a fake camera records the requests, a fake context records the event log lines
-and fills `{rule}`. Each test builds the invocation a rule would send.
+The tests need no camera and no rules. From the package `Oadm.Sdk.Testing`, `FakeCamera` records the requests and
+`FakeActionContext` records the event log lines and fills the placeholders you give it (`{rule}`). Each test builds the
+invocation a rule would send.
 
-<Code code={tests} lang="csharp" title="MyCoolActionActionTests.cs" />
+<Code code={template(tests)} lang="csharp" title="MyCoolActionActionTests.cs" />
 
-## 7. Run it
+## 6. Run it
 
 ```sh
-dotnet test tests/Oadm.Plugins.MyCoolAction.Tests
-./manage.sh run dev
+dotnet test
+dotnet oadm dev start
 ```
 
-Open **Event rules**, click **New rule**: in step **Then**, choose **My cool action**, set the virtual input and the
+`dev start` runs an OADM server for development in this terminal, with its own data in `.oadm/`, and loads your plugin;
+a new build restarts it. In a second terminal, `dotnet oadm dev client` opens the client against it: create the
+administrator on the first start and add a camera. Open **Event rules**, click **New rule**: in step **Then**, choose
+**MyCoolAction**, set the virtual input and the
 target devices, and save. When the rule turns on, the event log shows your line ending in ": on"; when it turns off,
 ": off".
 
-## 8. Make it yours
+## 7. Make it yours
 
 1. **Name and place**: `DisplayName`, `Group`, `Description`, `IconKey`.
 2. **Devices or not**: `NeedsDevice`, and `SupportsTurnOff` when undoing makes sense.
@@ -124,8 +132,9 @@ target devices, and save. When the rule turns on, the event log shows your line 
 5. **More than 30 seconds**: return a longer time from `MaxRunTime(settings)`.
 6. **The tests**: one per edge and per answer of the device or service.
 
-## 9. Share it
+## 8. Share it
 
-To use it on an installed OADM, copy the folder `artifacts/plugins/<your id>/` into the `plugins` folder next to the
-OADM server, then restart it (an action has no client part). To share it with everyone, open a pull request on GitHub
-with the plugin, its tests and a `README.md` in its folder that says what it does and what you tried it with.
+`dotnet oadm deploy --installed` puts it into the OADM installed on your computer; `dotnet oadm pack` writes the
+`.oadmplugin` file for others. Both are explained in [Develop with the .NET SDK](../plugin-sdk/#try-it-in-the-installed-oadm).
+To ship it with OADM, open a pull request on GitHub with the plugin, its tests and a `README.md` in its folder that says
+what it does and what you tried it with.

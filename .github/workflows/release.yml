@@ -9,6 +9,8 @@ name: release
 #                 plus the portable ZIPs of the server and client publish folders per platform (plugin development)
 #   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (installers are not signed;
 #                 the checksums are published instead)
+#   4. nuget      the plugin SDK packages on nuget.org (Trusted Publishing), after the release; skipped without the
+#                 repository variable NUGET_USER
 # A job starts only when the jobs before it passed, so a release exists only when everything passed.
 on:
   push:
@@ -323,3 +325,58 @@ jobs:
           else
             gh release create "$tag" installers/* --title "OADM $version" "${notes[@]}" --verify-tag
           fi
+
+  # The plugin SDK on nuget.org (docs/plugin-sdk.md), only after the release exists: Oadm.Sdk, Oadm.Sdk.Client,
+  # Oadm.Sdk.Testing, Oadm.Plugin.Sdk, Oadm.Plugin.Templates and Oadm.Tools with the tag's version. Before the push every
+  # template is created, built and tested against these packages. NuGet Trusted Publishing: no API key in GitHub; the
+  # job trades its OIDC token for a key that lives one hour. Needs the repository variable NUGET_USER (the nuget.org
+  # account) and a trusted publishing policy for this repository and release.yml on nuget.org; without the variable the
+  # job is skipped.
+  nuget:
+    needs: release
+    if: vars.NUGET_USER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Pack
+        run: ./manage.sh package nuget --version "${GITHUB_REF_NAME#v}"
+
+      - name: Templates build and pass their tests with these packages
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          work="$RUNNER_TEMP/templates"
+          mkdir -p "$work"
+          dotnet new install "artifacts/nuget/Oadm.Plugin.Templates.$version.nupkg" --debug:custom-hive "$work/hive"
+          for kind in task page action; do
+            (
+              cd "$work"
+              dotnet new "oadm-$kind" -n "Check${kind^}" --debug:custom-hive "$work/hive"
+              cd "Check${kind^}"
+              printf '<configuration><packageSources><add key="local" value="%s" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>\n' \
+                "$GITHUB_WORKSPACE/artifacts/nuget" > nuget.config
+              dotnet build
+              dotnet test --no-build
+              test -f ".oadm/plugins/community.check-$kind/plugin.json"
+            )
+          done
+
+      - name: NuGet login (Trusted Publishing)
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push "artifacts/nuget/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate

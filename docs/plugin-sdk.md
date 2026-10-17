@@ -2,7 +2,8 @@
 
 Goal: anyone with the .NET SDK creates, builds, runs, debugs, tests and ships an OADM plugin without a checkout of this
 repository, with any editor, on Windows, Linux and macOS. Everything is built from this repository and published with
-each release; the repository stays the single source (decision 2026-10-17).
+each release; the repository stays the single source (decision 2026-10-17). User guide: website
+`dev/plugin-sdk.md` (Developers > Develop with the .NET SDK).
 
 Reference: Milestone's MIP SDK (XProtect plugins, same architecture: one folder per plugin, loaded by the server and the
 clients). It ships NuGet packages and Visual Studio templates, but leaves deploy and debugging to the developer: a
@@ -17,59 +18,88 @@ those steps.
 dotnet new install Oadm.Plugin.Templates
 dotnet new oadm-page -n DoorOverview          # or oadm-task, oadm-action
 cd DoorOverview
-oadm dev start                                # a portable OADM server on this machine, own data folder
-dotnet build                                  # builds and deploys into the dev server
-F5                                            # server (and client) with the plugin from the build output
+dotnet tool restore                           # the oadm tool of the same version (.config/dotnet-tools.json)
+dotnet build                                  # the plugin folder .oadm/plugins/<id>/
 dotnet test                                   # tests with Oadm.Sdk.Testing
-oadm deploy --installed                       # into the installed OADM (one admin prompt), service restarted
-oadm pack                                     # DoorOverview-1.0.0.oadmplugin for customers
+dotnet oadm dev start                         # a portable OADM server here, own data; restarts after a build
+dotnet oadm dev client                        # the client against it, with the plugin
+dotnet oadm deploy --installed                # into the installed OADM (one admin prompt), service restarted
+dotnet oadm pack                              # acme.door-overview-1.0.0.oadmplugin for customers
 ```
 
-## Packages (nuget.org, published by the release workflow)
+## Packages (nuget.org, job `nuget` of the release workflow)
 
 | Package | From | Contents |
 |---|---|---|
 | `Oadm.Sdk` | `src/Oadm.Sdk` | The server part of the SDK |
-| `Oadm.Sdk.Client` | `src/Oadm.Sdk.Client` | Dialogs, pages, toolbar, shared controls; names the client's exact Avalonia version |
-| `Oadm.Sdk.Testing` | `src/Oadm.Sdk.Testing` (new, from `tests/Shared`) | `StepRun`, fake devices and VAPIX, headless page setup |
-| `Oadm.Plugin.Sdk` | `src/Oadm.Plugin.Sdk` (new) | MSBuild project SDK: `<Project Sdk="Oadm.Plugin.Sdk/x.y.z">` |
-| `Oadm.Plugin.Templates` | `templates/` (new, generated from `samples/`) | `dotnet new oadm-task`, `oadm-page`, `oadm-action`, each with tests |
-| `Oadm.Tools` | `tools/Oadm.Tools` (new, takes over `Oadm.LicenseTool`) | The `oadm` command (`dotnet tool install -g Oadm.Tools`) |
+| `Oadm.Sdk.Client` | `src/Oadm.Sdk.Client` | Dialogs, pages, toolbar, shared controls; depends on the client's Avalonia and MVVM toolkit versions |
+| `Oadm.Sdk.Testing` | `src/Oadm.Sdk.Testing` | `StepRun` (formerly `tests/Shared`), `FakeCamera`, `FakeDevice`, `FakeSettings`, `FakeTaskContext`, `FakeActionContext`, `FakeCoreContext` |
+| `Oadm.Plugin.Sdk` | `src/Oadm.Plugin.Sdk` | MSBuild project SDK: `<Project Sdk="Oadm.Plugin.Sdk/x.y.z">` (`Sdk/`, `targets/`; not `build/`, NuGet would import it into every referencing project) |
+| `Oadm.Plugin.Templates` | `templates/` + content generated from `samples/` | `dotnet new oadm-task`, `oadm-page`, `oadm-action`, each with tests |
+| `Oadm.Tools` | `tools/Oadm.Tools` (took over `Oadm.LicenseTool`) | The `oadm` command |
 
-Versions follow `SdkInfo.Version`; the packages and `minSdkVersion` agree by construction. Published through NuGet
-Trusted Publishing (no key in GitHub).
+All six carry the release version (`manage package nuget --version`). `minSdkVersion` is the SDK contract version
+(`SdkInfo.Version`, today 0.1.0), written by the project SDK. Published through NuGet Trusted Publishing (`NuGet/login`:
+the job's OIDC token for a one-hour key; repository variable `NUGET_USER` and a trusted publishing policy on nuget.org;
+without the variable the job is skipped). Before the push the job creates every template, builds it and runs its tests
+against the packed packages.
 
 ### Oadm.Plugin.Sdk
 
-- Target framework, references to `Oadm.Sdk` / `Oadm.Sdk.Client` without copying them into the output (the host has them).
-- `plugin.json` written from the project: `OadmPluginId`, `Version`, `OadmDisplayName`, `Description`,
-  `OadmEnabledByDefault`, `minSdkVersion` from the referenced SDK, optional license (`OadmLicensePublicKey`,
-  `OadmLicenseFeatures`, `OadmLicenseTrialDays`).
-- Output names `<Name>.Server.dll` / `<Name>.Client.dll`; the plugin folder layout in the build output.
-- After a build: deploy into the dev server (when it runs), `oadm pack` layout on publish.
+- `targets/Oadm.Plugin.props` (before the project): the part from the project name (`X` = server, `X.Client` = client;
+  `OadmPluginPart` overrides), `AssemblyName` `X.Server` / `X.Client` (set before the .NET SDK defaults it), RootNamespace
+  = project name, net10.0, nullable, implicit usings, `EnableDynamicLoading`, compiled bindings for the client; references
+  `Oadm.Sdk` (+ `Oadm.Sdk.Client`, Avalonia, CommunityToolkit.Mvvm for the client) with `ExcludeAssets=runtime`.
+- `targets/Oadm.Plugin.targets` (after the project): `plugin.json` copied when the project has one, else written by the
+  server part to `obj/oadm/plugin.json` from `OadmPluginId`, `Version`, `OadmDisplayName` (default the project name),
+  `OadmDescription`, `OadmEnabledByDefault` (default true), `OadmLicensePublicKey`, `OadmLicenseFeatures` ("a;b"),
+  `OadmLicenseTrialDays`, and `minSdkVersion`; host packages (Avalonia, DataGrid, WebView, MVVM toolkit) never copied,
+  `Avalonia.Controls.DataGrid` without a version gets the host's; after every build the output goes to
+  `$(OadmDeployRoot)<id>/` (default `../.oadm/plugins/`, the templates set `.oadm/plugins/` of the solution folder;
+  `OadmSkipPluginDeploy` skips it).
+- `targets/Oadm.Plugin.Versions.props`: the host's versions (SDK contract, target framework, Avalonia, DataGrid, MVVM
+  toolkit); `PluginSdkTests` compares them with `SdkInfo.Version` and `Oadm.Client.csproj`.
+- In this repository the samples and the plugins of `manage new` import the same files through `Oadm.Plugin.Repo.props`
+  / `.targets` (`OadmSdkFromSource`: project references to `src/`, deploy to `artifacts/plugins/`); the samples skip the
+  deploy. So a template differs from its sample only in the Sdk attribute and the package references.
+
+### Templates
+
+`tools/Oadm.NewPlugin --templates <folder> --version <v>` (`Templates.cs`, run by `manage package nuget` into
+`artifacts/templates`) writes one template per sample: the projects without the `Oadm.Samples.` prefix (sourceName =
+the sample name), the plugin parts on `Oadm.Plugin.Sdk/<v>`, the SDK project references of the tests as package
+references of `<v>`, a `.slnx`, `Directory.Build.props` (net10.0, `OadmDeployRoot`), `.gitignore` (bin, obj, .oadm),
+`.config/dotnet-tools.json` (oadm.tools `<v>`), a README; symbols `id` (default `community.<name in kebab case>`) and
+`displayName` (default the name). Never edited by hand. The tutorials show the samples' code transformed the same way
+(`website/src/components/templateCode.ts`).
 
 ## The `oadm` tool
 
 | Command | What it does |
 |---|---|
-| `oadm dev start / stop / status / logs` | Downloads the portable OADM server and client matching the SDK once (cached), runs the server in console mode with a dev data folder, creates the first administrator, prints the address and login |
-| `oadm dev client [--fake]` | Starts the client against the dev server (or in fake mode for pages without cameras) |
-| `oadm deploy` | Into the dev server: copy, restart |
-| `oadm deploy --installed` | Into the installed OADM: one admin prompt (UAC / sudo), stop the service, copy into its plugin folder, remove the "downloaded from the internet" mark, start the service; the client part into the installed client's plugin folder |
-| `oadm debug --installed` | Stops the installed service and starts the installed server in console mode with the service's data folder and the plugin from the build output (`--Oadm:PluginDir`), so F5 / breakpoints work; starts the service again when it ends |
-| `oadm attach` | Finds the server process and prints the steps for Visual Studio, Rider and VS Code |
-| `oadm watch` | Rebuild on change, restart the dev server |
-| `oadm pack` | The `.oadmplugin` file (ZIP of the plugin folder) |
-| `oadm license keys / sign` | Vendor keys and license keys (today `manage license`) |
-| `oadm doctor` | .NET SDK, SDK and OADM versions, ports, service state, locked files, rights |
+| `oadm dev start [--port 5090] [--from <folder or ZIP>] [--server-version v]` | The portable server of the tool's release (downloaded once from the GitHub release, checked against `SHA256SUMS.txt`, cached in `<LocalApplicationData>/Oadm/dev-cache/<version>/`) in this terminal: `--Oadm:DataDir=.oadm/server-data`, `--Oadm:ListenUrl=https://localhost:5090`, `--Oadm:PluginDir=` every `.oadm/plugins/*`; state in `.oadm/dev-server.json`. A build that changes the files the server loads (not `*.Client.*`; compared by name, size and time after 2.5 s of quiet) restarts it. The first administrator is created in the client (loopback, no setup code) |
+| `oadm dev client [--port] [--from] [--client-version]` | The portable client: `--server localhost:<port>`, `--data .oadm/client-data`, `--plugin-dir` per plugin folder. No fake mode: the fake server lists only the bundled plugins |
+| `oadm dev stop / status / logs [--lines 50]` | Ends the server of `.oadm/dev-server.json`, its state, the tail of its log |
+| `oadm deploy --installed [--plugin <id>]` | The client part into this user's client plugin folder (no admin rights), then elevated (Windows `runas`, output through a log file; Unix `sudo`): service stopped, plugin copied into the server's plugin folder (Unix: root, `go-w`), download mark removed (Zone.Identifier, quarantine), service started |
+| `oadm deploy --to <folder>` | Copies the plugin folders into any plugin folder |
+| `oadm debug --installed` | Elevated: service stopped, the installed server run in the console with the service's arguments and environment plus `--Oadm:PluginDir`; service started again when it ends (Ctrl+C) |
+| `oadm folders` | The workspace's, the installed server's and client's folders |
+| `oadm pack [--out] [--configuration Release]` | A build into a temporary `OadmDeployRoot`, one `<id>-<version>.oadmplugin` (ZIP of the plugin folder) per plugin |
+| `oadm license keys / sign` | Vendor keys and license keys (`manage license` runs these) |
+| `oadm doctor` | .NET 10 SDK, the built plugins, the development server and port, the cache, the installed server and client |
 
-Paths are never guessed: the tool asks the installed server and client where their folders are (`--print-folders`).
-
-## Debugging
-
-- Template launch profiles: "Server" (dev server, or the installed server through `oadm debug --installed`, with
-  `--Oadm:PluginDir=<build output>`) and "Client" (`--plugin-dir <build output> --server localhost:5080`).
-- The plugin runs in the debugged process, so breakpoints hit from the first line (no attach timing as in MIP).
+- **Paths are never guessed, and installed programs are never run to ask** (decision 2026-10-17, after an older
+  installed server without `--print-folders` started on the live data folder when asked): the service definition is read
+  from the service manager (`sc qc OadmServer`; `systemctl show oadm-server` ExecStart and Environment plus
+  `/etc/default/oadm-server`; the LaunchDaemon plist through `plutil`) and the data folder follows the server's own
+  rules (`--Oadm:DataDir`, env `Oadm__DataDir`, `appsettings.json`, env `OADM_DATA_DIR`); the client keeps the user's
+  plugins in `<LocalApplicationData>/Oadm/plugins`. `--print-folders` stays for people and support.
+- `deploy --installed` and `debug --installed` refuse an installed OADM older than the tool (Windows reads the file
+  version; Linux and macOS only warn).
+- The workspace is the nearest folder upward with `.oadm/`, else with a solution file.
+- Debugging: attach to `Oadm.Server` / `Oadm.Client`; both load the plugin's main assembly from memory with its pdb, so
+  breakpoints hit and builds never meet a locked file. No `watch` or `attach` commands: `dev start` restarts by itself,
+  attaching is the IDE's.
 
 ## What OADM adds
 
@@ -80,12 +110,13 @@ Paths are never guessed: the tool asks the installed server and client where the
 2. Done: portable archives in every release, `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip`
    (the publish folders with their plugins, one top folder named like the file; job `installers`, in `SHA256SUMS.txt`).
 3. Done: `Oadm.Server --print-folders` and `Oadm.Client --print-folders` print JSON and exit (nothing opened or
-   created): app, version, app folder, data folder, logs, `deployFolder` (server: the data folder's plugins; client: the
-   user's plugins folder, no admin rights), `pluginFolders` in load order, `developmentPluginFolder`, `pluginDirs`, and for
-   the server `service` {name, manager}. The tool reads the service's arguments and environment from the service manager
-   and runs the installed server with them, so the answer is the service's own folders.
-4. `src/Oadm.Sdk.Testing`, `src/Oadm.Plugin.Sdk`, `templates/`, `tools/Oadm.Tools`.
-5. Release workflow job `nuget`: pack and publish the six packages with the tag.
-6. Developer docs: the NuGet way first, the repository checkout second; the tutorials keep their code from `samples/`.
+   created): app, version, app folder, data folder, logs, `deployFolder`, `pluginFolders` in load order,
+   `developmentPluginFolder`, `pluginDirs`, and for the server `service` {name, manager}.
+4. Done: `src/Oadm.Sdk.Testing`, `src/Oadm.Plugin.Sdk`, `templates/`, `tools/Oadm.Tools`.
+5. Done: release workflow job `nuget`.
+6. Done: developer docs, the NuGet way first, the repository checkout second; the tutorials keep their code from `samples/`.
+7. Done: shared assemblies (`Oadm.Sdk`, `Oadm.Sdk.Client`, Avalonia, `Microsoft.Extensions.*`, ...) resolve to the host's
+   copy whatever version a plugin asks for (`PluginLoadContext.FromHost`), so a plugin built with the packages of another
+   release loads when its `minSdkVersion` fits.
 
 Later: installing a `.oadmplugin` from the Plugins page.

@@ -27,6 +27,7 @@ On the first `run dev`, confirm the fingerprint, then create the first administr
 | `manage publish [all\|server\|client] [--rid RID]` | Self-contained apps in `artifacts/publish/` |
 | `manage package <windows\|linux\|macos>` | Installer in `artifacts/packages/` |
 | `manage new <task\|page\|action> --name NAME` | A new plugin from a tutorial, under your name, ready to build and run |
+| `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget` (SDK, test helpers, project SDK, templates, the `oadm` command) |
 | `manage build docs` | The SDK reference of this website, for the local docs server |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` |
 
