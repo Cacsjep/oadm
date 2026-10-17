@@ -320,10 +320,25 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     private void AddThreshold()
     {
         var last = Thresholds.Count == 0 ? 0 : (FieldValues.TryNumber(Thresholds[^1].ValueText, out var n) ? n : 0);
-        Thresholds.Add(new ThresholdRow(this, (last + 10).ToString(CultureInfo.InvariantCulture), ColorOptions.First(c => c.Name == "Amber")));
+        Thresholds.Add(new ThresholdRow(this, (last + 10).ToString(CultureInfo.InvariantCulture), ColorNamed(NextThresholdColor())));
         AddThresholdCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanAddThreshold));
         Apply();
+    }
+
+    /// <summary>The order new thresholds take their color in: warning colors first, then the rest.</summary>
+    public static readonly IReadOnlyList<string> ThresholdColorOrder =
+        ["Amber", "Red", "Orange", "Green", "Blue", "Teal", "Pink", "Violet", "Ok", "Warning", "Error"];
+
+    /// <summary>
+    /// The color of a new threshold: the first of <see cref="ThresholdColorOrder"/> that neither another threshold nor the
+    /// widget itself uses; when all are taken, the one used least.
+    /// </summary>
+    internal string NextThresholdColor()
+    {
+        var used = Thresholds.Select(t => t.Color.Name).Append(Color.Name).ToList();
+        return ThresholdColorOrder.FirstOrDefault(c => !used.Contains(c))
+            ?? ThresholdColorOrder.OrderBy(c => used.Count(u => u == c)).First();
     }
 
     internal void RemoveThreshold(ThresholdRow row)

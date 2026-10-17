@@ -84,7 +84,7 @@ public sealed class GaugeView : Control
         var top = Math.Round((height - (radius * 1.5 + gap * 1.5 + labelHeight * 1.5)) / 2);
         var center = new Point(Math.Round(width / 2), Math.Round(top + gap + labelHeight + radius));
 
-        var band = Math.Max(2, Math.Round(radius * 0.035));
+        var band = Math.Max(1, Math.Round(radius * 0.0175)); // a thin arc: the ticks carry the color
         var tickOuter = radius - band - Math.Max(2, Math.Round(radius * 0.03));
         var major = Math.Max(4, radius * 0.13);
         var minorLength = Math.Max(2, radius * 0.065);

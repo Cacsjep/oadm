@@ -201,6 +201,21 @@ public sealed class DashboardsPageTests
             editor.Thresholds[0].ValueText = "30";
             Assert.Equal([new Threshold(30, "Amber")], widget.Widget.Thresholds);
 
+            // Each new threshold takes a color nobody uses yet (not the widget's either), warning colors first.
+            editor.AddThresholdCommand.Execute(null);
+            editor.AddThresholdCommand.Execute(null);
+            Assert.Equal(["Amber", "Red", "Orange"], editor.Thresholds.Select(t => t.Color.Name));
+            editor.Color = editor.Colors.First(c => c.Name == "Green");
+            editor.AddThresholdCommand.Execute(null);
+            Assert.Equal("Blue", editor.Thresholds[^1].Color.Name); // Green is the widget's own
+            while (editor.Thresholds.Count > 1)
+            {
+                editor.Thresholds[^1].RemoveCommand.Execute(null);
+            }
+
+            editor.Color = editor.Colors.First(c => c.Name == "Text");
+            Assert.Equal([new Threshold(30, "Amber")], widget.Widget.Thresholds);
+
             // Gauge: the Number settings stay, Min and Max are its own; a gauge in the text color starts in the accent.
             Assert.Equal("Text", widget.Widget.Color);
             editor.SelectedKind = editor.Kinds.First(k => k.Value == WidgetKind.Gauge);
