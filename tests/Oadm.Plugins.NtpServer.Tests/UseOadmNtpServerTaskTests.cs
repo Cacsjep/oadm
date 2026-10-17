@@ -6,7 +6,7 @@ using Oadm.Core.Plugins;
 using Oadm.Plugins.DateAndTime.Tests;
 using Oadm.Plugins.NtpServer.Tasks;
 using Oadm.Sdk.Plugins;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.NtpServer.Tests;
 

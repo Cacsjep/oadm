@@ -6,7 +6,7 @@ using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 using Xunit.Abstractions;
 

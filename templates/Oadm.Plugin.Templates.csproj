@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The NuGet package Oadm.Plugin.Templates: dotnet new oadm-task, oadm-page, oadm-action. The content is generated from
+    samples/ before packing ("manage package nuget", tools/Oadm.NewPlugin/Templates.cs) and
+    passed as OadmTemplatesContent; nothing here is edited by hand. Not in Oadm.sln. Spec: docs/plugin-sdk.md.
+  -->
+  <PropertyGroup>
+    <PackageType>Template</PackageType>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <Description>Templates for OADM plugins: a task with a dialog, a page, an event rule action, each with its tests.</Description>
+    <PackageTags>oadm;axis;plugin;dotnet-new;templates</PackageTags>
+    <OadmTemplatesContent Condition="'$(OadmTemplatesContent)' == ''">$(MSBuildThisFileDirectory)..\artifacts\templates\</OadmTemplatesContent>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="$(OadmTemplatesContent)**\*" PackagePath="content\%(RecursiveDir)%(Filename)%(Extension)" Pack="true" />
+  </ItemGroup>
+
+  <Target Name="OadmCheckTemplates" BeforeTargets="GenerateNuspec">
+    <Error Condition="!Exists('$(OadmTemplatesContent)oadm-task\.template.config\template.json')"
+           Text="No templates in $(OadmTemplatesContent). Run: manage package nuget" />
+  </Target>
+</Project>

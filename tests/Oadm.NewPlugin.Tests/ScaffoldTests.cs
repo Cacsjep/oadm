@@ -48,19 +48,20 @@ public sealed class ScaffoldTests : IDisposable
             Assert.DoesNotContain(sample.Name, Path.GetFileName(file), StringComparison.Ordinal);
         }
 
-        var plugin = File.ReadAllText(Path.Combine(_repo, "plugins", "Oadm.Plugins.MyCoolPlugin", "plugin.json"));
-        Assert.Contains("\"id\": \"community.my-cool-plugin\"", plugin, StringComparison.Ordinal);
+        var plugin = File.ReadAllText(Path.Combine(_repo, "plugins", "Oadm.Plugins.MyCoolPlugin", "Oadm.Plugins.MyCoolPlugin.csproj"));
+        Assert.Contains("<OadmPluginId>community.my-cool-plugin</OadmPluginId>", plugin, StringComparison.Ordinal);
+        Assert.Contains("Oadm.Plugin.Repo.props", File.ReadAllText(Path.Combine(_repo, "plugins", "Oadm.Plugins.MyCoolPlugin", "Directory.Build.props")), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void The_test_project_points_to_the_new_plugin_and_the_shared_test_code()
+    public void The_test_project_points_to_the_new_plugin_and_the_test_helpers()
     {
         Scaffold.Create(_repo, Scaffold.Samples.Single(s => s.Kind == "task"), Scaffold.Names("My cool plugin", "acme.cool"));
 
         var tests = File.ReadAllText(Path.Combine(_repo, "tests", "Oadm.Plugins.MyCoolPlugin.Tests", "Oadm.Plugins.MyCoolPlugin.Tests.csproj"));
         Assert.Contains(@"..\..\plugins\Oadm.Plugins.MyCoolPlugin\Oadm.Plugins.MyCoolPlugin.csproj", tests, StringComparison.Ordinal);
-        Assert.Contains(@"..\Shared\StepRun.cs", tests, StringComparison.Ordinal);
-        Assert.Contains("acme.cool", File.ReadAllText(Path.Combine(_repo, "plugins", "Oadm.Plugins.MyCoolPlugin", "plugin.json")), StringComparison.Ordinal);
+        Assert.Contains(@"..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj", tests, StringComparison.Ordinal);
+        Assert.Contains("acme.cool", File.ReadAllText(Path.Combine(_repo, "plugins", "Oadm.Plugins.MyCoolPlugin", "Oadm.Plugins.MyCoolPlugin.csproj")), StringComparison.Ordinal);
     }
 
     [Fact]

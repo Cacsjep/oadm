@@ -1,0 +1,4 @@
+<Project>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="..\targets\Oadm.Plugin.targets" />
+</Project>

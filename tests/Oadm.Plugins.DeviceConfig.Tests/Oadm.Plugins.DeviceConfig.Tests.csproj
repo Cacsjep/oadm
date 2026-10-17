@@ -37,7 +37,7 @@
     <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
     <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
     <!-- The engine's step end rules for step assertions. -->
-    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using Oadm.Samples.FirmwareOverview.Client;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Samples.FirmwareOverview.Tests;
 
@@ -87,9 +88,9 @@ public sealed class FirmwareOverviewTests
         var server = new FakeCoreContext();
         foreach (var (address, status, version) in devices)
         {
-            var device = new FakeDevice(address, status);
-            server.DeviceList.Add(device);
-            server.Cameras[device.Id] = new FakeCamera(version);
+            var camera = new FakeCamera();
+            camera.Info = camera.Info with { Version = version };
+            server.Add(new FakeDevice { Address = address, Status = status }, camera);
         }
 
         var plugin = new FirmwareOverviewPlugin();

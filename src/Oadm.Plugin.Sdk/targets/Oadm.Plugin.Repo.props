@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    The plugin project SDK from source, for plugin projects inside this repository (samples/, plugins made with
+    "manage new"): project references to src/ instead of the NuGet packages, the plugin folder in artifacts/plugins/.
+    Imported by a Directory.Build.props; test projects (*.Tests) are left alone.
+  -->
+  <PropertyGroup>
+    <OadmSdkFromSource>true</OadmSdkFromSource>
+    <OadmRepoRoot Condition="'$(OadmRepoRoot)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', '..'))</OadmRepoRoot>
+    <OadmDeployRoot Condition="'$(OadmDeployRoot)' == ''">$([MSBuild]::NormalizeDirectory('$(OadmRepoRoot)', 'artifacts', 'plugins'))</OadmDeployRoot>
+    <_OadmPluginProject Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">true</_OadmPluginProject>
+  </PropertyGroup>
+  <Import Project="Oadm.Plugin.props" Condition="'$(_OadmPluginProject)' == 'true'" />
+</Project>

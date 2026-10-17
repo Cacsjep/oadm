@@ -15,7 +15,7 @@
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
     <ProjectReference Include="..\Oadm.Samples.UpnpName\Oadm.Samples.UpnpName.csproj" />
-    <!-- Runs a task like the server's task engine ends it: success adds "Completed", a failure skips the rest. -->
-    <Compile Include="..\..\tests\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+    <!-- StepRun, a fake camera, device and the server's task context (NuGet: Oadm.Sdk.Testing). -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
   </ItemGroup>
 </Project>

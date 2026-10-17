@@ -1,14 +1,14 @@
 using Oadm.Sdk.Plugins;
 
-namespace Oadm.Tests.Shared;
+namespace Oadm.Sdk.Testing;
 
 /// <summary>
-/// Runs a task plugin against a <see cref="TaskStepList"/> exactly like the server's task engine ends it
-/// (linked into the plugin test projects): success closes the list, an exception fails the current step
-/// and skips the pending ones, then is rethrown.
+/// Runs a task plugin against a <see cref="TaskStepList"/> exactly like the server's task engine ends it: success closes
+/// the list (the final step "Completed"), an exception fails the current step and skips the pending ones, then is rethrown.
 /// </summary>
-internal static class StepRun
+public static class StepRun
 {
+    /// <summary>Runs <paramref name="execute"/> and ends <paramref name="steps"/> like the engine.</summary>
     public static async Task RunAsync(TaskStepList steps, Func<Task> execute)
     {
         ArgumentNullException.ThrowIfNull(steps);

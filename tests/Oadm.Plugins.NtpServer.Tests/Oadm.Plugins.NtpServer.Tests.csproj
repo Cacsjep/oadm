@@ -30,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <!-- The stateful fake camera (recorded 10.0.0.48 NTP answers) of the Date and time tests: the task reuses that plugin's requests. -->
     <Compile Include="..\Oadm.Plugins.DateTime.Tests\Fakes.cs" Link="DateTime\Fakes.cs" />
     <None Include="..\Oadm.Plugins.DateTime.Tests\Fixtures\*" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

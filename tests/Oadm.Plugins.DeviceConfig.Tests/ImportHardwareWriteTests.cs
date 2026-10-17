@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 
 using Oadm.Core.Vapix;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.DeviceConfig.Tests;
 

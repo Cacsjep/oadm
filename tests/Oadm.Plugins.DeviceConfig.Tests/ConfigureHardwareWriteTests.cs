@@ -4,7 +4,7 @@ using System.Net;
 using Oadm.Core.Tests.Hardware;
 using Oadm.Core.Vapix;
 using Oadm.Plugins.DeviceConfig.Configure;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 using Xunit.Abstractions;
 

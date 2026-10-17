@@ -17,6 +17,8 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj" />
+    <!-- A fake camera, device and the server's plugin contexts (NuGet: Oadm.Sdk.Testing). -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\Oadm.Samples.FirmwareOverview\Oadm.Samples.FirmwareOverview.csproj" />
     <ProjectReference Include="..\Oadm.Samples.FirmwareOverview.Client\Oadm.Samples.FirmwareOverview.Client.csproj" />
   </ItemGroup>

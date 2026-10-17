@@ -32,6 +32,6 @@
 
   <ItemGroup>
     <!-- Runs plugins against a step list the way the task engine does. -->
-    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
   </ItemGroup>
 </Project>

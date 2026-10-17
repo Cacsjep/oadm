@@ -25,7 +25,7 @@
     <None Include="Fixtures\*.json;Fixtures\*.xml;Fixtures\*.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Oadm.Plugins.DateTime.Tests\Fixtures\time-service-getDateTimeInfo-P3265-V-12.11.json" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Runs plugins against a step list the way the task engine does. -->
-    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

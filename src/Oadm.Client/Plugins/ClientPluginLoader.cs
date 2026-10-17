@@ -151,7 +151,8 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
 
                 var context = new PluginLoadContext(dll);
                 _contexts.Add(context);
-                Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
+                // From memory: the file stays replaceable, so a plugin build can overwrite it while the client runs.
+                Assembly assembly = context.LoadWithoutLock(Path.GetFullPath(dll));
 
                 foreach (Type type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
                 {
@@ -242,13 +243,54 @@ internal sealed class PluginLoadContext(string pluginPath)
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (assemblyName.Name is null || IsShared(assemblyName.Name))
+        if (assemblyName.Name is null)
         {
             return null;
         }
 
+        if (IsShared(assemblyName.Name))
+        {
+            return FromHost(assemblyName);
+        }
+
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
         return path is null ? null : LoadFromAssemblyPath(path);
+    }
+
+    /// <summary>Loads the plugin's main assembly (and its .pdb) from memory, so the file is not locked.</summary>
+    public Assembly LoadWithoutLock(string assemblyPath)
+    {
+        using var assembly = new MemoryStream(File.ReadAllBytes(assemblyPath));
+        string pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
+        if (!File.Exists(pdbPath))
+        {
+            return LoadFromStream(assembly);
+        }
+
+        using var symbols = new MemoryStream(File.ReadAllBytes(pdbPath));
+        return LoadFromStream(assembly, symbols);
+    }
+
+    /// <summary>
+    /// The host's copy of a shared assembly whatever version the plugin was built against (a plugin built with the SDK
+    /// packages of a newer release still loads; plugin.json minSdkVersion decides), like the server's PluginLoadContext.
+    /// </summary>
+    internal static Assembly? FromHost(AssemblyName assemblyName)
+    {
+        var loaded = Default.Assemblies.FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
+        if (loaded is not null)
+        {
+            return loaded;
+        }
+
+        try
+        {
+            return Default.LoadFromAssemblyName(new AssemblyName(assemblyName.Name!));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+        {
+            return null;
+        }
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)

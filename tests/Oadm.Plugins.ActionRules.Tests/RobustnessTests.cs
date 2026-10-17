@@ -3,7 +3,7 @@ using System.Text;
 
 using Oadm.Plugins.ActionRules.Device;
 using Oadm.Plugins.ActionRules.Rules;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.ActionRules.Tests;
 

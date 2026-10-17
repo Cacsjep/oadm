@@ -6,7 +6,7 @@ using System.Text.Json;
 using Oadm.Plugins.Acap.Client;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 using Xunit.Abstractions;
 

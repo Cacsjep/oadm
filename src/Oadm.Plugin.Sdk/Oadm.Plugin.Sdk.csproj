@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The NuGet package Oadm.Plugin.Sdk: an MSBuild project SDK (<Project Sdk="Oadm.Plugin.Sdk/x.y.z">) made of Sdk/ and targets/ (not build/: NuGet would import build/<id>.props into every project that references it).
+    No code. Packing writes Sdk/Oadm.Plugin.Package.props with the package version, so a plugin references the
+    Oadm.Sdk packages of the same release. Spec: docs/plugin-sdk.md.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageType>MSBuildSdk</PackageType>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <Description>MSBuild project SDK for OADM plugins: references, plugin.json and the plugin folder.</Description>
+    <PackageTags>oadm;axis;plugin;msbuild-sdk</PackageTags>
+    <_OadmPackageProps>$(BaseIntermediateOutputPath)Oadm.Plugin.Package.props</_OadmPackageProps>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="Sdk\*" Pack="true" PackagePath="Sdk\%(Filename)%(Extension)" />
+    <!-- Oadm.Plugin.Repo.* are for plugins inside this repository only. -->
+    <None Update="targets\Oadm.Plugin.props;targets\Oadm.Plugin.targets;targets\Oadm.Plugin.Versions.props" Pack="true" PackagePath="targets\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="OadmWritePackageProps" BeforeTargets="GenerateNuspec;_GetPackageFiles">
+    <WriteLinesToFile File="$(_OadmPackageProps)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="&lt;Project&gt;&lt;PropertyGroup&gt;&lt;OadmSdkPackageVersion&gt;$(Version)&lt;/OadmSdkPackageVersion&gt;&lt;/PropertyGroup&gt;&lt;/Project&gt;" />
+    <ItemGroup>
+      <None Include="$(_OadmPackageProps)" Pack="true" PackagePath="Sdk\Oadm.Plugin.Package.props" />
+    </ItemGroup>
+  </Target>
+</Project>
