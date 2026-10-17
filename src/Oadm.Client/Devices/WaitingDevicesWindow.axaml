@@ -42,8 +42,8 @@
             <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="200" MinWidth="140" />
             <DataGridTextColumn Header="MAC address" Binding="{Binding MacAddress}" Width="130" MinWidth="120" />
             <DataGridTextColumn Header="Tags" Binding="{Binding TagsText}" Width="150" MinWidth="90" />
-            <DataGridTextColumn Header="Kept" Binding="{Binding KeptText}" Width="140" MinWidth="120" SortMemberPath="Device.Created" />
-            <DataGridTextColumn Header="Last try" Binding="{Binding LastTryText}" Width="140" MinWidth="120" />
+            <DataGridTextColumn Header="Kept" Binding="{Binding KeptText}" Width="140" MinWidth="120" SortMemberPath="KeptAt" />
+            <DataGridTextColumn Header="Last try" Binding="{Binding LastTryText}" Width="140" MinWidth="120" SortMemberPath="LastTryAt" />
             <DataGridTemplateColumn Header="Result" Width="*" MinWidth="220" SortMemberPath="ResultText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:WaitingRowViewModel">

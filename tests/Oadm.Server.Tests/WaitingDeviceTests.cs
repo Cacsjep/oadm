@@ -135,6 +135,40 @@ public sealed class WaitingDeviceTests
     }
 
     [Fact]
+    public async Task AnEntryRemovedWhileItIsTriedIsNotAdded()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.5.8", FakeSerials.Make(58), FilePassword);
+        await using var host = await TestServerHost.StartAsync(network);
+        await KeepAsync(host, Line("10.9.5.8"));
+        var store = host.Get<WaitingDeviceStore>();
+        var entry = Assert.Single(await store.ToTryAsync(null, includeLoginFailed: false, CancellationToken.None));
+
+        // The round read the entry; then the user removes it ("OADM stops trying to add them").
+        await Client(host).RemoveAsync(new Proto.WaitingIds { All = true });
+        var outcome = await host.Get<WaitingDeviceRunner>().TryOneAsync(entry, CancellationToken.None);
+
+        Assert.Equal(WaitingOutcomeKind.Changed, outcome.Kind);
+        Assert.Empty(await host.Get<DeviceRepository>().ListDevicesAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ALineWithASchemeLeavesTheListWhenItsDeviceIsAddedAnotherWay()
+    {
+        await using var host = await TestServerHost.StartAsync(new FakeAxisNetwork());
+        await KeepAsync(host, Line("https://10.9.5.60:8443"), Line("10.9.5.61"));
+        var store = host.Get<WaitingDeviceStore>();
+        var failed = (await store.ListAsync(null, 0, CancellationToken.None)).Items.Single(i => i.Address == "https://10.9.5.60:8443");
+        await store.RecordAsync([new WaitingResult(failed.Id, failed.CreatedUtc, "The user name or password is wrong.", LoginFailed: true)], CancellationToken.None);
+
+        // Stored as a device record stores it: host:port, no scheme. Its entry goes although its login failed.
+        await host.Get<DeviceRepository>().AddAsync(new Device { Serial = FakeSerials.Make(60), Address = "10.9.5.60:8443" }, CancellationToken.None);
+        await host.Get<WaitingDeviceRunner>().RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None);
+
+        Assert.Equal(["10.9.5.61"], (await Client(host).ListAsync(new Proto.ListWaitingRequest())).Devices.Select(d => d.Address));
+    }
+
+    [Fact]
     public async Task AnotherDeviceAtTheAddressGetsNoPasswordAndTheLineKeepsWaiting()
     {
         var network = new FakeAxisNetwork();

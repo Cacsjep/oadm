@@ -74,14 +74,14 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
         Assert.Equal(3, vm.Rows.Count);
         Assert.Equal("3 of 6 devices", vm.CountText);
         await vm.TryNowCommand.ExecuteAsync(null);
-        WaitingList after = await api.ListWaitingAsync(0, 0, CancellationToken.None);
+        WaitingList after = await api.ListWaitingAsync(null, 0, CancellationToken.None);
         Assert.Equal(3, after.Devices.Count(d => d.Tries == 1)); // only the shown ones
 
         vm.Selected.ReplaceAll([vm.Rows[0]]);
         Assert.Equal("Try 1 selected now", vm.TryNowTip);
         await vm.RemoveCommand.ExecuteAsync(null);
         await dialogs.Received(1).ConfirmAsync("Waiting devices", "Remove 10.99.0.1 from the waiting list? OADM stops trying to add them.", "Remove");
-        Assert.Equal(5, (await api.ListWaitingAsync(0, 0, CancellationToken.None)).TotalCount);
+        Assert.Equal(5, (await api.ListWaitingAsync(null, 0, CancellationToken.None)).TotalCount);
         Assert.Equal(2, vm.Rows.Count);
 
         vm.SearchText = "";
@@ -100,7 +100,7 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
     {
         IOadmApi api = Substitute.For<IOadmApi>();
         int calls = 0;
-        api.ListWaitingAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        api.ListWaitingAsync(Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(async call =>
         {
             if (Interlocked.Increment(ref calls) == 1)
             {
@@ -146,7 +146,7 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
         Assert.Equal("Checking: 2 left", vm.ScheduleText);
 
         // The round ends: the list is read again with the results.
-        await TestSupport.WaitUntilAsync(() => !api.ListWaitingAsync(0, 0, CancellationToken.None).Result.Devices.Any(d => d.Checking));
+        await TestSupport.WaitUntilAsync(() => !api.ListWaitingAsync(null, 0, CancellationToken.None).Result.Devices.Any(d => d.Checking));
         state.Apply(new WaitingSummary { Count = 4 });
         vm.OnRoundEnded();
         await TestSupport.WaitUntilAsync(() => vm.Rows.Count == 4 && !vm.Rows.Any(r => r.IsChecking) && vm.Rows[1].Device.Tries == 1);

@@ -91,9 +91,15 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
 
     public string SourceText => Device.Source;
 
-    public string KeptText => Device.Created?.ToDateTime().ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "";
+    /// <summary>When the line was kept (sort key of the Kept column).</summary>
+    public DateTime? KeptAt { get; } = device.Created?.ToDateTime().ToLocalTime();
 
-    public string LastTryText => Device.LastTry?.ToDateTime().ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "Not yet";
+    /// <summary>The last try (sort key of the Last try column); null before the first.</summary>
+    public DateTime? LastTryAt { get; } = device.LastTry?.ToDateTime().ToLocalTime();
+
+    public string KeptText => KeptAt?.ToString("g", CultureInfo.CurrentCulture) ?? "";
+
+    public string LastTryText => LastTryAt?.ToString("g", CultureInfo.CurrentCulture) ?? "Not yet";
 
     /// <summary>The server tries it now (or soon, after Try now): the chip spins like the add page's "Checking...".</summary>
     public bool IsChecking => Device.Checking;
@@ -189,19 +195,16 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            // Pages by cursor (address order): entries the server removes meanwhile never shift a page.
             var rows = new List<WaitingRowViewModel>();
-            int total;
+            string? after = null;
             do
             {
-                WaitingList page = await _api.ListWaitingAsync(rows.Count, PageSize, cts.Token).ConfigureAwait(true);
+                WaitingList page = await _api.ListWaitingAsync(after, PageSize, cts.Token).ConfigureAwait(true);
                 rows.AddRange(page.Devices.Select(d => new WaitingRowViewModel(d)));
-                total = page.TotalCount;
-                if (page.Devices.Count == 0)
-                {
-                    break;
-                }
+                after = page.NextAfter.Length > 0 && page.Devices.Count > 0 ? page.NextAfter : null;
             }
-            while (rows.Count < total);
+            while (after is not null);
 
             _all.Clear();
             _all.AddRange(rows);

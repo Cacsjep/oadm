@@ -14,7 +14,8 @@ service WaitingDeviceService {
   // RESOURCE_EXHAUSTED when the list would hold more than 30,000 devices (nothing is stored), INVALID_ARGUMENT for a
   // line without an address or with a login that is too long.
   rpc Add (AddWaitingRequest) returns (AddWaitingReply);
-  // A page in the order the lines were kept; limit 0 = all.
+  // A page in address order after the address `after` (empty: from the start); limit 0 = all. Read on with next_after
+  // until it is empty: a cursor, so entries removed meanwhile (a round adds devices) never make a page skip or repeat one.
   rpc List (ListWaitingRequest) returns (WaitingList);
   // The summary on subscribe and after every change, at most every second.
   rpc Watch (Empty) returns (stream WaitingSummary);
@@ -43,8 +44,9 @@ message AddWaitingReply {
 }
 
 message ListWaitingRequest {
-  int32 offset = 1;
+  reserved 1;                  // offset, before the cursor
   int32 limit = 2;
+  string after = 3;            // next_after of the page before
 }
 
 message WaitingDevice {
@@ -66,6 +68,7 @@ message WaitingDevice {
 message WaitingList {
   repeated WaitingDevice devices = 1;
   int32 total_count = 2;
+  string next_after = 3;       // empty: this was the last page
 }
 
 message WaitingIds {

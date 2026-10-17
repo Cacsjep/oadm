@@ -39,6 +39,14 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         return (await db.Devices.AsNoTracking().Select(d => d.Serial).ToListAsync(ct).ConfigureAwait(false)).ToHashSet(StringComparer.Ordinal);
     }
 
+    /// <summary>Address and serial of every device, without loading the rows (the waiting list's check per round).</summary>
+    public async Task<IReadOnlyList<(string Serial, string Address)>> ListAddressesAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.Devices.AsNoTracking().Select(d => new { d.Serial, d.Address }).ToListAsync(ct).ConfigureAwait(false);
+        return [.. rows.Select(r => (r.Serial, r.Address))];
+    }
+
     /// <summary>Number of managed devices.</summary>
     public async Task<int> CountAsync(CancellationToken ct)
     {

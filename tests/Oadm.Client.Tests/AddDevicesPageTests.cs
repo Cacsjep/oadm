@@ -408,7 +408,7 @@ public sealed class AddDevicesPageTests : IDisposable
         WaitingLine kept = _api.KeptWaitingLines[0];
         Assert.Equal(("root", "File-Pass-1"), (kept.UserName, kept.Password)); // the line's login goes along, to the server only
         Assert.Equal(["Building A", "PTZ"], kept.Tags);
-        WaitingList list = await _api.ListWaitingAsync(0, 0, CancellationToken.None);
+        WaitingList list = await _api.ListWaitingAsync(null, 0, CancellationToken.None);
         Assert.Equal("Import from file site.csv", list.Devices[0].Source);
 
         // The same file again: the lines that still do not answer say they are waiting already and are not kept twice.

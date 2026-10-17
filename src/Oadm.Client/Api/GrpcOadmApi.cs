@@ -175,8 +175,8 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         return await C.Waiting.AddAsync(request, cancellationToken: ct);
     }
 
-    public async Task<WaitingList> ListWaitingAsync(int offset, int limit, CancellationToken ct) =>
-        await C.Waiting.ListAsync(new ListWaitingRequest { Offset = offset, Limit = limit }, cancellationToken: ct);
+    public async Task<WaitingList> ListWaitingAsync(string? after, int limit, CancellationToken ct) =>
+        await C.Waiting.ListAsync(new ListWaitingRequest { After = after ?? "", Limit = limit }, cancellationToken: ct);
 
     public IAsyncEnumerable<WaitingSummary> WatchWaitingAsync(CancellationToken ct) =>
         ReadAll(C.Waiting.Watch(new Empty(), cancellationToken: ct), ct);

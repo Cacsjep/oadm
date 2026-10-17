@@ -70,16 +70,25 @@ public sealed partial class FakeOadmApi
         }
     }
 
-    public Task<WaitingList> ListWaitingAsync(int offset, int limit, CancellationToken ct)
+    public Task<WaitingList> ListWaitingAsync(string? after, int limit, CancellationToken ct)
     {
         lock (_gate)
         {
             ThrowIfOffline();
-            var list = new WaitingList { TotalCount = _waiting.Count };
-            list.Devices.AddRange(_waiting.Skip(Math.Max(0, offset)).Take(limit <= 0 ? int.MaxValue : limit).Select(w => w.Clone()));
+            // Like the server: address order (upper case), a cursor instead of an offset.
+            int take = limit <= 0 ? int.MaxValue : limit;
+            List<WaitingDevice> page = _waiting
+                .Where(w => string.IsNullOrEmpty(after) || string.CompareOrdinal(WaitingKey(w), after) > 0)
+                .OrderBy(WaitingKey, StringComparer.Ordinal)
+                .Take(take)
+                .ToList();
+            var list = new WaitingList { TotalCount = _waiting.Count, NextAfter = page.Count == take ? WaitingKey(page[^1]) : "" };
+            list.Devices.AddRange(page.Select(w => w.Clone()));
             return Task.FromResult(list);
         }
     }
+
+    private static string WaitingKey(WaitingDevice device) => device.Address.Trim().ToUpperInvariant();
 
     public async IAsyncEnumerable<WaitingSummary> WatchWaitingAsync([EnumeratorCancellation] CancellationToken ct)
     {

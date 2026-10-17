@@ -62,9 +62,9 @@ public sealed class WaitingDeviceGrpcService(
 
     public override async Task<Proto.WaitingList> List(Proto.ListWaitingRequest request, ServerCallContext context)
     {
-        var (items, total) = await store.ListAsync(request.Offset, request.Limit, context.CancellationToken).ConfigureAwait(false);
-        var reply = new Proto.WaitingList { TotalCount = total };
-        reply.Devices.AddRange(items.Select(ToProto));
+        var page = await store.ListAsync(request.After, request.Limit, context.CancellationToken).ConfigureAwait(false);
+        var reply = new Proto.WaitingList { TotalCount = page.Total, NextAfter = page.NextAfter ?? string.Empty };
+        reply.Devices.AddRange(page.Items.Select(ToProto));
         return reply;
     }
 

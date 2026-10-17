@@ -100,8 +100,11 @@ public interface IOadmApi
     /// <summary>Keeps the lines on the server's waiting list (one entry per address).</summary>
     Task<AddWaitingReply> AddWaitingAsync(IReadOnlyCollection<WaitingLine> lines, string source, CancellationToken ct);
 
-    /// <summary>A page of the waiting list in the order the lines were kept; limit 0 = all.</summary>
-    Task<WaitingList> ListWaitingAsync(int offset, int limit, CancellationToken ct);
+    /// <summary>
+    /// A page of the waiting list in address order after <paramref name="after"/> (null: from the start; then
+    /// <see cref="WaitingList.NextAfter"/> until it is empty); limit 0 = all.
+    /// </summary>
+    Task<WaitingList> ListWaitingAsync(string? after, int limit, CancellationToken ct);
 
     /// <summary>The waiting summary now and after every change.</summary>
     IAsyncEnumerable<WaitingSummary> WatchWaitingAsync(CancellationToken ct);

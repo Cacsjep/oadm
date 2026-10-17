@@ -488,21 +488,18 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     {
         try
         {
-            int offset = 0;
-            while (true)
+            string? after = null;
+            do
             {
-                WaitingList page = await _api.ListWaitingAsync(offset, WaitingBatch, _cts.Token).ConfigureAwait(true);
+                WaitingList page = await _api.ListWaitingAsync(after, WaitingBatch, _cts.Token).ConfigureAwait(true);
                 foreach (WaitingDevice device in page.Devices)
                 {
-                    _waitingAddresses.Add(device.Address.Trim().ToUpperInvariant());
+                    _waitingAddresses.Add(WaitingKey(device.Address));
                 }
 
-                offset += page.Devices.Count;
-                if (page.Devices.Count == 0 || offset >= page.TotalCount)
-                {
-                    break;
-                }
+                after = page.NextAfter.Length > 0 && page.Devices.Count > 0 ? page.NextAfter : null;
             }
+            while (after is not null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -510,10 +507,29 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
     }
 
+    /// <summary>An address as the server's waiting list keys it (WaitingDeviceStore.Normalize: no scheme, upper case).</summary>
+    internal static string WaitingKey(string address)
+    {
+        string text = (address ?? "").Trim();
+        int scheme = text.IndexOf("://", StringComparison.Ordinal);
+        if (scheme >= 0)
+        {
+            text = text[(scheme + 3)..];
+        }
+
+        text = text.TrimEnd('/');
+        if (text.Length > 1 && text[0] == '[' && text[^1] == ']')
+        {
+            text = text[1..^1];
+        }
+
+        return text.ToUpperInvariant();
+    }
+
     /// <summary>Nothing answered at the line's address: "Not found", or "Already waiting" when an earlier import kept it.</summary>
     private void SetNotFound(DiscoveredRowViewModel row, string detail)
     {
-        if (_waitingAddresses.Contains(row.Address.Trim().ToUpperInvariant()))
+        if (_waitingAddresses.Contains(WaitingKey(row.Address)))
         {
             row.SetImportProblem(DiscoveredRowViewModel.AlreadyWaitingChip, "An earlier import keeps it waiting. OADM adds it once it answers.", PillKind.Neutral);
         }

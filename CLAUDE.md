@@ -639,20 +639,27 @@ button reads "Keep 3,000 waiting". The page reads the waiting list before it pro
 right: none): a line that does not answer and is waiting already shows **Already waiting** ("An earlier import keeps it
 waiting. OADM adds it once it answers.", neutral), is not kept again, and the finish line adds ", 12 already waiting".
 Server: `Oadm.Core.Devices.WaitingDeviceStore` (table WaitingDevices, migration
-`WaitingDevices`: one entry per address (upper case), an address kept again replaces login, MAC address and tags and is
-tried like new; password AES-GCM with the master key, entry id as associated data, never listed or logged; at most 30,000,
+`WaitingDevices`: one entry per address (`WaitingDeviceStore.Normalize`: as a device record stores it, no scheme, upper
+case), an address kept again replaces login, MAC address and tags, renews its kept time and is tried like new; writes go
+one at a time; password AES-GCM with the master key, entry id as associated data, never listed or logged; at most 30,000,
 over it the whole call is refused "The waiting list holds at most 30,000 devices. Remove devices from it first.") and
 `Oadm.Server.AddDevices.WaitingDeviceRunner` (hosted): a round every `Devices.WaitingRetryMinutes` (15, 1..1440, Settings
-page "Try waiting devices every (min)", first round a minute after the start) or at once for `TryNow`; each round first
-drops the entries whose address or MAC address OADM manages by now, then tries every entry 32 at a time the import's way
-(`StartAddressProbeAsync(importLine: true)`, the expected MAC address and the line's login in the session, the Axis check
+page "Try waiting devices every (min)", after the end of the last round, first round a minute after the start, a changed
+setting applies within a minute) or at once for `TryNow`; each round reads the entries to try and, only when there are any,
+drops every entry whose address or MAC address OADM manages by now (`DeviceRepository.ListAddressesAsync`, no full rows),
+then tries the rest 32 at a time the import's way but with the normal first contact (`StartAddressProbeAsync(importLine:
+false)`: a device behind a slow link is found), the expected MAC address and the line's login in the session, the Axis check
 before any password, then the credential list, at most 10 rejected per device) and stores a device that answers with
 `DeviceAdder` like the add page (the login that worked; factory default as Password not set), its tags, a full refresh and
-the audit entry "Device added automatically" (user "system", "<source> (waiting list, kept by <user>): ..."); a device that
+the audit entry "Device added automatically" (user "system", "<source> (waiting list, kept by <user>): ..."), only while
+its entry is still the one the round read (`IsCurrentAsync`: removed or kept again meanwhile = not added, nothing written
+back; results carry the kept time they were read with); a try never throws and a failed write of results is logged without
+ending the round; a device that
 answers but rejects every login is marked Login failed and **not tried again by itself** (no repeated wrong passwords) until
 Try now; results are written in batches of 256. Nothing drops off by itself: an entry stays until its device is added (also
 another way) or a user removes it. gRPC `WaitingDeviceService` (`waiting.proto`, all "Add and remove devices"): `Add`,
-`List(offset, limit)` (`checking = 13`: asked for by Try now or in the running round and not tried yet), `Watch` (summary
+`List(after, limit)` (address order with a cursor, `next_after`: entries removed while a client reads never shift a page;
+`checking = 13`: asked for by Try now or in the running round and not tried yet), `Watch` (summary
 {count, login_failed, trying, next_try, remaining}, at most once a second), `Remove(ids | all)`,
 `TryNow(ids | all; all also tries the failed logins)`; audited "Kept devices waiting" and "Removed waiting devices". Client:
 `ServerConnection` watches the summary for roles with the right into `DeviceStore.Waiting` (`WaitingDevicesState`); the
