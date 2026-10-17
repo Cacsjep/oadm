@@ -11,7 +11,9 @@ namespace Oadm.Plugins.Dashboards.Client;
 /// thresholds (<see cref="GaugeScale.Bands"/>), labelled ticks with small ticks between them (<see cref="GaugeScale.Ticks"/>)
 /// in the color of their band, a marker at the value (stopping at the ends outside the range), and in the middle the value
 /// in its color with the unit below. Everything follows the size: labels thin out (every second one) and go away before
-/// they would overlap. Colors are theme brushes by name, so dark and light both work.
+/// they would overlap. Colors are theme brushes by name, so dark and light both work. The marker glides to a new value in
+/// <see cref="MoveTime"/> (ease-out, one step per frame); a value arriving meanwhile continues from where the marker is, the
+/// first value appears in place, the number in the middle shows the new value at once.
 /// </summary>
 public sealed class GaugeView : Control
 {
@@ -22,8 +24,18 @@ public sealed class GaugeView : Control
 
     private const double MinLabelRadius = 48;
 
+    /// <summary>How long the marker takes to a new value.</summary>
+    public static readonly TimeSpan MoveTime = TimeSpan.FromMilliseconds(400);
+
     private Widget? _widget;
     private WidgetDisplay _display = WidgetDisplay.Empty;
+
+    // The marker: where it is drawn now, where it moves from and to, and when the move started (the first frame's time).
+    private double? _shown;
+    private double _from;
+    private double _to;
+    private TimeSpan? _moveStart;
+    private bool _frameRequested;
 
     /// <summary>How many tick labels the last render drew (tests).</summary>
     internal int LabelsDrawn { get; private set; }
@@ -31,11 +43,72 @@ public sealed class GaugeView : Control
     /// <summary>Where the marker stood at the last render, 0 (Min) to 1 (Max); null without one (tests).</summary>
     internal double? MarkerFraction { get; private set; }
 
+    /// <summary>Where the marker is going (tests).</summary>
+    internal double? MarkerTarget => _shown is null ? null : _to;
+
     public void Show(Widget widget, WidgetDisplay display)
     {
+        ArgumentNullException.ThrowIfNull(widget);
+        ArgumentNullException.ThrowIfNull(display);
+        var rangeChanged = _widget is { } before && (before.Min != widget.Min || before.Max != widget.Max);
         _widget = widget;
         _display = display;
+        var target = display.HasValue && display.Number is { } number ? GaugeScale.Fraction(number, widget.Min, widget.Max) : (double?)null;
+        if (target is not { } to)
+        {
+            _shown = null; // no value: no marker
+            _moveStart = null;
+        }
+        else if (_shown is not { } now || rangeChanged || TopLevel.GetTopLevel(this) is null)
+        {
+            _shown = to; // the first value (or a new range, or not shown yet) appears in place
+            _from = _to = to;
+            _moveStart = null;
+        }
+        else if (Math.Abs(to - _to) > 1e-9)
+        {
+            _from = now; // from where the marker is, also in the middle of a move
+            _to = to;
+            _moveStart = null;
+            RequestFrame();
+        }
+
         InvalidateVisual();
+    }
+
+    private void RequestFrame()
+    {
+        if (_frameRequested || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            if (!_frameRequested)
+            {
+                _shown = _to; // not on screen: no animation
+            }
+
+            return;
+        }
+
+        _frameRequested = true;
+        top.RequestAnimationFrame(OnFrame);
+    }
+
+    private void OnFrame(TimeSpan time)
+    {
+        _frameRequested = false;
+        if (_shown is null)
+        {
+            return;
+        }
+
+        _moveStart ??= time;
+        var progress = Math.Clamp((time - _moveStart.Value).TotalMilliseconds / MoveTime.TotalMilliseconds, 0, 1);
+        var eased = 1 - Math.Pow(1 - progress, 3);
+        _shown = _from + (_to - _from) * eased;
+        InvalidateVisual();
+        if (progress < 1)
+        {
+            RequestFrame();
+        }
     }
 
     public override void Render(DrawingContext context)
@@ -130,9 +203,8 @@ public sealed class GaugeView : Control
         var inner = tickOuter - major - Math.Max(3, radius * 0.04);
 
         // The marker: a triangle inside the ticks, pointing at the value.
-        if (_display.Number is { } number)
+        if (_display.Number is not null && _shown is { } fraction)
         {
-            var fraction = GaugeScale.Fraction(number, min, max);
             MarkerFraction = fraction;
             var angle = (StartAngle - fraction * Sweep) * Math.PI / 180;
             var size = Math.Max(6, Math.Round(radius * 0.09));

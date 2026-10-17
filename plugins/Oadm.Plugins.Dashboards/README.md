@@ -23,7 +23,9 @@ also in the group panel when all are gauges); `GaugeView` draws an arc of 240 de
 at nice steps (`GaugeScale.Ticks`: 1, 2 or 5 times a power of ten, 4 to 10 intervals; small ticks between them, 4 or 5 per
 step) colored by their band, a marker inside the ticks at the value (stopping at the ends outside the range; the number still
 shows the real value) and the value with its unit in the middle; everything follows the widget size, labels thin out to every
-second one and go before they would touch; no value yet shows the scale only. A Number widget switched to Gauge keeps its
+second one and go before they would touch; no value yet shows the scale only. The marker glides to a new value in 0.4 s
+(ease-out, one step per frame, `TopLevel.RequestAnimationFrame`); a value arriving meanwhile continues from where it is, the
+first value appears in place, the number shows the new value at once. A Number widget switched to Gauge keeps its
 settings; one in the text color starts in the accent color). A new threshold of a Number or Gauge widget takes the first
 color of Amber, Red, Orange, Green, Blue, Teal, Pink, Violet, Status OK / warning / error that no other threshold and not the
 widget itself uses (`WidgetEditorViewModel.NextThresholdColor`; all taken: the one used least), **Live video** (the host's live video component like a Live View tile: controls closed, fullscreen with a double-click, the channel buttons; the channel chosen while editing is saved). Value widgets are transparent on the card (frame class `valueTile`); video keeps the video background. Every value widget has **Show name** (a Yes / No select, Yes by default; off, the value takes the room, the edit frame still names it). `WidgetDisplay` (no UI) decides what a widget shows; `WidgetView` draws it (`FitText`, `FitBox`). |

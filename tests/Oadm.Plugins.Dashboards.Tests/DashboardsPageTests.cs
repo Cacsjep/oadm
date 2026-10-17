@@ -110,6 +110,28 @@ public sealed class DashboardsPageTests
         Assert.True(none.Gauge.LabelsDrawn > 0);
         Assert.True(tiny.Gauge.LabelsDrawn < 11); // small: labels thin out or go
         Headless.Capture(window, "plugin-dashboards-gauge.png");
+
+        // A new value: the marker glides there (in steps over several frames), never jumps; the number is new at once.
+        var moving = grade with { LineWidth = 6 };
+        big.Show(moving, WidgetDisplay.Of(moving, Snapshot(Types.Temperature, data: ("temperature", "20"))));
+        Assert.Equal(0.2, big.Gauge.MarkerTarget!.Value, 9);
+        Assert.Equal("20", big.Display.Text);
+        var seen = new List<double>();
+        var end = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < end && (big.Gauge.MarkerFraction is not { } at || Math.Abs(at - 0.2) > 1e-6))
+        {
+            Headless.Pump();
+            if (big.Gauge.MarkerFraction is { } now && (seen.Count == 0 || seen[^1] != now))
+            {
+                seen.Add(now);
+            }
+
+            Thread.Sleep(16);
+        }
+
+        Assert.Equal(0.2, big.Gauge.MarkerFraction!.Value, 6);
+        Assert.Contains(seen, f => f < 0.7 - 1e-6 && f > 0.2 + 1e-6); // somewhere in between on the way
+        Assert.True(seen.Zip(seen.Skip(1)).All(p => p.Second <= p.First + 1e-9)); // straight down, no overshoot
         window.Close();
         return Task.CompletedTask;
     });
