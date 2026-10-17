@@ -93,6 +93,69 @@ public sealed class DeviceTriggersHardwareTests
         Assert.Equal(TriggerConnection.Connected, rig.Plugin.Runtime!.StatesOf(trigger).Single().Connection);
     }
 
+    /// <summary>
+    /// How often an app's one-shot event with a changing value reaches the trigger (AXIS Object Analytics occupancy in area,
+    /// which a camera sends about once a second): read-only, prints the arrival times and values for 40 s.
+    /// <c>OADM_TRIGGER_TOPIC</c> picks the event, else the first whose name or topic says occupancy.
+    /// </summary>
+    [TriggerFact]
+    [Trait("Category", "Hardware")]
+    public async Task A_frequent_app_event_reaches_the_trigger_every_time()
+    {
+        await using var rig = await StartAsync();
+        var device = (await rig.Devices.ListAsync(CancellationToken.None)).Single();
+        var read = await rig.CallAsync<ReadStatusReply>(DeviceTriggersMethods.StartRead, new StartReadRequest([device.Id]));
+        await Wait.UntilAsync(() => (read = rig.CallAsync<ReadStatusReply>(DeviceTriggersMethods.ReadStatus, new ReadStatusRequest(read.JobId)).Result).Finished, "the event list", 30_000);
+        foreach (var e in read.Events.Where(e => e.Topic.Contains("ObjectAnalytics", StringComparison.OrdinalIgnoreCase) || e.Name.Contains("ccupan", StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.WriteLine($"{e.Name} | {e.Topic} | stateful {e.Stateful} | data {string.Join(",", e.Data.Select(d => d.Name))}");
+        }
+
+        var wanted = Environment.GetEnvironmentVariable("OADM_TRIGGER_TOPIC");
+        var chosen = read.Events.FirstOrDefault(e => wanted is not null ? e.Topic == wanted
+            : e.Name.Contains("ccupan", StringComparison.OrdinalIgnoreCase) || e.Topic.Contains("ccupan", StringComparison.OrdinalIgnoreCase));
+        if (chosen is null)
+        {
+            Console.WriteLine("No occupancy event on this device: nothing to check.");
+            return;
+        }
+
+        Console.WriteLine($"Chosen: {chosen.Name} ({chosen.Topic}), stateful {chosen.Stateful}");
+        await rig.SaveAsync(new TriggerDefinition
+        {
+            Name = "Occupancy",
+            Topic = chosen.Topic,
+            EventName = chosen.Name,
+            Stateful = chosen.Stateful,
+            StateItem = chosen.StateItem,
+            Values = [.. chosen.Data.Select(d => d.Name)],
+            DeviceIds = [device.Id],
+        });
+
+        var start = DateTime.UtcNow;
+        var seen = 0;
+        var arrivals = new List<(double Seconds, string Line)>();
+        while (DateTime.UtcNow - start < TimeSpan.FromSeconds(40))
+        {
+            var lines = rig.Publisher.Lines;
+            for (; seen < lines.Count; seen++)
+            {
+                arrivals.Add(((DateTime.UtcNow - start).TotalSeconds, lines[seen]));
+            }
+
+            await Task.Delay(20);
+        }
+
+        foreach (var (seconds, line) in arrivals)
+        {
+            Console.WriteLine($"{seconds,6:F2}s  {line}");
+        }
+
+        var data = arrivals.Where(a => !a.Line.StartsWith("replace", StringComparison.Ordinal)).Select(a => a.Seconds).ToList();
+        var gaps = data.Zip(data.Skip(1), (a, b) => b - a).ToList();
+        Console.WriteLine($"{data.Count} events in 40 s; largest gap {(gaps.Count == 0 ? 0 : gaps.Max()):F2} s");
+    }
+
     [TriggerFact]
     [Trait("Category", "HardwareWrite")]
     public async Task Switching_virtual_input_64_turns_the_trigger_on_and_off()
