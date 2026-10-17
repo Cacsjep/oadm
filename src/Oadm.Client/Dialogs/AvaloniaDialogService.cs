@@ -327,15 +327,16 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         }
 
         await using Stream stream = await files[0].OpenReadAsync().ConfigureAwait(true);
-        byte[] buffer = new byte[maxBytes + 1];
-        int length = 0;
+        // Grows with the file instead of reserving the whole limit; reading stops one byte past it.
+        using var content = new MemoryStream();
+        byte[] chunk = new byte[81920];
         int read;
-        while (length < buffer.Length && (read = await stream.ReadAsync(buffer.AsMemory(length)).ConfigureAwait(true)) > 0)
+        while (content.Length <= maxBytes && (read = await stream.ReadAsync(chunk).ConfigureAwait(true)) > 0)
         {
-            length += read;
+            content.Write(chunk, 0, read);
         }
 
-        return length > maxBytes ? new PickedFile(files[0].Name, buffer[..maxBytes], true) : new PickedFile(files[0].Name, buffer[..length], false);
+        return content.Length > maxBytes ? new PickedFile(files[0].Name, [], true) : new PickedFile(files[0].Name, content.ToArray(), false);
     }
 
     private static FilePickerFileType Filter(FileType type) =>

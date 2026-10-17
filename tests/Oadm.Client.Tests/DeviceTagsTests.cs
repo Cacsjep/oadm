@@ -165,8 +165,8 @@ public sealed class DeviceTagsTests
 
         dialog.NewTagName = "building a";
         Assert.Equal("A tag named \"building a\" already exists.", dialog.ErrorOf(nameof(DeviceTagsViewModel.NewTagName)));
-        dialog.NewTagName = new string('x', 33);
-        Assert.Equal("A tag name has at most 32 characters.", dialog.ErrorOf(nameof(DeviceTagsViewModel.NewTagName)));
+        dialog.NewTagName = new string('x', 65);
+        Assert.Equal("A tag name has at most 64 characters.", dialog.ErrorOf(nameof(DeviceTagsViewModel.NewTagName)));
         dialog.NewTagName = "a;b";
         Assert.Equal("A tag name cannot contain \";\".", dialog.ErrorOf(nameof(DeviceTagsViewModel.NewTagName)));
 
@@ -310,9 +310,13 @@ public sealed class DeviceTagsTests
         Assert.Equal(["Building A", "PTZ"], file.Lines[0].Tags);
         Assert.Empty(file.Lines[2].Tags);
 
-        DeviceImportFile own = DeviceImportFile.Parse("own.csv", "Address;Tags\n10.0.0.9;\" Lobby ; lobby;PTZ \"\n10.0.0.10;" + new string('x', 33));
+        // A longer tag is cut to 64 characters (end spaces removed); two that are the same then count once.
+        string head = new string('x', 63);
+        DeviceImportFile own = DeviceImportFile.Parse("own.csv", "Address;Tags\n10.0.0.9;\" Lobby ; lobby;PTZ \"\n10.0.0.10;\""
+            + head + "y-one; " + head + "y-two; " + head + " z\"");
         Assert.Equal(["Lobby", "PTZ"], own.Lines[0].Tags);
-        Assert.Equal($"The tag \"{new string('x', 33)}\" is longer than 32 characters.", own.Lines[1].Problem);
+        Assert.Null(own.Lines[1].Problem);
+        Assert.Equal([head + "y", head], own.Lines[1].Tags);
     }
 
     [Fact]

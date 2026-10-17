@@ -59,7 +59,7 @@ public sealed class TagLimitException(string message) : InvalidOperationExceptio
 /// <summary>Rules for tag names. Pure functions.</summary>
 public static class TagNames
 {
-    public const int MaxLength = 32;
+    public const int MaxLength = 64;
 
     /// <summary>Most tag definitions of a server.</summary>
     public const int MaxDefinitions = 500;

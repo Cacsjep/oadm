@@ -415,7 +415,7 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
     }
 
     /// <summary>Longest tag name (the server's TagNames.MaxLength).</summary>
-    public const int MaxNameLength = 32;
+    public const int MaxNameLength = 64;
 
     /// <summary>Runs a server call: busy while it runs; a failure shows below its field (or below the list).</summary>
     private async Task<bool> RunAsync(Func<Task> call, string? field)

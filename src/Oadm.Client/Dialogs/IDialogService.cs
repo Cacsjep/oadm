@@ -76,8 +76,8 @@ public sealed record FileType(string Name, string Extension, string MimeType);
 
 /// <summary>A file chosen in the open file picker.</summary>
 /// <param name="Name">File name without folder.</param>
-/// <param name="Content">The first bytes, at most the limit asked for.</param>
-/// <param name="IsTooLarge">The file is larger than the limit; <paramref name="Content"/> is cut.</param>
+/// <param name="Content">The whole file; empty when it is too large.</param>
+/// <param name="IsTooLarge">The file is larger than the limit; nothing was kept.</param>
 public sealed record PickedFile(string Name, byte[] Content, bool IsTooLarge);
 
 /// <summary>Puts text on the system clipboard (Avalonia clipboard of the current window).</summary>

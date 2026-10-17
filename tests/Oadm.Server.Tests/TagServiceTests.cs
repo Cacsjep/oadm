@@ -56,17 +56,17 @@ public sealed class TagServiceTests
         var empty = await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = "   " }));
         Assert.Equal(StatusCode.InvalidArgument, empty.StatusCode);
         Assert.Equal("Enter a tag name.", empty.Status.Detail);
-        var tooLong = await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = new string('x', 33) }));
-        Assert.Equal("A tag name has at most 32 characters.", tooLong.Status.Detail);
+        var tooLong = await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = new string('x', 65) }));
+        Assert.Equal("A tag name has at most 64 characters.", tooLong.Status.Detail);
         Assert.Equal(StatusCode.InvalidArgument, await CodeOf(async () => await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = "A;B" })));
-        Assert.Equal(StatusCode.OK, await CodeOf(async () => await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = new string('x', 32) })));
+        Assert.Equal(StatusCode.OK, await CodeOf(async () => await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = new string('x', 64) })));
 
         // Without a color: the next palette color.
         var next = await host.Tags.CreateAsync(new Proto.CreateTagRequest { Name = "PTZ" });
         Assert.Equal(Proto.TagColor.Teal, next.Color);
 
         var list = (await host.Tags.ListAsync(new Proto.Empty())).Tags;
-        Assert.Equal(["Building A", "PTZ", new string('x', 32)], list.Select(t => t.Name).ToArray());
+        Assert.Equal(["Building A", "PTZ", new string('x', 64)], list.Select(t => t.Name).ToArray());
     }
 
     [Fact]

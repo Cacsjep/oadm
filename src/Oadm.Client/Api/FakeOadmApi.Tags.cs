@@ -10,7 +10,7 @@ namespace Oadm.Client.Api;
 /// <summary>Fake mode: tag definitions in memory, with the server's rules (names, uniqueness, rename / delete rewrite devices).</summary>
 public sealed partial class FakeOadmApi
 {
-    private const int FakeMaxTagLength = 32;
+    private const int FakeMaxTagLength = 64;
     private readonly List<DeviceTag> _tagDefinitions = [];
     private readonly Broadcast<TagList> _tagEvents = new();
 

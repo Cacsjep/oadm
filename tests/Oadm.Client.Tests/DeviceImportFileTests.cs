@@ -125,7 +125,7 @@ public sealed class DeviceImportFileTests
         Assert.Equal("Listed before in line 2.", problems[2]);
         Assert.Equal("\"ftp://10.0.0.50\" is not an IP address or host name.", problems[3]);
         Assert.Equal("\"10.0.0.51/path\" is not an IP address or host name.", problems[4]);
-        Assert.Equal("Line 7 is longer than 1,024 characters.", problems[5]);
+        Assert.Equal("Line 7 is longer than 4,096 characters.", problems[5]);
         Assert.Equal("\"=10.0.0.52\" is not an IP address or host name.", problems[6]); // the guard is removed, the formula is no address
         Assert.Equal("The line has no address.", problems[7]);
         Assert.Equal("Line 10 has a quote (\") that is not closed.", problems[8]);
@@ -145,10 +145,10 @@ public sealed class DeviceImportFileTests
     public void Limits_on_size_and_lines()
     {
         DeviceImportException tooLarge = Assert.Throws<DeviceImportException>(() => DeviceImportFile.Parse("big.csv", new byte[10], isTooLarge: true));
-        Assert.Equal("The file is larger than 2 MB. Split it into smaller files.", tooLarge.Message);
+        Assert.Equal("The file is larger than 64 MB. Split it into smaller files.", tooLarge.Message);
 
         string many = string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines + 1).Select(i => $"10.{i / 65536}.{i / 256 % 256}.{i % 256}"));
-        Assert.Equal("The file has more than 10,000 addresses. Split it into smaller files.", Assert.Throws<DeviceImportException>(() => Parse(many)).Message);
+        Assert.Equal("The file has more than 30,000 addresses. Split it into smaller files.", Assert.Throws<DeviceImportException>(() => Parse(many)).Message);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public sealed class DeviceImportFileTests
             .Returns(new PickedFile("big.csv", new byte[16], true));
         await fx.Devices.OpenHostPageAsync(HostPages.AddImport);
         Assert.Null(shown);
-        await fx.Dialogs.Received(1).ShowMessageAsync("Import from file", "The file is larger than 2 MB. Split it into smaller files.");
+        await fx.Dialogs.Received(1).ShowMessageAsync("Import from file", "The file is larger than 64 MB. Split it into smaller files.");
 
         // Cancelled picker: nothing happens.
         fx.Dialogs.OpenFileAsync(Arg.Any<string>(), Arg.Any<FileType>(), Arg.Any<int>()).Returns((PickedFile?)null);
@@ -209,9 +209,12 @@ public sealed class DeviceImportFileTests
 
     [Fact]
     [Trait("Category", "Timing")]
-    public void Ten_thousand_lines_are_read_fast()
+    public void Thirty_thousand_lines_are_read_fast()
     {
-        string text = "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.{i / 65536}.{i / 256 % 256}.{i % 256},root,pass{i}"));
+        // As many lines as one server has devices, each with a long host name, login and tags: far below the size limit.
+        string text = "Address,User name,Password,Tags\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines)
+            .Select(i => $"camera-{i}.{new string('s', 60)}.example.com,{new string('u', 64)},{new string('p', 100)}{i},Building {i % 50}; {new string('t', 64)}"));
+        Assert.True(Encoding.UTF8.GetByteCount(text) < DeviceImportFile.MaxBytes / 4);
         Parse("10.0.0.1"); // warm up
 
         var watch = Stopwatch.StartNew();
@@ -220,6 +223,6 @@ public sealed class DeviceImportFileTests
 
         Assert.Equal(DeviceImportFile.MaxLines, file.Lines.Count);
         Assert.Equal(0, file.ProblemCount);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"10,000 lines took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 3000, $"30,000 lines took {watch.ElapsedMilliseconds} ms");
     }
 }

@@ -4,6 +4,15 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [Unreleased]
+
+### Changed
+
+- **Import from file and Import from ADM** take up to 30,000 devices per file, as many as one server manages. The file
+  size no longer gets in the way: long host names, passwords and tags fit.
+- **Tags** can have up to 64 characters. Longer tags in an imported file are shortened to 64 instead of stopping the
+  device from being added. Long tags in the device list end with "…".
+
 ## [3.3.1] - 2026-10-16
 
 ### Fixed

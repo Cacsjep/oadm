@@ -433,7 +433,7 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   CredentialUserName (not stored: user name of the DeviceCredential, filled by repository reads
   for plugins; never the password).
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
-- `TagDefinition` (table TagDefinitions, migration `DeviceTags`): Id (Guid), Name (1..32, trimmed, no ";" or control
+- `TagDefinition` (table TagDefinitions, migration `DeviceTags`): Id (Guid), Name (1..64, trimmed, no ";" or control
   characters), NormalizedName (upper invariant, unique: names are unique case-insensitive), Color (Blue, Green, Teal,
   Amber, Orange, Red, Pink, Violet; stored as string), CreatedUtc. At most 500 definitions; a device has at most 20 tags.
   `Oadm.Core.Devices.DeviceTagStore` owns both (serialized writes, one transaction per call, rewrites read only the Tags
@@ -609,9 +609,10 @@ controls: title bar, one card, footer) in four modes:
   ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,
   else Latin-1; a formula guard `'` of the export is removed. A password without a user name is for `root`; a user
   name alone is no credential. The whole file is refused in `ui:MessageWindow` ("Import from file") when it is larger
-  than 2 MB, has more than 10,000 addresses, no address at all, no Address column (with a header) or is not text.
+  than 64 MB (a guard only: the lines are the limit), has more than 30,000 addresses (`DeviceLimits.MaxDevices`; the
+  same for an ADM export), no address at all, no Address column (with a header) or is not text.
   Problems of single lines stay in their row (chip "Not added" + detail): no address, not an IP address or host
-  name (http/https, port, no path), "Listed before in line N." (same address), line longer than 1,024
+  name (http/https, port, no path), "Listed before in line N." (same address), line longer than 4,096
   characters, unclosed quote, user name > 64 / password > 256. The page (header "Import from file", "Addresses from
   <file>. Logins in the file are tried first.") shows one row per line at once in file order ("Waiting"), then probes the
   addresses with `ProbeAddress(address, user, password)`, at most `MaxImportProbes` = 16 at a time (a probe holds
@@ -623,7 +624,7 @@ controls: title bar, one card, footer) in four modes:
   checked", neutral), then "Import finished|stopped, N devices found" (+ ", M already added"); no Scan again.
   Summary adds "N not added". Credentials of the file stay in client memory until their probe, go to the server
   only, are never logged and never saved to the credential list (the inline login editor keeps its own "Save to
-  credential list"). Then the technician reviews and clicks Add as usual. Scale: 10,000 lines are listed,
+  credential list"). Then the technician reviews and clicks Add as usual. Scale: 30,000 lines are listed,
   filtered and selected in one reset each (test).
 
 **Import from ADM** (Add menu, `HostPages.AddImportAdm`): the same help dialog in its ADM mode (`ImportHelpViewModel.ForAdm`:
@@ -1139,7 +1140,8 @@ with the labels in the grid, the search, the export and the import; plugins read
 - **Export / import**: the device export has a "Tags" column ("Building A; PTZ"); the import (add page, Import from
   file) reads an optional "Tags" (or "Tag") column, ";"-separated, and assigns those tags to the devices that get added,
   one `SetDeviceTags` call per distinct tag set; missing definitions are created by the server with the next palette
-  color. A tag longer than 32 characters is the line's problem.
+  color. A tag longer than 64 characters (CSV and ADM export) is cut to 64 (`DeviceImportFile.CutTags`), never a
+  problem of the line. In the grid a chip is at most 200 px wide and ends with "…"; the tooltip names every tag.
 - **Fake mode**: Building A (blue), Building C (green), PTZ (amber), Outdoor (teal) on the sample devices; every
   `TagService` call works in memory (`FakeOadmApi.Tags.cs`).
 - **Tests**: `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename

@@ -5,7 +5,7 @@ import "Protos/common.proto";
 
 // Device tags: tag definitions (name + color) and tagging many devices in one call. Devices carry their tag names
 // in Device.tags; a name used on devices without a definition (older data) is listed with defined = false.
-// Names are 1..32 characters, trimmed, unique case-insensitive, without ";" and control characters.
+// Names are 1..64 characters, trimmed, unique case-insensitive, without ";" and control characters.
 service TagService {
   // Every definition (sorted by name) with its device count, then the undefined names used on devices.
   rpc List (Empty) returns (TagList);

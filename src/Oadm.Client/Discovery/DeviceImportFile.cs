@@ -3,6 +3,7 @@ using System.Text;
 
 using Oadm.Client.Devices;
 using Oadm.Client.Infrastructure;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Discovery;
 
@@ -66,15 +67,17 @@ public sealed class DeviceImportFile
         "camera-lobby.example.com,operator,Secret-2026,Lobby\n" +
         "https://10.0.0.60:8443,,,";
 
-    /// <summary>Largest file read (2 MB: 10,000 lines of an export are about 1.3 MB).</summary>
+    /// <summary>
+    /// Largest file read (64 MB). Only a guard against a wrong file: the lines are the limit, 30,000 lines with long
+    /// host names, passwords and tags stay far below it (an export line is about 130 bytes, an ADM device about 400).
+    /// </summary>
+    public const int MaxBytes = 64 * 1024 * 1024;
 
-    public const int MaxBytes = 2 * 1024 * 1024;
+    /// <summary>Most address lines of one file: as many devices as one server manages.</summary>
+    public const int MaxLines = DeviceLimits.MaxDevices;
 
-    /// <summary>Most address lines of one file.</summary>
-    public const int MaxLines = 10_000;
-
-    /// <summary>Longest line (characters).</summary>
-    public const int MaxLineLength = 1024;
+    /// <summary>Longest line (characters): room for a 253-character host name, the login and 20 long tags.</summary>
+    public const int MaxLineLength = 4096;
 
     public const int MaxUserNameLength = 64;
     public const int MaxPasswordLength = 256;
@@ -87,8 +90,8 @@ public sealed class DeviceImportFile
     private static readonly string[] PasswordHeaders = ["password", "pass"];
     private static readonly string[] TagHeaders = ["tags", "tag"];
 
-    /// <summary>Longest tag name (the server's limit).</summary>
-    public const int MaxTagLength = 32;
+    /// <summary>Longest tag name (the server's limit); longer tags of a file are cut to it.</summary>
+    public const int MaxTagLength = 64;
 
     private static readonly string[] KnownHeaders =
         [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
@@ -257,11 +260,10 @@ public sealed class DeviceImportFile
             problem = string.Create(CultureInfo.InvariantCulture, $"The password is longer than {MaxPasswordLength} characters.");
         }
 
-        if (problem is null && tags.Find(t => t.Length > MaxTagLength || t.Any(char.IsControl) || t.Contains(';', StringComparison.Ordinal)) is { } badTag)
+        tags = CutTags(tags);
+        if (problem is null && tags.Find(t => t.Any(char.IsControl) || t.Contains(';', StringComparison.Ordinal)) is { } badTag)
         {
-            problem = badTag.Length > MaxTagLength
-                ? string.Create(CultureInfo.InvariantCulture, $"The tag \"{Shorten(badTag)}\" is longer than {MaxTagLength} characters.")
-                : badTag.Contains(';', StringComparison.Ordinal)
+            problem = badTag.Contains(';', StringComparison.Ordinal)
                 ? $"The tag \"{Shorten(badTag)}\" contains ;."
                 : $"The tag \"{Shorten(badTag)}\" contains control characters.";
         }
@@ -336,6 +338,29 @@ public sealed class DeviceImportFile
         string text = address.Trim().TrimEnd('/');
         int scheme = text.IndexOf("://", StringComparison.Ordinal);
         return scheme >= 0 ? text[(scheme + 3)..] : text;
+    }
+
+    /// <summary>Tags longer than <see cref="MaxTagLength"/> cut to it (never inside a character pair), distinct again.</summary>
+    internal static List<string> CutTags(List<string> tags)
+    {
+        if (tags.TrueForAll(t => t.Length <= MaxTagLength))
+        {
+            return tags;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>(tags.Count);
+        foreach (string tag in tags)
+        {
+            string cut = tag.Length <= MaxTagLength ? tag
+                : tag[..(char.IsHighSurrogate(tag[MaxTagLength - 1]) ? MaxTagLength - 1 : MaxTagLength)].TrimEnd();
+            if (seen.Add(cut))
+            {
+                result.Add(cut);
+            }
+        }
+
+        return result;
     }
 
     private static string Shorten(string text) => text.Length <= 60 ? text : text[..60] + "…";

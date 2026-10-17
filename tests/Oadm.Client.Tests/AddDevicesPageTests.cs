@@ -466,7 +466,7 @@ public sealed class AddDevicesPageTests : IDisposable
 
     [Fact]
     [Trait("Category", "Timing")]
-    public async Task An_import_of_ten_thousand_lines_lists_and_filters_fast()
+    public async Task An_import_of_thirty_thousand_lines_lists_and_filters_fast()
     {
         string csv = "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.1.{i / 256}.{i % 256},root,pass{i}"));
         DeviceImportFile file = DeviceImportFile.Parse("big.csv", csv);
@@ -483,7 +483,7 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(DeviceImportFile.MaxLines, page.Rows.Count);
         Assert.Equal(256, page.FilteredRows.Count);
         Assert.Equal("0 found · 0 ready to add · 0 selected", page.SummaryText);
-        Assert.True(all < 1500, $"10,000 lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
+        Assert.True(all < 4500, $"30,000 lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
     }
 
     [Fact]
