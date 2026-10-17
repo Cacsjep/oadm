@@ -44,8 +44,21 @@ and removing a license is written to the audit log.
 
 ## Plugins from others
 
-You can add plugins that do not come with OADM: copy the plugin's folder into the `plugins` folder next to the OADM
-server (and next to the client, when the plugin has a dialog or a page), then restart both.
+You can add plugins that do not come with OADM. A plugin comes as a `.oadmplugin` file (a ZIP) or as a folder named
+like the plugin, for example `acme.site-reports`:
+
+1. Unpack it into a folder with the plugin's name in the server's plugin folder:
+
+   | System | Folder |
+   |---|---|
+   | Windows | `%ProgramData%\OADM\plugins` |
+   | Linux | `/var/lib/oadm/plugins` |
+   | macOS | `/Library/Application Support/OADM/plugins` |
+
+2. When the plugin has a dialog or a page, unpack it on every computer with the client too, into
+   `%LOCALAPPDATA%\Oadm\plugins` (Windows), `~/.local/share/Oadm/plugins` (Linux) or
+   `~/Library/Application Support/Oadm/plugins` (macOS).
+3. Restart the OADM server service and the clients. The plugin is listed on this page; turn it on if it is off.
 
 Install only plugins you trust, as you would any program on the server:
 
