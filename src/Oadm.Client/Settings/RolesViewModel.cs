@@ -613,7 +613,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
             return key;
         }
 
-        return info.Group is "Devices" or "Tasks" or "Event rules" ? info.Name : info.Group + ": " + info.Name;
+        return info.Group is "Devices" or "Tasks" or "Event rules" or "Logs" ? info.Name : info.Group + ": " + info.Name;
     }
 
     private void Show(RoleMatrix matrix)

@@ -97,6 +97,7 @@ public static class ServiceRegistration
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();
         services.AddSingleton<AuditLogViewModel>();
+        services.AddSingleton<ServerLogViewModel>();
         services.AddSingleton(sp => new RolesViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IDialogService>(),

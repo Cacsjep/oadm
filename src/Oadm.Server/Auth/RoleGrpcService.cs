@@ -87,7 +87,7 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
     {
         var entry = roles.Catalog.Find(key);
         return entry is null ? key
-            : entry.Group is HostPermissions.DevicesGroup or HostPermissions.TasksGroup or HostPermissions.EventRulesGroup ? entry.Name
+            : entry.Group is HostPermissions.DevicesGroup or HostPermissions.TasksGroup or HostPermissions.EventRulesGroup or HostPermissions.LogsGroup ? entry.Name
             : entry.Group + ": " + entry.Name;
     }
 

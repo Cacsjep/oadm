@@ -50,6 +50,10 @@ public interface IOadmApi
     /// <summary>The caller's role and what it allows (every user).</summary>
     Task<MyRole> GetMyRoleAsync(CancellationToken ct);
 
+    // ServerLogService ("See the server log")
+    /// <summary>One page of the server's log, newest first; min_level "Information", "Warning", "Error" or empty.</summary>
+    Task<ServerLogPage> ListServerLogAsync(int offset, int limit, string minLevel, string search, CancellationToken ct);
+
     // AuditService (Admin only)
     /// <summary>The newest <paramref name="limit"/> audit entries, newest first, and the total count.</summary>
     Task<AuditList> ListAuditAsync(int limit, CancellationToken ct);

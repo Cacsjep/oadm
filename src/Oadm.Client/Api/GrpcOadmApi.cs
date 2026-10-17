@@ -444,6 +444,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct) =>
         (await C.Plugins.ListCorePluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
 
+    public async Task<ServerLogPage> ListServerLogAsync(int offset, int limit, string minLevel, string search, CancellationToken ct) =>
+        await C.ServerLog.ListAsync(new ListServerLogRequest { Offset = offset, Limit = limit, MinLevel = minLevel, Search = search }, cancellationToken: ct);
+
     public async Task<PluginPackageList> ListPluginPackagesAsync(CancellationToken ct) =>
         await C.Plugins.ListPackagesAsync(new Empty(), cancellationToken: ct);
 
@@ -600,6 +603,8 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public UserService.UserServiceClient Users { get; } = new(channel);
         public RoleService.RoleServiceClient Roles { get; } = new(channel);
         public AuditService.AuditServiceClient Audit { get; } = new(channel);
+
+        public ServerLogService.ServerLogServiceClient ServerLog { get; } = new(channel);
         public DeviceService.DeviceServiceClient Devices { get; } = new(channel);
         public DiscoveryService.DiscoveryServiceClient Discovery { get; } = new(channel);
         public AddDevicesService.AddDevicesServiceClient AddDevices { get; } = new(channel);

@@ -392,6 +392,8 @@ Two processes, like ADM:
   `MovePtz(device_id, camera, move, x, y, value, preset)` ("Optics Control"; not audited, a drag sends several a second;
   FAILED_PRECONDITION "The camera refused: <camera text>"). See "Live view".
 - `EventService` (`events.proto`, event rules, see "Event rules").
+- `ServerLogService` (`logs.proto`, permission `logs.server`): `List` (the server's log files, a page newest first), see
+  "Logs page".
 - `DeviceWebService` (`deviceweb.proto`, the Web View relay, see "Web View"): `Open(device_id)` (Operator; refuses
   Certificate changed, Credentials required, Password not set with the shared text; audit "Opened web interface"),
   `Exchange` (one bidirectional call per HTTP request or WebSocket of the embedded browser; the server sends it to the
@@ -964,8 +966,21 @@ Layout, top to bottom:
    in its footer while the task runs. Pane buttons: details, cancel, delete, a separator, **delete all** (red, with
    confirmation; running tasks are cancelled first); all work per task.
 
-**Logs page** (rail, bottom): live client log with level filter and search. Server log
-streaming comes later.
+**Logs page** (rail, bottom; `Logging/LogsViewModel` + `LogsView`): the segmented switch **Server** | **Client** | **Audit**
+on top of each card. **Server** (first when the role may see it, permission `logs.server` "See the server log", group "Logs";
+Administrator always, Operator and Viewer off by default): the server's log files read on request by gRPC
+`ServerLogService.List(offset, limit, min_level, search)` (`logs.proto`; `Oadm.Server.Logging.ServerLogGrpcService` over
+`Oadm.Contracts.Logging.LogFileReader`: the files `oadm-server-*.log`, newest first, entries of the Serilog template, continuation
+lines (exceptions) belong to the entry before, read shared while the logger writes, only the files a page needs; at most
+500 a page), 200 entries a page (`ServerLogViewModel`), level filter and search on the server, Refresh, grid Time, Level
+chip, Source (the class without namespace), Message (tooltip: source, message, exception), read again when the page
+opens. **Client**: this client's log of the session (`LogStore`, newest 10,000, live), level filter and search, 200 a page.
+Both page with the shared `Logging/LogPager` ("Entries 201 to 400", Newest, Newer, Older); a live client entry never moves an
+older page. **Audit** (administrators): as before. Every failed event rule action is also a server log Warning ("Event rule
+X: action Y on 10.0.0.48 failed: <reason>", with the exception when it was unexpected), a skipped one and a rule held back by
+its limits Information (`ActionRunner.Write`, `RuleEngine.LogRule`). Fake mode: 650 sample entries
+(`FakeOadmApi.ServerLog.cs`). Tests: `tests/Oadm.Server.Tests/ServerLogTests`, `tests/Oadm.Client.Tests/LogsPageTests`,
+`RuleEngineTests.ActionsRunInOrderAndAFailureDoesNotStopTheNext`.
 
 ## Live view
 
@@ -2204,7 +2219,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `Roles` maps the old Admin to Administrator and everyone else to Operator. A permission is a key: host keys
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
   `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
-  `events.view`, `events.manage`, `events.clearLog`), "<plugin id>:<key>" for core plugins (every page gets "show"
+  `events.view`, `events.manage`, `events.clearLog`, `logs.server`), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a

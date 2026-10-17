@@ -15,6 +15,9 @@ version and date, and the release workflow copies it into the GitHub release.
   page shows this server's ID, the license state of every plugin that needs one and lets administrators enter or remove
   a license key. The Settings page shows the server ID too. `manage license keys` and `manage license sign` make the
   vendor's keys and the license keys; the plugin reads the result (valid, trial, features) and decides what runs.
+- **Server log on the Logs page**: the switch Server, Client, Audit. The server's log shows 200 entries a page with level
+  filter and search; the client log pages the same way. Other roles than administrators need the new permission "See the
+  server log". Failed event rule actions are written to the server log with their reason.
 
 ## [3.4.0] - 2026-10-17
 
