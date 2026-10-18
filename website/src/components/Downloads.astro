@@ -9,6 +9,8 @@ const { assets, version, url } = await latestRelease();
 
 // The newsletter lives on the support forum; the form here subscribes without an account there.
 const portal = 'https://support.oadm.app/';
+const youtube = 'https://www.youtube.com/@oadm-ca';
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
 const links = {
@@ -49,6 +51,11 @@ const links = {
 		<p class="newsletter-hint"><a href={`${portal}privacy/`}>Privacy notice</a></p>
 		<p class="newsletter-hint newsletter-after" hidden>Every newsletter has a one-click unsubscribe link. No account needed.</p>
 	</form>
+	<span class="dl-label learning-label">Learning</span>
+	<div class="download-buttons">
+		<a class="dl" href={youtube}><Icon name="youtube" class="youtube-icon" />YouTube channel</a>
+		<a class="dl" href={`${base}start/install/`}><Icon name="open-book" class="docs-icon" />Documentation</a>
+	</div>
 </div>
 
 <script>

@@ -496,6 +496,16 @@ header .social-icons::after {
 	color: var(--sl-color-accent);
 }
 
+/* The Documentation button's icon (Learning row) in green, a color no other icon uses. */
+.docs-icon {
+	color: #34d399;
+}
+
+/* The YouTube button's icon in YouTube red. */
+.youtube-icon {
+	color: #ff0033;
+}
+
 /* Download buttons: each system's icon in its own color. */
 .dl .os-windows {
 	color: #00a4ef;
@@ -636,6 +646,10 @@ header .social-icons::after {
 
 .downloads .community-label {
 	margin-top: 0.25rem;
+}
+
+.downloads .learning-label {
+	margin-top: 15px;
 }
 
 /* "Download" sits close to its buttons. */

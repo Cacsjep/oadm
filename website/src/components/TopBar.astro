@@ -1,5 +1,5 @@
 ---
-// The landing page's top bar (the docs header is hidden there): social links (GitHub, LinkedIn, Discord) on the left, Documentation and Bug
+// The landing page's top bar (the docs header is hidden there): social links (GitHub, LinkedIn, Discord, YouTube) on the left, Documentation and Bug
 // report (a menu: Support Forum, GitHub issue) on the right. Fixed at the top, so it stays while the page scrolls.
 import { Icon } from '@astrojs/starlight/components';
 
@@ -14,6 +14,7 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 			<a href={`https://github.com/${repo}`} aria-label="GitHub"><Icon name="github" /></a>
 			<a href="https://www.linkedin.com/in/christoph-acs-70150795/" aria-label="LinkedIn"><Icon name="linkedin" /></a>
 			<a href="https://discord.gg/j4FNjg5VvK" aria-label="Discord"><Icon name="discord" /></a>
+			<a href="https://www.youtube.com/@oadm-ca" aria-label="YouTube"><Icon name="youtube" /></a>
 		</div>
 		<div class="top-bar-links">
 			<a href={`${base}tools/overview/`}><Icon name="puzzle" /><span class="label">Plugins</span></a>
