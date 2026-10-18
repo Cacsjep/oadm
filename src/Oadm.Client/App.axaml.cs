@@ -32,6 +32,7 @@ public partial class App : Application
     {
         ApplyCrispTextToAllWindows();
         WindowFit.Attach();
+        Infrastructure.WheelScroll.Attach();
         Services = ServiceRegistration.Build(Options, LogStore);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

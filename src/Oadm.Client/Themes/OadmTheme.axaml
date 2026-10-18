@@ -835,6 +835,13 @@
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
+  <!-- The focused select or number field shows it like a focused text box (also after a click, not only with Tab). -->
+  <Style Selector="ComboBox:focus /template/ Border#Background, ComboBox:focus:pointerover /template/ Border#Background">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="NumericUpDown:focus-within /template/ ButtonSpinner#PART_Spinner">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
 
   <!-- Grouped select field (ComboBox.grouped with ui:GroupedChoice items): grey group headers that cannot be chosen,
        the choices indented below them; the closed box shows the chosen text without indent. -->
