@@ -93,7 +93,7 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
         RtspClient client;
         try
         {
-            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct).ConfigureAwait(false);
+            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time).ConfigureAwait(false);
         }
         catch (LiveViewException ex)
         {
@@ -150,6 +150,9 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
             };
         }
     }
+
+    /// <summary>Time since the device last sent anything (tests wait for a keep-alive's answer).</summary>
+    internal TimeSpan SinceLastReceive => _client.SinceLastReceive;
 
     public async IAsyncEnumerable<DeviceMetadataDocument> ReadAsync([EnumeratorCancellation] CancellationToken ct)
     {

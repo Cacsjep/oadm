@@ -81,11 +81,15 @@ public sealed class RtspClient : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private DigestAuthenticator? _digest;
     private int _cseq;
-    private long _lastReceive = Stopwatch.GetTimestamp();
+    private readonly TimeProvider _time;
+    private long _lastReceive;
 
-    public RtspClient(Stream stream, NetworkCredential? credentials, IDisposable? owner = null)
+    /// <param name="time">The clock of <see cref="SinceLastReceive"/> (tests: a fake one).</param>
+    public RtspClient(Stream stream, NetworkCredential? credentials, IDisposable? owner = null, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        _time = time ?? TimeProvider.System;
+        _lastReceive = _time.GetTimestamp();
         _stream = stream;
         _owner = owner;
         _credentials = credentials;
@@ -96,12 +100,12 @@ public sealed class RtspClient : IAsyncDisposable
     public string? Session { get; private set; }
 
     /// <summary>Time since the last interleaved packet or RTSP response arrived (liveness of quiet streams).</summary>
-    public TimeSpan SinceLastReceive => Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastReceive));
+    public TimeSpan SinceLastReceive => _time.GetElapsedTime(Interlocked.Read(ref _lastReceive));
 
     /// <summary>Session timeout from the SETUP response (default 60 s).</summary>
     public TimeSpan SessionTimeout { get; private set; } = TimeSpan.FromSeconds(60);
 
-    public static async Task<RtspClient> ConnectAsync(string host, int port, NetworkCredential? credentials, TimeSpan timeout, CancellationToken ct)
+    public static async Task<RtspClient> ConnectAsync(string host, int port, NetworkCredential? credentials, TimeSpan timeout, CancellationToken ct, TimeProvider? time = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         var tcp = new TcpClient { NoDelay = true, ReceiveBufferSize = 512 * 1024 };
@@ -122,7 +126,7 @@ public sealed class RtspClient : IAsyncDisposable
             throw;
         }
 
-        return new RtspClient(tcp.GetStream(), credentials, tcp);
+        return new RtspClient(tcp.GetStream(), credentials, tcp, time);
     }
 
     /// <summary>Sends a request and reads its response; answers a 401 once with Digest credentials.</summary>
@@ -191,7 +195,7 @@ public sealed class RtspClient : IAsyncDisposable
                     return null;
                 }
 
-                Interlocked.Exchange(ref _lastReceive, Stopwatch.GetTimestamp());
+                Interlocked.Exchange(ref _lastReceive, _time.GetTimestamp());
                 return new InterleavedPacket(channel, data);
             }
 
@@ -336,7 +340,7 @@ public sealed class RtspClient : IAsyncDisposable
             body = Encoding.UTF8.GetString(bytes);
         }
 
-        Interlocked.Exchange(ref _lastReceive, Stopwatch.GetTimestamp());
+        Interlocked.Exchange(ref _lastReceive, _time.GetTimestamp());
         return new RtspResponse(code, parts.Length > 2 ? parts[2] : string.Empty, headers, body);
     }
 }

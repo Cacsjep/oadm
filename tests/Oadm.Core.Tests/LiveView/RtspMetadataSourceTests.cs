@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Testing;
@@ -66,26 +68,33 @@ public sealed class RtspMetadataSourceTests
     public async Task QuietStreamIsKeptAliveAndAnsweredKeepAlivesKeepItOpen()
     {
         await using var server = new FakeEventRtspServer { Packets = [], StayOpen = true, AnswerKeepAlives = true };
+        var time = new CountingTimeProvider();
         var options = Options(server.Port, "secret") with { KeepAliveInterval = TimeSpan.FromMilliseconds(200), DeadTimeout = TimeSpan.FromSeconds(3) };
-        await using var source = await RtspMetadataSource.OpenAsync(options, CancellationToken.None);
+        await using var source = await RtspMetadataSource.OpenAsync(options, CancellationToken.None, time: time);
 
-        // 20 answered keep-alives take longer than the dead timeout (at least 4 s): without them the read would end as
-        // unreachable. The dead timeout is far above the keep-alive interval, so a busy machine answering late is fine;
-        // the read ends only by the test's cancel (once 20 arrived, or after 30 s, which fails the count below).
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var counting = Task.Run(async () =>
-        {
-            await Eventually.TrueAsync(() => server.Count("OPTIONS") >= 20, "20 keep-alives");
-            await cts.CancelAsync();
-        });
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        using var cts = new CancellationTokenSource();
+        var reading = Task.Run(async () =>
         {
             await foreach (var unused in source.ReadAsync(cts.Token))
             {
             }
         });
-        await counting;
-        Assert.True(server.Count("OPTIONS") >= 20, $"{server.Count("OPTIONS")} keep-alives");
+
+        // The fake clock moves one keep-alive interval at a time, each time once the watch waits for it (its next timer
+        // exists) and the answer to the keep-alive before it arrived. 20 answered keep-alives span 4 s, longer than the dead
+        // timeout: without the answers the read would end as unreachable.
+        await Eventually.TrueAsync(() => time.Timers >= 1, "the watch waits");
+        for (var i = 1; i <= 20; i++)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(200));
+            await Eventually.TrueAsync(
+                () => server.Count("OPTIONS") >= i && source.SinceLastReceive == TimeSpan.Zero && time.Timers >= i + 1,
+                $"keep-alive {i} answered");
+            Assert.False(reading.IsCompleted, $"The read ended after keep-alive {i}.");
+        }
+
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reading);
     }
 
     [Fact]
@@ -302,4 +311,18 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
 #pragma warning restore CA5351
 
     private async Task WriteAsync(NetworkStream stream, string text) => await stream.WriteAsync(Encoding.ASCII.GetBytes(text), _cts.Token);
+}
+
+/// <summary>A fake clock that counts the timers created on it (each wait of the source's watch is one).</summary>
+internal sealed class CountingTimeProvider : FakeTimeProvider
+{
+    private int _timers;
+
+    public int Timers => Volatile.Read(ref _timers);
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        Interlocked.Increment(ref _timers);
+        return base.CreateTimer(callback, state, dueTime, period);
+    }
 }
