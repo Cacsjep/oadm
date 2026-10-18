@@ -6,6 +6,20 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-10-18
+
+### Changed
+
+- Select fields and number fields show the accent border while they have the focus, like text fields.
+
+### Fixed
+
+- Dialogs open on the monitor of the window they belong to. Before, they always opened on the main monitor when the main
+  window was on another one. A plugin page opened with "Open in new window" opens on the monitor of the main window.
+- The mouse wheel over a select field or a number field scrolls the page. Before, scrolling a long form (event rule
+  actions, New rule of the Action Rule Editor) changed the chosen action or number as soon as the field passed under the
+  pointer.
+
 ## [3.5.0] - 2026-10-17
 
 ### Added
