@@ -1,5 +1,8 @@
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Plugins.HardeningScan.Scanning;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.HardeningScan.Tests;
 
@@ -130,8 +133,10 @@ public sealed class ScanServiceTests
     [Fact]
     public async Task A_hanging_device_ends_with_the_device_timeout_and_the_others_finish()
     {
-        // The other devices must finish within the device timeout: 3 s is far above a scan of the fake camera on a busy machine.
+        // A fake clock: the device timeout passes only once the other devices are done, however slow the machine is.
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var options = Rig.Fast();
+        options.Time = time;
         options.DeviceTimeout = TimeSpan.FromSeconds(3);
         options.RequestTimeout = TimeSpan.FromSeconds(10);
         await using var rig = await new Rig(3, options).StartAsync();
@@ -142,6 +147,8 @@ public sealed class ScanServiceTests
         rig.Vapix.Add(slow.Id, camera);
 
         await rig.ScanAsync();
+        await Eventually.TrueAsync(() => rig.Service.CurrentJob is { Done: >= 3 }, "the other devices scanned");
+        time.Advance(TimeSpan.FromSeconds(3));
         await rig.Service.WaitAsync();
 
         var results = (await rig.StateAsync()).Results.ToDictionary(r => r.DeviceId);

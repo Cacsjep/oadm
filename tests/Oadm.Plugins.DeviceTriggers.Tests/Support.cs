@@ -630,7 +630,7 @@ internal sealed class Rig : IAsyncDisposable
         LostDelay = TimeSpan.FromMilliseconds(400),
         // The fake camera sends its states right after the filter reply; what arrives within this time is its full report.
         // Generous, so a stalled thread on a busy machine never splits the report (the exact report lines are tested).
-        SettleTime = TimeSpan.FromSeconds(1),
+        SettleTime = TimeSpan.FromSeconds(3),
         RequestTimeout = TimeSpan.FromSeconds(5),
         KeepAlive = TimeSpan.FromSeconds(10),
         Backoff = [TimeSpan.FromMilliseconds(50)],

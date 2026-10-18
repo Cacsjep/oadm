@@ -221,8 +221,9 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Upstream_on_save_is_validated_then_served_and_an_unreachable_one_falls_back_with_a_warning()
     {
-        // A 5 s query timeout (the Save query must get its answer on a busy machine); one failure is enough to fall back.
-        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(5), FailuresBeforeUnreachable = 1 } });
+        // A 5 s query timeout (the Save query must get its answer on a busy machine); two failures in a row to fall back, so
+        // one poll stalled by the machine before the asserts below does not switch to this computer's time.
+        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(5), FailuresBeforeUnreachable = 2 } });
         await using var upstream = new FakeUpstream();
         var reply = await SaveAsync(upstream: upstream.HostText);
         Assert.True(reply.Saved);

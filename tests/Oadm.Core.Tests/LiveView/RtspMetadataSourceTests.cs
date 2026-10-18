@@ -127,7 +127,7 @@ public sealed class RtspMetadataSourceTests
         Address = "127.0.0.1",
         Port = port,
         Credentials = new NetworkCredential("root", password),
-        ConnectTimeout = TimeSpan.FromSeconds(3),
+        ConnectTimeout = TimeSpan.FromSeconds(30), // far beyond a stalled runner; only a test that waits for it would wait this long
     };
 }
 

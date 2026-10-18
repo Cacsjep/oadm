@@ -261,7 +261,7 @@ internal sealed class Rig : IAsyncDisposable
 
     public FakeVapix Vapix { get; } = new();
 
-    /// <param name="leaseTimeout">Without keep-alives a stream stops after this (default 5 s; the lease test shortens it).</param>
+    /// <param name="leaseTimeout">Without keep-alives a stream stops after this (default 1 minute, far beyond a stalled runner; the lease tests shorten it).</param>
     /// <param name="retryDelay">Wait after a failed read (default 50 ms).</param>
     /// <param name="time">Clock of the plugin (default the system clock).</param>
     public Rig(TimeSpan? leaseTimeout = null, TimeSpan? retryDelay = null, TimeProvider? time = null)
@@ -271,7 +271,7 @@ internal sealed class Rig : IAsyncDisposable
             {
                 PollInterval = TimeSpan.FromMilliseconds(20),
                 RetryDelay = retryDelay ?? TimeSpan.FromMilliseconds(50),
-                LeaseTimeout = leaseTimeout ?? TimeSpan.FromSeconds(5),
+                LeaseTimeout = leaseTimeout ?? TimeSpan.FromMinutes(1),
                 LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
                 MaxStreams = 2,
             },

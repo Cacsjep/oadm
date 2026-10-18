@@ -68,7 +68,7 @@ public sealed class RtspVideoSourceTests
         Codec = codec,
         Size = new ImageSize(640, 360),
         Fps = 10,
-        ConnectTimeout = TimeSpan.FromSeconds(3),
+        ConnectTimeout = TimeSpan.FromSeconds(30), // far beyond a stalled runner; only a test that waits for it would wait this long
     };
 
     /// <summary>One-connection RTSP server: Digest challenge, DESCRIBE with the fixture SDP, SETUP, PLAY, then the RTP.</summary>

@@ -260,8 +260,8 @@ public sealed partial class HardeningScanService : IAsyncDisposable
             return Detail(device.Id, level, now, refusal, HardeningChecks.CacheOnly(device, level, refusal, now));
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(_options.DeviceTimeout);
+        using var deadline = new CancellationTokenSource(_options.DeviceTimeout, _options.Time);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         try
         {
             var client = await _vapix.CreateAsync(device.Id, timeout.Token).ConfigureAwait(false);

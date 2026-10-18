@@ -16,6 +16,7 @@
     <!-- In-process server for the hardware test, dev-cameras.yaml loader. -->
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.13" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
   </ItemGroup>
 
   <ItemGroup>
