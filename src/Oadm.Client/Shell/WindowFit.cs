@@ -6,8 +6,8 @@ namespace Oadm.Client.Shell;
 /// <summary>
 /// Keeps every window (main window, dialogs, plugin dialogs) inside the screen it opens on: a dialog designed for a large
 /// screen is made smaller on a small or scaled one (Full HD at 125 % leaves about 1536 x 816), its minimum and maximum
-/// sizes follow, and it is moved back onto the screen. Applied once when a window opens (<see cref="Attach"/>); the size
-/// logic is <see cref="Fit"/>, without UI.
+/// sizes follow, and it is moved back onto the screen. Applied once a window is shown (<see cref="Attach"/>), on the screen
+/// it was placed on (next to its owner, which may be another monitor); the size logic is <see cref="Fit"/>, without UI.
 /// </summary>
 public static class WindowFit
 {
@@ -15,8 +15,42 @@ public static class WindowFit
     public const double Margin = 16;
 
     /// <summary>Fits every window that opens from now on.</summary>
+    /// <remarks>
+    /// <see cref="Window.WindowOpenedEvent"/> comes before Avalonia places the window next to its owner (a new window still
+    /// sits on the main monitor then), so the fit waits for <see cref="Window.Opened"/>, which comes after.
+    /// </remarks>
     public static void Attach() =>
-        Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) => Apply(window));
+        Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+        {
+            void OnOpened(object? sender, EventArgs e)
+            {
+                window.Opened -= OnOpened;
+                Apply(window);
+            }
+
+            window.Opened += OnOpened;
+        });
+
+    /// <summary>
+    /// Opens <paramref name="window"/> (not owned, e.g. a plugin window) centered on the screen <paramref name="opener"/> is
+    /// on, instead of the main monitor.
+    /// </summary>
+    public static void CenterOn(Window window, Window opener)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        ArgumentNullException.ThrowIfNull(opener);
+        var screen = opener.Screens.ScreenFromWindow(opener);
+        if (screen is null || screen.Scaling <= 0 || double.IsNaN(window.Width) || double.IsNaN(window.Height))
+        {
+            return;
+        }
+
+        var area = screen.WorkingArea;
+        var size = PixelSize.FromSize(new Size(window.Width, window.Height), screen.Scaling);
+        var center = new PixelPoint(area.X + (area.Width - size.Width) / 2, area.Y + (area.Height - size.Height) / 2);
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Position = Inside(center, size, area);
+    }
 
     /// <summary>
     /// The sizes of a window inside <paramref name="available"/> (the work area in logical pixels): width, height,

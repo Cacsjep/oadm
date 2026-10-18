@@ -67,6 +67,7 @@ public partial class MainWindow : Window
             page.Dispose();
         };
         _pluginWindows.Add(window);
+        WindowFit.CenterOn(window, this); // the monitor of the main window, not always the main monitor
         window.Show();
     }
 
