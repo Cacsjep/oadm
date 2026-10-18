@@ -22,7 +22,7 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 			<details class="bug-menu">
 				<summary><Icon name="comment" /><span class="label">Bug report</span><Icon name="down-caret" class="caret" /></summary>
 				<div class="menu">
-					<a href="https://support.oadm.app/"><Icon name="comment-alt" class="support-icon" /><span>Support Forum<small>Questions and problems</small></span></a>
+					<a class="forum-link" href="https://support.oadm.app/"><Icon name="comment-alt" class="support-icon" /><span>Support Forum<small>Questions and problems</small></span></a>
 					<a href={`https://github.com/${repo}/issues/new/choose`}><Icon name="github" /><span>GitHub issue<small>For developers</small></span></a>
 				</div>
 			</details>
@@ -31,6 +31,18 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 </nav>
 
 <script>
+	import { disableForumLink, forumAvailable } from '../lib/forum';
+
+	// The forum is down: its menu entry greyed out and says so.
+	forumAvailable().then((available) => {
+		if (available) return;
+		document.querySelectorAll<HTMLElement>('.top-bar .forum-link').forEach((link) => {
+			disableForumLink(link);
+			const note = link.querySelector('small');
+			if (note) note.textContent = 'Currently not available';
+		});
+	});
+
 	// The Bug report menu closes on a click elsewhere.
 	const bugMenu = document.querySelector<HTMLDetailsElement>('.bug-menu');
 	document.addEventListener('click', (event) => {

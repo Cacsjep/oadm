@@ -39,9 +39,10 @@ const links = {
 	<a class="dl-version" href={`${base}project/changelog/`} hidden={!version}>{version}</a>
 	<span class="dl-label community-label">Community</span>
 	<div class="download-buttons">
-		<a class="dl" href={portal}><Icon name="comment-alt" class="support-icon" />Support Forum</a>
+		<a class="dl forum-link" href={portal}><Icon name="comment-alt" class="support-icon" />Support Forum</a>
 		<button class="dl newsletter-toggle" type="button" aria-expanded="false" aria-controls="newsletter"><Icon name="email" class="support-icon" />Subscribe to newsletter</button>
 	</div>
+	<p class="forum-down" hidden>Currently not available. We are working on it.</p>
 	<form id="newsletter" class="newsletter" data-portal={portal} hidden>
 		<div class="newsletter-row">
 			<input type="email" name="email" autocomplete="email" placeholder="you@company.com" aria-label="Email" required />
@@ -59,6 +60,8 @@ const links = {
 </div>
 
 <script>
+	import { disableForumLink, forumAvailable } from '../lib/forum';
+
 	// Refresh the links from the latest release in the browser.
 	const root = document.querySelector<HTMLElement>('.downloads');
 
@@ -92,6 +95,19 @@ const links = {
 		toggle.setAttribute('aria-expanded', String(!form.hidden));
 		if (!form.hidden) form.querySelector('input')?.focus();
 	});
+	// The forum is down: Support Forum and the newsletter greyed out, with a short note below them.
+	forumAvailable().then((available) => {
+		if (available || !root) return;
+		root.querySelectorAll<HTMLElement>('.forum-link').forEach(disableForumLink);
+		if (toggle) {
+			toggle.disabled = true;
+			toggle.classList.add('forum-unavailable');
+			toggle.setAttribute('aria-expanded', 'false');
+		}
+		if (form) form.hidden = true;
+		root.querySelector<HTMLElement>('.forum-down')!.hidden = false;
+	});
+
 	form?.addEventListener('submit', async (event) => {
 		event.preventDefault();
 		const input = form.querySelector('input')!;

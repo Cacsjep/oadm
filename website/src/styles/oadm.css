@@ -501,6 +501,24 @@ header .social-icons::after {
 	color: #34d399;
 }
 
+/* Support Forum and newsletter while the forum does not answer (src/lib/forum.ts): greyed out, a note below them. */
+.forum-unavailable {
+	opacity: 0.45;
+	pointer-events: none;
+	cursor: default;
+}
+
+.downloads .forum-down {
+	margin: calc(5px - 0.75rem) 0 0;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-xs);
+	text-align: center;
+}
+
+.downloads .forum-down[hidden] {
+	display: none;
+}
+
 /* The YouTube button's icon in YouTube red. */
 .youtube-icon {
 	color: #ff0033;
