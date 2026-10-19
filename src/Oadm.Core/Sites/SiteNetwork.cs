@@ -37,7 +37,7 @@ public interface ISiteNetwork
     /// <summary>True when <paramref name="address"/> answers a ping from the node within <paramref name="timeout"/>.</summary>
     Task<bool> PingAsync(Guid siteId, string address, TimeSpan timeout, CancellationToken ct);
 
-    /// <summary>True when TCP <paramref name="port"/> at <paramref name="address"/> accepts a connection from the node.</summary>
+    /// <summary>True when a host answers on TCP <paramref name="port"/> at <paramref name="address"/> from the node: it accepts or refuses the connection.</summary>
     Task<bool> ProbeTcpAsync(Guid siteId, string address, int port, TimeSpan timeout, CancellationToken ct);
 
     /// <summary>The node's own address towards <paramref name="address"/>; null when it has none.</summary>

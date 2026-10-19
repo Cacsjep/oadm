@@ -56,6 +56,10 @@ public sealed class LocalDeviceNetwork : IDeviceNetwork
             await socket.ConnectAsync(ip, port, limit.Token).ConfigureAwait(false);
             return true;
         }
+        catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            return true; // a host sent a reset: something is at this address
+        }
         catch (SocketException)
         {
             return false;

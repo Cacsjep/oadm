@@ -101,8 +101,13 @@ internal sealed class MapConnector : IDeviceConnector
 {
     public Dictionary<IPEndPoint, IPEndPoint> Map { get; } = [];
 
+    /// <summary>Addresses where nothing is: a connect fails like on a network without that host (unreachable, no reset).</summary>
+    public HashSet<IPAddress> Dead { get; } = [];
+
     public Task<Socket> ConnectAsync(IPEndPoint target, CancellationToken ct) =>
-        SystemDeviceConnector.Instance.ConnectAsync(Map.TryGetValue(target, out var mapped) ? mapped : target, ct);
+        Dead.Contains(target.Address)
+            ? Task.FromException<Socket>(new SocketException((int)SocketError.HostUnreachable))
+            : SystemDeviceConnector.Instance.ConnectAsync(Map.TryGetValue(target, out var mapped) ? mapped : target, ct);
 }
 
 /// <summary>A pinger that never has the OS ping (the node falls back to TCP 80 / 443).</summary>

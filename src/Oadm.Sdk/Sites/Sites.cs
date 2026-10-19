@@ -179,7 +179,11 @@ public interface IDeviceNetwork
     /// <summary>True when <paramref name="address"/> answers a ping within <paramref name="timeout"/>.</summary>
     Task<bool> PingAsync(string address, TimeSpan timeout, CancellationToken ct);
 
-    /// <summary>True when TCP <paramref name="port"/> at <paramref name="address"/> accepts a connection within <paramref name="timeout"/>.</summary>
+    /// <summary>
+    /// True when a host answers on TCP <paramref name="port"/> at <paramref name="address"/> within <paramref name="timeout"/>:
+    /// it accepts the connection or actively refuses it (a refusal also proves the address is taken). The address-in-use
+    /// check relies on it; the connection is closed at once.
+    /// </summary>
     Task<bool> ProbeTcpAsync(string address, int port, TimeSpan timeout, CancellationToken ct);
 
     /// <summary>The addresses of a host name as this route resolves it; empty when unknown.</summary>

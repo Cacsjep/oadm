@@ -200,15 +200,20 @@ public sealed class DiscoveryTests
         var connector = new MapConnector();
         connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.7"), 443)] = new IPEndPoint(IPAddress.Loopback, https.Port);
         connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.7"), 80)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
-        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.8"), 443)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
-        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.8"), 80)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
+        connector.Dead.Add(IPAddress.Parse("127.0.0.8"));
+        // A host that refuses (sends a reset) is there: the address is taken.
+        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.9"), 443)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
+        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.9"), 80)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
         await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o => o.Connector = connector);
         await using var link = await server.NextLinkAsync();
         await link.BindAsync(node.Code);
 
         Assert.True((await link.Client.PingAsync(new PingRequest { Address = "127.0.0.7", TimeoutMs = 10_000 })).Answered);
         Assert.False((await link.Client.PingAsync(new PingRequest { Address = "127.0.0.8", TimeoutMs = 10_000 })).Answered);
+        Assert.True((await link.Client.PingAsync(new PingRequest { Address = "127.0.0.9", TimeoutMs = 10_000 })).Answered);
         Assert.True((await link.Client.ProbeTcpAsync(new ProbeTcpRequest { Address = "127.0.0.7", Port = 443, TimeoutMs = 10_000 })).Open);
+        Assert.True((await link.Client.ProbeTcpAsync(new ProbeTcpRequest { Address = "127.0.0.9", Port = 443, TimeoutMs = 10_000 })).Open);
+        Assert.False((await link.Client.ProbeTcpAsync(new ProbeTcpRequest { Address = "127.0.0.8", Port = 443, TimeoutMs = 10_000 })).Open);
         var outside = await Assert.ThrowsAsync<Grpc.Core.RpcException>(async () => await link.Client.PingAsync(new PingRequest { Address = "10.0.0.20" }));
         Assert.Equal(AdminTexts.OutsideNetworks, outside.Status.Detail);
         Assert.Equal("127.0.0.1", (await link.Client.LocalAddressForAsync(new LocalAddressForRequest { Address = "127.0.0.40" })).Address);

@@ -394,6 +394,10 @@ public sealed class SiteNodeGrpcService(
         {
             return false;
         }
+        catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            return true; // a host sent a reset: something is at this address
+        }
         catch (SocketException)
         {
             return false;

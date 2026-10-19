@@ -85,6 +85,10 @@ public sealed class PluginNetworkTests
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         Assert.True(await local.ProbeTcpAsync("127.0.0.1", port, Wait, CancellationToken.None));
+
+        // A refused connection is a host that answers: the address is in use (the address-in-use check of Assign IP address).
+        listener.Stop();
+        Assert.True(await local.ProbeTcpAsync("127.0.0.1", port, Wait, CancellationToken.None));
     }
 
     // ---------- listeners on the server's own network ----------

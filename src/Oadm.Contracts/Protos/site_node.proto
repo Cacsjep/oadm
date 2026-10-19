@@ -294,7 +294,7 @@ message PingRequest { string address = 1; int32 timeout_ms = 2; }
 message PingReply { bool answered = 1; int32 round_trip_ms = 2; }
 
 message ProbeTcpRequest { string address = 1; int32 port = 2; int32 timeout_ms = 3; }
-message ProbeTcpReply { bool open = 1; }
+message ProbeTcpReply { bool open = 1; }                      // a host answered: accepted or refused the connection
 
 message LocalAddressForRequest { string address = 1; }
 message LocalAddressForReply { string address = 1; }          // the node's own address towards it, empty when none
