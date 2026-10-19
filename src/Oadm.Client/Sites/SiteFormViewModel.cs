@@ -83,7 +83,10 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
 
     public bool ShowReplace => Mode == SiteFormMode.Replace;
 
-    public bool ShowKeepDevices => Mode == SiteFormMode.Remove;
+    public bool ShowKeepDevices => Mode == SiteFormMode.Remove && !IsRemovedSite;
+
+    /// <summary>Remove devices of a removed site: no Keep devices choice.</summary>
+    public bool IsRemovedSite { get; private init; }
 
     /// <summary>Remove site: the button is red.</summary>
     public bool IsDestructive => Mode == SiteFormMode.Remove;
@@ -204,6 +207,19 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
     public static SiteFormViewModel Remove(IOadmApi api, Site site)
     {
         ArgumentNullException.ThrowIfNull(site);
+        if (site.State == SiteState.Removed)
+        {
+            // The site is gone already; its kept devices go now (Replace with moves them instead).
+            return new SiteFormViewModel(api, SiteFormMode.Remove, site, "Remove devices", "Remove devices")
+            {
+                Intro = site.DeviceCount == 1
+                    ? $"Remove the device of {site.Name} with its login and tags?"
+                    : string.Create(CultureInfo.CurrentCulture, $"Remove the {site.DeviceCount:N0} devices of {site.Name} with their logins and tags?"),
+                KeepDevices = false,
+                IsRemovedSite = true,
+            };
+        }
+
         return new SiteFormViewModel(api, SiteFormMode.Remove, site, "Remove site", "Remove site")
         {
             Intro = site.DeviceCount == 1
