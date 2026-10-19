@@ -70,4 +70,6 @@ message DiscoveredDevice {
   // The DNS name (FQDN) of address, verified (it resolves back to address); empty when DNS has none or the lookup did not
   // finish yet. The device address on add when CommitRequest.use_host_name is set.
   string dns_name = 20;
+  // The site the device answered through; empty = the server's own network.
+  string site_id = 21;
 }

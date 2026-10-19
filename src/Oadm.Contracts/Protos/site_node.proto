@@ -1,0 +1,318 @@
+syntax = "proto3";
+package oadm.sitenode.v1;
+option csharp_namespace = "Oadm.Contracts.SiteNode";
+
+// The protocol between the OADM server and an OADM Site Node (docs/sites.md, "Transport and protocol").
+//
+// The node hosts this service and the server calls it, in both modes: outbound (default) the node opens TCP + TLS 1.3 to
+// the server's site port and the roles turn after TLS (the server is the HTTP/2 client on that socket); inbound the
+// server opens TCP + TLS 1.3 to the node's port 5081. Everything above the socket is the same.
+//
+// Each node has two kinds of connections: one **control** connection (Hello, Watch, Ping, ProbeTcp, Resolve,
+// ReverseLookup, Browse, RangeScan, LocalAddressFor, the binding calls; the heartbeat) and up to 8 **worker** connections
+// (every Dial and Relay), so a large transfer never delays the heartbeat.
+//
+// An unbound node answers only Hello and Bind; a bound node answers everything, but only to the bound server's identity
+// (mutual TLS, pinned fingerprints) and one server session at a time. Calls a node refuses end with
+// FAILED_PRECONDITION and a plain text.
+service SiteNodeService {
+  // Anyone: id, version, features and state. The bound server's name only to that server.
+  rpc Hello (HelloRequest) returns (HelloReply);
+
+  // Binding with the pairing code, an SRP-6a exchange (RFC 5054, 2048-bit group, SHA-256) with the code as the password,
+  // so nobody in between can test codes offline. PairStart gets the salt of the node's current code and its public value
+  // B; Bind sends the server's public value A, and both sides derive the session key K = SHA-256(S). Bind proves the server with HMAC-SHA256(K, "bind" | node fingerprint | server
+  // identity fingerprint) (the fingerprints of this TLS connection, so a relay in between fails), the reply proves the
+  // node over "bound" | both fingerprints. A failed proof counts as a wrong code. Refused while binding is closed, after 5
+  // wrong codes for 10 minutes (RESOURCE_EXHAUSTED), and by a node bound to another server.
+  rpc PairStart (PairStartRequest) returns (PairStartReply);
+  rpc Bind (BindRequest) returns (BindReply);
+  // The bound server forgets the node: the node forgets the server and opens binding again (like Reset, same identity).
+  rpc Unbind (UnbindRequest) returns (UnbindReply);
+  rpc Rename (RenameRequest) returns (RenameReply);
+  // A new server identity, signed with the old key. The node pins the new fingerprint.
+  rpc RotateIdentity (RotateIdentityRequest) returns (RotateIdentityReply);
+  // The server's DNS name and every address of its network cards, after bind and after every change. The node tries the
+  // typed address first, then these in order.
+  rpc SetServerAddresses (ServerAddresses) returns (SetServerAddressesReply);
+
+  // Ports the server needs and the node has not allowed. The node lists them in its app until allowed or dismissed.
+  rpc RequestPorts (RequestPortsRequest) returns (RequestPortsReply);
+  // Outbound mode: asks the node to open more worker connections (at most 8 in all).
+  rpc OpenConnections (OpenConnectionsRequest) returns (OpenConnectionsReply);
+
+  // The node's state on subscribe and after every change (network cards, allowed ports, relays, connection counts).
+  rpc Watch (WatchRequest) returns (stream NodeStatus);
+
+  // One TCP connection through the node. First client message: DialMessage.open; first server message: DialMessage.result.
+  // Then data both ways; `end` is a half-close of that direction. Cancelling the call closes the socket.
+  rpc Dial (stream DialMessage) returns (stream DialMessage);
+
+  // A UDP or TCP listener on the node's reached cards (the port must be on the Listen on list). Lives as long as the call.
+  // First client message: RelayMessage.open; first server message: RelayMessage.state; later states when they change.
+  rpc Relay (stream RelayMessage) returns (stream RelayMessage);
+
+  rpc Resolve (ResolveRequest) returns (ResolveReply);
+  rpc ReverseLookup (ReverseLookupRequest) returns (ReverseLookupReply);
+  rpc Ping (PingRequest) returns (PingReply);
+  rpc ProbeTcp (ProbeTcpRequest) returns (ProbeTcpReply);
+  rpc LocalAddressFor (LocalAddressForRequest) returns (LocalAddressForReply);
+
+  // mDNS _axis-video._tcp on the reached cards for `duration_seconds`, each answer as it comes.
+  rpc Browse (BrowseRequest) returns (stream BrowseResult);
+  // The first contact of a range scan on the node: every address of the range with an open port 443 or 80.
+  rpc RangeScan (RangeScanRequest) returns (stream RangeScanResult);
+}
+
+// ---- Hello and binding ----
+
+enum NodeState {
+  NODE_STATE_UNSPECIFIED = 0;
+  NODE_STATE_UNBOUND_OPEN = 1;    // not bound, binding open: Bind with the right code works
+  NODE_STATE_UNBOUND_CLOSED = 2;  // not bound, binding closed: Allow binding in the node app first
+  NODE_STATE_BOUND = 3;
+}
+
+enum NodeMode {
+  NODE_MODE_UNSPECIFIED = 0;
+  NODE_MODE_CONNECT = 1;          // outbound: the node connects to the server (default)
+  NODE_MODE_WAIT = 2;             // inbound: the node waits for the server on its port
+}
+
+message HelloRequest {}
+
+message HelloReply {
+  string node_id = 1;             // random, new at every Reset
+  string version = 2;             // the node program's version ("3.7.0")
+  int32 protocol_version = 3;     // this file's version: 1
+  repeated string features = 4;   // "dial", "browse", "range-scan", "resolve", "ping", "local-address", "relay.udp", "relay.tcp"
+  NodeState state = 5;
+  NodeMode mode = 6;
+  string host_name = 7;           // the default site name
+  string bound_server_name = 8;   // only to the bound server, else empty
+  string site_name = 9;           // only to the bound server, else empty
+}
+
+message PairStartRequest {}
+
+message PairStartReply {
+  bytes salt = 1;                 // of the node's current code
+  bytes b = 2;                    // SRP public value B of the node
+}
+
+message BindRequest {
+  string site_name = 1;
+  string server_name = 2;
+  bytes proof = 3;                // HMAC-SHA256(K, "bind" | node fingerprint | server identity fingerprint)
+  bytes a = 4;                    // SRP public value A of the server
+}
+
+message BindReply {
+  bytes proof = 1;                // HMAC-SHA256(K, "bound" | node fingerprint | server identity fingerprint)
+}
+
+message UnbindRequest {}
+message UnbindReply {}
+
+message RenameRequest { string site_name = 1; }
+message RenameReply {}
+
+message RotateIdentityRequest {
+  bytes new_certificate = 1;      // DER of the new identity certificate
+  bytes signature = 2;            // ECDSA P-256 / SHA-256 over new_certificate with the old identity key
+}
+message RotateIdentityReply {}
+
+message ServerAddresses {
+  string dns_name = 1;            // empty when the server has none
+  repeated string addresses = 2;  // every address of the server's network cards
+  int32 port = 3;                 // the site port (5081)
+}
+message SetServerAddressesReply {}
+
+// ---- Ports ----
+
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0;
+  PROTOCOL_TCP = 1;
+  PROTOCOL_UDP = 2;
+}
+
+enum PortDirection {
+  PORT_DIRECTION_UNSPECIFIED = 0;
+  PORT_DIRECTION_CONNECT = 1;     // the node connects to devices on it
+  PORT_DIRECTION_LISTEN = 2;      // the node listens on it for a relay
+}
+
+message PortRule {
+  PortDirection direction = 1;
+  Protocol protocol = 2;
+  int32 port = 3;
+  string reason = 4;              // "camera 192.168.0.30", "NTP server"; empty for the defaults
+}
+
+message RequestPortsRequest { repeated PortRule ports = 1; }
+message RequestPortsReply {}
+
+message OpenConnectionsRequest { int32 count = 1; }
+message OpenConnectionsReply { int32 open = 1; }
+
+// ---- State ----
+
+message WatchRequest {}
+
+message NetworkCard {
+  string id = 1;                  // the OS's interface id
+  string name = 2;                // "Ethernet 2", "eth1"
+  repeated string addresses = 3;  // "192.168.0.5/24", "fd00::5/64"
+  bool reached = 4;               // "Reach devices on this network"
+  bool has_default_router = 5;    // the office side: not reached by default
+}
+
+enum RelayStateKind {
+  RELAY_STATE_UNSPECIFIED = 0;
+  RELAY_STATE_RUNNING = 1;
+  RELAY_STATE_WAITING_FOR_APPROVAL = 2;
+  RELAY_STATE_PORT_IN_USE = 3;
+  RELAY_STATE_NO_PERMISSION = 4;
+  RELAY_STATE_SITE_OFFLINE = 5;   // server side only
+  RELAY_STATE_NOT_SUPPORTED = 6;  // server side only: the node lacks relay.udp / relay.tcp
+}
+
+message RelayInfo {
+  Protocol protocol = 1;
+  int32 port = 2;
+  string reason = 3;
+  RelayStateKind state = 4;
+  string message = 5;             // plain text of a problem: "UDP 123 is used by another program"
+}
+
+message NodeStatus {
+  NodeState state = 1;
+  NodeMode mode = 2;
+  string site_name = 3;
+  repeated NetworkCard cards = 4;
+  bool all_cards = 5;
+  repeated string extra_subnets = 6;  // "10.20.0.0/16"
+  repeated PortRule allowed = 7;      // both lists: Connect to and Listen on
+  repeated PortRule requested = 8;    // asked for and not allowed or dismissed yet
+  repeated RelayInfo relays = 9;
+  int32 short_connections = 10;
+  int32 permanent_connections = 11;
+  string version = 12;
+}
+
+// ---- Dial ----
+
+enum DialKind {
+  DIAL_KIND_UNSPECIFIED = 0;
+  DIAL_KIND_SHORT = 1;            // polls, tasks, page reads, probes: counted against the short limit
+  DIAL_KIND_PERMANENT = 2;        // WebSockets, RTSP: counted apart
+}
+
+// Why a dial did not connect. DEVICE_* are the device's own socket errors (the device's status may change); SITE_* are
+// problems of the node (never a device error).
+enum DialError {
+  DIAL_ERROR_NONE = 0;
+  DIAL_ERROR_DEVICE_REFUSED = 1;
+  DIAL_ERROR_DEVICE_TIMED_OUT = 2;
+  DIAL_ERROR_DEVICE_UNREACHABLE = 3;   // no route, host unreachable
+  DIAL_ERROR_DEVICE_RESET = 4;
+  DIAL_ERROR_DEVICE_HOST_NOT_FOUND = 5; // the node's DNS does not know the name
+  DIAL_ERROR_SITE_OUTSIDE_NETWORKS = 10; // the address is not on a reached card or extra subnet
+  DIAL_ERROR_SITE_PORT_NOT_ALLOWED = 11;
+  DIAL_ERROR_SITE_BUSY = 12;           // over the short or connecting limit
+}
+
+message DialOpen {
+  string host = 1;                // IP address or host name (resolved by the node)
+  int32 port = 2;
+  DialKind kind = 3;
+  int32 timeout_ms = 4;           // the node stops connecting after it
+}
+
+message DialResult {
+  DialError error = 1;
+  string message = 2;             // plain text for a site error; the socket message for a device error
+  string remote_address = 3;      // the address the node connected to (after DNS)
+}
+
+message DialMessage {
+  oneof kind {
+    DialOpen open = 1;            // client, first message only
+    DialResult result = 2;        // server, first message only
+    bytes data = 3;
+    bool end = 4;                 // half-close of this direction
+  }
+}
+
+// ---- Relay ----
+
+message RelayOpen {
+  Protocol protocol = 1;
+  int32 port = 2;
+  string reason = 3;
+}
+
+// One datagram (UDP) or one event of an incoming connection (TCP). `connection_id` names a TCP connection of this relay;
+// for UDP it is unused.
+message RelayPacket {
+  string remote_address = 1;      // the sender ("192.168.0.30:50123")
+  uint64 connection_id = 2;
+  bytes data = 3;
+  bool accepted = 4;              // TCP: a new connection (node -> server, no data)
+  bool end = 5;                   // TCP: half-close of this direction
+  bool closed = 6;                // TCP: the connection is gone (either side)
+}
+
+message RelayMessage {
+  oneof kind {
+    RelayOpen open = 1;           // client, first message only
+    RelayInfo state = 2;          // server: the relay's state, first message and after every change
+    RelayPacket packet = 3;       // both ways: a datagram from or reply to a sender, TCP data
+  }
+}
+
+// ---- Network checks ----
+
+message ResolveRequest { string name = 1; }
+message ResolveReply { repeated string addresses = 1; }       // empty: not found
+
+message ReverseLookupRequest { string address = 1; }
+message ReverseLookupReply { string name = 1; }               // verified full name (resolves back), empty when none
+
+message PingRequest { string address = 1; int32 timeout_ms = 2; }
+message PingReply { bool answered = 1; int32 round_trip_ms = 2; }
+
+message ProbeTcpRequest { string address = 1; int32 port = 2; int32 timeout_ms = 3; }
+message ProbeTcpReply { bool open = 1; }
+
+message LocalAddressForRequest { string address = 1; }
+message LocalAddressForReply { string address = 1; }          // the node's own address towards it, empty when none
+
+// ---- Discovery ----
+
+message BrowseRequest { int32 duration_seconds = 1; }
+
+message BrowseResult {
+  string serial = 1;              // macaddress of the TXT record
+  string instance_name = 2;       // "<friendly name> - <serial>"
+  repeated string addresses = 3;
+  int32 port = 4;
+  string host_name = 5;           // "axis-<serial>.local"
+}
+
+message RangeScanRequest {
+  string from = 1;
+  string to = 2;
+  int32 parallelism = 3;
+  int32 timeout_ms = 4;
+}
+
+message RangeScanResult {
+  string address = 1;
+  repeated int32 open_ports = 2;  // 443 and / or 80
+  bool finished = 3;              // the last message: every address was tried
+  int32 tried = 4;
+  int32 total = 5;
+}

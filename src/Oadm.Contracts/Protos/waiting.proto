@@ -30,6 +30,7 @@ message WaitingLine {
   string password = 3;
   string expected_serial = 4;  // MAC address of an AXIS Device Manager export: another device gets no password
   repeated string tags = 5;    // given to the device when it is added
+  string site_id = 6;          // the import's Site column: only tried through this site; empty = everywhere
 }
 
 message AddWaitingRequest {
@@ -63,6 +64,7 @@ message WaitingDevice {
   int32 tries = 11;
   bool has_login = 12;                      // the line brought a login (never the password)
   bool checking = 13;                       // asked for (Try now) or in the running round and not tried yet
+  string site_id = 14;                      // only tried through this site; empty = everywhere
 }
 
 message WaitingList {
