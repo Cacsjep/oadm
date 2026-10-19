@@ -41,6 +41,7 @@
   <ItemGroup>
     <!-- Fake host firewall (NTP / DHCP firewall rules). -->
     <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+    <Compile Include="..\Shared\FakeSiteTransport.cs" Link="Shared\FakeSiteTransport.cs" />
   </ItemGroup>
 
 </Project>

@@ -98,6 +98,12 @@ public sealed class Device : IDeviceInfo
     /// <inheritdoc />
     IReadOnlyList<string> IDeviceInfo.Tags => Tags;
 
+    /// <summary>The site the device is reached through; null = the server's own network. Changes only with its address (a move).</summary>
+    public Guid? SiteId { get; set; }
+
+    /// <summary>The name of <see cref="SiteId"/>; not a column, filled by reads like <see cref="CredentialUserName"/>.</summary>
+    public string? SiteName { get; set; }
+
     /// <summary>Detached deep copy, safe to hand to other threads.</summary>
     public Device Clone()
     {

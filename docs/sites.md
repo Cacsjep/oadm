@@ -3,8 +3,9 @@
 Status: design. First agreed 2026-10-15 as "Agents" (branch `feature/agents`, `docs/agents.md`); re-evaluated against
 main (v3.6.0-rc.1) and renamed on 2026-10-19; after a security review the same day the node connects out to the server,
 binding needs a pairing code and the node opens only allowed ports; an architecture, SDK and security review (also
-2026-10-19) added the rest of that day's decisions. Nothing is built yet except the first refactor on that branch
-(`IDeviceConnector`). Defaults marked **(default)** were not asked and may change.
+2026-10-19) added the rest of that day's decisions. Work stream 0 (contracts and spike) is built on `feature/sites`
+(2026-10-19): the pairing became SRP-6a and TLS 1.2 is allowed next to 1.3 (both decided that day, see Binding and
+Transport). Defaults marked **(default)** were not asked and may change.
 
 ## Purpose
 
@@ -31,7 +32,7 @@ Client ──► OADM server ◄──TLS 5081── OADM Site Node, site "Build
 administrator turns on "Accept site nodes"** on the Sites page (off by default: a server without sites opens no extra
 port). **Inbound** (the server connects to the node, which listens on 5081) stays an option in the node app ("Wait for the server") for sites the server must reach itself. One protocol for both (see Transport). |
 | Finding | Outbound (default): the node app takes the server's address; once it connects, the node shows on the Sites page as **Waiting to be bound**. Inbound: an unbound node announces itself over mDNS; the Sites page finds it with **Search** (mDNS) or **Add manually** (address). |
-| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other (see Binding), so neither another server nor anything in between can bind. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
+| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other through SRP-6a (see Binding), so neither another server nor anything in between can bind, and nobody in between can test codes offline. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
 | Removing | From OADM (rare), with "Keep devices" or not. Locally with **Reset** in the node app when the server is gone. |
 | Reach | The node reaches the devices on the **network cards chosen in the node app** ("Reach devices on this network", or all cards). Default: every card except the one with the default router (the office side). Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
 | Ports (2026-10-19, security review) | The node uses **only allowed ports**, in two lists: **Connect to** (devices; TCP 80, 443 and 554 by default) and **Listen on** (relays; empty by default), so a port allowed for a camera never opens a listener at the site. Further ports (a plugin's ports, a camera on 8443, a per-device RTSP port, the NTP relay's UDP 123) are **requested by the server and allowed in the node app** ("Building B asks to connect to TCP 8443: camera 192.168.0.30. Allow"); nothing is allowed by itself. A dial to another port is a site error "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." |
@@ -135,11 +136,15 @@ The binding window counts the service's run time (saved every minute), not the w
    the server opens TLS to it.
 2. **Bind** (Administrator): dialog with the site name (default the node's host name) and **Pairing code** (the 8
    characters the node app shows; Crockford base32, no look-alikes, case and dashes ignored, 40 bits). Both sides have
-   seen each other's key fingerprint in the TLS handshake. The server sends `Bind` with `HMAC-SHA256(code, "bind" | node
-   fingerprint | server identity fingerprint)`; the node checks it and answers with the same over "bound" | both
-   fingerprints, which the server checks. A server without the code, or anything in between with its own key, fails
-   both. Then the node stores the server identity's fingerprint and the server the node's. Audited "Bound site".
-3. **Wrong codes**: after 5 wrong codes the node makes a new code and refuses `Bind` for 10 minutes **(default)** ("Too
+   seen each other's key fingerprint in the TLS handshake. **SRP-6a** (RFC 5054, 2048-bit group, SHA-256, BouncyCastle;
+   decision 2026-10-19: a plain HMAC of the code sent first would let someone in between test all 2^40 codes offline):
+   `PairStart` gets the salt of the node's current code and its public value B; `Bind` sends the server's public value A
+   and `HMAC-SHA256(K, "bind" | node fingerprint | server identity fingerprint)` with the session key K = SHA-256(S); the
+   node checks it and answers with the same over "bound" | both fingerprints, which the server checks. A server without
+   the code gets one online guess per attempt; anything in between with its own key fails both proofs even with the right
+   code. Then the node stores the server identity's fingerprint and the server the node's. Audited "Bound site".
+   (`Oadm.Sites.Binding`: `PairingCode`, `NodePairing`, `ServerPairing`.)
+3. **Wrong codes** (a failed proof at `Bind`): after 5 wrong codes the node makes a new code and refuses `Bind` for 10 minutes **(default)** ("Too
    many wrong pairing codes. Wait 10 minutes and use the new code."); the app shows the attempts and from where. The
    server shows "The pairing code is wrong." below the field.
 4. From then on every connection is mutual TLS: the server presents its site identity, the node its own key; each side
@@ -157,7 +162,7 @@ The binding window counts the service's run time (saved every minute), not the w
 nodes" / "Turned off site nodes", setting `Sites.Accept`) opens it without a restart; turning it off closes it and every
 node connection (inbound sites stay reachable, the server dials them). The server accepts site nodes on
 `Sites.ListenUrl` (default `https://0.0.0.0:5081`, its own Kestrel endpoint with the site identity certificate, never
-the clients' endpoint, TLS 1.3 only). A node that is not bound may only `Hello` and
+the clients' endpoint, TLS 1.3 or 1.2, see Transport). A node that is not bound may only `Hello`, `PairStart` and
 wait for `Bind`: at most 50 waiting nodes and 10 new connections a minute per source address **(default)**; a waiting node
 not bound within 24 hours is dropped. Bound nodes reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
 node its DNS name and every address of its network cards (`Watch` of the control connection, again after every change);
@@ -178,7 +183,7 @@ time**: a second connection with the same identity is refused ("Another OADM ser
 **Security review (2026-10-19).** The node holds no passwords, but whoever binds it gets a pipe into the networks it
 reaches (factory-default cameras, default passwords, old firmware), and whoever controls the OADM server controls every
 site. So: the server opens its site port only after Accept site nodes; the node connects out (no inbound port at the site by
-default); TLS 1.3 only; binding needs the pairing code from the node
+default); TLS 1.3 (1.2 where the OS has no 1.3) with pinned keys on both sides; binding needs the pairing code from the node
 app (an administrator of the node's machine), open 24 hours of run time only; strangers learn nothing about who owns a
 node; the node opens only the networks and
 ports allowed in its app (connect and listen apart), so a compromised server cannot use it as a general pivot; the node keeps a connection log of
@@ -193,9 +198,13 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   roles turn: the server is the HTTP/2 client on that socket (`SocketsHttpHandler.ConnectCallback` hands it the accepted
   connection), the node the HTTP/2 server (Kestrel on a connection it opened, through its own
   `IConnectionListenerFactory`). Inbound: the server opens TCP + TLS to the node's port 5081. Everything above the socket
-  is the same code. **Risk, spike first** (step 1): Kestrel over a connection the node opened itself. If it does not hold,
-  the fallback keeps `ISiteTransport` and the calls: the node becomes the gRPC client, keeps a control stream open and
-  opens one stream per `Dial` / `Relay` connection when the server asks for it over that stream.
+  is the same code. **Spike passed (2026-10-19)**: Kestrel serves HTTP/2 on a connection the node opened itself
+  (`Oadm.Sites.Transport.AcceptedStreamListener`: an `IConnectionListenerFactory` for `AcceptedStreamEndPoint`, the stream
+  pumped through two pipes like Kestrel's socket transport, so the end of the stream is the end of Kestrel's input; Unbind
+  ends the accept loop so Kestrel stops), and the server's `SocketsHttpHandler.ConnectCallback` returns the accepted TLS
+  stream (`tests/Oadm.Sites.Tests/ReversedConnectionTests`: Hello, a 4 MB `Dial` echo with half-close, 200 dials over the
+  one connection, a dropped link failing at once, an unpinned key refused). The fallback (the node as gRPC client) is not
+  needed.
 
 - **Two connections per node**: **control** (`Hello`, `Watch`, `Ping`, `ProbeTcp`, `Resolve`, `ReverseLookup`, `Browse`,
   `LocalAddressFor`; the heartbeat) and **worker** (every `Dial` and `Relay`: polls, tasks, uploads, live view,
@@ -216,8 +225,9 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 - Calls:
   - `Hello` -> id, version, protocol version, features, state; the bound server's name only to that server (strangers
     learn nothing about who owns the node).
-  - `Bind(site name, pairing proof)` -> the node's proof (see Binding); `Unbind`, `Rename`, `RotateIdentity(new
-    fingerprint, signed by the old key)`.
+  - `PairStart` -> salt, B; `Bind(site name, A, proof)` -> the node's proof (see Binding); `Unbind`, `Rename`,
+    `RotateIdentity(new certificate, signed by the old key)`; `SetServerAddresses` (see Server listener);
+    `OpenConnections(n)` (outbound worker connections).
   - `RequestPorts([{direction connect | listen, protocol, port, reason}])`: the server asks for ports (a plugin's `sitePorts` while it is on, a device
     or address with another port); the node lists them in its app until allowed or dismissed. `Watch` carries both allowed
     lists, so the server knows them before it dials or opens a relay.
@@ -253,7 +263,12 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   live view and the heartbeat. The route handler holds a per-site gate for requests that stream; a task step waiting for
   it says "Waiting for the site link". The Sites page shows the transfers running.
 - **IPv4** and global / unique-local **IPv6**; link-local addresses with a zone id are refused in v1.
-- **TLS 1.3 only** on the link between server and node, in both modes.
+- **TLS 1.3, or 1.2** on the link between server and node, in both modes (decision 2026-10-19: Windows Server 2019 and
+  Windows 10 1809 / LTSC 2019 have no TLS 1.3, and many recording servers run them). 1.3 whenever both sides have it;
+  forward-secret AEAD suites only where the OS lets an application choose (Linux). Both sides present a self-signed
+  ECDSA P-256 certificate (100 years) and check the other's fingerprint only (`Oadm.Sites.Transport.SiteTls`). Every
+  handshake has a timeout (`SiteTls.HandshakeTimeout`, 15 s): `SslStream` has none, and a peer without a common protocol
+  was seen to leave the accepting side waiting forever.
 
 ## Server
 
@@ -582,6 +597,31 @@ every stream that uses it).
    SDK docs and samples. After stream 0; the relays need stream 4 for the end-to-end tests.
 7. **Packaging and docs**: node MSI and .deb, server firewall rule, `manage package site-node`, release workflow,
    notices, website downloads and the user page "Sites". After stream 3.
+
+**Stream 0 result (2026-10-19)**, what the other streams build on:
+
+- Contracts: `src/Oadm.Contracts/Protos/site_node.proto` (`SiteNodeService` incl. `PairStart`, `SetServerAddresses`,
+  `OpenConnections`; `DialMessage` with `DialResult` and `DialError`: `DEVICE_*` are the device's socket errors, `SITE_*`
+  the node's problems), `sites.proto` (`SiteService` incl. `SetAccept`), `DEVICE_STATUS_SITE_OFFLINE = 6`,
+  `Device.site_id = 30`, `DiscoveredDevice.site_id = 21`, `WaitingDevice.site_id = 14`, `WaitingLine.site_id = 6`.
+- `src/Oadm.Sites` (shared by server and node, no EF): `AcceptedStreamListener`, `SiteTls`, `PairingCode`, `NodePairing`,
+  `ServerPairing`; tests `tests/Oadm.Sites.Tests`.
+- Core `Oadm.Core.Sites`: `DeviceRoute`, `ISiteTransport.OpenStreamAsync` (device errors stay `SocketException` with the
+  device's `SocketError`, so `DeviceStatusClassifier` keeps working; site problems are `SiteException` with `SiteProblem`
+  and the standard texts of `SiteException.For`), `ISiteStates` (names, online, round trip, `Changed`), the `Site`
+  entity; migration `Sites` (table `Sites`, `Devices.SiteId` with an index, `WaitingDevices.SiteId`; the unique index of
+  `WaitingDevices.NormalizedAddress` stays: stream 5 puts the route into `WaitingDeviceStore.Normalize`).
+  `Device.SiteName` is filled by reads like `CredentialUserName` (not a column).
+- SDK (`Oadm.Sdk.Sites`, stubs with doc comments; behavior in streams 2 and 6): `DeviceStatus.SiteOffline`,
+  `IDeviceInfo.SiteId` / `SiteName`, `SiteSupport` / `SitePort` / `SiteProtocol` (JSON as "full" / "udp"),
+  `PluginManifest.SiteSupport` / `SitePorts`, `ITaskPlugin.SiteSupport`, `IComplianceCheckType.SiteSupport`,
+  `IDeviceNetwork` (`ITaskExecutionContext.Network`, `ITaskQueryContext.Network`), `IPluginNetwork`
+  (`ICorePluginContext.Network`: `ForDevice`, `ForSite`, `ListenUdpAsync`, `ListenTcpAsync`), `ISites`
+  (`ICorePluginContext.Sites`), `ISiteInfo`, `IRelay`, `IUdpRelay`, `ITcpRelay`, `IDatagramEndpoint`, `IStreamListener`,
+  `IIncomingConnection`, `Datagram`, `RelayState`, `SiteTexts`. `SdkInfo.Version` is raised by stream 6 together with
+  `dev/compatibility.md`.
+- Test fake: `tests/Shared/FakeSiteTransport.cs` (`ISiteTransport` + `ISiteStates`; sites with online, not bound, busy,
+  allowed ports, networks and (host, port) -> loopback endpoint maps), linked into the Core and Server tests.
 
 Streams 1, 2 and 3 run in parallel; 4 after 1 and 3; 5 and 6 in parallel after 4; 7 any time after 3. Shared files that
 several streams touch (CLAUDE.md, `CHANGELOG.md`, `plugins/README.md`, `AccessPolicy`) are changed only at the end of

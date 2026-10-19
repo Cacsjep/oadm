@@ -29,6 +29,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<AuthTokenEntity> AuthTokens => Set<AuthTokenEntity>();
     public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
     public DbSet<TagDefinition> TagDefinitions => Set<TagDefinition>();
+    public DbSet<Sites.Site> Sites => Set<Sites.Site>();
     public DbSet<Events.EventRuleEntity> EventRules => Set<Events.EventRuleEntity>();
     public DbSet<Events.EventRuleStateEntity> EventRuleStates => Set<Events.EventRuleStateEntity>();
     public DbSet<Events.EventLogEntryEntity> EventLogEntries => Set<Events.EventLogEntryEntity>();
@@ -95,6 +96,8 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.CertIssuer).HasMaxLength(1024);
             e.Property(d => d.Tags).HasConversion(TagsConverter, TagsComparer).IsRequired();
             e.Property(d => d.Apis).HasConversion(ApisConverter, ApisComparer).IsRequired();
+            e.Ignore(d => d.SiteName);
+            e.HasIndex(d => d.SiteId);
         });
 
         modelBuilder.Entity<DeviceCredential>(e =>
@@ -242,6 +245,25 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(a => a.Target).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
             e.Property(a => a.Detail).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
             e.HasIndex(a => a.TimeUtc);
+        });
+
+        modelBuilder.Entity<Sites.Site>(e =>
+        {
+            e.ToTable("Sites");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Id).ValueGeneratedNever();
+            e.Property(t => t.Name).IsRequired().HasMaxLength(Oadm.Core.Sites.Site.MaxNameLength);
+            e.Property(t => t.NormalizedName).IsRequired().HasMaxLength(Oadm.Core.Sites.Site.MaxNameLength);
+            e.HasIndex(t => t.NormalizedName).IsUnique();
+            e.Property(t => t.Mode).HasConversion<string>().HasMaxLength(16);
+            e.Property(t => t.Address).HasMaxLength(255);
+            e.Property(t => t.NodeKeyFingerprint).IsRequired().HasMaxLength(64);
+            e.HasIndex(t => t.NodeKeyFingerprint).IsUnique();
+            e.Property(t => t.NodeId).IsRequired().HasMaxLength(64);
+            e.HasIndex(t => t.NodeId).IsUnique();
+            e.Property(t => t.Version).HasMaxLength(32);
+            e.Property(t => t.BoundUtc).HasConversion(UtcConverter);
+            e.Property(t => t.LastSeenUtc).HasConversion(NullableUtcConverter);
         });
 
         modelBuilder.Entity<TagDefinition>(e =>

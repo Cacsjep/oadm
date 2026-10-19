@@ -100,6 +100,12 @@ public interface ITaskPlugin : IPlugin
     IReadOnlyList<string>? RequiredPermissions(string? payloadJson) => null;
 
     /// <summary>
+    /// Whether this task works for devices at a site; null (the default) = the package's <c>siteSupport</c> in plugin.json.
+    /// Set it only when one task of a package differs.
+    /// </summary>
+    Sites.SiteSupport? SiteSupport => null;
+
+    /// <summary>
     /// Runs once per device. Return normally for Done, call <see cref="ITaskExecutionContext.ReportWarning"/>
     /// for Done with warnings, throw for Failed. <paramref name="payloadJson"/> comes from the dialog;
     /// it is kept in memory only and never persisted, so it may carry secrets such as passwords.
@@ -276,6 +282,12 @@ public interface ITaskExecutionContext
     /// without licenses.
     /// </summary>
     IPluginLicense? License => null;
+
+    /// <summary>
+    /// Network checks towards this task's device, routed like it (through its site or on the server's own network): the
+    /// address-in-use check, the device's host name, OADM's address towards the device. Null on hosts without it.
+    /// </summary>
+    Sites.IDeviceNetwork? Network => null;
 }
 
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
@@ -393,6 +405,15 @@ public interface ICorePluginContext
     /// Null when the host has no event rules.
     /// </summary>
     Events.IEventSubscriptions? EventSubscriptions => null;
+
+    /// <summary>
+    /// Network checks routed like a device or a site, and listeners on the server's own network
+    /// (<see cref="Sites.IPluginNetwork"/>). Null on hosts without it.
+    /// </summary>
+    Sites.IPluginNetwork? Network => null;
+
+    /// <summary>The bound sites and relays into them (<see cref="Sites.ISites"/>). Null on hosts without sites.</summary>
+    Sites.ISites? Sites => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>
@@ -427,6 +448,8 @@ public interface IPluginSettings
 /// <param name="AlwaysOn">True: core functionality that cannot be turned off.</param>
 /// <param name="Description">One short sentence for the Plugins page.</param>
 /// <param name="License">The plugin is sold with a license (public key, features, trial days); null = free.</param>
+/// <param name="SiteSupport">Whether the package works with devices at a site; null (not declared) counts as <see cref="Sites.SiteSupport.None"/>.</param>
+/// <param name="SitePorts">Ports the package listens on at sites (relays), known in advance; null = none.</param>
 public sealed record PluginManifest(
     string Id,
     string Version,
@@ -435,7 +458,9 @@ public sealed record PluginManifest(
     bool EnabledByDefault = true,
     bool AlwaysOn = false,
     string? Description = null,
-    PluginLicenseManifest? License = null);
+    PluginLicenseManifest? License = null,
+    Sites.SiteSupport? SiteSupport = null,
+    IReadOnlyList<Sites.SitePort>? SitePorts = null);
 
 /// <summary>
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related

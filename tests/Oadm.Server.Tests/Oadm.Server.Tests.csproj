@@ -32,6 +32,7 @@
     <!-- Shared dev-cameras.yaml loader of the core hardware tests. -->
     <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
     <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
+    <Compile Include="..\Shared\FakeSiteTransport.cs" Link="Shared\FakeSiteTransport.cs" />
   </ItemGroup>
 
 </Project>

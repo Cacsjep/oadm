@@ -54,6 +54,12 @@ public sealed class WaitingDevice
     /// <summary>Tries since the entry was kept (again).</summary>
     public int Tries { get; set; }
 
+    /// <summary>
+    /// Only tried through this site (the import's Site column); null = everywhere. The route is part of
+    /// <see cref="NormalizedAddress"/> once sites are in use, so (site, address) stays unique.
+    /// </summary>
+    public Guid? SiteId { get; set; }
+
     public override string ToString() => $"WaitingDevice {Id} ({Address})";
 }
 
