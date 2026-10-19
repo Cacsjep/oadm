@@ -37,7 +37,7 @@ public static class ServiceRegistration
                 store.Current.Appearance = Oadm.Theme.OadmColors.Current; // the appearance the client started with
                 return store;
             });
-            services.AddSingleton<IOadmApi>(_ => new FakeOadmApi());
+            services.AddSingleton<IOadmApi>(_ => new FakeOadmApi(simulationTime: options.FakeSimulationTime));
             services.AddSingleton<IServerTrust, NoServerTrust>();
         }
         else
