@@ -83,26 +83,28 @@ Two parts, one installer:
   `OadmTheme.axaml`, `Icons.axaml`, `OadmColors`) moves to a shared assembly the client and the app both use; the app
   takes the OS's dark or light setting (it has no client settings). It may use `Oadm.Sdk.Client` controls (`StatusChip`,
   `MessageWindow`, `PasswordBox`, `FormField`). First start: the terms of use like the client (`TermsWindow`, the
-  accepted SHA-256 in the app's own settings). One window:
-  - **Server**: "Connect to the server" (default) with its address (`oadm.example.com` or `10.0.0.5`, port 5081 unless
-    typed) and the connection state ("Connected", "Cannot reach 10.0.0.5:5081"), or "Wait for the server" (inbound,
-    port 5081; turning it on adds the firewall rule);
-  - state: "Not bound. Binding open for 23 more hours." with the **pairing code** in large letters / "Binding closed."
-    with **Allow binding** (another 24 hours, a new code) / "Bound to SERVER (address) since ...";
-  - the site name (from the server once bound) and the node's id;
+  accepted SHA-256 in the app's own settings). One window (760 x 560, fitted to small screens; redesigned 2026-10-19
+  after the maintainer found the first version overwhelming: everything at once, nothing to focus on). A **header** says
+  the state in one line and shows the one thing to do now (at most one accent button): no server address or the server
+  cannot be reached: the address form (**Connect to the server** / **Wait for the server**, Connect; the problem below the
+  field); binding open: **Show pairing code**, then the code in large letters ("Type this code at Bind on the Sites page
+  of OADM.", "Binding open for 23 more hours."); binding closed: **Allow binding** (another 24 hours, a new code); bound:
+  "Connected to SERVER · SITE" (warning "Not connected to SERVER · SITE: Cannot reach 10.0.0.5:5081"); a new identity of
+  the server: "SERVER presents a new identity (fingerprint). **Accept**" (see Binding); ports the server asks for: "The
+  server asks for N ports." with **Review**. Below it fixed tabs (`ui:PageTab` without a close command, `Count` badge):
+  - **Status**: server address and mode (`oadm.example.com` or `10.0.0.5`, port 5081 unless typed; "Wait for the server"
+    is inbound on port 5081 and adds the firewall rule), binding, site name (from the server once bound), node id,
+    version, **Reset** (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it again in OADM.");
   - **Networks**: each network card with its addresses and a switch "Reach devices on this network" (default: on for
-    every card except the one with the default router), **All cards** as a shortcut, and **Extra subnets** (routed camera
-    VLANs: add, remove);
-  - **Ports**: two lists, **Connect to** (TCP 80, 443, 554 by default) and **Listen on** (empty by default), each with
-    remove and add, and the ports the server asks for, each with the list and why ("Connect to TCP 8443: camera
-    192.168.0.30", "Listen on UDP 123: NTP server") and **Allow** / **Dismiss**;
-  - the relays open now ("NTP, UDP 123, for SERVER") and their problems ("UDP 123 is used by another program");
-  - the connections now (short and permanent, see Limits) so a busy node is visible;
-  - **Reset** (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it again in OADM.");
-  - an identity change of the server: "SERVER presents a new identity (fingerprint). **Accept**" (see Binding);
-  - **Connection log**: the last connections through the node (time, server, target address and port, short or permanent,
-    result), newest 10,000 **(default)**, also in a daily file kept 30 days (`logs/`); never contents;
-  - version.
+    every card except the one with the default router), **All cards** as a shortcut, and **Extra networks** (routed
+    camera VLANs: add, remove);
+  - **Ports** (the tab shows the number of requests): the ports the server asks for first, each with the list and why
+    ("Connect to TCP 8443: camera 192.168.0.30", "Listen on UDP 123: NTP server") and **Allow** / **Dismiss**, then two
+    lists, **Connect to** (TCP 80, 443, 554 by default) and **Listen on** (empty by default), each with remove and add;
+  - **Activity**: the connections now (short and permanent, see Limits), the relays open now ("NTP, UDP 123, for
+    SERVER") and their problems ("UDP 123 is used by another program"), and the **Connection log**: the last
+    connections through the node (time, server, target address and port, short or permanent, result), newest 10,000
+    **(default)**, also in a daily file kept 30 days (`logs/`); never contents.
 
   It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state
   except the pairing code; showing the code and every change need administrator rights (UAC on Windows, `pkexec` on

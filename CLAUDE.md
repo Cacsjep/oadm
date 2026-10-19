@@ -941,7 +941,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.
 - **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
-  dialogs alike, is fitted to the screen it opens on (`Shell/WindowFit`, attached in `App`, applied once the window is placed: dialogs open next to
+  dialogs alike, is fitted to the screen it opens on (`Oadm.Theme.Shell.WindowFit`, also used by the site node app, attached in `App`, applied once the window is placed: dialogs open next to
   their owner, also on another monitor, plugin windows on the monitor of the main window; a window larger than the
   work area less 16 px per side shrinks to it, its minimum and maximum follow, then it is centered or moved back onto the
   screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
