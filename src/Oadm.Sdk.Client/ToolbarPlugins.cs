@@ -102,6 +102,9 @@ public static class HostPages
     /// <summary>Compliance (rail page below Devices): the compliance checks and the devices that fail them.</summary>
     public const string Compliance = "compliance";
 
+    /// <summary>Sites (rail page in the Servers group): the remote networks OADM reaches through an OADM Site Node.</summary>
+    public const string Sites = "sites";
+
     /// <summary>About page: terms of use, versions and licenses.</summary>
     public const string About = "about";
 }

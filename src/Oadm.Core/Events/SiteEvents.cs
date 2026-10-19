@@ -197,8 +197,16 @@ public sealed partial class SiteEventSource : IHostEventSource, IAsyncDisposable
 
         var publisher = _publisher();
         var offline = new List<string>();
+        var starting = false;
         foreach (var site in sites)
         {
+            if (_states.IsStarting(site.Id))
+            {
+                // After a server start nothing is known yet: the type waits (no edge), like a source before its first report.
+                starting = true;
+                continue;
+            }
+
             var on = !_states.IsOnline(site.Id);
             var name = _states.NameOf(site.Id) ?? site.Name;
             if (on)
@@ -211,7 +219,7 @@ public sealed partial class SiteEventSource : IHostEventSource, IAsyncDisposable
                 : null);
         }
 
-        if (sites.Count > 0)
+        if (sites.Count > 0 && !starting)
         {
             Set(publisher, AnyOfflineTypeId, offline.Count > 0, offline.Count == 0 ? null : new Dictionary<string, string>
             {

@@ -522,6 +522,13 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             return;
         }
 
+        if (device.Status == DeviceStatus.SiteOffline && device.SiteId is { } startingSite && _devices.Sites.IsStarting(startingSite)
+            && runtime.Results.ContainsKey(device.Id))
+        {
+            // After a server start the site's node is not back yet: the results stay as they were (no event edges).
+            return;
+        }
+
         if ((!cached || device.Status == DeviceStatus.SiteOffline) && device.Status != DeviceStatus.Ok)
         {
             // An offline site is Not checked in every check, those with cached data too (Reachable, Login works).

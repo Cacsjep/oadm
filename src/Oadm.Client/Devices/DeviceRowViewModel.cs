@@ -109,6 +109,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
     Guid? IDeviceInfo.SiteId => SiteId;
 
+    /// <summary>The name of the site (Site column, search, export); null on the server's own network.</summary>
+    [ObservableProperty] public partial string? SiteName { get; private set; }
+
+    string? IDeviceInfo.SiteName => SiteName;
+
     Oadm.Sdk.Devices.DeviceCategory IDeviceInfo.Category => DeviceCategoryInfo.ToSdk(Category);
 
     bool? IDeviceInfo.DhcpEnabled => _dhcpEnabled;
@@ -144,6 +149,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         _dot1xEnabled = device.HasDot1XEnabled ? device.Dot1XEnabled : null;
         ContractStatus = device.Status;
         SiteId = Guid.TryParse(device.SiteId, out var siteId) ? siteId : null;
+        SiteName = string.IsNullOrEmpty(device.SiteName) ? null : device.SiteName;
         StatusText = DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
         HasCredentials = device.HasCredentials;
@@ -206,7 +212,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc)
-            || Contains(StatusText) || Tags.Any(Contains);
+            || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

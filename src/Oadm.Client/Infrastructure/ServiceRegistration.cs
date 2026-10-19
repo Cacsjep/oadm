@@ -92,6 +92,7 @@ public static class ServiceRegistration
         services.AddSingleton<AboutViewModel>();
         services.AddSingleton<PluginsViewModel>();
         services.AddSingleton<EventRules.EventRulesViewModel>();
+        services.AddSingleton<Sites.SitesViewModel>();
         services.AddSingleton<Compliance.ComplianceViewModel>();
         services.AddSingleton<Backup.BackupViewModel>();
         services.AddSingleton<SettingsViewModel>();

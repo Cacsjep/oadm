@@ -55,3 +55,22 @@ public sealed class Site
 
     public override string ToString() => $"Site {Name} ({Id})";
 }
+
+/// <summary>Server settings of the sites (docs/sites.md, Server listener and Server identity).</summary>
+public static class SiteSettings
+{
+    /// <summary>The server's site identity (certificate and key, the key encrypted with the master key).</summary>
+    public const string Identity = "Sites.Identity";
+
+    /// <summary>Accept site nodes (bool, off by default).</summary>
+    public const string Accept = "Sites.Accept";
+
+    /// <summary>Where the site listener listens (default <see cref="DefaultListenUrl"/>).</summary>
+    public const string ListenUrl = "Sites.ListenUrl";
+
+    /// <summary>The site port: 5081 on every address.</summary>
+    public const string DefaultListenUrl = "https://0.0.0.0:5081";
+
+    /// <summary>The purpose of the identity key's encryption.</summary>
+    public const string IdentityPurpose = "oadm:site-identity";
+}

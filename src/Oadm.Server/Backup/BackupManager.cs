@@ -520,6 +520,7 @@ public sealed partial class BackupManager(
             Line("Tags", counts.Tags),
             Line("Event rules", counts.EventRules),
             Line("Tasks in the history", counts.Tasks),
+            Line("Sites", counts.Sites),
             Line("Plugin data folders", pluginFolders),
         ];
     }

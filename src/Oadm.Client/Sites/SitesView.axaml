@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.Sites"
+             x:Class="Oadm.Client.Sites.SitesView"
+             x:DataType="vm:SitesViewModel">
+  <!-- Rail page Sites (Servers): bound sites and site nodes waiting to be bound in one list. -->
+  <Grid RowDefinitions="Auto,*">
+    <c:PageTitleBar Grid.Row="0" Title="Sites" Subtitle="Networks OADM reaches through an OADM Site Node." Margin="0,0,0,16" />
+
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
+            <CheckBox Content="Accept site nodes" IsChecked="{Binding Accept}" IsVisible="{Binding MayChange}" VerticalAlignment="Center"
+                      ToolTip.Tip="Site nodes may connect to this server" />
+            <TextBlock Classes="secondary" Text="{Binding AcceptText}" IsVisible="{Binding !MayChange}" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayChange}">
+              <ui:ToolbarSeparator />
+              <ui:ToolbarButton Text="Search" IconKey="search" Command="{Binding SearchNodesCommand}"
+                                ToolTip.Tip="Find site nodes that wait for the server" />
+              <ui:ToolbarButton Text="Add manually" IconKey="add" Command="{Binding AddManuallyCommand}" />
+            </StackPanel>
+          </StackPanel>
+          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search sites" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusText}" Margin="2,14,0,8" />
+        <ui:ProgressRow Grid.Row="2" IsActive="{Binding IsSearching}" Text="Searching the network" IsVisible="{Binding IsSearching}" Margin="0,0,0,8" />
+
+        <DataGrid x:Name="SiteGrid" Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+                  CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="State" Width="*" MinWidth="160" SortMemberPath="StateText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:SiteRowViewModel">
+                  <ui:StatusChip Text="{Binding StateText}" Detail="{Binding Detail}" IsOk="{Binding IsOk}" IsError="{Binding IsError}"
+                                 IsWarning="{Binding IsWarning}" IsInfo="{Binding IsInfo}" MaxLines="2" Opacity="{Binding RowOpacity}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Name" Width="160" MinWidth="120" Binding="{Binding Name}" x:DataType="vm:SiteRowViewModel" />
+            <DataGridTextColumn Header="Node address" Width="150" MinWidth="120" Binding="{Binding NodeAddressText}" x:DataType="vm:SiteRowViewModel" />
+            <DataGridTextColumn Width="100" Binding="{Binding DeviceCountText}" SortMemberPath="DeviceCount" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Devices" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTextColumn Width="110" Binding="{Binding RoundTripText}" SortMemberPath="RoundTripMs" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Round trip" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTextColumn Width="125" Binding="{Binding ConnectionsText}" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Connections" ToolTip.Tip="Short / permanent" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTextColumn Width="135" Binding="{Binding PortsWaitingText}" SortMemberPath="PortsWaiting" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Ports waiting" ToolTip.Tip="Waiting for approval in the OADM Site Node app" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTextColumn Width="145" Binding="{Binding LargeTransfersText}" SortMemberPath="LargeTransfers" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Large transfers" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTextColumn Header="Version" Width="160" MinWidth="80" Binding="{Binding VersionText}" x:DataType="vm:SiteRowViewModel" />
+            <DataGridTextColumn Header="Last seen" Width="130" MinWidth="120" Binding="{Binding LastSeenText}" SortMemberPath="LastSeenSortKey" x:DataType="vm:SiteRowViewModel" />
+            <!-- Row actions (administrators): Bind for waiting nodes; Rename, Change address, Replace with and Remove site for sites -->
+            <DataGridTemplateColumn Width="140" CanUserSort="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:SiteRowViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0">
+                    <Button Classes="link" Content="Bind" IsVisible="{Binding CanBind}" Margin="4,0"
+                            Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).BindCommand}" CommandParameter="{Binding}" />
+                    <Button Classes="toolbar iconOnly" ToolTip.Tip="Rename" IsVisible="{Binding CanManage}"
+                            Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).RenameCommand}" CommandParameter="{Binding}">
+                      <ui:OadmIcon Data="{StaticResource Icon.edit}" />
+                    </Button>
+                    <Button Classes="toolbar iconOnly" ToolTip.Tip="Change address" IsVisible="{Binding CanChangeAddress}"
+                            Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).ChangeAddressCommand}" CommandParameter="{Binding}">
+                      <ui:OadmIcon Data="{StaticResource Icon.network}" />
+                    </Button>
+                    <Button Classes="toolbar iconOnly" ToolTip.Tip="Replace with" IsVisible="{Binding CanManage}"
+                            Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).ReplaceCommand}" CommandParameter="{Binding}">
+                      <ui:OadmIcon Data="{StaticResource Icon.refresh}" />
+                    </Button>
+                    <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Remove site" IsVisible="{Binding CanManage}"
+                            Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}">
+                      <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                    </Button>
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <ui:ProgressRing Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsLoading}" />
+        <TextBlock Grid.Row="3" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                   TextAlignment="Center" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
+        <TextBlock Grid.Row="4" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock Grid.Row="5" Classes="secondary" Text="{Binding NoticeText}" IsVisible="{Binding HasNotice}" TextWrapping="Wrap" Margin="0,8,0,0" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -34,6 +34,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly NavItemViewModel? _pluginsItem;
     private readonly NavItemViewModel? _eventRulesItem;
     private readonly NavItemViewModel? _complianceItem;
+    private readonly NavItemViewModel? _sitesItem;
     private readonly NavItemViewModel _logsItem;
     private readonly NavItemViewModel _settingsItem;
     private readonly NavItemViewModel _aboutItem;
@@ -56,7 +57,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         PluginsViewModel? pluginList = null,
         EventRules.EventRulesViewModel? eventRules = null,
         ILiveVideoAccess? liveVideo = null,
-        Compliance.ComplianceViewModel? compliance = null)
+        Compliance.ComplianceViewModel? compliance = null,
+        Sites.SitesViewModel? sites = null)
     {
         _liveVideo = liveVideo;
         ArgumentNullException.ThrowIfNull(connection);
@@ -116,6 +118,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
             SyncEventRulesItem();
         }
 
+        if (sites is not null)
+        {
+            // Built-in page in the Servers group, before the plugin pages of that group; shown while the role may see sites.
+            _sitesItem = new NavItemViewModel(HostPages.Sites, "Sites", "server", sites)
+            {
+                GroupTitle = CorePluginGroup.Servers.ToString(),
+                GroupOrder = (int)CorePluginGroup.Servers,
+            };
+            SyncSitesItem();
+        }
+
         // A role change (session stream): the toolbar, the rail and the task menu follow what the role allows now.
         Devices.Toolbar.ApplyPermissions(session.Has);
         session.PermissionsChanged += (_, _) =>
@@ -123,6 +136,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             Devices.Toolbar.ApplyPermissions(session.Has);
             SyncEventRulesItem();
             SyncComplianceItem();
+            SyncSitesItem();
             if (session.IsLoggedIn)
             {
                 _ = ReloadPluginsAsync();
@@ -496,6 +510,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             NavItems.Remove(_eventRulesItem);
             if (_eventRulesItem.IsSelected)
+            {
+                Navigate(_devicesItem);
+            }
+
+            UpdateNavGroups();
+        }
+    }
+
+    /// <summary>The Sites entry (Servers group) shows while the role may see sites; a hidden page that was open falls back to Devices.</summary>
+    private void SyncSitesItem()
+    {
+        if (_sitesItem is null)
+        {
+            return;
+        }
+
+        bool wanted = Session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.SitesView);
+        bool shown = NavItems.Contains(_sitesItem);
+        if (wanted && !shown)
+        {
+            NavItems.Insert(Math.Min(1, NavItems.Count), _sitesItem);
+            OrderCorePluginPages();
+        }
+        else if (!wanted && shown)
+        {
+            NavItems.Remove(_sitesItem);
+            if (_sitesItem.IsSelected)
             {
                 Navigate(_devicesItem);
             }

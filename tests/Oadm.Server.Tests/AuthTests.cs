@@ -95,7 +95,7 @@ public sealed class AuthTests
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
             Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor,
-            Proto.ComplianceService.Descriptor,
+            Proto.ComplianceService.Descriptor, Proto.SiteService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
         // Both ways: no made-up entry, and no method that falls back to Administrator only by accident.
@@ -108,6 +108,10 @@ public sealed class AuthTests
             methods.Where(m => AccessPolicy.For(m).Access == Access.Open).Order(StringComparer.Ordinal).ToArray());
         Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.UserService/Delete"));
         Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.AuditService/List"));
+        // Sites: the page with "See sites", every change Administrator only.
+        Assert.Equal(AccessRule.Needs(Oadm.Core.Auth.HostPermissions.SitesView), AccessPolicy.For("/oadm.v1.SiteService/WatchSites"));
+        Assert.All(Proto.SiteService.Descriptor.Methods.Where(m => m.Name is not ("ListSites" or "WatchSites")),
+            m => Assert.Equal(AccessRule.Admin, AccessPolicy.For($"/oadm.v1.SiteService/{m.Name}")));
         Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.RoleService/SaveRoles"));
         Assert.Equal(AccessRule.SignedIn, AccessPolicy.For("/oadm.v1.RoleService/Mine"));
         Assert.Equal(AccessRule.Needs(HostPermissions.DevicesAddRemove), AccessPolicy.For("/oadm.v1.DeviceService/Remove"));

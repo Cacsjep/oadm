@@ -78,11 +78,20 @@ public sealed class BackupServiceTests
         var host = await StartAsync(restart);
         host.KeepDataDirectory = true;
         var dataDirectory = host.DataDirectory;
+        var identity = "";
         try
         {
             var backup = Client(host);
             var device = await host.Get<DeviceRepository>().AddAsync(new Device { Serial = "B8A44F631339", Address = "10.0.0.48" }, CancellationToken.None);
             await host.Get<CredentialStore>().SetAsync(device.Id, "root", "pass-1", CancellationToken.None);
+            // A site and the server's site identity travel in oadm.db: a restored server keeps its sites.
+            await using (var db = await host.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Oadm.Core.Persistence.OadmDbContext>>().CreateDbContextAsync())
+            {
+                db.Sites.Add(new Oadm.Core.Sites.Site { Name = "Building B", NormalizedName = "BUILDING B", NodeKeyFingerprint = "AB", NodeId = "node-1", BoundUtc = DateTime.UtcNow });
+                await db.SaveChangesAsync();
+            }
+
+            identity = host.Get<Oadm.Server.Sites.SiteIdentityStore>().FingerprintHex;
 
             var refused = await Assert.ThrowsAsync<RpcException>(() => ReadAllAsync(backup.Create(new Proto.CreateBackupRequest { Password = "short" })));
             Assert.Equal(StatusCode.InvalidArgument, refused.StatusCode);
@@ -100,6 +109,7 @@ public sealed class BackupServiceTests
             var info = await backup.InspectAsync(new Proto.RestoreRequest { FileId = fileId, Password = Password });
             Assert.Empty(info.Problem);
             Assert.Contains("Devices: 1", info.Lines);
+            Assert.Contains("Sites: 1", info.Lines);
 
             var reply = await backup.RestoreAsync(new Proto.RestoreRequest { FileId = fileId, Password = Password });
             Assert.Equal(1, restart.Requests);
@@ -121,6 +131,9 @@ public sealed class BackupServiceTests
             var state = await Client(restarted).GetStateAsync(new Proto.Empty());
             Assert.Empty(state.LastRestore.Error);
             Assert.Contains("Devices: 1 restored", state.LastRestore.Lines);
+            Assert.Contains("Sites: 1 restored", state.LastRestore.Lines);
+            Assert.Equal(identity, restarted.Get<Oadm.Server.Sites.SiteIdentityStore>().FingerprintHex);
+            Assert.Equal("Building B", Assert.Single(restarted.Get<Oadm.Server.Sites.SiteManager>().Sites).Name);
             Assert.StartsWith("admin", state.LastRestore.RequestedBy, StringComparison.Ordinal);
             var audit = await restarted.Audit.ListAsync(new Proto.ListAuditRequest { Limit = 50 });
             Assert.Contains(audit.Entries, e => e.Action == "Restored backup");

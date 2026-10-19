@@ -48,6 +48,8 @@ public static class HostPermissionKeys
     public const string TagsAssign = "tags.assign";
     /// <summary>Rename, recolor and delete tags.</summary>
     public const string TagsManage = "tags.manage";
+    /// <summary>See the Sites page.</summary>
+    public const string SitesView = "sites.view";
     /// <summary>Cancel tasks.</summary>
     public const string TasksCancel = "tasks.cancel";
     /// <summary>Delete tasks from the history.</summary>
