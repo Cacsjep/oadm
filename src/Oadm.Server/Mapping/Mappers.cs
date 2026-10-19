@@ -43,6 +43,7 @@ public static class Mappers
             CertSubject = device.CertSubject ?? string.Empty,
             CertIssuer = device.CertIssuer ?? string.Empty,
             SiteId = device.SiteId?.ToString() ?? string.Empty,
+            SiteName = device.SiteName ?? string.Empty,
         };
 
         if (device.CertNotAfterUtc is { } notAfter)
