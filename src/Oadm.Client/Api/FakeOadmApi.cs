@@ -202,7 +202,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             ThrowIfOffline();
             foreach (Device device in _devices.Where(d => deviceIds.Contains(d.Id)))
             {
-                if (device.Status != DeviceStatus.Unreachable)
+                if (device.Status is not (DeviceStatus.Unreachable or DeviceStatus.SiteOffline))
                 {
                     device.LastSeen = Timestamp.FromDateTime(DateTime.UtcNow);
                 }
@@ -262,6 +262,10 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 else if (device.Status == DeviceStatus.Unreachable)
                 {
                     result.Message = "Unreachable - No route to host";
+                }
+                else if (device.Status == DeviceStatus.SiteOffline)
+                {
+                    result.Message = FakeSiteOfflineText(device);
                 }
                 else if (!IsAcceptedPassword(password))
                 {
@@ -732,7 +736,9 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 {
                     var group = new NotRunnableGroup
                     {
-                        Reason = Oadm.Sdk.Plugins.TaskSupportReasons.ForStatus((Oadm.Sdk.Devices.DeviceStatus)(int)byStatus.Key, requireOk: true)
+                        Reason = byStatus.Key == DeviceStatus.SiteOffline
+                            ? FakeSiteOfflineText(byStatus.First())
+                            : Oadm.Sdk.Plugins.TaskSupportReasons.ForStatus((Oadm.Sdk.Devices.DeviceStatus)(int)byStatus.Key, requireOk: true)
                             ?? Oadm.Sdk.Plugins.TaskSupportReasons.Default,
                         Count = byStatus.Count(),
                     };
@@ -1516,6 +1522,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         q1656.Scheme = "http";
         ClearCertificate(q1656);
         _devices.Add(q1656);
+        AddSiteSampleDevices();
         _devices[2].Dot1XEnabled = true;
         _devices[9].Dot1XEnabled = true;
 

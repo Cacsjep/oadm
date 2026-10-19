@@ -1010,9 +1010,15 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 continue;
             }
 
-            SetBuiltIn(BuiltInEvents.Unreachable, id, device.Status == DeviceStatus.Unreachable);
-            SetBuiltIn(BuiltInEvents.CredentialsRequired, id, device.Status == DeviceStatus.CredentialsRequired);
-            SetBuiltIn(BuiltInEvents.CertificateChanged, id, device.Status == DeviceStatus.CertificateChanged);
+            // Site offline says nothing about the device: its status events keep their state until the site is back, so an
+            // offline site never fires "Device unreachable" and never turns the others off.
+            if (device.Status != DeviceStatus.SiteOffline)
+            {
+                SetBuiltIn(BuiltInEvents.Unreachable, id, device.Status == DeviceStatus.Unreachable);
+                SetBuiltIn(BuiltInEvents.CredentialsRequired, id, device.Status == DeviceStatus.CredentialsRequired);
+                SetBuiltIn(BuiltInEvents.CertificateChanged, id, device.Status == DeviceStatus.CertificateChanged);
+            }
+
             var notAfter = device.CertNotAfterUtc;
             SetBuiltIn(BuiltInEvents.CertificateExpired, id, notAfter is { } end && end <= now);
             SetBuiltIn(BuiltInEvents.CertificateExpiresSoon, id, notAfter is { } soon && soon > now && soon - now <= TimeSpan.FromDays(BuiltInEvents.ExpiresSoonDays));

@@ -522,9 +522,10 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             return;
         }
 
-        if (!cached && device.Status != DeviceStatus.Ok)
+        if ((!cached || device.Status == DeviceStatus.SiteOffline) && device.Status != DeviceStatus.Ok)
         {
-            SetResult(runtime, device.Id, new ComplianceResult(ComplianceOutcome.NotChecked, StatusText(device.Status)), changes);
+            // An offline site is Not checked in every check, those with cached data too (Reachable, Login works).
+            SetResult(runtime, device.Id, new ComplianceResult(ComplianceOutcome.NotChecked, StatusText(device)), changes);
         }
         else if (!runtime.Results.TryGetValue(device.Id, out var result) || (!cached && result.Outcome == ComplianceOutcome.NotChecked && result.Detail != NotCheckedYet))
         {
@@ -534,7 +535,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
     private const string NotCheckedYet = "Not checked yet";
 
-    private static string StatusText(DeviceStatus status) => DeviceMessages.Refusal(status, refuseUnreachable: true) ?? status.ToString();
+    private static string StatusText(Device device) => DeviceMessages.Refusal(device, refuseUnreachable: true) ?? device.Status.ToString();
 
     private void SetResult(CheckRuntime runtime, Guid deviceId, ComplianceResult result, List<ComplianceResultModel> changes, bool checkedNow = false)
     {
@@ -708,6 +709,11 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     private async Task<ComplianceResult> EvaluateAsync(
         CatalogComplianceType type, ComplianceInvocation invocation, Device device, IVapixClient? vapix, IComplianceReads reads, CancellationToken ct)
     {
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return new ComplianceResult(ComplianceOutcome.NotChecked, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
+        }
+
         using var timeout = new CancellationTokenSource(_options.CheckTimeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         try
@@ -715,6 +721,11 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             var context = new Context(device, vapix, reads, _time.GetUtcNow(), _logger, type.Owner);
             return await type.Type.EvaluateAsync(context, invocation, linked.Token).ConfigureAwait(false)
                 ?? ComplianceResult.CouldNotCheck("The check gave no result");
+        }
+        catch (Exception ex) when (Sites.SiteErrors.Find(ex) is { } site)
+        {
+            // The site could not carry the read: never a result of the device.
+            return new ComplianceResult(ComplianceOutcome.NotChecked, site.Message);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !ct.IsCancellationRequested)
         {
@@ -971,6 +982,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
             IVapixClient? vapix = null;
             string? connectError = null;
+            string? siteError = null;
             try
             {
                 vapix = await _vapix.CreateAsync(deviceId, ct).ConfigureAwait(false); // cached by the factory, never disposed here
@@ -978,12 +990,15 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 connectError = Failure(ex);
+                siteError = Sites.SiteErrors.Find(ex)?.Message;
             }
 
             var reads = new Reads();
             foreach (var (checkId, version, invocation, type) in work)
             {
-                var result = connectError is not null
+                var result = siteError is not null
+                    ? new ComplianceResult(ComplianceOutcome.NotChecked, siteError)
+                    : connectError is not null
                     ? ComplianceResult.CouldNotCheck(connectError)
                     : await EvaluateAsync(type, invocation, device, vapix, reads, ct).ConfigureAwait(false);
                 Apply(checkId, version, [(deviceId, result)]);

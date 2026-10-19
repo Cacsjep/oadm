@@ -141,7 +141,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status, requireOk: true) ?? TaskSupportReasons.NeedsApi("the firmware management API", device);
+        return TaskSupportReasons.ForStatus(device, requireOk: true) ?? TaskSupportReasons.NeedsApi("the firmware management API", device);
     }
 
     /// <summary>Step names, in order (see README.md).</summary>

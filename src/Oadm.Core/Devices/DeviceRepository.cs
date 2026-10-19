@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Oadm.Core.Persistence;
+using Oadm.Core.Sites;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Core.Devices;
@@ -19,11 +20,24 @@ public sealed class DeviceLimitException() : InvalidOperationException(DeviceLim
 /// Device table access. Every returned <see cref="Device"/> is a detached copy; mutate it and call
 /// <see cref="UpdateAsync(Device, CancellationToken)"/>, or use <see cref="UpdateAsync(Guid, Action{Device}, CancellationToken)"/>.
 /// All writes publish to <see cref="IDeviceChangeFeed"/>, except a write that only moves LastSeenUtc.
+/// Every read shows the computed status (<see cref="SiteDeviceStatus"/>): <see cref="DeviceStatus.SiteOffline"/> while the
+/// device's site is not online, with <see cref="Device.SiteName"/> filled; the stored status stays the last real one and
+/// Site offline is never written.
 /// </summary>
-public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed)
+public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed, ISiteStates? sites = null)
     : IDeviceRepository, IDisposable
 {
     private readonly SemaphoreSlim _addLock = new(1, 1);
+    private readonly ISiteStates _sites = sites ?? NoSiteStates.Instance;
+
+    /// <summary>The sites the computed status comes from.</summary>
+    public ISiteStates Sites => _sites;
+
+    private Device Shown(Device device)
+    {
+        SiteDeviceStatus.Apply(device, _sites);
+        return device;
+    }
 
     public void Dispose() => _addLock.Dispose();
 
@@ -64,9 +78,47 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         foreach (var device in devices)
         {
             device.CredentialUserName = users.GetValueOrDefault(device.Id);
+            Shown(device);
         }
 
         return devices;
+    }
+
+    /// <summary>
+    /// The devices of <paramref name="siteIds"/> with their computed status (a site went offline or online). Uses the
+    /// SiteId index; nothing is written.
+    /// </summary>
+    public async Task<IReadOnlyList<Device>> ListBySitesAsync(IReadOnlyCollection<Guid> siteIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(siteIds);
+        if (siteIds.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = siteIds.Select(id => (Guid?)id).ToList();
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var devices = await db.Devices.AsNoTracking().Where(d => ids.Contains(d.SiteId)).OrderBy(d => d.Serial).ToListAsync(ct).ConfigureAwait(false);
+        foreach (var device in devices)
+        {
+            Shown(device);
+        }
+
+        return devices;
+    }
+
+    /// <summary>Ids of the devices of <paramref name="siteIds"/>, without loading the rows.</summary>
+    public async Task<IReadOnlyList<Guid>> ListIdsBySitesAsync(IReadOnlyCollection<Guid> siteIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(siteIds);
+        if (siteIds.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = siteIds.Select(id => (Guid?)id).ToList();
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.Devices.AsNoTracking().Where(d => ids.Contains(d.SiteId)).OrderBy(d => d.Serial).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -93,6 +145,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         foreach (var device in devices)
         {
             device.CredentialUserName = users.GetValueOrDefault(device.Id);
+            Shown(device);
         }
 
         return devices;
@@ -108,6 +161,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             device.CredentialUserName = await db.DeviceCredentials.AsNoTracking()
                 .Where(c => c.DeviceId == id).Select(c => c.UserName)
                 .FirstOrDefaultAsync(ct).ConfigureAwait(false);
+            Shown(device);
         }
 
         return device;
@@ -122,7 +176,8 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        return await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Serial == normalized, ct).ConfigureAwait(false);
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Serial == normalized, ct).ConfigureAwait(false);
+        return device is null ? null : Shown(device);
     }
 
     /// <summary>Adds a device. The serial is normalized in place.</summary>
@@ -138,6 +193,10 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         }
 
         var entity = device.Clone();
+        if (entity.Status == DeviceStatus.SiteOffline)
+        {
+            entity.Status = DeviceStatus.Unknown; // computed, never stored
+        }
 
         // Adds are serialized, so concurrent adds cannot pass the limit together.
         await _addLock.WaitAsync(ct).ConfigureAwait(false);
@@ -171,7 +230,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         }
 
         changeFeed.Publish(new DeviceChange(DeviceChangeKind.Added, entity.Id, entity.Clone()));
-        return entity.Clone();
+        return Shown(entity.Clone());
     }
 
     /// <summary>Overwrites all columns of an existing device.</summary>
@@ -197,7 +256,14 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             return null;
         }
 
+        var storedStatus = entity.Status;
         mutate(entity);
+        if (entity.Status == DeviceStatus.SiteOffline)
+        {
+            // Computed, never stored: a copy read while the site was offline keeps the last real status.
+            entity.Status = storedStatus;
+        }
+
         entity.Id = id;
         entity.Serial = DeviceSerial.Normalize(entity.Serial);
 
@@ -208,7 +274,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         var modified = db.Entry(entity).Properties.Where(p => p.IsModified).Select(p => p.Metadata.Name).ToList();
         if (modified.Count == 0)
         {
-            return entity.Clone();
+            return Shown(entity.Clone());
         }
 
         try
@@ -225,7 +291,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, id, entity.Clone()));
         }
 
-        return entity.Clone();
+        return Shown(entity.Clone());
     }
 
     /// <summary>Ids of all devices, without loading the rows (cheap for 5,000 devices).</summary>
@@ -235,12 +301,12 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         return await db.Devices.AsNoTracking().OrderBy(d => d.Serial).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
     }
 
-    /// <summary>Ids and statuses of all devices in serial order, without loading the rows.</summary>
+    /// <summary>Ids and computed statuses of all devices in serial order, without loading the rows.</summary>
     public async Task<IReadOnlyList<(Guid Id, DeviceStatus Status)>> ListIdsWithStatusAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var rows = await db.Devices.AsNoTracking().OrderBy(d => d.Serial).Select(d => new { d.Id, d.Status }).ToListAsync(ct).ConfigureAwait(false);
-        return [.. rows.Select(r => (r.Id, r.Status))];
+        var rows = await db.Devices.AsNoTracking().OrderBy(d => d.Serial).Select(d => new { d.Id, d.Status, d.SiteId }).ToListAsync(ct).ConfigureAwait(false);
+        return [.. rows.Select(r => (r.Id, SiteDeviceStatus.Of(r.Status, r.SiteId, _sites)))];
     }
 
     /// <summary>

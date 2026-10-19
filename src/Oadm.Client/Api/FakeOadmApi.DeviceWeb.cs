@@ -37,6 +37,7 @@ public sealed partial class FakeOadmApi
             DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
             DeviceStatus.CredentialsRequired => Oadm.Sdk.Devices.DeviceMessages.CredentialsRequired,
             DeviceStatus.PasswordNotSet => Oadm.Sdk.Devices.DeviceMessages.PasswordNotSet,
+            DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
             _ => null,
         };
         return Task.FromResult(refusal is null ? new OpenDeviceWebReply { Ok = true } : new OpenDeviceWebReply { Ok = false, Message = refusal });

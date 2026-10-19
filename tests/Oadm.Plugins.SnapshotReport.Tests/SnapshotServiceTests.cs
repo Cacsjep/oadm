@@ -91,6 +91,20 @@ public sealed class SnapshotServiceTests
     }
 
     [Fact]
+    public async Task A_camera_of_an_offline_site_is_one_error_tile_without_a_request()
+    {
+        var offline = new FakeDevice { Address = "192.168.0.20", Status = DeviceStatus.SiteOffline };
+        var factory = new FakeVapixFactory();
+        factory.Add(offline.Id);
+        using var service = new SnapshotService(new FakeRepository(offline), factory);
+
+        var tile = Assert.Single((await service.ListSourcesAsync(new ListSourcesRequest(), CancellationToken.None)).Tiles);
+
+        Assert.Equal("Site offline", tile.Error);
+        Assert.Empty(factory.Cameras[offline.Id].Requests);
+    }
+
+    [Fact]
     public void Request_uses_image_cgi_with_camera_and_resolution_and_its_own_timeout()
     {
         Assert.Equal("axis-cgi/jpg/image.cgi?camera=2&resolution=1280x720", SnapshotRequests.BuildUri(2, new VideoResolution(1280, 720)));

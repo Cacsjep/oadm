@@ -713,6 +713,8 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             {
                 SdkDeviceStatus.CredentialsRequired => new Attempt(AttemptKind.Rejected, null),
                 SdkDeviceStatus.Unreachable => new Attempt(AttemptKind.Unreachable, "The device did not answer: " + ex.Message, Transport: true),
+                // A site problem is never the device's answer: no attempt counted, no credential rejected.
+                SdkDeviceStatus.SiteOffline => new Attempt(AttemptKind.Unreachable, Core.Sites.SiteErrors.Find(ex)?.Message ?? ex.Message, Transport: true),
                 _ => new Attempt(AttemptKind.Unreachable, "The login failed: " + ex.Message),
             };
         }

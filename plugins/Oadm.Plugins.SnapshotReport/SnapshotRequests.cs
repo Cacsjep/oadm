@@ -89,8 +89,17 @@ public static partial class SnapshotRequests
         DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
         DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>The text of a status that makes a snapshot pointless for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
+    public static string? StatusError(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : StatusError(device.Status);
+    }
+
 
     /// <summary>
     /// Text for a response that is not a JPEG: "Unauthorized - HTTP 401", "Forbidden - HTTP 403",

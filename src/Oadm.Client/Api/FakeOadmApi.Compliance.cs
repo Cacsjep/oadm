@@ -347,6 +347,7 @@ public sealed partial class FakeOadmApi
                 DeviceStatus.Unreachable => "Unreachable - the device does not answer",
                 DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
                 DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
+                DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
                 _ => "Certificate changed. Remove the device and add it again to trust the new certificate.",
             });
         }
@@ -354,7 +355,12 @@ public sealed partial class FakeOadmApi
         switch (type)
         {
             case ReachableType:
-                return device.Status == DeviceStatus.Unreachable ? (ComplianceOutcome.ComplianceFailed, "Unreachable") : (ComplianceOutcome.CompliancePassed, string.Empty);
+                return device.Status switch
+                {
+                    DeviceStatus.Unreachable => (ComplianceOutcome.ComplianceFailed, "Unreachable"),
+                    DeviceStatus.SiteOffline => (ComplianceOutcome.ComplianceNotChecked, FakeSiteOfflineText(device)),
+                    _ => (ComplianceOutcome.CompliancePassed, string.Empty),
+                };
             case LoginType:
                 return device.Status switch
                 {
@@ -362,6 +368,7 @@ public sealed partial class FakeOadmApi
                     DeviceStatus.PasswordNotSet => (ComplianceOutcome.ComplianceFailed, "Password not set"),
                     DeviceStatus.CertificateChanged => (ComplianceOutcome.ComplianceFailed, "Certificate changed"),
                     DeviceStatus.Unreachable => (ComplianceOutcome.ComplianceNotChecked, "Unreachable"),
+                    DeviceStatus.SiteOffline => (ComplianceOutcome.ComplianceNotChecked, FakeSiteOfflineText(device)),
                     _ => (ComplianceOutcome.CompliancePassed, string.Empty),
                 };
             case CertificateType:

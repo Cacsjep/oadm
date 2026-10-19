@@ -6,6 +6,16 @@ namespace Oadm.Plugins.ActionRules.Tests;
 /// <summary>The rule builder: the events the devices offered, and new rules created by the copy task.</summary>
 public sealed class BuildTests : IAsyncLifetime
 {
+    [Fact]
+    public async Task A_device_of_an_offline_site_is_not_read()
+    {
+        var offline = new FakeDevice { Address = "192.168.0.20", Status = Oadm.Sdk.Devices.DeviceStatus.SiteOffline };
+
+        var row = await _plugin.ReadAsync(offline, CancellationToken.None);
+
+        Assert.Equal("Site offline", row.Text);
+    }
+
     private const string Tcp = "com.axis.action.fixed.notification.tcp";
     private const string TcpWhileActive = "com.axis.action.unlimited.notification.tcp";
     private const string VirtualInputTopic = "tns1:Device/tnsaxis:IO/VirtualInput";

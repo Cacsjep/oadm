@@ -42,6 +42,7 @@ public static class Mappers
             CertTrust = ToProto(device.CertTrust),
             CertSubject = device.CertSubject ?? string.Empty,
             CertIssuer = device.CertIssuer ?? string.Empty,
+            SiteId = device.SiteId?.ToString() ?? string.Empty,
         };
 
         if (device.CertNotAfterUtc is { } notAfter)
@@ -122,6 +123,7 @@ public static class Mappers
         SdkDeviceStatus.CredentialsRequired => Proto.DeviceStatus.CredentialsRequired,
         SdkDeviceStatus.PasswordNotSet => Proto.DeviceStatus.PasswordNotSet,
         SdkDeviceStatus.CertificateChanged => Proto.DeviceStatus.CertificateChanged,
+        SdkDeviceStatus.SiteOffline => Proto.DeviceStatus.SiteOffline,
         _ => Proto.DeviceStatus.Unknown,
     };
 

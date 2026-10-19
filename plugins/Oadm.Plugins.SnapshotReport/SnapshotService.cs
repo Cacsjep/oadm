@@ -137,7 +137,7 @@ public sealed partial class SnapshotService : IDisposable
             return Failed("The device has no video");
         }
 
-        if (SnapshotRequests.StatusError(device.Status) is { } statusError)
+        if (SnapshotRequests.StatusError(device) is { } statusError)
         {
             return Failed(statusError);
         }
@@ -243,7 +243,7 @@ public sealed partial class SnapshotService : IDisposable
 
     private async Task<IReadOnlyList<SnapshotTile>> ListDeviceAsync(IDeviceInfo device, bool refreshSources, CancellationToken ct)
     {
-        if (SnapshotRequests.StatusError(device.Status) is { } statusError)
+        if (SnapshotRequests.StatusError(device) is { } statusError)
         {
             return Expand(device, [], statusError);
         }

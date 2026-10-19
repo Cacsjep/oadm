@@ -15,7 +15,7 @@ public interface IDeviceInfo
     string? Model { get; }
     /// <summary>The AXIS OS version ("12.11.77"); null until the device was read.</summary>
     string? FirmwareVersion { get; }
-    /// <summary>The status from the last poll (every 60 s by default). Check it before sending anything: see <see cref="DeviceMessages.Refusal"/>.</summary>
+    /// <summary>The status from the last poll (every 60 s by default). Check it before sending anything: see <see cref="DeviceMessages.Refusal(IDeviceInfo, bool)"/>.</summary>
     DeviceStatus Status { get; }
 
     /// <summary>Kind of Axis device, mapped from basicdeviceinfo ProdType. Unknown until read.</summary>
@@ -118,7 +118,7 @@ public enum DeviceStatus
     CertificateChanged = 5,
     /// <summary>
     /// The site node the device is reached through is offline or not bound. Never stored: when the site is back the device
-    /// shows its last real status again. Nothing is sent to it (<see cref="DeviceMessages.Refusal"/>).
+    /// shows its last real status again. Nothing is sent to it (<see cref="DeviceMessages.Refusal(IDeviceInfo, bool)"/>).
     /// </summary>
     SiteOffline = 6,
 }

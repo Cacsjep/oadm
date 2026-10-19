@@ -24,10 +24,14 @@ public sealed class TestDatabase : IAsyncDisposable
     public static string NewTempDirectory() =>
         Path.Combine(Path.GetTempPath(), "oadm-tests", Guid.NewGuid().ToString("N"));
 
-    public static async Task<TestDatabase> CreateAsync(string? dataDirectory = null)
+    /// <param name="dataDirectory">The data folder; a new temp folder when null.</param>
+    /// <param name="configure">Registrations before the persistence ones (e.g. an <c>ISiteStates</c>).</param>
+    public static async Task<TestDatabase> CreateAsync(string? dataDirectory = null, Action<IServiceCollection>? configure = null)
     {
         var paths = new OadmPaths(dataDirectory ?? NewTempDirectory());
-        var provider = new ServiceCollection().AddOadmPersistence(paths).BuildServiceProvider();
+        var services = new ServiceCollection();
+        configure?.Invoke(services);
+        var provider = services.AddOadmPersistence(paths).BuildServiceProvider();
         await provider.GetRequiredService<DatabaseInitializer>().InitializeAsync(CancellationToken.None);
         return new TestDatabase(paths, provider);
     }

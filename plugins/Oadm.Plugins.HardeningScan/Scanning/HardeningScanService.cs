@@ -255,7 +255,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(device);
         var now = _options.Time.GetUtcNow();
-        if (RefusalFor(device.Status) is { } refusal)
+        if (RefusalFor(device) is { } refusal)
         {
             return Detail(device.Id, level, now, refusal, HardeningChecks.CacheOnly(device, level, refusal, now));
         }
@@ -291,6 +291,14 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     public static string? RefusalFor(DeviceStatus status) => status == DeviceStatus.Unreachable
         ? "Unreachable - the device did not answer the last status check"
         : SnapshotRequests.StatusError(status);
+
+
+    /// <summary>The text of a status that is not contacted for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
+    public static string? RefusalFor(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : RefusalFor(device.Status);
+    }
 
     private static DeviceDetail Detail(Guid deviceId, ScanLevel level, DateTimeOffset now, string? status, IReadOnlyList<CheckResult> checks) =>
         new() { DeviceId = deviceId, Level = level, ScannedUtc = now, Status = status, Checks = checks };

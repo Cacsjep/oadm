@@ -18,6 +18,18 @@ public sealed class PluginTests
         return (plugin, ctx, device);
     }
 
+    [Fact]
+    public void A_device_of_an_offline_site_is_no_target()
+    {
+        var plugin = new VapixCommanderPlugin(Samples.Directory);
+        var offline = new FakeDevice { Status = DeviceStatus.SiteOffline };
+
+        Assert.False(Assert.Single(plugin.TaskPlugins).CanRun(offline));
+        var row = new Client.TargetDeviceViewModel(offline);
+        Assert.False(row.IsReachable);
+        Assert.Equal("Site offline", row.StatusText);
+    }
+
     private static async Task<T> Invoke<T>(VapixCommanderPlugin plugin, string method, object? request)
         where T : class, new() =>
         CommandJson.Read<T>(await plugin.InvokeAsync(method, request is null ? null : CommandJson.Write(request), CancellationToken.None));

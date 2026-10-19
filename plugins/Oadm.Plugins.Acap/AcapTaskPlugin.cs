@@ -103,7 +103,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the application API", device);
+        return TaskSupportReasons.ForStatus(device) ?? TaskSupportReasons.NeedsApi("the application API", device);
     }
 
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)

@@ -54,7 +54,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
             return Failed(device.Id, EdgeRecordingTexts.NotVideo);
         }
 
-        if (RefusalFor(device.Status) is { } refusal)
+        if (RefusalFor(device) is { } refusal)
         {
             return Failed(device.Id, refusal);
         }
@@ -111,7 +111,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
             throw new InvalidOperationException(EdgeRecordingTexts.NotVideo);
         }
 
-        if (RefusalFor(device.Status) is { } refusal)
+        if (RefusalFor(device) is { } refusal)
         {
             throw new InvalidOperationException(refusal);
         }
@@ -167,8 +167,17 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
         DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>The refusal text for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
+    internal static string? RefusalFor(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : RefusalFor(device.Status);
+    }
+
 
     private async Task<string> FormatAsync(IVapixClient client, CancellationToken ct)
     {

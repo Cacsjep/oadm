@@ -171,6 +171,7 @@ public sealed partial class FakeOadmApi
         DeviceStatus.CredentialsRequired => Oadm.Sdk.Devices.DeviceMessages.CredentialsRequired,
         DeviceStatus.PasswordNotSet => Oadm.Sdk.Devices.DeviceMessages.PasswordNotSet,
         DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
+        DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
         _ => null,
     };
 

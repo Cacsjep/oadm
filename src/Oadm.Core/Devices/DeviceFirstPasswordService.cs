@@ -137,7 +137,7 @@ public sealed partial class DeviceFirstPasswordService
             async (id, token) =>
             {
                 string? policy = null;
-                if (rows.TryGetValue(id, out var device) && device.Status != DeviceStatus.CertificateChanged)
+                if (rows.TryGetValue(id, out var device) && device.Status is not (DeviceStatus.CertificateChanged or DeviceStatus.SiteOffline))
                 {
                     foreach (var (scheme, pin) in Schemes(device))
                     {
@@ -189,6 +189,11 @@ public sealed partial class DeviceFirstPasswordService
         if (device.Status == DeviceStatus.CertificateChanged)
         {
             return new DeviceFirstPasswordResult(device.Id, false, DeviceLoginService.CertificateChangedMessage);
+        }
+
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return new DeviceFirstPasswordResult(device.Id, false, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName)); // no request
         }
 
         var now = Interlocked.Increment(ref _inFlight);

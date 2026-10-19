@@ -149,6 +149,7 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
         DeviceStatus.CredentialsRequired => "Credentials required",
         DeviceStatus.PasswordNotSet => "Password not set",
         DeviceStatus.CertificateChanged => "Certificate changed",
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(Device.SiteName),
         _ => Device.Status.ToString(),
     };
 

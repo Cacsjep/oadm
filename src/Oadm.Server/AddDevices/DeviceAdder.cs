@@ -166,7 +166,7 @@ public sealed partial class DeviceAdder(
         {
             LogInitialPasswordFailed(device.Serial, ex.Message);
             var status = DeviceStatusClassifier.FromException(ex);
-            return status is SdkDeviceStatus.Unreachable or SdkDeviceStatus.CertificateChanged ? status : SdkDeviceStatus.PasswordNotSet;
+            return status is SdkDeviceStatus.Unreachable or SdkDeviceStatus.CertificateChanged or SdkDeviceStatus.SiteOffline ? status : SdkDeviceStatus.PasswordNotSet;
         }
 
         return await VerifyAsync(device.Id, ct).ConfigureAwait(false);

@@ -33,6 +33,10 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     private TestDatabase _db = null!;
     private bool _stopped;
+    private Oadm.Core.Sites.ISiteStates? _sites;
+
+    /// <summary>The site events (only when the rig was started with sites).</summary>
+    public SiteEventSource? SiteEvents { get; private set; }
 
     public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 12, 10, 0, 0, TimeSpan.Zero)); // a Monday
 
@@ -72,10 +76,16 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public PluginOrigin ActionOrigin { get; } = new("test.actions", "1.0", null) { DisplayName = "Test actions" };
 
-    public static async Task<EventRulesRig> StartAsync(string? dataDirectory = null, Action<EventRulesRig>? beforeStart = null)
+    public static async Task<EventRulesRig> StartAsync(string? dataDirectory = null, Action<EventRulesRig>? beforeStart = null, Oadm.Core.Sites.ISiteStates? sites = null)
     {
-        var rig = new EventRulesRig();
-        rig._db = await TestDatabase.CreateAsync(dataDirectory);
+        var rig = new EventRulesRig { _sites = sites };
+        rig._db = await TestDatabase.CreateAsync(dataDirectory, s =>
+        {
+            if (sites is not null)
+            {
+                Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton(s, sites);
+            }
+        });
         rig.Registry.RegisterCorePlugin(rig.Source, rig.SourceOrigin);
         rig.Registry.RegisterActionPlugin(rig.OnDevice, rig.ActionOrigin);
         rig.Registry.RegisterActionPlugin(rig.NoDevice, rig.ActionOrigin);
@@ -92,7 +102,13 @@ internal sealed class EventRulesRig : IAsyncDisposable
     public async Task StartEngineAsync()
     {
         var dbFactory = _db.Get<IDbContextFactory<OadmDbContext>>();
-        Catalog = new EventCatalog(Registry);
+        if (_sites is not null)
+        {
+            SiteEvents = new SiteEventSource(dbFactory, _sites, () => Engine.PublisherFor(SiteEventSource.EventSourceId));
+            await SiteEvents.LoadAsync(CancellationToken.None);
+        }
+
+        Catalog = new EventCatalog(Registry, SiteEvents is null ? null : [SiteEvents]);
         Store = new RuleStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Log = new EventLog(dbFactory, Time);
         Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
@@ -100,6 +116,12 @@ internal sealed class EventRulesRig : IAsyncDisposable
             new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity });
         Rules = new EventRulesService(Catalog, Store, Engine, Devices);
         await Engine.StartAsync(CancellationToken.None);
+        if (SiteEvents is { } siteEvents)
+        {
+            siteEvents.EventTypesChanged += (_, _) => Engine.SourcesChanged();
+            siteEvents.Start();
+        }
+
         if (!HoldActions)
         {
             Runner.PluginsStarted();
@@ -115,6 +137,11 @@ internal sealed class EventRulesRig : IAsyncDisposable
         }
 
         _stopped = true;
+        if (SiteEvents is not null)
+        {
+            await SiteEvents.DisposeAsync();
+        }
+
         await Engine.DisposeAsync();
         await Runner.DisposeAsync();
         await Log.DisposeAsync();

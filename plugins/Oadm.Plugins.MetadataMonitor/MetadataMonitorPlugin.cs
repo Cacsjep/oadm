@@ -116,8 +116,17 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
         DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>The refusal text for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
+    internal static string? RefusalFor(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : RefusalFor(device.Status);
+    }
+
 
     private async Task<StartReply> StartStreamAsync(StartRequest request, CancellationToken ct)
     {
@@ -134,7 +143,7 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
             return new StartReply(null, DeviceMessages.Removed);
         }
 
-        if (RefusalFor(device.Status) is { } refusal)
+        if (RefusalFor(device) is { } refusal)
         {
             return new StartReply(null, refusal);
         }

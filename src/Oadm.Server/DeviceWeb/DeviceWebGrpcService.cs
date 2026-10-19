@@ -71,7 +71,7 @@ public sealed partial class DeviceWebGrpcService(
         var id = GrpcGuard.ParseId(request.DeviceId, "device id");
         var ct = context.CancellationToken;
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
-        if (Refusal(device.Status) is { } refusal)
+        if (Refusal(device) is { } refusal)
         {
             return new Proto.OpenDeviceWebReply { Ok = false, Message = refusal };
         }
@@ -113,8 +113,16 @@ public sealed partial class DeviceWebGrpcService(
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
         DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
+        DeviceStatus.SiteOffline => Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>Why the web interface of <paramref name="device"/> cannot be opened ("Site offline: Building B"); null when it can.</summary>
+    public static string? Refusal(Sdk.Devices.IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : Refusal(device.Status);
+    }
 
     public override async Task Exchange(IAsyncStreamReader<Proto.DeviceWebFrame> requestStream, IServerStreamWriter<Proto.DeviceWebFrame> responseStream, ServerCallContext context)
     {
@@ -137,7 +145,7 @@ public sealed partial class DeviceWebGrpcService(
         RequirePluginOn();
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
         // Refused statuses are not contacted: a rejected login would be sent again with every request of the page.
-        if (Refusal(device.Status) is { } refusal)
+        if (Refusal(device) is { } refusal)
         {
             throw GrpcGuard.FailedPrecondition(refusal);
         }

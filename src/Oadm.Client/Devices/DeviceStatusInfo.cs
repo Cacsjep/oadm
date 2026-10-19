@@ -21,6 +21,7 @@ public static class DeviceStatusInfo
         DeviceStatus.CredentialsRequired => "Credentials required",
         DeviceStatus.PasswordNotSet => "Password not set",
         DeviceStatus.CertificateChanged => "Certificate changed",
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => "Unknown",
     };
 
@@ -28,7 +29,7 @@ public static class DeviceStatusInfo
     {
         DeviceStatus.Ok => PillKind.Ok,
         DeviceStatus.Unreachable => PillKind.Error,
-        DeviceStatus.CredentialsRequired or DeviceStatus.PasswordNotSet or DeviceStatus.CertificateChanged => PillKind.Warning,
+        DeviceStatus.CredentialsRequired or DeviceStatus.PasswordNotSet or DeviceStatus.CertificateChanged or DeviceStatus.SiteOffline => PillKind.Warning,
         _ => PillKind.Neutral,
     };
 
@@ -39,6 +40,7 @@ public static class DeviceStatusInfo
         DeviceStatus.CredentialsRequired => Oadm.Sdk.Devices.DeviceStatus.CredentialsRequired,
         DeviceStatus.PasswordNotSet => Oadm.Sdk.Devices.DeviceStatus.PasswordNotSet,
         DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceStatus.CertificateChanged,
+        DeviceStatus.SiteOffline => Oadm.Sdk.Devices.DeviceStatus.SiteOffline,
         _ => Oadm.Sdk.Devices.DeviceStatus.Unknown,
     };
 }

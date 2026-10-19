@@ -62,7 +62,7 @@ public sealed class PageViewModelTests
         Assert.False(vm.IsProgressVisible);
         Assert.Equal(100, vm.Progress);
         var errors = vm.Tiles.Where(t => t.IsError).ToList();
-        Assert.Equal(["CertificateChanged", "CredentialsRequired", "PasswordNotSet"], errors.Select(t => t.Tile.Device.Status).Order(StringComparer.Ordinal).Distinct().ToArray());
+        Assert.Equal(["CertificateChanged", "CredentialsRequired", "PasswordNotSet", "SiteOffline"], errors.Select(t => t.Tile.Device.Status).Order(StringComparer.Ordinal).Distinct().ToArray());
         Assert.All(vm.Tiles.Where(t => !t.IsDeviceError), t => Assert.Equal(TileState.Ok, t.State));
         Assert.Equal(vm.Tiles.Count(t => !t.IsDeviceError), ui.Decoded);
         Assert.All(vm.Tiles, t => Assert.True(t.IsSelected));

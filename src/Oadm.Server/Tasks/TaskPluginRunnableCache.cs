@@ -80,19 +80,20 @@ public sealed partial class TaskPluginRunnableCache(
                 var logged = false;
                 foreach (var device in all)
                 {
+                    if (device.Status == Sdk.Devices.DeviceStatus.SiteOffline)
+                    {
+                        // The host refuses it whatever the plugin says (third-party plugins never see the status).
+                        Add(byReason, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName), device.Id);
+                        continue;
+                    }
+
                     if (SafeCanRun(plugin, device, ref logged))
                     {
                         runnable.Add(device.Id);
                         continue;
                     }
 
-                    var reason = SafeReason(plugin, device);
-                    if (!byReason.TryGetValue(reason, out var ids))
-                    {
-                        byReason[reason] = ids = [];
-                    }
-
-                    ids.Add(device.Id);
+                    Add(byReason, SafeReason(plugin, device), device.Id);
                 }
 
                 var reasons = byReason
@@ -117,6 +118,16 @@ public sealed partial class TaskPluginRunnableCache(
         {
             _gate.Release();
         }
+    }
+
+    private static void Add(Dictionary<string, List<Guid>> byReason, string reason, Guid deviceId)
+    {
+        if (!byReason.TryGetValue(reason, out var ids))
+        {
+            byReason[reason] = ids = [];
+        }
+
+        ids.Add(deviceId);
     }
 
     private bool IsFresh(Entry? entry, IReadOnlyList<RegisteredTaskPlugin> plugins) =>

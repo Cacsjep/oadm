@@ -312,7 +312,7 @@ public sealed class ServerConnectionTests : IDisposable
 
         api.SetOnline(true);
         // Longer than the 15 s maximum reconnect delay, so a retry that just backed off still lands.
-        await TestSupport.WaitUntilAsync(() => connection.IsConnected && devices.Devices.Count == 12 && tasks.Tasks.Count > 0, 60_000);
+        await TestSupport.WaitUntilAsync(() => connection.IsConnected && devices.Devices.Count == 15 && tasks.Tasks.Count > 0, 60_000);
         Assert.Equal(1, connectedEvents);
 
         // live update through the watch stream
