@@ -2774,8 +2774,22 @@ the server side:
 - Client: rail page **Sites** (group Servers, `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
   `SiteFormWindow` for Bind / Rename / Change address / Add manually / Replace / Remove), device column **Site**
   (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.
-- Not built yet: discovery and devices at sites (stream 5), `IDeviceNetwork`, relays and plugins at sites (stream 6),
-  identity rotation over gRPC, "Waiting for the site link" on task steps.
+- Plugins at sites (stream 6): `IDeviceNetwork` (`Oadm.Core.Sites.DeviceNetworks`: `LocalDeviceNetwork` on the server's
+  own network, `SiteDeviceNetwork` over `ISiteNetwork`) in `ITaskExecutionContext` / `ITaskQueryContext.Network` and
+  `ICorePluginContext.Network` (`PluginNetworkScope`: listeners bound by the host with the Windows firewall rule, a port in
+  use retried every 30 s). `ICorePluginContext.Sites` = relays over the node's Relay call on worker links (`SiteRelay`,
+  states with `SiteTexts.RelayStateText`, reopened after a reconnect); the host disposes a plugin's listeners and relays
+  when it stops or is turned off. `siteSupport` (manifest; missing = none; `ITaskPlugin` / `IComplianceCheckType.SiteSupport`
+  override) is enforced by the host: tasks greyed "Not available for devices at a site", runs and queries refused,
+  compliance Not checked, VAPIX clients and event streams of core plugins (`SiteSupportGuard`) and actions refuse site
+  devices. The plugin project SDK writes `siteSupport` (`OadmSiteSupport`, default full) and `sitePorts` (`OadmSitePorts`
+  "udp:123:NTP server"); bundled: DHCP none, NTP full + UDP 123, the others full. NTP "Serve at sites" (one relay per site,
+  limits per site and client); DHCP page "The DHCP server works only on this server's own network."; Assign IP address
+  refuses addresses outside the site's networks (`IDeviceNetwork.Reaches`). The Plugins page has a Sites column
+  (`PluginPackageInfo.site_support = 12`, `site_ports = 13`). `Oadm.Sdk.Testing`: `FakeDeviceNetwork`, `FakeSites`,
+  `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. SDK 0.2.0. Developer page `dev/sites.md`.
+- Not built yet: discovery and devices at sites (stream 5), identity rotation over gRPC, "Waiting for the site link" on
+  task steps, the HTTP helper on `IStreamListener`.
 
 # Not built yet
 
