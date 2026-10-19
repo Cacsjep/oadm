@@ -2,8 +2,9 @@
   <!--
     The plugin project SDK, part 2 (after the project): plugin.json, host packages, the plugin folder.
     - plugin.json: a plugin.json in the project folder is copied as it is; without one the server part writes it from
-      OadmPluginId, Version, OadmDisplayName, OadmDescription, OadmEnabledByDefault and the license properties
-      (OadmLicensePublicKey, OadmLicenseFeatures "a;b", OadmLicenseTrialDays). minSdkVersion is the SDK's.
+      OadmPluginId, Version, OadmDisplayName, OadmDescription, OadmEnabledByDefault, the license properties
+      (OadmLicensePublicKey, OadmLicenseFeatures "a;b", OadmLicenseTrialDays) and the site properties (OadmSiteSupport
+      "full" (default) or "none", OadmSitePorts "udp:123:NTP server;tcp:8080:Reports"). minSdkVersion is the SDK's.
     - Packages the host already has (Avalonia, the MVVM toolkit) are compiled against, never copied; Avalonia.Controls.DataGrid
       without a version gets the host's.
     - After every build the output is copied to $(OadmDeployRoot)<plugin id>/ (default ../.oadm/plugins/ next to the
@@ -12,6 +13,7 @@
   <PropertyGroup>
     <OadmDisplayName Condition="'$(OadmDisplayName)' == ''">$(OadmPluginName)</OadmDisplayName>
     <OadmEnabledByDefault Condition="'$(OadmEnabledByDefault)' == ''">true</OadmEnabledByDefault>
+    <OadmSiteSupport Condition="'$(OadmSiteSupport)' == ''">full</OadmSiteSupport>
     <OadmDeployRoot Condition="'$(OadmDeployRoot)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '..', '.oadm', 'plugins'))</OadmDeployRoot>
     <OadmPluginDeployDir Condition="'$(OadmPluginDeployDir)' == '' and '$(OadmPluginId)' != ''">$([MSBuild]::NormalizeDirectory('$(OadmDeployRoot)', '$(OadmPluginId)'))</OadmPluginDeployDir>
     <_OadmOwnManifest>$(MSBuildProjectDirectory)\plugin.json</_OadmOwnManifest>
@@ -28,9 +30,44 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- OadmSitePorts "udp:123:NTP server;tcp:8080:Reports" as the JSON array of plugin.json; a wrong entry is a build error. -->
+  <UsingTask TaskName="OadmSitePortsJson" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Ports ParameterType="System.String" Required="false" />
+      <Json ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var entries = new System.Collections.Generic.List<string>();
+        foreach (var raw in (Ports ?? "").Split(new[] { ';' }, System.StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = raw.Split(new[] { ':' }, 3);
+            int port;
+            var protocol = parts[0].Trim().ToLowerInvariant();
+            if (parts.Length < 2 || (protocol != "udp" && protocol != "tcp") || !int.TryParse(parts[1].Trim(), out port) || port < 1 || port > 65535)
+            {
+                Log.LogError("OadmSitePorts: \"" + raw.Trim() + "\" is not protocol:port:reason, e.g. udp:123:NTP server.");
+                return false;
+            }
+
+            var reason = parts.Length > 2 ? parts[2].Trim().Replace("\\", "\\\\").Replace("\"", "\\\"") : "";
+            entries.Add("{ \"protocol\": \"" + protocol + "\", \"port\": " + port + ", \"reason\": \"" + reason + "\" }");
+        }
+
+        Json = entries.Count == 0 ? "" : "[" + string.Join(", ", entries) + "]";
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
   <Target Name="OadmWritePluginJson" BeforeTargets="BeforeBuild;AssignTargetPaths" Condition="'$(_OadmWriteManifest)' == 'true'">
     <Error Condition="'$(OadmPluginId)' == ''" Text="Set OadmPluginId (e.g. acme.door-overview) in $(MSBuildProjectFile), or add a plugin.json." />
+    <Error Condition="'$(OadmSiteSupport.ToLowerInvariant())' != 'full' and '$(OadmSiteSupport.ToLowerInvariant())' != 'none'" Text="OadmSiteSupport is full or none (not $(OadmSiteSupport))." />
+    <OadmSitePortsJson Ports="$(OadmSitePorts)">
+      <Output TaskParameter="Json" PropertyName="_OadmSitePortsArray" />
+    </OadmSitePortsJson>
     <PropertyGroup>
+      <_OadmJsonSitePorts Condition="'$(_OadmSitePortsArray)' != ''">,
+  "sitePorts": $(_OadmSitePortsArray)</_OadmJsonSitePorts>
       <_OadmJsonFeatures Condition="'$(OadmLicenseFeatures)' != ''">, "features": ["$([System.String]::Join('", "', $(OadmLicenseFeatures.Split(';'))))"]</_OadmJsonFeatures>
       <_OadmJsonTrial Condition="'$(OadmLicenseTrialDays)' != ''">, "trialDays": $(OadmLicenseTrialDays)</_OadmJsonTrial>
       <_OadmJsonLicense Condition="'$(OadmLicensePublicKey)' != ''">,
@@ -41,7 +78,8 @@
   "minSdkVersion": "$(OadmMinSdkVersion)",
   "displayName": "$(OadmDisplayName.Replace('\', '\\').Replace('"', '\"'))",
   "description": "$(OadmDescription.Replace('\', '\\').Replace('"', '\"'))",
-  "enabledByDefault": $(OadmEnabledByDefault.ToLowerInvariant())$(_OadmJsonLicense)
+  "enabledByDefault": $(OadmEnabledByDefault.ToLowerInvariant())$(_OadmJsonLicense),
+  "siteSupport": "$(OadmSiteSupport.ToLowerInvariant())"$(_OadmJsonSitePorts)
 }</_OadmJson>
     </PropertyGroup>
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_OadmManifestFile)'))" />

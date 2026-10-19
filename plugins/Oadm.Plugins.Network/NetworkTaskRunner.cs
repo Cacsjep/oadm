@@ -29,7 +29,7 @@ public sealed record ReachabilityOptions(TimeSpan SettleDelay, TimeSpan ProbeInt
 /// (<see cref="ITaskExecutionContext.UpdateDeviceAddressAsync"/>); a DHCP change keeps the record, the server's
 /// periodic mDNS browse finds the device again.
 /// </summary>
-internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvider time, IAddressProbe probe)
+internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvider time, IAddressProbe? probe)
 {
     internal const string StepCheckCompatibility = "Check compatibility";
     internal const string StepReadSettings = "Read current settings";
@@ -244,8 +244,15 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
                 continue;
             }
 
+            if (AddressCheck.IsOutside(ctx.Network, address))
+            {
+                var outside = $"{address}: {Sdk.Sites.SiteTexts.OutsideSiteNetworks}. Nothing was changed.";
+                ctx.Log(TaskLogLevel.Error, outside);
+                throw new InvalidOperationException(outside);
+            }
+
             step.ReportProgress(100 * i / addresses.Count, $"Probing {address}");
-            var result = await probe.ProbeAsync(address, ct).ConfigureAwait(false);
+            var result = await (probe ?? NetworkAddressProbe.For(ctx.Network)).ProbeAsync(address, ct).ConfigureAwait(false);
             if (result.InUse)
             {
                 var message = $"{address} is already in use ({result.Reason}). Nothing was changed.";

@@ -41,7 +41,7 @@ public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var service = new NtpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall);
+        var service = new NtpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.Network, ctx.Sites);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
     }

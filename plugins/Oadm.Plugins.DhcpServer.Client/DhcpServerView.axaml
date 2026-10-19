@@ -10,6 +10,7 @@
   <!-- One card (the host's page card): settings form, then the lease list. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*">
     <StackPanel Grid.Row="0" Classes="form">
+      <ui:StatusChip IsInfo="True" Text="{x:Static vm:DhcpServerViewModel.OwnNetworkOnlyText}" IsVisible="{Binding HasSiteDevices}" />
       <CheckBox Content="Enable DHCP server" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding MayManage}" />
 
       <ui:FormField Label="Listen on" InputWidth="460" Error="{Binding InterfaceError}">

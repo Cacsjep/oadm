@@ -23,21 +23,20 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
     private static readonly StepKind[] AllSections = [StepKind.HostName, StepKind.Dns, StepKind.Ipv6, StepKind.Ipv4];
 
     private readonly NetworkTaskRunner _runner;
-    private readonly IAddressProbe _probe;
+    private readonly IAddressProbe? _probe;
 
     public NetworkSettingsTaskPlugin()
-        : this(ReachabilityOptions.Default, TimeProvider.System, NetworkAddressProbe.Instance)
+        : this(ReachabilityOptions.Default, TimeProvider.System, null)
     {
     }
 
     /// <param name="options">Timing of the reachability checks.</param>
     /// <param name="timeProvider">Clock for the waits.</param>
-    /// <param name="probe">Is an address taken (ping, TCP 80/443)? Tests pass a fake: no network in unit tests.</param>
-    public NetworkSettingsTaskPlugin(ReachabilityOptions options, TimeProvider timeProvider, IAddressProbe probe)
+    /// <param name="probe">Is an address taken (ping, TCP 80/443)? Null = on the device's route (the context's network); tests pass a fake.</param>
+    public NetworkSettingsTaskPlugin(ReachabilityOptions options, TimeProvider timeProvider, IAddressProbe? probe)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(probe);
         _probe = probe;
         _runner = new NetworkTaskRunner(options, timeProvider, probe);
     }
@@ -93,7 +92,7 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public string GetTaskName(string? payloadJson) => NetworkTaskNames.ForNetworkSettings(payloadJson) ?? DisplayName;
 
     /// <summary>The queries of both network plugins ("getNetworkInfo", "checkAddresses").</summary>
-    internal static async Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe probe, CancellationToken ct)
+    internal static async Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);

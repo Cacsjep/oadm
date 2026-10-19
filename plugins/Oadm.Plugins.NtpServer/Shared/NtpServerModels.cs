@@ -53,6 +53,9 @@ public sealed record NtpConfig
 
     /// <summary>Optional upstream host name or address (host[:port]); null or empty = server clock only.</summary>
     public string? Upstream { get; init; }
+
+    /// <summary>"Serve at sites": every site node relays UDP 123 to this server while it is enabled.</summary>
+    public bool ServeAtSites { get; init; }
 }
 
 /// <summary>One answered or limited request.</summary>
@@ -61,7 +64,9 @@ public sealed record NtpConfig
 /// <param name="Client">Client IP address.</param>
 /// <param name="OffsetMilliseconds">Client clock minus server clock (from the client's transmit timestamp), null when unknown.</param>
 /// <param name="Result">"Answered" or "Rate limited".</param>
-public sealed record RequestEntry(long Seq, DateTime TimeUtc, string Client, double? OffsetMilliseconds, string Result)
+/// <param name="SiteId">The site the request came through; null on the server's own network.</param>
+/// <param name="Site">The name of that site.</param>
+public sealed record RequestEntry(long Seq, DateTime TimeUtc, string Client, double? OffsetMilliseconds, string Result, Guid? SiteId = null, string? Site = null)
 {
     public const string Answered = "Answered";
     public const string RateLimited = "Rate limited";
@@ -94,9 +99,25 @@ public sealed record NtpState
     public int Stratum { get; init; }
 
     public int Port { get; init; }
+
+    /// <summary>The server has sites (bound site nodes): the page offers "Serve at sites".</summary>
+    public bool HasSites { get; init; }
+
+    /// <summary>With "Serve at sites": the relay of every site, by site name.</summary>
+    public IReadOnlyList<SiteServing> Sites { get; init; } = [];
 }
 
-public sealed record SaveRequest(bool Enabled, string? InterfaceId, string? Upstream);
+/// <summary>The NTP relay of one site.</summary>
+/// <param name="SiteId">The site.</param>
+/// <param name="Text">"NTP at Building B: running", "NTP at Building B: waiting for approval in the OADM Site Node app".</param>
+/// <param name="Running">The site's devices reach the NTP server now.</param>
+public sealed record SiteServing(Guid SiteId, string Text, bool Running);
+
+/// <param name="Enabled">Serve the time.</param>
+/// <param name="InterfaceId">The interface on this server.</param>
+/// <param name="Upstream">The optional upstream server.</param>
+/// <param name="ServeAtSites">Serve the devices at sites too, through their site nodes.</param>
+public sealed record SaveRequest(bool Enabled, string? InterfaceId, string? Upstream, bool ServeAtSites = false);
 
 /// <param name="Saved">False when the upstream did not validate (nothing changed).</param>
 /// <param name="UpstreamError">Shown under the upstream field.</param>

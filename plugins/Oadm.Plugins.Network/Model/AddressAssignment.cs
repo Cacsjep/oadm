@@ -68,7 +68,8 @@ public static class AddressAssigner
 /// <param name="Device">Label of that device ("P3265-V ACCC8E000001").</param>
 /// <param name="InUse">Something answers at this address: a ping or a TCP connection on port 80 or 443.</param>
 /// <param name="AnswersPing">The address answered an ICMP echo (ping).</param>
-public sealed record AddressStatus(string Address, Guid? DeviceId = null, string? Device = null, bool InUse = false, bool AnswersPing = false)
+/// <param name="OutsideSite">The address is outside the networks the device's site reaches (devices at a site only).</param>
+public sealed record AddressStatus(string Address, Guid? DeviceId = null, string? Device = null, bool InUse = false, bool AnswersPing = false, bool OutsideSite = false)
 {
     /// <summary>The row status of an address in use: "In use (answers ping)" or "In use (answers on port 80/443)".</summary>
     public string InUseText => AnswersPing ? "In use (answers ping)" : "In use (answers on port 80/443)";
@@ -159,6 +160,10 @@ public static class AddressConflicts
             {
                 result[i] = $"Used by {status.Device ?? "another managed device"}";
             }
+            else if (known?.GetValueOrDefault(text) is { OutsideSite: true })
+            {
+                result[i] = Sdk.Sites.SiteTexts.OutsideSiteNetworks;
+            }
             else if (known?.GetValueOrDefault(text) is { InUse: true } inUse && !string.Equals(text, row.Device.CurrentAddress, StringComparison.Ordinal))
             {
                 result[i] = inUse.InUseText;
@@ -216,6 +221,10 @@ public static class AddressConflicts
             else if ((knownByAddress ??= IndexIpv6(known)).GetValueOrDefault(address) is { DeviceId: { } other } status && other != rows[i].Device.Id)
             {
                 result[i] = $"Used by {status.Device ?? "another managed device"}";
+            }
+            else if (knownByAddress.GetValueOrDefault(address) is { OutsideSite: true })
+            {
+                result[i] = Sdk.Sites.SiteTexts.OutsideSiteNetworks;
             }
             else if (knownByAddress.GetValueOrDefault(address) is { InUse: true } inUse && !AddressCheck.IsOwnAddress(text, [rows[i].Device.CurrentAddress]))
             {

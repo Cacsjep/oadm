@@ -23,7 +23,8 @@ public sealed class RequestRowViewModel(RequestEntry entry, string device)
 
     public string Time { get; } = entry.TimeUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
-    public string Client { get; } = entry.Client;
+    /// <summary>The client address; at a site with the site's name: "192.168.0.20 (Building B)".</summary>
+    public string Client { get; } = entry.Site is { Length: > 0 } site ? $"{entry.Client} ({site})" : entry.Client;
 
     public string Device { get; } = device;
 
@@ -78,6 +79,17 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     public ObservableCollection<InterfaceOption> Interfaces => Listen.Items;
 
     public ObservableCollection<RequestRowViewModel> Requests { get; } = [];
+
+    /// <summary>With "Serve at sites": the relay of every site ("NTP at Building B: running").</summary>
+    public ObservableCollection<SiteServing> SiteRows { get; } = [];
+
+    /// <summary>"Serve at sites": the site nodes pass the time requests of their devices to this server.</summary>
+    [ObservableProperty]
+    public partial bool ServeAtSites { get; set; }
+
+    /// <summary>The server has sites (or serves at sites): the page shows "Serve at sites".</summary>
+    [ObservableProperty]
+    public partial bool HasSites { get; set; }
 
     [ObservableProperty]
     public partial bool IsEnabled { get; set; }
@@ -230,7 +242,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         UpstreamResult = null;
         try
         {
-            var request = new SaveRequest(IsEnabled, SelectedInterface?.Id ?? NtpServerPluginInfo.AllInterfaces, string.IsNullOrWhiteSpace(Upstream) ? null : Upstream.Trim());
+            var request = new SaveRequest(IsEnabled, SelectedInterface?.Id ?? NtpServerPluginInfo.AllInterfaces, string.IsNullOrWhiteSpace(Upstream) ? null : Upstream.Trim(), ServeAtSites);
             var json = await _ctx.InvokeAsync(NtpServerMethods.Save, NtpJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
             var reply = NtpJson.Deserialize<SaveReply>(json);
             if (!reply.Saved)
@@ -333,6 +345,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     {
         _formLoaded = true;
         IsEnabled = config.Enabled;
+        ServeAtSites = config.ServeAtSites;
         Upstream = config.Upstream ?? string.Empty;
         UpstreamResult = null;
         Listen.Select(config.InterfaceId);
@@ -345,6 +358,15 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     {
         SetStatus(state.Status.Kind, state.Status.Text, state.Status.Detail);
         UpstreamInfoText = state.Upstream is { } up && state.Config.Enabled ? DescribeUpstream(up, state.Stratum) : null;
+        HasSites = state.HasSites || state.Config.ServeAtSites;
+        if (!SiteRows.SequenceEqual(state.Sites))
+        {
+            SiteRows.Clear();
+            foreach (var site in state.Sites)
+            {
+                SiteRows.Add(site);
+            }
+        }
     }
 
     private void SetStatus(string kind, string text, string? detail)
@@ -362,7 +384,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
             _lastSeq = 0;
             foreach (var entry in entries.OrderByDescending(e => e.Seq).Take(NtpServerPluginInfo.MaxRequests))
             {
-                Requests.Add(new RequestRowViewModel(entry, DeviceFor(entry.Client)));
+                Requests.Add(new RequestRowViewModel(entry, DeviceFor(entry)));
                 _lastSeq = Math.Max(_lastSeq, entry.Seq);
             }
         }
@@ -370,7 +392,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         {
             foreach (var entry in entries.Where(e => e.Seq > _lastSeq).OrderBy(e => e.Seq))
             {
-                Requests.Insert(0, new RequestRowViewModel(entry, DeviceFor(entry.Client)));
+                Requests.Insert(0, new RequestRowViewModel(entry, DeviceFor(entry)));
                 _lastSeq = entry.Seq;
             }
 
@@ -389,7 +411,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         for (var i = 0; i < Requests.Count; i++)
         {
             var row = Requests[i];
-            var device = DeviceFor(row.Client);
+            var device = DeviceFor(row.Entry);
             if (!string.Equals(device, row.Device, StringComparison.Ordinal))
             {
                 Requests[i] = new RequestRowViewModel(row.Entry, device);
@@ -403,13 +425,16 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (IDeviceInfo device in _ctx.Devices)
         {
-            map.TryAdd(device.Address, string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Model} ({device.Address})");
+            map.TryAdd(Key(device.SiteId, device.Address), string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Model} ({device.Address})");
         }
 
         _devicesByAddress = map;
     }
 
-    private string DeviceFor(string client) => _devicesByAddress.TryGetValue(client, out var label) ? label : "-";
+    /// <summary>The device of a request: the same address on the same route (two sites may both use 192.168.0.20).</summary>
+    private string DeviceFor(RequestEntry entry) => _devicesByAddress.TryGetValue(Key(entry.SiteId, entry.Client), out var label) ? label : "-";
+
+    private static string Key(Guid? siteId, string address) => siteId is { } id ? id.ToString("N") + "|" + address : address;
 
     private void SetError(string property, string? error)
     {

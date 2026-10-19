@@ -56,6 +56,9 @@ public sealed partial class NtpUdpServer : IAsyncDisposable
         _logger = logger ?? NullLogger.Instance;
     }
 
+    /// <summary>The operating system has IPv6: "All interfaces" listens on [::] too.</summary>
+    public static bool SupportsIPv6 => Socket.OSSupportsIPv6;
+
     /// <summary>The bound endpoints (with the real port when 0 was requested).</summary>
     public IReadOnlyList<IPEndPoint> LocalEndpoints { get; private set; } = [];
 

@@ -3,6 +3,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:net="using:Oadm.Sdk.Network"
              xmlns:vm="using:Oadm.Plugins.NtpServer.Client"
+             xmlns:ntp="using:Oadm.Plugins.NtpServer"
              x:Class="Oadm.Plugins.NtpServer.Client.NtpServerView"
              x:DataType="vm:NtpServerViewModel"
              ui:PageHeader.Subtitle="Answers the time requests of the cameras.">
@@ -30,6 +31,21 @@
                    ToolTip.Tip="Empty: cameras get this computer's time." />
           <ui:StatusChip Text="{Binding CheckingText}" IsAccent="True" IsVisible="{Binding IsCheckingUpstream}" Margin="0,6,0,0" />
           <ui:StatusChip Text="{Binding UpstreamResult}" IsOk="True" IsVisible="{Binding HasUpstreamResult}" Margin="0,6,0,0" />
+        </StackPanel>
+      </ui:FormField>
+
+      <!-- Sites: only while the server has sites (or serves at them); the state of each site's relay below the box -->
+      <ui:FormField Label="Sites" InputWidth="460" IsVisible="{Binding HasSites}">
+        <StackPanel Spacing="6">
+          <CheckBox Content="Serve at sites" IsChecked="{Binding ServeAtSites}" IsEnabled="{Binding MayManage}"
+                    ToolTip.Tip="Devices at sites get the time through their site node." />
+          <ItemsControl ItemsSource="{Binding SiteRows}" IsVisible="{Binding ServeAtSites}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="ntp:SiteServing">
+                <ui:StatusChip Text="{Binding Text}" IsOk="{Binding Running}" IsWarning="{Binding !Running}" Margin="0,2" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </ui:FormField>
 
