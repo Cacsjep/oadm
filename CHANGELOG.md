@@ -16,6 +16,8 @@ version and date, and the release workflow copies it into the GitHub release.
   cards and ports allowed in the app. Installers: `OADM-SiteNode-<version>-win-x64.msi` (`SERVER=<address>` for silent
   installs) and the `oadm-site-node` / `oadm-site-node-app` packages for Linux x64 and ARM64; Site node downloads and a
   user page Sites on the website. The Windows server installer also opens TCP 5081 for site nodes.
+- Sites (in development): **Accept site nodes**, binding with the pairing code, the **Sites** page and the device column
+  **Site**.
 
 ### Changed
 

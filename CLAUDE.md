@@ -2753,6 +2753,30 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - This file is the single source of truth for the spec. When a decision changes, change it
   here in the same PR.
 
+# Sites (in development, branch `feature/sites`)
+
+Spec and decisions: `docs/sites.md`. Built so far (2026-10-19): the contracts and the link (`Oadm.Sites`), routing
+(see "Device Communication"), Site offline (see "Data Model"), the node program (`Oadm.SiteNode*`) and its installers, and
+the server side:
+- `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
+  30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
+  starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),
+  `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; handshake timeout, 64
+  handshakes at once, 10 new unknown connections a minute per address, 50 waiting nodes, dropped after 24 h),
+  `SiteSession` (control link with Watch and a 10 s Hello heartbeat and the round trip, up to 8 worker links for Dial,
+  a new worker when every one carries 2,000 dials), `SiteIdentityStore` (`Sites.Identity`, purpose `oadm:site-identity`;
+  dropped with a replaced master key and named in the notice), `SiteAdmin` (Remove with or without devices, Replace),
+  `SiteGrpcService`. At most 2 large transfers per site (streamed bodies over 1 MB or of unknown size, streamed answers;
+  the wait does not count against the device timeout).
+- Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
+  Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Changed site address, Replaced site,
+  Removed site, Site offline / online (system). Backup: "Sites: N restored".
+- Client: rail page **Sites** (group Servers, `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
+  `SiteFormWindow` for Bind / Rename / Change address / Add manually / Replace / Remove), device column **Site**
+  (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.
+- Not built yet: discovery and devices at sites (stream 5), `IDeviceNetwork`, relays and plugins at sites (stream 6),
+  identity rotation over gRPC, "Waiting for the site link" on task steps.
+
 # Not built yet
 
 **Sites** (designed 2026-10-15 as "Agents", re-evaluated and renamed 2026-10-19, spec `docs/sites.md`; first refactor
