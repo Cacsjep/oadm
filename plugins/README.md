@@ -68,6 +68,19 @@ without changes. The plugin project SDK shows a warning (RS0030, banned-API anal
 (mail, HTTP endpoints of your company) are the exception: suppress it with a justification
 (`[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`).
 
+**Devices at a site** (a network the server reaches through an OADM Site Node) work without changes when you follow the
+rule above. Declare it in the project (`OadmSiteSupport`, default `full`; a bundled plugin's own `plugin.json` says
+`"siteSupport"`): a package with `none`, or a `plugin.json` without it, is kept away from devices at a site by the host
+(tasks greyed "Not available for devices at a site", compliance types Not checked, its pages' VAPIX clients and event
+streams and its actions refuse them). `ITaskPlugin.SiteSupport` / `IComplianceCheckType.SiteSupport` override it for one
+item. Network checks towards a device (ping, a TCP probe, DNS, OADM's address towards it) go through
+`ITaskExecutionContext.Network` / `ITaskQueryContext.Network` / `ICorePluginContext.Network.ForDevice(device)`
+(`IDeviceNetwork`), never `Ping` or `Dns`. A plugin that offers a server to devices (NTP, syslog) listens on the server's
+own network with `ICorePluginContext.Network.ListenUdpAsync` / `ListenTcpAsync` and at every site with
+`ICorePluginContext.Sites.OpenUdpRelayAsync` / `OpenTcpRelayAsync` (same interfaces, so the server is written once; list
+the ports in `OadmSitePorts`). The host closes them when the plugin stops. Developer guide: website Developers > Sites
+(`website/src/content/docs/dev/sites.md`).
+
 **Refuse devices with `DeviceMessages.Refusal(device)`** (the `IDeviceInfo` overload) or
 `TaskSupportReasons.ForStatus(device)`, never with a switch on `DeviceStatus` alone: a device whose site is offline
 (`DeviceStatus.SiteOffline`) is refused with "Site offline: <site>". The host refuses such devices for task runs, queries

@@ -142,7 +142,10 @@ public interface IUdpRelay : IRelay, IDatagramEndpoint;
 /// <summary>An accepted TCP connection.</summary>
 public interface IIncomingConnection : IAsyncDisposable
 {
-    /// <summary>Both directions; disposing the output side (or the connection) closes it like a TCP half-close.</summary>
+    /// <summary>
+    /// Both directions. A read returns 0 when the device ended its side; disposing the stream (or the connection) closes
+    /// the connection.
+    /// </summary>
     Stream Stream { get; }
 
     /// <summary>The device that connected, as the node (or the server) saw it.</summary>
@@ -165,7 +168,8 @@ public interface ITcpRelay : IRelay, IStreamListener;
 /// <summary>
 /// Network checks towards one device, routed like the device: through its site, or on the server's own network
 /// (<see cref="Plugins.ITaskExecutionContext.Network"/>, <see cref="Plugins.ITaskQueryContext.Network"/>). Never open
-/// sockets to devices yourself.
+/// sockets to devices yourself. Through a site that cannot carry a call (offline, a site node too old) a call throws an
+/// exception whose message says why ("Site offline: Building B").
 /// </summary>
 public interface IDeviceNetwork
 {

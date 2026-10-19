@@ -325,6 +325,44 @@ public sealed class PluginNetworkTests
         Assert.DoesNotContain(atSite.Id, rig.Plugin.Read.Evaluations);
     }
 
+    // ---------- Oadm.Sdk.Testing ----------
+
+    [Fact]
+    public async Task TheTestingFakesGiveRelaysTheStatesOfTheirSitesAndCarryConnectionsInMemory()
+    {
+        var sites = new FakeSites();
+        var site = sites.Add("Building B");
+        var changes = 0;
+        sites.SitesChanged += (_, _) => changes++;
+        var udp = (InMemoryUdpRelay)await sites.OpenUdpRelayAsync(site.Id, 514, "Syslog", CancellationToken.None);
+        Assert.Equal("Syslog at Building B: waiting for approval in the OADM Site Node app", udp.StateText);
+
+        site.AllowedPorts.Add((SiteProtocol.Udp, 514));
+        sites.Update();
+        Assert.Equal(RelayState.Running, udp.State);
+        site.IsOnline = false;
+        sites.Update();
+        Assert.Equal(RelayState.SiteOffline, udp.State);
+        Assert.Equal(2, changes);
+        await Assert.ThrowsAsync<ArgumentException>(() => sites.OpenUdpRelayAsync(Guid.NewGuid(), 514, "Syslog", CancellationToken.None));
+
+        var network = new FakePluginNetwork(sites);
+        Assert.Same(site.Network, network.ForDevice(new FakeDevice { SiteId = site.Id }));
+        Assert.Same(network.Local, network.ForSite(null));
+        var tcp = (InMemoryTcpRelay)await network.ListenTcpAsync(8080, "Reports", CancellationToken.None);
+        Assert.Equal("Reports at this server: running", tcp.StateText);
+        using var cts = new CancellationTokenSource(Wait);
+        var device = tcp.Connect(new IPEndPoint(IPAddress.Parse("10.0.0.20"), 50000));
+        await using var connection = await tcp.AcceptAsync(cts.Token);
+        Assert.Equal(IPAddress.Parse("10.0.0.20"), connection.Remote.Address);
+        await device.WriteAsync(Encoding.ASCII.GetBytes("hi"), cts.Token);
+        var buffer = new byte[2];
+        await connection.Stream.ReadExactlyAsync(buffer, cts.Token);
+        Assert.Equal("hi", Encoding.ASCII.GetString(buffer));
+        await connection.DisposeAsync();
+        Assert.Equal(0, await device.ReadAsync(buffer, cts.Token)); // the plugin closed it
+    }
+
     // ---------- helpers ----------
 
     private sealed class ListRepository(params IDeviceInfo[] devices) : IDeviceRepository

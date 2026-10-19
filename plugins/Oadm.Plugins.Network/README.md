@@ -11,13 +11,22 @@ new static address.
 
 | Part | Assembly | Content |
 |---|---|---|
-| `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin`, `AssignIpTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `NetworkTaskRunner`, `AddressCheck` (query), `IAddressProbe` / `NetworkAddressProbe` (ping + TCP 80/443), `NetworkTaskNames`, payload model, validation, IP range syntax (`IpRangeExpression`), address suggestion and conflicts (`AddressAssigner`, `AddressConflicts`), VAPIX requests |
+| `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin`, `AssignIpTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `NetworkTaskRunner`, `AddressCheck` (query), `IAddressProbe` / `NetworkAddressProbe` (ping + TCP 80/443 on the device's route, `IDeviceNetwork`), `NetworkTaskNames`, payload model, validation, IP range syntax (`IpRangeExpression`), address suggestion and conflicts (`AddressAssigner`, `AddressConflicts`), VAPIX requests |
 | `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog`/`ViewModel`/`Window`, `AssignIpDialog`/`ViewModel`/`Window`, the shared address table `AddressAssignmentGrid` + `AddressAssignmentViewModel` + `AddressRowViewModel`, `NetworkWarnings`, `FieldErrors` (INotifyDataErrorInfo) |
 | `tests/Oadm.Plugins.Network.Tests` | | unit, fixture, view model and headless dialog tests |
 
 The client references the server assembly for the payload model, validator, range parser and assignment. Both sit in
 the same plugin folder, so the client load context resolves it. The SDKs, Avalonia and CommunityToolkit.Mvvm come from
 the host and are never copied.
+
+## Sites
+
+`siteSupport: full`. The address checks run on the device's route (`ITaskQueryContext.Network`,
+`ITaskExecutionContext.Network`: the site node pings and probes in the site network); the plugin opens no socket. A new
+address outside the networks the site reaches (`IDeviceNetwork.Reaches`) is refused in the dialog (row status "The
+address is outside the networks the site reaches", not suggested) and again by the task before the first write
+("10.0.0.60: The address is outside the networks the site reaches. Nothing was changed."). The address check of the
+dialog probes on the route of the query's device (the first selected).
 
 ## ADM reference: "Assign IP address"
 
@@ -134,7 +143,7 @@ Every device request is its own step. Unchanged sections are Skipped ("Keep unch
 later steps Skipped. A successful task ends with the engine's step **Completed**.
 
 **Check address is free** runs right before the first write. Every new static address (IPv4, static IPv6) is probed
-with `IAddressProbe` (ping 2 x 1 s plus TCP 80/443, `NetworkAddressProbe`; tests use a fake). The device's own current
+with `IAddressProbe` (ping 2 x 1 s plus TCP 80/443, `NetworkAddressProbe` on the device's route; tests use a fake). The device's own current
 addresses are never probed ("10.0.0.48 is the device's own address"). When anything answers, the step fails with
 "10.0.0.60 is already in use (answers ping). Nothing was changed." (or "(answers on port 80/443)") and nothing is sent,
 not even DNS. Skipped "DHCP: no static address is set" / "No static address is set".

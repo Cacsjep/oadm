@@ -36,7 +36,10 @@ Assert.Equal(
     StepRun.Lines(ctx.Steps));
 ```
 
-The [task plugin tutorial](../tutorial-task/#7-the-tests) has the complete tests. Test at least:
+The [task plugin tutorial](../tutorial-task/#7-the-tests) has the complete tests. For devices at a site the package
+has `FakeDeviceNetwork` (pings, open ports, names, OADM's address; `FakeTaskContext.Network`), `FakeSites` and
+`FakePluginNetwork` (`FakeCoreContext.FakeSites`, `FakeNetwork`) with in-memory UDP and TCP relays: see
+[Sites](../sites/#test-without-a-site-node). Test at least:
 
 - the happy path, step by step;
 - a device without the API: nothing is written, the error says "Nothing was changed";
