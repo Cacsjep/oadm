@@ -43,7 +43,8 @@ public sealed partial class AddDevicesGrpcService(
     DevicePollingService polling,
     DiscoveryAuthenticator authenticator,
     DeviceAdder adder,
-    ILogger<AddDevicesGrpcService> logger) : Proto.AddDevicesService.AddDevicesServiceBase
+    ILogger<AddDevicesGrpcService> logger,
+    Core.Sites.ISiteStates? states = null) : Proto.AddDevicesService.AddDevicesServiceBase
 {
     /// <summary>Devices handled at the same time during Prepare and Commit.</summary>
     public const int Parallelism = 8;
@@ -94,7 +95,9 @@ public sealed partial class AddDevicesGrpcService(
             var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password,
                 request.SaveToCredentialList && CallerContext.Current is not { IsAdmin: false }, // the credential list is Administrator only
                 request.RelatedSessionIds, ct).ConfigureAwait(false);
-            return Mappers.ToProto(found, false, 100, result);
+            var message = Mappers.ToProto(found, false, 100, result);
+            Mappers.AddRoutes(message, found, id => states?.NameOf(id));
+            return message;
         }
         catch (InvalidOperationException ex)
         {

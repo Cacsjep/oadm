@@ -124,7 +124,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     {
         ArgumentNullException.ThrowIfNull(device);
         var session = Session(sessionId);
-        var key = string.Join('|', device.ConnectAddress, device.Scheme, device.Status, alreadyManaged);
+        var key = string.Join('|', device.Route, device.ConnectAddress, device.Scheme, device.Status, alreadyManaged);
         int version;
         bool otherDevice;
         lock (session.Gate)
@@ -211,7 +211,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
 
         int version;
-        var key = string.Join('|', device.ConnectAddress, device.Scheme, device.Status, false);
+        var key = string.Join('|', device.Route, device.ConnectAddress, device.Scheme, device.Status, false);
         AuthEntry? before;
         lock (session.Gate)
         {

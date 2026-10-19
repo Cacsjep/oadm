@@ -35,6 +35,39 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
         new(address, null, password is null ? null : "root", password, []);
 
     [Fact]
+    public async Task OneEntryPerSiteAndAddressAndTheDropCheckComparesPerRoute()
+    {
+        var siteA = Guid.NewGuid();
+        var siteB = Guid.NewGuid();
+        var result = await _store.AddAsync(
+        [
+            Line("192.168.0.20") with { SiteId = siteA },
+            Line("192.168.0.20") with { SiteId = siteB },
+            Line("192.168.0.20"),
+            Line("https://192.168.0.20/") with { SiteId = siteA }, // the same (site, address) again: replaces
+        ], "Import", "admin", CancellationToken.None);
+        Assert.Equal((3, 3), (result.Added, result.Total));
+        Assert.NotEqual(WaitingDeviceStore.Normalize("192.168.0.20", siteA), WaitingDeviceStore.Normalize("192.168.0.20", siteB));
+        Assert.Equal(WaitingDeviceStore.Normalize("192.168.0.20"), WaitingDeviceStore.Normalize("192.168.0.20", null));
+
+        var page = await _store.ListAsync(null, 0, CancellationToken.None);
+        Assert.Equal(3, page.Items.Count);
+        Assert.Equal(new HashSet<Guid?> { null, siteA, siteB }, page.Items.Select(i => i.SiteId).ToHashSet());
+        Assert.Equal(3, (await _store.ToTryAsync(null, includeLoginFailed: false, CancellationToken.None)).Count(t => t.Address.Contains("192.168.0.20", StringComparison.Ordinal)));
+
+        // A device at site A with that address: only site A's entry leaves; site B's and the one for everywhere stay.
+        var gone = await _store.RemoveManagedAsync([new ManagedAddress("ACCC8E0000A1", "192.168.0.20", siteA)], CancellationToken.None);
+        Assert.Single(gone);
+        var left = (await _store.ListAsync(null, 0, CancellationToken.None)).Items;
+        Assert.Equal(2, left.Count);
+        Assert.DoesNotContain(left, i => i.SiteId == siteA);
+
+        // On the server's own network: the entry for everywhere leaves too.
+        await _store.RemoveManagedAsync([new ManagedAddress("ACCC8E0000C1", "192.168.0.20", null)], CancellationToken.None);
+        Assert.Equal(siteB, Assert.Single((await _store.ListAsync(null, 0, CancellationToken.None)).Items).SiteId);
+    }
+
+    [Fact]
     public async Task PasswordsAreStoredEncryptedAndOnlyDecryptedForATry()
     {
         await _store.AddAsync([Line("10.0.0.5", "Very-Secret-9")], "Import from file a.csv", "admin", CancellationToken.None);

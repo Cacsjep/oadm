@@ -20,7 +20,7 @@ namespace Oadm.Server.Sites;
 /// <see cref="SiteOptions"/>: offline after 30 s without an answer, online again after 60 s stable, and after a server
 /// start "starting" until the first connection settles. Everything a page shows comes from <see cref="SnapshotAsync"/>.
 /// </summary>
-public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLargeTransfers, IAsyncDisposable
+public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLargeTransfers, ISiteNetwork, IAsyncDisposable
 {
     private readonly IDbContextFactory<OadmDbContext> _db;
     private readonly ServerSettingsStore _settings;
@@ -297,6 +297,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
 
             entry.Status = status;
+            entry.Networks = SiteNetworks.From(status);
             entry.LastAnswer = now;
             entry.LastSeen = now;
             entry.ConnectedSince ??= now;
@@ -904,6 +905,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         public string? Message { get; set; }
 
         public NodeStatus? Status { get; set; }
+
+        /// <summary>The networks the node reaches (from <see cref="Status"/>): reached cards, all cards, extra subnets.</summary>
+        public SiteNetworks Networks { get; set; } = SiteNetworks.None;
 
         /// <summary>Ports asked for with RequestPorts and not allowed yet (asked once each).</summary>
         public HashSet<int> Requested { get; } = [];

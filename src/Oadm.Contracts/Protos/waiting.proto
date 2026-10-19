@@ -65,6 +65,7 @@ message WaitingDevice {
   bool has_login = 12;                      // the line brought a login (never the password)
   bool checking = 13;                       // asked for (Try now) or in the running round and not tried yet
   string site_id = 14;                      // only tried through this site; empty = everywhere
+  string site_name = 15;                    // the name of site_id
 }
 
 message WaitingList {

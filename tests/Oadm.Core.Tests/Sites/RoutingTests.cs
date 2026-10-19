@@ -378,6 +378,29 @@ public sealed class RoutingTests
         Assert.Contains(IPAddress.Loopback, await dns.ResolveAsync(DeviceRoute.Local, "127.0.0.1", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task NamesThroughASiteResolveOnTheNode()
+    {
+        var sites = new FakeSiteTransport();
+        var site = sites.AddSite("Building B");
+        site.Names["CAM.SITE.EXAMPLE"] = [IPAddress.Parse("192.168.0.20")];
+        site.ReverseNames[IPAddress.Parse("192.168.0.20")] = "cam.site.example";
+        var dns = new RoutedDns(sites, sites);
+        var lookup = new SystemDnsNameLookup(dns);
+        var route = DeviceRoute.ViaSite(site.Id);
+
+        Assert.Equal([IPAddress.Parse("192.168.0.20")], await dns.ResolveAsync(route, "cam.site.example", CancellationToken.None));
+        Assert.Equal("cam.site.example", await lookup.LookupAsync(IPAddress.Parse("192.168.0.20"), route, CancellationToken.None));
+        Assert.Null(await lookup.LookupAsync(IPAddress.Parse("192.168.0.21"), route, CancellationToken.None));
+        var unknown = await Assert.ThrowsAsync<System.Net.Sockets.SocketException>(() => dns.ResolveAsync(route, "other.site.example", CancellationToken.None));
+        Assert.Equal(System.Net.Sockets.SocketError.HostNotFound, unknown.SocketErrorCode);
+
+        sites.SetOnline(site.Id, false);
+        var offline = await Assert.ThrowsAsync<SiteException>(() => dns.ResolveAsync(route, "cam.site.example", CancellationToken.None));
+        Assert.Equal(SiteProblem.Offline, offline.Problem);
+        Assert.Null(await lookup.LookupAsync(IPAddress.Parse("192.168.0.20"), route, CancellationToken.None));
+    }
+
     private static VapixConnectionOptions Options(Guid siteId, string address, string scheme = "https") =>
         DeviceConnections.For(Discovered(DeviceRoute.ViaSite(siteId), address), scheme, DeviceConnections.DefaultTimeout);
 

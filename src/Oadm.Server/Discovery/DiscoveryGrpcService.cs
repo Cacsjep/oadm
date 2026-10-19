@@ -25,7 +25,9 @@ public sealed class DiscoveryGrpcService(
     IDiscoveryBackend discovery,
     DeviceRepository devices,
     DiscoveryAuthenticator authenticator,
-    IHostApplicationLifetime lifetime) : Proto.DiscoveryService.DiscoveryServiceBase
+    IHostApplicationLifetime lifetime,
+    Core.Sites.ISiteNetwork? sites = null,
+    Core.Sites.ISiteStates? states = null) : Proto.DiscoveryService.DiscoveryServiceBase
 {
     /// <summary>Longest user name of a probe credential (like the credential list).</summary>
     public const int MaxUserNameLength = 64;
@@ -66,9 +68,16 @@ public sealed class DiscoveryGrpcService(
             throw GrpcGuard.InvalidArgument("The MAC address must be 12 hexadecimal digits.");
         }
 
+        Guid? siteId = null;
+        if (!string.IsNullOrWhiteSpace(request.Site))
+        {
+            siteId = sites?.FindSite(request.Site.Trim()) ?? throw GrpcGuard.InvalidArgument($"There is no site named {request.Site.Trim()}.");
+        }
+
         try
         {
-            var session = await discovery.StartAddressProbeAsync(request.Address, request.ImportLine, context.CancellationToken).ConfigureAwait(false);
+            var session = await discovery.StartAddressProbeAsync(request.Address, request.ImportLine, context.CancellationToken, siteId,
+                expectedSerial.Length > 0 ? expectedSerial : null).ConfigureAwait(false);
             if (expectedSerial.Length > 0)
             {
                 // Before the watch starts the automatic login: another device at this address gets no password.
@@ -81,7 +90,7 @@ public sealed class DiscoveryGrpcService(
                 authenticator.AddSessionCredential(session.Id, userName, request.Password);
             }
 
-            return new Proto.DiscoverySession { SessionId = session.Id };
+            return new Proto.DiscoverySession { SessionId = session.Id, SiteId = siteId?.ToString() ?? string.Empty };
         }
         catch (ArgumentException ex)
         {
@@ -133,7 +142,9 @@ public sealed class DiscoveryGrpcService(
                         }
                         else
                         {
-                            output.Writer.TryWrite(Mappers.ToProgressProto(e.ProgressPercent, e.Finished));
+                            var progress = Mappers.ToProgressProto(e.ProgressPercent, e.Finished);
+                            progress.Problem = e.Problem ?? string.Empty;
+                            output.Writer.TryWrite(progress);
                         }
                     }
 
@@ -177,6 +188,10 @@ public sealed class DiscoveryGrpcService(
         return new Proto.Empty();
     }
 
-    private Proto.DiscoveredDevice Map(string sessionId, DiscoveredDevice device, bool managed, int progress) =>
-        Mappers.ToProto(device, managed, progress, authenticator.Get(sessionId, device.Serial));
+    private Proto.DiscoveredDevice Map(string sessionId, DiscoveredDevice device, bool managed, int progress)
+    {
+        var message = Mappers.ToProto(device, managed, progress, authenticator.Get(sessionId, device.Serial));
+        Mappers.AddRoutes(message, device, id => states?.NameOf(id));
+        return message;
+    }
 }

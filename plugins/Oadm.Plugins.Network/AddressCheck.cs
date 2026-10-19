@@ -16,7 +16,14 @@ public static class AddressCheck
 
     private const int Parallelism = 32;
 
-    public static async Task<string> QueryAsync(ITaskQueryContext ctx, string? payloadJson, IAddressProbe probe, CancellationToken ct)
+    public static Task<string> QueryAsync(ITaskQueryContext ctx, string? payloadJson, IAddressProbe probe, CancellationToken ct) =>
+        QueryAsync(ctx, null, payloadJson, probe, ct);
+
+    /// <summary>
+    /// The query for <paramref name="device"/>'s dialog: the managed devices listed are those on its route only (docs/sites.md,
+    /// "Overlapping networks": 192.168.0.20 at another site is another network and no conflict). Null = every device.
+    /// </summary>
+    public static async Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe probe, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(probe);
@@ -29,10 +36,15 @@ public static class AddressCheck
         var managed = new List<AddressStatus>();
         if (ctx.Devices is { } devices)
         {
-            foreach (var device in await devices.ListAsync(ct).ConfigureAwait(false))
+            foreach (var other in await devices.ListAsync(ct).ConfigureAwait(false))
             {
-                var label = string.IsNullOrEmpty(device.Model) ? device.Serial : $"{device.Model} {device.Serial}";
-                managed.Add(new AddressStatus(device.Address, device.Id, label));
+                if (device is not null && other.SiteId != device.SiteId)
+                {
+                    continue; // another route: the same address is another network
+                }
+
+                var label = string.IsNullOrEmpty(other.Model) ? other.Serial : $"{other.Model} {other.Serial}";
+                managed.Add(new AddressStatus(other.Address, other.Id, label));
             }
         }
 

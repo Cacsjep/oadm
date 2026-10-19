@@ -98,6 +98,13 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates, ISiteNetw
 
     // ISiteNetwork: answers from the site's tables below, site problems like OpenStreamAsync.
 
+    public IReadOnlyList<Guid> OnlineSites() =>
+        [.. _sites.Values.Where(s => s.IsOnline && !s.NotBound && !s.Starting).OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Select(s => s.Id)];
+
+    public Guid? FindSite(string nameOrId) =>
+        Guid.TryParse(nameOrId, out var id) ? (_sites.ContainsKey(id) ? id : null)
+        : _sites.Values.FirstOrDefault(s => string.Equals(s.Name, nameOrId.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+
     public bool Reaches(Guid siteId, IPAddress address) =>
         _sites.TryGetValue(siteId, out var site) && (site.Reaches is null || site.Reaches(address.ToString()));
 
