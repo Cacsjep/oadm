@@ -366,6 +366,14 @@
   <Style Selector="TextBlock.secondary">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
   </Style>
+  <!-- The pairing code of the OADM Site Node app: large, mono, spaced, selectable -->
+  <Style Selector="SelectableTextBlock.pairingCode">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeStat}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="4" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
   <!-- Code in running text: a placeholder name such as {objectId} -->
   <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
     <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />

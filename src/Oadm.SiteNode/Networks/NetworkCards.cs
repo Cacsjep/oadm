@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
+using Oadm.SiteNode.Admin;
+
 namespace Oadm.SiteNode.Networks;
 
 /// <summary>One address of a card with its prefix ("192.168.0.5/24").</summary>

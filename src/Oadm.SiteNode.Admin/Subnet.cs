@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace Oadm.SiteNode.Networks;
+namespace Oadm.SiteNode.Admin;
 
 /// <summary>An IPv4 or IPv6 network: "10.20.0.0/16".</summary>
 public readonly record struct Subnet(IPAddress Network, int PrefixLength)
