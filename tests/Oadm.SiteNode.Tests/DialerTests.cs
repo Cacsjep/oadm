@@ -173,6 +173,62 @@ public sealed class DialerTests : IAsyncDisposable
             Assert.Equal(DialError.None, result.Error);
     }
 
+    [Fact]
+    public async Task ADialWhoseAnswerCannotBeWrittenClosesTheSocketAndFreesItsPlace()
+    {
+        await using var echo = new EchoServer();
+        _store.Update(c => Allow.Connect(c, echo.Port));
+        using var dialer = Dialer(limits: new DialLimits(ShortOpen: 1, ShortConnecting: 1, PermanentConnecting: 1));
+
+        for (var i = 0; i < 3; i++)
+        {
+            await Assert.ThrowsAsync<IOException>(() =>
+                DialPipe.RunAsync(dialer, Open("127.0.0.1", echo.Port), "s", new NoRequests(), new BrokenWriter(), CancellationToken.None));
+            Assert.Equal(0, dialer.ShortConnections);
+        }
+
+        var (result, connection) = await dialer.OpenAsync(Open("127.0.0.1", echo.Port), "s", CancellationToken.None);
+        using (connection)
+            Assert.Equal(DialError.None, result.Error);
+    }
+
+    [Fact]
+    public async Task ProbesWaitForAFreePlaceAndRangeScansAreCapped()
+    {
+        using var gate = new GateConnector { Fail = SocketError.ConnectionRefused };
+        using var dialer = Dialer(gate, new DialLimits(Probes: 2, Scans: 1));
+        var target = new IPEndPoint(IPAddress.Loopback, 80);
+
+        var probes = Enumerable.Range(0, 3).Select(_ => dialer.ProbeAsync(target, TimeSpan.FromSeconds(30), CancellationToken.None)).ToList();
+        await Eventually.TrueAsync(() => gate.Waiting == 2, "two probes connect");
+        await Eventually.StaysTrueAsync(() => gate.Waiting == 2, "the third waits for a place", TimeSpan.FromMilliseconds(100));
+        gate.Release(3);
+        Assert.All(await Task.WhenAll(probes), r => Assert.Equal(ProbeResult.Refused, r));
+
+        using (var scan = dialer.TryStartScan())
+        {
+            Assert.NotNull(scan);
+            Assert.Null(dialer.TryStartScan());
+        }
+
+        using var again = dialer.TryStartScan();
+        Assert.NotNull(again);
+    }
+
+    private sealed class NoRequests : Grpc.Core.IAsyncStreamReader<DialMessage>
+    {
+        public DialMessage Current => throw new InvalidOperationException();
+
+        public Task<bool> MoveNext(CancellationToken cancellationToken) => Task.FromResult(false);
+    }
+
+    private sealed class BrokenWriter : Grpc.Core.IAsyncStreamWriter<DialMessage>
+    {
+        public Grpc.Core.WriteOptions? WriteOptions { get; set; }
+
+        public Task WriteAsync(DialMessage message) => throw new IOException("The server went away.");
+    }
+
     private Dialer Dialer(IDeviceConnector? connector = null, DialLimits? limits = null) =>
         new(new PortPolicy(_store), new NetworkScope(_store, FakeCards.LoopbackSite()), connector ?? SystemDeviceConnector.Instance, _dns, _log, TimeProvider.System, limits);
 
