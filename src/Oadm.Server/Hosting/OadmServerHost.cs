@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
@@ -138,6 +139,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
         app.MapGrpcService<Backup.BackupGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
+        app.MapGrpcService<Sites.SiteGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -191,6 +193,24 @@ public static partial class OadmServerHost
                 services.AddSingleton<Sdk.Network.IFirewallRules>(_ => new NetshFirewallRules(new ProcessCommandRunner(), Sdk.Network.HostOsInfo.ExecutablePath()));
             }
         }
+
+        // Sites (docs/sites.md): the site identity, the site listener (Accept site nodes) and the node sessions. The manager
+        // is the real ISiteStates and ISiteTransport; without sites everything connects on the server's own network.
+        services.AddSingleton(new Sites.SiteOptions());
+        services.AddSingleton<Sites.SiteIdentityStore>();
+        services.AddSingleton(sp => new Sites.SiteManager(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<ServerSettingsStore>(),
+            sp.GetRequiredService<Sites.SiteIdentityStore>(),
+            sp.GetRequiredService<Core.Auth.AuditLog>(),
+            sp.GetRequiredService<Sites.SiteOptions>(),
+            sp.GetRequiredService<Sites.SiteOptions>().Time ?? sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Sites.SiteManager>>(),
+            sp.GetService<IMdnsBrowser>()));
+        services.RemoveAll<Core.Sites.ISiteStates>();
+        services.AddSingleton<Core.Sites.ISiteStates>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Core.Sites.ISiteTransport>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Sites.SiteAdmin>();
 
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
@@ -478,6 +498,10 @@ public static partial class OadmServerHost
         sp.GetRequiredService<Backup.BackupManager>().RemovePartialFiles();
         await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
 
+        // 2d. Sites: the identity and the bound sites, each "starting" until its node settles (before the event rules and
+        // the polling read site states); the site listener opens when Accept site nodes is on.
+        await sp.GetRequiredService<Sites.SiteManager>().StartAsync(ct).ConfigureAwait(false);
+
         // 3. Tasks left running by a previous process (the parallel task limit is loaded first).
         await sp.GetRequiredService<TaskParallelismSetting>().LoadAsync(ct).ConfigureAwait(false);
         var engine = sp.GetRequiredService<TaskEngine>();
@@ -550,6 +574,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<LiveViewHub>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<Sites.SiteManager>().DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>Start, wait for Ctrl+C / SIGTERM, stop.</summary>

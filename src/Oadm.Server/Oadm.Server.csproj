@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Oadm.Core\Oadm.Core.csproj" />
     <ProjectReference Include="..\Oadm.Contracts\Oadm.Contracts.csproj" />
+    <ProjectReference Include="..\Oadm.Sites\Oadm.Sites.csproj" />
   </ItemGroup>
 
   <ItemGroup>
