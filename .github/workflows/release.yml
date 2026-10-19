@@ -12,7 +12,7 @@ name: release
 #                 the checksums are published instead)
 #   nuget-pack    (with the installers) the plugin SDK packages, every template built and tested with them
 #   4. nuget      the plugin SDK packages on nuget.org (Trusted Publishing), after the release; skipped without the
-#                 repository variable NUGET_USER
+#                 repository variable NUGET_USER and for a pre-release tag (v1.2.0-rc.1)
 # A job starts only when the jobs before it passed, so a release exists only when everything passed.
 on:
   push:
@@ -408,7 +408,8 @@ jobs:
   # a re-run of a moved tag keeps the packages pushed first (--skip-duplicate says so).
   nuget:
     needs: [release, nuget-pack]
-    if: vars.NUGET_USER != ''
+    # A release candidate tests the installers only: nuget.org keeps every version forever.
+    if: vars.NUGET_USER != '' && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
