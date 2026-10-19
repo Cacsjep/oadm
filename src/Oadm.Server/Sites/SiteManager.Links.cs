@@ -241,7 +241,7 @@ public sealed partial class SiteManager
         }
 
         old?.Cancel();
-        _ = Task.Run(() => ConnectLoopAsync(siteId, cancel.Token));
+        _ = Task.Run(() => RunConnectorAsync(siteId, cancel.Token));
     }
 
     private async Task ConnectLoopAsync(Guid siteId, CancellationToken ct)

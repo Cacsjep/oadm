@@ -39,6 +39,7 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly DeviceRepository _devices;
     private readonly VapixClientFactory _clients;
     private readonly ServerSettingsStore _settings;
+    private readonly Sites.ISiteStates? _sites;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly Channel<Guid> _refreshQueue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = false });
@@ -56,7 +57,8 @@ public sealed partial class DevicePollingService : IDisposable
         VapixClientFactory clients,
         ServerSettingsStore settings,
         TimeProvider? timeProvider = null,
-        ILogger<DevicePollingService>? logger = null)
+        ILogger<DevicePollingService>? logger = null,
+        Sites.ISiteStates? sites = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(clients);
@@ -64,6 +66,7 @@ public sealed partial class DevicePollingService : IDisposable
         _devices = devices;
         _clients = clients;
         _settings = settings;
+        _sites = sites;
         _time = timeProvider ?? TimeProvider.System;
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         _startedAt = _time.GetUtcNow();
@@ -531,6 +534,16 @@ public sealed partial class DevicePollingService : IDisposable
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             observation.Status = DeviceStatusClassifier.FromException(ex);
+            if (observation.Status is DeviceStatus.Unreachable && device.SiteId is { } siteId && _sites is not null
+                && !await _sites.LinkAnswersAsync(siteId, ct).ConfigureAwait(false))
+            {
+                // No answer through a site whose node does not answer either (the link dropped, the session ended): a site
+                // problem, never "Unreachable" for every device of the site before it counts as offline.
+                LogSiteProblem(device.Id, "the site node does not answer: " + ex.Message);
+                observation.SiteProblem = true;
+                return observation;
+            }
+
             if (observation.Status is DeviceStatus.CredentialsRequired)
             {
                 observation.LastSeen = _time.GetUtcNow().UtcDateTime;

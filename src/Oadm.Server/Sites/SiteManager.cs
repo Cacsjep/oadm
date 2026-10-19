@@ -217,7 +217,15 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         if (request)
         {
             LogPortRequested(name, port, host);
-            await session.RequestPortAsync(port, "device " + host).ConfigureAwait(false);
+            if (!await session.RequestPortAsync(port, "device " + host, ct).ConfigureAwait(false))
+            {
+                // Not delivered (the caller gave up, the node did not answer): asked again with the next dial.
+                lock (_lock)
+                {
+                    _sites.GetValueOrDefault(siteId)?.Requested.Remove(port);
+                }
+            }
+
             RaiseList();
             throw SiteException.For(siteId, name, SiteProblem.PortNotAllowed, port);
         }
@@ -341,22 +349,73 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         if (notBound is not null)
         {
-            _ = MarkNotBoundAsync(notBound.Id);
+            Observe(MarkNotBoundAsync(notBound.Id), "mark the site not bound");
         }
 
         RaiseList();
     }
 
-    /// <summary>True when the site's node has not answered for longer than the offline time.</summary>
-    internal bool AnsweredLongAgo(Guid siteId)
+    /// <summary>
+    /// True when the node of <paramref name="session"/> has not answered for longer than the offline time, counted from
+    /// its last answer or the session's start (a reconnecting session is never judged by the old session's answers).
+    /// </summary>
+    internal bool AnsweredLongAgo(SiteSession session)
     {
         lock (_lock)
         {
-            return !_sites.TryGetValue(siteId, out var entry) || Time.GetUtcNow() - entry.LastAnswer >= _options.OfflineAfter;
+            if (!_sites.TryGetValue(session.SiteId, out var entry))
+            {
+                return true;
+            }
+
+            var last = entry.LastAnswer > session.Started ? entry.LastAnswer : session.Started;
+            return Time.GetUtcNow() - last >= _options.OfflineAfter;
         }
     }
 
+    /// <summary>
+    /// The node of the site answers now (<see cref="ISiteStates.LinkAnswersAsync"/>): false without a running session;
+    /// otherwise one Hello on the control link, shared by everyone who asks while it runs.
+    /// </summary>
+    public async ValueTask<bool> LinkAnswersAsync(Guid siteId, CancellationToken ct)
+    {
+        Task<bool> check;
+        lock (_lock)
+        {
+            if (Volatile.Read(ref _disposed) == 1 || !_sites.TryGetValue(siteId, out var entry) || entry.Session is not { IsEnded: false, Ready: true } session)
+            {
+                return false;
+            }
+
+            if (entry.LinkCheck is not { IsCompleted: false } running || entry.LinkCheckSession != session)
+            {
+                running = session.AnswersAsync(_stop.Token);
+                entry.LinkCheck = running;
+                entry.LinkCheckSession = session;
+            }
+
+            check = running;
+        }
+
+        return await check.WaitAsync(ct).ConfigureAwait(false);
+    }
+
     internal void SessionChanged(Guid siteId) => RaiseList();
+
+    /// <summary>Ends the site's session as a dropped link would (tests).</summary>
+    internal async Task DropSessionAsync(Guid siteId)
+    {
+        SiteSession? session;
+        lock (_lock)
+        {
+            session = _sites.GetValueOrDefault(siteId)?.Session;
+        }
+
+        if (session is not null)
+        {
+            await session.EndAsync().ConfigureAwait(false);
+        }
+    }
 
     internal void SessionEnded(SiteSession session)
     {
@@ -396,67 +455,141 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// </summary>
     private async Task<bool> AttachControlAsync(Guid siteId, NodeLink control, bool fresh)
     {
-        SiteSession? old;
+        SiteEntry? attaching;
         lock (_lock)
         {
-            if (!_sites.TryGetValue(siteId, out var entry))
-            {
-                return false;
-            }
-
-            old = entry.Session;
+            attaching = _sites.GetValueOrDefault(siteId);
         }
 
-        if (old is not null && !old.IsEnded && !fresh)
+        if (attaching is null)
         {
-            try
-            {
-                await old.Control.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
-                Interlocked.Increment(ref _sessionsRefused);
-                LogSecondSession(NameOf(siteId) ?? siteId.ToString(), control.RemoteHost, old.Control.RemoteHost);
-                return false;
-            }
-            catch (Grpc.Core.RpcException)
-            {
-                // The old link is dead: the new one takes over.
-            }
+            return false;
         }
 
-        var session = new SiteSession(this, siteId, control, _options, control.OpenedByNode ? null : ct => DialWorkerAsync(siteId, ct));
-        var now = Time.GetUtcNow();
+        // One attach at a time per site: two control links attaching at once would both start a session, and the loser
+        // would keep running beside the winner. The second one sees the first one's session and is judged against it.
+        await attaching.Attaching.WaitAsync(_stop.Token).ConfigureAwait(false);
         Site row;
-        lock (_lock)
+        SiteSession session;
+        try
         {
-            if (!_sites.TryGetValue(siteId, out var entry))
+            SiteSession? old;
+            lock (_lock)
             {
-                _ = session.DisposeAsync().AsTask();
-                return false;
+                if (!_sites.TryGetValue(siteId, out var entry) || entry != attaching)
+                {
+                    return false;
+                }
+
+                old = entry.Session;
             }
 
-            entry.Session = session;
-            entry.ConnectedSince = null;
-            entry.Version = control.Hello?.Version ?? entry.Version;
-            if (fresh)
+            if (old is not null && !old.IsEnded && !fresh)
             {
-                entry.State = SiteState.Online;
-                entry.LastAnswer = now;
+                try
+                {
+                    await old.Control.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
+                    Interlocked.Increment(ref _sessionsRefused);
+                    LogSecondSession(NameOf(siteId) ?? siteId.ToString(), control.RemoteHost, old.Control.RemoteHost);
+                    return false;
+                }
+                catch (Exception e) when (e is Grpc.Core.RpcException or ObjectDisposedException or InvalidOperationException)
+                {
+                    // The old link is dead: the new one takes over.
+                }
             }
 
-            row = entry.Row;
-        }
+            session = new SiteSession(this, siteId, control, _options, control.OpenedByNode ? null : ct => DialWorkerAsync(siteId, ct));
+            var now = Time.GetUtcNow();
+            lock (_lock)
+            {
+                if (!_sites.TryGetValue(siteId, out var entry) || entry != attaching)
+                {
+                    _ = session.DisposeAsync().AsTask();
+                    return false;
+                }
 
-        if (old is not null)
+                entry.Session = session;
+                entry.ConnectedSince = null;
+                entry.Version = control.Hello?.Version ?? entry.Version;
+                entry.Requested.Clear(); // a new connection asks again for the ports the node has not allowed
+                if (fresh)
+                {
+                    entry.State = SiteState.Online;
+                    entry.LastAnswer = now;
+                }
+
+                row = entry.Row;
+            }
+
+            if (old is not null)
+            {
+                await old.EndAsync().ConfigureAwait(false);
+            }
+
+            session.Start();
+            Interlocked.Increment(ref _sessionsStarted);
+        }
+        finally
         {
-            await old.EndAsync().ConfigureAwait(false);
+            attaching.Attaching.Release();
         }
 
-        session.Start();
-        Interlocked.Increment(ref _sessionsStarted);
         await RecordSeenAsync(row.Id, control).ConfigureAwait(false);
         LogSessionStarted(row.Name, control.RemoteHost);
         RaiseList();
         return true;
     }
+
+    /// <summary>Logs a background task's failure instead of leaving it unobserved.</summary>
+    private void Observe(Task task, string what) =>
+        _ = task.ContinueWith(
+            t => LogBackgroundFailed(what, t.Exception!.GetBaseException()),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+    /// <summary>
+    /// The inbound connector of a site (<see cref="ConnectLoopAsync"/>) under a guard: an unexpected error is logged and the
+    /// loop starts again after 1, 2, 4 ... up to <see cref="SiteOptions.MaxBackoff"/>, so an inbound site is never left
+    /// without a connector. Ends when <paramref name="ct"/> ends or the loop ends by itself (session running, site gone).
+    /// </summary>
+    private async Task RunConnectorAsync(Guid siteId, CancellationToken ct)
+    {
+        var backoff = TimeSpan.FromSeconds(1);
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await ConnectLoopAsync(siteId, ct).ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+#pragma warning disable CA1031 // The connector never dies silently: logged, then tried again.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogBackgroundFailed("reach the site node of " + (NameOf(siteId) ?? siteId.ToString()), ex);
+            }
+
+            try
+            {
+                await Task.Delay(backoff, Time, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, _options.MaxBackoff.Ticks));
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sites: could not {What}")]
+    private partial void LogBackgroundFailed(string what, Exception ex);
 
     // ---------- the waiting times ----------
 
@@ -796,11 +929,26 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
+    /// <summary>
+    /// The node was reset: the site is not bound (stored, and in memory even when the write fails) and its session ends.
+    /// Never throws (it also runs unobserved from the heartbeat); a failed write is logged.
+    /// </summary>
     private async Task MarkNotBoundAsync(Guid siteId)
     {
-        await using (var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false))
+        try
         {
+            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
             await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u.SetProperty(s => s.NotBound, true), _stop.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+            return; // the server stops
+        }
+#pragma warning disable CA1031 // A failed write is logged; the site is not bound in memory all the same.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogWriteFailed(ex);
         }
 
         SiteSession? session;
@@ -918,6 +1066,15 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         /// <summary>Inbound: the loop that reaches the node.</summary>
         public CancellationTokenSource? Connector { get; set; }
+
+        /// <summary>One control link attaches at a time (two at once would both start a session).</summary>
+        public SemaphoreSlim Attaching { get; } = new(1, 1);
+
+        /// <summary>The Hello of <see cref="LinkAnswersAsync"/> while it runs, shared by everyone who asks.</summary>
+        public Task<bool>? LinkCheck { get; set; }
+
+        /// <summary>The session <see cref="LinkCheck"/> asked.</summary>
+        public SiteSession? LinkCheckSession { get; set; }
     }
 }
 

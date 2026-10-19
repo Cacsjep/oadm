@@ -56,6 +56,10 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates, ISiteNetw
         RaiseChanged(siteId);
     }
 
+    /// <summary>The node answers now unless the test cut its link (<see cref="FakeSite.LinkAnswers"/>).</summary>
+    public ValueTask<bool> LinkAnswersAsync(Guid siteId, CancellationToken ct) =>
+        ValueTask.FromResult(IsOnline(siteId) && _sites[siteId].LinkAnswers);
+
     public TimeSpan RoundTrip(Guid siteId) => _sites.TryGetValue(siteId, out var site) ? site.RoundTrip : TimeSpan.Zero;
 
     public async ValueTask<Stream> OpenStreamAsync(Guid siteId, string host, int port, SiteDialKind kind, TimeSpan timeout, CancellationToken ct)
@@ -196,6 +200,9 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates, ISiteNetw
         /// <summary>After a server start, before the first connection settled (counts as not online).</summary>
         public bool Starting { get; set; }
         public bool Busy { get; set; }
+
+        /// <summary>False: the node's link dropped (the site is not offline yet, its node does not answer).</summary>
+        public bool LinkAnswers { get; set; } = true;
         public TimeSpan RoundTrip { get; set; }
 
         /// <summary>Allowed Connect to ports (80, 443, 554 by default).</summary>

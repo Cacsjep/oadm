@@ -405,25 +405,23 @@ public abstract class LocalListener : IRelay
                 FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest,
             });
 
-        // The socket a sender's datagram came in on answers it (IPv4 or IPv6).
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<IPEndPoint, Socket> _senders = new();
+        // The socket a sender's datagram came in on answers it (IPv4 or IPv6): the most recent senders.
+        private readonly RecentSenders<Socket> _senders = new(RecentSenders<Socket>.DefaultCapacity);
 
         public async ValueTask<Datagram> ReceiveAsync(CancellationToken ct)
         {
             var (datagram, socket) = await _received.Reader.ReadAsync(ct).ConfigureAwait(false);
-            if (_senders.Count < 100_000)
-            {
-                _senders[datagram.Remote] = socket;
-            }
-
+            _senders.Set(datagram.Remote, socket);
             return datagram;
         }
 
         public async ValueTask SendAsync(ReadOnlyMemory<byte> data, IPEndPoint remote, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(remote);
-            var socket = _senders.TryGetValue(remote, out var known) ? known
-                : Sockets.FirstOrDefault(s => s.AddressFamily == remote.AddressFamily);
+            var sockets = Sockets;
+            // A socket of an earlier start (port in use, then listening again) is closed: the current one of the family answers.
+            var socket = _senders.TryGet(remote, out var known) && sockets.Contains(known) ? known
+                : sockets.FirstOrDefault(s => s.AddressFamily == remote.AddressFamily);
             if (socket is null)
             {
                 return; // not listening (port in use, disposed): a datagram is lost like on the wire
@@ -538,5 +536,70 @@ public abstract class LocalListener : IRelay
         public Guid? SiteId => null;
 
         public ValueTask DisposeAsync() => Stream.DisposeAsync();
+    }
+}
+
+/// <summary>
+/// The most recent senders of a listener and what answers each (a UDP listener's receiving socket): at most
+/// <c>capacity</c> entries, the least recently seen one dropped first, O(1) per datagram. A sender that was dropped is
+/// answered by the listener's default socket of its address family.
+/// </summary>
+internal sealed class RecentSenders<T>(int capacity)
+    where T : class
+{
+    /// <summary>Senders kept per listener (NTP clients of one site or server: far fewer).</summary>
+    public const int DefaultCapacity = 10_000;
+
+    private readonly Lock _lock = new();
+    private readonly Dictionary<IPEndPoint, LinkedListNode<(IPEndPoint Remote, T Value)>> _index = [];
+    private readonly LinkedList<(IPEndPoint Remote, T Value)> _order = new();
+
+    public int Count
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _index.Count;
+            }
+        }
+    }
+
+    public void Set(IPEndPoint remote, T value)
+    {
+        ArgumentNullException.ThrowIfNull(remote);
+        lock (_lock)
+        {
+            if (_index.TryGetValue(remote, out var node))
+            {
+                _order.Remove(node);
+                node.Value = (remote, value);
+                _order.AddFirst(node);
+                return;
+            }
+
+            if (_index.Count >= capacity && _order.Last is { } oldest)
+            {
+                _order.RemoveLast();
+                _index.Remove(oldest.Value.Remote);
+            }
+
+            _index[remote] = _order.AddFirst((remote, value));
+        }
+    }
+
+    public bool TryGet(IPEndPoint remote, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out T? value)
+    {
+        lock (_lock)
+        {
+            if (_index.TryGetValue(remote, out var node))
+            {
+                value = node.Value.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
     }
 }

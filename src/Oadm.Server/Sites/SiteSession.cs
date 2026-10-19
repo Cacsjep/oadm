@@ -34,6 +34,7 @@ internal sealed partial class SiteSession : IAsyncDisposable
         Control = control;
         _options = options;
         _dialWorker = dialWorker;
+        Started = manager.Time.GetUtcNow();
     }
 
     public Guid SiteId { get; }
@@ -83,11 +84,22 @@ internal sealed partial class SiteSession : IAsyncDisposable
     /// One TCP connection to <paramref name="host"/>:<paramref name="port"/> through the node: the node's device errors as
     /// <see cref="SocketException"/>, its own problems as <see cref="SiteException"/>.
     /// </summary>
+    /// <remarks>
+    /// Every site verdict arrives before <paramref name="timeout"/>, which is also the caller's limit for the connect: the
+    /// node is given <paramref name="timeout"/> less a margin (a device that does not answer comes back as its own
+    /// <see cref="SocketError.TimedOut"/>), the wait for a worker link and for the node's answer end inside the timeout as
+    /// "Site ... is busy" (otherwise the caller's timeout would end them as a device that does not answer). A cancellation
+    /// by <paramref name="ct"/> is an <see cref="OperationCanceledException"/>, never a raw <see cref="RpcException"/>.
+    /// </remarks>
     public async Task<Stream> DialAsync(string siteName, string host, int port, SiteDialKind kind, TimeSpan timeout, CancellationToken ct)
     {
-        var worker = await WorkerAsync(siteName, ct).ConfigureAwait(false);
+        var margin = Margin(timeout);
+        var worker = await WorkerAsync(siteName, timeout - margin, ct).ConfigureAwait(false);
         var life = CancellationTokenSource.CreateLinkedTokenSource(_life.Token);
         AsyncDuplexStreamingCall<DialMessage, DialMessage>? call = null;
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        wait.CancelAfter(timeout - (margin / 2));
+        var opened = false;
         try
         {
             call = worker.Link.Client.Dial(cancellationToken: life.Token);
@@ -98,26 +110,15 @@ internal sealed partial class SiteSession : IAsyncDisposable
                     Host = host,
                     Port = port,
                     Kind = kind == SiteDialKind.Permanent ? DialKind.Permanent : DialKind.Short,
-                    TimeoutMs = (int)Math.Clamp(timeout.TotalMilliseconds, 100, int.MaxValue),
+                    TimeoutMs = (int)Math.Clamp((timeout - margin).TotalMilliseconds, 100, int.MaxValue),
                 },
-            }, ct).ConfigureAwait(false);
+            }, wait.Token).ConfigureAwait(false);
 
-            // The node stops connecting at the timeout; a node that does not answer at all is a site problem.
-            using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            wait.CancelAfter(timeout + _options.CallTimeout);
-            bool answered;
-            try
+            // The node stops connecting at its timeout and answers; a node that does not answer in time is a site problem.
+            if (!await call.ResponseStream.MoveNext(wait.Token).ConfigureAwait(false)
+                || call.ResponseStream.Current.KindCase != DialMessage.KindOneofCase.Result)
             {
-                answered = await call.ResponseStream.MoveNext(wait.Token).ConfigureAwait(false);
-            }
-            catch (RpcException) when (wait.IsCancellationRequested && !ct.IsCancellationRequested)
-            {
-                throw SiteException.For(SiteId, siteName, SiteProblem.Busy);
-            }
-
-            if (!answered || call.ResponseStream.Current.KindCase != DialMessage.KindOneofCase.Result)
-            {
-                throw SiteException.For(SiteId, siteName, SiteProblem.Offline);
+                throw Lost(siteName);
             }
 
             var result = call.ResponseStream.Current.Result;
@@ -127,24 +128,48 @@ internal sealed partial class SiteSession : IAsyncDisposable
             }
 
             Interlocked.Increment(ref worker.Open);
-            var stream = new DialStream(call, life, () => Interlocked.Decrement(ref worker.Open));
-            call = null;
+            var stream = new DialStream(call, life, () => Interlocked.Decrement(ref worker.Open), () => Lost(siteName));
+            opened = true;
             return stream;
         }
-        catch (RpcException e) when (!ct.IsCancellationRequested)
+        catch (Exception e) when (e is RpcException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
         {
-            throw e.StatusCode == StatusCode.FailedPrecondition
-                ? new SiteException(SiteId, SiteProblem.NotSupported, e.Status.Detail)
-                : SiteException.For(SiteId, siteName, SiteProblem.Offline);
+            if (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("The connection through the site was cancelled.", e, ct);
+            }
+
+            throw e switch
+            {
+                _ when _life.IsCancellationRequested => Lost(siteName),
+                RpcException { StatusCode: StatusCode.FailedPrecondition or StatusCode.Unimplemented } rpc =>
+                    string.IsNullOrEmpty(rpc.Status.Detail) ? SiteException.For(SiteId, siteName, SiteProblem.NotSupported) : new SiteException(SiteId, SiteProblem.NotSupported, rpc.Status.Detail),
+                RpcException { StatusCode: StatusCode.ResourceExhausted or StatusCode.DeadlineExceeded } => SiteException.For(SiteId, siteName, SiteProblem.Busy),
+                _ when wait.IsCancellationRequested => SiteException.For(SiteId, siteName, SiteProblem.Busy), // the node did not answer in time
+                _ => Lost(siteName), // the worker link closed or the call ended: the node is gone
+            };
         }
         finally
         {
-            if (call is not null)
+            if (!opened)
             {
-                call.Dispose();
+                call?.Dispose();
                 life.Dispose();
             }
         }
+    }
+
+    /// <summary>"Site offline: ..." for a link or session that ended.</summary>
+    private SiteException Lost(string siteName) => SiteException.For(SiteId, siteName, SiteProblem.Offline);
+
+    /// <summary>
+    /// How much earlier than <paramref name="timeout"/> the node must answer: twice the round trip and half a second, at
+    /// most a third of the timeout.
+    /// </summary>
+    internal TimeSpan Margin(TimeSpan timeout)
+    {
+        var margin = (_manager.RoundTrip(SiteId) * 2) + TimeSpan.FromMilliseconds(500);
+        return margin < timeout / 3 ? margin : timeout / 3;
     }
 
     private SiteException ErrorOf(DialError error, string siteName, int port) => error switch
@@ -165,11 +190,16 @@ internal sealed partial class SiteSession : IAsyncDisposable
         _ => ErrorOf(result.Error, siteName, port),
     };
 
-    /// <summary>The least busy worker; a new one when none is free (the node opens it outbound, the server inbound).</summary>
-    private async Task<Worker> WorkerAsync(string siteName, CancellationToken ct)
+    /// <summary>
+    /// The least busy worker; a new one when none is free (the node opens it outbound, the server inbound). The wait for
+    /// a new one has its own limit (<see cref="SiteOptions.WorkerWait"/>, at most <paramref name="within"/>, so it ends
+    /// before the caller's timeout): then the site is busy, never a device that does not answer.
+    /// </summary>
+    private async Task<Worker> WorkerAsync(string siteName, TimeSpan within, CancellationToken ct)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct, _life.Token);
-        limit.CancelAfter(_options.WorkerWait);
+        var wait = within == Timeout.InfiniteTimeSpan || within >= _options.WorkerWait ? _options.WorkerWait : within;
+        limit.CancelAfter(wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(1));
         try
         {
             while (true)
@@ -251,19 +281,53 @@ internal sealed partial class SiteSession : IAsyncDisposable
         _manager.SessionChanged(SiteId);
     }
 
-    /// <summary>Asks the node for ports it has not allowed yet (shown in the node app until allowed or dismissed).</summary>
-    public async Task RequestPortAsync(int port, string reason)
+    /// <summary>
+    /// Asks the node for ports it has not allowed yet (shown in the node app until allowed or dismissed). Bounded by the
+    /// caller's <paramref name="ct"/> (a poll never waits longer than its own timeout). False when the node did not get
+    /// it: then it is asked again with the next dial to that port.
+    /// </summary>
+    public async Task<bool> RequestPortAsync(int port, string reason, CancellationToken ct)
     {
         try
         {
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct, _life.Token);
             var request = new RequestPortsRequest();
             request.Ports.Add(new PortRule { Direction = PortDirection.Connect, Protocol = Protocol.Tcp, Port = port, Reason = reason });
-            await Control.Client.RequestPortsAsync(request, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: _life.Token).ConfigureAwait(false);
+            await Control.Client.RequestPortsAsync(request, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: limit.Token).ConfigureAwait(false);
+            return true;
         }
-#pragma warning disable CA1031 // Asked again with the next dial to that port after a reconnect.
+#pragma warning disable CA1031 // Not delivered: asked again with the next dial to that port.
         catch (Exception)
 #pragma warning restore CA1031
         {
+            return false;
+        }
+    }
+
+    /// <summary>When this session started: a new session is judged by its own answers, never by the last session's.</summary>
+    public DateTimeOffset Started { get; }
+
+    /// <summary>
+    /// True when the node answers a Hello on the control link now (within the round trip twice and 3 s). The control link
+    /// carries no transfers, so a node that is merely busy still answers.
+    /// </summary>
+    public async Task<bool> AnswersAsync(CancellationToken ct)
+    {
+        if (IsEnded || Control.IsClosed)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct, _life.Token);
+            var deadline = DateTime.UtcNow + (_manager.RoundTrip(SiteId) * 2) + TimeSpan.FromSeconds(3);
+            await Control.Client.HelloAsync(new HelloRequest(), deadline: deadline, cancellationToken: limit.Token).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception e) when (e is RpcException or ObjectDisposedException or InvalidOperationException || (e is OperationCanceledException && !ct.IsCancellationRequested))
+        {
+            return false;
         }
     }
 
@@ -301,7 +365,7 @@ internal sealed partial class SiteSession : IAsyncDisposable
             }
             catch (RpcException) when (!_life.IsCancellationRequested)
             {
-                if (_manager.AnsweredLongAgo(SiteId))
+                if (_manager.AnsweredLongAgo(this))
                 {
                     return; // the node stopped answering: the session ends
                 }

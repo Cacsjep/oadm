@@ -67,6 +67,13 @@ public interface ISiteStates
     /// </summary>
     bool IsStarting(Guid siteId) => false;
 
+    /// <summary>
+    /// Asks the site's node now whether it answers (a short request on its control link, shared by everyone asking at the
+    /// same time). False when the node is not connected or does not answer: a device that did not answer through the
+    /// site is then a site problem, never a device error (docs/sites.md). Never throws but for <paramref name="ct"/>.
+    /// </summary>
+    ValueTask<bool> LinkAnswersAsync(Guid siteId, CancellationToken ct) => ValueTask.FromResult(IsOnline(siteId));
+
     /// <summary>A site was added, renamed, removed, or went online or offline. Raised with the ids that changed.</summary>
     event EventHandler<SiteStatesChangedEventArgs>? Changed;
 }

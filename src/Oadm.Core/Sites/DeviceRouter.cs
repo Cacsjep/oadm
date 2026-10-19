@@ -20,6 +20,13 @@ public sealed class DeviceRouter
     /// <summary>Connections per device at most through a site (polls, tasks and page reads share them).</summary>
     public const int SiteConnectionsPerDevice = 2;
 
+    /// <summary>
+    /// Connections per device through a site for the status reads (the poll and the full refresh's basicdeviceinfo) on a
+    /// pool of their own: an upload, a Web View page or a long poll on the device never makes a status read wait for a
+    /// connection (that wait would end as a device timeout).
+    /// </summary>
+    public const int SiteStatusConnectionsPerDevice = 2;
+
     /// <summary>How long an idle connection through a site stays open.</summary>
     public static readonly TimeSpan SiteIdleTimeout = TimeSpan.FromSeconds(30);
 
@@ -59,12 +66,42 @@ public sealed class DeviceRouter
     /// site's slots (<see cref="ISiteLargeTransfers"/>); on the server's own network, or without such a transport, null at once.
     /// </summary>
     public ValueTask<IDisposable?> EnterLargeTransferAsync(DeviceRoute route, CancellationToken ct) =>
+        EnterLargeTransferAsync(route, ct, CancellationToken.None);
+
+    /// <summary>
+    /// <see cref="EnterLargeTransferAsync(DeviceRoute, CancellationToken)"/> with a bound: when <paramref name="limit"/>
+    /// ends the wait (and <paramref name="ct"/> did not), the site is busy (<see cref="SiteException"/>, never a device
+    /// timeout). A task in the current flow sees "Waiting for the site link" while it waits (<see cref="SiteLinkWait"/>).
+    /// </summary>
+    public ValueTask<IDisposable?> EnterLargeTransferAsync(DeviceRoute route, CancellationToken ct, CancellationToken limit) =>
         route.SiteId is { } site && _transport is ISiteLargeTransfers transfers
-            ? Enter(transfers, site, ct)
+            ? EnterAsync(transfers, site, ct, limit)
             : ValueTask.FromResult<IDisposable?>(null);
 
-    private static async ValueTask<IDisposable?> Enter(ISiteLargeTransfers transfers, Guid site, CancellationToken ct) =>
-        await transfers.EnterLargeTransferAsync(site, ct).ConfigureAwait(false);
+    private async ValueTask<IDisposable?> EnterAsync(ISiteLargeTransfers transfers, Guid site, CancellationToken ct, CancellationToken limit)
+    {
+        using var both = limit.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(ct, limit) : null;
+        var wait = transfers.EnterLargeTransferAsync(site, both?.Token ?? ct);
+        if (wait.IsCompleted)
+        {
+            return await wait.ConfigureAwait(false);
+        }
+
+        var reporter = SiteLinkWait.Current;
+        SiteLinkWait.Report(reporter, true);
+        try
+        {
+            return await wait.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && limit.IsCancellationRequested)
+        {
+            throw SiteException.For(site, _states?.NameOf(site) ?? site.ToString(), SiteProblem.Busy);
+        }
+        finally
+        {
+            SiteLinkWait.Report(reporter, false);
+        }
+    }
 
     /// <summary><paramref name="timeout"/> with <see cref="ExtraTimeout"/> on top (an infinite timeout stays infinite).</summary>
     public TimeSpan Timeout(DeviceRoute route, TimeSpan timeout) =>

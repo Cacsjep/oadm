@@ -180,6 +180,9 @@ public sealed partial class DeviceWebGrpcService(
             var request = new HttpRequestMessage(new HttpMethod(head.Method), new Uri(head.PathAndQuery, UriKind.Relative));
             request.Options.Set(VapixRequestOptions.Timeout, RequestTimeout);
             request.Options.Set(VapixRequestOptions.StreamResponse, true);
+            // A page, an MJPEG stream or a long poll never holds a large-transfer slot of a site; an upload through the web
+            // interface (a large body) still takes one.
+            request.Options.Set(VapixClient.RelayedOption, true);
             if (body is not null)
             {
                 body.Position = 0;
@@ -640,6 +643,8 @@ public sealed partial class DeviceWebGrpcService(
     /// <summary>The shared device texts for a request that did not reach the device.</summary>
     internal static string ErrorText(Exception ex) => ex switch
     {
+        // A site that could not carry the request says so ("Site offline: Building B"), never "Unreachable".
+        _ when Core.Sites.SiteErrors.Find(ex) is { } site => site.Message,
         CertificateChangedException => DeviceMessages.CertificateChanged,
         VapixAuthenticationException => DeviceMessages.Unauthorized,
         TaskCanceledException { InnerException: TimeoutException } => DeviceMessages.TimedOut,
