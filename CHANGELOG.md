@@ -18,7 +18,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - Roles: **See compliance** and **Change compliance checks**.
 - Plugin SDK: compliance check types (`IComplianceCheckType`), so plugins can add their own kinds of checks.
 
-### Fixed
+### Changed
 
 - Count cards (Edge storage, Image Health Dashboard and others) have the card background like every other card.
 
