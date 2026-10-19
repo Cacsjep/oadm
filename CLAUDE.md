@@ -2641,7 +2641,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,
-least-privilege service accounts.
+least-privilege service accounts, the **Compliance** page with compliance checks from the host and plugins (draft spec
+`docs/compliance.md`).
 
 # Resources
 
