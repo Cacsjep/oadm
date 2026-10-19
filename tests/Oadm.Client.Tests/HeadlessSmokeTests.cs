@@ -290,7 +290,6 @@ public sealed class HeadlessSmokeTests
             manualVm.ManualAddress = "10.0.0.199";
             await manualVm.ProbeAddressCommand.ExecuteAsync(null);
             await PumpUntilAsync(() => manualVm.ErrorOf(nameof(AddDevicesViewModel.ManualAddress)) is not null);
-            manualVm.SelectAllAuthenticatedCommand.Execute(null);
             await PumpUntilAsync(() => true);
             Capture(manualWindow, outDir, "client-add-manual.png");
             await manualVm.DisposeAsync();
@@ -310,7 +309,6 @@ public sealed class HeadlessSmokeTests
             var importWindow = new AddDevicesWindow { DataContext = importVm, Width = 1040 };
             importWindow.Show();
             await PumpUntilAsync(() => importVm.ImportCompletion is { IsCompleted: true } && !importVm.IsScanning && importVm.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
-            importVm.SelectAllAuthenticatedCommand.Execute(null);
             await PumpUntilAsync(() => true);
             Capture(importWindow, outDir, "client-add-import.png");
             Assert.Equal("Import finished, 4 devices found", importVm.ScanStatusText);

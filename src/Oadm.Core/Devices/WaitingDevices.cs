@@ -112,7 +112,7 @@ public sealed record WaitingPage(IReadOnlyList<WaitingDeviceItem> Items, int Tot
 public sealed class WaitingListFullException(string message) : InvalidOperationException(message);
 
 /// <summary>
-/// The waiting list of the import ("Keep devices that do not answer"). One entry per address (an import of the same
+/// The waiting list of the import ("Add 4 now, 2 later"). One entry per address (an import of the same
 /// address again replaces its login, MAC address and tags and is tried like new), at most <see cref="MaxEntries"/>.
 /// Passwords are encrypted with the master key like the credential list (entry id as associated data) and never listed.
 /// Writes go one at a time (two imports at once never break the limit or the one entry per address), and writes for many

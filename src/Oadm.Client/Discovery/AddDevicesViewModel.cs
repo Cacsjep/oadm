@@ -252,8 +252,54 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     [ObservableProperty] public partial bool IsProgressIndeterminate { get; private set; }
     [ObservableProperty] public partial int ScanProgress { get; private set; }
-    [ObservableProperty] public partial string ScanStatusText { get; private set; } = "";
-    [ObservableProperty] public partial string SummaryText { get; private set; } = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusLine))]
+    public partial string ScanStatusText { get; private set; } = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusLine))]
+    public partial string SummaryText { get; private set; } = "";
+
+    /// <summary>
+    /// The one info line above the list: the scan status, then the counts ("Import finished, 5 devices found · 4 ready to
+    /// add · 1 need a login · 4 selected"). Once a scan ended its status already names what was found.
+    /// </summary>
+    public string StatusLine
+    {
+        get
+        {
+            if (ScanStatusText.Length == 0)
+            {
+                return SummaryText;
+            }
+
+            return ScanStatusText + " · " + (IsScanning ? SummaryText : _summaryWithoutFound);
+        }
+    }
+
+    private string _summaryWithoutFound = "";
+
+    /// <summary>
+    /// The check box in the list header: true when every device that can be added is checked, false when none is, null
+    /// for some. Setting it checks every device the search shows, or unchecks them when all were checked.
+    /// </summary>
+    public bool? AllSelected
+    {
+        get => _selected == 0 ? false : _selected >= _ready ? true : null;
+        set
+        {
+            bool check = AllSelected != true;
+            foreach (DiscoveredRowViewModel row in FilteredRows.Where(r => r.CanAdd))
+            {
+                row.IsSelected = check;
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>The header check box works only while a listed device can be added.</summary>
+    public bool CanSelectAll => _ready > 0;
     [ObservableProperty] public partial string? ErrorText { get; private set; }
 
     [ObservableProperty]
@@ -261,7 +307,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     public partial int SelectedCount { get; private set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddCommand))]
+    [NotifyCanExecuteChangedFor(nameof(AddCommand), nameof(AddWithWaitingCommand))]
     public partial bool IsBusy { get; private set; }
 
     /// <summary>The progress row while the checked devices are added: "Adding 3,000 devices".</summary>
@@ -270,17 +316,22 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     [ObservableProperty] public partial string AddButtonText { get; private set; } = "Add";
 
     /// <summary>
-    /// Import: keep the lines whose device did not answer on the server's waiting list; the server adds them once they
-    /// answer. Checked by default.
+    /// Import: the second footer button, the checked devices now and the lines whose device did not answer later, through
+    /// the server's waiting list: "Add 4 now, 2 later".
     /// </summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddCommand))]
-    public partial bool KeepWaiting { get; set; } = true;
+    [ObservableProperty] public partial string AddWithWaitingText { get; private set; } = "";
+
+    /// <summary>The text left of that button: "2 devices do not answer yet. OADM adds them once they come online."</summary>
+    [ObservableProperty] public partial string WaitingHint { get; private set; } = "";
 
     /// <summary>Import lines that would be kept waiting now (<see cref="DiscoveredRowViewModel.CanWait"/>).</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowAddWithWaiting))]
+    [NotifyCanExecuteChangedFor(nameof(AddWithWaitingCommand))]
     public partial int WaitingCount { get; private set; }
+
+    /// <summary>The waiting list button and its text: an import with lines whose device did not answer.</summary>
+    public bool ShowAddWithWaiting => WaitingCount > 0;
 
     /// <summary>Lines in one call of the waiting list (a 30,000-line import is six calls).</summary>
     public const int WaitingBatch = 5_000;
@@ -685,21 +736,18 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     private bool CanProbeAddress() => Validation.IsValidFor(nameof(ManualAddress));
 
-    /// <summary>Checks every device that can be added (authenticated, or factory default with a password ready).</summary>
-    [RelayCommand]
-    private void SelectAllAuthenticated()
-    {
-        foreach (DiscoveredRowViewModel row in FilteredRows.Where(r => r.CanAdd))
-        {
-            row.IsSelected = true;
-        }
-    }
-
+    /// <summary>Adds the checked devices.</summary>
     [RelayCommand(CanExecute = nameof(CanAdd))]
-    private async Task AddAsync()
+    private Task AddAsync() => AddCoreAsync(keepWaiting: false);
+
+    /// <summary>Import: adds the checked devices and keeps the lines whose device did not answer on the waiting list.</summary>
+    [RelayCommand(CanExecute = nameof(CanAddWithWaiting))]
+    private Task AddWithWaitingAsync() => AddCoreAsync(keepWaiting: true);
+
+    private async Task AddCoreAsync(bool keepWaiting)
     {
         List<DiscoveredRowViewModel> selected = Rows.Where(r => r.IsSelected && r.CanAdd).ToList();
-        List<DiscoveredRowViewModel> waiting = IsImportMode && KeepWaiting ? Rows.Where(r => r.CanWait).ToList() : [];
+        List<DiscoveredRowViewModel> waiting = IsImportMode && keepWaiting ? Rows.Where(r => r.CanWait).ToList() : [];
         if (selected.Count == 0 && waiting.Count == 0)
         {
             return;
@@ -783,9 +831,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         CloseRequested?.Invoke(this, AddedDeviceIds.Count > 0);
     }
 
-    partial void OnKeepWaitingChanged(bool value) => UpdateSummary();
+    private bool CanAdd() => !IsBusy && SelectedCount > 0;
 
-    private bool CanAdd() => !IsBusy && (SelectedCount > 0 || (IsImportMode && KeepWaiting && WaitingCount > 0));
+    private bool CanAddWithWaiting() => !IsBusy && IsImportMode && WaitingCount > 0;
+
+    partial void OnIsScanningChanged(bool value) => OnPropertyChanged(nameof(StatusLine));
 
     /// <summary>The lines whose device did not answer go to the server's waiting list, in batches.</summary>
     private async Task KeepWaitingAsync(List<DiscoveredRowViewModel> rows)
@@ -1351,14 +1401,23 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
 
         parts.Add(string.Create(CultureInfo.CurrentCulture, $"{SelectedCount} selected"));
+        _summaryWithoutFound = string.Join(" · ", parts.Skip(1));
         SummaryText = string.Join(" · ", parts);
+        OnPropertyChanged(nameof(StatusLine));
+        OnPropertyChanged(nameof(AllSelected));
+        OnPropertyChanged(nameof(CanSelectAll));
         AddButtonText = SelectedCount switch
         {
-            0 when KeepWaiting && WaitingCount > 0 => string.Create(CultureInfo.CurrentCulture, $"Keep {WaitingCount:N0} waiting"),
             0 => "Add",
             1 => "Add 1 device",
-            _ => string.Create(CultureInfo.CurrentCulture, $"Add {SelectedCount} devices"),
+            _ => string.Create(CultureInfo.CurrentCulture, $"Add {SelectedCount:N0} devices"),
         };
+        AddWithWaitingText = SelectedCount == 0
+            ? string.Create(CultureInfo.CurrentCulture, $"Add {WaitingCount:N0} later")
+            : string.Create(CultureInfo.CurrentCulture, $"Add {SelectedCount:N0} now, {WaitingCount:N0} later");
+        WaitingHint = WaitingCount == 1
+            ? "1 device does not answer yet. OADM adds it once it comes online."
+            : string.Create(CultureInfo.CurrentCulture, $"{WaitingCount:N0} devices do not answer yet. OADM adds them once they come online.");
     }
 
     private static string Message(Exception ex) => ex is RpcException rpc ? rpc.Status.Detail : ex.Message;

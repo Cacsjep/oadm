@@ -57,48 +57,47 @@
           </Button>
         </StackPanel>
 
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
-          <Button Classes="secondary" Command="{Binding SelectAllAuthenticatedCommand}" VerticalAlignment="Center"
-                  ToolTip.Tip="Check every device that is ready to add">
-            <ui:IconLabel Icon="{StaticResource Icon.check}" Text="Select all authenticated" />
-          </Button>
-          <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding SummaryText}" VerticalAlignment="Center" Margin="12,0,0,0" />
-          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
+        <!-- One info line: the scan status and the counts, Stop while a scan or import runs, Scan again once a scan
+             finished or was stopped, the search -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,10">
+          <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding StatusLine}" IsActive="{Binding IsScanning}" ShowBar="{Binding IsScanning}"
+                          VerticalAlignment="Center" />
+          <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="1" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
+                            IsVisible="{Binding ShowStop}" ToolTip.Tip="Found devices stay in the list" />
+          <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="1" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
+                            IsVisible="{Binding ShowScanAgain}" ToolTip.Tip="Found devices stay in the list" />
+          <ui:SearchBox Grid.Column="2" Margin="12,0,0,0" Text="{Binding SearchText}" />
         </Grid>
 
-        <!-- Scan progress, the DNS name choice (Discovery, Network range); Stop while a zero-conf or range scan runs, Scan again
-             once it finished or was stopped -->
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,10">
-          <Grid.IsVisible>
-            <MultiBinding Converter="{x:Static BoolConverters.Or}">
-              <Binding Path="ScanStatusText" Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
-              <Binding Path="ShowDnsNameChoice" />
-            </MultiBinding>
-          </Grid.IsVisible>
-          <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}" ShowBar="{Binding IsScanning}"
-                          IsVisible="{Binding ScanStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          <CheckBox Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0" IsVisible="{Binding ShowDnsNameChoice}"
-                    IsChecked="{Binding UseDnsNames}" Content="Use DNS names instead of IP addresses"
-                    ToolTip.Tip="Devices without a DNS name are added by IP address" />
-          <!-- Import: the lines whose device does not answer go to the server's waiting list on Add -->
-          <CheckBox x:Name="KeepWaitingBox" Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0" IsVisible="{Binding IsImportMode}"
-                    IsChecked="{Binding KeepWaiting}" Content="Keep devices that do not answer and add them when they come online"
-                    ToolTip.Tip="OADM tries them again on its own" />
-          <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="2" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
-                            IsVisible="{Binding ShowStop}" ToolTip.Tip="Found devices stay in the list" />
-          <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="2" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
-                            IsVisible="{Binding ShowScanAgain}" ToolTip.Tip="Found devices stay in the list" />
-        </Grid>
+        <!-- Discovery, Network range: add by DNS name -->
+        <CheckBox Grid.Row="3" Margin="0,0,0,10" IsVisible="{Binding ShowDnsNameChoice}"
+                  IsChecked="{Binding UseDnsNames}" Content="Use DNS names instead of IP addresses"
+                  ToolTip.Tip="Devices without a DNS name are added by IP address" />
 
         <DataGrid x:Name="DeviceList" Grid.Row="4" Classes="wrapRows" ItemsSource="{Binding FilteredRows}" SelectedItem="{Binding FocusedRow}"
                   SelectionMode="Single" IsReadOnly="True" CanUserReorderColumns="False">
           <DataGrid.Styles>
+            <!-- The check box column's header: no padding and no room kept for the sort arrow (the column is not sortable) -->
+            <Style Selector="DataGridColumnHeader:nth-child(1)">
+              <Style.Resources>
+                <x:Double x:Key="DataGridSortIconMinWidth">0</x:Double>
+              </Style.Resources>
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="HorizontalContentAlignment" Value="Center" />
+            </Style>
             <Style Selector="DataGridRow" x:DataType="disc:DiscoveredRowViewModel">
               <Setter Property="Opacity" Value="{Binding !IsMuted, Converter={x:Static c:Converters.MutedOpacity}}" />
             </Style>
           </DataGrid.Styles>
           <DataGrid.Columns>
             <DataGridTemplateColumn Width="40" CanUserSort="False" CanUserResize="False">
+              <!-- Checks every device the search shows that can be added; some checked = the dash -->
+              <DataGridTemplateColumn.Header>
+                <CheckBox x:Name="SelectAllBox" HorizontalAlignment="Center" MinWidth="0" Padding="0"
+                          IsChecked="{Binding $parent[DataGrid].((disc:AddDevicesViewModel)DataContext).AllSelected}"
+                          IsEnabled="{Binding $parent[DataGrid].((disc:AddDevicesViewModel)DataContext).CanSelectAll}"
+                          ToolTip.Tip="Check all" />
+              </DataGridTemplateColumn.Header>
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
                   <CheckBox IsChecked="{Binding IsSelected}" IsVisible="{Binding CanAdd}" HorizontalAlignment="Center" MinWidth="0" Padding="0" />
@@ -131,7 +130,7 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="Action" Width="Auto" CanUserSort="False">
+            <DataGridTemplateColumn Header="Action" Width="Auto" MinWidth="110" CanUserSort="False">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
                   <Panel Margin="10,0">
@@ -223,6 +222,11 @@
 
     <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}">
       <!-- While an inline editor is open its Retry / Apply is the one accent button of the page -->
+      <!-- Import: the lines whose device did not answer go to the server's waiting list -->
+      <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="0,0,4,0" Text="{Binding WaitingHint}"
+                 IsVisible="{Binding ShowAddWithWaiting}" />
+      <Button x:Name="AddWithWaitingButton" Classes="secondary" Content="{Binding AddWithWaitingText}"
+              Command="{Binding AddWithWaitingCommand}" IsVisible="{Binding ShowAddWithWaiting}" />
       <Button Classes.primary="{Binding !IsEditorOpen}" Classes.secondary="{Binding IsEditorOpen}"
               Content="{Binding AddButtonText}" Command="{Binding AddCommand}" />
     </ui:DialogFooter>

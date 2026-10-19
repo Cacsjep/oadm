@@ -75,7 +75,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
 
     /// <summary>
     /// Import: the line's device did not answer, or did not identify itself as an Axis device (no password was sent). The
-    /// page keeps such lines on the server's waiting list when "Keep devices that do not answer" is checked.
+    /// page keeps such lines on the server's waiting list with "Add 4 now, 2 later".
     /// </summary>
     public bool CanWait => ImportLine is { Problem: null } && !IsAdded && !IsAlreadyManaged
         && (HasImportProblem ? _notFound : !IsImportPlaceholder && AuthState == AuthState.Unreachable);

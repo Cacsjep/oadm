@@ -221,7 +221,11 @@ public sealed class ClientLimitsTests(ITestOutputHelper output)
                         page.OnDiscovered("s1", device);
                     }
                 });
-                Time(log, "Add page: select all logged in", () => page.SelectAllAuthenticatedCommand.Execute(null));
+                Time(log, "Add page: uncheck and check all logged in", () =>
+                {
+                    page.AllSelected = false;
+                    page.AllSelected = true;
+                });
                 SlowestKeystroke(log, "Add page search", text => page.SearchText = text);
                 return Task.FromResult(log);
             }, CancellationToken.None);

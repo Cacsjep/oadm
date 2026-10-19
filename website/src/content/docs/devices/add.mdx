@@ -44,8 +44,8 @@ Devices without a DNS name are added by IP address. OADM keeps the address a dev
 
 <Steps>
 
-1. Devices OADM logged in to are already checked. Uncheck the ones you do not want; **Select all authenticated** checks
-   every ready device again.
+1. Devices OADM logged in to are already checked. Uncheck the ones you do not want; the check box in the list header
+   checks or unchecks them all.
 2. Click **Add 3 devices** in the footer. The page closes and the devices appear in the list.
 
 </Steps>
@@ -91,10 +91,9 @@ devices you already manage are never tried on new devices.
 In a large import some devices are always off or not reachable yet. You don't have to note them and import them again:
 OADM keeps them and adds each one once it answers.
 
-1. Leave **Keep devices that do not answer and add them when they come online** checked (above the list of an import,
-   on by default).
-2. Click **Add**. OADM adds the devices that are ready and keeps the ones that showed **Not found**, with the login and
-   the tags of their line. With nothing else to add the button says **Keep 120 waiting**.
+1. When lines did not answer, the footer says how many and shows a second button next to **Add**.
+2. Click **Add 4,680 now, 120 later**. OADM adds the checked devices and keeps the ones that showed **Not found**, with
+   the login and the tags of their line. **Add** alone adds only the checked devices.
 3. The Devices page shows **120 devices waiting to be added** next to the device count. OADM tries them again every
    15 minutes (Settings > Discovery, **Try waiting devices every (min)**) and adds each device as soon as it answers.
 

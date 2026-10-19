@@ -627,7 +627,9 @@ controls: title bar, one card, footer) in four modes:
   `Discovery.ZeroConfSeconds` (Settings page, default 30 s, 5..300).
 - **Scan IP range**: From / To inputs on top; Enter or the Scan button starts (several ranges add to
   the same list).
-- Scan progress row (`ui:ProgressRow`, indeterminate for zero-conf, percent for ranges) with a
+- One info line above the list (`ui:ProgressRow`, indeterminate for zero-conf, percent for ranges): the scan status and the
+  counts in one text (`AddDevicesViewModel.StatusLine`: "Import finished, 5 devices found · 4 ready to add · 1 need a login
+  · 4 selected"; while a scan runs "Searching the network... · 8 found · ..."), then a
   **Stop** button (icon stop) while a zero-conf or range scan runs (`StopScan` for every running
   session; the devices found stay) and **Scan again** (icon refresh) after it finished or was stopped
   (zero-conf: a new session; range: the same range again; found devices stay, deduplicated by serial; a
@@ -668,12 +670,12 @@ controls: title bar, one card, footer) in four modes:
   (1.5 s, like the range scan; `ProbeAddressRequest.import_line = 5`), Add manually keeps 3 s: 30,000 lines with 10 % off
   take about 12 to 15 minutes on a LAN.
 
-**Waiting list** ("Keep devices that do not answer and add them when they come online", check box of the import page,
-Import from file and Import from ADM, checked by default; `AddDevicesViewModel.KeepWaiting`): on Add the lines whose device
+**Waiting list** (Import from file and Import from ADM: while lines did not answer, the footer shows "2 devices do not
+answer yet. OADM adds them once they come online." and a secondary button **Add 4 now, 2 later** ("Add 2 later" without
+checked rows; `AddWithWaitingCommand`) left of **Add 4 devices**, which adds only the checked devices): with it the lines whose device
 did not answer or did not identify itself as an Axis device (`DiscoveredRowViewModel.CanWait`: "Not found" or Unreachable;
 not file problems, not Login failed, not "Not checked") go to the server in batches of 5,000 (`WaitingDeviceService.Add`)
-with their address, login, expected MAC address and tags, before the found devices are committed; without checked rows the
-button reads "Keep 3,000 waiting". The page reads the waiting list before it probes (`ListWaiting`, a role without the
+with their address, login, expected MAC address and tags, before the found devices are committed. The page reads the waiting list before it probes (`ListWaiting`, a role without the
 right: none): a line that does not answer and is waiting already shows **Already waiting** ("An earlier import keeps it
 waiting. OADM adds it once it answers.", neutral), is not kept again, and the finish line adds ", 12 already waiting".
 Server: `Oadm.Core.Devices.WaitingDeviceStore` (table WaitingDevices, migration
@@ -744,15 +746,16 @@ Model (160), Login (status, star: takes the rest so status and detail sit right 
 shows on up to two lines, grid class `wrapRows`), Action (auto, at the right edge). An empty list says what to do first ("Enter a range and press Scan.", "Enter an address and press Find."). Scan
 and Find are filled secondary buttons. A page error (Add or discovery failed) stands directly below the list. The scan
 progress bar disappears once a scan or import ended; its text stays. Problems of file lines ("Not added") use the
-warning chip, devices that do not answer the error chip. Above it
-"Select all authenticated", a summary ("10 found · 3 ready to add · 1 need a login · 2 need a
-password · 3 selected"), search box and the scan progress row. Login status per device
+warning chip, devices that do not answer the error chip. Above it one row: the info line (above), Stop / Scan again and the
+search box; Discovery and Network range add the DNS name check box below it. Login status per device
 (`ui:StatusChip`): Checking... (accent), Authenticated (user) (ok), Password not set (warning),
 Login failed (error, reason as tooltip), Unreachable (error), Added (ok, row greyed; already managed devices are not
 listed, see above).
 Only addable devices can be checked: authenticated ones, and factory-default ones
 once a first password is entered. A device is checked by itself the first time it can be added (forum: the button was
-easy to miss and Add did nothing); one the user unchecks stays unchecked, **Select all authenticated** checks all again. **Add** (footer, "Add 3 devices") commits the checked devices
+easy to miss and Add did nothing); one the user unchecks stays unchecked. The check box column's header is a three-state
+check box (`AllSelected`: all, some = dash, none of the devices that can be added; O(1) from the counters; disabled while
+none can be added): a click checks every addable row the search shows, or unchecks them when all were checked. **Add** (footer, "Add 3 devices") commits the checked devices
 in one click and the page always closes (no "Keep open" option).
 Every password field (login editor, first password + confirm) is `ui:PasswordBox` with the eye button.
 

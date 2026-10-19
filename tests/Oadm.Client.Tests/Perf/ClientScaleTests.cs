@@ -377,7 +377,12 @@ public sealed class TaskListScaleTests(ITestOutputHelper output)
         Assert.Contains("27000 ready to add", page.SummaryText.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
         Assert.Contains("3000 need a login", page.SummaryText.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
 
-        ClientScale.Measure(output, "Select all 27,000 authenticated devices", TimeSpan.FromSeconds(2), () => page.SelectAllAuthenticatedCommand.Execute(null));
+        Assert.True(page.AllSelected); // checked by themselves
+        ClientScale.Measure(output, "Uncheck and check all 27,000 authenticated devices", TimeSpan.FromSeconds(4), () =>
+        {
+            page.AllSelected = false;
+            page.AllSelected = true;
+        });
         Assert.Equal(ClientScale.Devices * 9 / 10, page.SelectedCount);
 
         ClientScale.Measure(output, "Search the add page list", TimeSpan.FromMilliseconds(500), () =>

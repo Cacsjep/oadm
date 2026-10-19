@@ -336,7 +336,6 @@ public sealed class DeviceTagsTests
             await page.ImportCompletion!;
             await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
 
-            page.SelectAllAuthenticatedCommand.Execute(null);
             await page.AddCommand.ExecuteAsync(null);
 
             IReadOnlyList<Device> devices = await api.ListDevicesAsync(CancellationToken.None);

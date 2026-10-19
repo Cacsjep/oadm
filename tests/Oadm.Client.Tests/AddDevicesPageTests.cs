@@ -88,7 +88,6 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Single(page.FilteredRows);
         page.SearchText = "";
 
-        page.SelectAllAuthenticatedCommand.Execute(null);
         await page.AddCommand.ExecuteAsync(null);
 
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
@@ -123,8 +122,16 @@ public sealed class AddDevicesPageTests : IDisposable
         }); // a later report of the same device
         Assert.False(Row(page, "10.0.0.92").IsSelected);
 
-        page.SelectAllAuthenticatedCommand.Execute(null);
+        // The header check box: some checked shows the dash, a click checks all, the next one unchecks all.
+        Assert.Null(page.AllSelected);
+        Assert.True(page.CanSelectAll);
+        page.AllSelected = true;
         Assert.Equal(3, page.SelectedCount);
+        Assert.True(page.AllSelected);
+        page.AllSelected = false;
+        Assert.Equal(0, page.SelectedCount);
+        Assert.False(page.AllSelected);
+        page.AllSelected = true;
         Assert.Equal("Add 3 devices", page.AddButtonText);
 
         await page.AddCommand.ExecuteAsync(null);
@@ -408,23 +415,23 @@ public sealed class AddDevicesPageTests : IDisposable
         await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder ? r.HasImportProblem : r.AuthState != AuthState.Pending));
 
         // The two that did not answer can wait; the invalid line cannot.
-        Assert.True(page.KeepWaiting);
         Assert.Equal(2, page.WaitingCount);
+        Assert.True(page.ShowAddWithWaiting);
         Assert.Equal(["10.0.0.199", "10.99.0.1"], page.Rows.Where(r => r.CanWait).Select(r => r.Address));
         Assert.Equal("Add 1 device", page.AddButtonText); // the device that logged in is checked by itself
+        Assert.Equal("Add 1 now, 2 later", page.AddWithWaitingText);
+        Assert.Equal("2 devices do not answer yet. OADM adds them once they come online.", page.WaitingHint);
         Row(page, "10.0.0.93").IsSelected = false;
-        Assert.Equal("Keep 2 waiting", page.AddButtonText);
-        Assert.True(page.AddCommand.CanExecute(null));
-        page.KeepWaiting = false;
         Assert.Equal("Add", page.AddButtonText);
         Assert.False(page.AddCommand.CanExecute(null));
-        page.KeepWaiting = true;
+        Assert.Equal("Add 2 later", page.AddWithWaitingText);
+        Assert.True(page.AddWithWaitingCommand.CanExecute(null));
 
-        page.SelectAllAuthenticatedCommand.Execute(null);
+        page.AllSelected = true;
         Assert.Equal("Add 1 device", page.AddButtonText);
         bool closed = false;
         page.CloseRequested += (_, _) => closed = true;
-        await page.AddCommand.ExecuteAsync(null);
+        await page.AddWithWaitingCommand.ExecuteAsync(null);
 
         Assert.True(closed);
         Assert.Contains(await _api.ListDevicesAsync(CancellationToken.None), d => d.Address == "10.0.0.93");
@@ -516,7 +523,6 @@ public sealed class AddDevicesPageTests : IDisposable
 
         // Rows with a problem cannot be selected; the found ones are added as usual, with the file's credentials.
         page.Rows[4].IsSelected = true;
-        page.SelectAllAuthenticatedCommand.Execute(null);
         Assert.Equal("Add 2 devices", page.AddButtonText);
         await page.AddCommand.ExecuteAsync(null);
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
@@ -547,7 +553,7 @@ public sealed class AddDevicesPageTests : IDisposable
         await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
         page.SetImport(ThirtyThousandLines());
         page.SearchText = "10.1.3.";
-        page.SelectAllAuthenticatedCommand.Execute(null);
+        page.AllSelected = true;
 
         Assert.Equal(DeviceImportFile.MaxLines, page.Rows.Count);
         Assert.Equal(256, page.FilteredRows.Count);
@@ -566,7 +572,7 @@ public sealed class AddDevicesPageTests : IDisposable
         long listed = watch.ElapsedMilliseconds;
         page.SearchText = "10.1.3.";
         long filtered = watch.ElapsedMilliseconds - listed;
-        page.SelectAllAuthenticatedCommand.Execute(null);
+        page.AllSelected = true;
         long all = watch.ElapsedMilliseconds;
 
         Assert.Equal(256, page.FilteredRows.Count);
@@ -634,7 +640,6 @@ public sealed class AddDevicesPageTests : IDisposable
         await page.OpenAsync();
         await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
         _api.DeviceLimit = _api.DeviceCount + 1;
-        page.SelectAllAuthenticatedCommand.Execute(null);
         bool closed = false;
         page.CloseRequested += (_, _) => closed = true;
 

@@ -23,6 +23,9 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Count cards (Edge storage, Image Health Dashboard and others) have the card background like every other card.
+- Add devices: the check box in the list header checks or unchecks all devices (instead of **Select all
+  authenticated**), the scan status and the counts share one line, and an import offers **Add 4 now, 2 later** next to
+  **Add** instead of the "Keep devices that do not answer" check box.
 - Add devices: devices OADM logged in to are checked by themselves, so **Add** works without clicking **Select all
   authenticated** first. A device you uncheck stays unchecked.
 
