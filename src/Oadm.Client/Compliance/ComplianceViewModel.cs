@@ -34,7 +34,7 @@ public enum ComplianceTab
 public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check) : ObservableObject
 {
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Title), nameof(Value), nameof(Detail), nameof(IsError), nameof(IsWarning), nameof(IsOk), nameof(ToolTip), nameof(CanDelete))]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Value), nameof(Detail), nameof(IsError), nameof(IsWarning), nameof(IsOk), nameof(ToolTip))]
     public partial ComplianceCheckSummary Check { get; set; } = check;
 
     [ObservableProperty] public partial bool IsSelected { get; set; }
@@ -42,9 +42,6 @@ public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check
     public string Id => Check.Id;
 
     public string Title => Check.Name;
-
-    /// <summary>The default checks (Reachable, Login works) cannot be deleted.</summary>
-    public bool CanDelete => !Check.BuiltIn;
 
     /// <summary>The failed devices ("12"), "–" while the check does not run.</summary>
     public string Value => Check.Problem.Length > 0 ? "–" : Check.Failed.ToString("N0", CultureInfo.CurrentCulture);
@@ -164,7 +161,19 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string AllText { get; private set; } = "All";
 
     /// <summary>The card whose failing devices the list shows; null = the tab.</summary>
-    [ObservableProperty] public partial ComplianceCardViewModel? SelectedCard { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCheckView), nameof(CheckViewText))]
+    public partial ComplianceCardViewModel? SelectedCard { get; private set; }
+
+    /// <summary>A card is chosen: the tabs are greyed and "Show all devices" leaves the view.</summary>
+    public bool IsCheckView => SelectedCard is not null;
+
+    /// <summary>"Failing: Object Analytics running".</summary>
+    public string? CheckViewText => SelectedCard is { } card ? "Failing: " + card.Title : null;
+
+    /// <summary>Leaves the view of one check (the tab All again).</summary>
+    [RelayCommand]
+    private void LeaveCheckView() => SelectTab(ComplianceTab.All);
 
     [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
 
@@ -196,8 +205,9 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
 
     /// <summary>The text of the dialog after Enable.</summary>
     public const string EnabledInfo =
-        "OADM now checks every device: Reachable and Login works to start with. Add your own checks with New check. "
-        + "To see the results in the device list too, turn on the Compliance column with Choose columns on the Devices page.";
+        "OADM now checks every device with **Reachable** and **Login works**.\n"
+        + "Add your own checks with **New check**.\n\n"
+        + "**In the device list too:** turn on the **Compliance** column with **Choose columns** on the Devices page.";
 
     /// <summary>"Enable Compliance Checks" of the empty state, then a short note on the device list's column.</summary>
     [RelayCommand]
@@ -374,12 +384,6 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         }
 
         ErrorText = null;
-        if (!card.CanDelete)
-        {
-            ErrorText = card.Title + " cannot be deleted.";
-            return;
-        }
-
         if (!await _dialogs.ConfirmAsync("Delete compliance check", $"Delete the check {card.Title}? Its results go too.", "Delete").ConfigureAwait(true))
         {
             return;

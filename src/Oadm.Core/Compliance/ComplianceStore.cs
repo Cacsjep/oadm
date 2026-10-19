@@ -86,10 +86,22 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
 
     public void Dispose() => _write.Dispose();
 
-    /// <summary>Creates the default checks (Reachable, Login works) when they are missing.</summary>
+    /// <summary>Set once the default checks were created: a deleted default check is not created again.</summary>
+    public const string DefaultsCreatedSettingKey = "Compliance.DefaultsCreated";
+
+    /// <summary>
+    /// Creates the default checks (Reachable, Login works) once per server. They are ordinary checks: the user may change,
+    /// turn off or delete them and add them again with New check.
+    /// </summary>
     public async Task EnsureDefaultsAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        if (await db.Settings.AnyAsync(s => s.Key == DefaultsCreatedSettingKey, ct).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        db.Settings.Add(new Settings.Setting { Key = DefaultsCreatedSettingKey, ValueJson = "true" });
         var now = time.GetUtcNow().UtcDateTime;
         foreach (var (id, name, typeId) in BuiltInComplianceTypes.Defaults)
         {
@@ -193,20 +205,16 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
             }
 
             var name = incoming.Name.Trim();
-            if (!row.BuiltIn)
+            if (await db.ComplianceChecks.AnyAsync(c => c.Id != row.Id && c.Name == name, ct).ConfigureAwait(false))
             {
-                if (await db.ComplianceChecks.AnyAsync(c => c.Id != row.Id && c.Name == name, ct).ConfigureAwait(false))
-                {
-                    throw new ComplianceValidationException($"A check named {name} already exists.");
-                }
-
-                row.Name = name;
-                row.TypeId = incoming.TypeId;
-                row.Severity = incoming.Severity;
-                row.Enabled = incoming.Enabled;
+                throw new ComplianceValidationException($"A check named {name} already exists.");
             }
 
-            row.SettingsJson = row.BuiltIn ? "{}" : incoming.Settings.ToJsonString();
+            row.Name = name;
+            row.TypeId = incoming.TypeId;
+            row.Severity = incoming.Severity;
+            row.Enabled = incoming.Enabled;
+            row.SettingsJson = incoming.Settings.ToJsonString();
             row.DevicesJson = JsonSerializer.Serialize(incoming.Devices, Json);
             row.IntervalMinutes = incoming.IntervalMinutes;
             row.Version++;
@@ -229,11 +237,6 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             var row = await db.ComplianceChecks.FirstOrDefaultAsync(c => c.Id == id, ct).ConfigureAwait(false)
                 ?? throw new KeyNotFoundException("The check no longer exists.");
-            if (row.BuiltIn && !enabled)
-            {
-                throw new ComplianceValidationException($"{row.Name} is always on.");
-            }
-
             if (row.Enabled != enabled)
             {
                 row.Enabled = enabled;
@@ -259,11 +262,6 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             var row = await db.ComplianceChecks.FirstOrDefaultAsync(c => c.Id == id, ct).ConfigureAwait(false)
                 ?? throw new KeyNotFoundException("The check no longer exists.");
-            if (row.BuiltIn)
-            {
-                throw new ComplianceValidationException($"{row.Name} cannot be deleted.");
-            }
-
             await db.ComplianceResults.Where(r => r.CheckId == id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
             db.ComplianceChecks.Remove(row);
             await db.SaveChangesAsync(ct).ConfigureAwait(false);

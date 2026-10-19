@@ -180,13 +180,6 @@ public sealed partial class FakeOadmApi
                 }
 
                 var old = _complianceChecks[index].Summary;
-                if (old.BuiltIn)
-                {
-                    stored.Summary.Name = old.Name;
-                    stored.Summary.TypeId = old.TypeId;
-                    stored.Summary.BuiltIn = true;
-                    stored.Summary.Enabled = true;
-                }
 
                 stored.Summary.Version = old.Version + 1;
                 _complianceChecks[index] = stored;
@@ -203,11 +196,6 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             var check = _complianceChecks.Find(c => c.Summary.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, "The check no longer exists."));
-            if (check.Summary.BuiltIn)
-            {
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, check.Summary.Name + " cannot be deleted."));
-            }
-
             _complianceChecks.Remove(check);
             RecomputeComplianceLocked();
             return Task.CompletedTask;
@@ -220,7 +208,7 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             var check = _complianceChecks.Find(c => c.Summary.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, "The check no longer exists."));
-            check.Summary.Enabled = check.Summary.BuiltIn || enabled;
+            check.Summary.Enabled = enabled;
             RecomputeComplianceLocked();
             return Task.FromResult(ComplianceListLocked().Checks.First(c => c.Id == id));
         }

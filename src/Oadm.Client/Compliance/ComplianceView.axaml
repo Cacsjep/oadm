@@ -47,7 +47,7 @@
                         Command="{Binding $parent[UserControl].((vm:ComplianceViewModel)DataContext).EditCommand}">
                   <ui:OadmIcon Data="{StaticResource Icon.edit}" />
                 </Button>
-                <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete" CommandParameter="{Binding}" IsVisible="{Binding CanDelete}"
+                <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete" CommandParameter="{Binding}"
                         Command="{Binding $parent[UserControl].((vm:ComplianceViewModel)DataContext).DeleteCommand}">
                   <ui:OadmIcon Data="{StaticResource Icon.remove}" />
                 </Button>
@@ -64,12 +64,11 @@
           <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
             <ui:ToolbarButton Text="New check" IconKey="add" IsPrimary="True" Command="{Binding NewCheckCommand}" IsVisible="{Binding MayManage}" />
             <ui:ToolbarButton Text="Check now" IconKey="refresh" Command="{Binding CheckNowCommand}" ToolTip.Tip="The selected devices, else all" />
-            <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+          </ui:ToolbarOverflowPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
             <Button Classes="toolbar danger" Command="{Binding TurnOffCommand}" IsVisible="{Binding MayManage}">
               <ui:IconLabel Icon="{StaticResource Icon.stop}" Text="Turn off compliance" Spacing="8" />
             </Button>
-          </ui:ToolbarOverflowPanel>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
             <ui:ToolbarButton Text="Export" IconKey="export" Command="{Binding ExportCommand}" />
             <Button Classes="toolbar iconOnly" Classes.active="{Binding ShowText}" ToolTip.Tip="Show the result text"
                     Command="{Binding ToggleShowTextCommand}">
@@ -100,15 +99,22 @@
           </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,8">
-          <Border Classes="segmented">
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12" Margin="0,12,0,8">
+          <!-- A chosen card shows one check's failing devices: the tabs are greyed until "Show all devices". -->
+          <Border Classes="segmented" IsEnabled="{Binding !IsCheckView}">
             <StackPanel Orientation="Horizontal">
               <Button Classes="segment" Classes.selected="{Binding IsAllTab}" Content="{Binding AllText}" Command="{Binding ShowAllCommand}" />
               <Button Classes="segment" Classes.selected="{Binding IsProblemsTab}" Content="{Binding ProblemsText}" Command="{Binding ShowProblemsCommand}" />
               <Button Classes="segment" Classes.selected="{Binding IsWarningsTab}" Content="{Binding WarningsText}" Command="{Binding ShowWarningsCommand}" />
             </StackPanel>
           </Border>
-          <TextBlock Grid.Column="2" Classes="secondary" VerticalAlignment="Center" Text="{Binding StatusText}" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding IsCheckView}">
+            <TextBlock VerticalAlignment="Center" Text="{Binding CheckViewText}" />
+            <Button Classes="secondary" Command="{Binding LeaveCheckViewCommand}">
+              <ui:IconLabel Icon="{StaticResource Icon.close}" Text="Show all devices" />
+            </Button>
+          </StackPanel>
+          <TextBlock Grid.Column="3" Classes="secondary" VerticalAlignment="Center" Text="{Binding StatusText}" />
         </Grid>
 
         <!-- Thousands of devices: virtualized; one column per check is added in code-behind; group mode in code-behind. -->

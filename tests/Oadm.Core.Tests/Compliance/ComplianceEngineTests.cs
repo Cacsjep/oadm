@@ -30,12 +30,26 @@ public sealed class ComplianceEngineTests
         var checks = rig.Engine.ListChecks();
         Assert.Equal(["Reachable", "Login works"], checks.Select(c => c.Check.Name).Order().Reverse());
         Assert.All(checks, c => Assert.True(c.Check.BuiltIn));
-        await Assert.ThrowsAsync<ComplianceValidationException>(() => rig.Service.DeleteAsync(Reachable, CancellationToken.None));
-        await Assert.ThrowsAsync<ComplianceValidationException>(() => rig.Service.SetEnabledAsync(Reachable, false, CancellationToken.None));
 
         // A device that answers again passes at once.
         await rig.Devices.UpdateAsync(gone.Id, d => d.Status = DeviceStatus.Ok, CancellationToken.None);
         await rig.WaitForAsync(Reachable, gone.Id, ComplianceOutcome.Passed);
+    }
+
+    [Fact]
+    public async Task TheDefaultChecksAreOrdinaryChecksAndAreCreatedOnlyOnce()
+    {
+        await using var rig = await ComplianceRig.StartAsync();
+        await rig.Service.SetEnabledAsync(LoginWorks, false, CancellationToken.None);
+        Assert.False(rig.Engine.GetCheck(LoginWorks)!.Enabled);
+        await rig.Service.DeleteAsync(Reachable, CancellationToken.None);
+        Assert.Null(rig.Engine.GetCheck(Reachable));
+
+        // A restart does not bring a deleted default check back; New check adds it again.
+        await rig.StartEngineAsync();
+        Assert.Null(rig.Engine.GetCheck(Reachable));
+        var again = await rig.SaveAsync(BuiltInComplianceTypes.ReachableId, name: "Reachable");
+        Assert.Equal(BuiltInComplianceTypes.ReachableId, again.TypeId);
     }
 
     [Fact]

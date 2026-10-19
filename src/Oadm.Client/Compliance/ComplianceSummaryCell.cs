@@ -28,6 +28,7 @@ public sealed class ComplianceSummaryCell : ContentControl
         panel.Children.Add(_text);
         panel.Children.Add(_chip);
         Content = panel;
+        Background = Avalonia.Media.Brushes.Transparent; // the whole cell shows the tooltip, not only the icon's lines
         Update();
     }
 

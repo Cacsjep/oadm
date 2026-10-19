@@ -33,7 +33,7 @@
               </Grid>
               <ui:PasswordBox Text="{Binding Text}" IsVisible="{Binding IsPassword}" />
               <ui:CodeEditor Text="{Binding Text}" Language="{Binding Language}" Height="180" IsVisible="{Binding IsCode}" />
-              <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" ButtonText="Choose file"
+              <ui:FileRow FileName="{Binding FileName}" ButtonText="Choose file" IsSingleButton="True"
                           Command="{Binding ChooseFileCommand}" IsVisible="{Binding IsFile}" />
               <StackPanel Spacing="6" IsVisible="{Binding IsKeyValues}">
                 <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}">

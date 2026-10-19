@@ -43,7 +43,7 @@ public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _initial = existing;
         var summary = existing?.Summary;
-        IsBuiltIn = summary?.BuiltIn == true;
+        IsBuiltIn = false; // the default checks are ordinary checks
         var types = catalog.Entries.Where(t => t.Available || t.Id == summary?.TypeId).ToList();
         Types = GroupedChoice.Build(types, t => t.Group.Length == 0 ? "General" : t.Group, t => t.Available ? t.DisplayName : $"{t.DisplayName} ({t.SourceName} is turned off)");
         Devices = new DeviceSelectorViewModel(

@@ -31,14 +31,6 @@ public sealed class ComplianceService(
     {
         ArgumentNullException.ThrowIfNull(check);
         var existing = check.Id == Guid.Empty ? null : engine.GetCheck(check.Id) ?? throw new KeyNotFoundException("The check no longer exists.");
-        if (existing?.BuiltIn == true)
-        {
-            check.Name = existing.Name;
-            check.TypeId = existing.TypeId;
-            check.Severity = existing.Severity;
-            check.Enabled = true;
-            check.Settings = [];
-        }
 
         var problem = Problem(check);
         if (problem is not null)

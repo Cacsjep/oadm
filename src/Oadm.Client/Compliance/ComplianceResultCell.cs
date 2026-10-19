@@ -30,6 +30,7 @@ public sealed class ComplianceResultCell : ContentControl
         CheckId = checkId ?? throw new ArgumentNullException(nameof(checkId));
         ShowText = showText;
         Content = _chip;
+        Background = Avalonia.Media.Brushes.Transparent; // the whole cell shows the tooltip, not only the icon's lines
     }
 
     /// <summary>The result text next to the icon (passed shows the icon only).</summary>
@@ -111,9 +112,20 @@ public sealed class ComplianceResultCell : ContentControl
         _chip.Text = !ShowText ? null
             : result.Checking ? "Checking..."
             : result.Outcome == ComplianceOutcome.CompliancePassed ? null
-            : result.Detail.Length > 0 ? result.Detail.Split('\n', 2)[0]
+            : result.Detail.Length > 0 ? CellText(result.Detail)
             : ComplianceViewModel.ResultText(result);
         ToolTip.SetTip(this, result.Checking ? "Checking..." : TooltipOf(result));
+    }
+
+    /// <summary>
+    /// The detail on one line: "1 setting differs: ImageSource.I0.CaptureFrequency: 60Hz (file: 50Hz)"; several lines are
+    /// joined with "; " after the first.
+    /// </summary>
+    public static string CellText(string detail)
+    {
+        ArgumentNullException.ThrowIfNull(detail);
+        var lines = detail.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return lines.Length <= 1 ? detail.Trim() : lines[0] + ": " + string.Join("; ", lines.Skip(1));
     }
 
     /// <summary>"Failed since 14:05, checked 14:30" and the detail below.</summary>

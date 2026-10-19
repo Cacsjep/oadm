@@ -107,9 +107,8 @@ public sealed class ComplianceServiceTests
         stale.Summary.Version = saved.Version + 7;
         Assert.Equal(StatusCode.FailedPrecondition, (await Assert.ThrowsAsync<RpcException>(async () => await client.SaveCheckAsync(stale))).StatusCode);
 
-        var deleteDefault = await Assert.ThrowsAsync<RpcException>(async () =>
-            await client.DeleteCheckAsync(new Proto.ComplianceCheckId { Id = BuiltInComplianceTypes.ReachableCheckId.ToString() }));
-        Assert.Equal(StatusCode.FailedPrecondition, deleteDefault.StatusCode);
+        await client.DeleteCheckAsync(new Proto.ComplianceCheckId { Id = BuiltInComplianceTypes.ReachableCheckId.ToString() }); // a default check too
+        Assert.DoesNotContain((await client.ListChecksAsync(new Proto.Empty())).Checks, c => c.Id == BuiltInComplianceTypes.ReachableCheckId.ToString());
 
         await client.DeleteCheckAsync(new Proto.ComplianceCheckId { Id = saved.Id });
         Assert.DoesNotContain((await client.ListChecksAsync(new Proto.Empty())).Checks, c => c.Id == saved.Id);

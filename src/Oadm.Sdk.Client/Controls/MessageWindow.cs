@@ -43,12 +43,33 @@ public sealed class MessageWindow : Window
         }
     }
 
-    /// <summary>The message.</summary>
+    /// <summary>The message. Line breaks start a new line; text between <c>**</c> is bold ("Turn on **Compliance**").</summary>
     public string? Message
     {
-        get => _message.Text;
-        set => _message.Text = value;
+        get => _text;
+        set
+        {
+            _text = value;
+            _message.Inlines?.Clear();
+            if (value is null || !value.Contains("**", StringComparison.Ordinal))
+            {
+                _message.Text = value;
+                return;
+            }
+
+            _message.Text = null;
+            var parts = value.Split("**");
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Length > 0)
+                {
+                    _message.Inlines!.Add(new Avalonia.Controls.Documents.Run(parts[i]) { FontWeight = i % 2 == 1 ? FontWeight.SemiBold : FontWeight.Normal });
+                }
+            }
+        }
     }
+
+    private string? _text;
 
     /// <summary>The text of the confirm button; red when it starts with Delete, Remove or Release.</summary>
     public string? ConfirmText

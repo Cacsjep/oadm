@@ -1261,7 +1261,8 @@ Built-in feature (not a plugin): which devices need attention at first glance. S
   checked, no events, results removed, checks kept; the Devices column chooser greys Compliance out while it is off.
 - **Check** = a check type + its settings + its devices (always chosen with the shared picker: All devices, tags, chosen
   devices) + Problem or Warning + on / off + (types that read devices) every 15..1440 minutes (default 60). At most 50.
-  Default checks **Reachable** and **Login works**: always on, not deletable, only their devices change.
+  Default checks **Reachable** and **Login works**: created once per server (setting `Compliance.DefaultsCreated`), then
+  ordinary checks (change, turn off, delete; New check adds them again).
 - **Types**: host (cached data, never contact a device, follow every device change): Reachable, Login works, Certificate
   (expired, fewer than N days left (default 30), not trusted), Firmware (at least a version). Plugins: **Application
   running** (Applications), **Matches configuration file** (Device configuration: a `.cfg` of Create configuration file or
@@ -1273,10 +1274,12 @@ Built-in feature (not a plugin): which devices need attention at first glance. S
   check and device (outcome, detail, checked, since) and written in batches; a changed check is checked again on every
   device; a type whose plugin is off says so and does not run. Every check is a stateful event of the event rules
   ("Compliance: <name>", on while it fails on a device). No fix actions on the page.
-- **Page** (rail, right below Devices): a count card per check (a click shows the devices that fail it; Edit and Delete on
-  the card on hover), tabs All | Problems | Warnings (All first), the devices with a Result column and one column per check
-  (the result text next to the icon, on by default, toggle), Group by tag, Choose columns (per client), New check, Check now
-  (a spinning "Checking..." per device and check until the result is in), Export. Dialog `ComplianceCheckWindow` (single
+- **Page** (rail, right below Devices): a count card per check (a click shows the devices that fail it: the tabs grey out,
+  "Failing: <check>" and **Show all devices** next to them; Edit and Delete on the card on hover), tabs All | Problems |
+  Warnings (All first), the devices with a Result column and one column per check
+  (the result text next to the icon, on by default, toggle; several detail lines on one line: "1 setting differs: X: 60Hz
+  (file: 50Hz)"; the tooltip over the whole cell), Group by tag, Choose columns (per client), New check, Check now
+  (a spinning "Checking..." per device and check until the result is in); right: Turn off compliance, Export. Dialog `ComplianceCheckWindow` (single
   operation: Name, Devices, Kind of check, its settings through the shared `SettingsFormView` of the event rules).
   **Devices grid**: the Compliance column (off by default) or, while it is on, one column per check (toggle, per client).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
@@ -2530,9 +2533,10 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   toolbar buttons: what does not fit goes behind its own More button; the search box stays outside it), `SearchBox`
   (every search field), `OadmIcon`, and for
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
-  `FileRow` (chosen file + "Choose file"), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
+  `FileRow` (chosen file + "Choose file"; `IsSingleButton`: one wide button that shows the chosen file's name, the
+  compliance check form), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
   `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
-  inline "I understand" risk sections), `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
+  inline "I understand" risk sections; line breaks start a new line, text between `**` is bold), `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
   "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
   (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,
   param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with

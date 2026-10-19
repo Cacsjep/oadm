@@ -186,20 +186,24 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
     });
 
     [Fact]
-    public Task A_default_check_changes_only_its_devices_and_cannot_be_deleted() => _ui.RunAsync(async () =>
+    public Task The_default_checks_can_be_changed_and_deleted_and_a_card_opens_the_check_view() => _ui.RunAsync(async () =>
     {
         var (api, store, dialogs) = await CreateAsync();
         var reachable = await api.GetComplianceCheckAsync("6d0a7c52-6f8e-4c4b-9a51-0c0a3b1f0001", CancellationToken.None);
         var editor = new ComplianceCheckEditorViewModel(api, dialogs, await api.GetComplianceCatalogAsync(CancellationToken.None), [.. store.Devices.Cast<Oadm.Sdk.Devices.IDeviceInfo>()], reachable);
-        Assert.True(editor.IsBuiltIn);
-        Assert.False(editor.CanChangeKind);
+        Assert.True(editor.CanChangeKind);
         Assert.Equal("Reachable", editor.Name);
 
         using var page = new ComplianceViewModel(api, dialogs, store, _ui, new InMemoryClientSettingsStore());
-        var reachableCard = page.Cards.Single(c => c.Title == "Reachable");
-        Assert.False(reachableCard.CanDelete);
-        await page.DeleteCommand.ExecuteAsync(reachableCard);
-        Assert.Equal("Reachable cannot be deleted.", page.ErrorText);
+        page.SelectCardCommand.Execute(page.Cards.Single(c => c.Title == "Object Analytics running"));
+        Assert.True(page.IsCheckView);
+        Assert.Equal("Failing: Object Analytics running", page.CheckViewText);
+        page.LeaveCheckViewCommand.Execute(null);
+        Assert.False(page.IsCheckView);
+        Assert.True(page.IsAllTab);
+
+        await page.DeleteCommand.ExecuteAsync(page.Cards.Single(c => c.Title == "Reachable"));
+        Assert.Null(page.ErrorText);
 
         var config = page.Cards.Single(c => c.Title == "Matches base-config.cfg");
         await page.DeleteCommand.ExecuteAsync(config);
@@ -249,6 +253,13 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
             Assert.Contains("Check every (min)", dialogTexts);
             Capture(dialog, outDir, "compliance-check.png");
             dialog.Close();
+
+            var info = new MessageWindow { Heading = "Compliance checks are on", Message = ComplianceViewModel.EnabledInfo, ConfirmText = "OK" };
+            Oadm.Client.App.ApplyCrispText(info);
+            info.Show();
+            Pump();
+            Capture(info, outDir, "compliance-enabled.png");
+            info.Close();
             api.Dispose();
             return true;
         }, CancellationToken.None);
