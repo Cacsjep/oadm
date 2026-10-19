@@ -121,6 +121,7 @@ public static class ServiceRegistration
         {
             // The credential list is Administrator only (the server checks it too).
             CanSaveToCredentialList = sp.GetService<UserSession>()?.IsAdmin ?? true,
+            HasSites = sp.GetService<Oadm.Client.Devices.DeviceStore>()?.Sites.HasSites ?? false,
             Dialogs = sp.GetService<Oadm.Client.Dialogs.IDialogService>(),
         });
 

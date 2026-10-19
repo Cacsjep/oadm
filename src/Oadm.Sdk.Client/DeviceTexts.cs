@@ -3,6 +3,9 @@ namespace Oadm.Sdk.Client;
 /// <summary>Device texts shared by the host and plugin pages (one phrase per concept).</summary>
 public static class DeviceTexts
 {
+    /// <summary>Why a user cannot open devices in Web View: the role lacks the right (Web View page, the device list).</summary>
+    public const string OpenNotAllowed = "Your role does not allow opening devices.";
+
     /// <summary>Length of the shortened device id of a removed device.</summary>
     public const int ShortIdLength = 8;
 

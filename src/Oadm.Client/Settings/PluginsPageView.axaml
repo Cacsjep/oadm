@@ -10,7 +10,7 @@
        builds the grouped view: Servers, Automation, Security, Monitoring, ...). -->
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
-    <Border Grid.Row="1" Classes="card" MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top">
+    <Border Grid.Row="1" Classes="card" MaxWidth="1400" HorizontalAlignment="Left" VerticalAlignment="Top">
       <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowServerId}">
           <TextBlock Classes="secondary" Text="Server ID" VerticalAlignment="Center" />
@@ -31,12 +31,12 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
-            <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
-            <DataGridTemplateColumn Header="Sites" Width="220" SortMemberPath="SiteText" x:DataType="settings:PluginRowViewModel">
+            <DataGridTextColumn Header="Description" Width="*" MinWidth="320" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
+            <DataGridTemplateColumn Header="Sites" Width="160" SortMemberPath="SiteText" x:DataType="settings:PluginRowViewModel">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="settings:PluginRowViewModel">
                   <StackPanel Margin="8,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding SiteText}" />
+                    <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" />
                     <TextBlock Classes="secondary small" Text="{Binding SitePortsText}" IsVisible="{Binding HasSitePorts}" />
                   </StackPanel>
                 </DataTemplate>

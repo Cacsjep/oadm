@@ -145,16 +145,20 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
     private readonly List<WaitingRowViewModel> _all = [];
     private CancellationTokenSource? _loading;
 
-    public WaitingDevicesViewModel(IOadmApi api, IDialogService dialogs, WaitingDevicesState state)
+    public WaitingDevicesViewModel(IOadmApi api, IDialogService dialogs, WaitingDevicesState state, bool hasSites = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         _api = api;
         _dialogs = dialogs;
         State = state;
+        ShowSiteColumn = hasSites;
         Selected.CollectionChanged += (_, _) => OnSelectionChanged();
     }
 
     public WaitingDevicesState State { get; }
+
+    /// <summary>The Site column: shown while the server has sites (docs/sites.md, Client: one rule for every Site column).</summary>
+    public bool ShowSiteColumn { get; }
 
     public RangeObservableCollection<WaitingRowViewModel> Rows { get; } = [];
 

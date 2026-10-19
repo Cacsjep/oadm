@@ -603,8 +603,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         OrderCorePluginPages();
-        Devices.IsWebViewOn = NavItems.Any(n => n.Key == WebViewPageKey);
+        SyncWebViewAccess();
     }
+
+    /// <summary>The permission to open devices in Web View.</summary>
+    internal const string WebViewOpenPermission = "oadm.web-view:open";
+
+    /// <summary>
+    /// Devices at a site open in Web View while its page is in the rail and the role may open devices; otherwise the reason
+    /// comes from the package list: off ("Turn on Web View ...") or on but not for this role.
+    /// </summary>
+    private void SyncWebViewAccess()
+    {
+        bool page = NavItems.Any(n => n.Key == WebViewPageKey);
+        bool mayOpen = Session.Has(WebViewOpenPermission);
+        bool? on = PluginOn(WebViewPackageId);
+        Devices.WebViewAccess = page && mayOpen ? SiteWebAccess.Available
+            : on == true || (on is null && page) ? SiteWebAccess.NotAllowed
+            : SiteWebAccess.Off;
+    }
+
+    /// <summary>The Web View plugin package.</summary>
+    internal const string WebViewPackageId = "oadm.web-view";
 
     /// <summary>The rail key of the Web View page (plugin oadm.web-view).</summary>
     internal const string WebViewPageKey = "plugin:oadm.web-view";

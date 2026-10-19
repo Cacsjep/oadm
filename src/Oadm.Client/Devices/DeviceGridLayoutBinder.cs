@@ -81,10 +81,11 @@ internal sealed class DeviceGridLayoutBinder
     /// <summary>
     /// Columns a mode hides whatever the column chooser says: the Tags column in group mode (grid class <c>tagGroups</c>: the
     /// group header names the tag), the Compliance column while each check has its own column (<c>complianceExpanded</c>) or
-    /// the role may not see compliance (<c>noCompliance</c>).
+    /// the role may not see compliance (<c>noCompliance</c>), the Site column while the server has no sites (<c>noSites</c>).
     /// </summary>
     public static bool HiddenByGroupMode(DataGrid grid, string key) =>
         (key == "tags" && grid.Classes.Contains("tagGroups"))
+        || (key == DevicesViewModel.SiteColumnKey && grid.Classes.Contains("noSites"))
         || (key == ColumnLayoutViewModel.ComplianceKey && (grid.Classes.Contains("complianceExpanded") || grid.Classes.Contains("noCompliance")));
 
     private void Capture()
