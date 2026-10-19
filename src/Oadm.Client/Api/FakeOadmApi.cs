@@ -33,6 +33,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     private readonly Broadcast<TaskChanged> _taskEvents = new();
     private readonly List<TaskPluginInfo> _pluginTemplates;
     private readonly TimeSpan _tick;
+    private readonly TimeProvider _simulationTime;
     private readonly CancellationTokenSource _cts = new();
     private ServerSettings _settings = new()
     {
@@ -55,9 +56,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     /// <param name="tick">Simulation step. Tests pass a few milliseconds.</param>
     /// <param name="seedSampleData">False starts with an empty device and task table.</param>
-    public FakeOadmApi(TimeSpan? tick = null, bool seedSampleData = true)
+    /// <param name="simulationTime">
+    /// Clock of the task simulation (running tasks move on every tick); null = the system clock. Headless tests pass a
+    /// fake clock, so the sample tasks stay where they were seeded however long the test takes.
+    /// </param>
+    public FakeOadmApi(TimeSpan? tick = null, bool seedSampleData = true, TimeProvider? simulationTime = null)
     {
         _tick = tick ?? TimeSpan.FromMilliseconds(250);
+        _simulationTime = simulationTime ?? TimeProvider.System;
         _pluginTemplates =
         [
             new TaskPluginInfo { Id = RestartPluginId, DisplayName = "Restart", IconKey = "restart", ShowInToolbar = true, Group = "Maintenance" },
@@ -1120,7 +1126,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     private async Task SimulationLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(_tick);
+        using var timer = new PeriodicTimer(_tick, _simulationTime);
         try
         {
             while (await timer.WaitForNextTickAsync(ct))

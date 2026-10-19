@@ -43,7 +43,15 @@ public static class HeadlessSession
         Oadm.Client.Themes.Appearance? appearance =
             string.Equals(Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE"), "Light", StringComparison.OrdinalIgnoreCase)
                 ? Oadm.Client.Themes.Appearance.Light : null;
-        App.Options = new AppOptions { UseFake = true, DataFolder = Folder, Appearance = appearance };
+        // The fake server's task simulation runs on a clock that never moves: the sample tasks (a firmware upload in its
+        // "Upload firmware" step, running restarts) stay as seeded however long a busy machine takes to get there.
+        App.Options = new AppOptions
+        {
+            UseFake = true,
+            DataFolder = Folder,
+            Appearance = appearance,
+            FakeSimulationTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(),
+        };
         return HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
     });
 
