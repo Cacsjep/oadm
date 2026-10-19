@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Settings;
 using Oadm.Client.Shell;
-using Oadm.Client.Themes;
+using Oadm.Theme;
 
 namespace Oadm.Client.Tests;
 
@@ -102,5 +102,5 @@ public sealed partial class ThemeColorsTests
     [GeneratedRegex(@"\{StaticResource (Oadm\.[A-Za-z.]+Color)\}")]
     private static partial Regex ColorReference();
 
-    private static string ThemesFolder() => Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Client", "Themes");
+    private static string ThemesFolder() => Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Theme");
 }

@@ -54,7 +54,7 @@ public sealed class TermsTests
         var results = await HeadlessSession.Shared.Dispatch(() =>
         {
             var settings = new InMemoryClientSettingsStore();
-            var window = new TermsWindow();
+            var window = new Oadm.Theme.Shell.TermsWindow();
             window.Attach(new TermsViewModel(settings));
             var completed = new List<bool>();
             window.Completed += (_, accepted) => completed.Add(accepted);

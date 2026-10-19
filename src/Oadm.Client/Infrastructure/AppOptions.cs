@@ -19,7 +19,7 @@ public sealed record AppOptions
     public IReadOnlyList<string> PluginDirs { get; init; } = [];
 
     /// <summary>The appearance for this run instead of the one in the client settings (headless tests).</summary>
-    public Oadm.Client.Themes.Appearance? Appearance { get; init; }
+    public Oadm.Theme.Appearance? Appearance { get; init; }
 
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oadm");

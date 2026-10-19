@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace Oadm.Client.Shell;
+namespace Oadm.Theme.Shell;
 
 /// <summary>The terms of use on the first start. View only: closing the window without Accept counts as Quit.</summary>
 public partial class TermsWindow : Window
@@ -15,7 +15,7 @@ public partial class TermsWindow : Window
     /// <summary>Raised once: true = accepted, false = quit (also the X).</summary>
     public event EventHandler<bool>? Completed;
 
-    public void Attach(TermsViewModel viewModel)
+    public void Attach(TermsDialogViewModel viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;

@@ -75,6 +75,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Oadm.Contracts\Oadm.Contracts.csproj" />
     <ProjectReference Include="..\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj" />
+    <ProjectReference Include="..\Oadm.Theme\Oadm.Theme.csproj" />
   </ItemGroup>
 
   <ItemGroup>
