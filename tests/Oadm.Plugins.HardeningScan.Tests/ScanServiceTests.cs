@@ -107,6 +107,7 @@ public sealed class ScanServiceTests
             new TestDevice { Status = DeviceStatus.CredentialsRequired },
             new TestDevice { Status = DeviceStatus.PasswordNotSet },
             new TestDevice { Status = DeviceStatus.Unreachable },
+            new TestDevice { Status = DeviceStatus.SiteOffline },
         };
         foreach (var device in refused)
         {
@@ -123,11 +124,12 @@ public sealed class ScanServiceTests
         Assert.Equal("Credentials required - the device rejects the stored credentials", results[refused[1].Id].Status);
         Assert.Equal("Password not set - the device is in factory default", results[refused[2].Id].Status);
         Assert.StartsWith("Unreachable", results[refused[3].Id].Status, StringComparison.Ordinal);
+        Assert.Equal("Site offline", results[refused[4].Id].Status);
         var states = results[refused[1].Id].States;
         Assert.Equal('i', states[HardeningCatalog.ColumnIndex[HardeningCatalog.AxisOs]]);
         Assert.Equal('p', states[HardeningCatalog.ColumnIndex[HardeningCatalog.Uart]]);
         Assert.Equal('e', states[HardeningCatalog.ColumnIndex[HardeningCatalog.Ssh]]);
-        Assert.Equal(4, rig.Events.Progress[^1].Failed);
+        Assert.Equal(5, rig.Events.Progress[^1].Failed);
     }
 
     [Fact]

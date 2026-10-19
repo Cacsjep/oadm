@@ -255,6 +255,18 @@ public sealed class DeviceTriggersTests
     }
 
     [Fact]
+    public async Task DevicesOfAnOfflineSiteAreNotContacted()
+    {
+        await using var rig = new Rig();
+        var a = rig.AddDevice("192.168.0.20", status: DeviceStatus.SiteOffline);
+        await rig.StartAsync();
+        var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id]));
+
+        await Wait.UntilAsync(() => rig.Plugin.Runtime!.StatesOf(trigger).Single().Problem == "Site offline", "the status text");
+        Assert.Equal(0, rig.Cameras[a.Id].Connections);
+    }
+
+    [Fact]
     public async Task DevicesThePollFoundNotAnsweringAreNotContactedUntilTheyAreOkAgain()
     {
         await using var rig = new Rig();

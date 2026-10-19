@@ -87,8 +87,10 @@ public sealed class ServiceTests
         var noStorage = new FakeCamera { LocalStorage = false };
         var noExport = new FakeCamera { ExportRecording = false };
         var credentials = new FakeCamera();
+        var atSite = new FakeCamera();
         var cases = new (TestDevice Device, FakeCamera? Camera, string Problem)[]
         {
+            (rig.Add(atSite, "10.0.0.6", DeviceStatus.SiteOffline), atSite, "Site offline"),
             (rig.Add(noStorage, "10.0.0.1"), noStorage, EdgeRecordingTexts.NoStorage),
             (rig.Add(noExport, "10.0.0.2"), noExport, EdgeRecordingTexts.NoExport),
             (rig.Add(credentials, "10.0.0.3", DeviceStatus.CredentialsRequired), credentials, DeviceMessages.CredentialsRequired),
@@ -105,6 +107,7 @@ public sealed class ServiceTests
         }
 
         Assert.Empty(credentials.Requests); // refused statuses are not contacted
+        Assert.Empty(atSite.Requests);
         Assert.Equal(DeviceMessages.Removed, (await SearchAsync(rig, Guid.NewGuid())).Problem);
         await Assert.ThrowsAsync<ArgumentException>(() => SearchAsync(rig, cases[0].Device.Id, FakeCamera.T0, FakeCamera.T0));
     }

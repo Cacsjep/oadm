@@ -92,6 +92,7 @@ public sealed class ServerTests
     [InlineData(DeviceStatus.CredentialsRequired, DeviceMessages.CredentialsRequired)]
     [InlineData(DeviceStatus.PasswordNotSet, DeviceMessages.PasswordNotSet)]
     [InlineData(DeviceStatus.CertificateChanged, DeviceMessages.CertificateChanged)]
+    [InlineData(DeviceStatus.SiteOffline, "Site offline")]
     public async Task Devices_that_refuse_the_login_are_not_asked(DeviceStatus status, string message)
     {
         await using var rig = await new Rig().StartAsync();
