@@ -267,7 +267,7 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   Windows 10 1809 / LTSC 2019 have no TLS 1.3, and many recording servers run them). 1.3 whenever both sides have it;
   forward-secret AEAD suites only where the OS lets an application choose (Linux). Both sides present a self-signed
   ECDSA P-256 certificate (100 years) and check the other's fingerprint only (`Oadm.Sites.Transport.SiteTls`). Every
-  handshake has a timeout (`SiteTls.HandshakeTimeout`, 15 s): `SslStream` has none, and a peer without a common protocol
+  handshake has a timeout (`SiteTls.HandshakeTimeout`, 5 s): `SslStream` has none, and a peer without a common protocol
   was seen to leave the accepting side waiting forever.
 
 ## Server

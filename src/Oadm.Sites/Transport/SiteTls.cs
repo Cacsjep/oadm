@@ -17,7 +17,7 @@ public static class SiteTls
     /// Every handshake must end within this time. SslStream has no timeout of its own: a peer that stops in the middle
     /// (an OS without a common protocol was seen to) would hold the accepting side forever.
     /// </summary>
-    public static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
 
     private const SslProtocols Protocols = SslProtocols.Tls13 | SslProtocols.Tls12;
 
