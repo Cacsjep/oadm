@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
+using Oadm.SiteNode.Config;
 using Oadm.Sites.Transport;
 
 namespace Oadm.SiteNode.Identity;
@@ -61,25 +62,37 @@ public sealed class NodeIdentity : IDisposable
             _certificate.Dispose();
     }
 
+    // Both files absent = first start. A file that cannot be read fails the start (DataFiles), so a passing disk problem
+    // never replaces the identity the server pinned. Only an identity that reads but cannot be decrypted (the key does
+    // not fit, damaged content) is replaced; the old files are kept as .unreadable.
     private X509Certificate2? TryLoad()
     {
-        if (!File.Exists(_identityPath) || !File.Exists(_keyPath))
+        if (!DataFiles.Exists(_identityPath) && !DataFiles.Exists(_keyPath))
             return null;
+        var key = DataFiles.Exists(_keyPath) ? DataFiles.ReadAllBytes(_keyPath) : [];
+        var data = DataFiles.Exists(_identityPath) ? DataFiles.ReadAllBytes(_identityPath) : [];
         try
         {
-            var key = File.ReadAllBytes(_keyPath);
-            var data = File.ReadAllBytes(_identityPath);
             if (key.Length != 32 || data.Length < 28)
-                return null;
+                throw new CryptographicException("The identity files are incomplete.");
             var plain = new byte[data.Length - 28];
             using (var aes = new AesGcm(key, 16))
                 aes.Decrypt(data.AsSpan(0, 12), data.AsSpan(28), data.AsSpan(12, 16), plain, "oadm-site-node-identity"u8);
             return X509CertificateLoader.LoadPkcs12(plain, null, X509KeyStorageFlags.Exportable);
         }
-        catch (Exception e) when (e is CryptographicException or IOException)
+        catch (CryptographicException)
         {
-            return null; // a new identity: the server sees an unknown node, the node must be bound again
+            // A new identity: the server sees an unknown node, the node must be bound again.
+            KeepAside(_identityPath);
+            KeepAside(_keyPath);
+            return null;
         }
+    }
+
+    private static void KeepAside(string path)
+    {
+        if (File.Exists(path))
+            File.Move(path, path + ".unreadable", overwrite: true);
     }
 
     private X509Certificate2 CreateAndSave(string name)
@@ -96,24 +109,5 @@ public sealed class NodeIdentity : IDisposable
         return certificate;
     }
 
-    private static void WritePrivate(string path, byte[] data)
-    {
-        var temp = path + ".tmp";
-        if (OperatingSystem.IsWindows())
-        {
-            File.WriteAllBytes(temp, data);
-        }
-        else
-        {
-            using var stream = new FileStream(temp, new FileStreamOptions
-            {
-                Mode = FileMode.Create,
-                Access = FileAccess.Write,
-                UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
-            });
-            stream.Write(data);
-        }
-
-        File.Move(temp, path, overwrite: true);
-    }
+    private static void WritePrivate(string path, byte[] data) => DataFiles.WriteDurable(path, data, ownerOnly: true);
 }
