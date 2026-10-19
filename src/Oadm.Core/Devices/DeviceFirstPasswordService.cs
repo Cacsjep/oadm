@@ -178,12 +178,10 @@ public sealed partial class DeviceFirstPasswordService
             ? [(Uri.UriSchemeHttps, device.CertFingerprintSha256)]
             : [(Uri.UriSchemeHttps, null), (Uri.UriSchemeHttp, null)];
 
-    private VapixClient Anonymous(Device device, string scheme, string? pin) => _connector.Connect(new VapixConnectionOptions
+    private VapixClient Anonymous(Device device, string scheme, string? pin) => _connector.Connect(Sites.DeviceConnections.For(device, timeout: Timeout) with
     {
-        Address = device.Address,
         Scheme = scheme,
         PinnedCertificateFingerprint = pin,
-        Timeout = Timeout,
     });
 
     private async Task<DeviceFirstPasswordResult> SetOneAsync(Device device, string password, CancellationToken ct)

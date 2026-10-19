@@ -18,7 +18,7 @@
   <ItemGroup>
     <None Update="Sdk\*" Pack="true" PackagePath="Sdk\%(Filename)%(Extension)" />
     <!-- Oadm.Plugin.Repo.* are for plugins inside this repository only. -->
-    <None Update="targets\Oadm.Plugin.props;targets\Oadm.Plugin.targets;targets\Oadm.Plugin.Versions.props" Pack="true" PackagePath="targets\%(Filename)%(Extension)" />
+    <None Update="targets\Oadm.Plugin.props;targets\Oadm.Plugin.targets;targets\Oadm.Plugin.Versions.props;targets\BannedSymbols.txt" Pack="true" PackagePath="targets\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <Target Name="OadmWritePackageProps" BeforeTargets="GenerateNuspec;_GetPackageFiles">

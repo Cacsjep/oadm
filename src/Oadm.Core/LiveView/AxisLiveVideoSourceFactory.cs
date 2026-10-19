@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Core.Devices;
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Core.Security;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 namespace Oadm.Core.LiveView;
@@ -32,7 +33,8 @@ public sealed class AxisLiveVideoSourceFactory(
     CredentialStore credentials,
     VapixClientFactory clients,
     ILoggerFactory? loggerFactory = null,
-    Sdk.Devices.IDeviceEventStreams? ports = null) : ILiveVideoSourceFactory
+    Sdk.Devices.IDeviceEventStreams? ports = null,
+    DeviceRouter? router = null) : ILiveVideoSourceFactory
 {
     private readonly ILoggerFactory _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
 
@@ -60,6 +62,8 @@ public sealed class AxisLiveVideoSourceFactory(
                 Size = key.Size,
                 Fps = key.Fps,
                 Camera = key.Camera,
+                Route = DeviceConnections.RouteOf(device),
+                Router = router,
             },
             ct,
             _loggerFactory.CreateLogger<RtspVideoSource>()).ConfigureAwait(false);

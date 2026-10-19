@@ -1,7 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
+using Oadm.Core.Sites;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Vapix;
@@ -33,6 +35,12 @@ public sealed record VapixConnectionOptions
     /// Axis check (see "Security and access" in CLAUDE.md); everything else keeps Basic HTTPS only.
     /// </summary>
     public bool AllowBasicOverHttp { get; init; }
+
+    /// <summary>
+    /// The way to the device: the server's own network (default) or a site (docs/sites.md). Built only by
+    /// <see cref="DeviceConnections"/>, so every connection to a device carries its route.
+    /// </summary>
+    public DeviceRoute Route { get; init; }
 }
 
 /// <summary>
@@ -45,6 +53,7 @@ public sealed record VapixConnectionOptions
 /// Digest only for http:// and Basic or Digest for https://, so Basic never travels in clear text,
 /// except for the add page's login to a verified Axis device (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).
 /// </remarks>
+[SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The routed VAPIX client: its SocketsHttpHandler opens every connection through DeviceRouter, ClientWebSocket.ConnectAsync goes through that handler.")]
 public sealed partial class VapixClient : IVapixClient, IDisposable
 {
     /// <summary>Parameters read by <see cref="GetNetworkInfoAsync"/>.</summary>
@@ -94,6 +103,12 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
 
     public Uri BaseAddress { get; }
 
+    /// <summary>The way to the device; every timeout through a site gets the route's extra (<see cref="DeviceRouter.ExtraTimeout"/>).</summary>
+    public DeviceRoute Route { get; init; }
+
+    /// <summary>The route handler that adds the round trips of <see cref="Route"/> to timeouts.</summary>
+    public DeviceRouter Router { get; init; } = DeviceRouter.Local;
+
     /// <summary>The login of the handler, for the one place the handler cannot answer: WebSocket upgrades (relay).</summary>
     internal NetworkCredential? Credentials { get; init; }
 
@@ -110,41 +125,48 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     /// </summary>
     public CertificateInfo? ObservedCertificate => Pinning?.ObservedCertificate;
 
-    /// <summary>Creates a client with a real <see cref="HttpClientHandler"/> for the given options.</summary>
-    public static VapixClient Create(VapixConnectionOptions options)
+    /// <summary>
+    /// Creates a client with a real <see cref="SocketsHttpHandler"/> for the given options: its connections open on
+    /// <see cref="VapixConnectionOptions.Route"/> through <paramref name="router"/> (default: the server's own network only).
+    /// </summary>
+    public static VapixClient Create(VapixConnectionOptions options, DeviceRouter? router = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        router ??= DeviceRouter.Local;
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
         var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
-        var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp);
-        return new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials };
+        var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
+        return new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials, Route = options.Route, Router = router };
     }
 
     /// <summary>
-    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>), Basic or
-    /// Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the handler
-    /// answers the strongest challenge the device offers (Digest before Basic).
+    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>, never through a
+    /// site), Basic or Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the
+    /// handler answers the strongest challenge the device offers (Digest before Basic). Every connection opens on
+    /// <paramref name="route"/> through <paramref name="router"/>; TLS, pinning and the login stay here, end to end.
     /// </summary>
-    public static HttpClientHandler CreateHandler(Uri baseAddress, NetworkCredential? credentials, CertificatePinning pinning, bool allowBasicOverHttp = false)
+    public static SocketsHttpHandler CreateHandler(Uri baseAddress, NetworkCredential? credentials, CertificatePinning pinning, bool allowBasicOverHttp = false,
+        DeviceRoute route = default, DeviceRouter? router = null, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(baseAddress);
         ArgumentNullException.ThrowIfNull(pinning);
 
-        var handler = new HttpClientHandler
+        var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
             UseCookies = false,
             UseProxy = false,
             PreAuthenticate = true,
-            ServerCertificateCustomValidationCallback = pinning.ValidateCallback,
+            SslOptions = { RemoteCertificateValidationCallback = pinning.ValidateSslCallback },
         };
+        (router ?? DeviceRouter.Local).Configure(handler, route, timeout ?? DeviceConnections.DefaultTimeout);
 
         if (credentials is not null)
         {
             var cache = new CredentialCache();
             var prefix = new Uri(baseAddress.GetLeftPart(UriPartial.Authority) + "/");
             cache.Add(prefix, "Digest", credentials);
-            if (baseAddress.Scheme == Uri.UriSchemeHttps || allowBasicOverHttp)
+            if (baseAddress.Scheme == Uri.UriSchemeHttps || (allowBasicOverHttp && route.IsLocal))
             {
                 cache.Add(prefix, "Basic", credentials);
             }
@@ -357,7 +379,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         EnsureSameDevice(request.RequestUri);
-        var timeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
+        var deviceTimeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
+        request.Options.Set(DeviceRouter.ConnectTimeoutOption, deviceTimeout);
+        var timeout = Router.Timeout(Route, deviceTimeout);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (timeout != System.Threading.Timeout.InfiniteTimeSpan)
         {
@@ -380,6 +404,12 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             throw new TaskCanceledException(
                 string.Create(System.Globalization.CultureInfo.InvariantCulture, $"The device did not answer within {timeout.TotalSeconds:0} seconds."),
                 new TimeoutException(ex.Message, ex));
+        }
+        catch (HttpRequestException ex) when (SiteFailure(ex) is { } site)
+        {
+            // The site could not carry the connection: a site error, never a device error (docs/sites.md).
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
+            throw;
         }
         catch (HttpRequestException ex) when (IsTooLarge(ex))
         {
@@ -438,7 +468,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         socket.Options.KeepAliveTimeout = keepAlive;
         socket.Options.CollectHttpResponseDetails = true; // a refused upgrade (401, 403) is told apart from a broken connection
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(_timeout);
+        timeoutCts.CancelAfter(Router.Timeout(Route, _timeout));
         try
         {
             await socket.ConnectAsync(builder.Uri, _http, timeoutCts.Token).ConfigureAwait(false);
@@ -448,6 +478,11 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         {
             var upgradeStatus = socket.HttpStatusCode;
             socket.Dispose();
+            if (SiteFailure(ex) is { } site)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
+            }
+
             if (ex is OperationCanceledException && !ct.IsCancellationRequested)
             {
                 throw new TaskCanceledException(
@@ -542,7 +577,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(_timeout);
+        timeoutCts.CancelAfter(Router.Timeout(Route, _timeout));
         try
         {
             await socket.ConnectAsync(uri, _http, timeoutCts.Token).ConfigureAwait(false);
@@ -554,6 +589,11 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             var challenges = socket.HttpResponseHeaders is { } responseHeaders
                 && responseHeaders.TryGetValue("WWW-Authenticate", out var values) ? values.ToList() : [];
             socket.Dispose();
+            if (SiteFailure(ex) is { } site)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
+            }
+
             if (Pinning?.MismatchFingerprint is { } actual)
             {
                 throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
@@ -673,6 +713,20 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     public void Dispose()
     {
         _http.Dispose();
+    }
+
+    /// <summary>The <see cref="SiteException"/> a connect through a site failed with (HttpClient and ClientWebSocket wrap it), else null.</summary>
+    internal static SiteException? SiteFailure(Exception? ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is SiteException site)
+            {
+                return site;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

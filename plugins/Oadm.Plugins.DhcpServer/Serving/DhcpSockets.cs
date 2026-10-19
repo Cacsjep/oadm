@@ -44,6 +44,7 @@ public interface IDhcpSocketFactory
 /// Every OS also checks the receiving interface of each packet (IP_PKTINFO) when bound to 0.0.0.0. A socket bound to a
 /// loopback address never sends broadcasts: they go to the loopback address instead (tests).
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The DHCP server's own sockets on the server's network (siteSupport none).")]
 public sealed class UdpDhcpSocketFactory : IDhcpSocketFactory
 {
     public static UdpDhcpSocketFactory Instance { get; } = new();

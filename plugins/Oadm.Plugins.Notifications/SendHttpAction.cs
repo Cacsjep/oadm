@@ -15,6 +15,7 @@ namespace Oadm.Plugins.Notifications;
 /// query, JSON or XML escaped in the body), so "objectId": "{objectId}" stays valid JSON. Runs once per rule edge, no
 /// device. Success = any 2xx answer.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The user's own servers on the server's network, not devices.")]
 public sealed class SendHttpAction : IActionPlugin
 {
     public const string ActionId = "oadm.notifications.http";

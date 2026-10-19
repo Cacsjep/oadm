@@ -4,6 +4,7 @@ using System.Net.Sockets;
 
 using Oadm.Core.Discovery;
 using Oadm.Core.Settings;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 using CoreDiscoveryService = Oadm.Core.Discovery.DiscoveryService;
@@ -12,8 +13,10 @@ using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Discovery;
 
 /// <summary><see cref="IDiscoveryBackend"/> over the Core discovery (mDNS browser, range scanner, sessions).</summary>
-public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerSettingsStore settings, VapixProbe probe) : IDiscoveryBackend
+public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerSettingsStore settings, VapixProbe probe, RoutedDns? dns = null) : IDiscoveryBackend
 {
+    private readonly RoutedDns _dns = dns ?? RoutedDns.Local;
+
     /// <summary>How long a host name of "Add manually" may take to resolve.</summary>
     public static readonly TimeSpan ResolveTimeout = TimeSpan.FromSeconds(5);
 
@@ -44,14 +47,21 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         return discovery.StartRangeScan(range!, options);
     }
 
-    public async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct)
+    public Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct) =>
+        StartAddressProbeAsync(input, importLine, DeviceRoute.Local, ct);
+
+    /// <summary>
+    /// Probes one typed address on <paramref name="route"/>: a host name resolves on that route (work stream 5 runs this
+    /// for the server's own network and every online site).
+    /// </summary>
+    internal async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, DeviceRoute route, CancellationToken ct)
     {
         if (!EnteredAddress.TryParse(input, out var entered, out var error))
         {
             throw new ArgumentException(error);
         }
 
-        var ip = await ResolveAsync(entered!.Host, ct).ConfigureAwait(false);
+        var ip = await ResolveAsync(route, entered!.Host, ct).ConfigureAwait(false);
         string[]? schemes = entered.Scheme is null ? null : [entered.Scheme];
         TimeSpan? timeout = null;
         if (importLine)
@@ -62,7 +72,7 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
 
         return discovery.StartAddressProbe(entered.DeviceAddress, async token =>
         {
-            var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes, timeout).ConfigureAwait(false);
+            var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes, timeout, route).ConfigureAwait(false);
             return result is null ? null : ToDiscovery(result, ip);
         });
     }
@@ -104,7 +114,7 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         !result.AuthenticationRequired,
         result.ProductType);
 
-    private static async Task<IPAddress> ResolveAsync(string host, CancellationToken ct)
+    private async Task<IPAddress> ResolveAsync(DeviceRoute route, string host, CancellationToken ct)
     {
         if (IPAddress.TryParse(host, out var ip))
         {
@@ -115,7 +125,7 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         timeout.CancelAfter(ResolveTimeout);
         try
         {
-            var addresses = await Dns.GetHostAddressesAsync(host, timeout.Token).ConfigureAwait(false);
+            var addresses = await _dns.ResolveAsync(route, host, timeout.Token).ConfigureAwait(false);
             return addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
                 ?? addresses.FirstOrDefault()
                 ?? throw new ArgumentException($"The host name '{host}' has no address.");

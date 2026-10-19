@@ -30,6 +30,7 @@ public interface IAddressProbe
 /// <see cref="PingTimeout"/> each; cross-platform, on Linux .NET falls back to the ping utility without root) plus a
 /// plain TCP connect to port 80 and 443, closed right away. Nothing else is sent to whatever answers.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Address-in-use check on the server network; work stream 6 moves it to IDeviceNetwork.")]
 public sealed class NetworkAddressProbe : IAddressProbe
 {
     public static NetworkAddressProbe Instance { get; } = new();

@@ -59,6 +59,7 @@ public sealed partial class DeviceAdder(
                 {
                     Serial = found.Serial,
                     Address = address,
+                    SiteId = found.Route.SiteId,
                     UseHostName = !IPAddress.TryParse(EnteredAddress.TryParse(address, out var parsed, out _) ? parsed!.Host : address, out _),
                     HostName = hostName,
                     Model = probed?.Model ?? found.Model,
@@ -107,7 +108,7 @@ public sealed partial class DeviceAdder(
         try
         {
             string[]? schemes = found.EnteredAddress is not null && found.Scheme is not null ? [found.Scheme] : null;
-            var result = await probe.ProbeAsync(found.ConnectAddress, ct, schemes).ConfigureAwait(false);
+            var result = await probe.ProbeAsync(found.ConnectAddress, ct, schemes, route: found.Route).ConfigureAwait(false);
             if (result is not null && !string.Equals(result.Serial, found.Serial, StringComparison.OrdinalIgnoreCase))
             {
                 LogSerialMismatch(found.ConnectAddress, found.Serial, result.Serial);
@@ -153,12 +154,7 @@ public sealed partial class DeviceAdder(
         var scheme = Mappers.ToSchemeString(device.Scheme);
         try
         {
-            using (var anonymous = connector.Connect(new VapixConnectionOptions
-            {
-                Address = device.Address,
-                Scheme = scheme,
-                PinnedCertificateFingerprint = device.CertFingerprintSha256,
-            }))
+            using (var anonymous = connector.Connect(Oadm.Core.Sites.DeviceConnections.For(device)))
             {
                 // HTTPS when the device offers it (the probe tries it first); plain HTTP only as a fallback.
                 await anonymous.SetInitialRootPasswordAsync(password, ct, allowPlainHttp: scheme == Uri.UriSchemeHttp).ConfigureAwait(false);

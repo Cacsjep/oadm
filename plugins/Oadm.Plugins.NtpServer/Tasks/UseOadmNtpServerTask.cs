@@ -13,6 +13,7 @@ namespace Oadm.Plugins.NtpServer.Tasks;
 /// the device reaches (static server list = that one address). Steps: Check compatibility, Read NTP settings, Set NTP
 /// server &lt;addr&gt;, Verify NTP settings. The VAPIX requests are the Date and time plugin's (TimePlanner / TimeClient).
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The device's host name; work stream 6 resolves it with IDeviceNetwork.ResolveAsync.")]
 public sealed class UseOadmNtpServerTask : ITaskPlugin
 {
     public const string StepCheckCompatibility = "Check compatibility";
