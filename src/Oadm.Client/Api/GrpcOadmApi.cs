@@ -371,6 +371,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
             new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "", ExpectedSerial = expectedSerial, ImportLine = true },
             cancellationToken: ct)).SessionId;
 
+    public async Task<DiscoverySession> ProbeLineAsync(ProbeAddressRequest request, CancellationToken ct) =>
+        await C.Discovery.ProbeAddressAsync(request, cancellationToken: ct);
+
     public IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct) =>
         ReadAll(C.Discovery.WatchDiscovered(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct), ct);
 

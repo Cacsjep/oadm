@@ -124,6 +124,17 @@ public interface ICorePluginClientContext
     bool? IsPluginOn(string packageId) => null;
 
     /// <summary>
+    /// The host asks the page to open a device; the argument is the device's id. Web View uses it: the address link and
+    /// "Open web interface" of a device at a site open the device there (the user's computer usually cannot reach the
+    /// site). Default (older hosts): never raised.
+    /// </summary>
+    event EventHandler<string>? OpenDeviceRequested
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// The license of the plugin package <paramref name="packageId"/> as the server checked it (status, reason, what it
     /// allows), e.g. for "No license" on the page; read it again when the page is shown. Null when the host cannot tell.
     /// The server checks again on every call.

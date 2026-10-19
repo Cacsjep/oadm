@@ -211,6 +211,7 @@ public static partial class OadmServerHost
         services.AddSingleton<Core.Sites.ISiteStates>(sp => sp.GetRequiredService<Sites.SiteManager>());
         services.AddSingleton<Core.Sites.ISiteTransport>(sp => sp.GetRequiredService<Sites.SiteManager>());
         services.AddSingleton<Core.Sites.ISiteRelays>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Core.Sites.ISiteNetwork>(sp => sp.GetRequiredService<Sites.SiteManager>());
         // The network checks of plugins (IDeviceNetwork) on every route: the server's own network or a site's node.
         services.AddSingleton(sp => new Core.Sites.DeviceNetworks(sp.GetService<Core.Sites.ISiteNetwork>(), sp.GetService<Core.Sites.ISiteStates>()));
         services.AddSingleton<Sites.SiteAdmin>();
@@ -221,7 +222,7 @@ public static partial class OadmServerHost
         // Routing (docs/sites.md): every device connection opens on its route; without a site transport only the server's
         // own network exists and everything connects as before.
         services.AddSingleton(sp => new Core.Sites.DeviceRouter(sp.GetService<Core.Sites.ISiteTransport>(), sp.GetService<Core.Sites.ISiteStates>()));
-        services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>()));
+        services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>(), sp.GetService<Core.Sites.ISiteNetwork>()));
         services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>(), sp.GetRequiredService<Core.Sites.DeviceRouter>()));
         services.AddSingleton<VapixClientFactory>();
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
@@ -425,7 +426,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<IDeviceProbe>(),
             sp.GetService<ILogger<CoreDiscoveryService>>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IDnsNameLookup>()));
+            sp.GetRequiredService<IDnsNameLookup>(),
+            sp.GetService<Core.Sites.ISiteNetwork>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
         services.AddSingleton<DiscoveryAuthenticator>();
         // Adding devices: the add page's Commit and the automatic add of core plugins (DHCP server) share DeviceAdder.

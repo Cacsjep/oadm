@@ -444,6 +444,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         Rows.CollectionChanged += OnRowsChanged;
         FilteredRows.ReplaceAll(Rows.Where(r => IsListed(r, SearchText)).ToList());
         _importTotal = _importQueue.Count;
+        if (file.Lines.Any(l => l.Site is not null))
+        {
+            ShowSiteColumn = true;
+        }
+
         UpdateSummary();
     }
 
@@ -482,18 +487,34 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 ImportLine line = row.ImportLine!;
                 _ui.Post(row.MarkImportChecking);
                 string sessionId;
+                string siteId;
                 try
                 {
-                    sessionId = line.ExpectedSerial is { } serial
-                        ? await _api.ProbeAddressAsync(line.Address, line.UserName, line.Password, serial, stop).ConfigureAwait(true)
-                        : await _api.ProbeAddressAsync(line.Address, line.UserName, line.Password, stop).ConfigureAwait(true);
+                    DiscoverySession session = await _api.ProbeLineAsync(new ProbeAddressRequest
+                    {
+                        Address = line.Address,
+                        UserName = line.UserName ?? "",
+                        Password = line.Password ?? "",
+                        ExpectedSerial = line.ExpectedSerial ?? "",
+                        ImportLine = true,
+                        Site = line.Site ?? "",
+                    }, stop).ConfigureAwait(true);
+                    (sessionId, siteId) = (session.SessionId, session.SiteId);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     slots.Release();
                     _ui.Post(() =>
                     {
-                        SetNotFound(row, Message(ex)); // e.g. a host name that does not resolve
+                        if (line.Site is not null && Message(ex).StartsWith(NoSitePrefix, StringComparison.Ordinal))
+                        {
+                            row.SetImportProblem("Not added", Message(ex), PillKind.Warning); // a site OADM does not know
+                        }
+                        else
+                        {
+                            SetNotFound(row, Message(ex)); // e.g. a host name that does not resolve, the line's site offline
+                        }
+
                         ImportLineDone();
                     });
                     continue;
@@ -501,6 +522,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
                 _ui.Post(() =>
                 {
+                    row.LineSiteId = siteId;
                     _sessions.Add(sessionId);
                     _scanning.Add(sessionId);
                     _importRows[sessionId] = row;
@@ -551,7 +573,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 WaitingList page = await _api.ListWaitingAsync(after, WaitingBatch, _cts.Token).ConfigureAwait(true);
                 foreach (WaitingDevice device in page.Devices)
                 {
-                    _waitingAddresses.Add(WaitingKey(device.Address));
+                    _waitingAddresses.Add(WaitingKey(device.SiteName, device.Address));
                 }
 
                 after = page.NextAfter.Length > 0 && page.Devices.Count > 0 ? page.NextAfter : null;
@@ -563,6 +585,15 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             LogWaitingListFailed(_logger, ex.Message);
         }
     }
+
+    /// <summary>
+    /// A (site, address) as the waiting list keeps it (docs/sites.md: "Already waiting" compares the site too): the site's
+    /// name upper case (empty = everywhere) and <see cref="WaitingKey(string)"/> of the address.
+    /// </summary>
+    internal static string WaitingKey(string? site, string address) => (site ?? "").Trim().ToUpperInvariant() + "|" + WaitingKey(address);
+
+    /// <summary>The server's text for a Site column that names no site ("There is no site named X.").</summary>
+    internal const string NoSitePrefix = "There is no site named";
 
     /// <summary>An address as the server's waiting list keys it (WaitingDeviceStore.Normalize: no scheme, upper case).</summary>
     internal static string WaitingKey(string address)
@@ -586,7 +617,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     /// <summary>Nothing answered at the line's address: "Not found", or "Already waiting" when an earlier import kept it.</summary>
     private void SetNotFound(DiscoveredRowViewModel row, string detail)
     {
-        if (_waitingAddresses.Contains(WaitingKey(row.Address)))
+        if (_waitingAddresses.Contains(WaitingKey(row.ImportLine?.Site, row.Address)))
         {
             row.SetImportProblem(DiscoveredRowViewModel.AlreadyWaitingChip, "An earlier import keeps it waiting. OADM adds it once it answers.", PillKind.Neutral);
         }
@@ -844,14 +875,16 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         foreach (DiscoveredRowViewModel[] batch in rows.Chunk(WaitingBatch))
         {
             var lines = new List<WaitingLine>(batch.Length);
-            foreach (ImportLine line in batch.Select(r => r.ImportLine!))
+            foreach (DiscoveredRowViewModel row in batch)
             {
+                ImportLine line = row.ImportLine!;
                 var waitingLine = new WaitingLine
                 {
                     Address = line.Address,
                     UserName = line.UserName ?? "",
                     Password = line.Password ?? "",
                     ExpectedSerial = line.ExpectedSerial ?? "",
+                    SiteId = row.LineSiteId,
                 };
                 waitingLine.Tags.AddRange(line.Tags);
                 lines.Add(waitingLine);
@@ -1134,6 +1167,42 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
     }
 
+    // Import and Add manually: the rows each address probe found, in order (several when sites answer with different devices).
+    private readonly Dictionary<string, List<DiscoveredRowViewModel>> _probeRows = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// A row an address probe found. Different devices at the same address through several sites are all listed, none
+    /// checked by itself, each with "Answers through Building A and Building B." (docs/sites.md, "Import from file").
+    /// </summary>
+    private void TrackProbeRow(string sessionId, DiscoveredRowViewModel row)
+    {
+        if (!_probeRows.TryGetValue(sessionId, out List<DiscoveredRowViewModel>? rows))
+        {
+            _probeRows[sessionId] = rows = [];
+        }
+
+        if (rows.Contains(row))
+        {
+            return;
+        }
+
+        rows.Add(row);
+        if (rows.Count < 2)
+        {
+            return;
+        }
+
+        string text = Contracts.Sites.SiteDiscoveryTexts.AnswersThrough(
+            [.. rows.Select(r => Contracts.Sites.SiteDiscoveryTexts.RouteName(r.SiteName)).Distinct(StringComparer.OrdinalIgnoreCase)]);
+        foreach (DiscoveredRowViewModel one in rows)
+        {
+            one.MarkAnswersThrough(text);
+        }
+    }
+
+    /// <summary>Column Site: shown once a device answered through a site or the file names sites (stays shown).</summary>
+    [ObservableProperty] public partial bool ShowSiteColumn { get; private set; }
+
     /// <summary>The row of an export line whose address now belongs to another device.</summary>
     internal static string OtherDeviceText(string found, string expected) =>
         $"Another device answers at this address ({found}). The file lists {expected}.";
@@ -1177,16 +1246,32 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 {
                     FilteredRows.Remove(line); // the search no longer matches (managed ones leave in OnRowPropertyChanged)
                 }
+
+                row = line;
             }
             else if (row is null)
             {
                 row = new DiscoveredRowViewModel(found, sessionId) { ShowDnsName = ShowDnsNameChoice && UseDnsNames };
                 row.PropertyChanged += OnRowPropertyChanged;
                 _rowsById.TryAdd(row.DiscoveredId, row);
-                Rows.Add(row);
-                if (IsListed(row, SearchText))
+                DiscoveredRowViewModel? after = _probeRows.TryGetValue(sessionId, out List<DiscoveredRowViewModel>? earlier) ? earlier[^1] : null;
+                if (after is not null)
                 {
-                    FilteredRows.Add(row);
+                    // Another device at the same address through another site: right below the first one (file order stays).
+                    Rows.Insert(Rows.IndexOf(after) + 1, row);
+                    if (IsListed(row, SearchText))
+                    {
+                        int shown = FilteredRows.IndexOf(after);
+                        FilteredRows.Insert(shown < 0 ? FilteredRows.Count : shown + 1, row);
+                    }
+                }
+                else
+                {
+                    Rows.Add(row);
+                    if (IsListed(row, SearchText))
+                    {
+                        FilteredRows.Add(row);
+                    }
                 }
             }
             else if (!row.IsAdded && !(found.AuthState == AuthState.Pending && row.AuthState != AuthState.Pending && row.SessionId != sessionId))
@@ -1195,18 +1280,29 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 row.SessionId = sessionId;
                 row.Update(found);
             }
+
+            if (found.SiteName.Length > 0)
+            {
+                ShowSiteColumn = true;
+            }
+
+            if (row is not null && !_duplicateSessions.Contains(sessionId) && (IsImportMode || IsManualMode))
+            {
+                TrackProbeRow(sessionId, row);
+            }
         }
 
         if (found.ScanFinished)
         {
             if (_manualInputs.Remove(sessionId, out string? input) && !Rows.Any(r => r.SessionId == sessionId))
             {
-                Validation.SetServerError(nameof(ManualAddress), $"No Axis device answered at {input}.");
+                // Not through the server nor any site that reaches the address; a site's own reason when it gave one.
+                Validation.SetServerError(nameof(ManualAddress), found.Problem.Length > 0 ? found.Problem : $"No Axis device answered at {input}.");
             }
 
             if (_importRows.Remove(sessionId, out DiscoveredRowViewModel? notFound))
             {
-                SetNotFound(notFound, $"No Axis device answered at {notFound.Address}.");
+                SetNotFound(notFound, found.Problem.Length > 0 ? found.Problem : $"No Axis device answered at {notFound.Address}.");
             }
 
             if (IsImportMode && _scanning.Contains(sessionId))

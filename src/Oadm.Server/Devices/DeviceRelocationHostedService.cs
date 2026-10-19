@@ -1,6 +1,8 @@
 using System.Net;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Devices;
+using Oadm.Core.Sites;
 using Oadm.Core.Tasks;
 
 using CoreDiscoveryService = Oadm.Core.Discovery.DiscoveryService;
@@ -18,47 +20,103 @@ public sealed class DeviceRelocationOptions
 
     /// <summary>How long one run listens to mDNS. Default 15 s.</summary>
     public TimeSpan BrowseDuration { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>The devices of a site offline for longer than this are looked for elsewhere too. Default 1 hour.</summary>
+    public TimeSpan SiteOfflineMove { get; init; } = TimeSpan.FromHours(1);
 }
 
 /// <summary>
-/// Periodic mDNS re-find: when a managed device is unreachable at its stored address (status Unreachable, address
-/// is an IP literal), a short zero-conf browse looks for its serial number; when the device announces another
-/// address there, <see cref="DeviceAddressService.TryRelocateAsync"/> verifies it and moves the record (logged,
-/// published as a device change). Nothing is browsed while no device is unreachable.
+/// Periodic mDNS re-find: when a managed device does not answer on its route (status Unreachable, or Site offline for
+/// longer than <see cref="DeviceRelocationOptions.SiteOfflineMove"/>; address is an IP literal), a short zero-conf browse
+/// on the server's network and through every online site looks for its serial number; when the device announces another
+/// address or answers through another route, <see cref="DeviceAddressService.TryRelocateAsync(string, string, DeviceRoute, string, bool, CancellationToken)"/>
+/// verifies it there and moves the record: route and address together (logged, published as a device change, audited
+/// "Device moved" by "system"). A device that answers on its current route never moves; devices addressed by name never
+/// move. Nothing is browsed while no device is a candidate.
 /// </summary>
 public sealed partial class DeviceRelocationHostedService(
     CoreDiscoveryService discovery,
     DeviceRepository devices,
     DeviceAddressService addresses,
     DeviceRelocationOptions options,
-    ILogger<DeviceRelocationHostedService> logger) : BackgroundService
+    ILogger<DeviceRelocationHostedService> logger,
+    ISiteStates? sites = null,
+    AuditLog? audit = null,
+    TimeProvider? time = null) : BackgroundService
 {
-    /// <summary>One run: browse for the unreachable devices and move the ones found elsewhere. Returns how many moved.</summary>
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private readonly Dictionary<Guid, DateTimeOffset> _offlineSince = [];
+
+    /// <summary>One run: browse for the devices that do not answer and move the ones found elsewhere. Returns how many moved.</summary>
     public async Task<int> RunOnceAsync(CancellationToken ct)
     {
-        var candidates = (await devices.ListDevicesAsync(ct).ConfigureAwait(false))
-            // Computed status: a device of an offline site shows Site offline, never Unreachable, and is not looked for here.
-            .Where(d => d.Status == Sdk.Devices.DeviceStatus.Unreachable && !DeviceAddressService.UsesHostName(d))
-            .Select(d => d.Serial)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var all = await devices.ListDevicesAsync(ct).ConfigureAwait(false);
+        var longOffline = SitesOfflineLong(all);
+        var candidates = all
+            // Computed status: a device of an offline site shows Site offline; it is looked for once its site is offline for long.
+            .Where(d => !DeviceAddressService.UsesHostName(d)
+                && (d.Status == Sdk.Devices.DeviceStatus.Unreachable
+                    || (d.Status == Sdk.Devices.DeviceStatus.SiteOffline && d.SiteId is { } site && longOffline.Contains(site))))
+            .ToDictionary(d => d.Serial, StringComparer.OrdinalIgnoreCase);
         if (candidates.Count == 0)
         {
             return 0;
         }
 
-        var seen = await BrowseAsync(candidates, ct).ConfigureAwait(false);
+        var seen = await BrowseAsync(candidates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase), ct).ConfigureAwait(false);
         var moved = 0;
-        foreach (var (serial, address) in seen)
+        foreach (var (serial, (route, address)) in seen)
         {
-            var result = await addresses.TryRelocateAsync(serial, address, ct).ConfigureAwait(false);
+            var before = candidates[serial];
+            var result = await addresses.TryRelocateAsync(serial, address, route, "found again by mDNS", requireUnreachable: true, ct).ConfigureAwait(false);
             if (result == DeviceAddressChangeResult.Updated)
             {
                 moved++;
                 LogRelocated(serial, address);
+                if (audit is not null)
+                {
+                    await audit.WriteAsync("system", string.Empty, AuditActions.DeviceMoved, serial,
+                        "Found again: " + DeviceMoveText.Of(DeviceConnections.RouteOf(before), before.Address, route, address, sites), ct).ConfigureAwait(false);
+                }
             }
         }
 
         return moved;
+    }
+
+    /// <summary>
+    /// The sites offline for longer than <see cref="DeviceRelocationOptions.SiteOfflineMove"/> (counted from the first run
+    /// that saw them offline; a site that comes back starts again).
+    /// </summary>
+    private HashSet<Guid> SitesOfflineLong(IReadOnlyList<Device> all)
+    {
+        var now = _time.GetUtcNow();
+        var result = new HashSet<Guid>();
+        if (sites is null)
+        {
+            return result;
+        }
+
+        var used = all.Select(d => d.SiteId).OfType<Guid>().ToHashSet();
+        foreach (var site in _offlineSince.Keys.Where(s => !used.Contains(s) || sites.IsOnline(s)).ToList())
+        {
+            _offlineSince.Remove(site);
+        }
+
+        foreach (var site in used.Where(s => !sites.IsOnline(s) && !sites.IsStarting(s)))
+        {
+            if (!_offlineSince.TryGetValue(site, out var since))
+            {
+                _offlineSince[site] = since = now;
+            }
+
+            if (now - since >= options.SiteOfflineMove)
+            {
+                result.Add(site);
+            }
+        }
+
+        return result;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -85,9 +143,9 @@ public sealed partial class DeviceRelocationHostedService(
         }
     }
 
-    private async Task<Dictionary<string, string>> BrowseAsync(HashSet<string> serials, CancellationToken ct)
+    private async Task<Dictionary<string, (DeviceRoute Route, string Address)>> BrowseAsync(HashSet<string> serials, CancellationToken ct)
     {
-        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var found = new Dictionary<string, (DeviceRoute, string)>(StringComparer.OrdinalIgnoreCase);
         var session = discovery.StartZeroConf();
         try
         {
@@ -99,7 +157,7 @@ public sealed partial class DeviceRelocationHostedService(
                 {
                     if (e.Device is { } device && serials.Contains(device.Serial) && !Equals(device.Address, IPAddress.None))
                     {
-                        found[device.Serial] = device.Address.ToString();
+                        found[device.Serial] = (device.Route, device.Address.ToString());
                         if (found.Count == serials.Count)
                         {
                             break;

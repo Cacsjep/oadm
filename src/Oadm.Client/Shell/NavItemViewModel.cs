@@ -64,6 +64,9 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
     public string PluginId { get; } = pluginId;
     public string Title { get; } = title;
 
+    /// <summary>The page's plugin context (the host asks the page to open a device through it); null without a view.</summary>
+    internal CorePluginClientContext? PluginContext { get; } = context as CorePluginClientContext;
+
     /// <summary>"I/O Monitor · OADM": the title of the page's own window.</summary>
     public string WindowTitle => Title + " · OADM";
 

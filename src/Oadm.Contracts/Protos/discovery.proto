@@ -25,13 +25,18 @@ service DiscoveryService {
   rpc ProbeAddress (ProbeAddressRequest) returns (DiscoverySession);
 }
 
-message DiscoverySession { string session_id = 1; }
+message DiscoverySession {
+  string session_id = 1;
+  string site_id = 2;         // ProbeAddress with a site: the site it probes through (the import's Site column)
+}
 message RangeScanRequest { string from = 1; string to = 2; }
 // expected_serial: the MAC address the line names (an AXIS Device Manager export); a device with another one gets no
 // password at all, not even from the credential list. Empty = any device.
 // import_line: a line of an imported file; the first contact waits only Scan.TimeoutMs (like the range scan), so
 // addresses that do not answer cost little. "Add manually" leaves it false and keeps the longer wait.
-message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; string expected_serial = 4; bool import_line = 5; }
+// site: the import's Site column, a site's name (or id): only probed through that site. Empty = the server's own network
+// and every online site that reaches the address (a host name: every online site, each resolves it itself).
+message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; string expected_serial = 4; bool import_line = 5; string site = 6; }
 
 enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; MANUAL = 3; }
 
@@ -72,4 +77,10 @@ message DiscoveredDevice {
   string dns_name = 20;
   // The site the device answered through; empty = the server's own network.
   string site_id = 21;
+  string site_name = 22;            // the name of site_id; empty = the server's own network
+  // The same device (MAC address) also answered through these: site names, empty = the server's own network.
+  repeated string other_sites = 23;
+  // The final message (scan_finished) of an address probe that found nothing, when a site said why ("Port 8443 is not
+  // allowed at Building B. Allow it in the OADM Site Node app."); empty = nothing answered.
+  string problem = 24;
 }

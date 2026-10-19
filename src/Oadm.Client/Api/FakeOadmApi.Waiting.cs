@@ -34,8 +34,9 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
-            var byAddress = _waiting.ToDictionary(w => w.Address.ToUpperInvariant(), StringComparer.Ordinal);
-            int added = lines.Select(l => l.Address.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).Count(a => !byAddress.ContainsKey(a));
+            // Like the server: one entry per (site, address).
+            var byAddress = _waiting.ToDictionary(w => WaitingKey(w.Address, w.SiteId), StringComparer.Ordinal);
+            int added = lines.Select(l => WaitingKey(l.Address, l.SiteId)).Distinct(StringComparer.Ordinal).Count(a => !byAddress.ContainsKey(a));
             if (_waiting.Count + added > FakeMaxWaiting)
             {
                 throw new RpcException(new Status(StatusCode.ResourceExhausted, "The waiting list holds at most 30,000 devices. Remove devices from it first."));
@@ -43,7 +44,7 @@ public sealed partial class FakeOadmApi
 
             foreach (WaitingLine line in lines)
             {
-                string key = line.Address.Trim().ToUpperInvariant();
+                string key = WaitingKey(line.Address, line.SiteId);
                 if (!byAddress.TryGetValue(key, out WaitingDevice? entry))
                 {
                     entry = new WaitingDevice { Id = Guid.NewGuid().ToString(), Created = Timestamp.FromDateTime(DateTime.UtcNow) };
@@ -52,6 +53,8 @@ public sealed partial class FakeOadmApi
                 }
 
                 entry.Address = line.Address.Trim();
+                entry.SiteId = line.SiteId;
+                entry.SiteName = Guid.TryParse(line.SiteId, out Guid site) && FakeSites.TryGetValue(site, out string? name) ? name : "";
                 entry.ExpectedSerial = line.ExpectedSerial;
                 entry.Tags.Clear();
                 entry.Tags.AddRange(line.Tags);
@@ -69,6 +72,8 @@ public sealed partial class FakeOadmApi
             return Task.FromResult(new AddWaitingReply { Added = added, Updated = lines.Count - added, Total = _waiting.Count });
         }
     }
+
+    private static string WaitingKey(string address, string siteId) => address.Trim().ToUpperInvariant() + "@" + siteId;
 
     public Task<WaitingList> ListWaitingAsync(string? after, int limit, CancellationToken ct)
     {

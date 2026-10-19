@@ -409,12 +409,36 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
     }
 
+    /// <summary>The Web View plugin is on (its page is in the rail): devices at a site open there.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SiteWebInterfaceTip))]
+    public partial bool IsWebViewOn { get; set; }
+
+    /// <summary>The tooltip of the address link of a device at a site.</summary>
+    public string SiteWebInterfaceTip => IsWebViewOn ? SiteWebViewTexts.OpenInWebView : SiteWebViewTexts.TurnOnWebView;
+
+    /// <summary>A device at a site asks for its web interface: the shell opens it in Web View.</summary>
+    public event EventHandler<string>? OpenInWebViewRequested;
+
+    partial void OnIsWebViewOnChanged(bool value) => RebuildContextMenu();
+
     [RelayCommand]
     private async Task OpenWebUiAsync(DeviceRowViewModel? device)
     {
         device ??= SelectedDevices.FirstOrDefault();
         if (device is null)
         {
+            return;
+        }
+
+        if (device.IsAtSite)
+        {
+            // The user's computer usually cannot reach the site: Web View goes through the server and the node.
+            if (IsWebViewOn)
+            {
+                OpenInWebViewRequested?.Invoke(this, device.Id);
+            }
+
             return;
         }
 
@@ -663,12 +687,14 @@ public sealed partial class DevicesViewModel : ObservableObject
         // Every entry follows the role's permissions (the server checks each call again).
         if (Can(HostPermissionKeys.DevicesWebInterface))
         {
+            bool atSite = count == 1 && SelectedDevices[0].IsAtSite;
             ContextMenuEntries.Add(new MenuEntryViewModel
             {
                 Header = "Open web interface",
                 IconKey = "externalLink",
                 Command = OpenWebUiCommand,
-                IsEnabled = count == 1,
+                IsEnabled = count == 1 && (!atSite || IsWebViewOn),
+                ToolTip = atSite ? SiteWebInterfaceTip : null,
             });
         }
 

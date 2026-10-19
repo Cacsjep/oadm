@@ -26,6 +26,12 @@ public sealed record ImportLine(int Line, string Address, string? UserName, stri
     /// </summary>
     public string? ExpectedSerial { get; init; }
 
+    /// <summary>
+    /// From the optional "Site" column: the site's name; the line is checked only through that site (docs/sites.md, "Import
+    /// from file"). Null = the server's own network and every site that reaches the address.
+    /// </summary>
+    public string? Site { get; init; }
+
     /// <summary>Never prints the password.</summary>
     public override string ToString() => $"Line {Line}: {Address}";
 }
@@ -52,7 +58,8 @@ public sealed class DeviceImportException : Exception
 /// <summary>
 /// Reads a device list for "Import from file": the CSV of Export devices or any CSV with an address column
 /// (header names case-insensitive: Address, IP address, IP, Host name; optional User name, Password and Tags
-/// ("Building A; PTZ", assigned to the devices that get added; missing tags are created); other columns ignored), or a plain file with one address per line. Comma or semicolon separated
+/// ("Building A; PTZ", assigned to the devices that get added; missing tags are created) and Site (a site's name: checked
+/// only through that site); other columns ignored), or a plain file with one address per line. Comma or semicolon separated
 /// (Excel in many locales), UTF-8 (with or without BOM), UTF-16 with BOM, else Windows Latin-1.
 /// Problems of single lines (invalid address, duplicate, too long) stay with their line; only an
 /// unusable file throws <see cref="DeviceImportException"/>. O(n).
@@ -82,6 +89,9 @@ public sealed class DeviceImportFile
     public const int MaxUserNameLength = 64;
     public const int MaxPasswordLength = 256;
 
+    /// <summary>Longest site name (the server's limit).</summary>
+    public const int MaxSiteNameLength = 64;
+
     /// <summary>The user of a line with a password but no user name.</summary>
     public const string DefaultUserName = "root";
 
@@ -89,12 +99,13 @@ public sealed class DeviceImportFile
     private static readonly string[] UserHeaders = ["user name", "username", "user"];
     private static readonly string[] PasswordHeaders = ["password", "pass"];
     private static readonly string[] TagHeaders = ["tags", "tag"];
+    private static readonly string[] SiteHeaders = ["site"];
 
     /// <summary>Longest tag name (the server's limit); longer tags of a file are cut to it.</summary>
     public const int MaxTagLength = 64;
 
     private static readonly string[] KnownHeaders =
-        [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
+        [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. SiteHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
 
     private DeviceImportFile(string fileName, IReadOnlyList<ImportLine> lines, bool fromAdm = false, IReadOnlyList<string>? admServers = null)
     {
@@ -150,6 +161,7 @@ public sealed class DeviceImportFile
         int userColumn = -1;
         int passwordColumn = -1;
         int tagsColumn = -1;
+        int siteColumn = -1;
         bool first = true;
         var lines = new List<ImportLine>();
         var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -165,6 +177,7 @@ public sealed class DeviceImportFile
                     userColumn = IndexOf(names, UserHeaders);
                     passwordColumn = IndexOf(names, PasswordHeaders);
                     tagsColumn = IndexOf(names, TagHeaders);
+                    siteColumn = IndexOf(names, SiteHeaders);
                     if (addressColumn < 0)
                     {
                         throw new DeviceImportException("The file has no Address column. Name the column with the IP addresses or host names \"Address\".");
@@ -185,7 +198,7 @@ public sealed class DeviceImportFile
                     $"The file has more than {MaxLines:N0} addresses. Split it into smaller files."));
             }
 
-            lines.Add(ReadLine(record, addressColumn, userColumn, passwordColumn, tagsColumn, seen));
+            lines.Add(ReadLine(record, addressColumn, userColumn, passwordColumn, tagsColumn, siteColumn, seen));
         }
 
         if (lines.Count == 0)
@@ -220,7 +233,8 @@ public sealed class DeviceImportFile
         return null;
     }
 
-    private static ImportLine ReadLine(CsvRecord record, int addressColumn, int userColumn, int passwordColumn, int tagsColumn, Dictionary<string, int> seen)
+    private static ImportLine ReadLine(CsvRecord record, int addressColumn, int userColumn, int passwordColumn, int tagsColumn, int siteColumn,
+        Dictionary<string, int> seen)
     {
         string Cell(int index) => index >= 0 && index < record.Cells.Count ? Csv.Unguard(record.Cells[index].Trim()) : "";
 
@@ -238,18 +252,24 @@ public sealed class DeviceImportFile
 
         string user = Cell(userColumn);
         string password = passwordColumn >= 0 && passwordColumn < record.Cells.Count ? record.Cells[passwordColumn] : ""; // passwords keep their spaces
-        return CheckLine(record.Line, address, user, password, ReadTags(Cell(tagsColumn)), null, seen);
+        return CheckLine(record.Line, address, user, password, ReadTags(Cell(tagsColumn)), null, seen, Cell(siteColumn));
     }
 
     /// <summary>
     /// The checks every imported line gets, whatever file it came from (CSV, text, AXIS Device Manager export): the
-    /// address, the login lengths, the tags and the same address listed twice. A password alone is for root; a user name
-    /// alone is no login.
+    /// address, the login lengths, the tags and the same (site, address) listed twice (two sites may both have
+    /// 192.168.0.20). A password alone is for root; a user name alone is no login.
     /// </summary>
     internal static ImportLine CheckLine(int line, string address, string user, string password, List<string> tags, string? expectedSerial,
-        Dictionary<string, int> seen)
+        Dictionary<string, int> seen, string? site = null)
     {
+        site = string.IsNullOrWhiteSpace(site) ? null : site.Trim();
         string? problem = AddressProblem(address);
+        if (problem is null && site is { Length: > MaxSiteNameLength })
+        {
+            problem = string.Create(CultureInfo.InvariantCulture, $"The site name is longer than {MaxSiteNameLength} characters.");
+        }
+
         if (problem is null && user.Length > MaxUserNameLength)
         {
             problem = string.Create(CultureInfo.InvariantCulture, $"The user name is longer than {MaxUserNameLength} characters.");
@@ -268,7 +288,7 @@ public sealed class DeviceImportFile
                 : $"The tag \"{Shorten(badTag)}\" contains control characters.";
         }
 
-        string key = Normalize(address);
+        string key = (site ?? "").ToUpperInvariant() + "|" + Normalize(address);
         if (problem is null)
         {
             if (seen.TryGetValue(key, out int earlier))
@@ -286,6 +306,7 @@ public sealed class DeviceImportFile
         {
             Tags = tags,
             ExpectedSerial = expectedSerial,
+            Site = site,
         };
     }
 

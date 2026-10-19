@@ -38,6 +38,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
         SelectedPreset = WebPagePreset.All[0];
         Validation.Rule(nameof(CustomPath), () => !SelectedPreset.IsCustom || IsDevicePath(CustomPath.Trim()) ? null : WebViewTexts.CustomPathInvalid);
         _ctx.DevicesChanged += OnDevicesChanged;
+        _ctx.OpenDeviceRequested += OnOpenDeviceRequested;
         _ctx.PermissionsChanged += (_, _) =>
         {
             if (!MayOpen)
@@ -196,6 +197,23 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
         _ = tab.LoadAsync(row.Device, _life.Token);
     }
 
+    /// <summary>
+    /// The host asks to open a device (the address link or "Open web interface" of a device at a site on the Devices
+    /// page): its tab, under its first tag (or "No tag").
+    /// </summary>
+    public void OpenDeviceById(string deviceId)
+    {
+        if (_ctx.Devices.FirstOrDefault(d => string.Equals(d.Id.ToString(), deviceId, StringComparison.OrdinalIgnoreCase)) is not { } device)
+        {
+            return;
+        }
+
+        var group = device.Tags.Count > 0 ? device.Tags.Order(StringComparer.OrdinalIgnoreCase).First() : string.Empty;
+        OpenDevice(new DeviceTreeDevice(device, group));
+    }
+
+    private void OnOpenDeviceRequested(object? sender, string deviceId) => OpenDeviceById(deviceId);
+
     [RelayCommand]
     private void ToggleGroup(DeviceTreeGroup? group)
     {
@@ -305,6 +323,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     public void Dispose()
     {
         _ctx.DevicesChanged -= OnDevicesChanged;
+        _ctx.OpenDeviceRequested -= OnOpenDeviceRequested;
         _life.Cancel();
         foreach (var tab in Tabs)
         {

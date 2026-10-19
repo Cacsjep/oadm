@@ -87,6 +87,9 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
 
     public string MacAddress => Device.ExpectedSerial;
 
+    /// <summary>The site the entry is tried through (the import's Site column); empty = everywhere.</summary>
+    public string SiteName => Device.SiteName;
+
     public string TagsText => string.Join("; ", Device.Tags);
 
     public string SourceText => Device.Source;
@@ -117,6 +120,7 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
         || Address.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
         || MacAddress.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
         || TagsText.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
+        || SiteName.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
         || SourceText.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase);
 }
 
@@ -310,15 +314,15 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
         }
     }
 
-    /// <summary>The import's format (Address, Tags; MAC address and the last result for reading). Never a password.</summary>
+    /// <summary>The import's format (Address, Tags, Site; MAC address and the last result for reading). Never a password.</summary>
     public static byte[] WriteCsv(IEnumerable<WaitingRowViewModel> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
         var sb = new StringBuilder();
-        Csv.AppendRecord(sb, ["Address", "Tags", "MAC address", "Last try", "Result"]);
+        Csv.AppendRecord(sb, ["Address", "Tags", "Site", "MAC address", "Last try", "Result"]);
         foreach (WaitingRowViewModel row in rows)
         {
-            Csv.AppendRecord(sb, [row.Address, row.TagsText, row.MacAddress, row.Device.LastTry is null ? "" : row.LastTryText, row.ResultText]);
+            Csv.AppendRecord(sb, [row.Address, row.TagsText, row.SiteName, row.MacAddress, row.Device.LastTry is null ? "" : row.LastTryText, row.ResultText]);
         }
 
         string text = sb.ToString();

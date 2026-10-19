@@ -504,7 +504,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 yield return new DiscoveredDevice { ProgressPercent = percent };
             }
 
-            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = reached };
+            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = reached, Problem = candidates.Count == 0 ? session.Problem ?? "" : "" };
             foreach ((_, DiscoveredDevice auth) in candidates.Where(c => session.Found.ContainsKey(c.Auth.DiscoveredId)))
             {
                 await Task.Delay(_tick, ct);
@@ -683,6 +683,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 Device device = CreateDevice(found.Serial, address, found.Model, "12.11.77", status);
                 device.HostName = found.DnsName;
                 device.UseHostName = !IPAddress.TryParse(address.Split(':')[0], out _);
+                device.SiteId = found.SiteId; // added through the site it answered through
+                device.SiteName = found.SiteName;
                 device.HasCredentials = credentials is not null || initial.Length > 0 || found.AuthState == AuthState.Authenticated;
                 _devices.Add(device);
                 reply.DeviceIds.Add(device.Id);
@@ -1332,6 +1334,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         list.Add(Discovered("B8A44F99CC01", "10.0.0.91", "AXIS P3268-LV", DeviceStatus.PasswordNotSet, AuthState.PasswordNotSet, policy: "complex"));
         list.Add(Discovered("ACCC8E2B3C4D", "10.0.0.95", "", DeviceStatus.Unreachable, AuthState.Unreachable,
             detail: "The device did not answer on HTTPS or HTTP."));
+        AddSiteSamples(list, session);
 
         switch (session.Kind)
         {
@@ -1346,6 +1349,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 {
                     list[i].Source = DiscoverySource.RangeScan;
                     list[i].Address = FromUInt(from + (uint)((i * 7 + 3) % span));
+                    list[i].OtherSites.Clear();
                 }
 
                 break;
@@ -1382,6 +1386,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 known.HostName = IPAddress.TryParse(host.Split(':')[0], out _) ? "" : host;
                 list.Clear();
                 list.Add(known);
+                ManualAtSites(list, session, host);
                 break;
             }
         }
@@ -1870,6 +1875,12 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
         /// <summary>Credentials of an imported line (address probe only), tried first.</summary>
         public (string UserName, string Password)? Credentials { get; set; }
+
+        /// <summary>The import's Site column: probed through this site only.</summary>
+        public Guid? Site { get; set; }
+
+        /// <summary>Why nothing answered (the line's site is offline); null = nothing answered.</summary>
+        public string? Problem { get; set; }
     }
 
     private sealed class Broadcast<T>

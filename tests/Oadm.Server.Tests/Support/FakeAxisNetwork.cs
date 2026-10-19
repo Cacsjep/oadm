@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 
 using Oadm.Core.Discovery;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 namespace Oadm.Server.Tests.Support;
@@ -236,10 +237,24 @@ internal sealed class FakeAxisDevice
         new(HttpRequestError.ConnectionError, "Connection refused", new SocketException((int)SocketError.ConnectionRefused));
 }
 
-/// <summary>A set of fake devices by address, plus the HTTP plumbing that routes requests to them.</summary>
+/// <summary>
+/// A set of fake devices by address, plus the HTTP plumbing that routes requests to them. Devices at sites live in a
+/// network of their own per site (<see cref="AtSite"/>): two sites may both have 192.168.0.20 (docs/sites.md, "Overlapping
+/// networks"); connections, probes and DNS names go to the network of their route.
+/// </summary>
 internal sealed class FakeAxisNetwork
 {
     private readonly ConcurrentDictionary<string, FakeAxisDevice> _devices = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<Guid, FakeAxisNetwork> _sites = new();
+
+    /// <summary>The devices reached through a site (created on first use).</summary>
+    public FakeAxisNetwork AtSite(Guid siteId) => _sites.GetOrAdd(siteId, _ => new FakeAxisNetwork());
+
+    /// <summary>The network of a route: this one for the server's own network, else the site's.</summary>
+    public FakeAxisNetwork For(DeviceRoute route) => route.SiteId is { } site ? AtSite(site) : this;
+
+    /// <summary>A site problem for a request (e.g. a port the site does not allow); null = none.</summary>
+    public Func<Uri, SiteException?>? SiteProblem { get; set; }
 
     public FakeAxisDevice Add(string address, string serial, string? password, string model = "M3106-L Mk II")
     {
@@ -265,6 +280,9 @@ internal sealed class FakeAxisNetwork
     {
         public Task<string?> LookupAsync(IPAddress address, CancellationToken ct) =>
             Task.FromResult(network.DnsNames.TryGetValue(address.ToString(), out var name) ? name : null);
+
+        public Task<string?> LookupAsync(IPAddress address, DeviceRoute route, CancellationToken ct) =>
+            Task.FromResult(network.For(route).DnsNames.TryGetValue(address.ToString(), out var name) ? name : null);
     }
 
     /// <summary><see cref="IVapixConnector"/> that sends the connection's credentials to the fake device.</summary>
@@ -278,7 +296,7 @@ internal sealed class FakeAxisNetwork
 
     /// <summary>The anonymous probe used by AddDevices, wired to this network.</summary>
     /// <remarks>Generous timeouts: nothing in the fake network hangs, but a busy test machine answers slowly.</remarks>
-    public VapixProbe CreateProbe() => new(AnswerTimeout, (_, _) => CreateHandler());
+    public VapixProbe CreateProbe() => new(AnswerTimeout, (_, _, route) => For(route).CreateHandler());
 
     /// <summary>Timeout of the probes and clients of the fake network: far above what a busy machine needs.</summary>
     public static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(30);
@@ -289,7 +307,15 @@ internal sealed class FakeAxisNetwork
         {
             cancellationToken.ThrowIfCancellationRequested();
             var uri = request.RequestUri!;
-            var device = network.Find(uri.Host);
+
+            // A handler for every route (the discovery probe) reads the route from the request.
+            var routed = request.Options.TryGetValue(DeviceRouter.RouteOption, out var route) ? network.For(route) : network;
+            if (routed.SiteProblem?.Invoke(uri) is { } problem)
+            {
+                throw new HttpRequestException(problem.Message, problem);
+            }
+
+            var device = routed.Find(uri.Host);
             if (device is null || (uri.Scheme == Uri.UriSchemeHttps && !device.ServesHttps) || (uri.Scheme == Uri.UriSchemeHttp && !device.ServesHttp))
             {
                 throw FakeAxisDevice.Refused();
@@ -322,7 +348,10 @@ internal sealed class FakeAxisNetwork
         {
             network.Connections.Enqueue(options);
             var pinning = options.Scheme == Uri.UriSchemeHttps ? new CertificatePinning(options.PinnedCertificateFingerprint) : null;
-            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.CreateHandler(options.Credentials, pinning), pinning, AnswerTimeout);
+            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.For(options.Route).CreateHandler(options.Credentials, pinning), pinning, AnswerTimeout)
+            {
+                Route = options.Route,
+            };
         }
     }
 }

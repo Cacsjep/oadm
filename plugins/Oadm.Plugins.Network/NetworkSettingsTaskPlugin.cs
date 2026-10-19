@@ -98,7 +98,7 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
         ArgumentNullException.ThrowIfNull(device);
         if (string.Equals(method, AddressCheck.QueryMethod, StringComparison.Ordinal))
         {
-            return await AddressCheck.QueryAsync(ctx, payloadJson, probe, ct).ConfigureAwait(false);
+            return await AddressCheck.QueryAsync(ctx, device, payloadJson, probe, ct).ConfigureAwait(false);
         }
 
         if (!string.Equals(method, QueryGetNetworkInfo, StringComparison.Ordinal))

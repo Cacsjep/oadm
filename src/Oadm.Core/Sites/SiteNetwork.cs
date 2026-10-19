@@ -10,6 +10,18 @@ namespace Oadm.Core.Sites;
 /// </summary>
 public interface ISiteNetwork
 {
+    /// <summary>
+    /// The sites whose node serves the server now (online, bound), by name: where discovery looks besides the server's
+    /// own network (work stream 5). Default: none.
+    /// </summary>
+    IReadOnlyList<Guid> OnlineSites() => [];
+
+    /// <summary>
+    /// The bound site named <paramref name="nameOrId"/> (case-insensitive, online or not; also its id): the import's Site
+    /// column. Null when there is none. Default: an id only.
+    /// </summary>
+    Guid? FindSite(string nameOrId) => Guid.TryParse(nameOrId, out var id) ? id : null;
+
     /// <summary>True when <paramref name="address"/> is on a network card the node reaches or in one of its extra networks (from Watch).</summary>
     bool Reaches(Guid siteId, IPAddress address);
 

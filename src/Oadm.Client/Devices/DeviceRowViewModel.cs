@@ -107,6 +107,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     /// <summary>The site the device is reached through; null on the server's own network.</summary>
     public Guid? SiteId { get; private set; }
 
+    /// <summary>The device is at a site: its web interface opens in Web View (the user's computer usually cannot reach it).</summary>
+    [ObservableProperty] public partial bool IsAtSite { get; private set; }
+
     Guid? IDeviceInfo.SiteId => SiteId;
 
     /// <summary>The name of the site (Site column, search, export); null on the server's own network.</summary>
@@ -149,6 +152,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         _dot1xEnabled = device.HasDot1XEnabled ? device.Dot1XEnabled : null;
         ContractStatus = device.Status;
         SiteId = Guid.TryParse(device.SiteId, out var siteId) ? siteId : null;
+        IsAtSite = SiteId is not null;
         SiteName = string.IsNullOrEmpty(device.SiteName) ? null : device.SiteName;
         StatusText = DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);

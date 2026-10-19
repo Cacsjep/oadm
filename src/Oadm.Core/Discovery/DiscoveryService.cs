@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Discovery.Mdns;
+using Oadm.Core.Sites;
 
 namespace Oadm.Core.Discovery;
 
@@ -19,6 +20,14 @@ namespace Oadm.Core.Discovery;
 /// scan, so model, firmware, scheme and status (e.g. PasswordNotSet) are filled in shortly after
 /// the device first appears.
 /// </para>
+/// <para>
+/// With sites (docs/sites.md, "Discovery, everywhere by itself") every session also asks every online site
+/// (<see cref="ISiteNetwork"/>): zero-conf browses on each node, a range scan's first contact runs on each node that reaches
+/// the range and the devices it finds are probed through the site, an address probe runs on every route the caller gives.
+/// Each result carries its route. The same MAC address through several routes is one device, through a site rather than
+/// the server's own network (<see cref="DiscoveredDevice.OtherRoutes"/> names the others); different devices at the same
+/// address through different routes are separate devices.
+/// </para>
 /// </summary>
 public sealed class DiscoveryService : IAsyncDisposable
 {
@@ -29,6 +38,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     private readonly TimeProvider _time;
     private readonly ConcurrentDictionary<string, Session> _sessions = new(StringComparer.Ordinal);
     private readonly IDnsNameLookup? _dnsNames; // null: no DNS names (tests)
+    private readonly ISiteNetwork? _sites; // null: the server's own network only
 
     /// <summary>DNS name lookups at the same time, for every session together.</summary>
     private readonly SemaphoreSlim _dnsLimit = new(16);
@@ -39,7 +49,8 @@ public sealed class DiscoveryService : IAsyncDisposable
         IDeviceProbe probe,
         ILogger<DiscoveryService>? logger = null,
         TimeProvider? timeProvider = null,
-        IDnsNameLookup? dnsNames = null)
+        IDnsNameLookup? dnsNames = null,
+        ISiteNetwork? sites = null)
     {
         ArgumentNullException.ThrowIfNull(browser);
         ArgumentNullException.ThrowIfNull(scanner);
@@ -50,6 +61,27 @@ public sealed class DiscoveryService : IAsyncDisposable
         _logger = logger ?? NullLogger<DiscoveryService>.Instance;
         _time = timeProvider ?? TimeProvider.System;
         _dnsNames = dnsNames;
+        _sites = sites;
+    }
+
+    /// <summary>A site's mDNS browse without a duration of its own (a scan without a limit) asks again after this time.</summary>
+    public static readonly TimeSpan SiteBrowseChunk = TimeSpan.FromMinutes(5);
+
+    /// <summary>Devices a site's range scan found that are probed through the site at the same time (per site).</summary>
+    public const int SiteProbeParallelism = 16;
+
+    /// <summary>The online sites now (none without sites).</summary>
+    private IReadOnlyList<Guid> OnlineSites()
+    {
+        try
+        {
+            return _sites?.OnlineSites() ?? [];
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            DiscoveryLog.SessionFailed(_logger, ex, "sites");
+            return [];
+        }
     }
 
     /// <summary>Timeout used when probing addresses seen via mDNS.</summary>
@@ -76,6 +108,8 @@ public sealed class DiscoveryService : IAsyncDisposable
         {
             session.LimitScan(limit, _time);
         }
+
+        session.Duration = duration;
 
         session.Run = Task.Run(() => RunZeroConfAsync(session, options, session.Scan.Token, session.Stop.Token), CancellationToken.None);
         return session.Handle;
@@ -121,10 +155,22 @@ public sealed class DiscoveryService : IAsyncDisposable
     /// <param name="enteredAddress">The address as entered (host[:port]), kept on the device as <see cref="DiscoveredDevice.EnteredAddress"/>.</param>
     public DiscoverySession StartAddressProbe(string enteredAddress, Func<CancellationToken, Task<DeviceProbeResult?>> probe)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(enteredAddress);
         ArgumentNullException.ThrowIfNull(probe);
+        return StartAddressProbe(enteredAddress, [new RouteProbe(DeviceRoute.Local, probe)]);
+    }
+
+    /// <summary>
+    /// Probes one entered address on several routes at once (the server's own network and the sites that reach it). Each
+    /// device found carries its route; the session finishes when every route answered. With
+    /// <paramref name="expectedSerial"/> (a line of an export of AXIS Device Manager) only the route where that device
+    /// answers counts: other devices are shown only when it answered nowhere.
+    /// </summary>
+    public DiscoverySession StartAddressProbe(string enteredAddress, IReadOnlyList<RouteProbe> probes, string? expectedSerial = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(enteredAddress);
+        ArgumentNullException.ThrowIfNull(probes);
         var session = CreateSession(DiscoverySessionKind.Manual);
-        session.Run = Task.Run(() => RunAddressProbeAsync(session, enteredAddress, probe, session.Scan.Token, session.Stop.Token), CancellationToken.None);
+        session.Run = Task.Run(() => RunAddressProbeAsync(session, enteredAddress, probes, expectedSerial, session.Scan.Token, session.Stop.Token), CancellationToken.None);
         return session.Handle;
     }
 
@@ -205,7 +251,50 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         using var enrichLimit = new SemaphoreSlim(8);
         var enrichments = new List<Task>();
+        var enrichLock = new Lock();
         var probed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Probe each (route, address) once per session (model, status, scheme; serial if TXT lacked it).
+        void Seen(DeviceRoute route, IPAddress address, string? hostName)
+        {
+            lock (enrichLock)
+            {
+                if (probed.Add(route + "|" + address))
+                {
+                    enrichments.RemoveAll(t => t.IsCompleted);
+                    enrichments.Add(EnrichAsync(session, route, address, hostName, enrichLimit, ct));
+                }
+            }
+        }
+
+        var browsers = new List<Task> { BrowseLocalAsync(session, options, Seen, scan) };
+        browsers.AddRange(OnlineSites().Select(site => Task.Run(() => BrowseSiteAsync(session, site, Seen, scan), CancellationToken.None)));
+        try
+        {
+            await Task.WhenAll(browsers).ConfigureAwait(false);
+        }
+        finally
+        {
+            Task[] pending;
+            lock (enrichLock)
+            {
+                pending = [.. enrichments];
+            }
+
+            await Task.WhenAll(pending).ConfigureAwait(false);
+        }
+
+        if (!ct.IsCancellationRequested)
+        {
+            // Time limit or StopScan: the probes finished, the devices stay for the add page.
+            var found = session.Snapshot().Devices.Count;
+            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, found);
+            session.Complete(new DiscoveryEvent(null, 100, true));
+        }
+    }
+
+    private async Task BrowseLocalAsync(Session session, MdnsBrowseOptions? options, Action<DeviceRoute, IPAddress, string?> seen, CancellationToken scan)
+    {
         try
         {
             await foreach (var instance in _browser.BrowseAsync(options, scan).ConfigureAwait(false))
@@ -222,12 +311,7 @@ public sealed class DiscoveryService : IAsyncDisposable
                     Publish(session, new DeviceObservation(serial, address, hostName, null, null, null, null, DiscoverySources.Mdns));
                 }
 
-                // Probe each address once per session (model, status, scheme; serial if TXT lacked it).
-                if (probed.Add(address.ToString()))
-                {
-                    enrichments.RemoveAll(t => t.IsCompleted);
-                    enrichments.Add(EnrichAsync(session, address, hostName, enrichLimit, ct));
-                }
+                seen(DeviceRoute.Local, address, hostName);
             }
         }
         catch (OperationCanceledException) when (scan.IsCancellationRequested)
@@ -237,35 +321,80 @@ public sealed class DiscoveryService : IAsyncDisposable
         {
             DiscoveryLog.SessionFailed(_logger, ex, session.Handle.Id);
         }
-        finally
-        {
-            await Task.WhenAll(enrichments).ConfigureAwait(false);
-        }
+    }
 
-        if (!ct.IsCancellationRequested)
+    /// <summary>mDNS on a site's node for the session's time (a session without a limit asks again every <see cref="SiteBrowseChunk"/>).</summary>
+    private async Task BrowseSiteAsync(Session session, Guid site, Action<DeviceRoute, IPAddress, string?> seen, CancellationToken scan)
+    {
+        var route = DeviceRoute.ViaSite(site);
+        try
         {
-            // Time limit or StopScan: the probes finished, the devices stay for the add page.
-            var found = session.Snapshot().Devices.Count;
-            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, found);
-            session.Complete(new DiscoveryEvent(null, 100, true));
+            var first = true;
+            do
+            {
+                if (!first)
+                {
+                    // A browse without a limit asks the node again; never in a tight loop when a node ends early.
+                    await Task.Delay(TimeSpan.FromSeconds(1), _time, scan).ConfigureAwait(false);
+                }
+
+                first = false;
+                var duration = session.Duration ?? SiteBrowseChunk;
+                await foreach (var found in _sites!.BrowseAsync(site, duration, scan).ConfigureAwait(false))
+                {
+                    var address = found.Addresses.FirstOrDefault(a => !IsLinkLocal(a)) ?? (found.Addresses.Count > 0 ? found.Addresses[0] : null);
+                    if (address is null)
+                    {
+                        continue;
+                    }
+
+                    var hostName = string.IsNullOrEmpty(found.HostName) ? null : found.HostName.TrimEnd('.');
+                    if (hostName?.EndsWith(".local", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        hostName = hostName[..^".local".Length];
+                    }
+
+                    if (SerialNumber.Normalize(found.Serial) is { } serial)
+                    {
+                        Publish(session, new DeviceObservation(serial, address, hostName, null, null, null, null, DiscoverySources.Mdns) { Route = route });
+                    }
+
+                    seen(route, address, hostName);
+                }
+            }
+            while (session.Duration is null && !scan.IsCancellationRequested);
+        }
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
+        {
+        }
+        catch (SiteException ex)
+        {
+            DiscoveryLog.SiteSkipped(_logger, session.Handle.Id, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            DiscoveryLog.SessionFailed(_logger, ex, session.Handle.Id);
         }
     }
 
-    private async Task EnrichAsync(Session session, IPAddress address, string? hostName, SemaphoreSlim limit, CancellationToken ct)
+    private static bool IsLinkLocal(IPAddress address) =>
+        address.IsIPv6LinkLocal || (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && address.GetAddressBytes() is [169, 254, ..]);
+
+    private async Task EnrichAsync(Session session, DeviceRoute route, IPAddress address, string? hostName, SemaphoreSlim limit, CancellationToken ct)
     {
         try
         {
             await limit.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var result = await _probe.ProbeAsync(address, MdnsProbeTimeout, ct).ConfigureAwait(false);
+                var result = await _probe.ProbeAsync(address, route, MdnsProbeTimeout, ct).ConfigureAwait(false);
                 if (result is not null)
                 {
-                    Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.Mdns) with { HostName = hostName });
+                    Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.Mdns, route) with { HostName = hostName });
                 }
                 else
                 {
-                    session.MarkUnreachable(address, _time.GetUtcNow(), out var changed);
+                    session.MarkUnreachable(route, address, _time.GetUtcNow(), out var changed);
                     if (changed is not null)
                     {
                         session.Broadcast(new DiscoveryEvent(changed, 0, false));
@@ -280,6 +409,10 @@ public sealed class DiscoveryService : IAsyncDisposable
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
+        catch (SiteException ex)
+        {
+            DiscoveryLog.SiteSkipped(_logger, session.Handle.Id, ex.Message);
+        }
         catch (Exception ex)
         {
             DiscoveryLog.SessionFailed(_logger, ex, session.Handle.Id);
@@ -288,55 +421,199 @@ public sealed class DiscoveryService : IAsyncDisposable
 
     private async Task RunRangeScanAsync(Session session, Ipv4Range range, RangeScanOptions? options, CancellationToken scan, CancellationToken ct)
     {
-        var progress = new SyncProgress(p =>
+        // The server's own network and every online site that reaches the range: one progress over all of them.
+        var sites = OnlineSites().Where(site => Reaches(site, range)).ToList();
+        var parts = new int[1 + sites.Count];
+        var progressLock = new Lock();
+        void Report(int part, int percent)
         {
-            session.Progress = p;
-            if (p < 100)
+            int overall;
+            lock (progressLock)
             {
-                session.Broadcast(new DiscoveryEvent(null, p, false));
+                if (percent <= parts[part])
+                {
+                    return;
+                }
+
+                parts[part] = percent;
+                overall = (int)parts.Average();
+                if (overall <= session.Progress)
+                {
+                    return;
+                }
+
+                session.Progress = overall;
             }
-        });
+
+            if (overall < 100)
+            {
+                session.Broadcast(new DiscoveryEvent(null, overall, false));
+            }
+        }
+
+        var scans = new List<Task> { ScanLocalAsync(session, range, options, p => Report(0, p), scan) };
+        scans.AddRange(sites.Select((site, i) => ScanSiteAsync(session, site, range, options ?? new RangeScanOptions(), p => Report(i + 1, p), scan)));
         try
         {
-            await foreach (var result in _scanner.ScanAsync(range, options, progress, scan).ConfigureAwait(false))
+            await Task.WhenAll(scans).ConfigureAwait(false);
+            if (ct.IsCancellationRequested)
             {
-                Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.RangeScan));
+                return;
             }
 
             var count = session.Snapshot().Devices.Count;
             DiscoveryLog.SessionFinished(_logger, session.Handle.Id, count);
-            session.Complete(new DiscoveryEvent(null, 100, true));
+            session.Complete(new DiscoveryEvent(null, scan.IsCancellationRequested ? session.Progress : 100, true));
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
-        catch (OperationCanceledException) when (scan.IsCancellationRequested)
-        {
-            // StopScan: the addresses probed so far count, the session ends like a finished scan.
-            var found = session.Snapshot().Devices.Count;
-            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, found);
-            session.Complete(new DiscoveryEvent(null, session.Progress, true));
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             DiscoveryLog.SessionFailed(_logger, ex, session.Handle.Id);
             session.Complete(new DiscoveryEvent(null, session.Progress, true));
         }
     }
 
-    private async Task RunAddressProbeAsync(Session session, string enteredAddress, Func<CancellationToken, Task<DeviceProbeResult?>> probe, CancellationToken scan, CancellationToken ct)
+    /// <summary>True when the site reaches an address of the range (first, last or any between).</summary>
+    private bool Reaches(Guid site, Ipv4Range range)
     {
         try
         {
-            var result = await probe(scan).ConfigureAwait(false);
-            session.Progress = 100;
-            if (result is not null)
+            return range.Any(address => _sites!.Reaches(site, address));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
+    private async Task ScanLocalAsync(Session session, Ipv4Range range, RangeScanOptions? options, Action<int> progress, CancellationToken scan)
+    {
+        try
+        {
+            await foreach (var result in _scanner.ScanAsync(range, options, new SyncProgress(progress), scan).ConfigureAwait(false))
             {
-                Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.Manual) with { EnteredAddress = enteredAddress });
+                Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.RangeScan, DeviceRoute.Local));
             }
 
-            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, result is null ? 0 : 1);
-            session.Complete(new DiscoveryEvent(null, 100, true));
+            progress(100);
+        }
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
+        {
+            // StopScan or StopAsync: the addresses probed so far count.
+        }
+    }
+
+    /// <summary>The first contact on the site's node (thousands of short connects stay at the site), then the probe of each answer through the site.</summary>
+    private async Task ScanSiteAsync(Session session, Guid site, Ipv4Range range, RangeScanOptions options, Action<int> progress, CancellationToken scan)
+    {
+        var route = DeviceRoute.ViaSite(site);
+        using var limit = new SemaphoreSlim(SiteProbeParallelism);
+        var probes = new List<Task>();
+        try
+        {
+            await foreach (var found in _sites!.RangeScanAsync(site, range.From, range.To, options.Parallelism, options.Timeout, scan).ConfigureAwait(false))
+            {
+                if (found.Total > 0)
+                {
+                    // The probes of the answers belong to the progress too: the site's part ends at 95 % until they finished.
+                    progress((int)((long)found.Tried * 95 / found.Total));
+                }
+
+                if (found.Address is { } address)
+                {
+                    probes.RemoveAll(t => t.IsCompleted);
+                    probes.Add(ProbeFoundAsync(session, route, address, options.Timeout, limit, scan));
+                }
+            }
+        }
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
+        {
+        }
+        catch (SiteException ex)
+        {
+            DiscoveryLog.SiteSkipped(_logger, session.Handle.Id, ex.Message);
+        }
+        finally
+        {
+            await Task.WhenAll(probes).ConfigureAwait(false);
+        }
+
+        progress(100);
+    }
+
+    private async Task ProbeFoundAsync(Session session, DeviceRoute route, IPAddress address, TimeSpan timeout, SemaphoreSlim limit, CancellationToken scan)
+    {
+        try
+        {
+            await limit.WaitAsync(scan).ConfigureAwait(false);
+            try
+            {
+                if (await _probe.ProbeAsync(address, route, timeout, scan).ConfigureAwait(false) is { } result)
+                {
+                    Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.RangeScan, route));
+                }
+            }
+            finally
+            {
+                limit.Release();
+            }
+        }
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
+        {
+        }
+        catch (SiteException ex)
+        {
+            DiscoveryLog.SiteSkipped(_logger, session.Handle.Id, ex.Message);
+        }
+    }
+
+    private async Task RunAddressProbeAsync(Session session, string enteredAddress, IReadOnlyList<RouteProbe> probes, string? expectedSerial,
+        CancellationToken scan, CancellationToken ct)
+    {
+        try
+        {
+            var problems = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            var held = new System.Collections.Concurrent.ConcurrentQueue<DeviceObservation>();
+            var expected = string.IsNullOrWhiteSpace(expectedSerial) ? null : expectedSerial.Trim().ToUpperInvariant();
+            await Task.WhenAll(probes.Select(async probe =>
+            {
+                DeviceProbeResult? result;
+                try
+                {
+                    result = await probe.Probe(scan).ConfigureAwait(false);
+                }
+                catch (SiteException ex)
+                {
+                    problems.Enqueue(ex.Message);
+                    return;
+                }
+
+                if (result is null)
+                {
+                    return;
+                }
+
+                var observation = DeviceObservation.FromProbe(result, DiscoverySources.Manual, probe.Route) with { EnteredAddress = enteredAddress };
+                if (expected is not null && !string.Equals(result.Serial, expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    held.Enqueue(observation); // shown only when the expected device answered on no route
+                    return;
+                }
+
+                Publish(session, observation);
+            })).ConfigureAwait(false);
+
+            if (expected is not null && !session.Snapshot().Devices.Any(d => string.Equals(d.Serial, expected, StringComparison.OrdinalIgnoreCase)))
+            {
+                foreach (var observation in held)
+                {
+                    Publish(session, observation);
+                }
+            }
+
+            session.Progress = 100;
+            var count = session.Snapshot().Devices.Count;
+            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, count);
+            session.Complete(new DiscoveryEvent(null, 100, true) { Problem = count == 0 && problems.TryPeek(out var problem) ? problem : null });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -368,7 +645,7 @@ public sealed class DiscoveryService : IAsyncDisposable
                 // Looked up before (the device came back to this address): the name found then, without asking DNS again.
                 if (known is not null)
                 {
-                    PublishDnsName(session, changed.Serial, changed.Address, known);
+                    PublishDnsName(session, changed.Serial, changed.Address, changed.Route, known);
                 }
 
                 return;
@@ -378,8 +655,8 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
     }
 
-    /// <summary>The DNS name of a found device's IP on its route, once per device and address (manual entries keep what was typed).</summary>
-    private async Task LookupDnsNameAsync(Session session, string serial, IPAddress address, Sites.DeviceRoute route)
+    /// <summary>The DNS name of a found device's IP on its route, once per device, route and address (manual entries keep what was typed).</summary>
+    private async Task LookupDnsNameAsync(Session session, string serial, IPAddress address, DeviceRoute route)
     {
         var ct = session.Stop.Token;
         try
@@ -388,10 +665,10 @@ public sealed class DiscoveryService : IAsyncDisposable
             try
             {
                 var name = SystemDnsNameLookup.Normalize(await _dnsNames!.LookupAsync(address, route, ct).ConfigureAwait(false));
-                session.SetDnsName(serial, address, name);
+                session.SetDnsName(serial, address, route, name);
                 if (name is not null)
                 {
-                    PublishDnsName(session, serial, address, name);
+                    PublishDnsName(session, serial, address, route, name);
                 }
             }
             finally
@@ -405,8 +682,8 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
     }
 
-    private void PublishDnsName(Session session, string serial, IPAddress address, string name) =>
-        Publish(session, new DeviceObservation(serial, address, null, null, null, null, null, DiscoverySources.None) { DnsName = name });
+    private void PublishDnsName(Session session, string serial, IPAddress address, DeviceRoute route, string name) =>
+        Publish(session, new DeviceObservation(serial, address, null, null, null, null, null, DiscoverySources.None) { DnsName = name, Route = route });
 
     /// <summary>A partial view of a device from one source; null fields mean "not known by this source".</summary>
     internal sealed record DeviceObservation(
@@ -424,39 +701,92 @@ public sealed class DiscoveryService : IAsyncDisposable
         /// <summary>The verified DNS name of <see cref="Address"/>, from the lookup.</summary>
         public string? DnsName { get; init; }
 
-        public static DeviceObservation FromProbe(DeviceProbeResult r, DiscoverySources source)
-            => new(r.Serial, r.Address, null, r.Model, r.FirmwareVersion, r.Scheme, r.Status, source, r.ProductType);
+        /// <summary>Where the source saw the device.</summary>
+        public DeviceRoute Route { get; init; }
+
+        public static DeviceObservation FromProbe(DeviceProbeResult r, DiscoverySources source, DeviceRoute route = default)
+            => new(r.Serial, r.Address, null, r.Model, r.FirmwareVersion, r.Scheme, r.Status, source, r.ProductType) { Route = route };
     }
+
+    /// <summary>
+    /// The route a device answering through both is shown through: a site rather than the server's own network (the site's
+    /// node reaches the address, the server's own network may only reach it through a router); between two sites the first
+    /// one found stays.
+    /// </summary>
+    internal static bool Prefer(DeviceRoute candidate, DeviceRoute current) => !candidate.IsLocal && current.IsLocal;
 
     /// <summary>
     /// Merges an observation into an existing device (or creates it). Returns the new device when
     /// anything visible changed, otherwise null. Later non-null values win; the address follows
-    /// the latest observation; sources accumulate.
+    /// the latest observation on the device's route; sources accumulate. An observation through another route
+    /// either takes the device over (<see cref="Prefer"/>: its route, address, scheme and status) or only fills what is
+    /// still unknown; the other route is remembered in <see cref="DiscoveredDevice.OtherRoutes"/>.
     /// </summary>
     internal static DiscoveredDevice? Merge(DiscoveredDevice? existing, DeviceObservation o, DateTimeOffset now)
     {
         if (existing is null)
         {
-            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType, o.EnteredAddress, o.DnsName);
+            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType, o.EnteredAddress, o.DnsName)
+            {
+                Route = o.Route,
+            };
         }
 
-        var merged = existing with
+        DiscoveredDevice merged;
+        if (o.Route != existing.Route && !Prefer(o.Route, existing.Route))
         {
-            Address = o.Address,
-            HostName = o.HostName ?? existing.HostName,
-            Model = o.Model ?? existing.Model,
-            FirmwareVersion = o.FirmwareVersion ?? existing.FirmwareVersion,
-            ProductType = o.ProductType ?? existing.ProductType,
-            Scheme = o.Scheme ?? existing.Scheme,
-            Status = o.Status ?? existing.Status,
-            Sources = existing.Sources | o.Source,
-            EnteredAddress = o.EnteredAddress ?? existing.EnteredAddress,
+            // Another route that does not win: what it knows fills the gaps, the device stays where it is.
+            merged = existing with
+            {
+                HostName = existing.HostName ?? o.HostName,
+                Model = existing.Model ?? o.Model,
+                FirmwareVersion = existing.FirmwareVersion ?? o.FirmwareVersion,
+                ProductType = existing.ProductType ?? o.ProductType,
+                Sources = existing.Sources | o.Source,
+                OtherRoutes = o.Source == DiscoverySources.None ? existing.OtherRoutes : existing.OtherRoutes.With(o.Route),
+                LastSeenUtc = existing.LastSeenUtc,
+            };
+        }
+        else if (o.Route != existing.Route)
+        {
+            // A site takes the device over from the server's own network: route, address, scheme and status are the site's.
+            merged = existing with
+            {
+                Address = o.Address,
+                Route = o.Route,
+                OtherRoutes = existing.OtherRoutes.With(existing.Route).Without(o.Route),
+                HostName = o.HostName ?? existing.HostName,
+                Model = o.Model ?? existing.Model,
+                FirmwareVersion = o.FirmwareVersion ?? existing.FirmwareVersion,
+                ProductType = o.ProductType ?? existing.ProductType,
+                Scheme = o.Scheme,
+                Status = o.Status ?? DiscoveredDeviceStatus.Unknown,
+                Sources = existing.Sources | o.Source,
+                EnteredAddress = o.EnteredAddress ?? existing.EnteredAddress,
+                DnsName = o.DnsName,
+                LastSeenUtc = existing.LastSeenUtc,
+            };
+        }
+        else
+        {
+            merged = existing with
+            {
+                Address = o.Address,
+                HostName = o.HostName ?? existing.HostName,
+                Model = o.Model ?? existing.Model,
+                FirmwareVersion = o.FirmwareVersion ?? existing.FirmwareVersion,
+                ProductType = o.ProductType ?? existing.ProductType,
+                Scheme = o.Scheme ?? existing.Scheme,
+                Status = o.Status ?? existing.Status,
+                Sources = existing.Sources | o.Source,
+                EnteredAddress = o.EnteredAddress ?? existing.EnteredAddress,
 
-            // A name belongs to the address it was looked up for: a new address drops it (and is looked up again).
-            DnsName = o.DnsName is { } name && o.Address.Equals(existing.Address) ? name
-                : o.Address.Equals(existing.Address) ? existing.DnsName : null,
-            LastSeenUtc = existing.LastSeenUtc,
-        };
+                // A name belongs to the address it was looked up for: a new address drops it (and is looked up again).
+                DnsName = o.DnsName is { } name && o.Address.Equals(existing.Address) ? name
+                    : o.Address.Equals(existing.Address) ? existing.DnsName : null,
+                LastSeenUtc = existing.LastSeenUtc,
+            };
+        }
 
         return merged == existing ? null : merged with { LastSeenUtc = now };
     }
@@ -479,6 +809,9 @@ public sealed class DiscoveryService : IAsyncDisposable
         public CancellationTokenSource Scan { get; } = new();
 
         public Task Run { get; set; } = Task.CompletedTask;
+
+        /// <summary>The time limit of a zero-conf scan (null: until stopped); the sites browse as long.</summary>
+        public TimeSpan? Duration { get; set; }
 
         /// <summary>Called once before the run starts.</summary>
         public void LimitScan(TimeSpan duration, TimeProvider time)
@@ -522,7 +855,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         /// <summary>True once per device and address (the caller starts the lookup); later <paramref name="known"/> is the name it found.</summary>
         public bool ClaimDnsLookup(DiscoveredDevice device, out string? known)
         {
-            var key = DnsKey(device.Serial, device.Address);
+            var key = DnsKey(device.Serial, device.Address, device.Route);
             if (_dnsLookups.TryAdd(key, null))
             {
                 known = null;
@@ -534,9 +867,9 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
 
         /// <summary>The result of the lookup <see cref="ClaimDnsLookup"/> started.</summary>
-        public void SetDnsName(string serial, IPAddress address, string? name) => _dnsLookups[DnsKey(serial, address)] = name;
+        public void SetDnsName(string serial, IPAddress address, DeviceRoute route, string? name) => _dnsLookups[DnsKey(serial, address, route)] = name;
 
-        private static string DnsKey(string serial, IPAddress address) => serial + "|" + address;
+        private static string DnsKey(string serial, IPAddress address, DeviceRoute route) => serial + "|" + route + "|" + address;
 
         public DiscoveredDevice? Merge(DeviceObservation observation, DateTimeOffset now)
         {
@@ -553,12 +886,12 @@ public sealed class DiscoveryService : IAsyncDisposable
             }
         }
 
-        public void MarkUnreachable(IPAddress address, DateTimeOffset now, out DiscoveredDevice? changed)
+        public void MarkUnreachable(DeviceRoute route, IPAddress address, DateTimeOffset now, out DiscoveredDevice? changed)
         {
             changed = null;
             lock (_lock)
             {
-                var device = _devices.Values.FirstOrDefault(d => d.Address.Equals(address) && d.Status == DiscoveredDeviceStatus.Unknown);
+                var device = _devices.Values.FirstOrDefault(d => d.Route == route && d.Address.Equals(address) && d.Status == DiscoveredDeviceStatus.Unknown);
                 if (device is not null)
                 {
                     changed = device with { Status = DiscoveredDeviceStatus.Unreachable, LastSeenUtc = now };

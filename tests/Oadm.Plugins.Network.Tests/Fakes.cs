@@ -51,6 +51,7 @@ internal sealed record FakeDevice(Guid Id, string Address = "10.0.0.48", DeviceS
 
     public IReadOnlyList<DeviceApi> Apis { get; init; } = Fixture.Modern;
 
+    /// <summary>The device's site; null = the server's own network.</summary>
     public Guid? SiteId { get; init; }
 }
 

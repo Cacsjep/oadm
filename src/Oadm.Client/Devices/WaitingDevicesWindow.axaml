@@ -40,6 +40,7 @@
                   c:GridSelection.SelectedItems="{Binding Selected}" SelectionMode="Extended" IsReadOnly="True">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="200" MinWidth="140" />
+            <DataGridTextColumn Header="Site" Binding="{Binding SiteName}" Width="130" MinWidth="90" />
             <DataGridTextColumn Header="MAC address" Binding="{Binding MacAddress}" Width="130" MinWidth="120" />
             <DataGridTextColumn Header="Tags" Binding="{Binding TagsText}" Width="150" MinWidth="90" />
             <DataGridTextColumn Header="Kept" Binding="{Binding KeptText}" Width="140" MinWidth="120" SortMemberPath="KeptAt" />

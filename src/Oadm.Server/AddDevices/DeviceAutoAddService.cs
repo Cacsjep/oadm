@@ -31,7 +31,8 @@ public sealed partial class DeviceAutoAddService(
     DevicePollingService polling,
     AuditLog audit,
     TimeProvider time,
-    ILogger<DeviceAutoAddService> logger) : IDeviceAutoAdd
+    ILogger<DeviceAutoAddService> logger,
+    Core.Sites.ISiteStates? sites = null) : IDeviceAutoAdd
 {
     private long _lastLimitWarningTicks = DateTimeOffset.MinValue.UtcTicks;
 
@@ -161,11 +162,16 @@ public sealed partial class DeviceAutoAddService(
         }
 
         var old = device.Address;
-        var result = await addresses.TryRelocateAsync(normalized, ip.ToString(), "new address from the " + source, requireUnreachable: false, ct).ConfigureAwait(false);
+        var oldRoute = Core.Sites.DeviceConnections.RouteOf(device);
+
+        // A lease of the server's DHCP server: the device is on the server's own network now (also when it was at a site).
+        var result = await addresses.TryRelocateAsync(normalized, ip.ToString(), Core.Sites.DeviceRoute.Local, "new address from the " + source,
+            requireUnreachable: false, ct).ConfigureAwait(false);
         switch (result)
         {
             case DeviceAddressChangeResult.Updated:
-                await audit.WriteAsync(AuditActions.DeviceMoved, $"{normalized}", $"{source}: from {old} to {ip}", ct).ConfigureAwait(false);
+                await audit.WriteAsync(AuditActions.DeviceMoved, $"{normalized}",
+                    $"{source}: {Devices.DeviceMoveText.Of(oldRoute, old, Core.Sites.DeviceRoute.Local, ip.ToString(), sites)}", ct).ConfigureAwait(false);
                 return DeviceFollowResult.Moved;
             case DeviceAddressChangeResult.KeptHostName:
                 return DeviceFollowResult.KeptHostName;

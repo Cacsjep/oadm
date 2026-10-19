@@ -17,7 +17,7 @@ public sealed class VapixProbe
 
     private static readonly string[] Schemes = [Uri.UriSchemeHttps, Uri.UriSchemeHttp];
 
-    private readonly Func<Uri, CertificatePinning, HttpMessageHandler>? _handlerFactory;
+    private readonly Func<Uri, CertificatePinning, DeviceRoute, HttpMessageHandler>? _handlerFactory;
     private readonly DeviceRouter _router;
     private readonly TimeSpan _timeout;
 
@@ -27,8 +27,17 @@ public sealed class VapixProbe
     public VapixProbe(TimeSpan? timeout = null, Func<Uri, CertificatePinning, HttpMessageHandler>? handlerFactory = null, DeviceRouter? router = null)
     {
         _timeout = timeout ?? DefaultTimeout;
-        _handlerFactory = handlerFactory;
+        _handlerFactory = handlerFactory is null ? null : (uri, pinning, _) => handlerFactory(uri, pinning);
         _router = router ?? DeviceRouter.Local;
+    }
+
+    /// <param name="timeout">Per-request timeout.</param>
+    /// <param name="handlerFactory">Creates the HTTP handler per scheme and route (tests with devices at sites).</param>
+    public VapixProbe(TimeSpan timeout, Func<Uri, CertificatePinning, DeviceRoute, HttpMessageHandler> handlerFactory)
+    {
+        _timeout = timeout;
+        _handlerFactory = handlerFactory;
+        _router = DeviceRouter.Local;
     }
 
     /// <summary>
@@ -41,6 +50,7 @@ public sealed class VapixProbe
     /// <param name="schemes">Schemes to try in order; default HTTPS then HTTP.</param>
     /// <param name="timeout">Per-request timeout of this probe; default the one of the constructor.</param>
     /// <param name="route">Where the address is: the server's own network (default) or a site.</param>
+    /// <exception cref="SiteException">The site cannot carry the probe (offline, port not allowed): never "no device".</exception>
     public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct, IReadOnlyList<string>? schemes = null, TimeSpan? timeout = null,
         DeviceRoute route = default)
     {
@@ -52,7 +62,7 @@ public sealed class VapixProbe
             var baseAddress = VapixClient.BuildBaseAddress(scheme, address);
             var pinning = new CertificatePinning();
             var requestTimeout = timeout ?? _timeout;
-            var handler = _handlerFactory?.Invoke(baseAddress, pinning)
+            var handler = _handlerFactory?.Invoke(baseAddress, pinning, route)
                 ?? VapixClient.CreateHandler(baseAddress, null, pinning, route: route, router: _router, timeout: requestTimeout);
             using var client = new VapixClient(baseAddress, handler, pinning, requestTimeout) { Route = route, Router = _router };
 

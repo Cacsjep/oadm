@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.Client.Devices;
+using Oadm.Contracts.Sites;
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Discovery;
@@ -113,6 +114,40 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         Update(device);
     }
 
+    /// <summary>
+    /// Import: the site the line is checked through (its Site column, as the server resolved it); empty = everywhere. Kept
+    /// with the line on the waiting list.
+    /// </summary>
+    public string LineSiteId { get; set; } = "";
+
+    /// <summary>The site the device answered through (column Site); empty = the server's own network.</summary>
+    [ObservableProperty] public partial string SiteName { get; private set; } = "";
+
+    /// <summary>Tooltip of the Site column: the other routes the same device answered through ("Also answers through this server.").</summary>
+    [ObservableProperty] public partial string SiteTip { get; private set; } = "";
+
+    private string? _note;
+
+    /// <summary>
+    /// The address answered with different devices through several sites ("Answers through Building A and Building B."):
+    /// the row stays unchecked until the user checks it, the text stands next to its status.
+    /// </summary>
+    public void MarkAnswersThrough(string text)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        _note = text;
+        if (!_checkedOnce)
+        {
+            _checkedOnce = true; // never checked by itself
+        }
+
+        IsSelected = false;
+        Refresh();
+    }
+
+    /// <summary>The note of <see cref="MarkAnswersThrough"/>; null without one.</summary>
+    public string? Note => _note;
+
     /// <summary>The discovery session that reported the device last (RetryAuth and Commit use it).</summary>
     [ObservableProperty] public partial string SessionId { get; set; }
 
@@ -221,6 +256,9 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         DnsName = device.DnsName;
         UpdateAddress();
         HostName = device.HostName;
+        SiteName = device.SiteName;
+        SiteTip = device.OtherSites.Count == 0 ? ""
+            : SiteDiscoveryTexts.AlsoAnswersThrough([.. device.OtherSites.Select(SiteDiscoveryTexts.RouteName)]);
         if (device.Model.Length > 0 || Model.Length == 0)
         {
             Model = device.Model;
@@ -274,6 +312,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
             || DnsName.Contains(term, StringComparison.OrdinalIgnoreCase)
             || HostName.Contains(term, StringComparison.OrdinalIgnoreCase)
             || Model.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || SiteName.Contains(term, StringComparison.OrdinalIgnoreCase)
             || ChipText.Contains(term, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -306,7 +345,9 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
                 AuthState.Unreachable => ("Unreachable", PillKind.Error),
                 _ => ("Checking...", PillKind.Accent),
             };
-        StatusDetail = HasImportProblem || (!IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable) ? AuthDetail : "";
+        StatusDetail = HasImportProblem || (!IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable) ? AuthDetail
+            : _note is not null && !IsAdded && !IsAlreadyManaged ? _note
+            : "";
         CanAdd = !IsImportPlaceholder && !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && PendingPassword is not null));
         if (!CanAdd)
         {

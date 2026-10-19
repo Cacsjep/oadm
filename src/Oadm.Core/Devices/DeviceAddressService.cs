@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Oadm.Core.Sites;
 using Oadm.Core.Tasks;
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
@@ -61,7 +62,7 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
         var address = NormalizeAddress(newAddress);
         var device = await _devices.GetAsync(deviceId, ct).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Device {deviceId} not found.");
-        return await MoveAsync(device, address, "changed by a task", ct).ConfigureAwait(false);
+        return await MoveAsync(device, address, DeviceConnections.RouteOf(device), "changed by a task", ct).ConfigureAwait(false);
     }
 
     /// <summary>Clock for the certificate expiry rating after <see cref="UpdateTlsAsync"/>.</summary>
@@ -149,15 +150,32 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
     /// is unreachable at its stored address, verify it there and move the record. Never throws for device errors.
     /// </summary>
     public Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, CancellationToken ct) =>
-        TryRelocateAsync(serial, announcedAddress, "found again by mDNS", requireUnreachable: true, ct);
+        TryRelocateAsync(serial, announcedAddress, DeviceRoute.Local, "found again by mDNS", requireUnreachable: true, ct);
 
     /// <summary>
-    /// <paramref name="serial"/> was seen at <paramref name="address"/> by <paramref name="reason"/> (mDNS, a DHCP lease):
-    /// when that is a managed device addressed by IP with another address, verify it there and move the record. With
-    /// <paramref name="requireUnreachable"/> only devices that are unreachable at their stored address move (mDNS); a DHCP
-    /// lease is proof enough that the address changed, so it moves a device right away. Never throws for device errors.
+    /// <paramref name="serial"/> was seen at <paramref name="address"/> on the server's own network by <paramref name="reason"/>
+    /// (a DHCP lease of the server). See <see cref="TryRelocateAsync(string, string, DeviceRoute, string, bool, CancellationToken)"/>.
     /// </summary>
-    public async Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, string reason, bool requireUnreachable, CancellationToken ct)
+    public Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, string reason, bool requireUnreachable, CancellationToken ct) =>
+        TryRelocateAsync(serial, announcedAddress, DeviceRoute.Local, reason, requireUnreachable, ct);
+
+    /// <summary>The last move of <see cref="TryRelocateAsync(string, string, DeviceRoute, string, bool, CancellationToken)"/>, for the caller's audit entry.</summary>
+    public sealed record Move(string Serial, DeviceRoute FromRoute, string FromAddress, DeviceRoute ToRoute, string ToAddress);
+
+    /// <summary>Raised after a record moved (route and / or address), with where from and where to.</summary>
+    public event EventHandler<Move>? Moved;
+
+    /// <summary>
+    /// <paramref name="serial"/> was seen at <paramref name="address"/> through <paramref name="route"/> by
+    /// <paramref name="reason"/> (mDNS on the server's network or at a site, a DHCP lease): when that is a managed device
+    /// addressed by IP with another address or route, verify it there (serial, pinned certificate, stored credentials) and
+    /// move the record: route and address change together. With <paramref name="requireUnreachable"/> only devices that do
+    /// not answer on their own route move (Unreachable, or Site offline: the caller keeps those to sites offline for long),
+    /// so a device that answers on its current route never moves; a DHCP lease is proof enough that the address changed,
+    /// so it moves a device right away. Devices addressed by name never move. Never throws for device errors.
+    /// </summary>
+    public async Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, DeviceRoute route, string reason, bool requireUnreachable,
+        CancellationToken ct)
     {
         var device = await _devices.FindBySerialAsync(serial, ct).ConfigureAwait(false);
         if (device is null)
@@ -180,19 +198,19 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             return DeviceAddressChangeResult.KeptHostName;
         }
 
-        if (SameAddress(device.Address, address))
+        if (SameAddress(device.Address, address) && DeviceConnections.RouteOf(device) == route)
         {
             return DeviceAddressChangeResult.Unchanged;
         }
 
-        if (requireUnreachable && device.Status != DeviceStatus.Unreachable)
+        if (requireUnreachable && device.Status is not (DeviceStatus.Unreachable or DeviceStatus.SiteOffline))
         {
             return DeviceAddressChangeResult.StillReachable;
         }
 
         try
         {
-            return await MoveAsync(device, address, reason, ct).ConfigureAwait(false);
+            return await MoveAsync(device, address, route, reason, ct).ConfigureAwait(false);
         }
         catch (DeviceIdentityException ex)
         {
@@ -208,7 +226,7 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
         return !IPAddress.TryParse(device.Address.Trim('[', ']'), out _);
     }
 
-    private async Task<DeviceAddressChangeResult> MoveAsync(Device device, string address, string reason, CancellationToken ct)
+    private async Task<DeviceAddressChangeResult> MoveAsync(Device device, string address, DeviceRoute route, string reason, CancellationToken ct)
     {
         if (UsesHostName(device))
         {
@@ -216,15 +234,17 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             return DeviceAddressChangeResult.KeptHostName;
         }
 
-        if (SameAddress(device.Address, address))
+        var oldRoute = DeviceConnections.RouteOf(device);
+        if (SameAddress(device.Address, address) && oldRoute == route)
         {
             return DeviceAddressChangeResult.Unchanged;
         }
 
-        await VerifyIdentityAsync(device, address, ct).ConfigureAwait(false);
+        await VerifyIdentityAsync(device, address, route, ct).ConfigureAwait(false);
 
+        // Overlapping networks: only a device on the same route shares the address.
         var others = (await _devices.ListDevicesAsync(ct).ConfigureAwait(false))
-            .Where(d => d.Id != device.Id && SameAddress(d.Address, address))
+            .Where(d => d.Id != device.Id && DeviceConnections.RouteOf(d) == route && SameAddress(d.Address, address))
             .ToList();
         foreach (var other in others)
         {
@@ -237,7 +257,8 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             d =>
             {
                 d.Address = address;
-                if (d.Status == DeviceStatus.Unreachable)
+                d.SiteId = route.SiteId; // route and address change together; the client cache drops the old client
+                if (d.Status is DeviceStatus.Unreachable or DeviceStatus.SiteOffline)
                 {
                     d.Status = DeviceStatus.Unknown; // it answered at the new address; the queued refresh sets the real status
                 }
@@ -248,14 +269,15 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             throw new KeyNotFoundException($"Device {device.Id} not found.");
         }
 
-        LogMoved(device.Serial, old, address, reason);
+        LogMoved(device.Serial, oldRoute, old, route, address, reason);
         _queueRefresh(device.Id);
+        Moved?.Invoke(this, new Move(device.Serial, oldRoute, old, route, address));
         return DeviceAddressChangeResult.Updated;
     }
 
-    private async Task VerifyIdentityAsync(Device device, string address, CancellationToken ct)
+    private async Task VerifyIdentityAsync(Device device, string address, DeviceRoute route, CancellationToken ct)
     {
-        using var client = await _clients.CreateForAddressAsync(device, address, ct).ConfigureAwait(false);
+        using var client = await _clients.CreateForAddressAsync(device, address, route, ct).ConfigureAwait(false);
         await VerifySerialAsync(client, device, "at " + address, ct).ConfigureAwait(false);
     }
 
@@ -306,8 +328,8 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             ? x.Equals(y)
             : string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} moved from {OldAddress} to {NewAddress} ({Reason})")]
-    private partial void LogMoved(string serial, string oldAddress, string newAddress, string reason);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} moved from {OldRoute} {OldAddress} to {NewRoute} {NewAddress} ({Reason})")]
+    private partial void LogMoved(string serial, DeviceRoute oldRoute, string oldAddress, DeviceRoute newRoute, string newAddress, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} at {Address}: OADM now connects over {Scheme} (certificate {Fingerprint})")]
     private partial void LogTlsChanged(string serial, string address, string scheme, string fingerprint);

@@ -29,6 +29,7 @@ public partial class AddDevicesWindow : Window
         {
             _vm.CloseRequested += OnCloseRequested;
             _vm.PropertyChanged += OnViewModelPropertyChanged;
+            ShowSiteColumn(_vm.ShowSiteColumn);
         }
     }
 
@@ -47,8 +48,25 @@ public partial class AddDevicesWindow : Window
 
     private void OnCloseRequested(object? sender, bool added) => Close(added);
 
+    /// <summary>The Site column (a grid column is not in the tree: no binding to the view model).</summary>
+    private void ShowSiteColumn(bool show)
+    {
+        foreach (DataGridColumn column in DeviceList.Columns)
+        {
+            if (Equals(column.Header, "Site"))
+            {
+                column.IsVisible = show;
+            }
+        }
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(AddDevicesViewModel.ShowSiteColumn) && _vm is not null)
+        {
+            ShowSiteColumn(_vm.ShowSiteColumn);
+        }
+
         if (e.PropertyName == nameof(AddDevicesViewModel.Editor) && _vm is not null)
         {
             TextBox? target = _vm.IsLoginEditorOpen ? LoginPasswordBox : _vm.IsPasswordEditorOpen ? NewPasswordBox : null;

@@ -54,11 +54,11 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
     }
 
     /// <summary>Address and serial of every device, without loading the rows (the waiting list's check per round).</summary>
-    public async Task<IReadOnlyList<(string Serial, string Address)>> ListAddressesAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<ManagedAddress>> ListAddressesAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var rows = await db.Devices.AsNoTracking().Select(d => new { d.Serial, d.Address }).ToListAsync(ct).ConfigureAwait(false);
-        return [.. rows.Select(r => (r.Serial, r.Address))];
+        var rows = await db.Devices.AsNoTracking().Select(d => new { d.Serial, d.Address, d.SiteId }).ToListAsync(ct).ConfigureAwait(false);
+        return [.. rows.Select(r => new ManagedAddress(r.Serial, r.Address, r.SiteId))];
     }
 
     /// <summary>Number of managed devices.</summary>
