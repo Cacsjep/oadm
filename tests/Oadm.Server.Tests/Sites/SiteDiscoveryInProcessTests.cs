@@ -29,9 +29,8 @@ public sealed class SiteDiscoveryInProcessTests
         await using var server = await SiteServer.StartAsync();
         await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
         node.Map("192.168.0.30", 80, device.EndPoint);
-        node.Map("192.168.0.31", 80, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
-        node.Map("192.168.0.31", 443, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
-        node.Map("192.168.0.30", 443, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
+        node.Connector.Dead.Add(IPAddress.Parse("192.168.0.31")); // nothing at .31
+        node.Refuse("192.168.0.30", 443);
         var dns = (FakeDns)node.Get<INodeDns>();
         dns.Names["cam30.site.example"] = [IPAddress.Parse("192.168.0.30")];
         dns.Reverse[IPAddress.Parse("192.168.0.30")] = "cam30.site.example";
@@ -58,9 +57,9 @@ public sealed class SiteDiscoveryInProcessTests
         var outside = await Assert.ThrowsAsync<SiteException>(() => sites.PingAsync(id, "10.0.0.20", TimeSpan.FromSeconds(5), ct));
         Assert.Equal(SiteProblem.OutsideNetworks, outside.Problem);
 
-        // The first contact of a range scan on the node: .30 answers on 80, .31 is closed, .29 is outside the map (refused).
-        node.Map("192.168.0.29", 80, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
-        node.Map("192.168.0.29", 443, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
+        // The first contact of a range scan on the node: .30 answers on 80, nothing is at .31, .29 refuses both ports.
+        node.Refuse("192.168.0.29", 80);
+        node.Refuse("192.168.0.29", 443);
         var scan = new List<SiteRangeScanResult>();
         await foreach (var result in sites.RangeScanAsync(id, IPAddress.Parse("192.168.0.29"), IPAddress.Parse("192.168.0.31"), 4, TimeSpan.FromSeconds(5), ct))
         {
@@ -73,14 +72,24 @@ public sealed class SiteDiscoveryInProcessTests
         Assert.Equal(IPAddress.Parse("192.168.0.30"), open.Address);
         Assert.Equal([80], open.OpenPorts);
 
-        // mDNS on the node's reached cards: nothing announces in the test, the browse ends after its time.
+        // mDNS on the node (a fake browse, no multicast in unit tests): its answers reach the server, the browse ends after its time.
+        node.Browser.Found.Add(new Oadm.Contracts.SiteNode.BrowseResult
+        {
+            Serial = "ACCC8E000030",
+            InstanceName = "Cam 30 - ACCC8E000030",
+            Addresses = { "192.168.0.30" },
+            Port = 80,
+            HostName = "axis-accc8e000030.local",
+        });
         var browsed = new List<SiteBrowseResult>();
         await foreach (var found in sites.BrowseAsync(id, TimeSpan.FromSeconds(1), ct))
         {
             browsed.Add(found);
         }
 
-        Assert.DoesNotContain(browsed, b => b.Serial == "ACCC8E000030");
+        var announced = Assert.Single(browsed);
+        Assert.Equal("ACCC8E000030", announced.Serial);
+        Assert.Equal([IPAddress.Parse("192.168.0.30")], announced.Addresses);
     }
 
     [Fact]
@@ -91,7 +100,7 @@ public sealed class SiteDiscoveryInProcessTests
         await using var server = await SiteServer.StartAsync(configure: RoutedProbe);
         await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
         node.Map("192.168.0.20", 80, device.EndPoint);
-        node.Map("192.168.0.20", 443, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
+        node.Refuse("192.168.0.20", 443);
         var id = await server.BindAsync(node, "Building B");
         await Eventually.TrueAsync(() => server.Host.Get<ISiteNetwork>().Reaches(id, IPAddress.Parse("192.168.0.20")), "the node's networks from Watch");
         var discovery = new Proto.DiscoveryService.DiscoveryServiceClient(server.Host.Invoker);

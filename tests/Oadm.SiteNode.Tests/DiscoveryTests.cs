@@ -112,11 +112,10 @@ public sealed class DiscoveryTests
         await using var https = new EchoServer();
         var connector = new MapConnector();
         connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.5"), 443)] = new IPEndPoint(IPAddress.Loopback, https.Port);
-        var closed = Ports.FreeTcp();
         for (var i = 1; i <= 9; i++)
         {
             if (i != 5)
-                connector.Map[new IPEndPoint(IPAddress.Parse($"127.0.0.{i}"), 443)] = new IPEndPoint(IPAddress.Loopback, closed);
+                connector.Refuse($"127.0.0.{i}", 443);
         }
 
         await using var log = new ConnectionLog(null, TimeProvider.System);
@@ -199,11 +198,11 @@ public sealed class DiscoveryTests
         await using var https = new EchoServer();
         var connector = new MapConnector();
         connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.7"), 443)] = new IPEndPoint(IPAddress.Loopback, https.Port);
-        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.7"), 80)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
+        connector.Refuse("127.0.0.7", 80);
         connector.Dead.Add(IPAddress.Parse("127.0.0.8"));
         // A host that refuses (sends a reset) is there: the address is taken.
-        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.9"), 443)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
-        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.9"), 80)] = new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp());
+        connector.Refuse("127.0.0.9", 443);
+        connector.Refuse("127.0.0.9", 80);
         await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o => o.Connector = connector);
         await using var link = await server.NextLinkAsync();
         await link.BindAsync(node.Code);
@@ -243,14 +242,13 @@ public sealed class DiscoveryTests
         await using var https = new EchoServer();
         var connector = new MapConnector();
         connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.3"), 443)] = new IPEndPoint(IPAddress.Loopback, https.Port);
-        var closed = Ports.FreeTcp();
         foreach (var i in new[] { 1, 2, 4 })
         {
-            connector.Map[new IPEndPoint(IPAddress.Parse($"127.0.0.{i}"), 443)] = new IPEndPoint(IPAddress.Loopback, closed);
-            connector.Map[new IPEndPoint(IPAddress.Parse($"127.0.0.{i}"), 80)] = new IPEndPoint(IPAddress.Loopback, closed);
+            connector.Refuse($"127.0.0.{i}", 443);
+            connector.Refuse($"127.0.0.{i}", 80);
         }
 
-        connector.Map[new IPEndPoint(IPAddress.Parse("127.0.0.3"), 80)] = new IPEndPoint(IPAddress.Loopback, closed);
+        connector.Refuse("127.0.0.3", 80);
         await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o => o.Connector = connector);
         await using var link = await server.NextLinkAsync();
         await link.BindAsync(node.Code);

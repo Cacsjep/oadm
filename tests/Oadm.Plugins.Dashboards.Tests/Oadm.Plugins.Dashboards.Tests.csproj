@@ -25,6 +25,7 @@
     <!-- Oadm.Client supplies the host theme, the fake API and the shared runtime assemblies
          (Avalonia, CommunityToolkit, SDK) the plugin projects compile against only. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Dashboards\Oadm.Plugins.Dashboards.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Dashboards.Client\Oadm.Plugins.Dashboards.Client.csproj" />
   </ItemGroup>

@@ -167,6 +167,7 @@ internal sealed class SiteTestNode : IAsyncDisposable
             Dns = new FakeDns(),
             Pinger = new NoPinger(),
             Connector = connector,
+            Browser = new FakeBrowser(), // no multicast in unit tests
             MaxBackoff = TimeSpan.FromSeconds(1),
         };
         var app = NodeHost.Build(options);
@@ -194,6 +195,12 @@ internal sealed class SiteTestNode : IAsyncDisposable
 
         return copy;
     }
+
+    /// <summary>The node's mDNS browse (a fake: nothing announces unless a test adds it).</summary>
+    public FakeBrowser Browser => (FakeBrowser)Get<Oadm.SiteNode.Discovery.IAxisBrowser>();
+
+    /// <summary>A host at <paramref name="address"/> that refuses <paramref name="port"/> (deterministic, no free port needed).</summary>
+    public void Refuse(string address, int port) => Connector.Refuse(address, port);
 
     /// <summary>Points a device address and port at the node to a loopback end point.</summary>
     public void Map(string address, int port, IPEndPoint target) => Connector.Map[new IPEndPoint(IPAddress.Parse(address), port)] = target;

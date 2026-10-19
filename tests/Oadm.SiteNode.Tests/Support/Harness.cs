@@ -51,6 +51,7 @@ internal sealed class TestNode : IAsyncDisposable
             NetworkCards = FakeCards.LoopbackSite(),
             Dns = new FakeDns(),
             Pinger = new NoPinger(),
+            Browser = new FakeBrowser(), // no multicast in unit tests
             MaxBackoff = TimeSpan.FromSeconds(1),
         };
         options?.Invoke(nodeOptions);

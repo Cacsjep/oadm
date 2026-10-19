@@ -134,7 +134,14 @@ public sealed class AxisAggregator(Func<IPAddress, bool> reaches)
 /// <c>Browse</c>: mDNS _axis-video._tcp on the reached cards, one socket per card address sending "legacy unicast" queries
 /// (the answers come back to that socket, so it works next to the OS's own mDNS responder on port 5353).
 /// </summary>
-public sealed class AxisBrowser(NetworkScope networks, TimeProvider time)
+/// <summary><c>Browse</c> of the node: <see cref="AxisBrowser"/>, or a fake in tests (no multicast in unit tests).</summary>
+public interface IAxisBrowser
+{
+    /// <summary>Every Axis device answering until <paramref name="ct"/> ends.</summary>
+    IAsyncEnumerable<BrowseResult> BrowseAsync(CancellationToken ct);
+}
+
+public sealed class AxisBrowser(NetworkScope networks, TimeProvider time) : IAxisBrowser
 {
     private static readonly IPEndPoint Group = new(IPAddress.Parse("224.0.0.251"), 5353);
 

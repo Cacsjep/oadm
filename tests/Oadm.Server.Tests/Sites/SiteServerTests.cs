@@ -270,7 +270,7 @@ public sealed class SiteServerTests
     {
         await using var server = await SiteServer.StartAsync();
         await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
-        node.Map("192.168.0.21", 80, new IPEndPoint(IPAddress.Loopback, Ports.FreeTcp()));
+        node.Refuse("192.168.0.21", 80);
         var id = await server.BindAsync(node);
 
         var refused = await Assert.ThrowsAsync<SocketException>(async () =>
@@ -338,9 +338,20 @@ public sealed class SiteServerTests
             return server.Manager.RoundTrip(id) > TimeSpan.Zero;
         }, "a measured round trip");
 
+        // A heartbeat still in flight may measure again: compare the router against one round trip that did not change
+        // while the router read it.
         var router = server.Host.Get<DeviceRouter>();
-        Assert.Equal(server.Manager.RoundTrip(id) * 4, router.ExtraTimeout(DeviceRoute.ViaSite(id)));
-        Assert.Equal(TimeSpan.FromSeconds(3) + (server.Manager.RoundTrip(id) * 4), router.Timeout(DeviceRoute.ViaSite(id), TimeSpan.FromSeconds(3)));
+        var route = DeviceRoute.ViaSite(id);
+        TimeSpan roundTrip = default, extra = default, timeout = default;
+        await Eventually.TrueAsync(() =>
+        {
+            roundTrip = server.Manager.RoundTrip(id);
+            extra = router.ExtraTimeout(route);
+            timeout = router.Timeout(route, TimeSpan.FromSeconds(3));
+            return roundTrip == server.Manager.RoundTrip(id);
+        }, "a round trip that stays while the router reads it");
+        Assert.Equal(roundTrip * 4, extra);
+        Assert.Equal(TimeSpan.FromSeconds(3) + (roundTrip * 4), timeout);
     }
 
     [Fact]

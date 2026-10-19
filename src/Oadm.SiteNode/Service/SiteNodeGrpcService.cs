@@ -38,7 +38,7 @@ public sealed class SiteNodeGrpcService(
     IPinger pinger,
     IDeviceConnector connector,
     OutboundConnector outbound,
-    AxisBrowser browser,
+    IAxisBrowser browser,
     RangeScanner rangeScanner,
     NodeOptions options) : SiteNodeService.SiteNodeServiceBase
 {
