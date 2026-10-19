@@ -104,6 +104,12 @@ public sealed class Device : IDeviceInfo
     /// <summary>The name of <see cref="SiteId"/>; not a column, filled by reads like <see cref="CredentialUserName"/>.</summary>
     public string? SiteName { get; set; }
 
+    /// <summary>
+    /// The stored (last real) status while <see cref="Status"/> shows the computed Site offline; null otherwise. Not a
+    /// column: filled by <see cref="Sites.SiteDeviceStatus.Apply"/>, so the event rules start from the last real status.
+    /// </summary>
+    public DeviceStatus? StoredStatus { get; set; }
+
     /// <summary>Detached deep copy, safe to hand to other threads.</summary>
     public Device Clone()
     {

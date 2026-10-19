@@ -46,6 +46,16 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates
 
     public bool IsOnline(Guid siteId) => _sites.TryGetValue(siteId, out var site) && site.IsOnline && !site.NotBound;
 
+    public bool IsStarting(Guid siteId) => _sites.TryGetValue(siteId, out var site) && site.Starting;
+
+    /// <summary>Ends the start of a site (after a server start): online or offline now.</summary>
+    public void Settle(Guid siteId, bool online)
+    {
+        _sites[siteId].Starting = false;
+        _sites[siteId].IsOnline = online;
+        RaiseChanged(siteId);
+    }
+
     public TimeSpan RoundTrip(Guid siteId) => _sites.TryGetValue(siteId, out var site) ? site.RoundTrip : TimeSpan.Zero;
 
     public async ValueTask<Stream> OpenStreamAsync(Guid siteId, string host, int port, SiteDialKind kind, TimeSpan timeout, CancellationToken ct)
@@ -94,6 +104,9 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates
         public string Name { get; set; } = name;
         public bool IsOnline { get; set; }
         public bool NotBound { get; set; }
+
+        /// <summary>After a server start, before the first connection settled (counts as not online).</summary>
+        public bool Starting { get; set; }
         public bool Busy { get; set; }
         public TimeSpan RoundTrip { get; set; }
 

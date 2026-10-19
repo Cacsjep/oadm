@@ -97,6 +97,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.Tags).HasConversion(TagsConverter, TagsComparer).IsRequired();
             e.Property(d => d.Apis).HasConversion(ApisConverter, ApisComparer).IsRequired();
             e.Ignore(d => d.SiteName);
+            e.Ignore(d => d.StoredStatus);
             e.HasIndex(d => d.SiteId);
         });
 

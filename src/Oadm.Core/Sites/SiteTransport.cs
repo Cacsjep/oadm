@@ -60,6 +60,13 @@ public interface ISiteStates
     /// <summary>The measured round trip to the node; zero when not measured. Timeouts through a site add 4 times it.</summary>
     TimeSpan RoundTrip(Guid siteId);
 
+    /// <summary>
+    /// True after a server start until the site's first connection settles (its node is online, the first attempt failed,
+    /// or the start window passed). The site counts as not online, but nothing changed: its events and the status events
+    /// of its devices keep their state (no edges after every server start).
+    /// </summary>
+    bool IsStarting(Guid siteId) => false;
+
     /// <summary>A site was added, renamed, removed, or went online or offline. Raised with the ids that changed.</summary>
     event EventHandler<SiteStatesChangedEventArgs>? Changed;
 }
@@ -68,6 +75,17 @@ public interface ISiteStates
 public sealed class SiteStatesChangedEventArgs(IReadOnlyCollection<Guid> siteIds) : EventArgs
 {
     public IReadOnlyCollection<Guid> SiteIds { get; } = siteIds;
+}
+
+/// <summary>
+/// The large transfers of a site (docs/sites.md, Transport: Large transfers): at most a few streamed request bodies or
+/// answers at once per site, so a slow site link keeps room for polls, live view and the heartbeat. Implemented by the
+/// site transport; the route handler asks it for requests that stream.
+/// </summary>
+public interface ISiteLargeTransfers
+{
+    /// <summary>Waits for a free slot of the site; dispose the result when the transfer ended.</summary>
+    ValueTask<IDisposable> EnterLargeTransferAsync(Guid siteId, CancellationToken ct);
 }
 
 /// <summary>Why a site could not carry a connection. Never a device error.</summary>

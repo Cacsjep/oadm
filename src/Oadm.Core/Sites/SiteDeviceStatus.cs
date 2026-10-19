@@ -25,8 +25,9 @@ public static class SiteDeviceStatus
         }
 
         device.SiteName = sites.NameOf(siteId);
-        if (!sites.IsOnline(siteId))
+        if (!sites.IsOnline(siteId) && device.Status != DeviceStatus.SiteOffline)
         {
+            device.StoredStatus = device.Status;
             device.Status = DeviceStatus.SiteOffline;
         }
     }
