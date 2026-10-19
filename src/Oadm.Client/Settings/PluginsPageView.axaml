@@ -32,6 +32,16 @@
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
             <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
+            <DataGridTemplateColumn Header="Sites" Width="220" SortMemberPath="SiteText" x:DataType="settings:PluginRowViewModel">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="settings:PluginRowViewModel">
+                  <StackPanel Margin="8,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SiteText}" />
+                    <TextBlock Classes="secondary small" Text="{Binding SitePortsText}" IsVisible="{Binding HasSitePorts}" />
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="settings:PluginRowViewModel">

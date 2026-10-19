@@ -30,7 +30,7 @@ internal sealed class ComplianceRig : IAsyncDisposable
 
     public FakeCompliancePlugin Plugin { get; } = new();
 
-    public PluginOrigin PluginOrigin { get; } = new("test.compliance-package", "1.0", null) { DisplayName = "Test checks" };
+    public PluginOrigin PluginOrigin { get; } = new("test.compliance-package", "1.0", null) { DisplayName = "Test checks", DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full };
 
     public RecordingPublisher Events { get; } = new();
 
@@ -174,6 +174,9 @@ internal sealed class FakeReadType(string id) : IComplianceCheckType
 
     /// <summary>Set: every evaluation throws it (e.g. a site error).</summary>
     public Exception? ThrowException { get; set; }
+
+    /// <summary>Overrides the package's site support for this type (null = the package's).</summary>
+    public Sdk.Sites.SiteSupport? SiteSupport { get; set; }
 
     public string Id { get; } = id;
 

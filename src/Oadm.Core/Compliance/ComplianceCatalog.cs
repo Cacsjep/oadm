@@ -21,7 +21,7 @@ public sealed record CatalogComplianceType(IComplianceCheckType Type, string Sou
     /// Whether the type checks devices at a site: <see cref="IComplianceCheckType.SiteSupport"/> when the type answers,
     /// else its package's; the host's own types always. A throwing type counts as none.
     /// </summary>
-    public Sdk.Sites.SiteSupport SiteSupport { get; } = SiteSupportOf(Type, Origin);
+    public Sdk.Sites.SiteSupport SiteSupport => SiteSupportOf(Type, Origin);
 
     private static Sdk.Sites.SiteSupport SiteSupportOf(IComplianceCheckType type, PluginOrigin? origin)
     {

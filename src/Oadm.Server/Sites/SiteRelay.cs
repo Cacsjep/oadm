@@ -147,9 +147,9 @@ internal abstract class SiteRelay : IRelay
             {
                 // The link ended or the node refused: tried again below.
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (Exception e) when (ct.IsCancellationRequested && e is OperationCanceledException or RpcException or IOException or InvalidOperationException)
             {
-                break;
+                break; // disposed
             }
             finally
             {
