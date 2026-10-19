@@ -77,7 +77,9 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         {
             if (sites is null || !sites.OnlineSites().Contains(site))
             {
-                throw new ArgumentException(SiteException.For(site, states?.NameOf(site) ?? site.ToString(), SiteProblem.Offline).Message);
+                // The line's site is offline: nothing answers there now ("Site offline: Building B"); the line can wait.
+                var offline = SiteException.For(site, states?.NameOf(site) ?? site.ToString(), SiteProblem.Offline);
+                return discovery.StartAddressProbe(entered.DeviceAddress, [new RouteProbe(DeviceRoute.ViaSite(site), _ => throw offline)], expectedSerial);
             }
 
             routes = [DeviceRoute.ViaSite(site)];

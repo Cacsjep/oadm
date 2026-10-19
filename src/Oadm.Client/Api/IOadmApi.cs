@@ -137,6 +137,13 @@ public interface IOadmApi
     /// address than <paramref name="expectedSerial"/> gets no password at all, not even from the credential list.
     /// </summary>
     Task<string> ProbeAddressAsync(string address, string? userName, string? password, string expectedSerial, CancellationToken ct);
+
+    /// <summary>
+    /// A line of an imported file with everything it names (login, expected MAC address, the Site column): returns the
+    /// session and, with a site, the id of the site it probes through (kept with the line on the waiting list). An unknown
+    /// site or one that is offline is refused (INVALID_ARGUMENT, the text for the row).
+    /// </summary>
+    Task<DiscoverySession> ProbeLineAsync(ProbeAddressRequest request, CancellationToken ct);
     IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct);
     Task StopDiscoveryAsync(string sessionId, CancellationToken ct);
 

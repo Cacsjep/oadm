@@ -154,6 +154,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
+        devices.OpenInWebViewRequested += (_, deviceId) => OpenInWebView(deviceId);
         Navigate(_devicesItem);
     }
 
@@ -602,6 +603,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         OrderCorePluginPages();
+        Devices.IsWebViewOn = NavItems.Any(n => n.Key == WebViewPageKey);
+    }
+
+    /// <summary>The rail key of the Web View page (plugin oadm.web-view).</summary>
+    internal const string WebViewPageKey = "plugin:oadm.web-view";
+
+    /// <summary>A device at a site: its web interface opens in the Web View page (docs/sites.md, Client).</summary>
+    private void OpenInWebView(string deviceId)
+    {
+        if (NavItems.FirstOrDefault(n => n.Key == WebViewPageKey) is not { Page: CorePluginPageViewModel page } item)
+        {
+            return;
+        }
+
+        Navigate(item);
+        page.PluginContext?.RequestOpenDevice(deviceId);
     }
 
     /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
@@ -706,6 +723,17 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly Func<string, bool?>? _pluginOn;
 
     public bool? IsPluginOn(string packageId) => _pluginOn?.Invoke(packageId);
+
+    public event EventHandler<string>? OpenDeviceRequested;
+
+    /// <summary>The host asks the page to open a device (Web View: a device at a site, from the Devices page).</summary>
+    internal void RequestOpenDevice(string deviceId)
+    {
+        if (!_disposed)
+        {
+            OpenDeviceRequested?.Invoke(this, deviceId);
+        }
+    }
 
     private readonly Func<string, Oadm.Sdk.Licensing.PluginLicenseInfo?>? _licenseOf;
 

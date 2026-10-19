@@ -79,10 +79,13 @@ public sealed class SiteDiscoveryTests
             await discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "192.168.0.20", Site = "Warehouse" }));
         Assert.Equal((StatusCode.InvalidArgument, "There is no site named Warehouse."), (unknown.StatusCode, unknown.Status.Detail));
 
+        // The line's site is offline: nothing answers, with the reason (the line can wait for the site).
         sites.SetOnline(a.Id, false);
-        var offline = await Assert.ThrowsAsync<RpcException>(async () =>
-            await discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "192.168.0.20", Site = "Building A" }));
-        Assert.Equal("Site offline: Building A", offline.Status.Detail);
+        var offline = await discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "192.168.0.20", Site = "Building A" });
+        Assert.Equal(a.Id.ToString(), offline.SiteId);
+        var nothing = await WatchAsync(discovery, offline.SessionId);
+        Assert.Empty(nothing.Devices);
+        Assert.Equal("Site offline: Building A", nothing.Finished!.Problem);
     }
 
     [Fact]
