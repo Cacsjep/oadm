@@ -50,6 +50,8 @@ internal sealed record FakeDevice(Guid Id, string Address = "10.0.0.48", DeviceS
     public bool HasVideo => true;
 
     public IReadOnlyList<DeviceApi> Apis { get; init; } = Fixture.Modern;
+
+    public Guid? SiteId { get; init; }
 }
 
 /// <summary>Recorded write (or read) request sent through IVapixClient.SendAsync.</summary>
@@ -160,6 +162,9 @@ internal sealed class RecordingContext : ITaskExecutionContext, ITaskQueryContex
     public IVapixClient Vapix { get; }
 
     public ILogger Logger { get; } = NullLogger.Instance;
+
+    /// <summary>The device's route; null = a host without network checks.</summary>
+    public Sdk.Sites.IDeviceNetwork? Network { get; init; }
 
     public ICorePlugin? Owner => null;
 

@@ -297,7 +297,7 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
         foreach (var probe in response.Probed)
         {
             _known[probe.Address] = _known.TryGetValue(probe.Address, out var existing)
-                ? existing with { InUse = probe.InUse }
+                ? existing with { InUse = probe.InUse, OutsideSite = probe.OutsideSite }
                 : probe;
         }
 
@@ -307,7 +307,7 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
     private void Suggest()
     {
         var unavailable = _known.Values
-            .Where(s => s.DeviceId is not null || s.InUse)
+            .Where(s => s.DeviceId is not null || s.InUse || s.OutsideSite)
             .Select(s => s.Address)
             .Concat(Rows.Where(r => r.IsEdited).Select(r => r.NewAddress.Trim()))
             .ToHashSet(StringComparer.Ordinal);

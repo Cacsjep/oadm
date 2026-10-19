@@ -9,18 +9,18 @@ page says what OADM checks, what it promises today and what you do before you up
 
 ## The SDK version
 
-The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.1.0`), separate from the
+The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.2.0`), separate from the
 OADM version. Your `plugin.json` names the SDK it needs (the project SDK writes the version you build with):
 
 ```json
-"minSdkVersion": "0.1.0"
+"minSdkVersion": "0.2.0"
 ```
 
 When the server starts, it compares the two. A plugin that needs a newer SDK than the server has is not loaded; the
 server log says why:
 
 ```text
-Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.2.0, host has 0.1.0.
+Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.3.0, host has 0.2.0.
 ```
 
 The client loads the client part of a plugin without this check, but without its server part such a page or dialog has
@@ -71,6 +71,17 @@ in a context of its own, so two plugins can use different versions of the same l
   can also change a member; rebuild your plugin against each new release.
 - The NuGet packages (`Oadm.Sdk`, `Oadm.Sdk.Client`, `Oadm.Sdk.Testing`, `Oadm.Plugin.Sdk`, `Oadm.Plugin.Templates`,
   `Oadm.Tools`) come with every OADM release, all in its version. A checkout of the repository builds the same.
+
+## SDK history
+
+| SDK | OADM | What changed |
+|---|---|---|
+| 0.2.0 | Sites | Devices at a site: `DeviceStatus.SiteOffline`, `IDeviceInfo.SiteId` / `SiteName`, `IDeviceNetwork` (`ITaskExecutionContext.Network`, `ITaskQueryContext.Network`), `ICorePluginContext.Network` and `Sites` (relays), `siteSupport` / `sitePorts` in `plugin.json` (the project SDK writes `full` by default), `ITaskPlugin.SiteSupport`, `IComplianceCheckType.SiteSupport`, `{site}` placeholder. See [Sites](../sites/) |
+| 0.1.0 | 3.x | The first SDK on NuGet |
+
+A plugin built with SDK 0.1.0 still loads on 0.2.0, but its `plugin.json` has no `siteSupport`: OADM keeps it away from
+devices at a site until you rebuild it with the new project SDK (or add `"siteSupport": "full"` to your own
+`plugin.json`).
 
 ## Before you update OADM
 

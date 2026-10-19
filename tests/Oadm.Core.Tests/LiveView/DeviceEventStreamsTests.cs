@@ -49,7 +49,7 @@ public sealed class DeviceEventStreamsTests
         await using var engine = new TaskEngine(new InMemoryTaskStore(), registry, devices, vapix);
         var streams = new NoStreams();
         var plugin = new ContextCapture();
-        Assert.True(registry.RegisterCorePlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
+        Assert.True(registry.RegisterCorePlugin(plugin, new PluginOrigin("test", "1.0.0", null) { DeclaredSiteSupport = Oadm.Sdk.Sites.SiteSupport.Full }));
 
         await using (var host = new CorePluginHost(registry, devices, vapix, engine, new InMemoryPluginSettingsProvider(), eventStreams: streams))
         {

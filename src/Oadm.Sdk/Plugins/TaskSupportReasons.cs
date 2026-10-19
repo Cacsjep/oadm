@@ -49,6 +49,16 @@ public static class TaskSupportReasons
         return device.Status == DeviceStatus.SiteOffline ? Sites.SiteTexts.SiteOffline(device.SiteName) : ForStatus(device.Status, requireOk);
     }
 
+    /// <summary>
+    /// Why a task of a package that does not work at sites (<see cref="Sites.SiteSupport.None"/>) cannot run on
+    /// <paramref name="device"/>: "Not available for devices at a site" for a device at a site, else null.
+    /// </summary>
+    public static string? ForSiteSupport(Sites.SiteSupport support, IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return support == Sites.SiteSupport.None && device.SiteId is not null ? Sites.SiteTexts.NotAvailableAtSite : null;
+    }
+
     /// <summary>"Needs AXIS OS 11.11 or later (this device has 10.12.338)"; without a known firmware version only the first part.</summary>
     public static string NeedsFirmware(string minimumVersion, IDeviceInfo device)
     {

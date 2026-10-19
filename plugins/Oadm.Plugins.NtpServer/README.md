@@ -74,6 +74,29 @@ implementation (SNTPv4 compatible), no library.
   `-upstream-warning.png`, `-checking.png`). A hardware test where the development camera queries OADM is a device write and is not
   written/run without explicit user approval.
 
+## Sites
+
+`siteSupport: full`, `sitePorts` UDP 123 "NTP server" (plugin.json).
+
+- **Serve at sites** (`NtpConfig.ServeAtSites`, off by default; the page shows the box while the server has sites): while
+  the server is enabled, every bound site gets a UDP relay of port 123 (`ICorePluginContext.Sites.OpenUdpRelayAsync`,
+  reason "NTP"), and `SiteServer` answers its datagrams from the same time source as the server's own network. The site
+  node asks its user to allow UDP 123 (Listen on); meanwhile the page lists "NTP at Building B: waiting for approval in
+  the OADM Site Node app" below the box. New sites get a relay (`SitesChanged`), removed sites and turning it off close
+  them; the host closes them when the plugin stops. The relay's round trip is part of the delay the device measures.
+- **Rate limits per (site, client)**: each site has its own `NtpRateLimiter` (two sites may both have 192.168.0.20); the
+  global limit applies per site too. The request log names the site ("192.168.0.20 (Building B)") and matches the device
+  by site and address.
+- **Use OADM as NTP server** on a device at a site gives it the site node's address in its network
+  (`IDeviceNetwork.LocalAddressTowardsAsync` on the device's route); without Serve at sites it fails "The OADM NTP server
+  does not serve at sites. Turn on Serve at sites on the NTP server page. Nothing was changed.", while the site's relay
+  does not run with the relay's state. A device addressed by a host name is resolved on its route
+  (`IDeviceNetwork.ResolveAsync`: the site node's DNS). On the server's own network "All interfaces" asks
+  `LocalAddressTowardsAsync` too (the host's code, no socket in the plugin).
+- Tests: `SiteServingTests` (relays per site with the in-memory relays of `Oadm.Sdk.Testing`, answers, the log, new and
+  removed sites, rate limits per site, the task's address at a site), `PageViewModelTests` (sites on the page), headless
+  `ntp-server-page-sites.png`.
+
 ## Permissions
 
 `oadm.ntp-server:show` (the page, `getState`) and `:manage` "Change the NTP server" (`save`). Without "manage" the form

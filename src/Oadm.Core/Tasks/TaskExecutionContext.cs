@@ -41,6 +41,9 @@ internal sealed partial class TaskExecutionContext : ITaskExecutionContext
     /// <summary>The license of the plugin's package; null on hosts without licenses.</summary>
     public Sdk.Licensing.IPluginLicense? License { get; init; }
 
+    /// <summary>Network checks routed like the device (its site, or the server's own network).</summary>
+    public Sdk.Sites.IDeviceNetwork? Network { get; init; }
+
     /// <summary>Replaced by <see cref="UpdateCredentialsAsync"/> with a client using the new credentials.</summary>
     public IVapixClient Vapix => Volatile.Read(ref _vapix);
 

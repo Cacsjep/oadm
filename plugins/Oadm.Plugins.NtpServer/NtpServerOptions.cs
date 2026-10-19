@@ -11,6 +11,9 @@ public sealed record NtpServerOptions
     /// <summary>The NTP port (123). Tests use 0 (a random free port) so they never bind the real port.</summary>
     public int Port { get; init; } = 123;
 
+    /// <summary>The port the site nodes listen on for "Serve at sites" (123; relays never bind on this server).</summary>
+    public int SitePort { get; init; } = 123;
+
     public IServerNetworkInterfaces Interfaces { get; init; } = SystemNetworkInterfaces.Instance;
 
     /// <summary>Offer loopback interfaces in the select (tests).</summary>

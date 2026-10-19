@@ -21,7 +21,7 @@ public sealed record DhcpServerOptions
     public IDhcpSocketFactory Sockets { get; init; } = UdpDhcpSocketFactory.Instance;
 
     /// <summary>Is an address in use before it is offered (the Network plugin's ping + TCP 80/443 probe).</summary>
-    public IAddressProbe Probe { get; init; } = NetworkAddressProbe.Instance;
+    public IAddressProbe? Probe { get; init; }
 
     public TimeProvider Time { get; init; } = TimeProvider.System;
 

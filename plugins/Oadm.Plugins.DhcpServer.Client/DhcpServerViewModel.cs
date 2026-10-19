@@ -599,6 +599,13 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
               + (Rows.Count == total ? string.Empty : string.Create(CultureInfo.InvariantCulture, $", {Rows.Count:N0} shown"));
     }
 
+    /// <summary>The page says that the DHCP server serves only the server's own network.</summary>
+    public const string OwnNetworkOnlyText = "The DHCP server works only on this server's own network.";
+
+    /// <summary>Some managed devices are at a site: the page says that the DHCP server does not reach them.</summary>
+    [ObservableProperty]
+    public partial bool HasSiteDevices { get; set; }
+
     private void OnDevicesChanged()
     {
         BuildDeviceMaps();
@@ -611,6 +618,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     /// <summary>Serial number (= MAC of AXIS devices) and address -> model; O(n) once per device change.</summary>
     private void BuildDeviceMaps()
     {
+        HasSiteDevices = _ctx.Devices.Any(d => d.SiteId is not null);
         var byMac = new Dictionary<string, string>(StringComparer.Ordinal);
         var byAddress = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (IDeviceInfo device in _ctx.Devices)

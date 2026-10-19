@@ -11,6 +11,7 @@ turns off (`RunsOn`).
 | HTTP login | None, Basic, Digest, Bearer token. Passwords and tokens are stored encrypted (password fields). |
 | Certificates | "Allow untrusted certificates" per action, off by default. |
 | Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`, administrators, audited). |
+| Sites | `siteSupport: full`: the actions need no device, so rules about devices at a site use them like any other. They send on the server's own network (the user's own servers); a "Send through site" option can come later. Their sockets are the reviewed exceptions of the banned-API analyzer. |
 
 ## Send HTTP request (`oadm.notifications.http`)
 

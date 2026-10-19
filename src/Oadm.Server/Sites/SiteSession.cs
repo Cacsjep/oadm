@@ -14,7 +14,7 @@ namespace Oadm.Server.Sites;
 /// delays the heartbeat. Outbound the node opens worker links when asked (<c>OpenConnections</c>); inbound the server
 /// opens them. The session ends when the control link ends or stops answering.
 /// </summary>
-internal sealed class SiteSession : IAsyncDisposable
+internal sealed partial class SiteSession : IAsyncDisposable
 {
     private readonly SiteManager _manager;
     private readonly SiteOptions _options;

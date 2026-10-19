@@ -720,6 +720,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     _time)
                 {
                     License = _plugins.Licenses?.LicenseOf(task.Registration.Origin.PackageId),
+                    Network = (_options.Networks ?? Sites.DeviceNetworks.Local).For(device!),
                 };
                 steps = context.Steps;
                 task.AttachSteps(steps);
@@ -765,6 +766,11 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         if (device.Status == DeviceStatus.SiteOffline)
         {
             return Sdk.Sites.SiteTexts.SiteOffline(device.SiteName); // refused before any request, whatever the plugin says
+        }
+
+        if (task.Registration.SiteRefusal(device) is { } site)
+        {
+            return site; // a package that does not work at sites never sees a device there
         }
 
         return task.Registration.Plugin.CanRun(device)

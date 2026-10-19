@@ -137,19 +137,38 @@ public sealed class UseOadmNtpServerTaskTests : IAsyncLifetime
     [Fact]
     public async Task Device_addresses_with_port_or_brackets_resolve()
     {
-        Assert.Equal(IPAddress.Parse("10.0.0.48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("10.0.0.48", CancellationToken.None));
-        Assert.Equal(IPAddress.Parse("10.0.0.48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("10.0.0.48:8443", CancellationToken.None));
-        Assert.Equal(IPAddress.Parse("fd00::48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("[fd00::48]:443", CancellationToken.None));
-        Assert.Equal(IPAddress.Parse("fd00::48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("fd00::48", CancellationToken.None));
+        Assert.Equal(IPAddress.Parse("10.0.0.48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("10.0.0.48", null, CancellationToken.None));
+        Assert.Equal(IPAddress.Parse("10.0.0.48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("10.0.0.48:8443", null, CancellationToken.None));
+        Assert.Equal(IPAddress.Parse("fd00::48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("[fd00::48]:443", null, CancellationToken.None));
+        Assert.Equal(IPAddress.Parse("fd00::48"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("fd00::48", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_host_name_resolves_on_the_route_of_the_device()
+    {
+        // The site node resolves the name; the server's DNS is never asked.
+        var site = new Oadm.Sdk.Testing.FakeDeviceNetwork(Guid.NewGuid()) { Names = { ["cam-b.site.lan"] = [IPAddress.Parse("192.168.0.20")] } };
+        Assert.Equal(IPAddress.Parse("192.168.0.20"), await UseOadmNtpServerTask.ResolveDeviceAddressAsync("cam-b.site.lan:443", site, CancellationToken.None));
+        Assert.Contains("resolve cam-b.site.lan", site.Calls);
+        Assert.Null(await UseOadmNtpServerTask.ResolveDeviceAddressAsync("unknown.site.lan", site, CancellationToken.None));
+        Assert.Null(await UseOadmNtpServerTask.ResolveDeviceAddressAsync("cam-b.site.lan", null, CancellationToken.None));
     }
 
     [Fact]
     public async Task All_interfaces_uses_the_address_the_server_routes_to_the_device_with()
     {
         await _plugin.InvokeAsync(NtpServerMethods.Save, NtpJson.Serialize(new SaveRequest(true, "all", null)), CancellationToken.None);
-        var (address, error) = _plugin.Service!.ServerAddressFor(IPAddress.Loopback);
+        var local = new Oadm.Sdk.Testing.FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.5") };
+        var device = new Oadm.Sdk.Testing.FakeDevice { Address = "10.0.0.48" };
+        var (address, error) = await _plugin.Service!.ServerAddressForAsync(device, IPAddress.Parse("10.0.0.48"), local, CancellationToken.None);
         Assert.Null(error);
-        Assert.Equal(IPAddress.Loopback, address);
+        Assert.Equal(IPAddress.Parse("10.0.0.5"), address);
+        Assert.Contains("local 10.0.0.48", local.Calls);
         Assert.Equal("Use OADM NTP server", TaskPlugin.GetTaskName(null));
+
+        local.LocalAddress = null;
+        (address, error) = await _plugin.Service!.ServerAddressForAsync(device, IPAddress.Parse("10.0.0.48"), local, CancellationToken.None);
+        Assert.Null(address);
+        Assert.Equal("The server has no route to the device. Nothing was changed.", error);
     }
 }

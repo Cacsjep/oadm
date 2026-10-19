@@ -370,7 +370,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             }
 
             // Nothing is sent to a device with a changed certificate, rejected credentials, no password or an offline site.
-            var refused = DeviceMessages.Refusal(device);
+            // An action of a package that does not work at sites never reaches a device there.
+            var refused = DeviceMessages.Refusal(device)
+                ?? (device.SiteId is not null && action.Registered.Origin.SiteSupport == Sdk.Sites.SiteSupport.None ? Sdk.Sites.SiteTexts.NotAvailableAtSite : null);
             if (refused is not null)
             {
                 Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, refused, device);

@@ -169,16 +169,27 @@ public sealed partial class FakeOadmApi
     ];
 
     private static PluginPackageInfo Package(string id, string name, string description, string group, bool hasPage, int tasks,
-        bool enabledByDefault = true, bool alwaysOn = false) => new()
+        bool enabledByDefault = true, bool alwaysOn = false)
     {
-        Id = id,
-        Group = group,
-        DisplayName = name,
-        Description = description,
-        AlwaysOn = alwaysOn,
-        Version = "0.1.0",
-        EnabledByDefault = enabledByDefault,
-        HasPage = hasPage,
-        MenuTaskCount = tasks,
-    };
+        var package = new PluginPackageInfo
+        {
+            Id = id,
+            Group = group,
+            DisplayName = name,
+            Description = description,
+            AlwaysOn = alwaysOn,
+            Version = "0.1.0",
+            EnabledByDefault = enabledByDefault,
+            HasPage = hasPage,
+            MenuTaskCount = tasks,
+            // Like the bundled plugin.json files: the DHCP server only on this server's network, NTP relays UDP 123.
+            SiteSupport = id == "oadm.dhcp-server" ? "none" : "full",
+        };
+        if (id == "oadm.ntp-server")
+        {
+            package.SitePorts.Add(new PluginSitePort { Protocol = "udp", Port = 123, Reason = "NTP server" });
+        }
+
+        return package;
+    }
 }

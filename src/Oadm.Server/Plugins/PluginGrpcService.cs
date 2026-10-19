@@ -142,7 +142,7 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
     private Proto.PluginPackageList PackageList()
     {
         var reply = new Proto.PluginPackageList { ServerId = licenses.ServerId };
-        reply.Packages.AddRange(registry.Packages.Select(p => new Proto.PluginPackageInfo
+        reply.Packages.AddRange(registry.Packages.Select(p => WithSites(p, new Proto.PluginPackageInfo
         {
             Id = p.Id,
             DisplayName = p.Origin.DisplayName,
@@ -155,8 +155,21 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             Description = p.Origin.Description ?? string.Empty,
             Group = p.Group.ToString(),
             License = LicenseState(p),
-        }));
+        })));
         return reply;
+    }
+
+    /// <summary>The package's site support and ports (plugin.json) for the Plugins page.</summary>
+    private static Proto.PluginPackageInfo WithSites(PluginPackageState package, Proto.PluginPackageInfo info)
+    {
+        info.SiteSupport = package.Origin.SiteSupport == Sdk.Sites.SiteSupport.Full ? "full" : "none";
+        info.SitePorts.AddRange(package.Origin.SitePorts.Select(port => new Proto.PluginSitePort
+        {
+            Protocol = port.Protocol == Sdk.Sites.SiteProtocol.Udp ? "udp" : "tcp",
+            Port = port.Port,
+            Reason = port.Reason ?? string.Empty,
+        }));
+        return info;
     }
 
     public override Task<Proto.CorePluginList> ListCorePlugins(Proto.Empty request, ServerCallContext context)

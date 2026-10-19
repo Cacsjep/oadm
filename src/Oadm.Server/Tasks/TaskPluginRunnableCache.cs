@@ -87,6 +87,13 @@ public sealed partial class TaskPluginRunnableCache(
                         continue;
                     }
 
+                    if (plugin.SiteRefusal(device) is { } site)
+                    {
+                        // A package that does not work at sites: greyed for devices there, whatever CanRun says.
+                        Add(byReason, site, device.Id);
+                        continue;
+                    }
+
                     if (SafeCanRun(plugin, device, ref logged))
                     {
                         runnable.Add(device.Id);

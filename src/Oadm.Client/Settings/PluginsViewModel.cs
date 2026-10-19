@@ -45,6 +45,8 @@ public sealed partial class PluginRowViewModel : ObservableObject
         OffByDefault = !info.EnabledByDefault;
         AlwaysOn = info.AlwaysOn;
         License = PluginPackageStore.ToInfo(info.License);
+        SiteText = SiteTextOf(info);
+        SitePortsText = string.Join(", ", info.SitePorts.Select(p => $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Port}"));
         _applying = true;
         IsEnabled = info.Enabled;
         _applying = false;
@@ -65,6 +67,22 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     /// <summary>Core functionality listed only for its license: the check box stays on.</summary>
     public bool AlwaysOn { get; }
+
+    /// <summary>"Works at sites", "Only this server's network"; empty from a server without sites.</summary>
+    public string SiteText { get; }
+
+    /// <summary>The ports it listens on at sites: "UDP 123"; empty for none.</summary>
+    public string SitePortsText { get; }
+
+    public bool HasSitePorts => SitePortsText.Length > 0;
+
+    /// <summary>The texts of the Sites column (plugin.json siteSupport).</summary>
+    internal static string SiteTextOf(PluginPackageInfo info) => info.SiteSupport switch
+    {
+        "full" => "Works at sites",
+        "none" => "Only this server's network",
+        _ => string.Empty,
+    };
 
     /// <summary>The license as the server checked it; NotRequired for a free plugin.</summary>
     public PluginLicenseInfo License { get; }

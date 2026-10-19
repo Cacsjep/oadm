@@ -721,6 +721,12 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             return new ComplianceResult(ComplianceOutcome.NotChecked, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
         }
 
+        if (device.SiteId is not null && type.SiteSupport == Sdk.Sites.SiteSupport.None)
+        {
+            // A type of a package that does not work at sites never sees a device there.
+            return new ComplianceResult(ComplianceOutcome.NotChecked, Sdk.Sites.SiteTexts.NotAvailableAtSite);
+        }
+
         using var timeout = new CancellationTokenSource(_options.CheckTimeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         try

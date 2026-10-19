@@ -192,20 +192,83 @@ public sealed class AssignIpTests
     }
 
     [Fact]
-    public async Task Probe_marks_an_address_with_a_listening_host_in_use()
+    public async Task Probe_asks_the_route_of_the_device_for_a_ping_and_the_web_ports()
     {
-        // A local listener stands in for a device's web server; TEST-NET-1 (RFC 5737) is never assigned. No ping here.
-        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        // A generous connect timeout: the listener answers at once, but a busy test runner may take longer than the
-        // product's 800 ms for a local connection. The address nobody has fails either way.
-        var probe = new NetworkAddressProbe { Ports = [port], PingAttempts = 0, ConnectTimeout = TimeSpan.FromSeconds(30) };
-        Assert.Equal(new AddressProbeResult(false, true), await probe.ProbeAsync("127.0.0.1", CancellationToken.None));
-        // TEST-NET-1 never answers: a timeout or an unreachable network both read "not in use", whatever the machine
-        // speed (only a refused connection, which needs a host, counts as in use). A short timeout keeps the test fast.
-        var free = new NetworkAddressProbe { Ports = [port], PingAttempts = 0, ConnectTimeout = TimeSpan.FromMilliseconds(200) };
-        Assert.False((await free.ProbeAsync("192.0.2.1", CancellationToken.None)).InUse);
+        // The probe opens no socket itself: the device's route (the server's own network or a site node) answers.
+        var network = new FakeDeviceNetwork { Answering = { "10.0.0.30" }, OpenPorts = { ("10.0.0.31", 443) } };
+        var probe = new NetworkAddressProbe(network);
+
+        Assert.Equal(new AddressProbeResult(true, false), await probe.ProbeAsync("10.0.0.30", CancellationToken.None));
+        Assert.Equal(new AddressProbeResult(false, true), await probe.ProbeAsync("10.0.0.31", CancellationToken.None));
+        Assert.False((await probe.ProbeAsync("[10.0.0.32]", CancellationToken.None)).InUse);
+        Assert.Equal(2, network.Calls.Count(c => c == "ping 10.0.0.32")); // two tries
+        Assert.Contains("tcp 10.0.0.32:80", network.Calls);
+        Assert.Contains("tcp 10.0.0.32:443", network.Calls);
+        Assert.Equal(NetworkAddressProbe.NoNetworkText, Assert.Throws<InvalidOperationException>(() => NetworkAddressProbe.For(null)).Message);
+    }
+
+    [Fact]
+    public async Task Check_query_of_a_device_at_a_site_marks_addresses_outside_the_site_and_probes_only_the_others()
+    {
+        var site = new FakeDeviceNetwork(Guid.NewGuid()) { ReachesAddress = a => a.ToString().StartsWith("192.168.0.", StringComparison.Ordinal) };
+        var managed = new FakeDevice(Guid.NewGuid(), "192.168.0.20") { SiteId = site.SiteId };
+        var probe = new FakeAddressProbe();
+        var json = await new AssignIpTaskPlugin(Fast, TimeProvider.System, probe).QueryAsync(new QueryContext(new FakeNetworkVapix(), [managed], site), managed, "checkAddresses",
+            new AddressCheckRequest(["192.168.0.30", "10.0.0.30"]).ToJson(), CancellationToken.None);
+
+        var probed = AddressCheckResponse.Parse(json).Probed.ToDictionary(p => p.Address);
+        Assert.False(probed["192.168.0.30"].OutsideSite);
+        Assert.True(probed["10.0.0.30"].OutsideSite);
+        Assert.Equal(["192.168.0.30"], probe.Probed);
+
+        // The dialog refuses the row with the shared text.
+        var rows = new[] { new AssignmentRow(new AssignmentDevice(managed.Id, "192.168.0.20"), "10.0.0.30") };
+        Assert.Equal(Sdk.Sites.SiteTexts.OutsideSiteNetworks, AddressConflicts.Find(rows, 24, null, probed)[0]);
+    }
+
+    [Fact]
+    public async Task A_new_address_outside_the_site_is_refused_before_any_write()
+    {
+        var site = new FakeDeviceNetwork(Guid.NewGuid()) { ReachesAddress = a => a.ToString().StartsWith("192.168.0.", StringComparison.Ordinal) };
+        var device = new FakeDevice(Guid.NewGuid()) { SiteId = site.SiteId };
+        var vapix = new FakeNetworkVapix();
+        var ctx = new RecordingContext(vapix) { Network = site };
+        var payload = new NetworkPayload
+        {
+            Ipv4 = new Ipv4Change(Ipv4Mode.Static, 24, "10.0.0.138"),
+            Dns = new DnsChange(false, ["10.0.0.2"], KeepDomains: true),
+            Devices = new Dictionary<Guid, DeviceAssignment> { [device.Id] = new("10.0.0.60") },
+        }.ToJson();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System, null).ExecuteAsync(ctx, device, payload, CancellationToken.None)));
+
+        Assert.Equal("10.0.0.60: The address is outside the networks the site reaches. Nothing was changed.", ex.Message);
+        Assert.Empty(vapix.Writes);
+        Assert.Empty(site.Calls); // not probed either
+        Assert.Equal("Check address is free: Failed", StepRun.Lines(ctx.Steps)[3]);
+    }
+
+    [Fact]
+    public async Task Without_a_probe_the_task_probes_on_the_route_of_its_context()
+    {
+        var device = new FakeDevice(Guid.NewGuid());
+        var network = new FakeDeviceNetwork { Answering = { "10.0.0.60" } };
+        var vapix = new FakeNetworkVapix();
+        var ctx = new RecordingContext(vapix) { Network = network };
+        var payload = new NetworkPayload
+        {
+            Ipv4 = new Ipv4Change(Ipv4Mode.Static, 24, "10.0.0.138"),
+            Dns = new DnsChange(false, ["10.0.0.2"], KeepDomains: true),
+            Devices = new Dictionary<Guid, DeviceAssignment> { [device.Id] = new("10.0.0.60") },
+        }.ToJson();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System, null).ExecuteAsync(ctx, device, payload, CancellationToken.None)));
+
+        Assert.Equal("10.0.0.60 is already in use (answers ping). Nothing was changed.", ex.Message);
+        Assert.Contains("ping 10.0.0.60", network.Calls);
+        Assert.Empty(vapix.Writes);
     }
 
     [Fact]
@@ -453,9 +516,11 @@ public sealed class AssignIpTests
         Assert.Null(vm.ResultJson);
     }
 
-    private sealed class QueryContext(IVapixClient vapix, IReadOnlyList<IDeviceInfo> devices) : ITaskQueryContext
+    private sealed class QueryContext(IVapixClient vapix, IReadOnlyList<IDeviceInfo> devices, Sdk.Sites.IDeviceNetwork? network = null) : ITaskQueryContext
     {
         public IVapixClient Vapix { get; } = vapix;
+
+        public Sdk.Sites.IDeviceNetwork? Network { get; } = network;
 
         public ILogger Logger { get; } = NullLogger.Instance;
 

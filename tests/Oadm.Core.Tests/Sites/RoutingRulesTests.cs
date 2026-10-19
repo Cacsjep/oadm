@@ -15,6 +15,8 @@ public sealed partial class RoutingRulesTests
     [
         "src/Oadm.Core/Sites/DeviceRouter.cs",
         "src/Oadm.Core/Sites/RoutedDns.cs",
+        // IDeviceNetwork and IPluginNetwork on the server's own network: plugins' pings, probes, DNS and listeners.
+        "src/Oadm.Core/Sites/LocalNetwork.cs",
         "src/Oadm.Core/Vapix/VapixClient.cs",
         "src/Oadm.Core/Discovery/VapixDeviceProbe.cs",
         "src/Oadm.Core/Discovery/Mdns/MdnsBrowser.cs",
@@ -32,10 +34,6 @@ public sealed partial class RoutingRulesTests
         "plugins/Oadm.Plugins.NtpServer/Serving/NtpUdpServer.cs",
         "plugins/Oadm.Plugins.NtpServer/Upstream/UpstreamClient.cs",
         "plugins/Oadm.Plugins.NtpServer/Upstream/UpstreamResolver.cs",
-        // Work stream 6 moves these to IDeviceNetwork and removes the suppression.
-        "plugins/Oadm.Plugins.Network/AddressProbe.cs",
-        "plugins/Oadm.Plugins.NtpServer/NtpServerService.cs",
-        "plugins/Oadm.Plugins.NtpServer/Tasks/UseOadmNtpServerTask.cs",
     ];
 
     [Fact]

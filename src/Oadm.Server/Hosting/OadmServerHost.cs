@@ -210,6 +210,9 @@ public static partial class OadmServerHost
         services.RemoveAll<Core.Sites.ISiteStates>();
         services.AddSingleton<Core.Sites.ISiteStates>(sp => sp.GetRequiredService<Sites.SiteManager>());
         services.AddSingleton<Core.Sites.ISiteTransport>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Core.Sites.ISiteRelays>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        // The network checks of plugins (IDeviceNetwork) on every route: the server's own network or a site's node.
+        services.AddSingleton(sp => new Core.Sites.DeviceNetworks(sp.GetService<Core.Sites.ISiteNetwork>(), sp.GetService<Core.Sites.ISiteStates>()));
         services.AddSingleton<Sites.SiteAdmin>();
 
         // VAPIX
@@ -270,7 +273,11 @@ public static partial class OadmServerHost
         services.AddSingleton(sp =>
         {
             var parallelism = sp.GetRequiredService<TaskParallelismSetting>();
-            return new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => parallelism.Current };
+            return new TaskEngineOptions
+            {
+                MaxParallelTasksPerPluginSource = () => parallelism.Current,
+                Networks = sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+            };
         });
         services.AddSingleton(sp =>
         {
@@ -298,7 +305,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>())
+        {
+            Networks = sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+        });
         services.AddSingleton<Sdk.Tasks.ITaskRunner>(sp => sp.GetRequiredService<TaskEngine>());
         services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton<PluginActivation>();
@@ -318,7 +328,12 @@ public static partial class OadmServerHost
             pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory,
             autoAdd: sp.GetRequiredService<Sdk.Devices.IDeviceAutoAdd>(),
             eventPublishers: id => sp.GetRequiredService<RuleEngine>().PublisherFor(id),
-            eventSubscriptions: id => sp.GetRequiredService<RuleEngine>().SubscriptionsFor(id)));
+            eventSubscriptions: id => sp.GetRequiredService<RuleEngine>().SubscriptionsFor(id),
+            networks: () => new Core.Sites.PluginNetworkScope(
+                sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+                sp.GetService<Core.Sites.ISiteRelays>(),
+                sp.GetService<Sdk.Network.IFirewallRules>(),
+                sp.GetRequiredService<TimeProvider>())));
 
         // Compliance checks (host and plugin types); their events go to the event rules.
         services.AddSingleton<Core.Compliance.ComplianceCatalog>();
