@@ -120,8 +120,8 @@ public sealed class DiscoveryTests
         }
 
         await using var log = new ConnectionLog(null, TimeProvider.System);
-        using var dialer = new Dialer(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite()), connector, new FakeDns(), log, TimeProvider.System);
-        var scanner = new RangeScanner(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite()), dialer, log);
+        using var dialer = new Dialer(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite(), allowLoopback: true), connector, new FakeDns(), log, TimeProvider.System);
+        var scanner = new RangeScanner(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite(), allowLoopback: true), dialer, log);
         Assert.True(RangeScanner.TryParse("127.0.0.1", "127.0.0.9", out var first, out var last, out _));
 
         var results = new List<RangeScanResult>();

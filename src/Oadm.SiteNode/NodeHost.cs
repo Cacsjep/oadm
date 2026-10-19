@@ -121,7 +121,7 @@ public static class NodeHost
         services.AddSingleton(sp => new BindingState(sp.GetRequiredService<NodeStore>(), sp.GetRequiredService<NodeIdentity>(), options.Time, options.HostName));
         services.AddSingleton<PortPolicy>();
         services.AddSingleton<INetworkCards>(_ => options.NetworkCards ?? new SystemNetworkCards(options.Time));
-        services.AddSingleton<NetworkScope>();
+        services.AddSingleton(sp => new NetworkScope(sp.GetRequiredService<NodeStore>(), sp.GetRequiredService<INetworkCards>(), options.AllowLoopbackDevices));
         services.AddSingleton(options.Connector ?? SystemDeviceConnector.Instance);
         services.AddSingleton(options.Dns ?? SystemNodeDns.Instance);
         services.AddSingleton(options.Pinger ?? SystemPinger.Instance);
@@ -144,6 +144,7 @@ public static class NodeHost
         services.AddHostedService(sp => sp.GetRequiredService<InboundListener>());
         services.AddHostedService<NodeAnnouncer>();
         services.AddHostedService<BindingClock>();
+        services.AddHostedService<CardWatcher>();
         services.AddHostedService<AdminChannelHost>();
         services.AddHostedService<ResetWatcher>();
     }

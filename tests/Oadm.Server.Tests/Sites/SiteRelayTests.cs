@@ -213,6 +213,7 @@ public sealed class SiteRelayTests
                 UseSerilog = false,
                 HostName = "relay-pc",
                 Version = "3.7.0-test",
+                AllowLoopbackDevices = true,
                 NetworkCards = new FakeCards(new NetworkCard("lo", "Loopback", [new CardAddress(IPAddress.Loopback, 8)], HasDefaultRouter: false)),
                 Dns = new FakeDns(),
                 Pinger = new NoPinger(),

@@ -230,7 +230,7 @@ public sealed class DialerTests : IAsyncDisposable
     }
 
     private Dialer Dialer(IDeviceConnector? connector = null, DialLimits? limits = null) =>
-        new(new PortPolicy(_store), new NetworkScope(_store, FakeCards.LoopbackSite()), connector ?? SystemDeviceConnector.Instance, _dns, _log, TimeProvider.System, limits);
+        new(new PortPolicy(_store), new NetworkScope(_store, FakeCards.LoopbackSite(), allowLoopback: true), connector ?? SystemDeviceConnector.Instance, _dns, _log, TimeProvider.System, limits);
 
     private static DialOpen Open(string host, int port, DialKind kind = DialKind.Short) => new() { Host = host, Port = port, Kind = kind };
 }

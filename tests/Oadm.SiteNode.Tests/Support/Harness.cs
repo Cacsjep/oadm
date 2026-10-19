@@ -49,6 +49,7 @@ internal sealed class TestNode : IAsyncDisposable
             HostName = "site-pc",
             Version = "3.7.0-test",
             NetworkCards = FakeCards.LoopbackSite(),
+            AllowLoopbackDevices = true,
             Dns = new FakeDns(),
             Pinger = new NoPinger(),
             MaxBackoff = TimeSpan.FromSeconds(1),

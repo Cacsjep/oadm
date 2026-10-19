@@ -174,6 +174,7 @@ public sealed class SiteNodeGrpcService(
         store.Changed += OnOther;
         binding.Changed += OnOther;
         relays.Changed += OnOther;
+        networks.CardsChanged += OnOther;
         try
         {
             var sentAt = options.Time.GetTimestamp();
@@ -205,6 +206,7 @@ public sealed class SiteNodeGrpcService(
             store.Changed -= OnOther;
             binding.Changed -= OnOther;
             relays.Changed -= OnOther;
+            networks.CardsChanged -= OnOther;
         }
     }
 

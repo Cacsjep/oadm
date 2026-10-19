@@ -83,6 +83,7 @@ public sealed class NodeStatusFeed
         relays.Changed += Raise;
         links.Changed += Raise;
         connection.Changed += Raise;
+        networks.CardsChanged += Raise; // a new card or address reaches the server's Watch and the app
         dialer.CountsChanged += RaiseCounts;
     }
 
