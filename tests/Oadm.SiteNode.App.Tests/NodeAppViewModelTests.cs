@@ -277,6 +277,25 @@ public sealed class NodeAppViewModelTests
 
         var row = Assert.Single(_vm.Log);
         Assert.Equal(("OADM-SRV", "192.168.0.20:443", "Short", "Connected"), (row.Server, row.Target, row.Kind, row.Result));
+        Assert.True(row.IsOk);
+    }
+
+    [Theory]
+    [InlineData("Connected", "ok")]
+    [InlineData("Accepted", "ok")]
+    [InlineData("Port not allowed", "warning")]
+    [InlineData("Outside the networks", "warning")]
+    [InlineData("Busy", "warning")]
+    [InlineData("12 answered", "info")]
+    [InlineData("Refused", "error")]
+    [InlineData("Timed out", "error")]
+    [InlineData("Unreachable", "error")]
+    public void TheLogResultIsAStatusWithItsColor(string result, string kind)
+    {
+        var row = new LogRow("2026-10-19 12:00:00", "OADM-SRV", "192.168.0.20:443", "Short", result);
+
+        Assert.Equal(kind, row.IsOk ? "ok" : row.IsWarning ? "warning" : row.IsInfo ? "info" : row.IsError ? "error" : "none");
+        Assert.Equal(1, new[] { row.IsOk, row.IsWarning, row.IsInfo, row.IsError }.Count(b => b));
     }
 
     [Fact]
