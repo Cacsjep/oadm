@@ -104,7 +104,8 @@ Two parts, one installer:
   - **Activity**: the connections now (short and permanent, see Limits), the relays open now ("NTP, UDP 123, for
     SERVER") and their problems ("UDP 123 is used by another program"), and the **Connection log**: the last
     connections through the node (time, server, target address and port, short or permanent, result), newest 10,000
-    **(default)**, also in a daily file kept 30 days (`logs/`); never contents.
+    **(default)**, also in a daily file kept 30 days and at most 1 GB together (`logs/`; the same line within a minute
+    once with "(N more)"); never contents.
 
   It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state
   except the pairing code; showing the code and every change need administrator rights (UAC on Windows, `pkexec` on
@@ -260,6 +261,10 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
     own cap below the device limit (30,000 per server; Device triggers watch at most 10,000), at most 64 connecting at
     once. The node app and the Sites page show both counts. The outgoing port range of the node's OS bounds them (Windows
     16,384 by default): the user docs say so, like Device triggers today.
+  - **Probes** (ProbeTcp, the ping fallback, every address of a range scan): 64 at once, the rest wait; at most 4 range
+    scans at once. **Relays**: a UDP sender is answered for 2 minutes after its last datagram, a TCP relay holds 256
+    connections; only senders inside the reached networks are relayed. Never reached: the node's own addresses,
+    loopback, link-local, multicast; extra networks at least /8.
 - **Large transfers** **(default)**: at most 2 per site at once (streamed request bodies: firmware and ACAP uploads,
   configuration imports; streamed answers: system reports, recording export), so a slow site link keeps room for polls,
   live view and the heartbeat. The route handler holds a per-site gate for requests that stream; a task step waiting for

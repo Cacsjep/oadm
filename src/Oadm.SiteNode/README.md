@@ -19,8 +19,11 @@ of the link, `AcceptedStreamListener`, SRP pairing), `site_node.proto`.
   `node.json` (`Config/NodeConfig`: id, mode, server address, cards, all cards, extra subnets, both port lists, requests,
   binding run time left, bound server, the server's own addresses, a new server identity waiting for Accept),
   `identity.bin` (the TLS identity, PKCS#12 under AES-256-GCM) with `local.key` (32 bytes, 0600 on Linux), `logs/`
-  (`site-node-*.log` rolling daily or 20 MB, 30 files, 14 days; `connections-yyyyMMdd.log` 30 days). Never device data
-  or passwords.
+  (`site-node-*.log` rolling daily or 20 MB, 30 files, 14 days; `connections-yyyyMMdd.log` 30 days and at most 1 GB
+  together, the oldest first; the same line within a minute is written once with "(N more)"; at most 10,000 lines wait
+  for the disk, more are dropped and counted). Never device data or passwords. Only absent files mean a first start:
+  `node.json`, `identity.bin` or `local.key` that exist but cannot be read (5 tries) fail the start, damaged content is
+  kept as `.unreadable`; writes go through a temporary file flushed to the disk (`Config/DataFiles`).
 - **Links** (`Links/`): every TLS connection to a server is a `SiteLink`; Kestrel serves `SiteNodeService` on it through
   `AcceptedStreamListener` (no socket endpoint of its own). Mode Connect (default): `OutboundConnector` connects to the
   typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4 ... 60
@@ -37,14 +40,23 @@ of the link, `AcceptedStreamListener`, SRP pairing), `site_node.proto`.
 - **States** (`State/BindingState`): binding open for 24 hours of run time (`BindingClock` ticks every minute and saves),
   then closed until Allow binding; the pairing code lives in memory (new at start, Allow binding, Reset, Unbind and after
   5 wrong codes, which also refuse Bind for 10 minutes); Reset = new id, key and code, the server forgotten.
-- **Dial** (`Devices/Dialer`): the port must be on Connect to, the address (after DNS on the node) on a reached card or
-  extra subnet; short dials at most 1,024 open and 256 connecting, permanent ones at most 64 connecting; device socket
-  errors come back as `DEVICE_*`, the node's problems as `SITE_*`. Every dial is a line of the connection log.
+- **Reach** (`Networks/NetworkScope`): the reached cards' networks and the extra networks (at least /8, IPv6 /16), never
+  special addresses (0.0.0.0/8, loopback, 169.254/16, multicast, 240/4; IPv6 loopback, link-local, multicast) and never
+  the node's own card addresses. `CardWatcher` reads the cards every 10 s and on the OS's address change; a change goes
+  to the server's Watch and the app at once and relays bind again.
+- **Dial** (`Devices/Dialer`, `DialPipe`): the port must be on Connect to, the address (after DNS on the node) on a
+  reached card or extra subnet; short dials at most 1,024 open and 256 connecting, permanent ones at most 64 connecting;
+  the socket and its place are released on every path; device socket errors come back as `DEVICE_*`, the node's
+  problems as `SITE_*`. Every dial is a line of the connection log. Probes (ProbeTcp, the ping fallback, each address of a
+  range scan) wait for one of 64 places; at most 4 range scans at once (RESOURCE_EXHAUSTED).
 - **Relay** (`Relays/RelayHost`): UDP or TCP on the reached cards for as long as the call lives, only for ports on Listen
   on; a port that is not is requested with its reason and the relay waits; a port in use or without permission is
-  reported and tried again every 30 s and after every change.
-- **Network checks and discovery**: Resolve, ReverseLookup (a full name, not `.local` / `.arpa`, that resolves back to the
-  address), Ping (the OS, else TCP 80 / 443), ProbeTcp, LocalAddressFor, Browse (`_axis-video._tcp` on the reached cards),
+  reported and tried again every 30 s and after every change of the app or the cards. Only senders inside the reached
+  networks are relayed and answered; a UDP sender is answered for 2 minutes after its last datagram (`UdpSenders`, at
+  most 100,000); a TCP relay holds at most 256 connections.
+- **Network checks and discovery** (only for reached addresses): Resolve (only the reached addresses of a name),
+  ReverseLookup (a full name, not `.local` / `.arpa`, that resolves back to the address; empty outside the networks),
+  Ping (the OS, else TCP 80 / 443 when on Connect to), ProbeTcp, LocalAddressFor (empty outside the networks), Browse (`_axis-video._tcp` on the reached cards),
   RangeScan (open 443 / 80 on the reached part of a range, only ports on Connect to).
 - **Local channel** (`AdminChannel/`): named pipe `oadm-site-node` (Windows) or `/run/oadm-site-node/admin.sock` (Linux;
   the unit needs `RuntimeDirectory=oadm-site-node`, mode 0755); a node with its own data folder uses names derived from
