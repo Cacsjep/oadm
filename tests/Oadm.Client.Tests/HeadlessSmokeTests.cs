@@ -70,7 +70,7 @@ public sealed class HeadlessSmokeTests
             var window = new MainWindow { DataContext = vm, Width = 1800, Height = 900 };
             window.Show();
             vm.Start();
-            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Devices.Tasks.Tasks.Count > 0);
+            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 15 && vm.Devices.Tasks.Tasks.Count > 0);
             Capture(window, outDir, "client-fake-headless.png");
 
             // The logged-in user and Log out sit in the title bar, not in the rail.
@@ -338,7 +338,7 @@ public sealed class HeadlessSmokeTests
             return vm.Devices.FilteredDevices.Count;
         }, CancellationToken.None);
 
-        Assert.Equal(12, deviceCount);
+        Assert.Equal(15, deviceCount);
         try
         {
             Directory.Delete(dataFolder, recursive: true);
