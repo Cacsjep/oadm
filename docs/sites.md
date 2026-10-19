@@ -1,7 +1,9 @@
 # Sites (planned)
 
 Status: design. First agreed 2026-10-15 as "Agents" (branch `feature/agents`, `docs/agents.md`); re-evaluated against
-main (v3.6.0-rc.1) and renamed on 2026-10-19. Nothing is built yet except the first refactor on that branch
+main (v3.6.0-rc.1) and renamed on 2026-10-19; after a security review the same day the node connects out to the server,
+binding needs a pairing code and the node opens only allowed ports; an architecture, SDK and security review (also
+2026-10-19) added the rest of that day's decisions. Nothing is built yet except the first refactor on that branch
 (`IDeviceConnector`). Defaults marked **(default)** were not asked and may change.
 
 ## Purpose
@@ -14,8 +16,9 @@ The site node is a pipe. It keeps no database, no credentials, no tasks and no p
 server: devices, credentials, tasks, event rules, compliance, plugins, the audit log.
 
 ```
-Client ──► OADM server ──TLS 5081──► OADM Site Node, site "Building B" ──► cameras 192.168.0.x
-           (everything)               (pipe, no data)
+Client ──► OADM server ◄──TLS 5081── OADM Site Node, site "Building B" ──► cameras 192.168.0.x
+           (everything)   (the node     (pipe, no data,                     (allowed ports only)
+                           connects)     no inbound port)
 ```
 
 ## Decisions
@@ -24,11 +27,14 @@ Client ──► OADM server ──TLS 5081──► OADM Site Node, site "Build
 |---|---|
 | Name (2026-10-19) | **Site** in the UI: rail page **Sites**, device column **Site**, status and event **Site offline**. The program is **OADM Site Node**. One site = one remote network with exactly one node in v1. "Agent" was dropped (reads as AI), "network" clashes with Network settings. |
 | Model (2026-10-19) | Kept: one server, nodes are pipes. The parked multi-server "nodes" draft (full OADM servers as relays, 2026-10-13) stays dropped. |
-| Direction | The **server connects to the node** (TLS, port 5081 **(default)**). Nodes the server cannot reach (behind NAT) are a later mode where the node opens the connection; the protocol stays the same (see Transport). |
-| Finding | An unbound node announces itself over mDNS. The Sites page finds it with **Search** (mDNS) or **Add manually** (address). mDNS reaches only the server's own segment, so Add manually must be just as easy. |
-| Binding | **First server wins**: no pairing code. The first OADM server that binds a node owns it; the node then refuses every other server. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. |
+| Direction (2026-10-19, security review) | **The node connects to the server** (outbound only: no inbound port at the site, nothing to scan there). The server listens for site nodes on its own port, TCP 5081 **(default)**, apart from the clients' 5080, **only after an
+administrator turns on "Accept site nodes"** on the Sites page (off by default: a server without sites opens no extra
+port). **Inbound** (the server connects to the node, which listens on 5081) stays an option in the node app ("Wait for the server") for sites the server must reach itself. One protocol for both (see Transport). |
+| Finding | Outbound (default): the node app takes the server's address; once it connects, the node shows on the Sites page as **Waiting to be bound**. Inbound: an unbound node announces itself over mDNS; the Sites page finds it with **Search** (mDNS) or **Add manually** (address). |
+| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other (see Binding), so neither another server nor anything in between can bind. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
 | Removing | From OADM (rare), with "Keep devices" or not. Locally with **Reset** in the node app when the server is gone. |
-| Reach | The node reaches the devices on the **network cards chosen in the node app** ("Reach devices on this network", or all cards). Default: every card except the one with the default router (the office side). Any port on those networks; no port lists, no approvals. Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
+| Reach | The node reaches the devices on the **network cards chosen in the node app** ("Reach devices on this network", or all cards). Default: every card except the one with the default router (the office side). Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
+| Ports (2026-10-19, security review) | The node uses **only allowed ports**, in two lists: **Connect to** (devices; TCP 80, 443 and 554 by default) and **Listen on** (relays; empty by default), so a port allowed for a camera never opens a listener at the site. Further ports (a plugin's ports, a camera on 8443, a per-device RTSP port, the NTP relay's UDP 123) are **requested by the server and allowed in the node app** ("Building B asks to connect to TCP 8443: camera 192.168.0.30. Allow"); nothing is allowed by itself. A dial to another port is a site error "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." |
 | Local UI | A small desktop app (Avalonia, OADM look) next to the headless service. Most installers do not use command lines. |
 | Installers (2026-10-19) | **Windows MSI and Linux .deb only** (amd64 and arm64). No portable ZIP, no macOS node in v1. |
 | Scope v1 | All device traffic, see "Scope". |
@@ -36,7 +42,7 @@ Client ──► OADM server ──TLS 5081──► OADM Site Node, site "Build
 | Event (2026-10-19) | **Server scope, no new event scope**: one stateful server event per site "Site offline: &lt;site&gt;" and **Any site offline** (`count`, `{site}` names), like the "Any device" twins. Devices of an offline site fire no "Device unreachable". |
 | Compliance (2026-10-19) | Devices of an offline site are **Not checked: Site offline** in every check (Reachable and Login works included); no compliance event turns on because of it. |
 | Limits (2026-10-19) | **Permanent streams and short connections are counted apart** (see Transport). |
-| Plugins (2026-10-19) | Declared per package in `plugin.json` (`siteSupport`, `sitePorts`, written by the plugin project SDK); a DIM on `ITaskPlugin` / `IComplianceCheckType` only where one item differs. `IPlugin` stays unchanged. Not declared = "Not tested at sites", still runs. |
+| Plugins (2026-10-19) | Declared per package in `plugin.json` (`siteSupport`, `sitePorts`, written by the plugin project SDK); a DIM on `ITaskPlugin` / `IComplianceCheckType` only where one item differs. `IPlugin` stays unchanged. The plugin project SDK always writes `siteSupport` (default `full`); a manifest without it counts as `none` (no third-party plugins exist yet, so there is no "not tested" state). |
 | Notifications (2026-10-19) | Send HTTP request, Send email and Send TCP message stay on the server's own network in v1 (a "Send through site" option can come later). |
 | Roles (2026-10-19) | New permission **`sites.view`** "See sites" (group Devices, Operator and Viewer yes). Bind, rename, change address, replace and remove: **Administrator only**, never grantable. Adding devices at a site needs `devices.addRemove` ("Add and remove devices"), as every add mode, the waiting list and Import from ADM today. |
 | Node app (2026-10-19) | Asks for the terms of use (`TERMS.md`) on its first start like the client; follows the OS's dark or light setting. |
@@ -68,8 +74,8 @@ Two parts, one installer:
 
 - **Service** `oadm-site-node` (headless; Windows service "OADM Site Node", systemd unit). No plugins, so Native AOT is
   allowed (CLAUDE.md: helpers without plugin loading); the mDNS, probe and DNS code it shares with the server moves to a
-  small library without EF Core first, else self-contained single-file. Runs **without root**: port 5081, mDNS 5353 with
-  address reuse, ping through the OS without raw sockets (Windows `IcmpSendEcho`, Linux `ping_group_range`, else a TCP
+  small library without EF Core first, else self-contained single-file. Runs **without root**: outbound connections to the server (inbound mode: listens on port 5081 and announces itself on
+  mDNS 5353 with address reuse), ping through the OS without raw sockets (Windows `IcmpSendEcho`, Linux `ping_group_range`, else a TCP
   check of 80 / 443). A relay of a port below 1024 (NTP 123) needs the right to bind it (Linux `CAP_NET_BIND_SERVICE` on
   the unit; the Windows service account may bind it).
 - **App** "OADM Site Node" (Avalonia). The theme (`Oadm.Client/Themes`: `Colors.Dark.axaml`, `Colors.Light.axaml`,
@@ -77,24 +83,34 @@ Two parts, one installer:
   takes the OS's dark or light setting (it has no client settings). It may use `Oadm.Sdk.Client` controls (`StatusChip`,
   `MessageWindow`, `PasswordBox`, `FormField`). First start: the terms of use like the client (`TermsWindow`, the
   accepted SHA-256 in the app's own settings). One window:
-  - state: "Not bound. Binding open for 23 more hours." / "Binding closed." with **Allow binding** (another 24 hours) /
-    "Bound to SERVER (address) since ...";
+  - **Server**: "Connect to the server" (default) with its address (`oadm.example.com` or `10.0.0.5`, port 5081 unless
+    typed) and the connection state ("Connected", "Cannot reach 10.0.0.5:5081"), or "Wait for the server" (inbound,
+    port 5081; turning it on adds the firewall rule);
+  - state: "Not bound. Binding open for 23 more hours." with the **pairing code** in large letters / "Binding closed."
+    with **Allow binding** (another 24 hours, a new code) / "Bound to SERVER (address) since ...";
   - the site name (from the server once bound) and the node's id;
   - **Networks**: each network card with its addresses and a switch "Reach devices on this network" (default: on for
     every card except the one with the default router), **All cards** as a shortcut, and **Extra subnets** (routed camera
     VLANs: add, remove);
+  - **Ports**: two lists, **Connect to** (TCP 80, 443, 554 by default) and **Listen on** (empty by default), each with
+    remove and add, and the ports the server asks for, each with the list and why ("Connect to TCP 8443: camera
+    192.168.0.30", "Listen on UDP 123: NTP server") and **Allow** / **Dismiss**;
   - the relays open now ("NTP, UDP 123, for SERVER") and their problems ("UDP 123 is used by another program");
   - the connections now (short and permanent, see Limits) so a busy node is visible;
   - **Reset** (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it again in OADM.");
   - an identity change of the server: "SERVER presents a new identity (fingerprint). **Accept**" (see Binding);
+  - **Connection log**: the last connections through the node (time, server, target address and port, short or permanent,
+    result), newest 10,000 **(default)**, also in a daily file kept 30 days (`logs/`); never contents;
   - version.
 
-  It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state;
-  every change needs administrator rights (UAC on Windows, `pkexec` on Linux). Headless machines use `oadm-site-node
-  status`, `allow-binding`, `networks`, `accept-server`, `reset`.
-- **Data** (`%ProgramData%\OADM Site Node`, `/var/lib/oadm-site-node`; service account only): `node.json` {id, port,
-  reached cards, all cards, extra subnets, binding run time left, bound servers (a list with at most one entry in v1:
-  name, identity fingerprint, bound time)}, the node's TLS key (Windows a CNG key like the server's, else encrypted with a
+  It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state
+  except the pairing code; showing the code and every change need administrator rights (UAC on Windows, `pkexec` on
+  Linux; the code is **Show pairing code**, so a local user without those rights cannot bind a server). Headless machines use `oadm-site-node
+  status`, `pairing-code` (administrators), `server <address>`, `allow-binding`, `networks`, `ports`, `accept-server`,
+  `reset`.
+- **Data** (`%ProgramData%\OADM Site Node`, `/var/lib/oadm-site-node`; service account only): `node.json` {id, mode
+  (connect / wait), server address, port, reached cards, all cards, extra subnets, allowed ports (connect, listen), requested ports,
+  binding run time left, bound servers (a list with at most one entry in v1: name, identity fingerprint, bound time)}, the node's TLS key (Windows a CNG key like the server's, else encrypted with a
   local key file). No device data, no passwords, ever.
 - **Identity**: a random id and a new key at first start and at every Reset (a copied VM keeps the original's identity
   until Reset; see Binding). The node's certificate is self-signed and valid for 100 years; both sides check
@@ -102,31 +118,52 @@ Two parts, one installer:
 
 ### States
 
-| State | Answers | mDNS |
+| State | Outbound (default) | Inbound |
 |---|---|---|
-| Unbound, binding open | `Hello`, `Bind` | `_oadm-site._tcp`, TXT `id`, `version`, `state=unbound` |
-| Unbound, binding closed | `Hello`; `Bind` refused: "Binding is closed on this site node. Click Allow binding in the OADM Site Node app." | TXT `state=closed` (Search shows it greyed with that text) |
-| Bound | `Hello` to anyone; everything else only to the bound server's identity, one session at a time | TXT `state=bound`, `server=<name>` |
+| Unbound, binding open | Connects to the server; answers `Hello`, and `Bind` with the right code; the app shows the code | Listens; `Hello`, `Bind` with the right code; mDNS `_oadm-site._tcp`, TXT `id`, `version`, `state=unbound` |
+| Unbound, binding closed | Does not connect; the app says "Binding is closed. Click Allow binding." | `Hello`; `Bind` refused: "Binding is closed on this site node. Click Allow binding in the OADM Site Node app."; TXT `state=closed` (Search shows it greyed with that text) |
+| Bound | Connects to the bound server only and checks its identity | `Hello` to anyone (state and version only); everything else only to the bound server's identity, one session at a time; TXT `state=bound` (no server name) |
 
 The binding window counts the service's run time (saved every minute), not the wall clock.
 
 ## Binding
 
-1. The Sites page finds the node (Search lists unbound nodes, greys out bound and closed ones; Add manually asks for an
-   address and optional port).
-2. **Bind** (Administrator; the site name, default the node's host name): the server opens TLS to the node, records the
-   node's fingerprint and sends `Bind` signed with its **site identity key**. The node stores that key's fingerprint and
-   is bound. Audited "Bound site".
-3. From then on every connection is mutual TLS: the server presents its site identity, the node its own key; each side
+1. **Outbound (default)**: in the node app the installer types the server's address. The node connects; its check of the
+   server's key waits for the pairing (the key is not known yet). The Sites page lists it as **Waiting to be bound**
+   (node name = its host name, its address as the server sees it, version). **Inbound**: the Sites page finds the node
+   (Search lists unbound nodes, greys out bound and closed ones; Add manually asks for an address and optional port) and
+   the server opens TLS to it.
+2. **Bind** (Administrator): dialog with the site name (default the node's host name) and **Pairing code** (the 8
+   characters the node app shows; Crockford base32, no look-alikes, case and dashes ignored, 40 bits). Both sides have
+   seen each other's key fingerprint in the TLS handshake. The server sends `Bind` with `HMAC-SHA256(code, "bind" | node
+   fingerprint | server identity fingerprint)`; the node checks it and answers with the same over "bound" | both
+   fingerprints, which the server checks. A server without the code, or anything in between with its own key, fails
+   both. Then the node stores the server identity's fingerprint and the server the node's. Audited "Bound site".
+3. **Wrong codes**: after 5 wrong codes the node makes a new code and refuses `Bind` for 10 minutes **(default)** ("Too
+   many wrong pairing codes. Wait 10 minutes and use the new code."); the app shows the attempts and from where. The
+   server shows "The pairing code is wrong." below the field.
+4. From then on every connection is mutual TLS: the server presents its site identity, the node its own key; each side
    checks the pinned fingerprint.
-4. The server refuses to bind an id or a fingerprint it already knows: "This site node is a copy of Building B. Click
+5. The server refuses to bind an id or a fingerprint it already knows: "This site node is a copy of Building B. Click
    Reset on the copy." (cloned VMs).
-5. **Remove site** (Administrator, red, confirmed): "Remove site Building B?" with **Keep devices** (they stay as Site
+6. **Remove site** (Administrator, red, confirmed): "Remove site Building B?" with **Keep devices** (they stay as Site
    offline, to be moved by Replace or the automatic move) or not (removed with their credentials and tags, one
    transaction like `RemoveManyAsync`). The server sends `Unbind`; a node that does not answer is forgotten anyway ("The
    site node did not answer. Reset it in the OADM Site Node app."). Audited "Removed site".
-6. **Reset** in the node app: new id and key, the server forgotten, binding open for 24 hours. OADM shows the site as
-   **Not bound** (its devices Site offline) until it is replaced or removed.
+7. **Reset** in the node app: new id, key and pairing code, the server forgotten, binding open for 24 hours. OADM shows
+   the site as **Not bound** (its devices Site offline) until it is replaced or removed.
+
+**Server listener.** Off by default. **Accept site nodes** on the Sites page (Administrator, audited "Turned on site
+nodes" / "Turned off site nodes", setting `Sites.Accept`) opens it without a restart; turning it off closes it and every
+node connection (inbound sites stay reachable, the server dials them). The server accepts site nodes on
+`Sites.ListenUrl` (default `https://0.0.0.0:5081`, its own Kestrel endpoint with the site identity certificate, never
+the clients' endpoint, TLS 1.3 only). A node that is not bound may only `Hello` and
+wait for `Bind`: at most 50 waiting nodes and 10 new connections a minute per source address **(default)**; a waiting node
+not bound within 24 hours is dropped. Bound nodes reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
+node its DNS name and every address of its network cards (`Watch` of the control connection, again after every change);
+the node keeps them and tries the typed address first, then the others in order. A server that moved is found again as
+long as one of them still answers; otherwise change the address in each node app (`oadm-site-node server <address>`);
+the identity stays, so no new bind. The user docs recommend typing a DNS name.
 
 **Server identity.** The server binds with its own **site identity key** (ECDSA P-256, setting `Sites.Identity`,
 encrypted with the master key, purpose `oadm:site-identity`), not with its TLS certificate. So
@@ -138,43 +175,59 @@ app shows "SERVER presents a new identity (fingerprint). Accept" (administrator)
 time**: a second connection with the same identity is refused ("Another OADM server with this identity is connected from
 10.0.0.5"), so a restored test copy of the server cannot drive the production nodes alongside the real one.
 
-**Known risk of "first server wins"**: the node holds no passwords, but whoever binds it gets the pipe into the networks
-it reaches (factory-default cameras, default passwords, old firmware). Limits: only the network cards chosen in the app
-(by default not the office side); binding open for 24 hours of run time only; the installer's own bind fails at once
-("Bound to another server"); the app shows which server owns the node; every bind is audited; a bound node never accepts
-another server. A pairing code can be added later without changing the protocol.
+**Security review (2026-10-19).** The node holds no passwords, but whoever binds it gets a pipe into the networks it
+reaches (factory-default cameras, default passwords, old firmware), and whoever controls the OADM server controls every
+site. So: the server opens its site port only after Accept site nodes; the node connects out (no inbound port at the site by
+default); TLS 1.3 only; binding needs the pairing code from the node
+app (an administrator of the node's machine), open 24 hours of run time only; strangers learn nothing about who owns a
+node; the node opens only the networks and
+ports allowed in its app (connect and listen apart), so a compromised server cannot use it as a general pivot; the node keeps a connection log of
+its own; every bind is audited; a bound node never accepts another server. Remaining: plain HTTP and RTSP cross the node
+readable (see Roles, audit and secrets); updates are manual (the Sites page shows "Update available").
 
 ## Transport and protocol
 
-gRPC over HTTP/2 + TLS on the node's port, `site_node.proto` (`SiteNodeService`, hosted by the node, called by the
-server).
+gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node, called by the server) in both modes:
+
+- **Who opens the TCP connection.** Outbound (default): the node opens TCP + TLS to the server's site port; after TLS the
+  roles turn: the server is the HTTP/2 client on that socket (`SocketsHttpHandler.ConnectCallback` hands it the accepted
+  connection), the node the HTTP/2 server (Kestrel on a connection it opened, through its own
+  `IConnectionListenerFactory`). Inbound: the server opens TCP + TLS to the node's port 5081. Everything above the socket
+  is the same code. **Risk, spike first** (step 1): Kestrel over a connection the node opened itself. If it does not hold,
+  the fallback keeps `ISiteTransport` and the calls: the node becomes the gRPC client, keeps a control stream open and
+  opens one stream per `Dial` / `Relay` connection when the server asks for it over that stream.
 
 - **Two connections per node**: **control** (`Hello`, `Watch`, `Ping`, `ProbeTcp`, `Resolve`, `ReverseLookup`, `Browse`,
   `LocalAddressFor`; the heartbeat) and **worker** (every `Dial` and `Relay`: polls, tasks, uploads, live view,
   WebSockets). A firmware upload or a live view never delays the heartbeat, so it never causes a false Site offline. The
   node's Kestrel allows 4,096 streams per connection **(default)**; the server sets `EnableMultipleHttp2Connections`, so
   the worker side opens further connections by itself when one is full (10,000 trigger WebSockets need at least three).
+  Outbound: the node keeps the control connection and opens worker connections when the server asks (`OpenConnections(n)`
+  on the control connection, at most 8 **(default)**); the server hands them to the handler's pool.
   A separate connection for large transfers can be added later inside `ISiteTransport` if the perf test shows polls
   waiting behind uploads on slow links.
 - **Online check** on the control connection only: HTTP/2 keepalive pings plus `Watch`. Offline after 30 s without an
   answer, online again after 60 s stable **(defaults)** (no flapping).
 - **`ISiteTransport.OpenStreamAsync(site, host, port, kind, deadline) -> Stream`** is the only way the server opens a
-  connection through a node (`kind` = Short or Permanent, see Limits). The later NAT mode (the node opens TCP + TLS to
-  the server, the server runs the same `SiteNodeService` client over that socket) changes only the transport, not
-  `site_node.proto` or any caller.
+  connection through a node (`kind` = Short or Permanent, see Limits); callers never know the mode.
 - **Capabilities**: `Hello` returns `protocol_version` and `features` (`dial`, `browse`, `resolve`, `relay.udp`,
   `relay.tcp`, `local-address`, ...). The server refuses a node below its minimum version ("Site node too old. Update
   it."); a missing feature turns off only that feature ("Update Building B to serve NTP").
 - Calls:
-  - `Hello` -> id, version, protocol version, features, state, bound server name.
-  - `Bind(site name, signed by the server identity)`, `Unbind`, `Rename`, `RotateIdentity(new fingerprint, signed by the
-    old key)`.
+  - `Hello` -> id, version, protocol version, features, state; the bound server's name only to that server (strangers
+    learn nothing about who owns the node).
+  - `Bind(site name, pairing proof)` -> the node's proof (see Binding); `Unbind`, `Rename`, `RotateIdentity(new
+    fingerprint, signed by the old key)`.
+  - `RequestPorts([{direction connect | listen, protocol, port, reason}])`: the server asks for ports (a plugin's `sitePorts` while it is on, a device
+    or address with another port); the node lists them in its app until allowed or dismissed. `Watch` carries both allowed
+    lists, so the server knows them before it dials or opens a relay.
   - `Watch` (server stream): state, network cards, reached cards and subnets, relays and their problems, connection
     counts, now and after every change.
   - `Dial` (bidirectional stream): first message host or address, port, kind, deadline; then bytes both ways; an end flag
     per direction is a TCP half-close; cancelling the call closes the socket; the node stops connecting when the deadline
     passes. The device's own socket error (refused, timed out, unreachable, reset) comes back as that error; node
-    problems ("outside its networks", "busy", "offline") are site errors (see Server).
+    problems ("outside its networks", "port not allowed", "busy", "offline") are site errors (see Server). Every dial is a
+    line in the node's connection log.
   - `Resolve(name)` and `ReverseLookup(address)`: DNS on the node's side (typed host names, devices added by name, "Use
     DNS names" with the same rules as `SystemDnsNameLookup`: a full name, not ".local" or ".arpa", resolving back to the
     same IP).
@@ -184,7 +237,8 @@ server).
   - `Browse(duration)` (server stream): mDNS `_axis-video._tcp` results on the reached cards.
   - `RangeScan(from, to, parallelism, timeout)` (server stream): the first contact of a range scan on the node (thousands
     of short connects stay local); the server then probes and logs in through `Dial`.
-  - `Relay(protocol, port)` (bidirectional stream): the node listens on that port on the reached cards and passes every
+  - `Relay(protocol, port)` (bidirectional stream; the port must be on the Listen on list): the node listens on that port on the
+    reached cards and passes every
     datagram or connection to the server; answers go back to the sender. The relay lives as long as the stream. Problems
     ("UDP 123 is used by another program", "No permission to use UDP 123") come back like `NtpStatusTexts`.
 - **Limits per node** **(defaults)**:
@@ -194,17 +248,23 @@ server).
     own cap below the device limit (30,000 per server; Device triggers watch at most 10,000), at most 64 connecting at
     once. The node app and the Sites page show both counts. The outgoing port range of the node's OS bounds them (Windows
     16,384 by default): the user docs say so, like Device triggers today.
+- **Large transfers** **(default)**: at most 2 per site at once (streamed request bodies: firmware and ACAP uploads,
+  configuration imports; streamed answers: system reports, recording export), so a slow site link keeps room for polls,
+  live view and the heartbeat. The route handler holds a per-site gate for requests that stream; a task step waiting for
+  it says "Waiting for the site link". The Sites page shows the transfers running.
 - **IPv4** and global / unique-local **IPv6**; link-local addresses with a zone id are refused in v1.
+- **TLS 1.3 only** on the link between server and node, in both modes.
 
 ## Server
 
 - **Data model** (new migration `Sites`; migrations are never deleted): table `Sites` {Id, Name (1..64, unique
-  case-insensitive), Address, Port, NodeKeyFingerprint, NodeId, BoundUtc, LastSeenUtc (written at most once a minute),
+  case-insensitive), Mode (Outbound / Inbound), Address and Port (inbound: where to connect; outbound: last seen from),
+  NodeKeyFingerprint, NodeId, BoundUtc, LastSeenUtc (written at most once a minute),
   Version, NotBound (bool)}; online / offline lives in memory only. `Device.SiteId` (nullable = the server's own
   network), `WaitingDevice.SiteId` (nullable = try everywhere; set by the import's Site column). At most 100 sites
   **(default)**.
 - **Proto**: `sites.proto` `SiteService` for the client (`ListSites`, `WatchSites`, `FindNodes`, `BindSite`,
-  `RenameSite`, `ChangeSiteAddress`, `ReplaceSite`, `RemoveSite`), every method in `AccessPolicy` (`sites.view` or Admin;
+  `RenameSite`, `ChangeSiteAddress`, `ReplaceSite`, `RemoveSite`; `BindSite` carries the pairing code), every method in `AccessPolicy` (`sites.view` or Admin;
   the contract test fails on a missing rule); `DeviceInfo.site_id`, `DiscoveredDevice.site_id`, `WaitingDevice.site_id`;
   `DeviceStatus.SITE_OFFLINE = 6` in `common.proto`.
 - **Status `SiteOffline`** (SDK `Oadm.Sdk.Devices.DeviceStatus.SiteOffline = 6`, `SdkInfo.Version` raised,
@@ -254,7 +314,7 @@ server).
     (`SendHttpAction`, `SendEmailAction`, `SendTcpAction`: the user's own servers), the client's `DeviceWebRelay`,
     `ServerSettings` and `ServerTlsCertificate` (`Dns.GetHostName`). `tools/` stays outside the analyzer.
 - **Site errors are not device errors.** `DeviceStatusClassifier` maps a device's own socket errors as today; a
-  `SiteException` (offline, busy, outside its networks) never changes a device's status, never counts as a failed poll
+  `SiteException` (offline, busy, outside its networks, port not allowed) never changes a device's status, never counts as a failed poll
   (nor towards the outage share of a poll round), never fires "Device unreachable", never fails a compliance check.
 - **Overlapping networks.** Two sites may both use 192.168.0.x. Everything keyed or compared by address becomes
   (route, address): discovery deduplication, "Listed before in line N", the waiting list (`WaitingDeviceStore.Normalize`
@@ -281,12 +341,17 @@ server).
   on its current route never moves (no ping-pong between two routes that both reach it). Devices addressed by name never
   move, also not between routes. The DHCP server's `IDeviceAutoAdd.FollowAsync` moves a device to the server's own
   network. Logged and audited "Device moved" (user "system", "from Building B 192.168.0.20 to This server 10.0.0.20").
-- **Replace and change address.** **Change address** points the site to a new node address (verified by the node's
-  fingerprint). **Replace with...** moves every device of a site to another bound site after checking each device's
+- **Ports.** Before a dial the server checks the site's allowed ports (from `Watch`): a device whose port is not allowed
+  is not contacted and keeps its last status; the Sites page row says "1 port waiting for approval in the node app"; the
+  add page row says "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." The server sends
+  `RequestPorts` once per new port.
+- **Replace and change address.** **Change address** (inbound sites) points the site to a new node address (verified by
+  the node's fingerprint); outbound nodes report their address themselves. **Replace with...** moves every device of a site to another bound site after checking each device's
   serial at the same address through the new one (a dead Raspberry Pi replaced by a new one; devices that do not answer
   stay and are listed).
-- **Timeouts.** VAPIX keeps 15 s per request and the status poll 3 s (`StatusPollTimeout`); the site link adds its round
-  trip, so polls through a site get the measured round trip on top. The Sites page shows the round trip so a slow link
+- **Timeouts.** VAPIX keeps 15 s per request and the status poll 3 s (`StatusPollTimeout`). A new connection through a
+  site costs about 4 round trips (open the stream, connect, TLS, request), so every timeout through a site gets 4 x the
+  measured round trip on top (3 s poll over a 600 ms satellite link = 5.4 s); kept connections need only one. The Sites page shows the round trip so a slow link
   is visible.
 
 ## Plugins and SDK
@@ -295,8 +360,12 @@ server).
   sites without changes (verified on main: Device triggers, Action Rule Editor SOAP, Edge storage, Dashboards,
   compliance types and the shared `plugins/Shared` code open no sockets of their own). **Rule for plugin authors**
   (plugins/README.md, dev docs): never open your own sockets to devices; the banned-API analyzer shows how the host does
-  it.
-- `IDeviceInfo.SiteId` (DIM null): the device's route; plugins may refine `CanRun` / `NotSupportedReason` with it.
+  it. The plugin project SDK (`Oadm.Plugin.Sdk`) ships the same analyzer and `BannedSymbols.txt` as **warnings** for
+  every plugin, so third-party developers see it too.
+- **Testing** (`Oadm.Sdk.Testing`): `FakeSite` (online / offline, allowed ports), `FakeDeviceNetwork` (ping, probe,
+  resolve, local address) and an in-memory relay for UDP and TCP, so a plugin tests its site behavior without a node.
+- `IDeviceInfo.SiteId` and `SiteName` (DIM null): the device's route; plugins may refine `CanRun` / `NotSupportedReason`
+  with it. `ActionPlaceholders.Fixed` gets `{site}` (the device's site name, empty on the server's own network).
 - `IDeviceNetwork` (`ITaskQueryContext.Network`, `ITaskExecutionContext.Network`, `ICorePluginContext.Network`; DIM):
   `PingAsync`, `ProbeTcpAsync`, `ResolveAsync`, `LocalAddressTowardsAsync(address)`, all routed like the device. The
   Network plugin's address-in-use check (`AddressProbe`) and the NTP plugin (address towards the device, the device's
@@ -306,13 +375,34 @@ server).
   by the plugin project SDK from the properties `OadmSiteSupport` / `OadmSitePorts`. Optional DIMs
   `ITaskPlugin.SiteSupport` and `IComplianceCheckType.SiteSupport` override the package value for one item. A task with
   `none` is greyed for devices at a site: "Not available for devices at a site" (`TaskSupportReasons`); a compliance type
-  with `none` is Not checked there; a package that declares nothing (older third-party plugins) shows "Not tested at
-  sites" on the Plugins page but runs. The Plugins page shows the site support and ports next to the License column; the
+  with `none` is Not checked there; a page or action of such a package refuses devices at a site with the same text. A
+  manifest without `siteSupport` counts as `none`. The Plugins page shows the site support and ports next to the License column; the
   node app lists the ports. New SDK members get doc comments (ApiDocs tests), samples and templates stay valid.
-- **Relay** (`ICorePluginContext.Sites`, DIM null): the bound sites and their state, `OpenRelayAsync(site, Udp|Tcp,
-  port)`. SDK `IDatagramEndpoint` (receive, reply) is served by local sockets and by relays alike, so a plugin handles both
-  the same way. The plugin opens a relay when its feature turns on; the host closes every relay of a plugin that turns off
-  or stops and reopens them after a node reconnects.
+- **Relay** (`ICorePluginContext.Sites`, DIM null): the bound sites (`ISiteInfo` {Id, Name, IsOnline}) and
+  `SitesChanged`; a plugin that offers a server to
+  devices (they connect to it) opens one relay per site, UDP and TCP from the start (decision 2026-10-19: the stack is
+  built once):
+  - **UDP**: `OpenUdpRelayAsync(site, port, reason)` -> `IUdpRelay` : `IDatagramEndpoint` (receive with the sender's
+    address, reply).
+  - **TCP**: `OpenTcpRelayAsync(site, port, reason)` -> `ITcpRelay` : `IStreamListener` (`AcceptAsync` ->
+    `IIncomingConnection` {`Stream`, remote address, site}; a half-close and the end of the stream pass through like
+    `Dial`).
+  - The port is given at runtime (a syslog plugin's port is a setting): opening a relay requests the port itself
+    (Listen on, with the reason) when the node has not allowed it; `sitePorts` in `plugin.json` lists the ports known in
+    advance (Plugins page, docs).
+  - Every relay has a **state** (`RelayState`: Running, WaitingForApproval, PortInUse, NoPermission, SiteOffline,
+    NotSupported (node without `relay.tcp` / `relay.udp`)) with a plain text and `StateChanged`, so a page can say "NTP at
+    Building B: waiting for approval in the OADM Site Node app".
+  - The host serves both interfaces for the server's own network too (`ICorePluginContext.Network.ListenUdpAsync` /
+    `ListenTcpAsync`, bound and allowed by the host), so a plugin writes its server once and runs it locally and at every
+    site. An HTTP helper on top of `IStreamListener` (Kestrel over the accepted streams) lets a plugin serve HTTP endpoints
+    at sites as it does locally.
+  - The plugin opens its relays when its feature turns on; the host closes every relay of a plugin that turns off or stops
+    and reopens them after a node reconnects. The port must be in `sitePorts` and allowed in the node app.
+  - **What a relay cannot do** (plugin docs say so; such a plugin declares `siteSupport: none`): broadcast and multicast
+    (DHCP, SSDP), protocols that carry addresses or ports inside (FTP passive mode, SIP, RTP to dynamic ports), port
+    ranges, logic on the node. While the site link is down the server is not there for the site's devices (a plugin like a
+    RADIUS server says so).
 - **NTP server** (`sitePorts` UDP 123): its page gets "Serve at sites" (each online site with the `relay.udp` feature
   relays UDP 123); "Use OADM as NTP server" gives a device at a site the node's address in that network
   (`LocalAddressFor`). Requests are answered from the server's time source; the round trip is part of the NTP delay
@@ -329,13 +419,20 @@ server).
 
 ## Client
 
-- Rail page **Sites** (group Servers **(default)**, icon to be chosen; shown with `sites.view`): toolbar **Search** and
-  **Add manually** (Administrator); one grid: state icon, Name, Node address, Devices (count), Round trip, Connections
-  (short / permanent), Version, Last seen. Row actions (Administrator): Rename, Change address, Replace with...,
-  **Remove site** (red, confirmed, Keep devices). Search results appear in the same list as "Not bound" rows with
-  **Bind**; bound to another server or binding closed greyed with the reason. Errors below the list. Fake mode: two
+- Rail page **Sites** (group Servers **(default)**, icon to be chosen; shown with `sites.view`): toolbar **Accept site
+  nodes** (Administrator; a switch, see Server listener; while it is off the empty page says "Turn on Accept site nodes,
+  then enter this server's address in the OADM Site Node app."), **Search** and **Add manually** (Administrator, for
+  nodes that wait for the server); one grid: state icon, Name, Node address,
+  Devices (count), Round trip, Connections (short / permanent), Ports waiting for approval, Large transfers running, Version
+  ("Update available"), Last seen. Row actions (Administrator): Rename, Change address (inbound), Replace with..., **Remove site**
+  (red, confirmed, Keep devices). Nodes that connected and wait, and Search results, appear in the same list as "Waiting
+  to be bound" rows with **Bind** (dialog: Site name, Pairing code); bound to another server or binding closed greyed
+  with the reason. Errors below the list. Fake mode: two
   sample sites, one offline.
-- Device grid: column **Site** (empty for the server's own network), in the search and the export. Status **Site
+- Device grid: column **Site** (empty for the server's own network), in the search and the export. The address link and
+  **Open web interface** of a device at a site open it in **Web View** (the user's PC usually cannot reach the site;
+  Web View goes through the server and the node); with Web View off both are disabled: "Turn on Web View to open devices
+  at a site". Status **Site
   offline** (amber device icon). Group by site may come later with Group by tag; `PageDeviceChoice` and the device
   picker may offer sites later like tags.
 - Add page: a column **Site** in every mode (empty for the server's own network); nothing to choose. "No Axis device
@@ -349,9 +446,9 @@ server).
 
 ## Roles, audit and secrets
 
-- `sites.view` "See sites" (Operator and Viewer yes): the Sites page. Administrator only, never grantable: Search / Add
-  manually / Bind, Rename, Change address, Replace, Remove site. Adding devices at a site: `devices.addRemove`.
-- Audited: "Bound site", "Renamed site", "Changed site address", "Replaced site", "Removed site", and (user "system",
+- `sites.view` "See sites" (Operator and Viewer yes): the Sites page. Administrator only, never grantable: Accept site nodes,
+  Search / Add manually / Bind (with the pairing code), Rename, Change address, Replace, Remove site. Adding devices at a site: `devices.addRemove`.
+- Audited: "Turned on site nodes" / "Turned off site nodes", "Bound site", "Wrong pairing code" (the node, from where), "Renamed site", "Changed site address", "Replaced site", "Removed site", and (user "system",
   after the hysteresis) "Site offline" / "Site online"; "Device moved" and "Device added automatically" as today.
 - What the node's machine sees: HTTPS and RTSP over TLS stay encrypted end to end. Plain HTTP devices and plain RTSP
   cross it readable (Digest never sends the password itself). **Basic over plain HTTP is never sent through a site**
@@ -363,14 +460,18 @@ server).
 ## Packaging
 
 - **Windows**: `OADM-SiteNode-<version>-win-x64.msi` (WiX 6 like the main MSI, `packaging/windows/`): `Program Files\OADM
-  Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, LocalService, restart on failure), firewall rule TCP
-  5081 (Domain, Private), Start menu shortcut to the app.
+  Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, LocalService, restart on failure), Start menu shortcut to the
+  app; no firewall rule (the node connects out; the app adds TCP 5081, Domain and Private, when "Wait for the server" is
+  turned on and removes it when turned off). A silent install takes `SERVER=<address>`.
 - **Linux**: `oadm-site-node_<version>_<amd64|arm64>.deb` (service, own system user `oadm-site-node`,
   `/opt/oadm/site-node`, `/var/lib/oadm-site-node` 0700) and `oadm-site-node-app_<version>_<arch>.deb` (the app, Depends
   `oadm-site-node`, desktop file). Raspberry Pi 4 and 5 are a target. Pre-release versions `1.2.0~rc.1`.
 - Each package ships `LICENSE.txt`, `NOTICE.txt`, `LGPL-2.1.txt` (only if FFmpeg or other LGPL parts are in it),
   `TERMS.md` and its own `THIRD-PARTY-NOTICES.txt` (`tools/Oadm.Notices` reads the node's deps.json too; Linux in
   `/usr/share/doc/oadm-site-node*/`).
+- **Server side**: the main MSI's firewall rule covers TCP 5081 too (Domain, Private) for the site listener (nothing
+  listens there until Accept site nodes is on); the .deb and
+  .pkg change no firewall today and stay so.
 - `manage package site-node [--rid] [--version]` (both manage scripts and `scripts/manage-help.txt`).
 - Release workflow (`release.yml`): job `installers` builds the node packages next to the others (the arm64 .deb on
   `ubuntu-24.04-arm`), installs, checks (service up, `Hello` answers unbound) and removes the .deb; `smoke-windows`
@@ -381,11 +482,34 @@ server).
 
 ## Tests
 
+Three layers (decision 2026-10-19): unit tests and in-process tests run on all three systems in every CI run; real
+networks are checked by hand on hardware before a release. **No Docker tests in v1**: what only Docker would prove (real
+isolation, a real subnet, a pulled link) the manual test plan covers; Docker comes later only if real bugs show up there.
+
+- **Unit** (no network): the node's logic with fakes (fake clock, fake list of network cards, in-memory connections).
+- **In-process** (server and node in one test process, real gRPC and TLS over loopback, both modes): the node gets a test
+  dialer that maps addresses to fake cameras (`FakeCamera` on random loopback ports), so two sites can both have
+  192.168.0.20 pointing to different cameras; a few tests let the node dial real loopback ports (a closed port = refused,
+  a port that never answers = timed out) so device socket errors and site errors are told apart on real sockets.
+- **Manual test plan** (node `README.md`, like the DHCP plugin's): a Raspberry Pi and a Windows machine as nodes with the
+  development camera behind them; outbound through NAT, inbound, two network cards (office side not reached), pull the
+  cable (Site offline, back online after the waiting time), mDNS and range scan in the real subnet, NTP relay, a port not
+  allowed. Read-only towards the camera; opt-in hardware tests (`Category=Hardware`) for what can be automated there.
+
+What the layers check:
+
 - Node: state machine with a fake clock (unbound open, closed after 24 h of run time, Allow binding, bound, reset with a
-  new identity), reached cards and extra subnets (allowed and refused addresses), `Dial` (bytes, half-close, cancel,
-  deadline, device socket errors vs site errors, short and permanent limits), `Relay` (open, close with the stream, port
+  new identity and code), pairing (right code, wrong code, 5 wrong = new code and 10 minutes closed, a server in between
+  with its own key fails both proofs), outbound and inbound mode (the same calls over both, reconnect with backoff,
+  worker connections on request), reached cards and extra subnets (allowed and refused addresses), ports (both lists:
+  allowed, refused, requested, allowed in the app, dismissed; a Connect to port never allows a relay), the connection log, `Dial` (bytes, half-close, cancel, deadline,
+  device socket errors vs site errors, short and permanent limits), `Relay` (UDP and TCP: open, accept, half-close, close with the stream, port
   in use), mDNS announce, `RangeScan`, capabilities.
-- Server with an in-process node on loopback: bind / remove / keep devices / not bound, identity rotation and "new
+- Server with an in-process node, in both modes: Accept site nodes (off = nothing listens, on without restart, off
+  closes the node connections), waiting nodes (limits, dropped after 24 hours), the server addresses a node falls back to,
+  at most 2 large transfers per site (the third waits, polls go on), timeouts with the round trip on top, a manifest
+  without `siteSupport` = none, the Web View link for site devices, bind with
+  the code / remove / keep devices / not bound, a port not allowed (not contacted, the request sent once), identity rotation and "new
   identity" acceptance, one session per identity, copy detection, routing of VAPIX, RTSP (with a per-device RTSP port)
   and WebSockets with TLS pinning end to end, the client cache dropping a moved device, overlapping addresses on two
   sites (discovery, imports, the waiting list, the address conflict check), Site offline (computed status not stored,
@@ -403,14 +527,52 @@ server).
 
 ## Build order
 
-1. Foundations: `VapixClient` on `SocketsHttpHandler` (rebase the branch refactor, fix `RtspClient`), `DeviceRoute`
+1. Foundations: the spike of the reversed connection (Kestrel over a connection the node opened); `VapixClient` on
+   `SocketsHttpHandler` (rebase the branch refactor, fix `RtspClient`), `DeviceRoute`
    through the one options helper, the factory, the probe and RTSP, the banned-API analyzer; `SiteOffline` in the SDK
-   enum and every status switch; node service and app (identity, announce, Hello / Bind / Unbind, Dial, networks, terms,
-   theme assembly); server identity key, `ISiteTransport` (control and worker connections, short and permanent
-   limits), Sites page, `sites.view`, `Device.SiteId`, Add manually through the sites, polling, tasks, Site offline.
+   enum and every status switch; node service and app (identity, outbound connection and inbound listener, pairing code, Hello / Bind / Unbind,
+   Dial, networks, ports and requests, connection log, terms, theme assembly); server identity key, the site listener,
+   `ISiteTransport` (control and worker connections in both modes, short and permanent limits), Sites page, `sites.view`, `Device.SiteId`, Add manually through the sites, polling, tasks, Site offline.
 2. Discovery at sites (every add mode, mDNS, `RangeScan`, Resolve, DNS names), imports and Import from ADM with Site,
    the waiting list per (site, address), moving devices, Replace, Change address.
 3. RTSP route in use (live view, PTZ, metadata, events), Device triggers, Web View, recording export, compliance.
-4. SDK: `IDeviceNetwork`, `siteSupport` / `sitePorts`, relays with `IDatagramEndpoint`, NTP at sites, DHCP message,
-   the site events.
+4. SDK: `IDeviceNetwork`, `siteSupport` / `sitePorts`, relays for UDP (`IDatagramEndpoint`) and TCP (`IStreamListener`,
+   the HTTP helper), local listeners through the same interfaces, NTP at sites, DHCP message, the site events.
 5. Installers, release workflow, notices, website and user docs.
+
+## Work streams
+
+For building with several agents in parallel. **Stream 0 comes first and alone**; afterwards the streams below touch
+different files and meet only at the contracts of stream 0. Each stream ends with its tests green and the full unit run
+(`manage test unit`) unchanged; a stream never changes a contract of stream 0 alone (a change goes back to stream 0 and
+every stream that uses it).
+
+0. **Contracts and spike** (one agent, merged before anything else): the spike of the reversed connection (decides
+   Kestrel over the node's connection or the fallback); `site_node.proto`, `sites.proto`, the `site_id` fields and
+   `SITE_OFFLINE = 6`; `ISiteTransport`, `DeviceRoute`, `SiteException` and its kinds; SDK surface as stubs with doc
+   comments (`DeviceStatus.SiteOffline`, `IDeviceInfo.SiteId` / `SiteName`, `IDeviceNetwork`, `ISiteInfo`, the relay
+   interfaces and `RelayState`, `siteSupport` / `sitePorts` in `PluginManifest`); the migration `Sites`; an in-memory
+   `ISiteTransport` fake for the other streams' tests.
+1. **Routing refactor** (Core): `VapixClient` on `SocketsHttpHandler` with the routed `ConnectCallback`, the one options
+   helper `DeviceConnections.For`, `VapixClientFactory` cache key, `VapixDeviceProbe`, `RtspClient`, routed DNS, the
+   banned-API analyzer (repo and plugin project SDK). With no site, OADM behaves exactly as before.
+2. **Site offline everywhere**: the computed status, every status switch of the list in "Server" (host, plugins, client,
+   fake mode), the site events, compliance Not checked, "Site errors are not device errors".
+3. **Node program**: service and app (identity, both modes, pairing, states, networks, both port lists and requests,
+   connection log, `Dial`, `Relay`, `Browse`, `RangeScan`, `Resolve`, `Ping`, terms, theme assembly), its tests and
+   manual test plan. Needs only stream 0.
+4. **Server side of sites**: the site listener and Accept site nodes, `ISiteTransport` over the real node (both modes,
+   control and worker connections, limits, large transfers, timeouts), binding, `SiteService`, the Sites page and Bind
+   dialog, roles and audit, backup. Joins streams 1 and 3 in the in-process tests.
+5. **Discovery and devices at sites**: every add mode, imports and Import from ADM with Site, the waiting list per
+   (site, address), overlapping networks, moving devices, Replace, Change address, the Site column, the Web View link.
+   After streams 1 and 4.
+6. **SDK and plugins**: `IDeviceNetwork` in Network settings and the NTP task, relays and local listeners, the HTTP
+   helper, NTP at sites, DHCP message, `siteSupport` in every bundled plugin and the templates, `Oadm.Sdk.Testing` fakes,
+   SDK docs and samples. After stream 0; the relays need stream 4 for the end-to-end tests.
+7. **Packaging and docs**: node MSI and .deb, server firewall rule, `manage package site-node`, release workflow,
+   notices, website downloads and the user page "Sites". After stream 3.
+
+Streams 1, 2 and 3 run in parallel; 4 after 1 and 3; 5 and 6 in parallel after 4; 7 any time after 3. Shared files that
+several streams touch (CLAUDE.md, `CHANGELOG.md`, `plugins/README.md`, `AccessPolicy`) are changed only at the end of
+each stream, one stream at a time.

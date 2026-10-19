@@ -2707,7 +2707,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 
 **Sites** (designed 2026-10-15 as "Agents", re-evaluated and renamed 2026-10-19, spec `docs/sites.md`; first refactor
 on branch `feature/agents`): an OADM Site Node (service + desktop app, MSI and .deb) in a network the server cannot reach;
-the server binds it (first server wins) and sends all device traffic through it, TLS end to end; status and events
+it connects out to the server (no inbound port at the site), is bound with a pairing code from its app, opens only allowed ports, and the server sends all device traffic through it, TLS end to end; status and events
 "Site offline"; plugins work unchanged unless they open their own sockets.
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
