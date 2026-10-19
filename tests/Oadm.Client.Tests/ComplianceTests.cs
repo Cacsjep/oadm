@@ -421,7 +421,7 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public Task Thirty_thousand_devices_with_ten_checks_filter_fast() => _ui.RunAsync(async () =>
+    public Task Thirty_thousand_devices_with_fifty_checks_filter_fast() => _ui.RunAsync(async () =>
     {
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5), seedSampleData: false);
         var store = new DeviceStore();
@@ -431,17 +431,32 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
             Model = "P3265-V", Status = DeviceStatus.Ok,
         }));
         var list = new ComplianceCheckList();
-        for (var c = 0; c < 10; c++)
+        for (var c = 0; c < 50; c++) // the most checks a server keeps
         {
             list.Checks.Add(Check("c" + c, "Check " + c, c % 2 == 0 ? ComplianceSeverity.ComplianceProblem : ComplianceSeverity.ComplianceWarning));
         }
 
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+
+        // Fresh strings per result, like the messages of the stream.
         var results = store.Devices.SelectMany((d, i) => list.Checks.Select((c, j) =>
-            Result(c.Id, d.Id, (i + j) % 7 == 0 ? ComplianceOutcome.ComplianceFailed : ComplianceOutcome.CompliancePassed, "detail"))).ToList();
+            Result(new string(c.Id.AsSpan()), new string(d.Id.AsSpan()), (i + j) % 7 == 0 ? ComplianceOutcome.ComplianceFailed : ComplianceOutcome.CompliancePassed,
+                (i + j) % 7 == 0 ? new string("AXIS Object Analytics is stopped".AsSpan()) : string.Empty))).ToList();
+        foreach (var check in list.Checks)
+        {
+            check.Id = Guid.NewGuid().ToString(); // ids as long as real ones
+        }
+
+        foreach (var (result, k) in results.Select((r, k) => (r, k)))
+        {
+            result.CheckId = new string(list.Checks[k % 50].Id.AsSpan());
+        }
         var watch = Stopwatch.StartNew();
         store.Compliance.ApplyChecks(list);
         store.Compliance.ApplyResults(results, reset: true);
         var apply = watch.Elapsed;
+        results.Clear(); // the stream's messages are gone after they were applied
+        var memory = (GC.GetTotalMemory(forceFullCollection: true) - before) / 1024 / 1024;
         using var page = new ComplianceViewModel(api, Substitute.For<IDialogService>(), store, _ui, new InMemoryClientSettingsStore());
         watch.Restart();
         page.Refilter();
@@ -449,8 +464,9 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
         page.SelectCardCommand.Execute(page.Cards[3]);
         page.SearchText = "10.0.1.";
         var filter = watch.Elapsed;
-        output.WriteLine($"300,000 results applied in {apply.TotalMilliseconds:N0} ms; filter, tab, card and search in {filter.TotalMilliseconds:N0} ms");
+        output.WriteLine($"1,500,000 results applied in {apply.TotalMilliseconds:N0} ms, {memory:N0} MB kept; filter, tab, card and search in {filter.TotalMilliseconds:N0} ms");
         Assert.True(apply < TimeSpan.FromSeconds(10), $"apply took {apply}");
+        Assert.True(memory < 400, $"{memory} MB kept");
         Assert.True(filter < TimeSpan.FromSeconds(5), $"filter took {filter}");
         api.Dispose();
     });

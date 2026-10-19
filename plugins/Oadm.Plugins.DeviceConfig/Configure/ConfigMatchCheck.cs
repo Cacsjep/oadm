@@ -25,6 +25,12 @@ public sealed class ConfigMatchCheck : IComplianceCheckType
 
     private static readonly ConcurrentDictionary<string, AdmConfig> Parsed = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The file of a check, parsed once per check version: the host hands every device run the same invocation, so 30,000
+    /// devices do not decode and hash the same file 30,000 times.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ComplianceInvocation, AdmConfig> PerInvocation = new();
+
     public string Id => TypeId;
 
     public string DisplayName => "Matches configuration file";
@@ -86,8 +92,8 @@ public sealed class ConfigMatchCheck : IComplianceCheckType
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(invocation);
-        var file = invocation.GetFile("file") ?? throw new InvalidOperationException("The check has no configuration file.");
-        var config = Read(file);
+        var config = PerInvocation.GetValue(invocation, i =>
+            Read(i.GetFile("file") ?? throw new InvalidOperationException("The check has no configuration file.")));
         var vapix = ctx.Vapix!;
         var differences = new List<string>();
         var compared = 0;

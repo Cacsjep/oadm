@@ -168,10 +168,21 @@ Oadm.Sdk.Client, like `ITaskPluginDialog`) is a later addition when a type needs
 
 ## Scale
 
-30,000 devices x 50 checks = 1.5 million results: the store indexes by check and device, the client mirror keeps one
-compact array per device, counters per check are kept per change, the page filters in O(n). Read checks: 30,000 devices
-every 60 minutes at 32 parallel and about 1 s per device = about 16 minutes per round. Perf tests: 30,000 devices x 10
-checks (page filter, tab switch, column toggle, a round of changes).
+30,000 devices x 50 checks = 1.5 million results. What keeps it fast:
+
+- **Server**: a check keeps its devices and tags as sets (scope test O(1), also for 30,000 chosen devices), counters per
+  outcome and the set of devices it fails on; events go out as single on / off changes (`SetState`), the full state
+  (`ReplaceStates`) only at start, on enable and when a check is saved. Every device run of a check version gets the same
+  `ComplianceInvocation` (settings serialized once: a configuration file is up to 1 MB; `ConfigMatchCheck` parses it once
+  per invocation) and the page's summary line is made once per version. Results are written in key order, 5,000 per
+  transaction, so the database's write lock is never held long. Checks on cached data write only changed results.
+- **Client**: one `DeviceCompliance` per device, updated in place; ids and repeated detail texts are kept once (a pool of
+  at most 10,000 texts); the page filters in O(n) once per burst of changes.
+- **Measured** (perf tests): server, 30,000 devices x 50 checks (795,000 results): enable 5.4 s, the results written in
+  19.5 s (chunks), 1,000 device changes 0.6 s, the list of checks 15 ms (`ComplianceScaleTests`); client, 1.5 million
+  results applied in 0.8 s and 221 MB, filter, tab, card and search 27 ms (`ComplianceTests`, Perf). A page connecting at
+  the maximum gets 1.5 million results in batches of 5,000.
+- Read checks: 30,000 devices every 60 minutes at 32 parallel and about 1 s per device = about 16 minutes per round.
 
 ## Tests
 

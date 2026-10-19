@@ -461,6 +461,7 @@ and task names, device API and verified behavior, settings, tests). A new plugin
 
 ## Compliance check types
 
+User and developer guide: the website page Developers > Compliance checks (`website/src/content/docs/dev/compliance-checks.md`).
 The Compliance page (built into the server, "Compliance" in `CLAUDE.md`, spec `docs/compliance.md`) runs checks on the
 devices the user chose. A plugin adds a kind of check with one class implementing `IComplianceCheckType`
 (`Oadm.Sdk.Compliance`): a public class with a parameterless constructor in its `*.Server.dll` (the loader registers it

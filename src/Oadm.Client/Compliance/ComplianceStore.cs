@@ -162,6 +162,31 @@ public sealed class ComplianceStore
 
     public ComplianceCheckSummary? FindCheck(string checkId) => _checks.GetValueOrDefault(checkId);
 
+    /// <summary>Most detail texts kept once ("Passed", "AXIS OS 12.11.77", "No SD card"); the pool stops growing there.</summary>
+    internal const int MaxPooledTexts = 10_000;
+
+    private readonly Dictionary<string, string> _texts = new(StringComparer.Ordinal);
+
+    private string Pooled(string text)
+    {
+        if (text.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        if (_texts.TryGetValue(text, out var pooled))
+        {
+            return pooled;
+        }
+
+        if (_texts.Count < MaxPooledTexts && text.Length <= 200)
+        {
+            _texts[text] = text;
+        }
+
+        return text;
+    }
+
     /// <summary>The compliance of a device (created on first use; stays the same object).</summary>
     public DeviceCompliance For(string deviceId)
     {
@@ -216,7 +241,17 @@ public sealed class ComplianceStore
 
         foreach (var result in results)
         {
-            For(result.DeviceId).Set(result);
+            var device = For(result.DeviceId);
+            if (!result.Removed)
+            {
+                // One copy of each id and of repeated texts: 30,000 devices x 50 checks would otherwise keep 1.5 million
+                // copies of the same ids (each message brings its own strings).
+                result.DeviceId = device.DeviceId;
+                result.CheckId = _checks.TryGetValue(result.CheckId, out var check) ? check.Id : result.CheckId;
+                result.Detail = Pooled(result.Detail);
+            }
+
+            device.Set(result);
             changed.Add(result.DeviceId);
         }
 

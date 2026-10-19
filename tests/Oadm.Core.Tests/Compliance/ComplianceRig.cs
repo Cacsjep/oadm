@@ -194,16 +194,44 @@ internal sealed class FakeReadType(string id) : IComplianceCheckType
     }
 }
 
-/// <summary>Records the full states the engine reports per event type.</summary>
+/// <summary>The states the engine reports per event type: full reports and single changes applied in order.</summary>
 internal sealed class RecordingPublisher : IEventPublisher
 {
+    private readonly Lock _sync = new();
+
     public ConcurrentDictionary<string, IReadOnlyCollection<Guid>> States { get; } = new();
 
-    public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null) => throw new NotSupportedException();
+    /// <summary>How many full reports (ReplaceStates) a type got.</summary>
+    public ConcurrentDictionary<string, int> FullReports { get; } = new();
+
+    public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null)
+    {
+        lock (_sync)
+        {
+            var on = new HashSet<Guid>(States.GetValueOrDefault(typeId) ?? []);
+            if (isOn)
+            {
+                on.Add(deviceId!.Value);
+            }
+            else
+            {
+                on.Remove(deviceId!.Value);
+            }
+
+            States[typeId] = on;
+        }
+    }
 
     public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null) => throw new NotSupportedException();
 
-    public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices) => States[typeId] = [.. onDevices];
+    public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices)
+    {
+        lock (_sync)
+        {
+            States[typeId] = [.. onDevices];
+            FullReports.AddOrUpdate(typeId, 1, (_, n) => n + 1);
+        }
+    }
 
     public bool IsWatched(string typeId) => true;
 }

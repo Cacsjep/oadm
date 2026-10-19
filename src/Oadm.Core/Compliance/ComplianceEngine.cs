@@ -492,8 +492,8 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
     private bool IsCached(CheckRuntime runtime) => _catalog.Find(runtime.Check.TypeId)?.Type is { UsesCachedDataOnly: true };
 
-    private static bool InScope(CheckRuntime runtime, Device device) =>
-        runtime.Check.Devices.Mode == DeviceSelectorMode.All || runtime.Check.Devices.ChoiceMatches(device.Id, device.Tags);
+    /// <summary>Whether the device is one of the check's devices: O(its tags) through the runtime's sets.</summary>
+    private static bool InScope(CheckRuntime runtime, Device device) => runtime.InScope(device);
 
     /// <summary>Gives every device of the check a result (Not checked yet, or why it is not contacted) and drops the others.</summary>
     private void Reconcile(CheckRuntime runtime, List<ComplianceResultModel> changes)
@@ -622,20 +622,26 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         string? problem = type is null
             ? "Not available: this kind of check no longer exists"
             : type.Available ? null : type.UnavailableText;
-        string summary;
-        try
+        // The summary once per check version and type (a configuration file check parses its file for it).
+        if (runtime.Summary is not { } summary || !ReferenceEquals(runtime.SummaryType, type))
         {
-            summary = type is null ? runtime.Check.TypeId : type.Type.Describe(JsonSerializer.SerializeToElement(runtime.Check.Settings));
-        }
+            try
+            {
+                summary = type is null ? runtime.Check.TypeId : type.Type.Describe(runtime.Invocation.Settings);
+            }
 #pragma warning disable CA1031 // Plugin code is untrusted.
-        catch (Exception)
+            catch (Exception)
 #pragma warning restore CA1031
-        {
-            summary = type?.Type.DisplayName ?? runtime.Check.TypeId;
+            {
+                summary = type?.Type.DisplayName ?? runtime.Check.TypeId;
+            }
+
+            runtime.Summary = summary;
+            runtime.SummaryType = type;
         }
 
         return new ComplianceCheckState(
-            runtime.Check.Clone(),
+            runtime.Check.Clone(copySettings: false), // the settings are never changed; a configuration file is large
             type?.Type.DisplayName ?? runtime.Check.TypeId,
             summary,
             type?.Type.UsesCachedDataOnly == false,
@@ -680,13 +686,13 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         foreach (var (runtime, type, devices) in work)
         {
             var results = new List<(Guid, ComplianceResult)>(devices.Count);
-            var invocation = Invocation(runtime.Check);
+            var invocation = runtime.Invocation;
             foreach (var device in devices)
             {
                 results.Add((device.Id, await EvaluateAsync(type, invocation, device, null, NoReads.Instance, ct).ConfigureAwait(false)));
             }
 
-            Apply(runtime.Check.Id, runtime.Check.Version, results);
+            Apply(runtime.Check.Id, runtime.Check.Version, results, cached: true);
         }
     }
 
@@ -698,8 +704,6 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         _ => ex.Message,
     };
 
-    private static ComplianceInvocation Invocation(ComplianceCheck check) =>
-        new(check.Id, check.Name, JsonSerializer.SerializeToElement(check.Settings));
 
     private async Task<ComplianceResult> EvaluateAsync(
         CatalogComplianceType type, ComplianceInvocation invocation, Device device, IVapixClient? vapix, IComplianceReads reads, CancellationToken ct)
@@ -724,8 +728,11 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
     }
 
-    /// <summary>Stores results of a run, unless the check changed meanwhile (its results were reset).</summary>
-    private void Apply(Guid checkId, int version, IReadOnlyList<(Guid DeviceId, ComplianceResult Result)> results)
+    /// <summary>
+    /// Stores results of a run, unless the check changed meanwhile (its results were reset). <paramref name="cached"/>:
+    /// a check on cached data, worked out again at every start: only a changed result is kept and written, no checked time.
+    /// </summary>
+    private void Apply(Guid checkId, int version, IReadOnlyList<(Guid DeviceId, ComplianceResult Result)> results, bool cached = false)
     {
         var changes = new List<ComplianceResultModel>();
         lock (_sync)
@@ -739,7 +746,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             {
                 if (_deviceRows.TryGetValue(deviceId, out var device) && InScope(runtime, device))
                 {
-                    SetResult(runtime, deviceId, result, changes, checkedNow: true);
+                    SetResult(runtime, deviceId, result, changes, checkedNow: !cached);
                 }
             }
         }
@@ -954,7 +961,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             lock (_sync)
             {
                 device = _deviceRows.GetValueOrDefault(deviceId);
-                work = [.. due.Select(d => (d.Runtime.Check.Id, d.Runtime.Check.Version, Invocation(d.Runtime.Check), d.Type))];
+                work = [.. due.Select(d => (d.Runtime.Check.Id, d.Runtime.Check.Version, d.Runtime.Invocation, d.Type))];
             }
 
             if (device is null || device.Status != DeviceStatus.Ok)
@@ -1050,12 +1057,18 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
     private readonly SemaphoreSlim _writing = new(1, 1);
 
+    /// <summary>Results written per transaction.</summary>
+    internal const int WriteChunk = 5_000;
+
     private async Task WriteDirtyAsync(CancellationToken ct)
     {
         await _writing.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            List<KeyValuePair<(Guid CheckId, Guid DeviceId), ComplianceResultEntity?>> batch;
+            // Chunks of WriteChunk rows, one transaction each: a whole round (30,000 devices x 50 checks) never holds the
+            // database's write lock for long, so polling and tasks write in between. The keys in the table's order (the
+            // upper-case text of the ids), sorted once per flush: neighbouring rows share index pages.
+            List<(Guid CheckId, Guid DeviceId)> order;
             lock (_sync)
             {
                 if (_dirty.Count == 0)
@@ -1063,28 +1076,45 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
                     return;
                 }
 
-                batch = [.. _dirty];
-                _dirty.Clear();
+                order = [.. _dirty.Keys
+                    .Select(k => (Key: k, Text: k.CheckId.ToString().ToUpperInvariant() + k.DeviceId.ToString().ToUpperInvariant()))
+                    .OrderBy(k => k.Text, StringComparer.Ordinal)
+                    .Select(k => k.Key)];
             }
 
-            try
+            foreach (var keys in order.Chunk(WriteChunk))
             {
-                await _store.WriteResultsAsync(
-                    [.. batch.Where(b => b.Value is not null).Select(b => b.Value!)],
-                    [.. batch.Where(b => b.Value is null).Select(b => b.Key)],
-                    ct).ConfigureAwait(false);
-            }
-            catch
-            {
+                var batch = new List<KeyValuePair<(Guid CheckId, Guid DeviceId), ComplianceResultEntity?>>(keys.Length);
                 lock (_sync)
                 {
-                    foreach (var (key, value) in batch)
+                    foreach (var key in keys)
                     {
-                        _dirty.TryAdd(key, value); // a newer change wins
+                        if (_dirty.Remove(key, out var value))
+                        {
+                            batch.Add(new(key, value)); // the newest value of the key; a change after this flush stays dirty
+                        }
                     }
                 }
 
-                throw;
+                try
+                {
+                    await _store.WriteResultsAsync(
+                        [.. batch.Where(b => b.Value is not null).Select(b => b.Value!)],
+                        [.. batch.Where(b => b.Value is null).Select(b => b.Key)],
+                        ct).ConfigureAwait(false);
+                }
+                catch
+                {
+                    lock (_sync)
+                    {
+                        foreach (var (key, value) in batch)
+                        {
+                            _dirty.TryAdd(key, value); // a newer change wins
+                        }
+                    }
+
+                    throw;
+                }
             }
         }
         finally
@@ -1113,7 +1143,52 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             }
         }
 
-        foreach (var checkId in changes.Select(c => c.CheckId).Distinct())
+        // Events: one change per device whose failing state changed (O(changes)); a check never reported in full gets its
+        // full state first.
+        var states = new List<(string TypeId, Guid DeviceId, bool On)>();
+        var full = new HashSet<Guid>();
+        lock (_sync)
+        {
+            if (_started && _enabled && _publisher is not null)
+            {
+                foreach (var change in changes)
+                {
+                    if (!_checks.TryGetValue(change.CheckId, out var runtime))
+                    {
+                        continue;
+                    }
+
+                    if (runtime.ReportedFailing is not { } reported)
+                    {
+                        full.Add(change.CheckId);
+                        continue;
+                    }
+
+                    var on = runtime.Failing.Contains(change.DeviceId) && runtime.Check.Enabled && _catalog.Find(runtime.Check.TypeId)?.Available == true;
+                    if (on ? reported.Add(change.DeviceId) : reported.Remove(change.DeviceId))
+                    {
+                        states.Add((EventTypeId(change.CheckId), change.DeviceId, on));
+                    }
+                }
+            }
+        }
+
+        foreach (var (typeId, deviceId, on) in states)
+        {
+            try
+            {
+                _publisher!().SetState(typeId, deviceId, on);
+            }
+#pragma warning disable CA1031 // The event rules must never stop the checks.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogEventFailed(ex);
+                break;
+            }
+        }
+
+        foreach (var checkId in full)
         {
             ReportEvent(checkId);
         }
@@ -1175,7 +1250,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             }
 
             var available = runtime.Check.Enabled && _catalog.Find(runtime.Check.TypeId)?.Available == true;
-            failing = available ? [.. runtime.Results.Where(r => r.Value.Outcome == ComplianceOutcome.Failed).Select(r => r.Key)] : [];
+            failing = available ? [.. runtime.Failing] : [];
             if (runtime.ReportedFailing is { } reported && reported.SetEquals(failing))
             {
                 return;
@@ -1216,18 +1291,75 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
     private sealed record Result(ComplianceOutcome Outcome, string Detail, DateTime CheckedUtc, DateTime SinceUtc);
 
-    /// <summary>A check with its results per device and counters per outcome (O(1) per change).</summary>
-    private sealed class CheckRuntime(ComplianceCheck check)
+    /// <summary>
+    /// A check with its results per device, counters per outcome and the devices it fails on (O(1) per change), and its
+    /// devices and tags as sets (O(1) scope test, also for a choice of 30,000 devices).
+    /// </summary>
+    private sealed class CheckRuntime
     {
         private readonly int[] _counts = new int[5];
+        private HashSet<Guid> _deviceIds = [];
+        private HashSet<string> _tags = new(StringComparer.OrdinalIgnoreCase);
+        private bool _all;
 
-        public ComplianceCheck Check { get; private set; } = check;
+        public CheckRuntime(ComplianceCheck check)
+        {
+            Check = check;
+            Update(check);
+        }
+
+        public ComplianceCheck Check { get; private set; }
+
+        /// <summary>
+        /// The check as the types get it, built once per version: every device run gets the same instance (a configuration
+        /// file in the settings is not serialized again per device; types may cache per instance).
+        /// </summary>
+        public ComplianceInvocation Invocation { get; private set; } = null!;
+
+        /// <summary>The type's one-line summary of the settings (<see cref="IComplianceCheckType.Describe"/>), once per version.</summary>
+        public string? Summary { get; set; }
+
+        /// <summary>The catalog entry the summary was made with (a plugin turned on or off makes it again).</summary>
+        public CatalogComplianceType? SummaryType { get; set; }
 
         public Dictionary<Guid, Result> Results { get; } = [];
 
+        /// <summary>The devices the check fails on now.</summary>
+        public HashSet<Guid> Failing { get; } = [];
+
+        /// <summary>The devices the check's event is on for in the event rules; null until the first full report.</summary>
         public HashSet<Guid>? ReportedFailing { get; set; }
 
-        public void Update(ComplianceCheck check) => Check = check;
+        public void Update(ComplianceCheck check)
+        {
+            Check = check;
+            Invocation = new ComplianceInvocation(check.Id, check.Name, JsonSerializer.SerializeToElement(check.Settings));
+            Summary = null;
+            _all = check.Devices.Mode == DeviceSelectorMode.All;
+            _deviceIds = [.. check.Devices.DeviceIds];
+            _tags = new HashSet<string>(check.Devices.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        public bool InScope(Device device)
+        {
+            if (_all || _deviceIds.Contains(device.Id))
+            {
+                return true;
+            }
+
+            if (_tags.Count > 0)
+            {
+                foreach (var tag in device.Tags)
+                {
+                    if (_tags.Contains(tag))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
 
         public int Count(ComplianceOutcome outcome) => _counts[(int)outcome];
 
@@ -1240,6 +1372,14 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
             Results[deviceId] = result;
             _counts[(int)result.Outcome]++;
+            if (result.Outcome == ComplianceOutcome.Failed)
+            {
+                Failing.Add(deviceId);
+            }
+            else
+            {
+                Failing.Remove(deviceId);
+            }
         }
 
         public bool Remove(Guid deviceId)
@@ -1250,6 +1390,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             }
 
             _counts[(int)old.Outcome]--;
+            Failing.Remove(deviceId);
             return true;
         }
     }

@@ -39,12 +39,13 @@ public sealed class ComplianceCheck
 
     public DateTime ChangedUtc { get; set; }
 
-    public ComplianceCheck Clone() => new()
+    /// <summary>A copy; <paramref name="copySettings"/> false shares the settings (read only: lists of checks).</summary>
+    public ComplianceCheck Clone(bool copySettings = true) => new()
     {
         Id = Id,
         Name = Name,
         TypeId = TypeId,
-        Settings = (JsonObject)Settings.DeepClone(),
+        Settings = copySettings ? (JsonObject)Settings.DeepClone() : Settings,
         Devices = Devices.Clone(),
         Severity = Severity,
         IntervalMinutes = IntervalMinutes,
@@ -309,15 +310,21 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
             var detail = Add(command, "$t");
             var checkedUtc = Add(command, "$k");
             var since = Add(command, "$s");
-            foreach (var row in upserts)
+            command.Prepare();
+
+            // In key order: neighbouring rows land on the same index pages (random GUID order touched a new page per row).
+            foreach (var row in upserts
+                .Select(r => (Row: r, Check: r.CheckId.ToString().ToUpperInvariant(), Device: r.DeviceId.ToString().ToUpperInvariant()))
+                .OrderBy(r => r.Check, StringComparer.Ordinal).ThenBy(r => r.Device, StringComparer.Ordinal))
             {
-                check.Value = row.CheckId.ToString().ToUpperInvariant();
-                device.Value = row.DeviceId.ToString().ToUpperInvariant();
-                outcome.Value = (int)row.Outcome;
-                detail.Value = row.Detail;
-                checkedUtc.Value = row.CheckedUtc;
-                since.Value = row.SinceUtc;
-                await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                check.Value = row.Check;
+                device.Value = row.Device;
+                outcome.Value = (int)row.Row.Outcome;
+                detail.Value = row.Row.Detail;
+                checkedUtc.Value = row.Row.CheckedUtc;
+                since.Value = row.Row.SinceUtc;
+                ct.ThrowIfCancellationRequested();
+                command.ExecuteNonQuery(); // prepared, synchronous: a chunk without the async overhead per row
             }
         }
 
@@ -328,11 +335,13 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
             command.CommandText = "DELETE FROM ComplianceResults WHERE CheckId = $c AND DeviceId = $d";
             var check = Add(command, "$c");
             var device = Add(command, "$d");
+            command.Prepare();
             foreach (var (checkId, deviceId) in removals)
             {
                 check.Value = checkId.ToString().ToUpperInvariant();
                 device.Value = deviceId.ToString().ToUpperInvariant();
-                await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                command.ExecuteNonQuery();
             }
         }
 

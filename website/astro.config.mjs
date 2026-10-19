@@ -175,6 +175,7 @@ export default defineConfig({
 						{ label: 'Task plugins', slug: 'dev/tasks' },
 						{ label: 'Core plugins and pages', slug: 'dev/core-plugins' },
 						{ label: 'Event rules', slug: 'dev/event-rules' },
+						{ label: 'Compliance checks', slug: 'dev/compliance-checks' },
 						{ label: 'UI kit', slug: 'dev/ui' },
 						{ label: 'Testing', slug: 'dev/testing' },
 						{ label: 'Debug a plugin', slug: 'dev/debugging' },

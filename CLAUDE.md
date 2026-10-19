@@ -1283,8 +1283,13 @@ Built-in feature (not a plugin): which devices need attention at first glance. S
   operation: Name, Devices, Kind of check, its settings through the shared `SettingsFormView` of the event rules).
   **Devices grid**: the Compliance column (off by default) or, while it is on, one column per check (toggle, per client).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
-- Tests: `tests/Oadm.Core.Tests/Compliance`, `tests/Oadm.Server.Tests/ComplianceServiceTests`, the check types in their
-  plugins' tests, `tests/Oadm.Client.Tests/ComplianceTests` (+ Perf 30,000 devices x 10 checks, screenshots). Fake mode:
+- Scale (30,000 devices x 50 checks): scope and failing devices as sets per check, events as single changes, one
+  `ComplianceInvocation` per check version (a configuration file is serialized and parsed once), results written in key
+  order 5,000 per transaction, the client keeps ids and repeated texts once. Measured in `docs/compliance.md` "Scale".
+- Developer guide: website Developers > Compliance checks (`dev/compliance-checks.md`); `plugins/README.md`.
+- Tests: `tests/Oadm.Core.Tests/Compliance` (+ Perf `ComplianceScaleTests` 30,000 devices x 50 checks),
+  `tests/Oadm.Server.Tests/ComplianceServiceTests`, the check types in their plugins' tests,
+  `tests/Oadm.Client.Tests/ComplianceTests` (+ Perf 30,000 devices x 50 checks, screenshots). Fake mode:
   `FakeOadmApi.Compliance.cs`.
 
 # Event rules

@@ -42,6 +42,7 @@ A plugin follows the same split: a **server part** (`*.Server.dll`) does the dev
 | Add a button to the Devices toolbar | [Toolbar plugin](../core-plugins/#toolbar-buttons) | System report |
 | Do something when an event rule fires | [Action](../event-rules/#write-an-action) | Send email, Set output |
 | Let event rules react to something your plugin sees | [Event source](../event-rules/#publish-events) | Device triggers |
+| Add a kind of check to the Compliance page | [Compliance check type](../compliance-checks/) | Application running, SD card |
 
 Inside these, the SDK gives you:
 
@@ -83,7 +84,7 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
    under your name, ready to build and run.
 4. [Build from source](../build/): OADM itself from a checkout.
 5. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
-   [Event rules](../event-rules/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
+   [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
    [SDK versions](../compatibility/).
 
 Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). The
