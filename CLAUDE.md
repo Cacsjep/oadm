@@ -614,6 +614,25 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
     on port 554 -> live view (see "Live view")
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
+- **Routing** (docs/sites.md, on branch `feature/sites`): every device connection opens through
+  `Oadm.Core.Sites.DeviceRouter` on the device's `DeviceRoute` (`Device.SiteId`, `DiscoveredDevice.Route`): the server's
+  own network = a normal socket connect, a site = a new `ISiteTransport.OpenStreamAsync` stream per connection.
+  `VapixClient` runs on `SocketsHttpHandler` (router connect callback, pinning via `CertificatePinning.ValidateSslCallback`;
+  WebSockets through the same handler); `VapixDeviceProbe` keeps one handler per route (a pool keyed by host and port only
+  would share a connection between two sites with the same IP) and reads the route from `DeviceRouter.RouteOption`;
+  `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. `DeviceConnections.For(device |
+  discovered)` is the only place that builds `VapixConnectionOptions` (test `RoutingRulesTests`). The factory's cache key
+  holds the route; a change of route or address drops the cached client. Through a site: at most 2 connections per
+  device, 30 s idle; every request timeout + 4 x the site's round trip; never Basic over plain HTTP; a `SiteException`
+  passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial. Names resolve on the route
+  (`RoutedDns`; through a site in stream 5). With no site everything connects as before.
+- **Banned APIs**: `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`
+  (Socket, TcpClient, UdpClient, Ping, Dns, HttpClientHandler, SocketsHttpHandler, ClientWebSocket.ConnectAsync): errors in
+  src/ and plugins/ (`OadmBannedApis=error`), warnings RS0030 in every plugin built with Oadm.Plugin.Sdk
+  (`OadmBannedApis=warning`, `none` turns it off; version `OadmBannedApiAnalyzersVersion` in Oadm.Plugin.Versions.props);
+  tools/ and tests/ outside. Exceptions carry a SuppressMessage with a justification and are listed in
+  `RoutingRulesTests.AllowedBannedApiUsers` (`AddressProbe`, `NtpServerService`, `UseOadmNtpServerTask` until they use
+  `IDeviceNetwork`).
 
 # Add Devices Page (fast add, no wizard)
 

@@ -61,6 +61,13 @@ shared payload types; it then ships in the same folder.
 
 ## Server side
 
+**Never open your own sockets to devices.** Reach devices only through `IVapixClient` (HTTP, HTTPS, WebSockets),
+`ICorePluginContext.EventStreams` (RTSP) and the host's network services (`IDeviceNetwork`), so devices at a site work
+without changes. The plugin project SDK shows a warning (RS0030, banned-API analyzer) for `Socket`, `TcpClient`,
+`UdpClient`, `Ping`, `Dns`, `HttpClientHandler`, `SocketsHttpHandler` and `ClientWebSocket.ConnectAsync`; your own servers
+(mail, HTTP endpoints of your company) are the exception: suppress it with a justification
+(`[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`).
+
 - **Name and group.** `DisplayName` is the context menu and toolbar name: at most
   `TaskPluginNames.MaxDisplayNameLength` (32) characters, **no trailing "..."**, also for tasks that open a dialog. The
   host never appends dots and strips them; the server loader shortens longer names with "…" and logs a warning.
