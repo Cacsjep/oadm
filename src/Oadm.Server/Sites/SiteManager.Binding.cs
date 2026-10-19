@@ -39,67 +39,181 @@ public sealed class SiteRefusedException : Exception
 /// <summary>Binding, renaming, the address and forgetting of sites (docs/sites.md, Binding).</summary>
 public sealed partial class SiteManager
 {
+    private readonly SemaphoreSlim _bindLock = new(1, 1);
+
+    /// <summary>Binds the one waiting node that reports <paramref name="nodeId"/> (older clients; see the overload).</summary>
+    public Task<Site> BindAsync(string nodeId, string name, string code, CancellationToken ct) => BindAsync(nodeId, null, name, code, ct);
+
     /// <summary>
-    /// Binds a waiting node as a new site with the pairing code (SRP-6a over this connection, <see cref="ServerPairing"/>).
-    /// Refused: a bad name or code format, a name in use, over <see cref="Site.MaxSites"/>, a copy of a bound node (its
-    /// id or key is known), a wrong code (audited "Wrong pairing code"), too many wrong codes, binding closed on the node.
+    /// Binds a waiting node as a new site with the pairing code (J-PAKE over this connection, <see cref="ServerPairing"/>).
+    /// The node is chosen by its key fingerprint (<paramref name="fingerprint"/>; without it the only waiting node that
+    /// reports <paramref name="nodeId"/>). Binds run one at a time, so two of them never pass the name and count checks
+    /// together. Refused: a bad name or code format, a name in use, over <see cref="Site.MaxSites"/>, a copy of a bound
+    /// node (its id or key is known), a wrong code (audited "Wrong pairing code"), too many wrong codes or attempts, binding
+    /// closed on the node. A node of a site that accepted this server's new identity binds that site again. When the site
+    /// cannot be stored after the node bound, the node is sent Unbind.
     /// </summary>
-    public async Task<Site> BindAsync(string nodeId, string name, string code, CancellationToken ct)
+    public async Task<Site> BindAsync(string? nodeId, string? fingerprint, string name, string code, CancellationToken ct)
     {
         var siteName = CleanName(name);
         var normalized = PairingCode.Normalize(code) ?? throw new SiteRefusedException(StatusCode.InvalidArgument, SiteTexts.CodeFormat);
+        await _bindLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await BindLockedAsync(nodeId, fingerprint, siteName, normalized, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _bindLock.Release();
+        }
+    }
+
+    private async Task<Site> BindLockedAsync(string? nodeId, string? fingerprint, string siteName, string normalized, CancellationToken ct)
+    {
         WaitingNode node;
+        Guid? rebind = null;
         lock (_lock)
         {
-            node = _waiting.GetValueOrDefault(nodeId ?? string.Empty) ?? throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone);
-            if (_sites.Values.FirstOrDefault(e => string.Equals(e.Row.NodeId, node.NodeId, StringComparison.Ordinal)
-                || string.Equals(e.Row.NodeKeyFingerprint, node.Link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase)) is { } copy)
+            node = FindWaiting(nodeId, fingerprint);
+            var same = _sites.Values.FirstOrDefault(e => string.Equals(e.Row.NodeId, node.NodeId, StringComparison.Ordinal)
+                || string.Equals(e.Row.NodeKeyFingerprint, node.Key, StringComparison.OrdinalIgnoreCase));
+            if (same is not null)
             {
-                throw new SiteRefusedException(StatusCode.AlreadyExists, SiteTexts.CopyOf(copy.Row.Name));
+                rebind = node.RebindOf is not null && IsRebind(same, node)
+                    ? same.Row.Id
+                    : throw new SiteRefusedException(StatusCode.AlreadyExists, SiteTexts.CopyOf(same.Row.Name));
             }
 
-            if (_sites.Count >= Site.MaxSites)
+            if (rebind is null && _sites.Count >= Site.MaxSites)
             {
                 throw new SiteRefusedException(StatusCode.ResourceExhausted, SiteTexts.TooManySites);
             }
 
-            if (_sites.Values.Any(e => string.Equals(e.Row.Name, siteName, StringComparison.OrdinalIgnoreCase)))
+            if (_sites.Values.Any(e => e.Row.Id != rebind && string.Equals(e.Row.Name, siteName, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new SiteRefusedException(StatusCode.AlreadyExists, SiteTexts.NameTaken);
             }
         }
 
-        if (node.Link.IsClosed)
-        {
-            throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone);
-        }
-
-        if (node.Hello.ProtocolVersion < _options.MinProtocolVersion)
+        var link = await LinkForBindAsync(node, ct).ConfigureAwait(false);
+        if (link.Hello?.ProtocolVersion < _options.MinProtocolVersion)
         {
             throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.TooOld);
         }
 
-        var client = node.Link.Client;
-        var deadline = DateTime.UtcNow + _options.CallTimeout;
+        await PairAsync(node, link, siteName, normalized, ct).ConfigureAwait(false);
+
+        // The node is bound from here on: a site that cannot be stored must not leave it bound to nothing.
+        Site row;
         try
         {
-            var start = await client.PairStartAsync(new PairStartRequest(), deadline: deadline, cancellationToken: ct).ConfigureAwait(false);
-            ServerPairing pairing;
+            row = await StoreBoundAsync(node, link, siteName, rebind).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Any failure to store: the node must not stay bound to nothing.
+        catch (Exception e) when (e is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogWriteFailed(e);
+            await UnbindQuietlyAsync(link).ConfigureAwait(false);
+            throw new SiteRefusedException(StatusCode.Internal, SiteTexts.NotStored);
+        }
+
+        link.Trust();
+        await AttachControlAsync(row.Id, link, fresh: true).ConfigureAwait(false);
+        await _audit.WriteAsync(SiteAudit.Bound, siteName, $"Site node {node.Name}, from {link.RemoteHost}", CancellationToken.None).ConfigureAwait(false);
+        LogBound(siteName, link.RemoteHost);
+        _ = SendServerAddressesAsync(row.Id);
+        Raise([row.Id]);
+        return Copy(row);
+    }
+
+    // The waiting node by its key; without one, the only waiting node with that id.
+    private WaitingNode FindWaiting(string? nodeId, string? fingerprint)
+    {
+        if (!string.IsNullOrEmpty(fingerprint))
+        {
+            var byKey = _waiting.GetValueOrDefault(fingerprint);
+            return byKey is not null && (string.IsNullOrEmpty(nodeId) || string.Equals(byKey.NodeId, nodeId, StringComparison.Ordinal))
+                ? byKey
+                : throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone);
+        }
+
+        var byId = _waiting.Values.Where(w => string.Equals(w.NodeId, nodeId, StringComparison.Ordinal)).Take(2).ToList();
+        return byId.Count switch
+        {
+            1 => byId[0],
+            0 => throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone),
+            _ => throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.NodeIdAmbiguous),
+        };
+    }
+
+    // The waiting node's link; a node that waits for the server closes idle links of servers it is not bound to, so its
+    // address is reached again (the same key only).
+    private async Task<NodeLink> LinkForBindAsync(WaitingNode node, CancellationToken ct)
+    {
+        if (!node.Link.IsClosed)
+        {
+            return node.Link;
+        }
+
+        if (node.Mode != SiteMode.Inbound || node.Address is not { } address)
+        {
+            throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone);
+        }
+
+        NodeLink link;
+        try
+        {
+            link = await ConnectToNodeAsync(address.Host, address.Port, ct).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is System.Net.Sockets.SocketException or IOException or System.Security.Authentication.AuthenticationException || (e is OperationCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering);
+        }
+
+        if (!string.Equals(link.NodeFingerprintHex, node.Key, StringComparison.OrdinalIgnoreCase) || await HelloAsync(link, _options.HelloTimeout).ConfigureAwait(false) is null)
+        {
+            await link.DisposeAsync().ConfigureAwait(false);
+            throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.OtherNode);
+        }
+
+        lock (_lock)
+        {
+            if (_waiting.GetValueOrDefault(node.Key) == node)
+            {
+                _waiting[node.Key] = new WaitingNode(link, link.Hello!, node.Mode, node.Address, node.Since) { CopyOf = node.CopyOf, RebindOf = node.RebindOf };
+            }
+        }
+
+        return link;
+    }
+
+    // PairStart and Bind: the server's round 1, the node's rounds 1 and 2, the server's round 2 and proof, the node's proof.
+    private async Task PairAsync(WaitingNode node, NodeLink link, string siteName, string normalized, CancellationToken ct)
+    {
+        var client = link.Client;
+        try
+        {
+            var pairing = new ServerPairing(normalized, link.NodeFingerprint, _identity.Fingerprint);
+            var start = await client.PairStartAsync(new PairStartRequest { ServerRound1 = pairing.Round1 },
+                deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: ct).ConfigureAwait(false);
+            PakeRound2 round2;
+            byte[] proof;
             try
             {
-                pairing = new ServerPairing(normalized, start.Salt.ToByteArray(), start.B.ToByteArray(), node.Link.NodeFingerprint, _identity.Fingerprint);
+                (round2, proof) = pairing.Continue(start.NodeRound1, start.NodeRound2);
             }
             catch (ArgumentException)
             {
-                throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.NodeNotAnswering);
+                throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.InvalidAnswer);
             }
 
             var reply = await client.BindAsync(new BindRequest
             {
                 SiteName = siteName,
                 ServerName = _serverName,
-                A = ByteString.CopyFrom(pairing.A),
-                Proof = ByteString.CopyFrom(pairing.Proof),
+                ServerRound2 = round2,
+                Proof = ByteString.CopyFrom(proof),
             }, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: ct).ConfigureAwait(false);
             if (!pairing.Check(reply.Proof.ToByteArray()))
             {
@@ -113,51 +227,95 @@ public sealed partial class SiteManager
             await WrongCodeAsync(node).ConfigureAwait(false);
             throw new SiteRefusedException(StatusCode.InvalidArgument, SiteTexts.WrongCode);
         }
-        catch (RpcException e) when (e.StatusCode is StatusCode.ResourceExhausted or StatusCode.FailedPrecondition)
+        catch (RpcException e) when (e.StatusCode is StatusCode.ResourceExhausted or StatusCode.FailedPrecondition or StatusCode.InvalidArgument)
         {
             if (e.StatusCode == StatusCode.ResourceExhausted)
             {
                 await WrongCodeAsync(node).ConfigureAwait(false);
             }
 
-            throw new SiteRefusedException(e.StatusCode, e.Status.Detail);
+            throw new SiteRefusedException(e.StatusCode == StatusCode.InvalidArgument ? StatusCode.FailedPrecondition : e.StatusCode,
+                HelloRules.IsText(e.Status.Detail, 200) ? e.Status.Detail : SiteTexts.NodeNotAnswering);
         }
         catch (RpcException e) when (!ct.IsCancellationRequested)
         {
-            throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering + " " + e.Status.Detail);
+            throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering + " " + (HelloRules.IsText(e.Status.Detail, 200) ? e.Status.Detail : string.Empty));
         }
+    }
 
-        var row = new Site
-        {
-            Name = siteName,
-            NormalizedName = siteName.ToUpperInvariant(),
-            Mode = node.Mode,
-            Address = node.Address?.Host ?? node.Link.RemoteHost,
-            Port = node.Address?.Port,
-            NodeKeyFingerprint = node.Link.NodeFingerprintHex,
-            NodeId = node.NodeId,
-            BoundUtc = Time.GetUtcNow().UtcDateTime,
-            LastSeenUtc = Time.GetUtcNow().UtcDateTime,
-            Version = node.Hello.Version,
-        };
+    // The new site's row (or, binding again, the site's row with the node's new binding), in the database and in memory.
+    private async Task<Site> StoreBoundAsync(WaitingNode node, NodeLink link, string siteName, Guid? rebind)
+    {
+        var now = Time.GetUtcNow().UtcDateTime;
+        var mode = node.Mode;
+        var host = node.Address?.Host ?? link.RemoteHost;
+        var port = node.Address?.Port;
+        var version = link.Hello?.Version ?? node.Hello.Version;
+        Site row;
         await using (var db = await _db.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false))
         {
-            db.Sites.Add(row);
+            if (rebind is { } id)
+            {
+                row = await db.Sites.SingleAsync(s => s.Id == id, CancellationToken.None).ConfigureAwait(false);
+            }
+            else
+            {
+                row = new Site { NodeKeyFingerprint = link.NodeFingerprintHex, NodeId = node.NodeId };
+                db.Sites.Add(row);
+            }
+
+            row.Name = siteName;
+            row.NormalizedName = siteName.ToUpperInvariant();
+            row.Mode = mode;
+            row.Address = host;
+            row.Port = port;
+            row.BoundUtc = now;
+            row.LastSeenUtc = now;
+            row.Version = version;
+            row.NotBound = false;
             await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
         lock (_lock)
         {
-            _waiting.Remove(node.NodeId);
-            _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetUtcNow() };
+            if (_waiting.GetValueOrDefault(node.Key) is { } waiting && (waiting == node || waiting.Link == link))
+            {
+                _waiting.Remove(node.Key);
+            }
+
+            if (rebind is { } id && _sites.TryGetValue(id, out var entry))
+            {
+                entry.Row.Name = row.Name;
+                entry.Row.NormalizedName = row.NormalizedName;
+                entry.Row.Mode = row.Mode;
+                entry.Row.Address = row.Address;
+                entry.Row.Port = row.Port;
+                entry.Row.BoundUtc = row.BoundUtc;
+                entry.Row.LastSeenUtc = row.LastSeenUtc;
+                entry.Row.Version = row.Version;
+                entry.Row.NotBound = false;
+                entry.State = SiteState.Online;
+                entry.LastAnswer = Time.GetUtcNow();
+            }
+            else
+            {
+                _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetUtcNow() };
+            }
         }
 
-        await AttachControlAsync(row.Id, node.Link, fresh: true).ConfigureAwait(false);
-        await _audit.WriteAsync(SiteAudit.Bound, siteName, $"Site node {node.Name}, from {node.Link.RemoteHost}", CancellationToken.None).ConfigureAwait(false);
-        LogBound(siteName, node.Link.RemoteHost);
-        _ = SendServerAddressesAsync(row.Id);
-        Raise([row.Id]);
-        return Copy(row);
+        return row;
+    }
+
+    private async Task UnbindQuietlyAsync(NodeLink link)
+    {
+        try
+        {
+            await link.Client.UnbindAsync(new UnbindRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
+        }
+        catch (RpcException)
+        {
+            // The node stays bound to this server without a site; Reset in its app ends that.
+        }
     }
 
     private async Task WrongCodeAsync(WaitingNode node)

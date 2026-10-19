@@ -4,7 +4,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <!-- SRP-6a of the pairing code (MIT). -->
+    <!-- J-PAKE of the pairing code (MIT). -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
   <ItemGroup>

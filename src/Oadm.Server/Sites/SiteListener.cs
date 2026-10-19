@@ -24,12 +24,22 @@ internal sealed partial class SiteListener : IAsyncDisposable
     private readonly SemaphoreSlim _handshakes;
     private readonly Action<NodeLink> _accepted;
     private readonly ILogger _logger;
+    private readonly AddressRateLimiter? _connections;
     private readonly CancellationTokenSource _stop = new();
     private Task _loop = Task.CompletedTask;
 
-    public SiteListener(string url, Func<X509Certificate2> identity, int maxHandshakes, Action<NodeLink> accepted, ILogger logger)
+    /// <param name="connections">
+    /// New connections per source address (IPv6 per /64), counted at accept before any TLS work; null = no limit.
+    /// </param>
+    public SiteListener(string url, Func<X509Certificate2> identity, int maxHandshakes, Action<NodeLink> accepted, ILogger logger, AddressRateLimiter? connections = null)
     {
+        _connections = connections;
         var (address, port) = Parse(url);
+        if (address.Equals(IPAddress.IPv6Any) && !Socket.OSSupportsIPv6)
+        {
+            address = IPAddress.Any;
+        }
+
         _listener = new TcpListener(address, port);
         if (address.Equals(IPAddress.IPv6Any))
         {
@@ -98,6 +108,14 @@ internal sealed partial class SiteListener : IAsyncDisposable
                 return;
             }
 
+            var from = (socket.RemoteEndPoint as IPEndPoint)?.Address;
+            if (_connections is not null && !_connections.TryAcquire(from))
+            {
+                LogTooManyConnections(from);
+                socket.Dispose();
+                continue;
+            }
+
             if (!_handshakes.Wait(0, CancellationToken.None))
             {
                 socket.Dispose();
@@ -144,6 +162,9 @@ internal sealed partial class SiteListener : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "TLS with a site node from {Remote} failed: {Reason}")]
     private partial void LogHandshakeFailed(string remote, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Refused a connection to the site port from {Remote}: too many new connections from that address")]
+    private partial void LogTooManyConnections(IPAddress? remote);
 }
 
 /// <summary>This server's own addresses and DNS name (what a node tries when the typed address no longer answers).</summary>

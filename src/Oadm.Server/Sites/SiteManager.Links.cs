@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Oadm.Contracts.SiteNode;
 using Oadm.Core.Discovery.Mdns;
 using Oadm.Core.Sites;
+using Oadm.Sites.Binding;
 using Oadm.Sites.Transport;
 
 using Proto = Oadm.Contracts.V1;
@@ -30,7 +31,26 @@ public sealed partial class SiteManager
     {
         try
         {
-            var hello = await HelloAsync(link).ConfigureAwait(false);
+            // Links that did not answer Hello yet are capped and get a short deadline: a flood of connections that pass
+            // TLS and then say nothing cannot pile up.
+            HelloReply? hello;
+            if (Interlocked.Increment(ref _pendingLinks) > _options.MaxPendingLinks)
+            {
+                Interlocked.Decrement(ref _pendingLinks);
+                LogTooManyConnections(link.RemoteHost);
+                await link.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+
+            try
+            {
+                hello = await HelloAsync(link, _options.HelloTimeout).ConfigureAwait(false);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _pendingLinks);
+            }
+
             if (hello is null)
             {
                 await link.DisposeAsync().ConfigureAwait(false);
@@ -45,6 +65,7 @@ public sealed partial class SiteManager
 
             if (siteId is { } id && hello.State == NodeState.Bound)
             {
+                link.Trust(); // a bound site's key: its answers may be large
                 if (hello.LinkRole == LinkRole.Worker)
                 {
                     SiteSession? session;
@@ -76,7 +97,7 @@ public sealed partial class SiteManager
             }
 
             // Not one of the sites (or a copy of one that is not bound): waits to be bound, within the limits.
-            if (!CountNewConnection(link.RemoteHost))
+            if (!UnknownLinks.TryAcquire(link.Remote?.Address))
             {
                 LogTooManyConnections(link.RemoteHost);
                 await link.DisposeAsync().ConfigureAwait(false);
@@ -97,11 +118,19 @@ public sealed partial class SiteManager
         }
     }
 
-    private async Task<HelloReply?> HelloAsync(NodeLink link)
+    // Hello on a new link, within the deadline; a Hello that breaks HelloRules is refused whole (its texts are stored,
+    // logged, audited and shown, so nothing unchecked from a stranger gets that far).
+    private async Task<HelloReply?> HelloAsync(NodeLink link, TimeSpan? timeout = null)
     {
         try
         {
-            var hello = await link.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: _stop.Token).ConfigureAwait(false);
+            var hello = await link.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + (timeout ?? _options.CallTimeout), cancellationToken: _stop.Token).ConfigureAwait(false);
+            if (HelloRules.Problem(hello) is { } problem)
+            {
+                LogBadHello(link.RemoteHost, problem);
+                return null;
+            }
+
             link.Hello = hello;
             return hello;
         }
@@ -112,65 +141,49 @@ public sealed partial class SiteManager
         }
     }
 
-    private bool CountNewConnection(string address)
-    {
-        var now = Time.GetUtcNow();
-        lock (_lock)
-        {
-            if (!_newConnections.TryGetValue(address, out var times))
-            {
-                times = new Queue<DateTimeOffset>();
-                _newConnections[address] = times;
-            }
+    private int _pendingLinks;
+    private AddressRateLimiter? _unknownLinks;
 
-            while (times.Count > 0 && now - times.Peek() >= TimeSpan.FromMinutes(1))
-            {
-                times.Dequeue();
-            }
+    // New links of keys the server does not know, per address (IPv6 per /64) and minute; old entries are dropped by age.
+    private AddressRateLimiter UnknownLinks =>
+        LazyInitializer.EnsureInitialized(ref _unknownLinks, () => new AddressRateLimiter(_options.NewConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time));
 
-            if (times.Count >= _options.NewConnectionsPerMinute)
-            {
-                return false;
-            }
-
-            times.Enqueue(now);
-            if (_newConnections.Count > 10_000)
-            {
-                foreach (var stale in _newConnections.Where(p => p.Value.Count == 0).Select(p => p.Key).ToList())
-                {
-                    _newConnections.Remove(stale);
-                }
-            }
-
-            return true;
-        }
-    }
-
-    /// <summary>A node waiting to be bound (or found greyed). A newer link of the same node replaces the older one.</summary>
+    /// <summary>
+    /// A node waiting to be bound (or found greyed), kept by its key fingerprint: a stranger that reports another node's id
+    /// gets an entry of its own and never takes the other's place. A newer link with the same key replaces the older one.
+    /// </summary>
     private bool AddWaiting(NodeLink link, HelloReply hello, SiteMode mode, (string Host, int Port)? address)
     {
-        if (string.IsNullOrEmpty(hello.NodeId))
+        if (!HelloRules.IsNodeId(hello.NodeId) || link.NodeFingerprintHex.Length == 0)
         {
             return false;
         }
 
-        string? copyOf;
+        var key = link.NodeFingerprintHex;
         WaitingNode? replaced;
         var node = new WaitingNode(link, hello, mode, address, Time.GetUtcNow());
         lock (_lock)
         {
-            copyOf = _sites.Values.FirstOrDefault(e =>
+            var same = _sites.Values.FirstOrDefault(e =>
                 string.Equals(e.Row.NodeId, hello.NodeId, StringComparison.Ordinal)
-                || string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase))?.Row.Name;
-            node.CopyOf = copyOf;
-            _waiting.TryGetValue(hello.NodeId, out replaced);
+                || string.Equals(e.Row.NodeKeyFingerprint, key, StringComparison.OrdinalIgnoreCase));
+            if (same is not null && IsRebind(same, node))
+            {
+                node.RebindOf = same.Row.Name;
+            }
+            else
+            {
+                node.CopyOf = same?.Row.Name;
+            }
+
+            _waiting.TryGetValue(key, out replaced);
             if (replaced is null && _waiting.Count >= _options.MaxWaiting)
             {
                 LogTooManyWaiting(link.RemoteHost);
                 return false;
             }
 
-            _waiting[hello.NodeId] = node;
+            _waiting[key] = node;
         }
 
         if (replaced is not null && replaced.Link != link)
@@ -183,7 +196,9 @@ public sealed partial class SiteManager
             bool removed;
             lock (_lock)
             {
-                removed = _waiting.TryGetValue(hello.NodeId, out var current) && current == node && _waiting.Remove(hello.NodeId);
+                // A node that waits for the server stays listed: it closes idle links of servers it is not bound to,
+                // and Bind reaches it again at its address.
+                removed = node.Mode == SiteMode.Outbound && _waiting.TryGetValue(key, out var current) && current == node && _waiting.Remove(key);
             }
 
             if (removed)
@@ -192,10 +207,21 @@ public sealed partial class SiteManager
                 RaiseList();
             }
         }, TaskScheduler.Default);
-        LogWaiting(hello.HostName, link.RemoteHost);
+        LogWaiting(node.Name, link.RemoteHost);
         RaiseList();
         return true;
     }
+
+    // The node with a site's key and id offers to pair with this server: its administrator accepted this server's new
+    // identity (the site identity was lost, e.g. with a replaced master key). Bind with the code binds the site again.
+    private static bool IsRebind(SiteEntry site, WaitingNode node) =>
+        node.Hello is { State: NodeState.UnboundOpen, NewIdentityAccepted: true }
+        && string.Equals(site.Row.NodeKeyFingerprint, node.Key, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(site.Row.NodeId, node.NodeId, StringComparison.Ordinal)
+        && site.Session is not { IsEnded: false };
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Refused the site node connection from {Remote}: {Problem}")]
+    private partial void LogBadHello(string remote, string problem);
 
     private async Task SwitchToOutboundAsync(Guid siteId)
     {
@@ -299,7 +325,7 @@ public sealed partial class SiteManager
                         await MarkNotBoundAsync(siteId).ConfigureAwait(false);
                         return;
                     }
-                    else if (await AttachControlAsync(siteId, link, fresh: false).ConfigureAwait(false))
+                    else if (TrustLink(link) && await AttachControlAsync(siteId, link, fresh: false).ConfigureAwait(false))
                     {
                         SetMessage(siteId, null);
                         return; // the session runs; it starts this loop again when it ends
@@ -392,6 +418,7 @@ public sealed partial class SiteManager
             throw new IOException(SiteTexts.OtherNode);
         }
 
+        link.Trust();
         return link;
     }
 
@@ -399,8 +426,8 @@ public sealed partial class SiteManager
     [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The site transport: the server connects to site nodes that wait for it, never to devices.")]
     internal async Task<NodeLink> ConnectToNodeAsync(string host, int port, CancellationToken ct)
     {
-        var client = new TcpClient(AddressFamily.InterNetworkV6) { NoDelay = true };
-        client.Client.DualMode = true;
+        // Dual mode where the OS has IPv6, IPv4 otherwise (TcpClient() picks).
+        var client = new TcpClient();
         try
         {
             using (var connect = CancellationTokenSource.CreateLinkedTokenSource(ct))
@@ -408,6 +435,8 @@ public sealed partial class SiteManager
                 connect.CancelAfter(_options.CallTimeout);
                 await client.ConnectAsync(host, port, connect.Token).ConfigureAwait(false);
             }
+
+            client.NoDelay = true;
 
             var remote = client.Client.RemoteEndPoint as IPEndPoint;
             var tls = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
@@ -452,7 +481,11 @@ public sealed partial class SiteManager
             yield break;
         }
 
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // Two tokens: the browse ends after the duration; the probes it started end with the caller (or when the caller
+        // leaves early: the finally below cancels them and waits, so nothing keeps adding waiting nodes afterwards and no
+        // exception goes unobserved).
+        using var probing = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(probing.Token);
         stop.CancelAfter(duration);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var found = System.Threading.Channels.Channel.CreateUnbounded<Proto.Site>();
@@ -471,22 +504,53 @@ public sealed partial class SiteManager
 
                     var host = ip.ToString();
                     int port = instance.Port;
-                    probes.Add(Task.Run(async () => found.Writer.TryWrite(await FindAtAsync(host, port, ct).ConfigureAwait(false)), CancellationToken.None));
+                    probes.Add(Task.Run(async () => found.Writer.TryWrite(await FindAtAsync(host, port, probing.Token).ConfigureAwait(false)), CancellationToken.None));
                 }
             }
             catch (OperationCanceledException)
             {
             }
-
-            await Task.WhenAll(probes).ConfigureAwait(false);
-            found.Writer.TryComplete();
+            finally
+            {
+                try
+                {
+                    await Task.WhenAll(probes).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                finally
+                {
+                    found.Writer.TryComplete();
+                }
+            }
         }, CancellationToken.None);
-        await foreach (var site in found.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        try
         {
-            yield return site;
+            await foreach (var site in found.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            {
+                yield return site;
+            }
         }
+        finally
+        {
+            await probing.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await browse.ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The search ended; a failed browse or probe only means fewer results.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }
+    }
 
-        await browse.ConfigureAwait(false);
+    private static bool TrustLink(NodeLink link)
+    {
+        link.Trust();
+        return true;
     }
 
     /// <summary>The mDNS service of nodes that wait for the server.</summary>
@@ -505,7 +569,13 @@ public sealed partial class SiteManager
             return new Proto.Site { Name = shown, NodeAddress = host, NodePort = port, State = Proto.SiteState.Offline, Message = SiteTexts.NodeNotAnswering, Mode = Proto.SiteMode.Inbound };
         }
 
-        var hello = await HelloAsync(link).ConfigureAwait(false);
+        var hello = await HelloAsync(link, _options.HelloTimeout).ConfigureAwait(false);
+        if (ct.IsCancellationRequested)
+        {
+            await link.DisposeAsync().ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+        }
+
         if (hello is null)
         {
             await link.DisposeAsync().ConfigureAwait(false);
@@ -517,7 +587,7 @@ public sealed partial class SiteManager
         {
             lock (_lock)
             {
-                return (_waiting.GetValueOrDefault(hello.NodeId) ?? node).ToProto();
+                return (_waiting.GetValueOrDefault(link.NodeFingerprintHex) ?? node).ToProto();
             }
         }
 
@@ -584,10 +654,16 @@ public sealed partial class SiteManager
 
         public string NodeId => Hello.NodeId;
 
+        /// <summary>The key of the waiting list: the fingerprint of the node's key on this link.</summary>
+        public string Key => Link.NodeFingerprintHex;
+
         public string Name => string.IsNullOrWhiteSpace(Hello.HostName) ? Link.RemoteHost : Hello.HostName;
 
         /// <summary>A bound site with the same node id or key.</summary>
         public string? CopyOf { get; set; }
+
+        /// <summary>The site this node belongs to, offering to bind again with this server's new identity.</summary>
+        public string? RebindOf { get; set; }
 
         public Proto.SiteState State => Hello.State switch
         {
@@ -609,6 +685,7 @@ public sealed partial class SiteManager
             LastSeen = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(Since),
             Message = State switch
             {
+                Proto.SiteState.Waiting when RebindOf is not null => SiteTexts.BindAgain(RebindOf),
                 Proto.SiteState.Waiting when CopyOf is not null => SiteTexts.CopyOf(CopyOf),
                 Proto.SiteState.Waiting => SiteTexts.WaitingToBeBound,
                 Proto.SiteState.BindingClosed => SiteTexts.BindingClosed,

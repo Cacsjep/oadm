@@ -106,6 +106,12 @@ public sealed class NodeView
     /// <summary>The bound server presented another identity (fingerprint hex); Accept replaces the pinned one.</summary>
     public string NewServerIdentity { get; init; } = "";
 
+    /// <summary>Where <see cref="NewServerIdentity"/> came from ("10.0.0.5:5081").</summary>
+    public string NewServerFrom { get; init; } = "";
+
+    /// <summary>Accepted: that server binds with the pairing code.</summary>
+    public bool NewServerAccepted { get; init; }
+
     public IReadOnlyList<WrongCodeView> WrongCodes { get; init; } = [];
 
     /// <summary>Binding refused until then after 5 wrong codes.</summary>

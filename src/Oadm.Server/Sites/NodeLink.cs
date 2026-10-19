@@ -18,8 +18,13 @@ namespace Oadm.Server.Sites;
 public sealed class NodeLink : IAsyncDisposable
 {
     private readonly LinkStream _stream;
+    private readonly SocketsHttpHandler _handler;
+    private readonly GrpcChannel _strangerChannel;
     private readonly GrpcChannel _channel;
+    private readonly SiteNodeService.SiteNodeServiceClient _strangerClient;
+    private readonly SiteNodeService.SiteNodeServiceClient _trustedClient;
     private int _handedOut;
+    private bool _trusted;
 
     public NodeLink(SslStream tls, IPEndPoint? remote, bool openedByNode)
     {
@@ -41,16 +46,38 @@ public sealed class NodeLink : IAsyncDisposable
                 ? ValueTask.FromResult<Stream>(_stream)
                 : ValueTask.FromException<Stream>(new IOException("The link to the site node is closed.")),
         };
+        // One HTTP/2 connection, two channels over it: a stranger's answers (Hello, PairStart, Bind) are read with a limit
+        // of a few KB; once the link is known to be a bound site's (Trust), every call may receive 32 MB.
+        _handler = handler;
+        _strangerChannel = GrpcChannel.ForAddress("http://site-node", new GrpcChannelOptions
+        {
+            HttpHandler = handler,
+            DisposeHttpClient = false,
+            MaxReceiveMessageSize = StrangerReceiveBytes,
+            MaxSendMessageSize = 32 * 1024 * 1024,
+        });
         _channel = GrpcChannel.ForAddress("http://site-node", new GrpcChannelOptions
         {
             HttpHandler = handler,
+            DisposeHttpClient = false,
             MaxReceiveMessageSize = 32 * 1024 * 1024,
             MaxSendMessageSize = 32 * 1024 * 1024,
         });
-        Client = new SiteNodeService.SiteNodeServiceClient(_channel);
+        _strangerClient = new SiteNodeService.SiteNodeServiceClient(_strangerChannel);
+        _trustedClient = new SiteNodeService.SiteNodeServiceClient(_channel);
     }
 
-    public SiteNodeService.SiteNodeServiceClient Client { get; }
+    /// <summary>What the server reads from a node in one answer until the link is a bound site's.</summary>
+    public const int StrangerReceiveBytes = 16 * 1024;
+
+    /// <summary>The client for calls; answers are limited to <see cref="StrangerReceiveBytes"/> until <see cref="Trust"/>.</summary>
+    public SiteNodeService.SiteNodeServiceClient Client => Volatile.Read(ref _trusted) ? _trustedClient : _strangerClient;
+
+    /// <summary>True once <see cref="Trust"/> was called.</summary>
+    public bool IsTrusted => Volatile.Read(ref _trusted);
+
+    /// <summary>The link carries a bound site's key (checked by the caller): its answers may be as large as any call needs.</summary>
+    public void Trust() => Volatile.Write(ref _trusted, true);
 
     /// <summary>SHA-256 of the node's certificate on this connection.</summary>
     public byte[] NodeFingerprint { get; }
@@ -76,6 +103,8 @@ public sealed class NodeLink : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _channel.Dispose();
+        _strangerChannel.Dispose();
+        _handler.Dispose();
         await _stream.DisposeAsync().ConfigureAwait(false);
     }
 

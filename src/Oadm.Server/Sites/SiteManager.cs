@@ -8,6 +8,7 @@ using Oadm.Core.Discovery.Mdns;
 using Oadm.Core.Persistence;
 using Oadm.Core.Settings;
 using Oadm.Core.Sites;
+using Oadm.Sites.Transport;
 
 using Proto = Oadm.Contracts.V1;
 
@@ -31,8 +32,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private readonly ILogger<SiteManager> _logger;
     private readonly Lock _lock = new();
     private readonly Dictionary<Guid, SiteEntry> _sites = [];
-    private readonly Dictionary<string, WaitingNode> _waiting = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Queue<DateTimeOffset>> _newConnections = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, WaitingNode> _waiting = new(StringComparer.OrdinalIgnoreCase); // by node key fingerprint, never by the id a node reports
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _acceptLock = new(1, 1);
     private SiteListener? _listener;
@@ -485,7 +485,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
             foreach (var waiting in _waiting.Values.Where(w => now - w.Since >= _options.WaitingMaxAge).ToList())
             {
-                _waiting.Remove(waiting.NodeId);
+                _waiting.Remove(waiting.Key);
                 expired.Add(waiting);
             }
         }
@@ -603,7 +603,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         var url = _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
-        var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger);
+        var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
+            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time));
         listener.Start();
         _listener = listener;
         lock (_lock)
@@ -635,7 +636,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             waiting = [.. _waiting.Values.Where(w => w.Mode == SiteMode.Outbound)];
             foreach (var node in waiting)
             {
-                _waiting.Remove(node.NodeId);
+                _waiting.Remove(node.Key);
             }
 
             sessions = [.. _sites.Values.Select(e => e.Session).OfType<SiteSession>().Where(s => s.Control.OpenedByNode)];
@@ -868,6 +869,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         _acceptLock.Dispose();
+        _bindLock.Dispose();
         _stop.Dispose();
     }
 
@@ -958,5 +960,12 @@ public static class SiteTexts
     public const string OtherNode = "Another site node answers at this address.";
     public const string InboundOnly = "Only sites whose node waits for the server have an address to change.";
 
+    public const string InvalidAnswer = "The site node sent an answer that is not valid.";
+    public const string NotStored = "The site could not be stored. Bind it again.";
+    public const string NodeIdAmbiguous = "Several site nodes report this id. Search again and choose the node by its key.";
+
     public static string CopyOf(string site) => $"This site node is a copy of {site}. Click Reset on the copy.";
+
+    /// <summary>The node of a site accepted this server's new identity: Bind with its code binds the site again.</summary>
+    public static string BindAgain(string site) => $"The site node of {site} accepted this server's new identity. Bind it with its pairing code.";
 }

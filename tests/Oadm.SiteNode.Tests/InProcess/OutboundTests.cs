@@ -41,6 +41,21 @@ public sealed class OutboundTests
     }
 
     [Fact]
+    public async Task AnIdleLinkOfANodeWaitingToBeBoundStaysOpen()
+    {
+        // Kestrel's keep-alive must not close a link without streams: the server keeps a waiting node's link idle until
+        // an administrator binds it. (Timeout.InfiniteTimeSpan closed it after about a second.)
+        await using var server = new TestServer();
+        await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address);
+        await using var link = await server.NextLinkAsync();
+        await link.Client.HelloAsync(new HelloRequest());
+
+        await Eventually.StaysTrueAsync(() => node.Get<LinkRegistry>().Links.Count == 1, "the idle link stays open", TimeSpan.FromSeconds(4));
+
+        Assert.Equal(NodeState.UnboundOpen, (await link.Client.HelloAsync(new HelloRequest())).State);
+    }
+
+    [Fact]
     public async Task TheRightCodeBindsAndTheBoundServerGetsItsNameAndEveryCall()
     {
         await using var echo = new EchoServer();
@@ -138,7 +153,7 @@ public sealed class OutboundTests
     }
 
     [Fact]
-    public async Task ABoundNodeRefusesAnotherServerKeyAndAcceptsItOnlyAfterAccept()
+    public async Task ANewServerIdentityBindsOnlyWithThePairingCodeAfterAccept()
     {
         await using var server = new TestServer();
         await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address);
@@ -146,17 +161,60 @@ public sealed class OutboundTests
         await link.BindAsync(node.Code);
         await using var replaced = new TestServer();
 
-        // The server's key is lost (a new identity at the same address): the node does not connect and asks.
+        // The server's key is lost (a new identity at the same address): the node does not connect and asks, naming where
+        // the request came from.
         node.Get<NodeStore>().Update(c => c.ServerAddress = replaced.Address);
         await Eventually.TrueAsync(() => node.Get<NodeStore>().Read(c => c.NewServerIdentity) == replaced.FingerprintHex, "the new identity is noted");
+        Assert.StartsWith(replaced.Address, node.Get<NodeStore>().Read(c => c.NewServerFrom), StringComparison.Ordinal);
         Assert.False(node.Get<ConnectionState>().Connected);
         await link.DisposeAsync();
 
-        node.Get<BindingState>().AcceptNewServerIdentity();
+        var response = node.Get<AdminChannel.AdminHandler>().Handle(AdminRequest.Of(AdminCommands.AcceptServer), isAdmin: true);
+        Assert.True(response.Ok);
+        Assert.Equal(Sites.Binding.PairingCode.Format(node.Code), response.PairingCode);
 
+        // Accepting alone binds nothing: the new identity is treated like a server at an open node until it proves the code.
         var accepted = await replaced.NextWorkingLinkAsync();
-        Assert.Equal(NodeState.Bound, (await accepted.Client.HelloAsync(new HelloRequest())).State);
+        Assert.Equal(NodeState.UnboundOpen, (await accepted.Client.HelloAsync(new HelloRequest())).State);
+        Assert.Equal(server.FingerprintHex, node.Get<BindingState>().Bound!.Fingerprint);
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await accepted.Client.ResolveAsync(new ResolveRequest { Name = "x" }));
+        Assert.Equal(StatusCode.FailedPrecondition, refused.StatusCode);
+        var wrong = node.Code[0] == 'A' ? "B" + node.Code[1..] : "A" + node.Code[1..];
+        Assert.Equal(StatusCode.PermissionDenied, (await Assert.ThrowsAsync<RpcException>(() => accepted.BindAsync(wrong))).StatusCode);
+
+        await accepted.BindAsync(node.Code, "Building B", "OADM-SRV");
+
         Assert.Equal(replaced.FingerprintHex, node.Get<BindingState>().Bound!.Fingerprint);
+        Assert.Equal(NodeState.Bound, (await accepted.Client.HelloAsync(new HelloRequest())).State);
+        Assert.Empty(node.Get<NodeStore>().Read(c => c.NewServerIdentity));
+    }
+
+    [Theory]
+    [InlineData(0, false, 1, 2)]     // closed at once: the first wait is the backoff
+    [InlineData(5, false, 8, 16)]    // closed at once again and again: 1, 2, 4, 8 ...
+    [InlineData(45, false, 8, 2)]    // lasted 30 s or more: starts over
+    [InlineData(1, true, 8, 2)]      // served the bound server: starts over
+    [InlineData(1, false, 60, 60)]   // never more than the maximum
+    public void TheBackoffStartsOverOnlyAfterASessionThatWorked(int lastedSeconds, bool served, int backoff, int next)
+    {
+        var (wait, after) = OutboundConnector.AfterSession(TimeSpan.FromSeconds(backoff), TimeSpan.FromSeconds(lastedSeconds), served, TimeSpan.FromSeconds(60));
+
+        Assert.Equal(served || lastedSeconds >= 30 ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(backoff), wait);
+        Assert.Equal(TimeSpan.FromSeconds(next), after);
+    }
+
+    [Fact]
+    public async Task AServerThatClosesEveryLinkAtOnceIsNotRetriedEverySecond()
+    {
+        // With the maximum at 4 s: 1, 2, 4, 4 ... the first links come quickly, then the waits grow.
+        await using var server = new TestServer();
+        await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o => o.MaxBackoff = TimeSpan.FromSeconds(4));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < 4; i++)
+            await (await server.NextLinkAsync()).DisposeAsync();
+
+        // Four links take at least 1 + 2 + 4 s of waiting between them.
+        Assert.True(started.Elapsed >= TimeSpan.FromSeconds(6.5), $"4 links in {started.Elapsed}");
     }
 
     [Fact]

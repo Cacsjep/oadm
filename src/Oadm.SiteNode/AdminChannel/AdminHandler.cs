@@ -40,7 +40,7 @@ public sealed class AdminHandler(
                     var count = int.TryParse(request.Arg("count"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : ConnectionLog.DefaultCapacity;
                     return new AdminResponse { Ok = true, Log = log.Newest(count) };
                 case AdminCommands.PairingCode:
-                    return binding.Binding == NodeBinding.Open
+                    return binding.ShowsPairingCode
                         ? new AdminResponse { Ok = true, PairingCode = Sites.Binding.PairingCode.Format(binding.PairingCode), State = feed.View() }
                         : AdminResponse.Fail(binding.Binding == NodeBinding.Bound ? AdminTexts.AlreadyBound : "Binding is closed. Click Allow binding.");
                 case AdminCommands.SetServer:
@@ -102,8 +102,9 @@ public sealed class AdminHandler(
                     ports.Dismiss(dismiss);
                     return Ok();
                 case AdminCommands.AcceptServer:
-                    binding.AcceptNewServerIdentity();
-                    return Ok();
+                    // The new server binds with the pairing code: the app shows it now.
+                    var code = binding.AcceptNewServerIdentity();
+                    return new AdminResponse { Ok = true, PairingCode = Sites.Binding.PairingCode.Format(code), State = feed.View() };
                 case AdminCommands.Reset:
                     binding.Reset();
                     links.CloseAll();

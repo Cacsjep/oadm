@@ -47,6 +47,17 @@ public sealed class NodeConfig
     /// <summary>The bound server presented another identity (fingerprint hex); empty when not.</summary>
     public string NewServerIdentity { get; set; } = "";
 
+    /// <summary>Where <see cref="NewServerIdentity"/> came from ("10.0.0.5:5081").</summary>
+    public string NewServerFrom { get; set; } = "";
+
+    /// <summary>When <see cref="NewServerIdentity"/> was first seen.</summary>
+    public DateTimeOffset? NewServerSince { get; set; }
+
+    /// <summary>
+    /// Accepted in the app: that server may bind with the pairing code (the binding stays with the old identity until then).
+    /// </summary>
+    public bool NewServerAccepted { get; set; }
+
     public static List<PortEntry> DefaultPorts() =>
     [
         new(PortUse.Connect, PortProtocol.Tcp, 80),

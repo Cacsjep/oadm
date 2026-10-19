@@ -56,4 +56,17 @@ public sealed class SiteOptions
 
     /// <summary>The oldest node protocol the server works with.</summary>
     public int MinProtocolVersion { get; init; } = 1;
+
+    /// <summary>
+    /// New connections a minute to the site port from one address (IPv6 per /64), counted at accept before TLS. Bound nodes
+    /// count too (a control and up to 8 worker links each, several nodes behind one address), so it is wider than
+    /// <see cref="NewConnectionsPerMinute"/>, which counts only links of unknown keys after Hello.
+    /// </summary>
+    public int ConnectionsPerMinute { get; init; } = 120;
+
+    /// <summary>Accepted links whose Hello has not answered yet, at most.</summary>
+    public int MaxPendingLinks { get; init; } = 64;
+
+    /// <summary>How long the first Hello on a new link may take.</summary>
+    public TimeSpan HelloTimeout { get; init; } = TimeSpan.FromSeconds(5);
 }

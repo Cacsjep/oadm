@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -83,6 +84,11 @@ public static class NodeHost
             k.Limits.Http2.InitialStreamWindowSize = 1024 * 1024;
             k.Limits.Http2.KeepAlivePingDelay = TimeSpan.FromSeconds(15);
             k.Limits.Http2.KeepAlivePingTimeout = TimeSpan.FromSeconds(30);
+            // Links stay open as long as both sides answer the HTTP/2 pings: an idle worker link or a node waiting to be
+            // bound must not be dropped every 130 s (Kestrel's default). Unbound inbound links have their own idle limit.
+            // Not Timeout.InfiniteTimeSpan: Kestrel adds the ticks to a timestamp, and -1 ms closed idle links after the
+            // next heartbeat (about a second).
+            k.Limits.KeepAliveTimeout = KeepAliveTimeout;
             k.Limits.MinRequestBodyDataRate = null;
             k.Limits.MinResponseDataRate = null;
             k.Listen(new AcceptedStreamEndPoint(), l =>
@@ -100,9 +106,32 @@ public static class NodeHost
 
         AddNode(builder.Services, options);
         var app = builder.Build();
+        app.Use(LinkLimits(app.Services.GetRequiredService<BindingState>(), options.Time));
         app.MapGrpcService<SiteNodeGrpcService>();
         return app;
     }
+
+    /// <summary>Kestrel's keep-alive timeout on links: in effect none (ten years); the HTTP/2 pings decide.</summary>
+    public static readonly TimeSpan KeepAliveTimeout = TimeSpan.FromDays(3650);
+
+    /// <summary>What a link that is not the bound server's may send in one call (Hello, PairStart and Bind are a few KB).</summary>
+    public const int UnboundRequestBytes = 64 * 1024;
+
+    /// <summary>
+    /// Every call counts as activity of its link; a caller that is not the bound server may send at most
+    /// <see cref="UnboundRequestBytes"/> per call (gRPC lifts Kestrel's body limit, so the body stream is limited here).
+    /// </summary>
+    internal static Func<HttpContext, RequestDelegate, Task> LinkLimits(BindingState binding, TimeProvider time) => (context, next) =>
+    {
+        if (context.Features.Get<SiteLink>() is { } link)
+        {
+            link.Touch(time.GetTimestamp());
+            if (!binding.IsBoundTo(link.ServerFingerprintHex))
+                context.Request.Body = new LimitedReadStream(context.Request.Body, UnboundRequestBytes);
+        }
+
+        return next(context);
+    };
 
     /// <summary>The node's services (shared by the host and tests that build parts of it).</summary>
     public static void AddNode(IServiceCollection services, NodeOptions options)

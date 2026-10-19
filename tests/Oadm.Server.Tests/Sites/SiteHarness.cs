@@ -83,7 +83,16 @@ internal sealed class SiteServer : IAsyncDisposable
     public async Task<Guid> BindAsync(SiteTestNode node, string name = "Building B")
     {
         var waiting = await WaitingAsync(node.NodeId);
-        var site = await Client.BindSiteAsync(new Proto.BindSiteRequest { NodeId = waiting.NodeId, Name = name, PairingCode = node.Code });
+        Proto.Site site;
+        try
+        {
+            site = await Client.BindSiteAsync(new Proto.BindSiteRequest { NodeId = waiting.NodeId, NodeFingerprint = waiting.NodeFingerprint, Name = name, PairingCode = node.Code });
+        }
+        catch (RpcException e)
+        {
+            throw new InvalidOperationException(e.Status.Detail + " Server log: " + ServerLog(), e);
+        }
+
         var id = Guid.Parse(site.Id);
         await Eventually.TrueAsync(() => Manager.IsOnline(id), "the bound site online");
         return id;
@@ -234,7 +243,7 @@ internal static class SiteAsserts
     public static async Task<RpcException> RefusedAsync(StatusCode code, Func<Task> call)
     {
         var error = await Assert.ThrowsAsync<RpcException>(call);
-        Assert.Equal(code, error.StatusCode);
+        Assert.True(code == error.StatusCode, $"Expected {code}, got {error.StatusCode}: {error.Status.Detail}");
         return error;
     }
 }

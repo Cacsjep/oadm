@@ -73,7 +73,7 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
 
     public override async Task<Proto.Site> BindSite(Proto.BindSiteRequest request, ServerCallContext context)
     {
-        await Run(() => sites.BindAsync(request.NodeId, request.Name, request.PairingCode, context.CancellationToken)).ConfigureAwait(false);
+        await Run(() => sites.BindAsync(request.NodeId, request.NodeFingerprint, request.Name, request.PairingCode, context.CancellationToken)).ConfigureAwait(false);
         return await FindAsync(request.NodeId, context.CancellationToken).ConfigureAwait(false);
     }
 

@@ -12,6 +12,8 @@ public static class AdminTexts
     public const string AlreadyBound = "This site node is already bound.";
     public const string NotBoundToCaller = "This site node is not bound to this server.";
     public const string PairStartFirst = "Start the pairing first.";
+    public const string TooManyPairingAttempts = "Too many pairing attempts. Wait a minute and try again.";
+    public const string InvalidPairingValue = "The pairing message is not valid.";
     public const string NoNewIdentity = "No server presents a new identity.";
     public const string InvalidSignature = "The new identity is not signed by the bound server.";
     public const string SiteBusy = "The site node is busy.";
