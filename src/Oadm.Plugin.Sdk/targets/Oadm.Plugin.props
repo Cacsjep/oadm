@@ -36,6 +36,18 @@
     <PackageReference Include="Oadm.Sdk" Version="$(OadmSdkPackageVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="Oadm.Sdk.Client" Version="$(OadmSdkPackageVersion)" ExcludeAssets="runtime" Condition="'$(OadmPluginPart)' == 'Client'" />
   </ItemGroup>
+  <!-- Plugins never open their own sockets to devices (devices at a site are reached only through the host): the
+       banned-API analyzer shows it as a warning (RS0030). In this repository plugins/ already has it as an error
+       (Directory.Build.props). OadmBannedApis=none turns it off. -->
+  <PropertyGroup Condition="'$(OadmBannedApis)' == ''">
+    <OadmBannedApis>warning</OadmBannedApis>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);RS0030</WarningsNotAsErrors>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(OadmBannedApis)' == 'warning'">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="$(OadmBannedApiAnalyzersVersion)" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(OadmPluginPart)' == 'Client'">
     <PackageReference Include="Avalonia" Version="$(OadmAvaloniaVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="$(OadmCommunityToolkitVersion)" ExcludeAssets="runtime" />

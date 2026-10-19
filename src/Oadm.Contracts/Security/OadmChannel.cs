@@ -83,6 +83,7 @@ public sealed class AuthHeaderInterceptor(Func<string?> token, string? clientMac
 /// (<see cref="ServerCertificatePinning"/>) for https addresses, plain h2c for http (tests, development), and the
 /// <see cref="AuthHeaderInterceptor"/> on every call.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The client channel to the OADM server, not to devices.")]
 public static class OadmChannel
 {
     /// <summary>Keyframes of high resolution video can exceed the 4 MB default message limit.</summary>

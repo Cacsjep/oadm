@@ -16,6 +16,7 @@ namespace Oadm.Plugins.NtpServer;
 /// The running NTP server: settings, UDP responder, upstream monitor, request log, status line and the live events for
 /// the page. Serving never waits for the upstream or for this class: the responder reads <see cref="CurrentSource"/>.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The server's own address towards a device; work stream 6 moves it to IDeviceNetwork.LocalAddressTowardsAsync.")]
 public sealed partial class NtpServerService : IAsyncDisposable
 {
     public const string ConfigKey = "config";

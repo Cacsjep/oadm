@@ -1,0 +1,9 @@
+T:System.Net.Sockets.Socket;Connect to devices through the host (IVapixClient, IDeviceEventStreams, IDeviceNetwork), so devices at a site work too. Own sockets reach only the server's network.
+T:System.Net.Sockets.TcpClient;Connect to devices through the host (IVapixClient, IDeviceEventStreams, IDeviceNetwork), so devices at a site work too. Own sockets reach only the server's network.
+T:System.Net.Sockets.UdpClient;Connect to devices through the host (IDeviceNetwork, the site relays), so devices at a site work too. Own sockets reach only the server's network.
+T:System.Net.NetworkInformation.Ping;Ping devices with IDeviceNetwork.PingAsync, so devices at a site work too.
+T:System.Net.Dns;Resolve device names with IDeviceNetwork.ResolveAsync, so names at a site resolve there.
+T:System.Net.Http.HttpClientHandler;Talk to devices through IVapixClient (login, pinned certificate, the device's route), never your own HTTP handler.
+T:System.Net.Http.SocketsHttpHandler;Talk to devices through IVapixClient (login, pinned certificate, the device's route), never your own HTTP handler.
+M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Threading.CancellationToken);Open device WebSockets with IVapixClient.ConnectWebSocketAsync (login, pinned certificate, the device's route).
+M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Threading.CancellationToken);Open device WebSockets with IVapixClient.ConnectWebSocketAsync (login, pinned certificate, the device's route).

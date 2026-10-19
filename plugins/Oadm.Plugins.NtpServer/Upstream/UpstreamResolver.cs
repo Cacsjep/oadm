@@ -91,6 +91,7 @@ public interface IUpstreamResolver
     Task<IPAddress[]> ResolveAsync(string host, CancellationToken ct);
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The upstream time servers the user chose, not devices.")]
 public sealed class DnsUpstreamResolver : IUpstreamResolver
 {
     public static DnsUpstreamResolver Instance { get; } = new();
