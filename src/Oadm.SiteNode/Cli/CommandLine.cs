@@ -32,6 +32,7 @@ public static class CommandLine
 
         --data-dir <folder>   another data folder (default: the installed node's)
         --port <port>         the port of "wait for the server" (default 5081)
+        --timeout <seconds>   wait this long for the service to answer (default: no wait; installers)
         """;
 
     /// <summary>The verb, the arguments without the data folder and port options, the data folder and port when given.</summary>
@@ -62,7 +63,9 @@ public static class CommandLine
         return (verb, verb is null ? [.. rest] : [.. rest.Skip(1)], dataDirectory, port);
     }
 
-    public static async Task<int> RunAsync(string verb, string[] args, string? dataDirectory, TextWriter output, TextWriter error, CancellationToken ct, AdminClient? client = null)
+    /// <param name="firewall">Runs one netsh call (tests); null = netsh on Windows, nothing elsewhere.</param>
+    public static async Task<int> RunAsync(string verb, string[] args, string? dataDirectory, TextWriter output, TextWriter error, CancellationToken ct,
+        AdminClient? client = null, Func<IReadOnlyList<string>, CancellationToken, Task<int>>? firewall = null)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -74,18 +77,23 @@ public static class CommandLine
             return 0;
         }
 
-        if (Request(verb, args) is not { } request)
+        if (TakeTimeout(args) is not { } split || Request(verb, split.Arguments) is not { } request)
         {
             await error.WriteLineAsync(Usage).ConfigureAwait(false);
             return 2;
         }
 
-        var response = await client.SendAsync(request, ct).ConfigureAwait(false);
+        args = split.Arguments;
+        var response = await SendAsync(client, request, split.Wait, ct).ConfigureAwait(false);
         if (!response.Ok)
         {
             await error.WriteLineAsync(response.Error).ConfigureAwait(false);
             return 1;
         }
+
+        // "server --wait" opens TCP 5081 in Windows Firewall, "server <address>" closes it (the service cannot).
+        if (await NodeFirewall.ApplyAsync(request, response, ct, firewall).ConfigureAwait(false) is { } firewallProblem)
+            await error.WriteLineAsync(firewallProblem).ConfigureAwait(false);
 
         switch (verb)
         {
@@ -109,6 +117,34 @@ public static class CommandLine
         }
 
         return 0;
+    }
+
+    /// <summary>The arguments without "--timeout &lt;seconds&gt;" and the wait it asks for; null for a bad value.</summary>
+    public static (string[] Arguments, TimeSpan Wait)? TakeTimeout(string[] args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        var index = Array.IndexOf(args, "--timeout");
+        if (index < 0)
+            return (args, TimeSpan.Zero);
+        if (index + 1 >= args.Length || !int.TryParse(args[index + 1], NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) || seconds > 3600)
+            return null;
+        return ([.. args.Take(index), .. args.Skip(index + 2)], TimeSpan.FromSeconds(seconds));
+    }
+
+    /// <summary>
+    /// Sends the request; while the service does not answer (an installer starts it right before) it tries again every
+    /// second until <paramref name="wait"/> is over.
+    /// </summary>
+    private static async Task<AdminResponse> SendAsync(AdminClient client, AdminRequest request, TimeSpan wait, CancellationToken ct)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (true)
+        {
+            var response = await client.SendAsync(request, ct).ConfigureAwait(false);
+            if (response.Ok || response.Error != AdminTexts.ServiceNotRunning || System.Diagnostics.Stopwatch.GetElapsedTime(started) >= wait)
+                return response;
+            await Task.Delay(TimeSpan.FromSeconds(1), ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>The request of a verb, or null for a usage error.</summary>
