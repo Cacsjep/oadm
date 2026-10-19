@@ -20,6 +20,7 @@ public sealed record BackupCounts
     public int Tags { get; init; }
     public int EventRules { get; init; }
     public int Tasks { get; init; }
+    public int Sites { get; init; }
 }
 
 /// <summary>A plugin package of the server that made the backup.</summary>
@@ -235,6 +236,7 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
         Tags = await CountAsync(connection, "TagDefinitions", ct).ConfigureAwait(false),
         EventRules = await CountAsync(connection, "EventRules", ct).ConfigureAwait(false),
         Tasks = await CountAsync(connection, "Tasks", ct).ConfigureAwait(false),
+        Sites = await CountAsync(connection, "Sites", ct).ConfigureAwait(false),
     };
 
     private static async Task<int> CountAsync(SqliteConnection connection, string table, CancellationToken ct)

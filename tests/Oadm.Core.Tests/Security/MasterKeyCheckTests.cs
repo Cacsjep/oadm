@@ -112,6 +112,31 @@ public sealed class MasterKeyCheckTests : IDisposable
     }
 
     /// <summary>Three devices with credentials, one without, one credential list entry; then closes the database.</summary>
+    [Fact]
+    public async Task ANewKeyDropsTheSiteIdentityAndTheNoticeCountsTheSites()
+    {
+        await SeedAsync();
+        var seeded = await TestDatabase.CreateAsync(_dir);
+        await seeded.Get<ServerSettingsStore>().SetJsonAsync(Oadm.Core.Sites.SiteSettings.Identity, "{\"Key\":\"x\"}", CancellationToken.None);
+        await using (var ctx = await seeded.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync())
+        {
+            ctx.Sites.Add(new Oadm.Core.Sites.Site { Name = "Building B", NormalizedName = "BUILDING B", NodeKeyFingerprint = "AB", NodeId = "n1", BoundUtc = DateTime.UtcNow });
+            ctx.Sites.Add(new Oadm.Core.Sites.Site { Name = "Warehouse", NormalizedName = "WAREHOUSE", NodeKeyFingerprint = "CD", NodeId = "n2", BoundUtc = DateTime.UtcNow });
+            await ctx.SaveChangesAsync();
+        }
+
+        await seeded.CloseAsync();
+        File.Delete(new OadmPaths(_dir).MasterKeyPath);
+
+        var db = await TestDatabase.CreateAsync(_dir);
+
+        var notice = db.Get<DatabaseInitializer>().KeyReplaced!;
+        Assert.Equal(2, notice.Sites);
+        Assert.EndsWith(", 2 sites need the new identity accepted in the OADM Site Node app.", notice.Message, StringComparison.Ordinal);
+        Assert.Null(await db.Get<ServerSettingsStore>().GetJsonAsync(Oadm.Core.Sites.SiteSettings.Identity, CancellationToken.None));
+        await db.CloseAsync();
+    }
+
     private async Task<(List<Guid> Devices, Guid WithoutCredentials)> SeedAsync()
     {
         var db = await TestDatabase.CreateAsync(_dir); // closed, not disposed: the folder stays
