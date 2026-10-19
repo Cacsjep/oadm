@@ -61,6 +61,6 @@ public sealed class SiteDiscoveryScaleTests(ITestOutputHelper output)
         var repository = host.Get<DeviceRepository>();
         Assert.Equal(a.Id, (await repository.FindBySerialAsync("ACCCA0000000", CancellationToken.None))!.SiteId);
         Assert.Equal(b.Id, (await repository.FindBySerialAsync("ACCCB0000000", CancellationToken.None))!.SiteId);
-        Assert.True(round < 600_000, $"too slow: {round} ms");
+        Assert.True(round < 120_000, $"too slow: {round} ms");
     }
 }
