@@ -148,6 +148,12 @@ public sealed class ComplianceStore
     /// <summary>True once the first list of checks arrived (the role may see compliance and the server has it).</summary>
     public bool IsAvailable { get; private set; }
 
+    /// <summary>Compliance is on for the server (off by default).</summary>
+    public bool IsEnabled { get; private set; }
+
+    /// <summary>The page and the device list may show results: available and on.</summary>
+    public bool IsActive => IsAvailable && IsEnabled;
+
     /// <summary>The checks changed (names, counts, severity, turned on or off).</summary>
     public event EventHandler? ChecksChanged;
 
@@ -173,9 +179,11 @@ public sealed class ComplianceStore
         ArgumentNullException.ThrowIfNull(list);
         var levelsChanged = !IsAvailable || list.Checks.Count != _checks.Count || list.Checks.Any(c =>
             !_checks.TryGetValue(c.Id, out var old) || old.Severity != c.Severity || old.Enabled != c.Enabled || old.Problem != c.Problem || old.Name != c.Name);
+        levelsChanged |= IsEnabled != list.Enabled;
         Checks = [.. list.Checks];
         _checks = list.Checks.ToDictionary(c => c.Id, StringComparer.Ordinal);
         IsAvailable = true;
+        IsEnabled = list.Enabled;
         if (levelsChanged)
         {
             foreach (var device in _devices.Values)
@@ -240,6 +248,7 @@ public sealed class ComplianceStore
         Checks = [];
         _checks = new Dictionary<string, ComplianceCheckSummary>(StringComparer.Ordinal);
         IsAvailable = false;
+        IsEnabled = false;
         ChecksChanged?.Invoke(this, EventArgs.Empty);
         ResultsChanged?.Invoke(this, DeviceStoreChangedEventArgs.ResetAll);
     }

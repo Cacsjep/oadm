@@ -39,6 +39,33 @@ public sealed class ComplianceEngineTests
     }
 
     [Fact]
+    public async Task ComplianceIsOffByDefaultAndTurningItOffRemovesTheResults()
+    {
+        await using var rig = await ComplianceRig.StartAsync(enabled: false);
+        var device = await rig.AddDeviceAsync("10.0.0.1");
+        var check = await rig.SaveAsync("test.read");
+        rig.Engine.CheckNow(null, null);
+        rig.Time.Advance(TimeSpan.FromHours(2));
+        await Eventually.StaysTrueAsync(() => rig.Plugin.Read.Evaluations.IsEmpty && rig.Result(Reachable, device.Id) is null, "nothing runs while off", TimeSpan.FromMilliseconds(200));
+        Assert.False(rig.Engine.Enabled);
+        Assert.Empty(rig.Engine.EventTypes);
+
+        await rig.Engine.SetEnabledAsync(true, CancellationToken.None);
+        await rig.WaitForAsync(Reachable, device.Id, ComplianceOutcome.Passed);
+        await rig.WaitForAsync(check.Id, device.Id, ComplianceOutcome.Passed);
+        Assert.Contains(rig.Engine.EventTypes, t => t.Id == ComplianceEngine.EventTypeId(check.Id));
+
+        await rig.Engine.SetEnabledAsync(false, CancellationToken.None);
+        Assert.Null(rig.Result(check.Id, device.Id));
+        Assert.Empty(await rig.Store.ListResultsAsync(CancellationToken.None));
+        Assert.Contains(rig.Engine.ListChecks(), c => c.Check.Id == check.Id); // the checks stay
+
+        // Off survives a restart.
+        await rig.StartEngineAsync();
+        Assert.False(rig.Engine.Enabled);
+    }
+
+    [Fact]
     public async Task TheCertificateCheckUsesTheDaysTheUserSet()
     {
         await using var rig = await ComplianceRig.StartAsync();
@@ -125,6 +152,36 @@ public sealed class ComplianceEngineTests
         rig.Engine.CheckNow([check.Id], [device.Id]);
         await Eventually.TrueAsync(() => rig.Plugin.Read.Evaluations.Count == 3, "Check now reads again");
         Assert.Equal(failedSince, rig.Result(check.Id, device.Id)!.SinceUtc); // still failing since the same time
+    }
+
+    [Fact]
+    public async Task CheckNowShowsTheDevicesAsCheckingUntilTheirResultIsIn()
+    {
+        await using var rig = await ComplianceRig.StartAsync();
+        var device = await rig.AddDeviceAsync("10.0.0.1");
+        var locked = await rig.AddDeviceAsync("10.0.0.2", DeviceStatus.CredentialsRequired);
+        var check = await rig.SaveAsync("test.read");
+        await rig.WaitForAsync(check.Id, device.Id, ComplianceOutcome.Passed);
+        Assert.False(rig.Result(check.Id, device.Id)!.Checking);
+
+        rig.Plugin.Read.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watch = rig.Engine.Watch();
+        rig.Engine.CheckNow([check.Id], null);
+        Assert.True(rig.Result(check.Id, device.Id)!.Checking);
+        Assert.False(rig.Result(check.Id, locked.Id)!.Checking); // not contacted: never checking
+
+        rig.Plugin.Read.Hold.SetResult();
+        rig.Plugin.Read.Hold = null;
+        await Eventually.TrueAsync(() => !rig.Result(check.Id, device.Id)!.Checking, "the result clears checking");
+        Assert.Equal(ComplianceOutcome.Passed, rig.Result(check.Id, device.Id)!.Outcome);
+        var streamed = new List<ComplianceResultModel>();
+        while (watch.Changes.TryRead(out var change))
+        {
+            streamed.Add(change);
+        }
+
+        Assert.Contains(streamed, c => c.DeviceId == device.Id && c.Checking);
+        Assert.False(streamed.Last(c => c.DeviceId == device.Id).Checking);
     }
 
     [Fact]

@@ -43,6 +43,8 @@ public static class AuditActions
     public const string PluginTurnedOff = "Turned plugin off";
     public const string PluginLicenseEntered = "Entered plugin license";
     public const string PluginLicenseRemoved = "Removed plugin license";
+    public const string ComplianceTurnedOn = "Turned compliance on";
+    public const string ComplianceTurnedOff = "Turned compliance off";
     public const string ComplianceCheckCreated = "Created compliance check";
     public const string ComplianceCheckChanged = "Changed compliance check";
     public const string ComplianceCheckDeleted = "Deleted compliance check";

@@ -30,6 +30,21 @@ public sealed partial class FakeOadmApi
     private Dictionary<(string Check, string Device), ComplianceResultEntry> _complianceResults = [];
     private bool _complianceSeeded;
 
+    /// <summary>Compliance is off by default, like on a server.</summary>
+    public bool ComplianceEnabled { get; private set; }
+
+    public Task<ComplianceCheckList> SetComplianceEnabledAsync(bool enabled, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            SeedComplianceLocked();
+            ComplianceEnabled = enabled;
+            RecomputeComplianceLocked();
+            return Task.FromResult(ComplianceListLocked());
+        }
+    }
+
     public Task<ComplianceCatalog> GetComplianceCatalogAsync(CancellationToken ct)
     {
         var catalog = new ComplianceCatalog();
@@ -221,14 +236,43 @@ public sealed partial class FakeOadmApi
             ]
             : []);
 
+    /// <summary>The asked results show as checking at once; a moment later every result is worked out again.</summary>
     public Task CheckComplianceNowAsync(IEnumerable<string> checkIds, IEnumerable<string> deviceIds, CancellationToken ct)
     {
+        var checks = checkIds.ToHashSet(StringComparer.Ordinal);
+        var devices = deviceIds.ToHashSet(StringComparer.Ordinal);
         lock (_gate)
         {
             ThrowIfOffline();
-            RecomputeComplianceLocked();
-            return Task.CompletedTask;
+            if (!ComplianceEnabled)
+            {
+                return Task.CompletedTask;
+            }
+
+            var reads = _complianceChecks.Where(c => c.Summary.Enabled && c.Summary.TypeId is AppType or ConfigType or SdType
+                && (checks.Count == 0 || checks.Contains(c.Summary.Id))).Select(c => c.Summary.Id).ToHashSet(StringComparer.Ordinal);
+            var okDevices = _devices.Where(d => d.Status == DeviceStatus.Ok).Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
+            var checking = new ComplianceResultBatch();
+            foreach (var result in _complianceResults.Values.Where(r => reads.Contains(r.CheckId) && okDevices.Contains(r.DeviceId)
+                && (devices.Count == 0 || devices.Contains(r.DeviceId))))
+            {
+                var entry = result.Clone();
+                entry.Checking = true;
+                checking.Results.Add(entry);
+            }
+
+            _complianceResultEvents.Publish(checking);
         }
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(_tick * 6, CancellationToken.None).ConfigureAwait(false);
+            lock (_gate)
+            {
+                RecomputeComplianceLocked();
+            }
+        }, CancellationToken.None);
+        return Task.CompletedTask;
     }
 
     private void SeedComplianceLocked()
@@ -269,7 +313,7 @@ public sealed partial class FakeOadmApi
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var next = new Dictionary<(string, string), ComplianceResultEntry>();
-        foreach (var check in _complianceChecks.Where(c => c.Summary.Enabled))
+        foreach (var check in _complianceChecks.Where(c => c.Summary.Enabled && ComplianceEnabled))
         {
             var settings = JsonNode.Parse(check.SettingsJson) as JsonObject ?? [];
             for (var i = 0; i < _devices.Count; i++)
@@ -368,7 +412,7 @@ public sealed partial class FakeOadmApi
 
     private ComplianceCheckList ComplianceListLocked()
     {
-        var list = new ComplianceCheckList();
+        var list = new ComplianceCheckList { Enabled = ComplianceEnabled };
         foreach (var check in _complianceChecks.OrderByDescending(c => c.Summary.BuiltIn).ThenBy(c => c.Summary.Name, StringComparer.CurrentCultureIgnoreCase))
         {
             var summary = check.Summary.Clone();

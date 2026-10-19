@@ -30,7 +30,12 @@ service ComplianceService {
   rpc CheckNow (ComplianceCheckNowRequest) returns (Empty);
   // Every result in batches (snapshot_end after the last one of the snapshot), then every change.
   rpc WatchResults (Empty) returns (stream ComplianceResultBatch);
+  // Turns compliance on or off for the server (off by default; audited). Off: nothing is checked, no events, the results
+  // are removed; the checks stay. Reply: the checks with the new state.
+  rpc SetEnabled (SetComplianceEnabledRequest) returns (ComplianceCheckList);
 }
+
+message SetComplianceEnabledRequest { bool enabled = 1; }
 
 enum ComplianceSeverity {
   COMPLIANCE_PROBLEM = 0;
@@ -88,7 +93,10 @@ message ComplianceCheckSummary {
   bool reads_devices = 18;
 }
 
-message ComplianceCheckList { repeated ComplianceCheckSummary checks = 1; }
+message ComplianceCheckList {
+  repeated ComplianceCheckSummary checks = 1;
+  bool enabled = 2;              // compliance is on for the server
+}
 
 message ComplianceCheckDetail {
   ComplianceCheckSummary summary = 1;
@@ -121,6 +129,7 @@ message ComplianceResultEntry {
   int64 checked_unix_ms = 5;     // 0 = not checked yet
   int64 since_unix_ms = 6;
   bool removed = 7;              // the device left the check, or the check was deleted
+  bool checking = 8;             // asked for (Check now, a saved check), the result is not in yet
 }
 
 message ComplianceResultBatch {

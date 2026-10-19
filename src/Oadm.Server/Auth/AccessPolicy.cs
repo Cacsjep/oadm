@@ -138,6 +138,7 @@ public static class AccessPolicy
         ["/oadm.v1.ComplianceService/DeleteCheck"] = AccessRule.Needs(HostPermissions.ComplianceManage),
         ["/oadm.v1.ComplianceService/SetCheckEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage),
         ["/oadm.v1.ComplianceService/ListChoices"] = AccessRule.Needs(HostPermissions.ComplianceManage),
+        ["/oadm.v1.ComplianceService/SetEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage),
 
         // Event rules.
         ["/oadm.v1.EventService/GetCatalog"] = AccessRule.Needs(HostPermissions.EventsView),

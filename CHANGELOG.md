@@ -8,13 +8,15 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
-- **Compliance** page below Devices: which devices need attention at first glance. A count card per check, the tabs
+- **Compliance** page below Devices: which devices need attention at first glance. It is off until you click **Enable
+  Compliance Checks** on the page. A count card per check, the tabs
   Problems, Warnings and All, and one column per check. Out of the box it shows the devices OADM cannot reach or log in
   to. Add your own checks: Certificate (expired or fewer than N days left), Firmware (at least a version), Application
   running, Matches configuration file (a file from Create configuration file or AXIS Device Manager) and SD card (with
   Edge storage on). Each check runs on the devices or tags you choose, counts as Problem or Warning and is an event for
   the event rules, so a failing check can send an email.
-- Devices list: a **Compliance** column, and **Show each compliance check** in the toolbar for one column per check.
+- Devices list: a **Compliance** column (turn it on with Choose columns), and **Show each compliance check** in the toolbar
+  for one column per check.
 - Roles: **See compliance** and **Change compliance checks**.
 - Plugin SDK: compliance check types (`IComplianceCheckType`), so plugins can add their own kinds of checks.
 

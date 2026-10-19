@@ -9,26 +9,29 @@ import page from '../../../assets/screens/compliance-page.png';
 import check from '../../../assets/screens/compliance-check.png';
 import grid from '../../../assets/screens/devices-compliance.png';
 
-**Compliance** in the navigation, right below Devices, shows which devices need attention. Out of the box it lists the
-devices OADM cannot reach or log in to. Add your own checks, for example "Object Analytics must run on the parking
-cameras" or "every device matches our base configuration".
+**Compliance** in the navigation, right below Devices, shows which devices need attention. It is off until you click
+**Enable Compliance Checks** on the page. Then it lists the devices OADM cannot reach or log in to. Add your own checks,
+for example "Object Analytics must run on the parking cameras" or "every device matches our base configuration".
+**Turn off compliance** stops the checks and removes their results; your checks stay.
 
 <Image src={page} alt="Compliance page" class="screen" />
 
 - **Cards**: one per check with the number of devices that fail it. Click a card to see those devices, click it again
-  to go back.
-- **Problems**, **Warnings**, **All**: the devices by their worst result.
-- **Columns**: one per check. Hover an icon to see the result, since when it holds and when it was checked.
-- **Check now** checks the selected devices again, or all devices.
+  to go back. The pen and the bin on a card change or delete the check.
+- **All**, **Problems**, **Warnings**: the devices by their worst result.
+- **Columns**: one per check, with the result next to the icon. The text button in the toolbar shows only the icons;
+  hover an icon to see the result, since when it holds and when it was checked. **Choose columns** turns columns off,
+  **Group by tag** shows a group per tag.
+- **Check now** checks the selected devices again, or all devices. They show **Checking...** until the result is in.
 - **Export** saves the list as a CSV file.
 
 ## Add a check
 
 <Steps>
 
-1. Click **New check**.
-2. Choose the **Kind of check** and fill in its settings.
-3. Choose the **Devices**: all devices, tags or single devices.
+1. Click **New check** and enter a name.
+2. Choose the **Devices**: all devices, tags or single devices.
+3. Choose the **Kind of check** and fill in its settings.
 4. Choose **When it fails**: **Problem** (red) or **Warning** (amber).
 5. For checks that read the devices, set **Check every (min)**.
 6. Click **Save**. OADM checks the devices at once.
@@ -54,8 +57,9 @@ Reachable and Login works checks already count them.
 
 ## In the device list
 
-The **Compliance** column shows the worst result of each device. **Show each compliance check** in the toolbar shows one
-column per check instead.
+Turn on the **Compliance** column with **Choose columns** on the Devices page. It shows the worst result of each device.
+While it is on, **Show each compliance check** in the toolbar shows one column per check instead. While compliance is off
+the column cannot be turned on.
 
 <Image src={grid} alt="Device list with one column per check" class="screen" />
 

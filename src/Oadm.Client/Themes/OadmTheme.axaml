@@ -461,6 +461,13 @@
   <Style Selector="Button.statCardButton.selected ui|StatCard">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
+  <!-- Small buttons on an item that show while the pointer is on it (Edit and Delete on a compliance card). -->
+  <Style Selector="Panel.hoverActions StackPanel.hoverActions">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="Panel.hoverActions:pointerover StackPanel.hoverActions">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
   <!-- Body of a single-operation dialog (one form, no card), padded like ui:MessageWindow. -->
   <Style Selector="Border.dialogBody">
     <Setter Property="Padding" Value="16,4,16,16" />

@@ -232,7 +232,7 @@ public static class BuiltInComplianceTypes
 
         public override string DisplayName => "Firmware";
 
-        public override string IconKey => "chip";
+        public override string IconKey => "firmware";
 
         public override string? Description => "The device runs at least the AXIS OS version you set.";
 

@@ -46,6 +46,15 @@ public sealed class ClientSettings
     /// <summary>Device grid: one column per compliance check instead of the one Compliance column.</summary>
     public bool ExpandCompliance { get; set; }
 
+    /// <summary>Compliance page: the result text next to each icon (else the icon only, the text on hover).</summary>
+    public bool ComplianceShowText { get; set; } = true;
+
+    /// <summary>Compliance page: a group per tag.</summary>
+    public bool ComplianceGroupByTag { get; set; }
+
+    /// <summary>Compliance page: the columns the user turned off (Model, Tags, Result, "check:id").</summary>
+    public List<string> ComplianceHiddenColumns { get; set; } = [];
+
     /// <summary>Settings "Decode video on the graphics card" (live view); on by default, tested at every start.</summary>
     public bool GpuDecoding { get; set; } = true;
 

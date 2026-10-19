@@ -253,6 +253,9 @@ public interface IOadmApi
 
     Task CheckComplianceNowAsync(IEnumerable<string> checkIds, IEnumerable<string> deviceIds, CancellationToken ct) => Task.CompletedTask;
 
+    /// <summary>Turns compliance on or off for the server; returns the checks with the new state.</summary>
+    Task<ComplianceCheckList> SetComplianceEnabledAsync(bool enabled, CancellationToken ct) => throw new NotSupportedException();
+
     /// <summary>Every result in batches (the last of the snapshot has snapshot_end), then every change.</summary>
     IAsyncEnumerable<ComplianceResultBatch> WatchComplianceResultsAsync(CancellationToken ct) => AsyncEnumerable.Empty<ComplianceResultBatch>();
 

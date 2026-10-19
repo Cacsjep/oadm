@@ -20,6 +20,9 @@ public sealed class ComplianceService(
 {
     public ComplianceEngine Engine => engine;
 
+    /// <summary>Turns compliance on or off for the server.</summary>
+    public Task SetEnabledAsync(bool enabled, CancellationToken ct) => engine.SetEnabledAsync(enabled, ct);
+
     /// <summary>
     /// Checks <paramref name="check"/> and stores it; returns the stored check and whether it is new. Throws
     /// <see cref="ComplianceValidationException"/> with the first problem and <see cref="KeyNotFoundException"/>.

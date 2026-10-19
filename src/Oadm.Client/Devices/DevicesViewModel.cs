@@ -138,8 +138,20 @@ public sealed partial class DevicesViewModel : ObservableObject
         };
         GroupByTag = columns.GroupByTag;
         ExpandCompliance = columns.ExpandCompliance;
-        HasCompliance = store.Compliance.IsAvailable;
-        store.Compliance.ChecksChanged += (_, _) => HasCompliance = store.Compliance.IsAvailable;
+        HasCompliance = store.Compliance.IsActive;
+        store.Compliance.ChecksChanged += (_, _) => HasCompliance = store.Compliance.IsActive;
+        OnHasComplianceChanged(HasCompliance);
+        if (columns.Find(ColumnLayoutViewModel.ComplianceKey) is { } complianceColumn)
+        {
+            complianceColumn.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ColumnOptionViewModel.IsVisible))
+                {
+                    OnPropertyChanged(nameof(ComplianceColumnOn));
+                    OnPropertyChanged(nameof(ShowComplianceToggle));
+                }
+            };
+        }
 
         RebuildPluginActions();
     }
@@ -200,9 +212,28 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     partial void OnExpandComplianceChanged(bool value) => Columns.ExpandCompliance = value;
 
-    /// <summary>The role may see compliance and the server has it (the toggle and the columns show).</summary>
+    /// <summary>Why the chooser greys the Compliance column out.</summary>
+    public const string ComplianceOffText = "Turn on compliance checks first (Compliance page)";
+
+    partial void OnHasComplianceChanged(bool value)
+    {
+        if (Columns.Find(ColumnLayoutViewModel.ComplianceKey) is { } option)
+        {
+            option.IsAvailable = value;
+            option.UnavailableReason = value ? null : ComplianceOffText;
+        }
+    }
+
+    /// <summary>The role may see compliance, the server has it and it is on (the columns can show).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowComplianceToggle))]
     public partial bool HasCompliance { get; private set; }
+
+    /// <summary>The Compliance column is turned on in the column chooser.</summary>
+    public bool ComplianceColumnOn => Columns.Find(ColumnLayoutViewModel.ComplianceKey)?.IsVisible == true;
+
+    /// <summary>"Show each compliance check" shows only while the Compliance column is on.</summary>
+    public bool ShowComplianceToggle => HasCompliance && ComplianceColumnOn;
 
     /// <summary>The toolbar's "Show each compliance check" button.</summary>
     [RelayCommand]

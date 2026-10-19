@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
 
@@ -11,6 +12,7 @@ using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
+using Oadm.Client.Tags;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Devices;
@@ -25,11 +27,14 @@ public enum ComplianceTab
     All = 2,
 }
 
-/// <summary>One count card of the Compliance page: a check that is on, how many devices fail it; a click filters to them.</summary>
+/// <summary>
+/// One count card of the Compliance page: a check that is on, how many devices fail it; a click filters to them, Edit and
+/// Delete sit on the card (on hover).
+/// </summary>
 public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check) : ObservableObject
 {
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Title), nameof(Value), nameof(Detail), nameof(IsError), nameof(IsWarning), nameof(IsOk), nameof(ToolTip))]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Value), nameof(Detail), nameof(IsError), nameof(IsWarning), nameof(IsOk), nameof(ToolTip), nameof(CanDelete))]
     public partial ComplianceCheckSummary Check { get; set; } = check;
 
     [ObservableProperty] public partial bool IsSelected { get; set; }
@@ -37,6 +42,9 @@ public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check
     public string Id => Check.Id;
 
     public string Title => Check.Name;
+
+    /// <summary>The default checks (Reachable, Login works) cannot be deleted.</summary>
+    public bool CanDelete => !Check.BuiltIn;
 
     /// <summary>The failed devices ("12"), "–" while the check does not run.</summary>
     public string Value => Check.Problem.Length > 0 ? "–" : Check.Failed.ToString("N0", CultureInfo.CurrentCulture);
@@ -70,27 +78,38 @@ public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check
 
 /// <summary>
 /// The rail page Compliance (key <see cref="HostPages.Compliance"/>): a count card per check, the tabs Problems | Warnings | All
-/// and the devices with one icon column per check. Roles: "See compliance" reads and checks again, "Change compliance
+/// (All first), the devices with one column per check, grouped by tag on request, columns the user can turn off and the
+/// result text next to each icon (on by default). Roles: "See compliance" reads and checks again, "Change compliance
 /// checks" creates, changes and deletes checks. Every list is O(n) over the devices; changes arrive in batches.
 /// </summary>
 public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
 {
+    public const string ModelColumn = "model";
+    public const string TagsColumn = "tags";
+    public const string ResultColumn = "result";
+    public const string CheckColumnPrefix = "check:";
+
     private readonly IOadmApi _api;
     private readonly IDialogService _dialogs;
     private readonly DeviceStore _devices;
     private readonly UserSession? _session;
     private readonly ComplianceStore _store;
     private readonly IUiDispatcher _ui;
+    private readonly IClientSettingsStore _settings;
     private bool _refilterQueued;
+    private bool _devicesChanged;
 
-    public ComplianceViewModel(IOadmApi api, IDialogService dialogs, DeviceStore devices, IUiDispatcher ui, UserSession? session = null)
+    public ComplianceViewModel(IOadmApi api, IDialogService dialogs, DeviceStore devices, IUiDispatcher ui, IClientSettingsStore settings, UserSession? session = null)
     {
-        _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
+        _ui = ui ?? throw new ArgumentNullException(nameof(ui));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _session = session;
         _store = devices.Compliance;
+        ShowText = settings.Current.ComplianceShowText;
+        GroupByTag = settings.Current.ComplianceGroupByTag;
         _store.ChecksChanged += OnChecksChanged;
         _store.ResultsChanged += OnResultsChanged;
         _devices.Changed += OnDevicesChanged;
@@ -105,25 +124,32 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     /// <summary>The checks and results the page shows.</summary>
     public ComplianceStore Store => _store;
 
-    /// <summary>The checks changed in a way that changes the per-check columns (names, which checks).</summary>
+    /// <summary>The per-check columns or the columns the user turned on or off changed.</summary>
     public event EventHandler? ColumnsChanged;
 
     public RangeObservableCollection<ComplianceCardViewModel> Cards { get; } = [];
 
+    /// <summary>Cards show while compliance is on and has checks.</summary>
     [ObservableProperty] public partial bool HasCards { get; private set; }
 
     /// <summary>The devices the tab, the card and the search show.</summary>
     public RangeObservableCollection<DeviceRowViewModel> Rows { get; } = [];
 
-    /// <summary>The grid's selection (Check now takes it).</summary>
+    /// <summary>Group by tag: the (device x tag) rows of <see cref="Rows"/>.</summary>
+    public DeviceTagGrouping TagGrouping { get; } = new();
+
+    /// <summary>The grid's selection (device rows or tag group rows; Check now and Export take it).</summary>
     public RangeObservableCollection<object> SelectedRows { get; } = [];
 
     /// <summary>The checks of the per-check columns, in order (the ones that are on).</summary>
     public IReadOnlyList<ComplianceCheckSummary> ColumnChecks { get; private set; } = [];
 
+    /// <summary>The column chooser: Model, Tags, Result, then one entry per check.</summary>
+    public ObservableCollection<ColumnOptionViewModel> ColumnOptions { get; } = [];
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProblemsTab), nameof(IsWarningsTab), nameof(IsAllTab))]
-    public partial ComplianceTab Tab { get; set; } = ComplianceTab.Problems;
+    public partial ComplianceTab Tab { get; set; } = ComplianceTab.All;
 
     public bool IsProblemsTab => Tab == ComplianceTab.Problems;
 
@@ -137,14 +163,18 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] public partial string AllText { get; private set; } = "All";
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(DeleteCommand))]
-    [NotifyPropertyChangedFor(nameof(CardActionBlockedReason))]
-    public partial ComplianceCardViewModel? SelectedCard { get; private set; }
+    /// <summary>The card whose failing devices the list shows; null = the tab.</summary>
+    [ObservableProperty] public partial ComplianceCardViewModel? SelectedCard { get; private set; }
 
     [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
 
-    /// <summary>"12 devices · 3 selected".</summary>
+    /// <summary>The result text next to each icon of the check columns. Persisted per client.</summary>
+    [ObservableProperty] public partial bool ShowText { get; set; }
+
+    /// <summary>A group per tag (a device under each of its tags). Persisted per client.</summary>
+    [ObservableProperty] public partial bool GroupByTag { get; set; }
+
+    /// <summary>"12 devices".</summary>
     [ObservableProperty] public partial string StatusText { get; private set; } = string.Empty;
 
     /// <summary>One line when the list is empty: what to do first.</summary>
@@ -153,10 +183,64 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     /// <summary>A refused action (save, delete, check now), directly below the list.</summary>
     [ObservableProperty] public partial string? ErrorText { get; private set; }
 
-    /// <summary>The role may create, change and delete checks.</summary>
+    /// <summary>The role may create, change and delete checks, and turn compliance on or off.</summary>
     public bool MayManage => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.ComplianceManage) ?? true;
 
-    public string? CardActionBlockedReason => SelectedCard is null ? "Click a check first" : null;
+    /// <summary>Compliance is on for the server: the cards and the list show; else the empty state with Enable.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowOffState))]
+    public partial bool IsEnabled { get; private set; }
+
+    /// <summary>The server has compliance, it is off: "Enable Compliance Checks".</summary>
+    public bool ShowOffState => _store.IsAvailable && !IsEnabled;
+
+    /// <summary>The text of the dialog after Enable.</summary>
+    public const string EnabledInfo =
+        "OADM now checks every device: Reachable and Login works to start with. Add your own checks with New check. "
+        + "To see the results in the device list too, turn on the Compliance column with Choose columns on the Devices page.";
+
+    /// <summary>"Enable Compliance Checks" of the empty state, then a short note on the device list's column.</summary>
+    [RelayCommand]
+    private async Task EnableAsync()
+    {
+        ErrorText = null;
+        try
+        {
+            _store.ApplyChecks(await _api.SetComplianceEnabledAsync(true, CancellationToken.None).ConfigureAwait(true));
+        }
+        catch (RpcException ex)
+        {
+            ErrorText = ex.Status.Detail;
+            return;
+        }
+
+        await _dialogs.ShowMessageAsync("Compliance checks are on", EnabledInfo).ConfigureAwait(true);
+    }
+
+    /// <summary>"Turn off compliance": nothing is checked any more, the results go, the checks stay (confirmed).</summary>
+    [RelayCommand]
+    private async Task TurnOffAsync()
+    {
+        ErrorText = null;
+        if (!await _dialogs.ConfirmAsync(
+            "Turn off compliance", "Turn off compliance checks? OADM stops checking the devices and removes the results. Your checks stay.", "Turn off")
+            .ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            _store.ApplyChecks(await _api.SetComplianceEnabledAsync(false, CancellationToken.None).ConfigureAwait(true));
+        }
+        catch (RpcException ex)
+        {
+            ErrorText = ex.Status.Detail;
+        }
+    }
+
+    /// <summary>The devices of the selection, each once.</summary>
+    public IReadOnlyList<DeviceRowViewModel> SelectedDevices => DeviceTagGrouping.DistinctDevices(SelectedRows);
 
     public void Dispose()
     {
@@ -169,9 +253,35 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Whether a column is on (the chooser); unknown keys are on.</summary>
+    public bool IsColumnVisible(string key) => !_settings.Current.ComplianceHiddenColumns.Contains(key);
+
     partial void OnTabChanged(ComplianceTab value) => Refilter();
 
     partial void OnSearchTextChanged(string value) => Refilter();
+
+    partial void OnShowTextChanged(bool value)
+    {
+        _settings.Current.ComplianceShowText = value;
+        _settings.Save();
+        ColumnsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    partial void OnGroupByTagChanged(bool value)
+    {
+        _settings.Current.ComplianceGroupByTag = value;
+        _settings.Save();
+        if (value)
+        {
+            TagGrouping.Rebuild(Rows);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleShowText() => ShowText = !ShowText;
+
+    [RelayCommand]
+    private void ToggleGroupByTag() => GroupByTag = !GroupByTag;
 
     [RelayCommand]
     private void ShowProblems() => SelectTab(ComplianceTab.Problems);
@@ -226,12 +336,11 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanChangeCard() => SelectedCard is not null;
-
-    [RelayCommand(CanExecute = nameof(CanChangeCard))]
-    private async Task EditAsync()
+    /// <summary>The pen of a card.</summary>
+    [RelayCommand]
+    private async Task EditAsync(ComplianceCardViewModel? card)
     {
-        if (SelectedCard is not { } card)
+        if (card is null)
         {
             return;
         }
@@ -255,16 +364,17 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanChangeCard))]
-    private async Task DeleteAsync()
+    /// <summary>The bin of a card (not on the default checks).</summary>
+    [RelayCommand]
+    private async Task DeleteAsync(ComplianceCardViewModel? card)
     {
-        if (SelectedCard is not { } card)
+        if (card is null)
         {
             return;
         }
 
         ErrorText = null;
-        if (card.Check.BuiltIn)
+        if (!card.CanDelete)
         {
             ErrorText = card.Title + " cannot be deleted.";
             return;
@@ -278,7 +388,11 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         try
         {
             await _api.DeleteComplianceCheckAsync(card.Id, CancellationToken.None).ConfigureAwait(true);
-            SetCard(null);
+            if (SelectedCard == card)
+            {
+                SetCard(null);
+                Refilter();
+            }
         }
         catch (RpcException ex)
         {
@@ -295,7 +409,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         {
             await _api.CheckComplianceNowAsync(
                 SelectedCard is { } card ? [card.Id] : [],
-                SelectedRows.OfType<DeviceRowViewModel>().Select(r => r.Id),
+                SelectedDevices.Select(r => r.Id),
                 CancellationToken.None).ConfigureAwait(true);
         }
         catch (RpcException ex)
@@ -308,7 +422,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ExportAsync()
     {
-        var rows = SelectedRows.OfType<DeviceRowViewModel>().ToList() is { Count: > 0 } selected ? selected : [.. Rows];
+        var rows = SelectedDevices is { Count: > 0 } selected ? selected : [.. Rows];
         if (rows.Count == 0)
         {
             await _dialogs.ShowMessageAsync("Export", "There is nothing to export.").ConfigureAwait(true);
@@ -360,8 +474,14 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
 
     private void OnChecksChanged(object? sender, EventArgs e)
     {
+        IsEnabled = _store.IsEnabled;
+        OnPropertyChanged(nameof(ShowOffState));
+        if (!IsEnabled)
+        {
+            SetCard(null);
+        }
         var shown = _store.Checks.Where(c => c.Enabled).ToList();
-        var columnsChanged = !shown.Select(c => (c.Id, c.Name)).SequenceEqual(ColumnChecks.Select(c => (c.Id, c.Name)));
+        var columnsChanged = !shown.Select(c => (c.Id, c.Name)).SequenceEqual(ColumnChecks.Select(c => (c.Id, c.Name))) || ColumnOptions.Count == 0;
         ColumnChecks = shown;
 
         var byId = Cards.ToDictionary(c => c.Id, StringComparer.Ordinal);
@@ -380,8 +500,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
             Cards.ReplaceAll(cards);
         }
 
-        HasCards = Cards.Count > 0;
-
+        HasCards = Cards.Count > 0 && _store.IsEnabled;
         if (SelectedCard is { } selected && !cards.Contains(selected))
         {
             SetCard(null);
@@ -389,10 +508,47 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
 
         if (columnsChanged)
         {
+            BuildColumnOptions();
             ColumnsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         QueueRefilter();
+    }
+
+    /// <summary>The chooser's entries; a change is saved at once and the view shows or hides the column.</summary>
+    private void BuildColumnOptions()
+    {
+        ColumnOptions.Clear();
+        AddOption(ModelColumn, "Model");
+        AddOption(TagsColumn, "Tags");
+        AddOption(ResultColumn, "Result");
+        foreach (var check in ColumnChecks)
+        {
+            AddOption(CheckColumnPrefix + check.Id, check.Name);
+        }
+    }
+
+    private void AddOption(string key, string header)
+    {
+        var option = new ColumnOptionViewModel(key, header, canHide: true) { IsVisible = IsColumnVisible(key) };
+        option.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(ColumnOptionViewModel.IsVisible))
+            {
+                return;
+            }
+
+            var hidden = _settings.Current.ComplianceHiddenColumns;
+            hidden.Remove(key);
+            if (!option.IsVisible)
+            {
+                hidden.Add(key);
+            }
+
+            _settings.Save();
+            ColumnsChanged?.Invoke(this, EventArgs.Empty);
+        };
+        ColumnOptions.Add(option);
     }
 
     private void OnResultsChanged(object? sender, DeviceStoreChangedEventArgs e) => QueueRefilter();
@@ -401,6 +557,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     {
         if (e.IsReset || e.DeviceIds.Count > 0)
         {
+            _devicesChanged = true; // tags may have changed: the groups are built again
             QueueRefilter();
         }
     }
@@ -432,7 +589,8 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         {
             var compliance = row.Compliance;
             var level = compliance.Level;
-            if (level != ComplianceLevel.None || compliance.Results.Any())
+            var hasResults = level != ComplianceLevel.None || compliance.Results.Any();
+            if (hasResults)
             {
                 all++;
             }
@@ -452,7 +610,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
                 {
                     ComplianceTab.Problems => level == ComplianceLevel.Problem,
                     ComplianceTab.Warnings => level == ComplianceLevel.Warning,
-                    _ => level != ComplianceLevel.None || compliance.Results.Any(),
+                    _ => hasResults,
                 };
             if (wanted && (search.Length == 0 || row.Matches(search)))
             {
@@ -463,13 +621,21 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         ProblemsText = problems == 0 ? "Problems" : string.Create(CultureInfo.CurrentCulture, $"Problems {problems:N0}");
         WarningsText = warnings == 0 ? "Warnings" : string.Create(CultureInfo.CurrentCulture, $"Warnings {warnings:N0}");
         AllText = all == 0 ? "All" : string.Create(CultureInfo.CurrentCulture, $"All {all:N0}");
-        if (!rows.SequenceEqual(Rows))
+        var rowsChanged = !rows.SequenceEqual(Rows);
+        if (rowsChanged)
         {
             Rows.ReplaceAll(rows);
         }
 
+        if (GroupByTag && (rowsChanged || _devicesChanged))
+        {
+            TagGrouping.Rebuild(Rows);
+        }
+
+        _devicesChanged = false;
+
         StatusText = rows.Count == 1 ? "1 device" : string.Create(CultureInfo.CurrentCulture, $"{rows.Count:N0} devices");
-        EmptyText = rows.Count > 0 ? null
+        EmptyText = rows.Count > 0 || ShowOffState ? null
             : !_store.IsAvailable ? "Compliance is not available on this server."
             : card is not null ? "No device fails this check."
             : Tab switch

@@ -206,7 +206,7 @@ public partial class DevicesView : UserControl
             return;
         }
 
-        var expanded = vm.ExpandCompliance && vm.HasCompliance;
+        var expanded = vm.ExpandCompliance && vm.HasCompliance && vm.ComplianceColumnOn;
         DeviceGrid.Classes.Set("complianceExpanded", expanded);
         DeviceGrid.Classes.Set("noCompliance", !vm.HasCompliance);
         if (DeviceGrid.Columns.FirstOrDefault(c => c.Tag as string == ColumnLayoutViewModel.ComplianceKey) is { } summary)
@@ -242,7 +242,7 @@ public partial class DevicesView : UserControl
         {
             ApplyItemsSource();
         }
-        else if (e.PropertyName is nameof(DevicesViewModel.ExpandCompliance) or nameof(DevicesViewModel.HasCompliance))
+        else if (e.PropertyName is nameof(DevicesViewModel.ExpandCompliance) or nameof(DevicesViewModel.HasCompliance) or nameof(DevicesViewModel.ComplianceColumnOn))
         {
             ApplyComplianceColumns();
         }

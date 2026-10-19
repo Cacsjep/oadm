@@ -25,6 +25,18 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, AuditLog
 
     private ComplianceEngine Engine => compliance.Engine;
 
+    public override async Task<Proto.ComplianceCheckList> SetEnabled(Proto.SetComplianceEnabledRequest request, ServerCallContext context)
+    {
+        var was = Engine.Enabled;
+        await compliance.SetEnabledAsync(request.Enabled, context.CancellationToken).ConfigureAwait(false);
+        if (was != request.Enabled)
+        {
+            await audit.WriteAsync(request.Enabled ? AuditActions.ComplianceTurnedOn : AuditActions.ComplianceTurnedOff, "Compliance", null, context.CancellationToken).ConfigureAwait(false);
+        }
+
+        return ToProto(Engine.ListChecks());
+    }
+
     public override Task<Proto.ComplianceCatalog> GetCatalog(Proto.Empty request, ServerCallContext context)
     {
         var catalog = new Proto.ComplianceCatalog();
@@ -262,9 +274,9 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, AuditLog
             };
     }
 
-    private static Proto.ComplianceCheckList ToProto(IEnumerable<ComplianceCheckState> states)
+    private Proto.ComplianceCheckList ToProto(IEnumerable<ComplianceCheckState> states)
     {
-        var list = new Proto.ComplianceCheckList();
+        var list = new Proto.ComplianceCheckList { Enabled = Engine.Enabled };
         list.Checks.AddRange(states.Select(ToProto));
         return list;
     }
@@ -311,5 +323,6 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, AuditLog
         CheckedUnixMs = result.CheckedUtc == default ? 0 : new DateTimeOffset(DateTime.SpecifyKind(result.CheckedUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
         SinceUnixMs = result.SinceUtc == default ? 0 : new DateTimeOffset(DateTime.SpecifyKind(result.SinceUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
         Removed = result.Removed,
+        Checking = result.Checking,
     };
 }

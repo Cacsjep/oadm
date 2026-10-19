@@ -10,9 +10,11 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Client.Compliance;
 
 /// <summary>
-/// One cell of a per-check column: the result of one check on one device as an icon-only <see cref="StatusChip"/> (passed
-/// green, failed red or amber by the check's severity, the rest neutral, empty when the check is not for the device), with
-/// the result, the detail and the times as tooltip. Follows <see cref="DeviceCompliance.ResultsChanged"/> while shown.
+/// One cell of a per-check column: the result of one check on one device as a <see cref="StatusChip"/> (passed green,
+/// failed red or amber by the check's severity, checking violet and spinning, the rest neutral, empty when the check is not
+/// for the device), with <see cref="ShowText"/> the first line of the detail next to the icon ("Checking..." while
+/// checking), the result, the detail and the times as tooltip. Follows <see cref="DeviceCompliance.ResultsChanged"/> while
+/// shown.
 /// </summary>
 public sealed class ComplianceResultCell : ContentControl
 {
@@ -22,12 +24,16 @@ public sealed class ComplianceResultCell : ContentControl
     private readonly StatusChip _chip = new() { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
     private DeviceCompliance? _watched;
 
-    public ComplianceResultCell(ComplianceStore store, string checkId)
+    public ComplianceResultCell(ComplianceStore store, string checkId, bool showText = false)
     {
         Store = store ?? throw new ArgumentNullException(nameof(store));
         CheckId = checkId ?? throw new ArgumentNullException(nameof(checkId));
+        ShowText = showText;
         Content = _chip;
     }
+
+    /// <summary>The result text next to the icon (passed shows the icon only).</summary>
+    public bool ShowText { get; }
 
     public ComplianceStore Store { get; }
 
@@ -98,10 +104,16 @@ public sealed class ComplianceResultCell : ContentControl
         }
 
         var level = DeviceCompliance.LevelOf(result, check);
-        _chip.IsOk = level == ComplianceLevel.Passed;
-        _chip.IsWarning = level == ComplianceLevel.Warning;
-        _chip.IsError = level == ComplianceLevel.Problem;
-        ToolTip.SetTip(this, TooltipOf(result));
+        _chip.IsAccent = result.Checking;
+        _chip.IsOk = !result.Checking && level == ComplianceLevel.Passed;
+        _chip.IsWarning = !result.Checking && level == ComplianceLevel.Warning;
+        _chip.IsError = !result.Checking && level == ComplianceLevel.Problem;
+        _chip.Text = !ShowText ? null
+            : result.Checking ? "Checking..."
+            : result.Outcome == ComplianceOutcome.CompliancePassed ? null
+            : result.Detail.Length > 0 ? result.Detail.Split('\n', 2)[0]
+            : ComplianceViewModel.ResultText(result);
+        ToolTip.SetTip(this, result.Checking ? "Checking..." : TooltipOf(result));
     }
 
     /// <summary>"Failed since 14:05, checked 14:30" and the detail below.</summary>

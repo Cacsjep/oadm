@@ -12,13 +12,14 @@ one small SDK contract; nothing moves out of the plugins.
 
 | Topic | Decision |
 |---|---|
+| On / off | **Off by default** (server setting `Compliance.Enabled`, gRPC `SetEnabled`, permission "Change compliance checks", audited "Turned compliance on / off"). Off: nothing is checked, no events, the results are removed, the checks stay. The page shows an empty state with **Enable Compliance Checks**; after enabling a short message points to the Compliance column of the Devices page. **Turn off compliance** (red, confirmed) is in the page's toolbar. While off the Devices column chooser greys the Compliance column out ("Turn on compliance checks first (Compliance page)"). |
 | Name and place | Built-in host page **Compliance** (not a plugin), rail entry directly below Devices, always there. Key `HostPages.Compliance`, icon `squareActivity` (Lucide square-activity, new geometry). |
 | Check | A check = a check type + its settings + the devices + "When it fails: Problem / Warning" + on / off + (read checks) an interval. |
 | Devices | **Every check has its devices**, always chosen by the user with the shared picker (All devices, tags, chosen devices; at least one device or tag). The user decides which devices a check is for (e.g. only cameras with an SD card); the check type does not guess. |
 | Default checks | **Reachable** and **Login works**, built in, always on, not deletable, Problem, cached data only. They start with All devices; the user may change their devices. |
 | Check types in v1 | Certificate, Firmware (host, cached data); Application running (Applications plugin); Matches configuration file (Device configuration plugin); SD card (Edge storage). No hardening checks for now. |
 | Where the code lives | The SDK has only the contract (`IComplianceCheckType`). The host registers its own types internally against the same interface (like `BuiltInEvents`); every plugin registers its types where its readers already are: a public class with a parameterless constructor in its `*.Server.dll` (found by the loader like an action) or returned by a core plugin's `IComplianceSource`. Third parties use the same contract. A type of a plugin that is off shows "Not available: <plugin> is turned off" (the SD card check needs Edge storage on). |
-| Schedule | Cached checks follow every device change at once (no device traffic). Read checks run per check every N minutes (default 60, 15..1440) and on **Check now**. |
+| Schedule | Cached checks follow every device change at once (no device traffic). Read checks run per check every N minutes (default 60, 15..1440) and on **Check now**. Check now and a saved check show **Checking...** (spinning) per device and check until the result is in (`ComplianceResultEntry.checking`; devices that are not contacted never show it). |
 | Severity | Set per check; each type has a default. |
 | Alerts | Every check is an event of the event rules: **"Compliance: <check name>"**, stateful per device, on while the check fails; values `result`, `detail`. Alerts through the existing actions (email, HTTP, TCP, Set output). |
 | Devices grid | One **Compliance** column (worst result) or, with a toolbar toggle next to Group by tag, one column per check. |
@@ -142,19 +143,23 @@ Oadm.Sdk.Client, like `ITaskPluginDialog`) is a later addition when a type needs
 - **Compliance page** (`Compliance/ComplianceViewModel` + `ComplianceView`, rail key `HostPages.Compliance`, icon
   `squareActivity`, right below Devices while the role may see compliance; the client mirror `Compliance/ComplianceStore`
   is fed by `ServerConnection` and gives every device row one `DeviceCompliance`):
-  - Toolbar: **New check** (primary), Edit, Delete (red, confirmed), **Check now** (the selected devices, else every device
-    of the shown checks), Export; search right.
+  - Toolbar: **New check** (primary), **Check now** (the selected devices, else every device of the shown checks),
+    **Turn off compliance** (red, confirmed); right: Export, **Show the result text** (on by default: the first line of the
+    detail next to the icon of each check column, wider columns; off: icon only, text on hover), **Group by tag** (a group
+    per tag like the Devices page), **Choose columns** (Model, Tags, Result and each check; per client), search. Edit (pen)
+    and Delete (bin, not on the default checks) sit at the top right of a card while the pointer is on it.
   - Count cards (`ui:StatCard` in `Button.statCardButton`), one per check that is on, in a wrapping row: "Object Analytics
     running" / "12" / "failed · 3 not checked"; a click shows the devices that fail it (tab All; again or a tab: off) and
     selects the check for Edit and Delete.
-  - Segmented switch **Problems** | **Warnings** | **All** with counts; Problems is the start view.
+  - Segmented switch **All** | **Problems** | **Warnings** with counts; All is the start view.
   - Grid (virtualized, 30,000 devices): device icon, Address, Model, Tags, Result ("2 checks failed"), then one icon column
     per check (`ui:StatusChip` icon only, tooltip: result, detail, checked, since). Sortable.
-- **Check dialog** (`Compliance/ComplianceCheckWindow`, single operation): Name, Type (grouped select: Devices,
-  Applications, Configuration, Storage; the type's description in an info icon), Devices (required: purple "Selected devices"
-  button, `DevicePickerOptions.Full` without "The device of the event"), the type's settings form, When it fails
+- **Check dialog** (`Compliance/ComplianceCheckWindow`, single operation), in this order: Name, Devices (required: purple
+  "Selected devices" button, `DevicePickerOptions.Full` without "The device of the event"), Kind of check (grouped select:
+  Devices, Applications, Configuration, Storage; the type's description in an info icon), the type's settings form, When it fails
   (Problem / Warning), Check every (min) for read types, Turned on. Errors below the fields; Save runs the check at once.
-- **Devices grid**: column **Compliance** after Status (`ComplianceSummaryCell`: "2 problems, 1 warning" as a chip, "OK" as
+- **Devices grid**: column **Compliance** after Status, **off by default** (turned on in Choose columns; greyed there while
+  compliance is off); **Show each compliance check** shows only while the column is on (`ComplianceSummaryCell`: "2 problems, 1 warning" as a chip, "OK" as
   plain text, the failed checks as tooltip; sorted problems first; in the export). Toolbar icon toggle **Show each
   compliance check** (icon `squareActivity`) next to Group by tag (class `active` while on): the Compliance column becomes
   one column per check (`ComplianceResultCell`, built by `ComplianceView.CheckColumn`). Per client

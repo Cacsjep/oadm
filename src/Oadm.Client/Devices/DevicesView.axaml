@@ -38,7 +38,7 @@
               <ui:OadmIcon Data="{StaticResource Icon.groupBy}" />
             </Button>
             <Button Classes="toolbar iconOnly" Classes.active="{Binding ExpandCompliance}" ToolTip.Tip="Show each compliance check"
-                    Command="{Binding ToggleExpandComplianceCommand}" IsVisible="{Binding HasCompliance}">
+                    Command="{Binding ToggleExpandComplianceCommand}" IsVisible="{Binding ShowComplianceToggle}">
               <ui:OadmIcon Data="{StaticResource Icon.squareActivity}" />
             </Button>
             <Button Classes="toolbar iconOnly" ToolTip.Tip="Choose columns">
@@ -50,7 +50,8 @@
                     <ItemsControl ItemsSource="{Binding Columns.Choosable}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="dev:ColumnOptionViewModel">
-                          <CheckBox Content="{Binding Header}" IsChecked="{Binding IsVisible}" />
+                          <CheckBox Content="{Binding Header}" IsChecked="{Binding IsVisible}" IsEnabled="{Binding IsAvailable}"
+                                    ToolTip.Tip="{Binding UnavailableReason}" ToolTip.ShowOnDisabled="True" />
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>

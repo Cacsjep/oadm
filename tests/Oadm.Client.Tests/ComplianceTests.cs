@@ -52,6 +52,7 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
         var store = new DeviceStore();
         store.Reset(await api.ListDevicesAsync(CancellationToken.None));
         store.Tags.Reset(await api.ListTagsAsync(CancellationToken.None));
+        await api.SetComplianceEnabledAsync(true, CancellationToken.None); // off by default
         await FeedAsync(api, store.Compliance);
         var dialogs = Substitute.For<IDialogService>();
         dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(true);
@@ -104,10 +105,12 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
     public Task The_page_shows_problems_first_and_a_card_shows_the_devices_failing_its_check() => _ui.RunAsync(async () =>
     {
         var (api, store, dialogs) = await CreateAsync();
-        using var page = new ComplianceViewModel(api, dialogs, store, _ui);
+        using var page = new ComplianceViewModel(api, dialogs, store, _ui, new InMemoryClientSettingsStore());
         page.Refilter();
 
-        Assert.True(page.IsProblemsTab);
+        Assert.True(page.IsAllTab); // every device with a result first
+        Assert.Equal(store.Devices.Count(d => d.Compliance.Level != ComplianceLevel.None), page.Rows.Count);
+        page.ShowProblemsCommand.Execute(null);
         Assert.NotEmpty(page.Rows);
         Assert.All(page.Rows, r => Assert.Equal(ComplianceLevel.Problem, r.Compliance.Level));
         Assert.StartsWith("Problems ", page.ProblemsText, StringComparison.Ordinal);
@@ -192,10 +195,16 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
         Assert.False(editor.CanChangeKind);
         Assert.Equal("Reachable", editor.Name);
 
-        using var page = new ComplianceViewModel(api, dialogs, store, _ui);
-        page.SelectCardCommand.Execute(page.Cards.Single(c => c.Title == "Reachable"));
-        await page.DeleteCommand.ExecuteAsync(null);
+        using var page = new ComplianceViewModel(api, dialogs, store, _ui, new InMemoryClientSettingsStore());
+        var reachableCard = page.Cards.Single(c => c.Title == "Reachable");
+        Assert.False(reachableCard.CanDelete);
+        await page.DeleteCommand.ExecuteAsync(reachableCard);
         Assert.Equal("Reachable cannot be deleted.", page.ErrorText);
+
+        var config = page.Cards.Single(c => c.Title == "Matches base-config.cfg");
+        await page.DeleteCommand.ExecuteAsync(config);
+        Assert.Null(page.ErrorText);
+        await Assert.ThrowsAsync<Grpc.Core.RpcException>(() => api.GetComplianceCheckAsync(config.Id, CancellationToken.None));
         api.Dispose();
     });
 
@@ -206,7 +215,7 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
             var (api, store, dialogs) = await CreateAsync();
-            using var page = new ComplianceViewModel(api, dialogs, store, new AvaloniaUiDispatcher());
+            using var page = new ComplianceViewModel(api, dialogs, store, new AvaloniaUiDispatcher(), new InMemoryClientSettingsStore());
             var view = new ComplianceView { DataContext = page };
             var window = new Window { Width = 1500, Height = 900, Content = new Border { Padding = new Avalonia.Thickness(20), Child = view } };
             Oadm.Client.App.ApplyCrispText(window);
@@ -222,6 +231,10 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
             page.SelectCardCommand.Execute(page.Cards.Single(c => c.Title == "Matches base-config.cfg"));
             Pump();
             Capture(window, outDir, "compliance-card.png");
+            await page.TurnOffCommand.ExecuteAsync(null);
+            Pump();
+            Assert.True(page.ShowOffState);
+            Capture(window, outDir, "compliance-off.png");
             window.Close();
 
             var editor = new ComplianceCheckEditorViewModel(api, dialogs, await api.GetComplianceCatalogAsync(CancellationToken.None),
@@ -240,6 +253,104 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
             return true;
         }, CancellationToken.None);
         Assert.True(done);
+    });
+
+    [Fact]
+    public async Task The_page_groups_by_tag_hides_columns_and_shows_checking_and_the_result_text()
+    {
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var (api, store, dialogs) = await CreateAsync();
+            var settings = new InMemoryClientSettingsStore();
+            using var page = new ComplianceViewModel(api, dialogs, store, new AvaloniaUiDispatcher(), settings);
+            var view = new ComplianceView { DataContext = page };
+            var window = new Window { Width = 2400, Height = 900, Content = view }; // every check column on screen
+            window.Show();
+            page.Refilter();
+            Pump();
+            var grid = view.GetVisualDescendants().OfType<DataGrid>().Single();
+
+            // The result text is on by default: a failed result shows its detail next to the icon.
+            Assert.True(page.ShowText);
+            Assert.Contains(grid.GetVisualDescendants().OfType<StatusChip>(), c => c.Text == "AXIS Object Analytics is stopped");
+            page.ToggleShowTextCommand.Execute(null);
+            Pump();
+            Assert.DoesNotContain(grid.GetVisualDescendants().OfType<StatusChip>(), c => c.Text == "AXIS Object Analytics is stopped");
+            Assert.False(settings.Current.ComplianceShowText);
+
+            // The column chooser hides a column and remembers it.
+            page.ColumnOptions.Single(o => o.Header == "Model").IsVisible = false;
+            Pump();
+            Assert.False(grid.Columns.Single(c => c.Tag as string == "model").IsVisible);
+            Assert.Contains("model", settings.Current.ComplianceHiddenColumns);
+
+            // Group by tag: a group per tag.
+            page.ToggleGroupByTagCommand.Execute(null);
+            Pump();
+            Assert.Contains("tagGroups", grid.Classes);
+            Assert.NotEmpty(page.TagGrouping.Groups);
+
+            // Check now: the devices show "Checking..." until their result is in (the results stream, live).
+            using var feed = new CancellationTokenSource();
+            var subscribed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _ = Task.Run(async () =>
+            {
+                await foreach (var batch in api.WatchComplianceResultsAsync(feed.Token))
+                {
+                    Dispatcher.UIThread.Post(() => store.Compliance.ApplyResults(batch.Results, batch.SnapshotEnd));
+                    subscribed.TrySetResult();
+                }
+            });
+            await subscribed.Task;
+            var sawSpinner = false;
+            store.Compliance.ResultsChanged += (_, _) => sawSpinner |=
+                grid.GetVisualDescendants().OfType<StatusChip>().Any(c => c.IsAccent && c.Text == "Checking...");
+            page.ToggleShowTextCommand.Execute(null);
+            await page.CheckNowCommand.ExecuteAsync(null);
+            await TestSupport.WaitUntilAsync(() =>
+            {
+                Pump();
+                return sawSpinner;
+            });
+            await TestSupport.WaitUntilAsync(() =>
+            {
+                Pump();
+                return !store.Devices.Any(d => d.Compliance.Results.Any(r => r.Checking));
+            });
+            await feed.CancelAsync();
+            window.Close();
+            api.Dispose();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
+    public Task Compliance_is_off_until_enabled_and_turning_it_off_asks_first() => _ui.RunAsync(async () =>
+    {
+        var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        var store = new DeviceStore();
+        store.Reset(await api.ListDevicesAsync(CancellationToken.None));
+        await FeedAsync(api, store.Compliance);
+        var dialogs = Substitute.For<IDialogService>();
+        dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(true);
+        using var page = new ComplianceViewModel(api, dialogs, store, _ui, new InMemoryClientSettingsStore());
+        page.Refilter();
+        Assert.True(page.ShowOffState);
+        Assert.False(page.IsEnabled);
+        Assert.Empty(page.Rows);
+
+        await page.EnableCommand.ExecuteAsync(null);
+        Assert.True(page.IsEnabled);
+        Assert.False(page.ShowOffState);
+        await dialogs.Received(1).ShowMessageAsync("Compliance checks are on", ComplianceViewModel.EnabledInfo);
+        Assert.True(api.ComplianceEnabled);
+
+        await page.TurnOffCommand.ExecuteAsync(null);
+        await dialogs.Received(1).ConfirmAsync("Turn off compliance", Arg.Any<string>(), "Turn off");
+        Assert.False(api.ComplianceEnabled);
+        Assert.True(page.ShowOffState);
+        api.Dispose();
     });
 
     [Fact]
@@ -262,8 +373,22 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
 
             await FeedAsync(api, fixture.Store.Compliance);
             Pump();
+            var chooserEntry = vm.Columns.Find("compliance")!;
+            Assert.False(vm.HasCompliance); // compliance is off: the chooser greys the column out
+            Assert.False(chooserEntry.IsAvailable);
+            Assert.Equal(DevicesViewModel.ComplianceOffText, chooserEntry.UnavailableReason);
+
+            await api.SetComplianceEnabledAsync(true, CancellationToken.None);
+            await FeedAsync(api, fixture.Store.Compliance);
+            Pump();
             Assert.True(vm.HasCompliance);
+            Assert.True(chooserEntry.IsAvailable);
+            Assert.False(summary.IsVisible); // off by default: the column chooser turns it on
+            Assert.False(vm.ShowComplianceToggle);
+            vm.Columns.Find("compliance")!.IsVisible = true;
+            Pump();
             Assert.True(summary.IsVisible);
+            Assert.True(vm.ShowComplianceToggle);
             Assert.Contains(grid.GetVisualDescendants().OfType<ComplianceSummaryCell>(), c => c.Compliance?.Level == ComplianceLevel.Problem);
 
             vm.ToggleExpandComplianceCommand.Execute(null);
@@ -306,7 +431,7 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
         store.Compliance.ApplyChecks(list);
         store.Compliance.ApplyResults(results, reset: true);
         var apply = watch.Elapsed;
-        using var page = new ComplianceViewModel(api, Substitute.For<IDialogService>(), store, _ui);
+        using var page = new ComplianceViewModel(api, Substitute.For<IDialogService>(), store, _ui, new InMemoryClientSettingsStore());
         watch.Restart();
         page.Refilter();
         page.ShowAllCommand.Execute(null);

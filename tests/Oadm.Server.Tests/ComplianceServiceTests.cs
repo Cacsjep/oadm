@@ -46,6 +46,8 @@ public sealed class ComplianceServiceTests
     {
         await using var host = await TestServerHost.StartAsync();
         var client = Client(host.Invoker);
+        Assert.False((await client.ListChecksAsync(new Proto.Empty())).Enabled); // off by default
+        Assert.True((await client.SetEnabledAsync(new Proto.SetComplianceEnabledRequest { Enabled = true })).Enabled);
         var old = await AddDeviceAsync(host, "10.0.0.48");
         var gone = await AddDeviceAsync(host, "10.0.0.49", DeviceStatus.Unreachable);
 
@@ -82,6 +84,7 @@ public sealed class ComplianceServiceTests
 
         var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
         Assert.Contains(audit, e => e.Action == AuditActions.ComplianceCheckCreated && e.Target == "AXIS OS 12");
+        Assert.Contains(audit, e => e.Action == AuditActions.ComplianceTurnedOn);
     }
 
     [Fact]
@@ -123,12 +126,15 @@ public sealed class ComplianceServiceTests
         await viewer.CheckNowAsync(new Proto.ComplianceCheckNowRequest());
         Assert.Equal(StatusCode.PermissionDenied, (await Assert.ThrowsAsync<RpcException>(async () => await viewer.SaveCheckAsync(Firmware("x", "12.0")))).StatusCode);
         Assert.Equal(StatusCode.PermissionDenied, (await Assert.ThrowsAsync<RpcException>(async () => await op.SaveCheckAsync(Firmware("x", "12.0")))).StatusCode);
+        Assert.Equal(StatusCode.PermissionDenied, (await Assert.ThrowsAsync<RpcException>(async () =>
+            await viewer.SetEnabledAsync(new Proto.SetComplianceEnabledRequest { Enabled = true }))).StatusCode);
     }
 
     [Fact]
     public async Task EachCheckIsAnEventOfTheEventRules()
     {
         await using var host = await TestServerHost.StartAsync();
+        await Client(host.Invoker).SetEnabledAsync(new Proto.SetComplianceEnabledRequest { Enabled = true });
         var saved = await Client(host.Invoker).SaveCheckAsync(Firmware("AXIS OS 12", "12.0"));
         var events = new Proto.EventService.EventServiceClient(host.Invoker);
 

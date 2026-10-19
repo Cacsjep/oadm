@@ -432,7 +432,8 @@ Two processes, like ADM:
   per start; a `Location` to the device's host on any scheme or port becomes a path).
 - `ComplianceService` (`compliance.proto`, see "Compliance"): `GetCatalog`, `ListChecks`, `WatchChecks`, `GetCheck`,
   `SaveCheck`, `DeleteCheck`, `SetCheckEnabled`, `ListChoices`, `CheckNow`, `WatchResults` (snapshot in batches of 5,000 with
-  `snapshot_end`, then changes).
+  `snapshot_end`, then changes; `checking` while a result was asked for), `SetEnabled` (compliance on / off, off by default;
+  `ComplianceCheckList.enabled`).
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
   `device_count`, then names used on devices without a definition, `defined = false`), `Watch` (the whole `TagList` on
   subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
@@ -932,7 +933,7 @@ Layout, top to bottom:
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
    `groupBy`, class `active` while on), **Show each compliance check** icon button (icon `squareActivity`, class `active`
-   while on, only with compliance), Columns icon button (tooltip "Choose columns") and search box (host parts);
+   while on, only while the Compliance column is on), Columns icon button (tooltip "Choose columns") and search box (host parts);
    everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
    Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
@@ -1174,7 +1175,7 @@ and the saved per-client order cover other preferences):
 | Address | IP or host name, hyperlink opens device web UI in default browser |
 | Model | ProdNbr |
 | Status | computed, see enum |
-| Compliance | the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); with the toolbar toggle **Show each compliance check** one column per check instead; hidden without "See compliance". See "Compliance" |
+| Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See "Compliance" |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
 | SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export |
@@ -1255,6 +1256,9 @@ Built-in feature (not a plugin): which devices need attention at first glance. S
 `docs/compliance.md`. Core `Oadm.Core.Compliance`, server `Oadm.Server.Compliance`, gRPC `ComplianceService`, client
 `Compliance/`, SDK `Oadm.Sdk.Compliance`.
 
+- **Off by default** (server setting `Compliance.Enabled`): the page shows an empty state with **Enable Compliance Checks**
+  (then a short message about the Devices column), **Turn off compliance** in its toolbar (confirmed); off = nothing is
+  checked, no events, results removed, checks kept; the Devices column chooser greys Compliance out while it is off.
 - **Check** = a check type + its settings + its devices (always chosen with the shared picker: All devices, tags, chosen
   devices) + Problem or Warning + on / off + (types that read devices) every 15..1440 minutes (default 60). At most 50.
   Default checks **Reachable** and **Login works**: always on, not deletable, only their devices change.
@@ -1269,10 +1273,12 @@ Built-in feature (not a plugin): which devices need attention at first glance. S
   check and device (outcome, detail, checked, since) and written in batches; a changed check is checked again on every
   device; a type whose plugin is off says so and does not run. Every check is a stateful event of the event rules
   ("Compliance: <name>", on while it fails on a device). No fix actions on the page.
-- **Page** (rail, right below Devices): a count card per check (a click shows the devices that fail it), tabs Problems |
-  Warnings | All, the devices with a Result column and one icon column per check, New check / Edit / Delete / Check now /
-  Export. Dialog `ComplianceCheckWindow` (single operation; the type's settings through the shared `SettingsFormView` of the
-  event rules). **Devices grid**: the Compliance column or one column per check (toggle, per client).
+- **Page** (rail, right below Devices): a count card per check (a click shows the devices that fail it; Edit and Delete on
+  the card on hover), tabs All | Problems | Warnings (All first), the devices with a Result column and one column per check
+  (the result text next to the icon, on by default, toggle), Group by tag, Choose columns (per client), New check, Check now
+  (a spinning "Checking..." per device and check until the result is in), Export. Dialog `ComplianceCheckWindow` (single
+  operation: Name, Devices, Kind of check, its settings through the shared `SettingsFormView` of the event rules).
+  **Devices grid**: the Compliance column (off by default) or, while it is on, one column per check (toggle, per client).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
 - Tests: `tests/Oadm.Core.Tests/Compliance`, `tests/Oadm.Server.Tests/ComplianceServiceTests`, the check types in their
   plugins' tests, `tests/Oadm.Client.Tests/ComplianceTests` (+ Perf 30,000 devices x 10 checks, screenshots). Fake mode:

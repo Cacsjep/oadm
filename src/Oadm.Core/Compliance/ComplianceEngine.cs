@@ -35,8 +35,10 @@ public sealed class ComplianceEngineOptions
 }
 
 /// <summary>One result as the page shows it. <see cref="Removed"/>: the device left the check (or the check was deleted).</summary>
+/// <see cref="Checking"/>: a check of this device was asked for (Check now, a saved check) and its result is not in yet.
 public sealed record ComplianceResultModel(
-    Guid CheckId, Guid DeviceId, ComplianceOutcome Outcome, string Detail, DateTime CheckedUtc, DateTime SinceUtc, bool Removed = false);
+    Guid CheckId, Guid DeviceId, ComplianceOutcome Outcome, string Detail, DateTime CheckedUtc, DateTime SinceUtc, bool Removed = false,
+    bool Checking = false);
 
 /// <summary>A check with its counts and why it does not run ("Not available: Edge storage is turned off").</summary>
 public sealed record ComplianceCheckState(
@@ -74,6 +76,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     private readonly Dictionary<Guid, Device> _deviceRows = [];
     private readonly HashSet<Guid> _reading = [];
     private readonly Dictionary<Guid, HashSet<Guid>> _forced = [];
+    private readonly HashSet<(Guid CheckId, Guid DeviceId)> _checking = [];
     private readonly Dictionary<(Guid CheckId, Guid DeviceId), ComplianceResultEntity?> _dirty = [];
     private readonly List<KeyedCoalescingChannel<(Guid, Guid), ComplianceResultModel>> _watchers = [];
     private readonly CancellationTokenSource _stopping = new();
@@ -85,6 +88,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     private Task _flushLoop = Task.CompletedTask;
     private bool _loaded;
     private bool _started;
+    private bool _enabled;
 
     public ComplianceEngine(
         ComplianceCatalog catalog,
@@ -122,14 +126,26 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     /// <summary>The event types changed (a check created, renamed or deleted): the event catalog reads them again.</summary>
     public event EventHandler? EventTypesChanged;
 
-    /// <summary>One stateful event type per check, for the event rules.</summary>
+    /// <summary>Compliance is on for the server (off by default): only then are devices checked and events published.</summary>
+    public bool Enabled
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _enabled;
+            }
+        }
+    }
+
+    /// <summary>One stateful event type per check while compliance is on, for the event rules.</summary>
     public IReadOnlyList<EventTypeInfo> EventTypes
     {
         get
         {
             lock (_sync)
             {
-                return [.. _checks.Values.OrderBy(c => c.Check.Name, StringComparer.CurrentCultureIgnoreCase).Select(c => EventTypeOf(c.Check))];
+                return !_enabled ? [] : [.. _checks.Values.OrderBy(c => c.Check.Name, StringComparer.CurrentCultureIgnoreCase).Select(c => EventTypeOf(c.Check))];
             }
         }
     }
@@ -141,6 +157,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     public async Task LoadAsync(CancellationToken ct)
     {
         await _store.EnsureDefaultsAsync(ct).ConfigureAwait(false);
+        var enabled = await _store.GetEnabledAsync(ct).ConfigureAwait(false);
         var checks = await _store.ListChecksAsync(ct).ConfigureAwait(false);
         var results = await _store.ListResultsAsync(ct).ConfigureAwait(false);
         _subscription = _feed.Subscribe();
@@ -169,6 +186,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
                 }
             }
 
+            _enabled = enabled;
             _loaded = true;
         }
     }
@@ -186,7 +204,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         {
             _started = true;
             changes = [];
-            foreach (var runtime in _checks.Values)
+            foreach (var runtime in _enabled ? _checks.Values : Enumerable.Empty<CheckRuntime>())
             {
                 Reconcile(runtime, changes);
             }
@@ -200,6 +218,59 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         _tickLoop = Task.Run(() => TickLoopAsync(token), CancellationToken.None);
         _flushLoop = Task.Run(() => FlushLoopAsync(token), CancellationToken.None);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Turns compliance on (every device of every check is checked) or off (nothing runs, no events; the results are
+    /// removed, the checks stay). Stored as a server setting.
+    /// </summary>
+    public async Task SetEnabledAsync(bool enabled, CancellationToken ct)
+    {
+        await _store.SetEnabledAsync(enabled, ct).ConfigureAwait(false);
+        var changes = new List<ComplianceResultModel>();
+        lock (_sync)
+        {
+            if (_enabled == enabled)
+            {
+                return;
+            }
+
+            _enabled = enabled;
+            foreach (var runtime in _checks.Values)
+            {
+                if (enabled)
+                {
+                    Reconcile(runtime, changes);
+                }
+                else
+                {
+                    foreach (var deviceId in runtime.Results.Keys.ToList())
+                    {
+                        RemoveResult(runtime, deviceId, changes);
+                    }
+
+                    runtime.ReportedFailing = null;
+                }
+            }
+
+            if (!enabled)
+            {
+                _dirty.Clear(); // the store removed every result
+                _forced.Clear();
+                _checking.Clear();
+            }
+        }
+
+        Publish(changes);
+        EventTypesChanged?.Invoke(this, EventArgs.Empty);
+        if (enabled)
+        {
+            ReportAllEvents();
+            _ = EvaluateCachedAsync(null, null, _stopping.Token);
+            Wake();
+        }
+
+        ChecksChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Every check with its counts, sorted by name (the default checks first).</summary>
@@ -285,10 +356,10 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
                 }
             }
 
-            if (_started)
+            if (_started && _enabled)
             {
                 Reconcile(runtime, changes);
-                Force(runtime.Check.Id, null);
+                Force(runtime.Check.Id, null, changes);
             }
         }
 
@@ -322,6 +393,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             }
 
             _forced.Remove(checkId);
+            _checking.RemoveWhere(k => k.CheckId == checkId);
         }
 
         Publish(changes);
@@ -337,8 +409,14 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     {
         var deviceSet = deviceIds is { Count: > 0 } ? deviceIds.ToHashSet() : null;
         var cached = new List<Guid>();
+        var changes = new List<ComplianceResultModel>();
         lock (_sync)
         {
+            if (!_enabled)
+            {
+                return;
+            }
+
             foreach (var runtime in _checks.Values.Where(c => c.Check.Enabled && (checkIds is not { Count: > 0 } || checkIds.Contains(c.Check.Id))))
             {
                 if (IsCached(runtime))
@@ -347,11 +425,12 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
                 }
                 else
                 {
-                    Force(runtime.Check.Id, deviceSet);
+                    Force(runtime.Check.Id, deviceSet, changes);
                 }
             }
         }
 
+        Publish(changes);
         foreach (var checkId in cached)
         {
             _ = EvaluateCachedAsync(checkId, deviceSet, _stopping.Token);
@@ -463,8 +542,14 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         var detail = result.Detail.Length > ComplianceResultEntity.MaxDetailLength ? result.Detail[..ComplianceResultEntity.MaxDetailLength] : result.Detail;
         var had = runtime.Results.TryGetValue(deviceId, out var old);
         var same = had && old!.Outcome == result.Outcome && string.Equals(old.Detail, detail, StringComparison.Ordinal);
+        var wasChecking = _checking.Remove((runtime.Check.Id, deviceId));
         if (same && !checkedNow)
         {
+            if (wasChecking)
+            {
+                changes.Add(Model(runtime.Check.Id, deviceId, old!));
+            }
+
             return;
         }
 
@@ -483,7 +568,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             CheckedUtc = stored.CheckedUtc,
             SinceUtc = stored.SinceUtc,
         };
-        if (!same)
+        if (!same || wasChecking)
         {
             changes.Add(Model(runtime.Check.Id, deviceId, stored));
         }
@@ -491,6 +576,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
     private void RemoveResult(CheckRuntime runtime, Guid deviceId, List<ComplianceResultModel> changes)
     {
+        _checking.Remove((runtime.Check.Id, deviceId));
         if (runtime.Remove(deviceId))
         {
             _dirty[(runtime.Check.Id, deviceId)] = null;
@@ -498,10 +584,13 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
     }
 
-    /// <summary>Marks the check due now on the given devices (null = every device it has a result for).</summary>
-    private void Force(Guid checkId, HashSet<Guid>? deviceIds)
+    /// <summary>
+    /// Marks a check that reads the devices due now on the given devices (null = every device it has a result for) that may be
+    /// contacted, and shows them as checking until their result is in.
+    /// </summary>
+    private void Force(Guid checkId, HashSet<Guid>? deviceIds, List<ComplianceResultModel> changes)
     {
-        if (!_checks.TryGetValue(checkId, out var runtime))
+        if (!_checks.TryGetValue(checkId, out var runtime) || IsCached(runtime) || _catalog.Find(runtime.Check.TypeId)?.Available != true)
         {
             return;
         }
@@ -512,7 +601,19 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             _forced[checkId] = set;
         }
 
-        set.UnionWith(deviceIds is null ? runtime.Results.Keys : deviceIds.Where(runtime.Results.ContainsKey));
+        foreach (var deviceId in deviceIds is null ? runtime.Results.Keys : deviceIds.Where(runtime.Results.ContainsKey))
+        {
+            if (!_deviceRows.TryGetValue(deviceId, out var device) || device.Status != DeviceStatus.Ok)
+            {
+                continue;
+            }
+
+            set.Add(deviceId);
+            if (_checking.Add((checkId, deviceId)))
+            {
+                changes.Add(Model(checkId, deviceId, runtime.Results[deviceId]));
+            }
+        }
     }
 
     private ComplianceCheckState StateOf(CheckRuntime runtime)
@@ -546,8 +647,8 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             problem);
     }
 
-    private static ComplianceResultModel Model(Guid checkId, Guid deviceId, Result result) =>
-        new(checkId, deviceId, result.Outcome, result.Detail, result.CheckedUtc, result.SinceUtc);
+    private ComplianceResultModel Model(Guid checkId, Guid deviceId, Result result) =>
+        new(checkId, deviceId, result.Outcome, result.Detail, result.CheckedUtc, result.SinceUtc, Checking: _checking.Contains((checkId, deviceId)));
 
     // ---- evaluation ----
 
@@ -557,7 +658,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         List<(CheckRuntime Runtime, CatalogComplianceType Type, List<Device> Devices)> work = [];
         lock (_sync)
         {
-            if (!_started)
+            if (!_started || !_enabled)
             {
                 return;
             }
@@ -697,7 +798,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
 
         _deviceRows[change.DeviceId] = change.Device;
-        foreach (var runtime in _checks.Values)
+        foreach (var runtime in _enabled ? _checks.Values : Enumerable.Empty<CheckRuntime>())
         {
             ReconcileDevice(runtime, change.Device, IsCached(runtime), changes);
         }
@@ -764,7 +865,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     {
         lock (_sync)
         {
-            _readChecks = [.. _checks.Values
+            _readChecks = !_enabled ? [] : [.. _checks.Values
                 .Where(c => c.Check.Enabled)
                 .Select(c => (Runtime: c, Type: _catalog.Find(c.Check.TypeId)))
                 .Where(c => c.Type is { Available: true, Type.UsesCachedDataOnly: false })
@@ -893,11 +994,24 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
         finally
         {
+            var cleared = new List<ComplianceResultModel>();
             lock (_sync)
             {
                 _reading.Remove(deviceId);
+
+                // A run that ended without a result (stopped, failed) is no longer checking, unless it is due again.
+                foreach (var (runtime, _) in due)
+                {
+                    var key = (runtime.Check.Id, deviceId);
+                    if ((!_forced.TryGetValue(runtime.Check.Id, out var set) || !set.Contains(deviceId)) && _checking.Remove(key)
+                        && runtime.Results.TryGetValue(deviceId, out var current))
+                    {
+                        cleared.Add(Model(runtime.Check.Id, deviceId, current));
+                    }
+                }
             }
 
+            Publish(cleared);
             try
             {
                 _slots.Release();
@@ -1012,7 +1126,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         List<ComplianceResultModel> changes = [];
         lock (_sync)
         {
-            if (!_started)
+            if (!_started || !_enabled)
             {
                 return;
             }
@@ -1055,7 +1169,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         List<Guid> failing;
         lock (_sync)
         {
-            if (!_started || !_checks.TryGetValue(checkId, out var runtime))
+            if (!_started || !_enabled || !_checks.TryGetValue(checkId, out var runtime))
             {
                 return;
             }

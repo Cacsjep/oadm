@@ -14,6 +14,12 @@ public sealed partial class ColumnOptionViewModel(string key, string header, boo
 
     [ObservableProperty] public partial bool IsVisible { get; set; } = true;
 
+    /// <summary>The chooser offers the column (false: greyed with <see cref="UnavailableReason"/>, e.g. compliance is off).</summary>
+    [ObservableProperty] public partial bool IsAvailable { get; set; } = true;
+
+    /// <summary>Why the column cannot be turned on now (the chooser's tooltip).</summary>
+    [ObservableProperty] public partial string? UnavailableReason { get; set; }
+
     /// <summary>Pixel width, 0 = default from the view.</summary>
     public double Width { get; set; }
 
@@ -60,7 +66,7 @@ public sealed class ColumnLayoutViewModel
         for (int i = 0; i < DefaultColumns.Count; i++)
         {
             (string key, string header) = DefaultColumns[i];
-            var option = new ColumnOptionViewModel(key, header, key != IconKey) { DisplayIndex = i };
+            var option = new ColumnOptionViewModel(key, header, key != IconKey) { DisplayIndex = i, IsVisible = DefaultVisible(key) };
             if (saved.TryGetValue(key, out ColumnLayoutEntry? entry))
             {
                 option.IsVisible = entry.IsVisible || !option.CanHide;
@@ -88,6 +94,9 @@ public sealed class ColumnLayoutViewModel
             }
         }
     }
+
+    /// <summary>Every column shows by default except Compliance (turned on in the column chooser).</summary>
+    public static bool DefaultVisible(string key) => key != ComplianceKey;
 
     /// <summary>The device grid shows one column per compliance check, persisted per client.</summary>
     public bool ExpandCompliance
@@ -144,7 +153,7 @@ public sealed class ColumnLayoutViewModel
         {
             Columns[i].DisplayIndex = i;
             Columns[i].Width = 0;
-            Columns[i].IsVisible = true;
+            Columns[i].IsVisible = DefaultVisible(Columns[i].Key);
         }
 
         Save();

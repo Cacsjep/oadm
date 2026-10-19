@@ -44,13 +44,19 @@ internal sealed class ComplianceRig : IAsyncDisposable
 
     public DeviceRepository Devices => _db.Get<DeviceRepository>();
 
-    public static async Task<ComplianceRig> StartAsync()
+    /// <summary>A rig with compliance turned on (the server's default is off), unless <paramref name="enabled"/> is false.</summary>
+    public static async Task<ComplianceRig> StartAsync(bool enabled = true)
     {
         var rig = new ComplianceRig { _db = await TestDatabase.CreateAsync() };
         rig.Registry.RegisterCorePlugin(rig.Plugin, rig.PluginOrigin);
         rig.Catalog = new ComplianceCatalog(rig.Registry);
         rig.Store = new ComplianceStore(rig._db.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Oadm.Core.Persistence.OadmDbContext>>(), rig.Time);
         await rig.StartEngineAsync();
+        if (enabled)
+        {
+            await rig.Engine.SetEnabledAsync(true, CancellationToken.None);
+        }
+
         return rig;
     }
 

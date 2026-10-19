@@ -77,6 +77,9 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
 
     public const int DefaultInterval = 60;
 
+    /// <summary>The server setting that turns compliance on ("true"); missing = off.</summary>
+    public const string EnabledSettingKey = "Compliance.Enabled";
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly SemaphoreSlim _write = new(1, 1);
@@ -109,6 +112,43 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
         }
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Whether compliance is on for the server (off by default).</summary>
+    public async Task<bool> GetEnabledAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var row = await db.Settings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == EnabledSettingKey, ct).ConfigureAwait(false);
+        return row?.ValueJson == "true";
+    }
+
+    /// <summary>Turns compliance on or off; removes every result when it goes off.</summary>
+    public async Task SetEnabledAsync(bool enabled, CancellationToken ct)
+    {
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var row = await db.Settings.FirstOrDefaultAsync(s => s.Key == EnabledSettingKey, ct).ConfigureAwait(false);
+            if (row is null)
+            {
+                db.Settings.Add(new Settings.Setting { Key = EnabledSettingKey, ValueJson = enabled ? "true" : "false" });
+            }
+            else
+            {
+                row.ValueJson = enabled ? "true" : "false";
+            }
+
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            if (!enabled)
+            {
+                await db.ComplianceResults.ExecuteDeleteAsync(ct).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _write.Release();
+        }
     }
 
     public async Task<IReadOnlyList<ComplianceCheck>> ListChecksAsync(CancellationToken ct)

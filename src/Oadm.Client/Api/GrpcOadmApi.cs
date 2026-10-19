@@ -249,6 +249,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task CheckComplianceNowAsync(IEnumerable<string> checkIds, IEnumerable<string> deviceIds, CancellationToken ct) =>
         await C.Compliance.CheckNowAsync(new ComplianceCheckNowRequest { CheckIds = { checkIds }, DeviceIds = { deviceIds } }, cancellationToken: ct);
 
+    public async Task<ComplianceCheckList> SetComplianceEnabledAsync(bool enabled, CancellationToken ct) =>
+        await C.Compliance.SetEnabledAsync(new SetComplianceEnabledRequest { Enabled = enabled }, cancellationToken: ct);
+
     public IAsyncEnumerable<ComplianceResultBatch> WatchComplianceResultsAsync(CancellationToken ct) =>
         ReadAll(C.Compliance.WatchResults(new Empty(), cancellationToken: ct), ct);
 

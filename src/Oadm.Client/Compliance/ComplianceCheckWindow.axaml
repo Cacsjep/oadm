@@ -10,7 +10,8 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
-  <!-- A compliance check: single operation (one form, no card). The kind's settings come from its declared fields. -->
+  <!-- A compliance check: single operation (one form, no card): name, devices, kind of check and its settings (its declared
+       fields), when it fails, how often. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
@@ -20,12 +21,12 @@
           <ui:FormField Classes="wide" Label="Name">
             <TextBox x:Name="NameBox" Text="{Binding Name}" IsEnabled="{Binding CanChangeKind}" MaxLength="64" />
           </ui:FormField>
+          <ui:FormField Classes="wide" Label="Devices" Error="{Binding Devices.Problem}">
+            <er:DeviceSelectorView DataContext="{Binding Devices}" />
+          </ui:FormField>
           <ui:FormField Classes="wide" Label="Kind of check" Info="{Binding TypeDescription}">
             <ComboBox Classes="grouped" ItemsSource="{Binding Types}" SelectedItem="{Binding SelectedType}" IsEnabled="{Binding CanChangeKind}"
                       HorizontalAlignment="Stretch" />
-          </ui:FormField>
-          <ui:FormField Classes="wide" Label="Devices" Error="{Binding Devices.Problem}">
-            <er:DeviceSelectorView DataContext="{Binding Devices}" />
           </ui:FormField>
           <er:SettingsFormView Fields="{Binding Fields}" IsVisible="{Binding HasFields}" />
           <ui:FormField Classes="wide" Label="When it fails">
