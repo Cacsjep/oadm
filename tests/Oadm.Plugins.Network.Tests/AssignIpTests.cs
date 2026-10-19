@@ -499,6 +499,51 @@ public sealed class AssignIpTests
     }
 
     [Fact]
+    public async Task Server_check_runs_per_route_and_judges_each_row_by_its_own_site()
+    {
+        var siteA = Guid.NewGuid();
+        var siteB = Guid.NewGuid();
+        IReadOnlyList<IDeviceInfo> devices =
+        [
+            new FakeDevice(Guid.NewGuid(), "10.0.0.48", Serial: "ACCC8E000001") { SiteId = siteA },
+            new FakeDevice(Guid.NewGuid(), "10.0.0.49", Serial: "ACCC8E000002") { SiteId = siteA },
+            new FakeDevice(Guid.NewGuid(), "10.0.0.48", Serial: "ACCC8E000003") { SiteId = siteB }, // same address, another network
+        ];
+        var other = Guid.NewGuid();
+        FakeDialogContext? ctx = null;
+        ctx = new FakeDialogContext((_, method) => Task.FromResult<string?>(method == NetworkSettingsTaskPlugin.QueryGetNetworkInfo ? Current.ToJson() : null))
+        {
+            Answer = (method, payload) =>
+            {
+                // The query runs for a device of one route: site A has a managed device at .101, at site B .102 answers ping.
+                var atA = devices.First(d => d.Id == ctx!.Queries[^1].Device).SiteId == siteA;
+                var request = AddressCheckRequest.Parse(payload);
+                return new AddressCheckResponse(
+                    atA ? [new("10.0.0.101", other, "P3265-V ACCC8E0000AA")] : [],
+                    [.. request.Addresses.Select(a => new AddressStatus(a, InUse: !atA && a == "10.0.0.102", AnswersPing: !atA && a == "10.0.0.102"))]).ToJson();
+            },
+        };
+        var vm = new AssignIpViewModel(devices);
+        await vm.LoadCurrentAsync(ctx, CancellationToken.None);
+        vm.IpRange = "10.0.0.100-110";
+        vm.GoToReview();
+        await Eventually.TrueAsync(() => !vm.Assignment.IsChecking, "the address check");
+
+        var checkedFor = ctx.Queries.Where(q => q.Method == AddressCheck.QueryMethod).Select(q => devices.First(d => d.Id == q.Device).SiteId).Distinct().ToList();
+        Assert.Equal(2, checkedFor.Count); // once per route, each with a device of that route
+        Assert.All(vm.Assignment.Rows, r => Assert.Null(r.Conflict));
+        Assert.DoesNotContain("10.0.0.101", vm.Assignment.Rows.Select(r => r.NewAddress));
+        Assert.DoesNotContain("10.0.0.102", vm.Assignment.Rows.Select(r => r.NewAddress));
+
+        vm.Assignment.Rows[2].NewAddress = "10.0.0.101"; // taken at site A only
+        Assert.Null(vm.Assignment.Rows[2].Conflict);
+        vm.Assignment.Rows[2].NewAddress = "10.0.0.102"; // answers ping at site B
+        Assert.Equal("In use (answers ping)", vm.Assignment.Rows[2].Conflict);
+        vm.Assignment.Rows[0].NewAddress = "10.0.0.101";
+        Assert.Equal("Used by P3265-V ACCC8E0000AA", vm.Assignment.Rows[0].Conflict);
+    }
+
+    [Fact]
     public async Task Dhcp_finishes_on_the_first_page_after_the_confirmation()
     {
         var vm = new AssignIpViewModel(Devices(2)) { UseDhcp = true };
