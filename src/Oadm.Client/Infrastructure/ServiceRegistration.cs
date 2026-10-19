@@ -34,7 +34,7 @@ public static class ServiceRegistration
             services.AddSingleton<IClientSettingsStore>(_ =>
             {
                 var store = new InMemoryClientSettingsStore();
-                store.Current.Appearance = Themes.OadmColors.Current; // the appearance the client started with
+                store.Current.Appearance = Oadm.Theme.OadmColors.Current; // the appearance the client started with
                 return store;
             });
             services.AddSingleton<IOadmApi>(_ => new FakeOadmApi());

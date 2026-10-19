@@ -21,7 +21,7 @@ public sealed class DangerButtonTests
     [Fact]
     public void The_theme_has_the_danger_button_styles()
     {
-        string theme = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Oadm.Client", "Themes", "OadmTheme.axaml"));
+        string theme = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Oadm.Theme", "OadmTheme.axaml"));
         Assert.Contains("Selector=\"Button.danger\"", theme, StringComparison.Ordinal);
         Assert.Contains("Selector=\"Button.toolbar.danger\"", theme, StringComparison.Ordinal);
         Assert.Contains("Selector=\"Button.link.danger\"", theme, StringComparison.Ordinal);

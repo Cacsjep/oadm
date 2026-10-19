@@ -1,0 +1,2012 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:collections="using:Avalonia.Collections"
+        xmlns:dgp="using:Avalonia.Controls.Primitives"
+        xmlns:themes="using:Oadm.Theme">
+  <!--
+    OADM visual style (see CLAUDE.md "Visual Style"). Dark (default) or light, MultiDrive look. Shared by the client
+    (Oadm.Client/Themes/OadmTheme.axaml adds the client-only styles) and the OADM Site Node app.
+    Every brush and size used by the views is defined here, the colors in Colors.Dark.axaml / Colors.Light.axaml;
+    views reference these keys only.
+  -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Oadm.Theme/Icons.axaml" />
+        <!-- The colors of the chosen appearance (Colors.Dark.axaml or Colors.Light.axaml) -->
+        <themes:OadmColors />
+      </ResourceDictionary.MergedDictionaries>
+
+      <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
+      <!-- Drawn caption buttons (Fluent WindowDrawnDecorations): hover is the Background, pressed the BorderBrush.
+           Minimize/maximize use these neutral greys instead of the accent; close keeps its red from the theme. -->
+      <SolidColorBrush x:Key="CaptionButtonBackground" Color="{StaticResource Oadm.CaptionHoverColor}" />
+      <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="{StaticResource Oadm.CaptionPressedColor}" />
+      <SolidColorBrush x:Key="CaptionButtonForeground" Color="{StaticResource Oadm.TextPrimaryColor}" />
+      <x:Double x:Key="CaptionButtonWidth">46</x:Double>
+      <x:Double x:Key="CaptionButtonHeight">32</x:Double>
+      <!-- Date and time pickers (Fluent): the colors of every input field, the accent for the chosen row of the flyout -->
+      <StaticResource x:Key="DatePickerButtonBackground" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBackgroundPointerOver" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBackgroundPressed" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBackgroundDisabled" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrushPointerOver" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrushPressed" ResourceKey="Oadm.AccentBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrushDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerButtonForeground" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="DatePickerButtonForegroundPointerOver" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="DatePickerButtonForegroundPressed" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="DatePickerButtonForegroundDisabled" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="DatePickerSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerSpacerFillDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterBackground" ResourceKey="Oadm.MenuBackgroundBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterHighlightFill" ResourceKey="Oadm.AccentMutedBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerButtonBackground" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBackgroundPointerOver" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBackgroundPressed" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBackgroundDisabled" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrushPointerOver" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrushPressed" ResourceKey="Oadm.AccentBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrushDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerButtonForeground" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="TimePickerButtonForegroundPointerOver" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="TimePickerButtonForegroundPressed" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="TimePickerButtonForegroundDisabled" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="TimePickerSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerSpacerFillDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterBackground" ResourceKey="Oadm.MenuBackgroundBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterHighlightFill" ResourceKey="Oadm.AccentMutedBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <!-- Picker text centered in the field (the theme centers the text blocks; no padding above or below) -->
+      <Thickness x:Key="DatePickerHostPadding">0</Thickness>
+      <Thickness x:Key="DatePickerHostMonthPadding">10,0,0,0</Thickness>
+      <Thickness x:Key="TimePickerHostPadding">0</Thickness>
+
+      <!-- Brushes -->
+      <SolidColorBrush x:Key="Oadm.WindowBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.CardBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.SurfaceRaisedBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
+      <SolidColorBrush x:Key="Oadm.SurfaceHoverBrush" Color="{StaticResource Oadm.SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.NavHoverBrush" Color="{StaticResource Oadm.NavHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.NavSelectedBrush" Color="{StaticResource Oadm.NavSelectedColor}" />
+      <SolidColorBrush x:Key="Oadm.InputBackgroundBrush" Color="{StaticResource Oadm.InputBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.BorderBrush" Color="{StaticResource Oadm.BorderColor}" />
+      <SolidColorBrush x:Key="Oadm.InputBorderBrush" Color="{StaticResource Oadm.InputBorderColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentBrush" Color="{StaticResource Oadm.AccentColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentHoverBrush" Color="{StaticResource Oadm.AccentHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentPressedBrush" Color="{StaticResource Oadm.AccentPressedColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentMutedBrush" Color="{StaticResource Oadm.AccentMutedColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentDisabledBrush" Color="{StaticResource Oadm.AccentDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.TextOnAccentDisabledBrush" Color="{StaticResource Oadm.TextOnAccentDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerBrush" Color="{StaticResource Oadm.DangerColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerHoverBrush" Color="{StaticResource Oadm.DangerHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerPressedBrush" Color="{StaticResource Oadm.DangerPressedColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerDisabledBrush" Color="{StaticResource Oadm.DangerDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.ButtonOnRaisedBrush" Color="{StaticResource Oadm.ButtonOnRaisedColor}" />
+      <SolidColorBrush x:Key="Oadm.ButtonOnRaisedHoverBrush" Color="{StaticResource Oadm.ButtonOnRaisedHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.BrandBrush" Color="{StaticResource Oadm.BrandColor}" />
+      <!-- Start splash only: the soft accent glow behind the logo, the one gradient of the app -->
+      <RadialGradientBrush x:Key="Oadm.SplashGlowBrush">
+        <GradientStop Offset="0" Color="#616C5CE7" />
+        <GradientStop Offset="0.45" Color="#1A6C5CE7" />
+        <GradientStop Offset="0.7" Color="#006C5CE7" />
+      </RadialGradientBrush>
+      <SolidColorBrush x:Key="Oadm.SelectionBrush" Color="{StaticResource Oadm.SelectionColor}" />
+      <SolidColorBrush x:Key="Oadm.SelectionHoverBrush" Color="{StaticResource Oadm.SelectionHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.TealBrush" Color="{StaticResource Oadm.TealColor}" />
+      <SolidColorBrush x:Key="Oadm.TextPrimaryBrush" Color="{StaticResource Oadm.TextPrimaryColor}" />
+      <SolidColorBrush x:Key="Oadm.TextSecondaryBrush" Color="{StaticResource Oadm.TextSecondaryColor}" />
+      <SolidColorBrush x:Key="Oadm.TextDisabledBrush" Color="{StaticResource Oadm.TextDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.TextOnAccentBrush" Color="{StaticResource Oadm.TextOnAccentColor}" />
+      <SolidColorBrush x:Key="Oadm.IconBrush" Color="{StaticResource Oadm.IconColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusOkBrush" Color="{StaticResource Oadm.StatusOkColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusWarningBrush" Color="{StaticResource Oadm.StatusWarningColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusErrorBrush" Color="{StaticResource Oadm.StatusErrorColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusNeutralBrush" Color="{StaticResource Oadm.StatusNeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusInfoBrush" Color="{StaticResource Oadm.StatusInfoColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusOkBackgroundBrush" Color="{StaticResource Oadm.StatusOkBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusWarningBackgroundBrush" Color="{StaticResource Oadm.StatusWarningBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusErrorBackgroundBrush" Color="{StaticResource Oadm.StatusErrorBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusNeutralBackgroundBrush" Color="{StaticResource Oadm.StatusNeutralBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusAccentBackgroundBrush" Color="{StaticResource Oadm.StatusAccentBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.GridRowHoverBrush" Color="{StaticResource Oadm.GridRowHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.SplitterGripBrush" Color="{StaticResource Oadm.SplitterGripColor}" />
+      <SolidColorBrush x:Key="Oadm.ChipOkBrush" Color="{StaticResource Oadm.ChipOkColor}" />
+      <SolidColorBrush x:Key="Oadm.ChipWarningBrush" Color="{StaticResource Oadm.ChipWarningColor}" />
+      <SolidColorBrush x:Key="Oadm.ChipErrorBrush" Color="{StaticResource Oadm.ChipErrorColor}" />
+      <SolidColorBrush x:Key="Oadm.ChipAccentBrush" Color="{StaticResource Oadm.ChipAccentColor}" />
+      <SolidColorBrush x:Key="Oadm.ChipNeutralBrush" Color="{StaticResource Oadm.ChipNeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.ChipTextBrush" Color="{StaticResource Oadm.ChipTextColor}" />
+      <SolidColorBrush x:Key="Oadm.OverlayBrush" Color="{StaticResource Oadm.OverlayColor}" />
+      <SolidColorBrush x:Key="Oadm.VideoBackgroundBrush" Color="{StaticResource Oadm.VideoBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.VideoDimBrush" Color="{StaticResource Oadm.VideoDimColor}" />
+      <SolidColorBrush x:Key="Oadm.VideoCoverBrush" Color="{StaticResource Oadm.VideoCoverColor}" />
+      <SolidColorBrush x:Key="Oadm.MenuBackgroundBrush" Color="{StaticResource Oadm.MenuBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.LogoBrush" Color="{StaticResource Oadm.LogoColor}" />
+      <SolidColorBrush x:Key="Oadm.TransparentBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="Oadm.Code.KeyBrush" Color="{StaticResource Oadm.Code.KeyColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.StringBrush" Color="{StaticResource Oadm.Code.StringColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.NumberBrush" Color="{StaticResource Oadm.Code.NumberColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.LiteralBrush" Color="{StaticResource Oadm.Code.LiteralColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.PunctuationBrush" Color="{StaticResource Oadm.Code.PunctuationColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.TagBrush" Color="{StaticResource Oadm.Code.TagColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.AttributeBrush" Color="{StaticResource Oadm.Code.AttributeColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.CommentBrush" Color="{StaticResource Oadm.Code.CommentColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.ErrorBrush" Color="{StaticResource Oadm.Code.ErrorColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.BlueBrush" Color="{StaticResource Oadm.Tag.BlueColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.GreenBrush" Color="{StaticResource Oadm.Tag.GreenColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.TealBrush" Color="{StaticResource Oadm.Tag.TealColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.AmberBrush" Color="{StaticResource Oadm.Tag.AmberColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.OrangeBrush" Color="{StaticResource Oadm.Tag.OrangeColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.RedBrush" Color="{StaticResource Oadm.Tag.RedColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.PinkBrush" Color="{StaticResource Oadm.Tag.PinkColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.VioletBrush" Color="{StaticResource Oadm.Tag.VioletColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.NeutralBrush" Color="{StaticResource Oadm.Tag.NeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.ChipBackgroundBrush" Color="{StaticResource Oadm.Tag.ChipBackgroundColor}" />
+
+      <!-- Sizes -->
+      <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
+      <x:Double x:Key="Oadm.NavWidthCollapsed">40</x:Double>
+      <x:Double x:Key="Oadm.NavWidthExpanded">204</x:Double>
+      <!-- Context menus and submenus: wide enough for task names (TaskPluginNames.MaxDisplayNameLength) -->
+      <x:Double x:Key="Oadm.MenuMinWidth">240</x:Double>
+      <Thickness x:Key="Oadm.NavMargin">8,4,8,16</Thickness>
+      <x:Double x:Key="Oadm.TitleBarHeight">32</x:Double>
+      <x:Double x:Key="Oadm.IconSize">16</x:Double>
+      <x:Double x:Key="Oadm.FontSizeBody">12</x:Double>
+      <x:Double x:Key="Oadm.FontSizeSmall">10</x:Double>
+      <x:Double x:Key="Oadm.FontSizeCardTitle">18</x:Double>
+      <x:Double x:Key="Oadm.FontSizePageTitle">22</x:Double>
+      <x:Double x:Key="Oadm.FontSizeStat">28</x:Double>
+      <x:Double x:Key="Oadm.FontSizeAppName">14</x:Double>
+      <x:Double x:Key="Oadm.FontSizeSplashWordmark">34</x:Double>
+      <x:Double x:Key="Oadm.GridRowHeight">34</x:Double>
+      <x:Double x:Key="Oadm.GridHeaderHeight">36</x:Double>
+      <x:Double x:Key="Oadm.ControlHeight">32</x:Double>
+      <x:Double x:Key="Oadm.SearchWidth">260</x:Double>
+      <x:Double x:Key="Oadm.SplitterHeight">16</x:Double>
+      <x:Double x:Key="Oadm.DevicesCardMinHeight">220</x:Double>
+      <!-- Device card keeps its toolbar on one line next to the live view; the live view never gets narrower than this -->
+      <x:Double x:Key="Oadm.DevicesCardMinWidth">900</x:Double>
+      <x:Double x:Key="Oadm.LiveViewMinWidth">320</x:Double>
+      <x:Double x:Key="Oadm.TagListMaxHeight">300</x:Double>
+      <x:Double x:Key="Oadm.ProseMaxHeight">220</x:Double>
+      <x:Double x:Key="Oadm.ProgressHeight">6</x:Double>
+      <x:Double x:Key="Oadm.Gap">16</x:Double>
+      <!-- Form rows (ui:FormField): label column, input column, gap between input and its error or hint -->
+      <x:Double x:Key="Oadm.FormLabelWidth">180</x:Double>
+      <x:Double x:Key="Oadm.FormLabelWidthCompact">120</x:Double>
+      <x:Double x:Key="Oadm.FormInputWidth">280</x:Double>
+      <Thickness x:Key="Oadm.FieldMessageMargin">0,4,0,0</Thickness>
+      <!-- Corner radii as in Microsoft's Fluent geometry: 8 for containers and layers (cards, menus, flyouts), 4 for
+           everything inside a page (buttons, inputs, rows, tiles); round elements keep their own radius. -->
+      <CornerRadius x:Key="Oadm.CardCornerRadius">8</CornerRadius>
+      <CornerRadius x:Key="Oadm.OverlayCornerRadius">8</CornerRadius>
+      <CornerRadius x:Key="Oadm.ControlCornerRadius">4</CornerRadius>
+      <CornerRadius x:Key="Oadm.PillCornerRadius">10</CornerRadius>
+      <CornerRadius x:Key="Oadm.ProgressCornerRadius">3</CornerRadius>
+      <Thickness x:Key="Oadm.CardPadding">20</Thickness>
+      <Thickness x:Key="Oadm.GridCardPadding">20,18,20,12</Thickness>
+      <Thickness x:Key="Oadm.PagePadding">8,0,16,16</Thickness>
+      <Thickness x:Key="Oadm.GapTop">0,16,0,0</Thickness>
+      <Thickness x:Key="Oadm.PillPadding">9,2</Thickness>
+      <Thickness x:Key="Oadm.NavItemPadding">12,9</Thickness>
+      <Thickness x:Key="Oadm.ToolbarButtonPadding">10,6</Thickness>
+      <FontFamily x:Key="Oadm.FontFamily">fonts:Inter#Inter</FontFamily>
+      <FontFamily x:Key="Oadm.FontFamilyMono">Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace</FontFamily>
+      <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter</FontFamily>
+      <x:Double x:Key="ControlContentThemeFontSize">12</x:Double>
+
+      <!-- Fluent DataGrid resources mapped onto the OADM palette -->
+      <SolidColorBrush x:Key="DataGridColumnHeaderForegroundBrush" Color="{StaticResource Oadm.TextSecondaryColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderHoveredBackgroundBrush" Color="{StaticResource Oadm.GridHeaderHoverColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderPressedBackgroundBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderDraggedBackgroundBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
+      <SolidColorBrush x:Key="DataGridRowHoveredBackgroundColor" Color="{StaticResource Oadm.GridRowHoverColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedBackgroundBrush" Color="{StaticResource Oadm.SelectionColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedHoveredBackgroundBrush" Color="{StaticResource Oadm.SelectionHoverColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedUnfocusedBackgroundBrush" Color="{StaticResource Oadm.SelectionColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundBrush" Color="{StaticResource Oadm.SelectionHoverColor}" />
+      <SolidColorBrush x:Key="DataGridGridLinesBrush" Color="{StaticResource Oadm.BorderColor}" />
+      <SolidColorBrush x:Key="DataGridCellFocusVisualPrimaryBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="DataGridCellFocusVisualSecondaryBrush" Color="Transparent" />
+      <x:Double x:Key="DataGridRowSelectedBackgroundOpacity">1</x:Double>
+      <x:Double x:Key="DataGridRowSelectedHoveredBackgroundOpacity">1</x:Double>
+      <x:Double x:Key="DataGridRowSelectedUnfocusedBackgroundOpacity">1</x:Double>
+      <x:Double x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundOpacity">1</x:Double>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <FluentTheme>
+    <FluentTheme.Palettes>
+      <ColorPaletteResources x:Key="Light"
+                             Accent="#6C5CE7"
+                             RegionColor="#F3F3F3"
+                             AltHigh="#FFFFFF"
+                             BaseHigh="#1A1A1A"
+                             BaseMedium="#616161"
+                             ErrorText="#C93C37" />
+      <ColorPaletteResources x:Key="Dark"
+                             Accent="#6C5CE7"
+                             RegionColor="#141414"
+                             AltHigh="#181818"
+                             BaseHigh="#F2F2F2"
+                             BaseMedium="#9A9A9A"
+                             ErrorText="#E5534B" />
+    </FluentTheme.Palettes>
+  </FluentTheme>
+  <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+
+  <!-- Base -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <!-- Our title bars draw their own title; hide the title text of Avalonia's drawn decorations -->
+  <Style Selector="chrome|WindowDrawnDecorations /template/ Panel#PART_TitleTextPanel TextBlock">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="chrome|WindowDrawnDecorations /template/ Button#PART_FullScreenButton">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <Style Selector="ui|OadmIcon">
+    <Setter Property="Width" Value="{StaticResource Oadm.IconSize}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.IconSize}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.IconBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Typography -->
+  <Style Selector="TextBlock.appName">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeAppName}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <!-- Crisp text: whole-pixel font sizes (above); subpixel anti-aliasing, strong hinting and pixel-aligned
+       baselines are applied to every window in code (App.ApplyCrispText), Avalonia 12 has no XAML property for them. -->
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizePageTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- Start splash (Shell/SplashWindow): "OADM" whose wide letter spacing pulls together, the subtitle and the progress
+       block fade in (timeline of mockups/loading/index.html). -->
+  <Style Selector="TextBlock.splashWordmark">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSplashWordmark}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Style.Animations>
+      <Animation Duration="0:0:1" Delay="0:0:2.1" FillMode="Both" Easing="CubicEaseOut">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0" />
+          <Setter Property="LetterSpacing" Value="17" />
+        </KeyFrame>
+        <KeyFrame Cue="60%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1" />
+          <Setter Property="LetterSpacing" Value="6" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="TextBlock.splashSubtitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Style.Animations>
+      <Animation Duration="0:0:0.6" Delay="0:0:2.1" FillMode="Both" Easing="CubicEaseOut">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="StackPanel.splashProgress">
+    <Setter Property="Width" Value="220" />
+    <Setter Property="Spacing" Value="10" />
+    <Style.Animations>
+      <Animation Duration="0:0:0.4" Delay="0:0:0.3" FillMode="Both" Easing="CubicEaseOut">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="StackPanel.splashProgress ProgressBar">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Value" Duration="0:0:0.6" Easing="CubicEaseInOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- Group header of the core plugin pages in the expanded navigation rail ("Servers", "Security", ...) -->
+  <Style Selector="TextBlock.navGroup">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <!-- The rail's group names in the accent (the lighter tone: small text on the dark rail) -->
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+    <Setter Property="Margin" Value="12,8,0,4" />
+  </Style>
+  <!-- Side subheader next to a page title: small, grey, bottom aligned (margin = measured baseline offset). -->
+  <Style Selector="TextBlock.pageSubtitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.cardTitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeCardTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.sectionTitle">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- A group heading inside a form after earlier groups (Settings: Polling, Discovery, Tasks, Server) -->
+  <Style Selector="TextBlock.sectionTitle.subsection">
+    <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <!-- Longer running text (terms of use): more line spacing -->
+  <Style Selector="TextBlock.prose">
+    <Setter Property="LineHeight" Value="19" />
+    <Setter Property="Margin" Value="0,0,12,0" />
+  </Style>
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <!-- The pairing code of the OADM Site Node app: large, mono, spaced, selectable -->
+  <Style Selector="SelectableTextBlock.pairingCode">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeStat}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="4" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <!-- Code in running text: a placeholder name such as {objectId} -->
+  <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+  </Style>
+  <!-- A key typed or pasted as it is: the license key of a plugin -->
+  <Style Selector="TextBox.mono">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+  </Style>
+  <Style Selector="TextBlock.small">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="TextBlock.warning">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+
+  <!-- Cards -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.CardPadding}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <!-- Monitoring card (ui:StatCard): status icon + title, a large count, a small detail line. The status colors icon and
+       count; neutral without one. -->
+  <!-- A StatCard is a Border subclass: Border.card does not reach it (type selectors do not match subclasses). -->
+  <Style Selector="ui|StatCard">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Padding" Value="16,14" />
+  </Style>
+  <Style Selector="ui|StatCard ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusNeutralBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard TextBlock.statTitle">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard TextBlock.statValue">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeStat}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard TextBlock.statDetail">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.ok ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.ok TextBlock.statValue">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.warn ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.warn TextBlock.statValue">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.error ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.error TextBlock.statValue">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <!-- A count card that filters a list (Compliance page): the button is invisible, the card shows hover and the chosen
+       card an accent border (a transparent border of the same width keeps the size). -->
+  <Style Selector="Button.statCardButton">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.statCardButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton ui|StatCard">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton:pointerover ui|StatCard">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton.selected ui|StatCard">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <!-- Small buttons on an item that show while the pointer is on it (Edit and Delete on a compliance card). -->
+  <Style Selector="Panel.hoverActions StackPanel.hoverActions">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="Panel.hoverActions:pointerover StackPanel.hoverActions">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <!-- Body of a single-operation dialog (one form, no card), padded like ui:MessageWindow. -->
+  <Style Selector="Border.dialogBody">
+    <Setter Property="Padding" Value="16,4,16,16" />
+  </Style>
+  <Style Selector="Border.separator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+  </Style>
+  <Style Selector="Border.vseparator">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="Margin" Value="6,6" />
+  </Style>
+
+  <!-- Status everywhere: ui:StatusChip = colored icon + plain text (no chips, no borders).
+       The same color classes color any OadmIcon, e.g. the device icon in the grid. -->
+  <Style Selector="ui|StatusChip ui|OadmIcon.statusIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusNeutralBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.ok ui|OadmIcon.statusIcon, ui|OadmIcon.ok">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.warn ui|OadmIcon.statusIcon, ui|OadmIcon.warn">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.error ui|OadmIcon.statusIcon, ui|OadmIcon.error">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.info ui|OadmIcon.statusIcon, ui|OadmIcon.info">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusInfoBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.accent ui|OadmIcon.statusIcon, ui|OadmIcon.accent">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.accent ui|OadmIcon.statusIcon">
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="ui|StatusChip TextBlock.statusText">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="DataGridCell ui|StatusChip">
+    <Setter Property="Margin" Value="10,0" />
+  </Style>
+  <Style Selector="DataGridCell ui|StatusChip TextBlock">
+    <Setter Property="Margin" Value="8,3,0,0" />
+  </Style>
+
+  <!-- No status dot on the device icon: the Status column already says it -->
+  <Style Selector="Ellipse.statusDot">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <!-- Count badge (navigation, tasks header): same chip look -->
+  <Style Selector="Border.badge">
+    <Setter Property="Background" Value="{StaticResource Oadm.ChipAccentBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.PillCornerRadius}" />
+    <Setter Property="MinWidth" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.badge TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.ChipTextBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Navigation rail -->
+  <Style Selector="Button.nav">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.NavItemPadding}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <!-- The pill and, like WinUI's NavigationView, a short accent bar at the left edge of the selected entry -->
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          <Border Name="PART_Indicator" Classes="navIndicator" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <!-- A short wobble of the icon when the pointer comes onto a rail entry (ui:IconLabel gives each icon its own RotateTransform) -->
+  <Style Selector="Button.nav:pointerover ui|OadmIcon">
+    <Style.Animations>
+      <Animation Duration="0:0:0.45" Easing="SineEaseInOut">
+        <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+        <KeyFrame Cue="25%"><Setter Property="RotateTransform.Angle" Value="-10" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="RotateTransform.Angle" Value="8" /></KeyFrame>
+        <KeyFrame Cue="75%"><Setter Property="RotateTransform.Angle" Value="-4" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Button.nav /template/ Border#PART_Indicator">
+    <Setter Property="Width" Value="3" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="CornerRadius" Value="1.5" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Button.nav.selected /template/ Border#PART_Indicator">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <!-- The logged-in user at the bottom of the rail: an initial avatar and the name in primary text, not clickable -->
+  <!-- The user at the bottom of the rail: looks like text, a click opens "Your role" -->
+  <!-- The logged-in user in the title bar (32 px high): avatar + name, opens "Your role" -->
+  <Style Selector="Button.titleUser">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.titleUser:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavHoverBrush}" />
+  </Style>
+  <Style Selector="Button.titleUser:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavSelectedBrush}" />
+  </Style>
+  <Style Selector="Button.titleUser TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="Border.avatar">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentMutedBrush}" />
+  </Style>
+  <Style Selector="Border.avatar TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavSelectedBrush}" />
+  </Style>
+  <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavSelectedBrush}" />
+  </Style>
+  <Style Selector="DockPanel.rail">
+    <Setter Property="Width" Value="{StaticResource Oadm.NavWidthCollapsed}" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.NavMargin}" />
+  </Style>
+  <Style Selector="DockPanel.rail.expanded">
+    <Setter Property="Width" Value="{StaticResource Oadm.NavWidthExpanded}" />
+  </Style>
+
+  <!-- Icon + text rows (buttons, menu entries, rail items): center both vertically -->
+  <!-- Icon + text rows are always ui:IconLabel (it owns centering and the Inter correction). -->
+  <Style Selector="StackPanel[Orientation=Horizontal] > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel[Orientation=Horizontal] > ui|OadmIcon">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Toolbar buttons: icon + text -->
+  <Style Selector="Button.toolbar">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.ToolbarButtonPadding}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar:disabled ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.iconOnly">
+    <Setter Property="Padding" Value="7" />
+  </Style>
+
+  <!-- Primary (accent) button -->
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.primary ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentPressedBrush}" />
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentDisabledBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.primary:disabled ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+
+  <!-- Danger button: every action and confirm button that deletes or removes something (red fill, white text).
+       Used instead of primary; MessageWindow uses it for confirm texts that start with Delete, Remove or Release. -->
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.danger ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerPressedBrush}" />
+  </Style>
+  <Style Selector="Button.danger:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerDisabledBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.danger:disabled ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+  <!-- Flat danger entries: toolbar buttons (Delete all) and row links (Delete, Release) in red text, no fill -->
+  <Style Selector="Button.toolbar.danger">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.toolbar.danger ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:disabled ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+
+  <!-- Secondary button (dialogs) -->
+  <Style Selector="Button.secondary">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,7" />
+  </Style>
+  <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+
+  <!-- Hyperlink-style button (device address) -->
+  <Style Selector="Button.link">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
+  </Style>
+  <Style Selector="Button.link:pointerover TextBlock">
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
+  <Style Selector="Button.link:pressed">
+    <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <Style Selector="Button.link.danger">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Button.link.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+
+  <!-- Inputs -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <!-- Every text field (also inside NumericUpDown and SearchBox): text vertically centered.
+         Measured: centered text boxes need no Inter correction (digit centers match the box). -->
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="10,0,8,0" />
+  </Style>
+  <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="NumericUpDown">
+    <!-- The inner text box takes padding and alignment from the NumericUpDown (TemplateBinding). -->
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="10,0,8,0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <!-- Selected item vertically centered. It is a plain TextBlock, so it needs the measured
+         Inter correction (top padding 3 moves the centered line 1.5 px down), unlike text boxes. -->
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="10,3,8,0" />
+  </Style>
+  <!-- Date and time pickers: the height, corners and text size of every input; narrower than Fluent's 296 px default -->
+  <Style Selector="DatePicker, TimePicker">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="DatePicker /template/ TextBlock, TimePicker /template/ TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="DatePicker">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Width" Value="240" />
+  </Style>
+  <Style Selector="TimePicker">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Width" Value="110" />
+  </Style>
+  <!-- The placeholder ("Presets", "Choose a camera") sits at the height of a chosen item's text (measured: 1 px lower
+       without). Its margin is bound to the padding in the template, so it is moved by a transform. -->
+  <Style Selector="ComboBox /template/ TextBlock#PlaceholderTextBlock">
+    <Setter Property="RenderTransform" Value="translate(0px, -1px)" />
+  </Style>
+  <Style Selector="ComboBox:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <!-- The focused select or number field shows it like a focused text box (also after a click, not only with Tab). -->
+  <Style Selector="ComboBox:focus /template/ Border#Background, ComboBox:focus:pointerover /template/ Border#Background">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="NumericUpDown:focus-within /template/ ButtonSpinner#PART_Spinner">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+
+  <!-- Grouped select field (ComboBox.grouped with ui:GroupedChoice items): grey group headers that cannot be chosen,
+       the choices indented below them; the closed box shows the chosen text without indent. -->
+  <Style Selector="ComboBox.grouped">
+    <!-- A fixed width: the box fills its form row and the open list keeps that width (long names wrap, the list scrolls) -->
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="ItemTemplate">
+      <DataTemplate x:DataType="ui:GroupedChoice">
+        <TextBlock Classes="groupedChoice" Classes.groupHeader="{Binding IsHeader}" Text="{Binding Text}" TextWrapping="Wrap" />
+      </DataTemplate>
+    </Setter>
+    <Setter Property="SelectionBoxItemTemplate">
+      <DataTemplate x:DataType="ui:GroupedChoice">
+        <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ComboBox.grouped ComboBoxItem" x:DataType="ui:GroupedChoice">
+    <Setter Property="IsEnabled" Value="{Binding IsSelectable}" />
+  </Style>
+  <Style Selector="TextBlock.groupedChoice">
+    <Setter Property="Margin" Value="16,0,0,0" />
+  </Style>
+  <Style Selector="TextBlock.groupedChoice.groupHeader">
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="ComboBox.grouped /template/ Popup#PART_Popup">
+    <Setter Property="Width" Value="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}" />
+  </Style>
+  <Style Selector="ComboBox.grouped ComboBoxItem:disabled">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- The shared device picker (ui:DevicePickerWindow): a plain list on the card, rows aligned with the header,
+       a line between rows like the grids -->
+  <Style Selector="ListBox.devicePicker">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.devicePicker ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
+  <!-- Validation (Vuetify-like): the error of an input is small red text directly below it, aligned with its
+       left edge, and the input gets a red border. Nothing is reserved while there is no error. Every input with
+       data validation (TextBox, ui:PasswordBox, NumericUpDown, ComboBox) shows its INotifyDataErrorInfo error
+       this way; ui:FormField shows the hint or an explicit error in the same place. -->
+  <Style Selector="DataValidationErrors">
+    <Setter Property="ErrorTemplate">
+      <DataTemplate>
+        <ItemsControl ItemsSource="{ReflectionBinding}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Classes="fieldMessage error" Margin="0" Text="{ReflectionBinding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="DataValidationErrors /template/ ContentControl#InlineDataValidationContentControl">
+    <Setter Property="Margin" Value="{StaticResource Oadm.FieldMessageMargin}" />
+  </Style>
+  <Style Selector="TextBlock.fieldMessage">
+    <!-- The UI font also below code fields (their monospace font would be inherited) -->
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.FieldMessageMargin}" />
+  </Style>
+  <Style Selector="TextBlock.fieldMessage.error">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="TextBox:error /template/ Border#PART_BorderElement, TextBox:error:pointerover /template/ Border#PART_BorderElement, TextBox:error:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="ComboBox:error /template/ Border#Background, ComboBox:error:pointerover /template/ Border#Background">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="NumericUpDown:error /template/ ButtonSpinner#PART_Spinner">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+
+  <!-- Form rows: every labeled input is a ui:FormField (label, input, error or hint below the input) -->
+  <Style Selector="ui|FormField">
+    <Setter Property="LabelWidth" Value="{StaticResource Oadm.FormLabelWidth}" />
+    <Setter Property="InputWidth" Value="{StaticResource Oadm.FormInputWidth}" />
+    <Setter Property="LabelHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="ui|FormField.wide">
+    <Setter Property="InputWidth" Value="NaN" />
+  </Style>
+  <Style Selector="ui|FormField.inline">
+    <Setter Property="LabelWidth" Value="NaN" />
+  </Style>
+  <!-- Narrow windows with short labels (login): a smaller label column -->
+  <Style Selector="StackPanel.compactForm ui|FormField">
+    <Setter Property="LabelWidth" Value="{StaticResource Oadm.FormLabelWidthCompact}" />
+  </Style>
+  <Style Selector="ui|FormField > ComboBox, ui|FormField > NumericUpDown">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+  <!-- An error below a select field must not shrink the field: the minimum height belongs to the box -->
+  <Style Selector="ComboBox /template/ Border#Background">
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <!-- Label level with the text of the input: plain text blocks need the measured Inter correction (as select fields) -->
+  <Style Selector="ui|FormField TextBlock.fieldLabel">
+    <Setter Property="Padding" Value="0,3,0,0" />
+  </Style>
+  <!-- Plain text as the field content (a read-only value): level with the label -->
+  <!-- Read-only values in a form row (also selectable ones such as a fingerprint) -->
+  <Style Selector="ui|FormField > :is(TextBlock)">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ui|FormField > CheckBox">
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="TextBlock.fieldLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <!-- Every checkbox: box and check mark at 80 % (16 px instead of Fluent's 20 px), scaled
+       around their own center so a checkbox centered in a cell stays exactly centered. -->
+  <Style Selector="CheckBox /template/ Border#NormalRectangle">
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Setter Property="RenderTransform" Value="scale(0.8)" />
+  </Style>
+  <Style Selector="CheckBox /template/ Viewbox">
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Setter Property="RenderTransform" Value="scale(0.8)" />
+  </Style>
+
+  <!-- Progress -->
+  <!-- The one progress bar. Class "stream" (set while work is running) shows the Vuetify-style
+       stream: a dotted line in the unfilled part that keeps flowing toward the filled part. -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ProgressHeight}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.ProgressHeight}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ProgressCornerRadius}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ProgressBar">
+        <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" ClipToBounds="True">
+          <Panel>
+            <Border Name="PART_Stream" IsVisible="False" Margin="0,0,-16,0" Opacity="0.55">
+              <Border.Background>
+                <DrawingBrush TileMode="Tile" DestinationRect="0,0,8,6" Stretch="None" AlignmentX="Left" AlignmentY="Top">
+                  <DrawingBrush.Drawing>
+                    <DrawingGroup>
+                      <GeometryDrawing Brush="Transparent" Geometry="M0,0 H8 V6 H0 Z" />
+                      <GeometryDrawing Brush="{StaticResource Oadm.AccentBrush}">
+                        <GeometryDrawing.Geometry>
+                          <EllipseGeometry Center="2,3" RadiusX="1.5" RadiusY="1.5" />
+                        </GeometryDrawing.Geometry>
+                      </GeometryDrawing>
+                    </DrawingGroup>
+                  </DrawingBrush.Drawing>
+                </DrawingBrush>
+              </Border.Background>
+              <Border.RenderTransform>
+                <TranslateTransform />
+              </Border.RenderTransform>
+            </Border>
+            <Border Name="PART_Indicator" Background="{TemplateBinding Foreground}"
+                    CornerRadius="{TemplateBinding CornerRadius}" HorizontalAlignment="Left" />
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ProgressBar.stream">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ProgressBar.stream /template/ Border#PART_Stream">
+    <Setter Property="IsVisible" Value="True" />
+    <Style.Animations>
+      <Animation Duration="0:0:0.4" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="-8" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Data grids -->
+  <Style Selector="DataGrid">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="GridLinesVisibility" Value="Horizontal" />
+    <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="RowHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="ColumnHeaderHeight" Value="{StaticResource Oadm.GridHeaderHeight}" />
+    <Setter Property="HeadersVisibility" Value="Column" />
+    <Setter Property="CanUserReorderColumns" Value="True" />
+    <Setter Property="CanUserResizeColumns" Value="True" />
+    <Setter Property="CanUserSortColumns" Value="True" />
+  </Style>
+  <Style Selector="DataGridColumnHeader">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Padding" Value="10,0,0,0" />
+    <Setter Property="SeparatorBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <!-- Header content fills its cell, so a right-aligned header (TextBlock.numberHeader) lines up with its numbers -->
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <!-- Numeric columns (days, offsets, scores, durations): cells with CellStyleClasses="number" and a header
+       <TextBlock Classes="numberHeader" Text="..." /> are right-aligned, so the values line up by digit -->
+  <Style Selector="DataGridCell.number TextBlock">
+    <Setter Property="TextAlignment" Value="Right" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="DataGridCell.number ui|StatusChip">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+  </Style>
+  <!-- Plain text in a left-aligned column whose other rows show chips: starts where the chip texts start
+       (cell margin 10 + icon 16 + gap 8) -->
+  <Style Selector="DataGridCell TextBlock.besideChips">
+    <Setter Property="Margin" Value="34,0,10,0" />
+  </Style>
+  <Style Selector="TextBlock.numberHeader">
+    <Setter Property="TextAlignment" Value="Right" />
+    <Setter Property="Margin" Value="0,0,10,0" />
+  </Style>
+  <Style Selector="DataGridCell">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="DataGridCell TextBlock">
+    <Setter Property="Margin" Value="10,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="DataGridCell Button.link TextBlock">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <!-- Editable cell (e.g. the new address in the address assignment table): fits the row height -->
+  <Style Selector="DataGridCell TextBox">
+    <Setter Property="Margin" Value="4,2" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- Grids whose status text matters (add page, reports, address tables): rows grow so a status chip shows two lines -->
+  <Style Selector="DataGrid.wrapRows">
+    <Setter Property="RowHeight" Value="NaN" />
+  </Style>
+  <Style Selector="DataGrid.wrapRows ui|StatusChip">
+    <Setter Property="MaxLines" Value="2" />
+  </Style>
+  <Style Selector="DataGrid.wrapRows DataGridCell ui|StatusChip">
+    <Setter Property="Margin" Value="10,6" />
+  </Style>
+  <!-- Long text of a grid cell (details, reasons): wraps to at most three lines in a wrapRows grid -->
+  <Style Selector="DataGrid.wrapRows DataGridCell TextBlock.cellText">
+    <Setter Property="Margin" Value="10,6" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="MaxLines" Value="3" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="DataGridRow.muted">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+  <!-- Rows that cannot be selected (e.g. protected accounts in the Users dialog): greyed like muted rows -->
+  <Style Selector="DataGridRow:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+
+  <!-- Splitter between the device card and the tasks card -->
+  <Style Selector="GridSplitter.paneSplitter">
+    <Setter Property="Height" Value="{StaticResource Oadm.SplitterHeight}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="ResizeDirection" Value="Rows" />
+    <Setter Property="Cursor" Value="SizeNorthSouth" />
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}">
+          <Border Name="grip" Width="40" Height="4" CornerRadius="2"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Background="{StaticResource Oadm.SplitterGripBrush}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="GridSplitter.paneSplitter:pointerover /template/ Border#grip">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+
+  <!-- Same splitter between the device card and the live view panel (side by side) -->
+  <Style Selector="GridSplitter.paneSplitter.vertical">
+    <Setter Property="Height" Value="NaN" />
+    <Setter Property="Width" Value="{StaticResource Oadm.SplitterHeight}" />
+    <Setter Property="ResizeDirection" Value="Columns" />
+    <Setter Property="Cursor" Value="SizeWestEast" />
+  </Style>
+  <Style Selector="GridSplitter.paneSplitter.vertical /template/ Border#grip">
+    <Setter Property="Width" Value="4" />
+    <Setter Property="Height" Value="40" />
+  </Style>
+
+  <!-- Live view -->
+  <Style Selector="ui|IconLabel.sectionTitle TextBlock">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.liveViewSurface">
+    <Setter Property="Background" Value="{StaticResource Oadm.VideoBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="MinHeight" Value="120" />
+  </Style>
+  <!-- Live video (LiveView/LiveVideoView): small dark plates over the picture at its edges; the hover parts show only while
+       the pointer is over the picture -->
+  <Style Selector="Border.liveVideo :is(Control).videoHover">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Border.liveVideo:pointerover :is(Control).videoHover">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Border.videoOverlay">
+    <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="Border.videoOverlay.videoError">
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Margin" Value="16" />
+  </Style>
+  <Style Selector=":is(Control).videoCorner">
+    <Setter Property="Margin" Value="8" />
+  </Style>
+  <Style Selector="StackPanel.videoCorner, StackPanel.videoRow">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="StackPanel.videoWaiting">
+    <Setter Property="Spacing" Value="12" />
+    <Setter Property="Margin" Value="16" />
+  </Style>
+  <Style Selector="Border.videoOverlay.videoReason">
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="MaxWidth" Value="420" />
+  </Style>
+  <Style Selector="TextBlock.videoReason">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <!-- The details card top right: label and value rows -->
+  <Style Selector="Border.videoOverlay.videoDetails">
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+  <Style Selector="TextBlock.videoDetails, TextBlock.videoDetailLabel">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Margin" Value="0,1" />
+  </Style>
+  <Style Selector="TextBlock.videoDetails">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.videoDetailLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0,1,12,1" />
+  </Style>
+  <Style Selector="Border.videoOverlay ui|StatusChip">
+    <Setter Property="Margin" Value="4,0" />
+  </Style>
+  <Style Selector="Window.fullscreenVideo">
+    <Setter Property="Background" Value="{StaticResource Oadm.VideoBackgroundBrush}" />
+  </Style>
+  <Style Selector="Window.fullscreenVideo Border.liveViewSurface">
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+  <!-- Indeterminate progress ring (ui:ProgressRing): accent arc on a faint circle, one turn per second -->
+  <Style Selector="ui|ProgressRing[IsVisible=True]">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Track" Value="{StaticResource Oadm.BorderBrush}" />
+    <Style.Animations>
+      <Animation Duration="0:0:1" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Loading cover of a dialog (ui:LoadingOverlay): hides the content completely (window background), ring and text in
+       the middle -->
+  <Style Selector="ui|LoadingOverlay">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+  </Style>
+  <Style Selector="ui|LoadingOverlay TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+
+  <!-- Zoom and focus bar over the bottom of the live picture (LiveView/OpticsBar): the dark overlay, small labels and
+       values, sliders that take the rest of the row. -->
+  <Style Selector="Border.opticsBar">
+    <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Margin" Value="8,8,0,8" /><!-- the controls button follows at the right in the same row -->
+  </Style>
+  <Style Selector="TextBlock.opticsLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Slider.optics">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="MinWidth" Value="80" />
+    <Setter Property="Margin" Value="0,-8" />
+  </Style>
+  <!-- A small knob (12 px instead of Fluent's 20) -->
+  <Style Selector="Slider.optics /template/ Thumb">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+  </Style>
+
+  <!-- Picture tile (snapshot report grid): raised surface, accent outline when selected.
+       The picture inside sits on a Border.liveViewSurface. -->
+  <Style Selector="Border.tile">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="10" />
+    <Setter Property="Margin" Value="0,0,12,12" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <!-- Selection shows by the tile's check box only; the accent outline marks the tile under the pointer or the keyboard focus -->
+  <Style Selector="Border.tile:pointerover, Border.tile:focus-within">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <!-- Clickable picture (tile picture opens the large preview): no button chrome -->
+  <Style Selector="Button.picture">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.picture:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.picture:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <!-- Segmented switch (live view source: view area / sensor / channel) -->
+  <Style Selector="Border.segmented">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="Button.segment">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="MinWidth" Value="28" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="Button.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.segment.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+
+  <!-- A list that only shows (Your role): no background of its own, rows cannot be selected -->
+  <Style Selector="ListBox.readOnlyList">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.readOnlyList ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Focusable" Value="False" />
+  </Style>
+  <Style Selector="ListBox.readOnlyList ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.readOnlyList ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- The device tree (ui:DeviceTree: tag groups and devices, one list) and the page tabs (ui:PageTab) of Web View and Live View -->
+  <Style Selector="ListBox.deviceTree">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.deviceTree ListBoxItem">
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="StackPanel.deviceTreeDevice">
+    <Setter Property="Margin" Value="20,0,0,0" />
+  </Style>
+  <Style Selector="TextBlock.treeGroup">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="Border.browserTab">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+    <Setter Property="CornerRadius" Value="4,4,0,0" />
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="Padding" Value="10,0,2,0" />
+    <Setter Property="MaxWidth" Value="240" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Border.browserTab:pointerover">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Border.browserTab.active">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.browserTab TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.browserTab.active TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+
+  <!-- ui:TileGrid (Live View, Dashboards): a tile (its content, the edit frame with the name and X; its edges resize) -->
+  <Style Selector=":is(Panel).tile">
+    <Setter Property="Background" Value="{StaticResource Oadm.VideoBackgroundBrush}" />
+    <Setter Property="Margin" Value="1" />
+  </Style>
+  <Style Selector="Border.tileEdit">
+    <Setter Property="Background" Value="{StaticResource Oadm.VideoCoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="8,2,2,2" />
+  </Style>
+  <!-- The copy icon and the X of a tile's edit frame: compact, close together and close to the corner (also the red X) -->
+  <Style Selector="Border.tileEdit Button.toolbar.iconOnly">
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="MinWidth" Value="0" />
+  </Style>
+  <!-- While editing every tile has a thin grey frame; the selected ones (whose settings the page shows) the accent -->
+  <Style Selector=":is(Panel).tile.selected > Border.tileEdit">
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <!-- The tile under the pointer (outside editing): a thin accent frame over it -->
+  <Style Selector="Border.tileHover">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector=":is(Panel).tile:not(.editing):pointerover > Border.tileHover">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="TextBlock.tileTitle">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- The left card of Live View: 300 wide, collapsed like the navigation rail -->
+  <Style Selector="Border.viewsPanel">
+    <Setter Property="Width" Value="300" />
+  </Style>
+  <Style Selector="Border.viewsPanel.collapsed">
+    <Setter Property="Width" Value="56" />
+    <Setter Property="Padding" Value="6,12" />
+  </Style>
+  <Style Selector="Button.viewsToggle">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <Style Selector="Border.viewsPanel.collapsed Button.viewsToggle">
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <!-- Dashboards: a value widget (name, value, note), the panel of the selected widget right of the grid, a color swatch -->
+  <Style Selector=":is(Border).dashboardWidget">
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <!-- A tile that is no video (a value widget): no video background, it sits on the card -->
+  <Style Selector=":is(Panel).tile.valueTile">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.dashboardPanel">
+    <Setter Property="Width" Value="380" />
+    <Setter Property="Padding" Value="16,4,4,12" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1,0,0,0" />
+  </Style>
+  <Style Selector="Border.colorSwatch">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- The cells a selection rectangle covers while dragging over a ui:TileGrid -->
+  <Style Selector="Border.tileSelection">
+    <Setter Property="Background" Value="{StaticResource Oadm.SelectionBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Opacity" Value="0.6" />
+  </Style>
+  <!-- Where an item dragged onto a ui:TileGrid would land -->
+  <Style Selector="Border.dropPreview">
+    <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Margin" Value="1" />
+  </Style>
+  <Style Selector="Border.dropPreview TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="StackPanel.viewsCollapsed">
+    <Setter Property="Spacing" Value="4" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <!-- Icon buttons at the right end of a list row (Edit, Delete), close together -->
+  <Style Selector="StackPanel.rowActions">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="Spacing" Value="0" />
+    <Setter Property="Margin" Value="0,-4,-6,-4" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.rowActions > Button.iconOnly">
+    <Setter Property="Padding" Value="5" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="Border.dragGhost">
+    <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+
+  <!-- Wizard steps (ui:WizardSteps): numbered dot + name per step, thin line between; current accent, done with a check -->
+  <Style Selector="Button.wizardStep">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.wizardStep:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.wizardStep:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot.done">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot.current">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardNumber">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot.current TextBlock.wizardNumber">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="ui|OadmIcon.wizardCheck">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardLabel.later">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardLabel.current">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.wizardLine">
+    <Setter Property="Width" Value="40" />
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Margin" Value="8,0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+  </Style>
+  <Style Selector="Border.wizardLine.done">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+
+  <!-- Device icon cell: opens the live view of video devices -->
+  <Style Selector="Button.liveViewIcon">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:disabled">
+    <Setter Property="Cursor" Value="Arrow" />
+  </Style>
+
+  <!-- Menus and flyouts -->
+  <Style Selector="MenuFlyoutPresenter, ContextMenu">
+    <Setter Property="Background" Value="{StaticResource Oadm.MenuBackgroundBrush}" />
+    <Setter Property="MinWidth" Value="{StaticResource Oadm.MenuMinWidth}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.OverlayCornerRadius}" />
+  </Style>
+  <Style Selector="FlyoutPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.MenuBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.OverlayCornerRadius}" />
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <!-- Submenu popups have no presenter of their own: their entries carry the minimum width -->
+  <Style Selector="ContextMenu MenuItem, MenuFlyoutPresenter MenuItem">
+    <Setter Property="MinWidth" Value="{StaticResource Oadm.MenuMinWidth}" />
+  </Style>
+  <!-- Same alignment as ui:IconLabel: icon and header text centered (measured: no Inter correction with crisp text) -->
+  <Style Selector="MenuItem /template/ ContentPresenter#PART_IconPresenter">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <!-- The entry whose submenu is open stays highlighted, so the user sees where the submenu belongs -->
+  <Style Selector="MenuItem:open /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+
+  <!-- Toolbar entries moved into the More menu (ToolbarOverflowPanel): one per line, left-aligned -->
+  <Style Selector="StackPanel.toolbarOverflow > Button">
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  </Style>
+
+  <!-- Dialog windows (WindowDecorations BorderOnly, no system title bar): header with the title as a heading and an X
+       on the right, aligned with the content; card headings, button row -->
+  <Style Selector="ui|DialogTitleBar">
+    <Setter Property="Padding" Value="16,20,16,12" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ui|CardHeader">
+    <Setter Property="Margin" Value="0,0,0,16" />
+  </Style>
+  <!-- Header whose following content is optional: that content adds the gap itself (Oadm.GapTop) -->
+  <Style Selector="ui|CardHeader.flush">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="ui|DialogFooter">
+    <Setter Property="Margin" Value="16" />
+  </Style>
+  <!-- Form rows in cards: label column left, input right (same as the wizard steps) -->
+  <Style Selector="Grid.form">
+    <Setter Property="RowSpacing" Value="10" />
+  </Style>
+  <Style Selector="StackPanel.form">
+    <Setter Property="Spacing" Value="10" />
+  </Style>
+
+  <!-- Multi-line code fields: request and response bodies, headers (VAPIX Commander) -->
+  <Style Selector="TextBox.code">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="AcceptsReturn" Value="True" />
+    <Setter Property="TextWrapping" Value="NoWrap" />
+  </Style>
+
+  <!-- The inputs of a radio button choice, directly below it and indented to its text (date and time dialog) -->
+  <Style Selector="StackPanel.optionDetail">
+    <Setter Property="Margin" Value="28,0,0,0" />
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+
+  <!-- The one read-only code display (ui:CodeView): response bodies and headers, highlighted -->
+  <!-- ui:CodeEditor: the text box keeps caret, selection and background; its text is transparent and the colored copy
+       (TextBlock.codeEditorText, same font) is drawn over it -->
+  <Style Selector="TextBox.codeEditorInput">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="SelectionForegroundBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="CaretBrush" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="TextBox.codeEditorInput:focus">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="TextBox.codeEditorInput:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="TextBlock.codeEditorText">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="ui|CodeView">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ui|CodeView SelectableTextBlock.code">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="SelectionBrush" Value="{StaticResource Oadm.SelectionBrush}" />
+    <Setter Property="Margin" Value="10,8" />
+  </Style>
+
+  <!-- Trees (command library) -->
+  <Style Selector="TreeViewItem">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="MinHeight" Value="30" />
+  </Style>
+
+  <!-- The one search field -->
+  <Style Selector="ui|SearchBox">
+    <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
+  </Style>
+  <!-- A search box filling a narrow side card (VAPIX Commander library and targets) -->
+  <Style Selector="ui|SearchBox.stretch">
+    <Setter Property="Width" Value="NaN" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+
+  <!-- Inline editor below a list (add devices page: log in, set password) -->
+  <!-- Event rule dialog: one condition or action on a raised surface; a check list (devices, tags) in a framed box;
+       weekday toggles of a schedule -->
+  <!-- I/O Monitor: the device faceplate. A terminal per port: the contact drawn open or closed (green while active), name
+       and port number. -->
+  <Style Selector="Border.ioFaceplate">
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="TextBlock.ioFaceplateTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="LetterSpacing" Value="1" />
+  </Style>
+  <Style Selector="TextBlock.ioRowLabel">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="LetterSpacing" Value="2" />
+  </Style>
+  <Style Selector="Border.ioTerminalBlock">
+    <Setter Property="Padding" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="StackPanel.ioTerminal">
+    <Setter Property="Width" Value="76" />
+    <Setter Property="Spacing" Value="6" />
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="Canvas.ioContact">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Ellipse.ioContactPin">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Fill" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Path.ioContactLever">
+    <Setter Property="Stroke" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="StrokeThickness" Value="2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+  </Style>
+  <Style Selector="Path.ioContactLever.active">
+    <Setter Property="Stroke" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="TextBlock.ioPortName">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.ioPortNumber">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <!-- When / And / Then rows of the rule dialog: outlined, no fill -->
+  <Style Selector="Border.ruleItem">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14" />
+  </Style>
+  <Style Selector="Border.pickList">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ToggleButton.day">
+    <Setter Property="MinWidth" Value="48" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ToggleButton.day:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <!-- Read-only details inside a card (e.g. the configuration file of Configure devices): darker than the card, so it never
+       looks like a button -->
+  <Style Selector="Border.infoBlock">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,10" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.GapTop}" />
+  </Style>
+
+  <Style Selector="Border.inlineEditor">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.GapTop}" />
+  </Style>
+  <!-- Secondary buttons on the raised editor get a lighter fill, so they keep their button shape -->
+  <Style Selector="Border.inlineEditor Button.secondary">
+    <Setter Property="Background" Value="{StaticResource Oadm.ButtonOnRaisedBrush}" />
+  </Style>
+  <Style Selector="Border.inlineEditor Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.ButtonOnRaisedHoverBrush}" />
+  </Style>
+  <!-- Input row above a list (IP range, address) -->
+  <Style Selector="StackPanel.inputRow">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="Spacing" Value="10" />
+    <Setter Property="Margin" Value="0,0,0,12" />
+  </Style>
+  <!-- An input row that wraps onto a second line when the window is narrow (small or scaled screens) -->
+  <Style Selector="WrapPanel.inputRow">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="ItemSpacing" Value="10" />
+    <Setter Property="LineSpacing" Value="10" />
+    <Setter Property="Margin" Value="0,0,0,12" />
+  </Style>
+  <!-- Top-aligned so an error appearing below one input moves nothing else in the row -->
+  <Style Selector="StackPanel.inputRow > :is(Control), WrapPanel.inputRow > :is(Control), Grid.inputRow > :is(Control)">
+    <Setter Property="VerticalAlignment" Value="Top" />
+  </Style>
+  <!-- Radio buttons and check boxes in an input row: the height of the inputs, centered on their middle -->
+  <Style Selector="StackPanel.inputRow > RadioButton, StackPanel.inputRow > CheckBox, WrapPanel.inputRow > RadioButton, WrapPanel.inputRow > CheckBox">
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <!-- Several inputs in one form field (e.g. API and version): the field's row spacing applies, not the row margin -->
+  <Style Selector="ui|FormField StackPanel.inputRow">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+
+  <!-- Connection banner -->
+  <Style Selector="Border.banner">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.banner > TextBlock, Border.banner > DockPanel > TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.banner.connecting, Border.banner.warning">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusWarningBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.banner.connecting > TextBlock, Border.banner.warning > DockPanel > TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+
+  <!-- Device tags: chips of the Tags column (name in the tag color on a subtle pill), "+N", color dots, the palette picker -->
+  <Style Selector="Border.tagChip">
+    <Setter Property="Background" Value="{StaticResource Oadm.Tag.ChipBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.PillCornerRadius}" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="Margin" Value="0,0,4,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <!-- Long names (up to 64 characters) end with "…"; the list's tooltip names every tag in full. -->
+    <Setter Property="MaxWidth" Value="200" />
+  </Style>
+  <Style Selector="Border.tagChip TextBlock, DataGridCell Border.tagChip TextBlock">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.tagMore, DataGridCell TextBlock.tagMore">
+    <Setter Property="Margin" Value="2,0,0,0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="TextTrimming" Value="None" />
+  </Style>
+  <Style Selector="Ellipse.tagDot">
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="10" />
+    <Setter Property="Margin" Value="8,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Grid.tagRow">
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="Grid.tagRow > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.colorSwatch">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="Padding" Value="3" />
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.colorSwatch:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+  </Style>
+  <Style Selector="Button.colorSwatch.selected /template/ ContentPresenter#PART_ContentPresenter, Button.colorSwatch.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Ellipse.tagSwatch">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+  </Style>
+  <!-- A toolbar toggle that is on (Group by tag): the pressed look stays -->
+  <Style Selector="Button.toolbar.active /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.active ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+
+  <!-- A grouped grid (Plugins page): chevron + the group name (the group key's text), collapsible; the same look as the
+       tag groups without the color -->
+  <Style Selector="DataGrid.groups DataGridRowGroupHeader">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Template">
+      <ControlTemplate x:DataType="collections:DataGridCollectionViewGroup">
+        <dgp:DataGridFrozenGrid Name="PART_Root" Background="{TemplateBinding Background}" MinHeight="{TemplateBinding MinHeight}"
+                                ColumnDefinitions="Auto,Auto,Auto,Auto,*" RowDefinitions="*,Auto">
+          <Rectangle Name="PART_IndentSpacer" Grid.Column="1" />
+          <ToggleButton Name="PART_ExpanderButton" Grid.Column="2" Classes="groupExpander" Margin="8,0,0,0" Focusable="False" />
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
+            <TextBlock Classes="groupHeader" Text="{Binding Key}" />
+            <TextBlock Name="PART_PropertyNameElement" IsVisible="False" />
+            <TextBlock Name="PART_ItemCountElement" IsVisible="False" />
+          </StackPanel>
+          <DataGridRowHeader Name="PART_RowHeader" Grid.RowSpan="2" dgp:DataGridFrozenGrid.IsFrozen="True" />
+        </dgp:DataGridFrozenGrid>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <!-- Expand / collapse of a group: chevron right (collapsed) or down (expanded) -->
+  <Style Selector="ToggleButton.groupExpander">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{StaticResource Oadm.TransparentBrush}" Padding="4">
+          <ui:OadmIcon Name="PART_Chevron" Data="{StaticResource Icon.chevronRight}" Width="14" Height="14" Foreground="{StaticResource Oadm.TextSecondaryBrush}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.groupExpander:checked /template/ ui|OadmIcon#PART_Chevron">
+    <Setter Property="Data" Value="{StaticResource Icon.chevronDown}" />
+  </Style>
+  <Style Selector="TextBlock.groupHeader">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- Parts of a list row that line up with the row's input (check box, name, hint): the height of an input, centered -->
+  <Style Selector=":is(Control).inputHeight">
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="CheckBox.inputHeight">
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.inputHeight > :is(Control)">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+</Styles>

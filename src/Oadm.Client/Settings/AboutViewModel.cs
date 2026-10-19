@@ -93,14 +93,8 @@ public sealed partial class AboutViewModel : ObservableObject
     /// <summary>TERMS.md of the repository, embedded in the client.</summary>
     public static (string Title, string Body) Terms { get; } = ReadTerms();
 
-    private static (string Title, string Body) ReadTerms()
-    {
-        using var stream = typeof(AboutViewModel).Assembly.GetManifestResourceStream("Oadm.Client.TERMS.md")
-            ?? throw new InvalidOperationException("TERMS.md is not embedded in the client.");
-        using var reader = new StreamReader(stream);
-        var parts = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal).Trim().Split('\n', 2);
-        return (parts[0].Trim(), parts.Length > 1 ? parts[1].Trim() : string.Empty);
-    }
+    private static (string Title, string Body) ReadTerms() =>
+        Theme.Shell.TermsText.Parse(Theme.Shell.TermsText.Resource(typeof(AboutViewModel).Assembly, "Oadm.Client.TERMS.md"));
 
     public string ClientVersion { get; } = VersionOf(typeof(AboutViewModel).Assembly);
 

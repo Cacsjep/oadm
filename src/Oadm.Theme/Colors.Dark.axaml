@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
     OADM colors, dark appearance (the default). The keys must match the other appearance's file (ThemeColorsTests);
-    loaded by OadmColors (Themes/OadmColors.cs), brushes and styles are in OadmTheme.axaml.
+    loaded by OadmColors (OadmColors.cs), brushes and styles are in OadmTheme.axaml.
   -->
   <Color x:Key="Oadm.WindowBackgroundColor">#141414</Color>
   <Color x:Key="Oadm.CardBackgroundColor">#181818</Color>

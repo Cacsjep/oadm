@@ -1,0 +1,9 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Oadm.SiteNode.App.App"
+             RequestedThemeVariant="Default">
+  <!-- The shared OADM theme (src/Oadm.Theme); App.Initialize takes the OS's dark or light setting before it loads. -->
+  <Application.Styles>
+    <StyleInclude Source="avares://Oadm.Theme/OadmTheme.axaml" />
+  </Application.Styles>
+</Application>

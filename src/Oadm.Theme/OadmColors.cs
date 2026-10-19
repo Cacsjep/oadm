@@ -2,9 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 
-namespace Oadm.Client.Themes;
+namespace Oadm.Theme;
 
-/// <summary>The appearance of the client (Settings > This computer); applies at the next start.</summary>
+/// <summary>The appearance: the client's Settings > This computer (applies at the next start), the OS setting in the OADM Site Node app.</summary>
 public enum Appearance
 {
     Dark,
@@ -28,5 +28,5 @@ public sealed class OadmColors : ResourceDictionary
     public static ThemeVariant VariantOf(Appearance appearance) => appearance == Appearance.Light ? ThemeVariant.Light : ThemeVariant.Dark;
 
     public static ResourceDictionary Load(Appearance appearance) =>
-        (ResourceDictionary)AvaloniaXamlLoader.Load(new Uri($"avares://Oadm.Client/Themes/Colors.{appearance}.axaml"));
+        (ResourceDictionary)AvaloniaXamlLoader.Load(new Uri($"avares://Oadm.Theme/Colors.{appearance}.axaml"));
 }
