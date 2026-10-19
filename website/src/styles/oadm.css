@@ -662,8 +662,14 @@ header .social-icons::after {
 	text-decoration: underline;
 }
 
-.downloads .community-label {
+.downloads .community-label,
+.downloads .site-node-label {
 	margin-top: 0.25rem;
+}
+
+/* The site node buttons sit below the OADM ones; Community keeps its distance to them. */
+.downloads .site-node-label ~ .community-label {
+	margin-top: 15px;
 }
 
 .downloads .learning-label {
