@@ -1420,6 +1420,15 @@
     <Setter Property="MaxWidth" Value="240" />
     <Setter Property="Cursor" Value="Hand" />
   </Style>
+  <!-- The scrolling content of a tab (OADM Site Node app): room for the scroll bar right of the content -->
+  <Style Selector="ScrollViewer.tabPage">
+    <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="Padding" Value="0,0,16,0" />
+  </Style>
+  <!-- A fixed tab without a close button (the tabs of the OADM Site Node app) -->
+  <Style Selector="Border.browserTab.fixed">
+    <Setter Property="Padding" Value="12,0" />
+  </Style>
   <Style Selector="Border.browserTab:pointerover">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
   </Style>
@@ -1432,6 +1441,9 @@
   </Style>
   <Style Selector="Border.browserTab.active TextBlock">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Border.browserTab Border.badge TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.ChipTextBrush}" />
   </Style>
 
   <!-- ui:TileGrid (Live View, Dashboards): a tile (its content, the edit frame with the name and X; its edges resize) -->
