@@ -168,6 +168,7 @@ public partial class DevicesView : UserControl
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.TagGrouping.GroupsChanged -= OnGroupsChanged;
             _viewModel.TagGrouping.Rows.CollectionChanged -= OnGroupRowsChanged;
+            _viewModel.Compliance.ChecksChanged -= OnComplianceChecksChanged;
             _viewModel = null;
         }
 
@@ -184,6 +185,54 @@ public partial class DevicesView : UserControl
             _liveView = vm.LiveView;
             _liveView.PropertyChanged += OnLiveViewPropertyChanged;
             ApplyLiveViewColumns();
+            vm.Compliance.ChecksChanged += OnComplianceChecksChanged;
+            ApplyComplianceColumns();
+        }
+    }
+
+    private const string CheckColumnPrefix = "check:";
+    private IReadOnlyList<(string Id, string Name)> _checkColumns = [];
+
+    private void OnComplianceChecksChanged(object? sender, EventArgs e) => ApplyComplianceColumns();
+
+    /// <summary>
+    /// The Compliance column (worst result), or with "Show each compliance check" one column per check that is on, after
+    /// the Compliance column's place; none while the role may not see compliance.
+    /// </summary>
+    private void ApplyComplianceColumns()
+    {
+        if (_viewModel is not { } vm)
+        {
+            return;
+        }
+
+        var expanded = vm.ExpandCompliance && vm.HasCompliance;
+        DeviceGrid.Classes.Set("complianceExpanded", expanded);
+        DeviceGrid.Classes.Set("noCompliance", !vm.HasCompliance);
+        if (DeviceGrid.Columns.FirstOrDefault(c => c.Tag as string == ColumnLayoutViewModel.ComplianceKey) is { } summary)
+        {
+            summary.IsVisible = (vm.Columns.Find(ColumnLayoutViewModel.ComplianceKey)?.IsVisible ?? true)
+                && !DeviceGridLayoutBinder.HiddenByGroupMode(DeviceGrid, ColumnLayoutViewModel.ComplianceKey);
+        }
+
+        var wanted = expanded ? vm.Compliance.Checks.Where(c => c.Enabled).Select(c => (c.Id, c.Name)).ToList() : [];
+        if (wanted.SequenceEqual(_checkColumns))
+        {
+            return;
+        }
+
+        _checkColumns = wanted;
+        foreach (var column in DeviceGrid.Columns.Where(c => c.Tag is string tag && tag.StartsWith(CheckColumnPrefix, StringComparison.Ordinal)).ToList())
+        {
+            DeviceGrid.Columns.Remove(column);
+        }
+
+        var at = DeviceGrid.Columns.FirstOrDefault(c => c.Tag as string == ColumnLayoutViewModel.ComplianceKey)?.DisplayIndex ?? DeviceGrid.Columns.Count;
+        foreach (var check in expanded ? vm.Compliance.Checks.Where(c => c.Enabled) : [])
+        {
+            var column = Compliance.ComplianceView.CheckColumn(vm.Compliance, check);
+            DeviceGrid.Columns.Add(column);
+            column.DisplayIndex = Math.Min(++at, DeviceGrid.Columns.Count - 1);
         }
     }
 
@@ -192,6 +241,10 @@ public partial class DevicesView : UserControl
         if (e.PropertyName == nameof(DevicesViewModel.GroupByTag))
         {
             ApplyItemsSource();
+        }
+        else if (e.PropertyName is nameof(DevicesViewModel.ExpandCompliance) or nameof(DevicesViewModel.HasCompliance))
+        {
+            ApplyComplianceColumns();
         }
     }
 

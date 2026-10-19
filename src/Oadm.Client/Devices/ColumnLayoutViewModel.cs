@@ -25,6 +25,9 @@ public sealed class ColumnLayoutViewModel
 {
     public const string IconKey = "icon";
 
+    /// <summary>The Compliance column (the worst result); hidden while each check has its own column.</summary>
+    public const string ComplianceKey = "compliance";
+
     /// <summary>Default columns in the order of the spec table.</summary>
     public static IReadOnlyList<(string Key, string Header)> DefaultColumns { get; } =
     [
@@ -32,6 +35,7 @@ public sealed class ColumnLayoutViewModel
         ("address", "Address"),
         ("model", "Model"),
         ("status", "Status"),
+        (ComplianceKey, "Compliance"),
         ("mac", "MAC address"),
         ("firmware", "Firmware"),
         ("soc", "SoC"),
@@ -80,6 +84,20 @@ public sealed class ColumnLayoutViewModel
             if (_settings.Current.GroupDevicesByTag != value)
             {
                 _settings.Current.GroupDevicesByTag = value;
+                _settings.Save();
+            }
+        }
+    }
+
+    /// <summary>The device grid shows one column per compliance check, persisted per client.</summary>
+    public bool ExpandCompliance
+    {
+        get => _settings.Current.ExpandCompliance;
+        set
+        {
+            if (_settings.Current.ExpandCompliance != value)
+            {
+                _settings.Current.ExpandCompliance = value;
                 _settings.Save();
             }
         }

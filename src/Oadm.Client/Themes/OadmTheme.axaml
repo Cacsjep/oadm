@@ -394,7 +394,11 @@
   </Style>
   <!-- Monitoring card (ui:StatCard): status icon + title, a large count, a small detail line. The status colors icon and
        count; neutral without one. -->
+  <!-- A StatCard is a Border subclass: Border.card does not reach it (type selectors do not match subclasses). -->
   <Style Selector="ui|StatCard">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
     <Setter Property="Padding" Value="16,14" />
   </Style>
   <Style Selector="ui|StatCard ui|OadmIcon.statIcon">
@@ -429,6 +433,33 @@
   </Style>
   <Style Selector="ui|StatCard.error TextBlock.statValue">
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <!-- A count card that filters a list (Compliance page): the button is invisible, the card shows hover and the chosen
+       card an accent border (a transparent border of the same width keeps the size). -->
+  <Style Selector="Button.statCardButton">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.statCardButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton ui|StatCard">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton:pointerover ui|StatCard">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.statCardButton.selected ui|StatCard">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
   <!-- Body of a single-operation dialog (one form, no card), padded like ui:MessageWindow. -->
   <Style Selector="Border.dialogBody">

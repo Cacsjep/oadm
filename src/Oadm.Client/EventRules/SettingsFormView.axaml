@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.EventRules"
+             x:Class="Oadm.Client.EventRules.SettingsFormView"
+             x:Name="Root">
+  <!-- The settings form drawn from declared fields (ActionFieldViewModel): the actions of the event rules and the compliance
+       checks. One row per field in ui:FormField, the error below the input; hidden fields take no row. -->
+  <ItemsControl ItemsSource="{Binding #Root.Fields}">
+    <ItemsControl.ItemsPanel>
+      <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
+    </ItemsControl.ItemsPanel>
+    <!-- A hidden setting takes no row and no spacing (the container hides, not only its content). -->
+    <ItemsControl.Styles>
+      <Style Selector="ContentPresenter" x:DataType="vm:ActionFieldViewModel">
+        <Setter Property="IsVisible" Value="{Binding IsVisible}" />
+      </Style>
+    </ItemsControl.Styles>
+    <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="vm:ActionFieldViewModel">
+        <Panel IsVisible="{Binding IsVisible}">
+          <ui:FormField Classes="wide" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}" IsVisible="{Binding !IsBool}">
+            <Panel>
+              <TextBox Text="{Binding Text}" IsVisible="{Binding IsText}" />
+              <TextBox Text="{Binding Text}" IsVisible="{Binding IsNumber}" Width="120" HorizontalAlignment="Left" />
+              <TextBox Text="{Binding Text}" IsVisible="{Binding IsMultiline}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsChoice}">
+                <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Classes="secondary" Command="{Binding ReadFromDeviceCommand}" IsVisible="{Binding ReadsFromDevice}"
+                        ToolTip.Tip="{Binding ReadFromText}">
+                  <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="Read from device" />
+                </Button>
+              </Grid>
+              <ui:PasswordBox Text="{Binding Text}" IsVisible="{Binding IsPassword}" />
+              <ui:CodeEditor Text="{Binding Text}" Language="{Binding Language}" Height="180" IsVisible="{Binding IsCode}" />
+              <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" ButtonText="Choose file"
+                          Command="{Binding ChooseFileCommand}" IsVisible="{Binding IsFile}" />
+              <StackPanel Spacing="6" IsVisible="{Binding IsKeyValues}">
+                <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:KeyValueEntry">
+                      <Grid ColumnDefinitions="*,2*,Auto" ColumnSpacing="6">
+                        <TextBox Text="{Binding Name}" PlaceholderText="Name" />
+                        <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
+                        <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="Remove" CommandParameter="{Binding}"
+                                Command="{Binding $parent[ItemsControl].((vm:ActionFieldViewModel)DataContext).RemoveRowCommand}">
+                          <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                        </Button>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddRowCommand}">
+                  <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add" />
+                </Button>
+              </StackPanel>
+            </Panel>
+          </ui:FormField>
+          <ui:FormField Error="{Binding Error}" IsVisible="{Binding IsBool}">
+            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+          </ui:FormField>
+        </Panel>
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+</UserControl>

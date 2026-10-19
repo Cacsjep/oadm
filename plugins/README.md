@@ -263,7 +263,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.hardDrive`, `Icon.wrench`, `Icon.eraser`, `Icon.lockOpen`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.workflow`, `Icon.undo`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`, `Icon.gauge`, `Icon.circle`, `Icon.thermometer`, `Icon.lightbulb`,
+`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.squareActivity`, `Icon.toggle`, `Icon.zap`, `Icon.workflow`, `Icon.undo`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`, `Icon.gauge`, `Icon.circle`, `Icon.thermometer`, `Icon.lightbulb`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -458,6 +458,58 @@ and task names, device API and verified behavior, settings, tests). A new plugin
 | Metadata Monitor (`Oadm.Plugins.MetadataMonitor`) | `oadm.metadata-monitor` | a read-only live view of one camera's event stream: opened through `ctx.EventStreams`, XML parsed on the server, batched messages; the page keeps the newest 10,000 in a `RangeObservableCollection` (one change per batch), filters live and shows the selected message in `ui:CodeView`. Per-page streams end on Stop, on a page change and, for a closed client, when the page's keep-alives stop (a lease pattern for any per-page server resource) |
 | System report (`Oadm.Plugins.SystemReport`) | `oadm.system-report` | no page, a toolbar button; background jobs with status deltas by version, files in `ctx.DataDirectory`, streamed device downloads, a ZIP read in chunks |
 | Hardening scan (`Oadm.Plugins.HardeningScan`) | `oadm.hardening-scan` | spec in its `README.md`: a read-only scan job over thousands of devices with bounded parallelism, results as events and kept in a plugin setting, request code of other plugins compiled in as linked sources, grid columns built from a catalog (icon-only status cells bound to one byte per row, tooltips built when they open) |
+
+## Compliance check types
+
+The Compliance page (built into the server, "Compliance" in `CLAUDE.md`, spec `docs/compliance.md`) runs checks on the
+devices the user chose. A plugin adds a kind of check with one class implementing `IComplianceCheckType`
+(`Oadm.Sdk.Compliance`): a public class with a parameterless constructor in its `*.Server.dll` (the loader registers it
+like an action), or one a core plugin returns from `IComplianceSource.ComplianceCheckTypes`. No client part: the check dialog
+draws the settings form from `Fields` (the same `ActionField`s as actions), the host stores the results, shows them, runs
+the type every N minutes and publishes an event per check.
+
+```csharp
+public sealed class ApplicationRunningCheck : IComplianceCheckType
+{
+    public string Id => "acme.app.running";               // unique among check types
+    public string DisplayName => "Application running";   // the kind select
+    public string? IconKey => "app";
+    public string Group => "Applications";
+    public IReadOnlyList<ActionField> Fields =>
+    [
+        ActionField.DynamicChoice("application", "Application") with { ChoicesFromDevice = true },  // "Read from device"
+    ];
+
+    public async Task<IReadOnlyList<ActionChoice>> ListChoicesAsync(IComplianceQueryContext ctx, string fieldKey, CancellationToken ct) =>
+        ctx.Vapix is null ? [] : [.. (await ListAppsAsync(ctx.Vapix, ct)).Select(a => new ActionChoice(a.Name, a.NiceName))];
+
+    public async Task<ComplianceResult> EvaluateAsync(IComplianceContext ctx, ComplianceInvocation check, CancellationToken ct)
+    {
+        // One list per device and run, shared by every check that asks for the same key.
+        var apps = await ctx.Reads.GetOrAddAsync("acme.app:list", t => ListAppsAsync(ctx.Vapix!, t), ct);
+        var app = apps.FirstOrDefault(a => a.Name == check.Get("application"));
+        return app is null ? ComplianceResult.Failed(check.Get("application") + " is not installed")
+            : app.IsRunning ? ComplianceResult.Passed(app.NiceName + " running")
+            : ComplianceResult.Failed(app.NiceName + " is stopped");
+    }
+}
+```
+
+- **Read only**: a check never changes a device. `ctx.Vapix` is pre-authenticated; devices whose status is not Ok never
+  reach a type that reads the device (they show Not checked with the reason).
+- **Results**: `Passed`, `Failed` (red or amber by the check's severity, set by the user), `NotApplicable` ("HTTPS is
+  off") and `CouldNotCheck`; an exception counts as Could not check with its message, 15 s per check (`ct`). Keep the
+  detail one short line; several lines show in the tooltip (the first line in summaries).
+- **Shared reads**: `ctx.Reads.GetOrAddAsync(key, read, ct)` reads once per device and run for every check that uses the
+  key (param.cgi, the application list, the disk list).
+- **Cached data only**: `UsesCachedDataOnly` true decides from `ctx.Device` (what the server knows) without contacting the
+  device; the host checks it on every device change, without an interval.
+- **Settings**: `Validate` (errors per field key), `Describe` (one line for the page), `DefaultSeverity`. Two field kinds
+  are for checks: `ActionField.File` (a file kept in the check, read with `check.GetFile(key)`) and `ChoicesFromDevice` on a
+  `DynamicChoice` (the user picks one device; `IComplianceQueryContext.Device` / `Vapix` are set).
+- **Tests**: `Oadm.Sdk.Testing.FakeComplianceContext` (device, client, shared reads with `ReadCount`) and
+  `FakeComplianceQueryContext`. Samples: `plugins/Oadm.Plugins.Acap/ApplicationRunningCheck.cs`,
+  `plugins/Oadm.Plugins.EdgeStorage/SdCardCheck.cs`, `plugins/Oadm.Plugins.DeviceConfig/Configure/ConfigMatchCheck.cs`.
 
 ## Event rule actions and events
 

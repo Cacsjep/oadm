@@ -185,6 +185,8 @@ public sealed partial class FakeOadmApi
         P("task:oadm.users:add", "Add users on devices", "Create accounts on the devices.", "Tasks", op: true, full: true, icon: "users"),
         P("task:oadm.users:update", "Change users on devices", "Change the password and role of accounts on the devices.", "Tasks", op: true, full: true, icon: "users"),
         P("task:oadm.users:remove", "Remove users on devices", "Delete accounts from the devices.", "Tasks", full: true, icon: "users"),
+        P("compliance.view", "See compliance", "See the Compliance page and check devices again.", "Compliance", op: true, viewer: true),
+        P("compliance.manage", "Change compliance checks", "Create, change, turn on or off and delete compliance checks.", "Compliance"),
         P("events.view", "See event rules", "See the event rules and the event log.", "Event rules", op: true),
         P("events.manage", "Change event rules", "Create, change, turn on or off and delete event rules. Rules act on devices on their own.", "Event rules", full: true),
         P("events.clearLog", "Delete the event log", "Delete every entry of the event log.", "Event rules"),

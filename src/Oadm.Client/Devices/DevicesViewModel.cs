@@ -137,6 +137,9 @@ public sealed partial class DevicesViewModel : ObservableObject
             }
         };
         GroupByTag = columns.GroupByTag;
+        ExpandCompliance = columns.ExpandCompliance;
+        HasCompliance = store.Compliance.IsAvailable;
+        store.Compliance.ChecksChanged += (_, _) => HasCompliance = store.Compliance.IsAvailable;
 
         RebuildPluginActions();
     }
@@ -187,6 +190,23 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>The toolbar's "Group by tag" button.</summary>
     [RelayCommand]
     private void ToggleGroupByTag() => GroupByTag = !GroupByTag;
+
+    /// <summary>The compliance checks and results of the grid's Compliance columns.</summary>
+    public Compliance.ComplianceStore Compliance => _store.Compliance;
+
+    /// <summary>One column per compliance check instead of the Compliance column. Persisted per client.</summary>
+    [ObservableProperty]
+    public partial bool ExpandCompliance { get; set; }
+
+    partial void OnExpandComplianceChanged(bool value) => Columns.ExpandCompliance = value;
+
+    /// <summary>The role may see compliance and the server has it (the toggle and the columns show).</summary>
+    [ObservableProperty]
+    public partial bool HasCompliance { get; private set; }
+
+    /// <summary>The toolbar's "Show each compliance check" button.</summary>
+    [RelayCommand]
+    private void ToggleExpandCompliance() => ExpandCompliance = !ExpandCompliance;
 
     /// <summary>Context menu for the current selection: core actions plus runnable task plugins.</summary>
     public ObservableCollection<MenuEntryViewModel> ContextMenuEntries { get; } = [];

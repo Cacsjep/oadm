@@ -69,6 +69,8 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _ = Task.Run(() => TaskLoopAsync(ct), ct);
         _ = Task.Run(() => TagLoopAsync(ct), ct);
         _ = Task.Run(() => WaitingLoopAsync(ct), ct);
+        _ = Task.Run(() => ComplianceChecksLoopAsync(ct), ct);
+        _ = Task.Run(() => ComplianceResultsLoopAsync(ct), ct);
         if (_session is not null)
         {
             _ = Task.Run(() => SessionLoopAsync(_session, ct), ct);
@@ -284,6 +286,113 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             }
 
             _ui.Post(_devices.Waiting.Clear);
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
+    }
+
+    /// <summary>Whether the role may see compliance (a server without roles: everyone).</summary>
+    private bool MaySeeCompliance => _session is null || _session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.ComplianceView);
+
+    /// <summary>The compliance checks with their counts (ComplianceService.WatchChecks), while the role may see compliance.</summary>
+    private async Task ComplianceChecksLoopAsync(CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<ComplianceCheckList>(_ui, lists => _devices.Compliance.ApplyChecks(lists[^1]));
+        while (!ct.IsCancellationRequested)
+        {
+            if (MaySeeCompliance)
+            {
+                try
+                {
+                    await foreach (ComplianceCheckList list in _api.WatchComplianceChecksAsync(ct).ConfigureAwait(false))
+                    {
+                        batcher.Add(list);
+                        delay = MinDelay;
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // the device loop reports the connection state; just retry
+                }
+            }
+
+            _ui.Post(_devices.Compliance.Clear);
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
+    }
+
+    /// <summary>
+    /// Every compliance result (ComplianceService.WatchResults): the snapshot is collected off the UI thread and applied as
+    /// one reset, then changes in batches, in stream order.
+    /// </summary>
+    private async Task ComplianceResultsLoopAsync(CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<(IReadOnlyList<ComplianceResultEntry> Results, bool Reset)>(_ui, batches =>
+        {
+            foreach (var (results, reset) in batches)
+            {
+                _devices.Compliance.ApplyResults(results, reset);
+            }
+        });
+        while (!ct.IsCancellationRequested)
+        {
+            if (MaySeeCompliance)
+            {
+                try
+                {
+                    List<ComplianceResultEntry>? snapshot = [];
+                    await foreach (ComplianceResultBatch batch in _api.WatchComplianceResultsAsync(ct).ConfigureAwait(false))
+                    {
+                        if (snapshot is not null)
+                        {
+                            snapshot.AddRange(batch.Results);
+                            if (batch.SnapshotEnd)
+                            {
+                                batcher.Add((snapshot, true));
+                                snapshot = null;
+                            }
+                        }
+                        else
+                        {
+                            batcher.Add(([.. batch.Results], false));
+                        }
+
+                        delay = MinDelay;
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // the device loop reports the connection state; just retry
+                }
+            }
+
             try
             {
                 await Task.Delay(delay, ct).ConfigureAwait(false);

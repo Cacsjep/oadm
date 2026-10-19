@@ -79,3 +79,11 @@ that answers like the Q1615 Mk III, 403 while mounted), the plugin's table and r
 plugin in process, the dialogs, headless screenshots (`edge-storage-*.png`), Perf (5,000 cameras read, searched and
 selected). Opt-in `StorageHardwareWriteTests` (`OADM_STORAGE_WRITE_URL` / `_USER` / `_PASSWORD`; **formats the card**):
 every tool on one camera, the card ends as it started; passed on the Q1615 Mk III (1 min 34 s).
+
+## Compliance check "SD card"
+
+`SdCardCheck` (type `oadm.edge-storage.sd-card`, group Storage; see `docs/compliance.md`): the device has an SD card
+that works (`EdgeDisk.ProblemText` is none), optionally at least N GB and / or N % free. A device without a card fails
+"No SD card": the user chose the devices the check is for. Read only: one `disks/list.cgi` per device and run (shared
+key `oadm.edge-storage:disks`). Available while Edge storage is on (off by default). Tests `SdCardCheckTests` (recorded
+disk lists).

@@ -1,0 +1,70 @@
+---
+title: Compliance
+description: See at first glance which devices need attention, and check your own rules on many devices.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/compliance-page.png';
+import check from '../../../assets/screens/compliance-check.png';
+import grid from '../../../assets/screens/devices-compliance.png';
+
+**Compliance** in the navigation, right below Devices, shows which devices need attention. Out of the box it lists the
+devices OADM cannot reach or log in to. Add your own checks, for example "Object Analytics must run on the parking
+cameras" or "every device matches our base configuration".
+
+<Image src={page} alt="Compliance page" class="screen" />
+
+- **Cards**: one per check with the number of devices that fail it. Click a card to see those devices, click it again
+  to go back.
+- **Problems**, **Warnings**, **All**: the devices by their worst result.
+- **Columns**: one per check. Hover an icon to see the result, since when it holds and when it was checked.
+- **Check now** checks the selected devices again, or all devices.
+- **Export** saves the list as a CSV file.
+
+## Add a check
+
+<Steps>
+
+1. Click **New check**.
+2. Choose the **Kind of check** and fill in its settings.
+3. Choose the **Devices**: all devices, tags or single devices.
+4. Choose **When it fails**: **Problem** (red) or **Warning** (amber).
+5. For checks that read the devices, set **Check every (min)**.
+6. Click **Save**. OADM checks the devices at once.
+
+</Steps>
+
+<Image src={check} alt="Compliance check dialog" class="screen" />
+
+| Kind of check | Fails when |
+|---|---|
+| Reachable | The device does not answer. Always on. |
+| Login works | OADM cannot log in (Credentials required, Password not set, Certificate changed). Always on. |
+| Certificate | The HTTPS certificate expired, has fewer days left than you set, or is not trusted. |
+| Firmware | The device runs an older AXIS OS than you set. |
+| Application running | The application is not installed or not running. Optional: a minimum version and a valid license. Click **Read from device** to choose the application from a device that has it. |
+| Matches configuration file | A setting of the file differs on the device. Make the file with **Create configuration file** or use one from AXIS Device Manager. Addresses, device names and passwords are not compared. |
+| SD card | The device has no SD card, the card does not work, or it has less free space than you set. Needs the Edge storage plugin turned on. |
+
+Reachable and Login works cannot be deleted. You can change their devices.
+
+A check that reads the devices skips devices OADM cannot reach or log in to. They show **Not checked**; the
+Reachable and Login works checks already count them.
+
+## In the device list
+
+The **Compliance** column shows the worst result of each device. **Show each compliance check** in the toolbar shows one
+column per check instead.
+
+<Image src={grid} alt="Device list with one column per check" class="screen" />
+
+## Get an email when a check fails
+
+Every check is an event of the [event rules](../../tools/event-rules/): **Compliance: &lt;check name&gt;** is on for a device
+while the check fails on it. Use it as the trigger of a rule with **Send email** or **Send HTTP request**.
+
+## Roles
+
+- **See compliance**: see the page and use Check now (Operator and Viewer).
+- **Change compliance checks**: add, change and delete checks (Administrators; you can give it to other roles).

@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Compliance"
+        xmlns:er="using:Oadm.Client.EventRules"
+        x:Class="Oadm.Client.Compliance.ComplianceCheckWindow"
+        x:DataType="vm:ComplianceCheckEditorViewModel"
+        Title="{Binding Title}"
+        Width="600" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- A compliance check: single operation (one form, no card). The kind's settings come from its declared fields. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <ScrollViewer MaxHeight="640" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Classes="form">
+          <ui:FormField Classes="wide" Label="Name">
+            <TextBox x:Name="NameBox" Text="{Binding Name}" IsEnabled="{Binding CanChangeKind}" MaxLength="64" />
+          </ui:FormField>
+          <ui:FormField Classes="wide" Label="Kind of check" Info="{Binding TypeDescription}">
+            <ComboBox Classes="grouped" ItemsSource="{Binding Types}" SelectedItem="{Binding SelectedType}" IsEnabled="{Binding CanChangeKind}"
+                      HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <ui:FormField Classes="wide" Label="Devices" Error="{Binding Devices.Problem}">
+            <er:DeviceSelectorView DataContext="{Binding Devices}" />
+          </ui:FormField>
+          <er:SettingsFormView Fields="{Binding Fields}" IsVisible="{Binding HasFields}" />
+          <ui:FormField Classes="wide" Label="When it fails">
+            <ComboBox ItemsSource="{Binding Severities}" SelectedIndex="{Binding SeverityIndex}" IsEnabled="{Binding CanChangeKind}" Width="160"
+                      HorizontalAlignment="Left" />
+          </ui:FormField>
+          <ui:FormField Classes="wide" Label="Check every (min)" IsVisible="{Binding ReadsDevices}">
+            <TextBox Text="{Binding IntervalText}" Width="120" HorizontalAlignment="Left" />
+          </ui:FormField>
+          <ui:FormField>
+            <CheckBox Content="Turned on" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanChangeKind}" />
+          </ui:FormField>
+          <TextBlock Classes="error small" Text="{Binding ServerError}" TextWrapping="Wrap"
+                     IsVisible="{Binding ServerError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

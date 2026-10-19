@@ -42,6 +42,9 @@ public sealed class DeviceStore
     /// <summary>The server's waiting list of imports (WaitingDeviceService.Watch).</summary>
     public WaitingDevicesState Waiting { get; } = new();
 
+    /// <summary>The compliance checks and their results (ComplianceService), the Compliance column of every row.</summary>
+    public Compliance.ComplianceStore Compliance { get; } = new();
+
     public RangeObservableCollection<DeviceRowViewModel> Devices { get; } = [];
 
     /// <summary>
@@ -96,7 +99,7 @@ public sealed class DeviceStore
             }
             else
             {
-                row = new DeviceRowViewModel(device, Tags);
+                row = new DeviceRowViewModel(device, Tags, Compliance);
                 _byId[device.Id] = row;
                 added.Add(row);
             }
@@ -167,7 +170,7 @@ public sealed class DeviceStore
             }
             else
             {
-                row = new DeviceRowViewModel(change.Device, Tags);
+                row = new DeviceRowViewModel(change.Device, Tags, Compliance);
                 _byId[id] = row;
                 added.Add(row);
                 changedIds.Add(id);

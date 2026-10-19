@@ -182,6 +182,19 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowComplianceCheckAsync(Compliance.ComplianceCheckEditorViewModel editor)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Compliance.ComplianceCheckWindow();
+        window.Attach(editor);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices)
     {
         ArgumentNullException.ThrowIfNull(dialog);

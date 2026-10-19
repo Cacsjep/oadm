@@ -28,16 +28,22 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     public const string TagSeparator = "; ";
 
     private readonly TagStore? _tagStore;
+    private readonly Compliance.ComplianceStore? _complianceStore;
+    private Compliance.DeviceCompliance? _compliance;
 
-    public DeviceRowViewModel(Device device, TagStore? tags = null)
+    public DeviceRowViewModel(Device device, TagStore? tags = null, Compliance.ComplianceStore? compliance = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         Id = device.Id;
         _tagStore = tags;
+        _complianceStore = compliance;
         Update(device);
     }
 
     public string Id { get; }
+
+    /// <summary>The device's compliance (Compliance column); the same object for the whole session.</summary>
+    public Compliance.DeviceCompliance Compliance => _compliance ??= _complianceStore?.For(Id) ?? new Compliance.ComplianceStore().For(Id);
 
     /// <inheritdoc />
     public DeviceRowViewModel Row => this;

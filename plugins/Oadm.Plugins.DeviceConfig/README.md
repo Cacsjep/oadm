@@ -309,3 +309,16 @@ import and export, not connection settings.
 Configure devices: `task:oadm.device-config.configure:configure` (Operator yes) and `:dangerous` (the warned parameters;
 Operator no, full device control; without it they are not offered). Create configuration file: `task:oadm.device-config.create`
 (the file can hold passwords; Operator yes, Viewer no).
+
+## Compliance check "Matches configuration file"
+
+`Configure/ConfigMatchCheck` (type `oadm.device-config.matches-file`, group Configuration; see `docs/compliance.md`): the
+user adds a `.cfg` (Create configuration file or ADM, at most 1 MB) to the check; it is kept in the check's settings and
+parsed once per content. Per device and run: the file's parameters through `param.cgi action=list` (in chunks like the
+verify step), the action rules over SOAP (only when the file has rules; schedules compared by name, topics without the
+`//.` suffix) and the stream profiles (only when the file has profiles). A rule or profile of the file's name must exist
+with the file's settings; extra rules and profiles on the device are fine. Never compared: addresses and per-device names
+(`DangerousParameters.IsAddress` / `IsPerDevice`) and secret names (pass, secret, community). Parameters the device does
+not have are skipped ("3 not on this model"). Failed: "2 settings differ" and up to 20 differences
+("ImageSource.I0.CaptureFrequency: 50Hz (file: 60Hz)", "Action rule X: missing"). Read only. Tests
+`ConfigMatchCheckTests` (the fake camera the recorded ADM file was made from).

@@ -352,19 +352,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     /// <summary>Visibility and errors of the settings for the current rule (stateful or not).</summary>
     internal void RefreshFields(bool statefulRule)
     {
-        var settings = Settings();
-        var stored = Fields.Where(f => f.PasswordStored).Select(f => f.Key).ToList();
-        var errors = ActionSettings.Check([.. Fields.Select(f => f.Field)], settings, statefulRule, stored);
-        foreach (var field in Fields)
-        {
-            field.IsVisible = ActionSettings.IsVisible(field.Field, settings, statefulRule);
-            field.Problem = field.LoadError ?? errors.GetValueOrDefault(field.Key);
-            if (field.IsCode)
-            {
-                field.Language = ActionFieldViewModel.LanguageOf(field.Field.Language ?? (field.Field.LanguageKey is { } key ? ActionSettings.Text(settings, key) : null));
-            }
-        }
-
+        ActionFieldViewModel.Refresh(Fields, statefulRule);
         OnPropertyChanged(nameof(Error));
     }
 
@@ -377,28 +365,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
     }
 
-    internal JsonObject Settings()
-    {
-        var settings = new JsonObject();
-        foreach (var field in Fields)
-        {
-            var value = field.Value;
-            if (field.IsPassword && value.Length == 0)
-            {
-                continue; // empty: keep the stored value (StoredSecretFields)
-            }
-
-            settings[field.Key] = field.Field.Type switch
-            {
-                ActionFieldType.KeyValues => field.RowsJson(),
-                ActionFieldType.Number when int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => JsonValue.Create(n),
-                ActionFieldType.Bool => JsonValue.Create(field.IsChecked),
-                _ => JsonValue.Create(value),
-            };
-        }
-
-        return settings;
-    }
+    internal JsonObject Settings() => ActionFieldViewModel.ToSettings(Fields);
 
     /// <summary>One line for the overview: "Set output · Chosen devices: 10.0.0.30 · Output: 1, Mode: Pulse".</summary>
     internal string Summary()

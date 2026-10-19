@@ -43,6 +43,9 @@ public sealed class ClientSettings
     /// <summary>Device grid group mode: a group per tag.</summary>
     public bool GroupDevicesByTag { get; set; }
 
+    /// <summary>Device grid: one column per compliance check instead of the one Compliance column.</summary>
+    public bool ExpandCompliance { get; set; }
+
     /// <summary>Settings "Decode video on the graphics card" (live view); on by default, tested at every start.</summary>
     public bool GpuDecoding { get; set; } = true;
 

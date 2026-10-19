@@ -33,6 +33,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly NavItemViewModel _credentialsItem;
     private readonly NavItemViewModel? _pluginsItem;
     private readonly NavItemViewModel? _eventRulesItem;
+    private readonly NavItemViewModel? _complianceItem;
     private readonly NavItemViewModel _logsItem;
     private readonly NavItemViewModel _settingsItem;
     private readonly NavItemViewModel _aboutItem;
@@ -54,7 +55,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         PluginPackageStore? packages = null,
         PluginsViewModel? pluginList = null,
         EventRules.EventRulesViewModel? eventRules = null,
-        ILiveVideoAccess? liveVideo = null)
+        ILiveVideoAccess? liveVideo = null,
+        Compliance.ComplianceViewModel? compliance = null)
     {
         _liveVideo = liveVideo;
         ArgumentNullException.ThrowIfNull(connection);
@@ -95,6 +97,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // Bottom: Users, Credentials and Plugins (administrators only), Logs, Settings, About.
         _devicesItem = new NavItemViewModel(HostPages.Devices, "Devices", "devices", devices);
         NavItems.Add(_devicesItem);
+        if (compliance is not null)
+        {
+            // Built-in page right below Devices (no group), shown while the role may see compliance.
+            _complianceItem = new NavItemViewModel(HostPages.Compliance, "Compliance", "squareActivity", compliance);
+            SyncComplianceItem();
+        }
+
         if (eventRules is not null)
         {
             // Built-in page in the Automation group, before the plugin pages of that group; shown while the role may see
@@ -113,6 +122,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             Devices.Toolbar.ApplyPermissions(session.Has);
             SyncEventRulesItem();
+            SyncComplianceItem();
             if (session.IsLoggedIn)
             {
                 _ = ReloadPluginsAsync();
@@ -439,6 +449,32 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             LogCorePluginsFailed(_logger, ex.Message);
         }
+    }
+
+    /// <summary>The Compliance entry (right below Devices) shows while the role may see compliance.</summary>
+    private void SyncComplianceItem()
+    {
+        if (_complianceItem is null)
+        {
+            return;
+        }
+
+        bool wanted = Session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.ComplianceView);
+        bool shown = NavItems.Contains(_complianceItem);
+        if (wanted && !shown)
+        {
+            NavItems.Insert(Math.Min(NavItems.IndexOf(_devicesItem) + 1, NavItems.Count), _complianceItem);
+        }
+        else if (!wanted && shown)
+        {
+            NavItems.Remove(_complianceItem);
+            if (_complianceItem.IsSelected)
+            {
+                Navigate(_devicesItem);
+            }
+        }
+
+        UpdateNavGroups();
     }
 
     /// <summary>The Event rules entry shows while the role may see event rules; a hidden page that was open falls back to Devices.</summary>

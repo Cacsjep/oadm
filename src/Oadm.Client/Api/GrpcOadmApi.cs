@@ -225,6 +225,33 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<RuleList> WatchRulesAsync(CancellationToken ct) =>
         ReadAll(C.Events.WatchRules(new Empty(), cancellationToken: ct), ct);
 
+    public async Task<ComplianceCatalog> GetComplianceCatalogAsync(CancellationToken ct) =>
+        await C.Compliance.GetCatalogAsync(new Empty(), cancellationToken: ct);
+
+    public IAsyncEnumerable<ComplianceCheckList> WatchComplianceChecksAsync(CancellationToken ct) =>
+        ReadAll(C.Compliance.WatchChecks(new Empty(), cancellationToken: ct), ct);
+
+    public async Task<ComplianceCheckDetail> GetComplianceCheckAsync(string id, CancellationToken ct) =>
+        await C.Compliance.GetCheckAsync(new ComplianceCheckId { Id = id }, cancellationToken: ct);
+
+    public async Task<ComplianceCheckSummary> SaveComplianceCheckAsync(ComplianceCheckDetail check, CancellationToken ct) =>
+        await C.Compliance.SaveCheckAsync(check, cancellationToken: ct);
+
+    public async Task DeleteComplianceCheckAsync(string id, CancellationToken ct) =>
+        await C.Compliance.DeleteCheckAsync(new ComplianceCheckId { Id = id }, cancellationToken: ct);
+
+    public async Task<ComplianceCheckSummary> SetComplianceCheckEnabledAsync(string id, bool enabled, CancellationToken ct) =>
+        await C.Compliance.SetCheckEnabledAsync(new SetComplianceCheckEnabledRequest { Id = id, Enabled = enabled }, cancellationToken: ct);
+
+    public async Task<IReadOnlyList<ActionChoiceEntry>> ListComplianceChoicesAsync(string typeId, string fieldKey, string? deviceId, CancellationToken ct) =>
+        (await C.Compliance.ListChoicesAsync(new ComplianceChoicesRequest { TypeId = typeId, FieldKey = fieldKey, DeviceId = deviceId ?? string.Empty }, cancellationToken: ct)).Choices;
+
+    public async Task CheckComplianceNowAsync(IEnumerable<string> checkIds, IEnumerable<string> deviceIds, CancellationToken ct) =>
+        await C.Compliance.CheckNowAsync(new ComplianceCheckNowRequest { CheckIds = { checkIds }, DeviceIds = { deviceIds } }, cancellationToken: ct);
+
+    public IAsyncEnumerable<ComplianceResultBatch> WatchComplianceResultsAsync(CancellationToken ct) =>
+        ReadAll(C.Compliance.WatchResults(new Empty(), cancellationToken: ct), ct);
+
     public async Task<RuleDetail> GetRuleAsync(string id, CancellationToken ct) =>
         await C.Events.GetRuleAsync(new RuleId { Id = id }, cancellationToken: ct);
 
@@ -617,6 +644,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public TagService.TagServiceClient Tags { get; } = new(channel);
         public WaitingDeviceService.WaitingDeviceServiceClient Waiting { get; } = new(channel);
         public EventService.EventServiceClient Events { get; } = new(channel);
+        public ComplianceService.ComplianceServiceClient Compliance { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
     }
 }

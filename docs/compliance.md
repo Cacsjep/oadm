@@ -1,7 +1,7 @@
 # Compliance (draft spec)
 
-Status: draft, agreed with the maintainer on 2026-10-19, not built yet. Once built, CLAUDE.md gets a short section and this
-file stays the detailed spec (like `docs/plugin-sdk.md`).
+Status: agreed with the maintainer on 2026-10-19 and built (server, check types, client). CLAUDE.md has the short
+section "Compliance"; this file is the detailed spec (like `docs/plugin-sdk.md`).
 
 Goal: see at first glance which devices need attention, without sorting the device grid. Out of the box OADM shows which
 devices it cannot reach or log in to; users add their own checks ("Object Analytics running on the tag Parking",
@@ -17,7 +17,7 @@ one small SDK contract; nothing moves out of the plugins.
 | Devices | **Every check has its devices**, always chosen by the user with the shared picker (All devices, tags, chosen devices; at least one device or tag). The user decides which devices a check is for (e.g. only cameras with an SD card); the check type does not guess. |
 | Default checks | **Reachable** and **Login works**, built in, always on, not deletable, Problem, cached data only. They start with All devices; the user may change their devices. |
 | Check types in v1 | Certificate, Firmware (host, cached data); Application running (Applications plugin); Matches configuration file (Device configuration plugin); SD card (Edge storage). No hardening checks for now. |
-| Where the code lives | The SDK has only the contract (`IComplianceSource`). The host registers its own types internally against the same interface (like `BuiltInEvents`); every plugin registers its types where its readers already are. Third parties use the same contract. |
+| Where the code lives | The SDK has only the contract (`IComplianceCheckType`). The host registers its own types internally against the same interface (like `BuiltInEvents`); every plugin registers its types where its readers already are: a public class with a parameterless constructor in its `*.Server.dll` (found by the loader like an action) or returned by a core plugin's `IComplianceSource`. Third parties use the same contract. A type of a plugin that is off shows "Not available: <plugin> is turned off" (the SD card check needs Edge storage on). |
 | Schedule | Cached checks follow every device change at once (no device traffic). Read checks run per check every N minutes (default 60, 15..1440) and on **Check now**. |
 | Severity | Set per check; each type has a default. |
 | Alerts | Every check is an event of the event rules: **"Compliance: <check name>"**, stateful per device, on while the check fails; values `result`, `detail`. Alerts through the existing actions (email, HTTP, TCP, Set output). |
@@ -85,9 +85,9 @@ Two field additions on `ActionField` (usable by actions later, the rule dialog r
 - `ChoicesFromDevice`: a `DynamicChoice` whose choices are read from one device. The form shows "Read from device"
   (`DevicePickerWindow.ShowOneAsync`), then the select with what `ListChoicesAsync` returned for it (`IComplianceQueryContext.Device`).
   Example: the applications installed on the chosen camera.
-- `ActionFieldType.File` (`Accept` ".cfg", `MaxBytes`): the form shows `ui:FileRow`; the client uploads the file
-  (`FileService.Upload`), the server moves its content into the check (base64 in the settings), so the baseline outlives
-  the upload retention.
+- `ActionFieldType.File` (`Accept` ".cfg", `MaxLength` = most bytes): the form shows `ui:FileRow`; the client puts the
+  file into the settings as {"name", "data" (base64)} (`ActionFile.From` reads it), so the baseline is part of the check
+  (at most 1 MB for a configuration file; no upload with a retention).
 
 No client part in v1: every v1 type works with the generated form. An own dialog (`IComplianceCheckDialog` in
 Oadm.Sdk.Client, like `ITaskPluginDialog`) is a later addition when a type needs more.
@@ -139,11 +139,14 @@ Oadm.Sdk.Client, like `ITaskPluginDialog`) is a later addition when a type needs
 
 ## Client
 
-- **Compliance page** (`Compliance/ComplianceViewModel` + `ComplianceView`):
+- **Compliance page** (`Compliance/ComplianceViewModel` + `ComplianceView`, rail key `HostPages.Compliance`, icon
+  `squareActivity`, right below Devices while the role may see compliance; the client mirror `Compliance/ComplianceStore`
+  is fed by `ServerConnection` and gives every device row one `DeviceCompliance`):
   - Toolbar: **New check** (primary), Edit, Delete (red, confirmed), **Check now** (the selected devices, else every device
     of the shown checks), Export; search right.
-  - Count cards (`ui:StatCard`), one per check that is on, in a wrapping row: "Object Analytics running" / "12 failed" /
-    "3 not checked"; a click filters the grid to that check's failures (again: off).
+  - Count cards (`ui:StatCard` in `Button.statCardButton`), one per check that is on, in a wrapping row: "Object Analytics
+    running" / "12" / "failed · 3 not checked"; a click shows the devices that fail it (tab All; again or a tab: off) and
+    selects the check for Edit and Delete.
   - Segmented switch **Problems** | **Warnings** | **All** with counts; Problems is the start view.
   - Grid (virtualized, 30,000 devices): device icon, Address, Model, Tags, Result ("2 checks failed"), then one icon column
     per check (`ui:StatusChip` icon only, tooltip: result, detail, checked, since). Sortable.
@@ -151,9 +154,11 @@ Oadm.Sdk.Client, like `ITaskPluginDialog`) is a later addition when a type needs
   Applications, Configuration, Storage; the type's description in an info icon), Devices (required: purple "Selected devices"
   button, `DevicePickerOptions.Full` without "The device of the event"), the type's settings form, When it fails
   (Problem / Warning), Check every (min) for read types, Turned on. Errors below the fields; Save runs the check at once.
-- **Devices grid**: column **Compliance** (worst result icon + "2 checks failed", tooltip lists them; sort key; in the
-  export). Toolbar icon toggle **Show each compliance check** next to Group by tag (class `active` while on): the
-  Compliance column becomes one column per check. Per client (`ClientSettings.ExpandCompliance`).
+- **Devices grid**: column **Compliance** after Status (`ComplianceSummaryCell`: "2 problems, 1 warning" as a chip, "OK" as
+  plain text, the failed checks as tooltip; sorted problems first; in the export). Toolbar icon toggle **Show each
+  compliance check** (icon `squareActivity`) next to Group by tag (class `active` while on): the Compliance column becomes
+  one column per check (`ComplianceResultCell`, built by `ComplianceView.CheckColumn`). Per client
+  (`ClientSettings.ExpandCompliance`). Without "See compliance" neither the column nor the toggle shows.
 - Fake mode: the two default checks plus "Object Analytics running" and "Matches base-config.cfg" with sample results.
 
 ## Scale

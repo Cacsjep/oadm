@@ -106,6 +106,7 @@ export default defineConfig({
 						{ label: 'Devices page', slug: 'devices/devices-page' },
 						{ label: 'Live preview', slug: 'devices/live-view' },
 						{ label: 'Tags', slug: 'devices/tags' },
+						{ label: 'Compliance', slug: 'devices/compliance' },
 						{ label: 'Event rules', slug: 'tools/event-rules' },
 						{ label: 'Tasks', slug: 'devices/tasks' },
 					],

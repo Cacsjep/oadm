@@ -142,58 +142,7 @@
                           <TextBlock Classes="fieldLabel" Text="On" />
                           <vm:DeviceSelectorView DataContext="{Binding Targets}" />
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding Fields}">
-                          <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
-                          </ItemsControl.ItemsPanel>
-                          <!-- A hidden setting takes no row and no spacing (the container hides, not only its content). -->
-                          <ItemsControl.Styles>
-                            <Style Selector="ContentPresenter" x:DataType="vm:ActionFieldViewModel">
-                              <Setter Property="IsVisible" Value="{Binding IsVisible}" />
-                            </Style>
-                          </ItemsControl.Styles>
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ActionFieldViewModel">
-                              <Panel IsVisible="{Binding IsVisible}">
-                                <ui:FormField Classes="wide" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}" IsVisible="{Binding !IsBool}">
-                                  <Panel>
-                                    <TextBox Text="{Binding Text}" IsVisible="{Binding IsText}" />
-                                    <TextBox Text="{Binding Text}" IsVisible="{Binding IsNumber}" Width="120" HorizontalAlignment="Left" />
-                                    <TextBox Text="{Binding Text}" IsVisible="{Binding IsMultiline}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
-                                    <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
-                                    <ui:PasswordBox Text="{Binding Text}" IsVisible="{Binding IsPassword}" />
-                                    <ui:CodeEditor Text="{Binding Text}" Language="{Binding Language}" Height="180" IsVisible="{Binding IsCode}" />
-                                    <StackPanel Spacing="6" IsVisible="{Binding IsKeyValues}">
-                                      <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}">
-                                        <ItemsControl.ItemsPanel>
-                                          <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                          <DataTemplate x:DataType="vm:KeyValueEntry">
-                                            <Grid ColumnDefinitions="*,2*,Auto" ColumnSpacing="6">
-                                              <TextBox Text="{Binding Name}" PlaceholderText="Name" />
-                                              <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
-                                              <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="Remove" CommandParameter="{Binding}"
-                                                      Command="{Binding $parent[ItemsControl].((vm:ActionFieldViewModel)DataContext).RemoveRowCommand}">
-                                                <ui:OadmIcon Data="{StaticResource Icon.remove}" />
-                                              </Button>
-                                            </Grid>
-                                          </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                      </ItemsControl>
-                                      <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddRowCommand}">
-                                        <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add" />
-                                      </Button>
-                                    </StackPanel>
-                                  </Panel>
-                                </ui:FormField>
-                                <ui:FormField Error="{Binding Error}" IsVisible="{Binding IsBool}">
-                                  <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
-                                </ui:FormField>
-                              </Panel>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <vm:SettingsFormView Fields="{Binding Fields}" />
                         <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding CanTest}">
                           <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="Sends it once now, with sample event values">

@@ -21,7 +21,7 @@ public static class DeviceListCsv
     public static IReadOnlyList<string> Columns { get; } =
     [
         "MAC address", "Status", AddressColumn, TagsColumn, "Host name", "Model", "Firmware", "SoC", "Category", "Product type",
-        "DHCP", "HTTPS", "Certificate expires", "Certificate", "IEEE 802.1X",
+        "DHCP", "HTTPS", "Certificate expires", "Certificate", "IEEE 802.1X", "Compliance",
     ];
 
     /// <summary>"oadm-devices-2026-10-08.csv".</summary>
@@ -53,6 +53,7 @@ public static class DeviceListCsv
                 d.CertNotAfterUtc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 d.CertTrust.Text,
                 d.Dot1xText,
+                d.Compliance.Text,
             ]);
         }
 

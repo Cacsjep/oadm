@@ -119,3 +119,12 @@ from the steps. Steps that do not apply end Skipped with the reason. Task names:
 Keys `task:oadm.acap:install`, `:downgrade` (install with "Allow downgrade"), `:startStop`, `:remove` and `:license`
 (install license keys, also with an install). The dialog hides the buttons and the option the role lacks. Operator default:
 install, start / stop and license keys.
+
+## Compliance check "Application running"
+
+`ApplicationRunningCheck` (type `oadm.acap.running`, group Applications; see `docs/compliance.md`): the chosen application
+is installed, by default also running, optionally at least a version (leading numbers, "1.4") and with a valid license
+(Valid and not past its expiration date, or None / Custom). The application is chosen from the list of one device ("Read
+from device"). Read only: one `applications/list.cgi` per device and run (shared key `oadm.acap:list`). Detail texts:
+"AXIS Object Analytics is stopped", "parking is not installed", "AXIS Object Analytics 1.26.205, needs 1.30",
+"AXIS License Plate Verifier: license missing". Tests `ApplicationRunningCheckTests`.

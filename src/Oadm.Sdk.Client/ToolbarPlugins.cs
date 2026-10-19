@@ -99,6 +99,9 @@ public static class HostPages
     /// <summary>Event rules (rail page in the Automation group).</summary>
     public const string EventRules = "eventRules";
 
+    /// <summary>Compliance (rail page below Devices): the compliance checks and the devices that fail them.</summary>
+    public const string Compliance = "compliance";
+
     /// <summary>About page: terms of use, versions and licenses.</summary>
     public const string About = "about";
 }

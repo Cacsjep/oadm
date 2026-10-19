@@ -235,6 +235,27 @@ public interface IOadmApi
     /// <summary>Admin: removes the license of a plugin. Returns the whole list.</summary>
     Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct);
 
+    // ComplianceService (reading needs "See compliance", changing "Change compliance checks")
+    Task<ComplianceCatalog> GetComplianceCatalogAsync(CancellationToken ct) => Task.FromResult(new ComplianceCatalog());
+
+    IAsyncEnumerable<ComplianceCheckList> WatchComplianceChecksAsync(CancellationToken ct) => AsyncEnumerable.Empty<ComplianceCheckList>();
+
+    Task<ComplianceCheckDetail> GetComplianceCheckAsync(string id, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<ComplianceCheckSummary> SaveComplianceCheckAsync(ComplianceCheckDetail check, CancellationToken ct) => throw new NotSupportedException();
+
+    Task DeleteComplianceCheckAsync(string id, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<ComplianceCheckSummary> SetComplianceCheckEnabledAsync(string id, bool enabled, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<IReadOnlyList<ActionChoiceEntry>> ListComplianceChoicesAsync(string typeId, string fieldKey, string? deviceId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<ActionChoiceEntry>>([]);
+
+    Task CheckComplianceNowAsync(IEnumerable<string> checkIds, IEnumerable<string> deviceIds, CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>Every result in batches (the last of the snapshot has snapshot_end), then every change.</summary>
+    IAsyncEnumerable<ComplianceResultBatch> WatchComplianceResultsAsync(CancellationToken ct) => AsyncEnumerable.Empty<ComplianceResultBatch>();
+
     // EventService (event rules; changing rules is Admin only)
     Task<EventCatalog> GetEventCatalogAsync(CancellationToken ct);
     Task<IReadOnlyList<RuleSummary>> ListRulesAsync(CancellationToken ct);

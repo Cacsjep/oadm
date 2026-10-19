@@ -430,6 +430,9 @@ Two processes, like ADM:
   device; a user's requests to a device without an Open in the last 8 hours write the audit entry once; request bodies
   over 16 MB are spooled to `<datafolder>/web-relay/`, at most 4 at once, 1 GB of disk kept free, the folder emptied once
   per start; a `Location` to the device's host on any scheme or port becomes a path).
+- `ComplianceService` (`compliance.proto`, see "Compliance"): `GetCatalog`, `ListChecks`, `WatchChecks`, `GetCheck`,
+  `SaveCheck`, `DeleteCheck`, `SetCheckEnabled`, `ListChoices`, `CheckNow`, `WatchResults` (snapshot in batches of 5,000 with
+  `snapshot_end`, then changes).
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
   `device_count`, then names used on devices without a definition, `defined = false`), `Watch` (the whole `TagList` on
   subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
@@ -491,6 +494,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `TaskLogEntry` (table TaskLogEntries): Id (autoincrement), TaskId (cascade delete), DeviceId
   (nullable = task level), TimeUtc, Level (Info, Warning, Error), Message (max 2000 chars).
   At most 1000 entries per task; the 1000th says that later entries were dropped.
+- `ComplianceCheckEntity` / `ComplianceResultEntity` (tables ComplianceChecks, ComplianceResults, migration
+  `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance".
 - `Setting`: Key, ValueJson.
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
@@ -858,7 +863,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   with the main window, on logout and when the plugin is turned off; a closed window (or a removed rail page) disposes its
   page: the plugin context drops every `DevicesChanged` subscription and the view's DataContext is disposed when it is
   `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
-  `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
+  `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, **Compliance** (built in, right below Devices, no group; while the role may see
+  compliance), then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring (Live View, Dashboards, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
@@ -925,7 +931,8 @@ Layout, top to bottom:
    then System report (plugin) | plugin entries) in `ui:ToolbarOverflowPanel`: entries that do not fit (narrow
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
-   `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box (host parts);
+   `groupBy`, class `active` while on), **Show each compliance check** icon button (icon `squareActivity`, class `active`
+   while on, only with compliance), Columns icon button (tooltip "Choose columns") and search box (host parts);
    everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
    Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
@@ -1167,6 +1174,7 @@ and the saved per-client order cover other preferences):
 | Address | IP or host name, hyperlink opens device web UI in default browser |
 | Model | ProdNbr |
 | Status | computed, see enum |
+| Compliance | the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); with the toolbar toggle **Show each compliance check** one column per check instead; hidden without "See compliance". See "Compliance" |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
 | SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export |
@@ -1240,6 +1248,35 @@ with the labels in the grid, the search, the export and the import; plugins read
 - **Tests**: `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename
   2.2 s, delete 2.0 s, list 35 ms); `tests/Oadm.Client.Tests/DeviceTagsTests`, `DeviceTagsHeadlessTests`, Perf
   `TagGroupScaleTests`.
+
+# Compliance
+
+Built-in feature (not a plugin): which devices need attention at first glance. Spec, decisions and details:
+`docs/compliance.md`. Core `Oadm.Core.Compliance`, server `Oadm.Server.Compliance`, gRPC `ComplianceService`, client
+`Compliance/`, SDK `Oadm.Sdk.Compliance`.
+
+- **Check** = a check type + its settings + its devices (always chosen with the shared picker: All devices, tags, chosen
+  devices) + Problem or Warning + on / off + (types that read devices) every 15..1440 minutes (default 60). At most 50.
+  Default checks **Reachable** and **Login works**: always on, not deletable, only their devices change.
+- **Types**: host (cached data, never contact a device, follow every device change): Reachable, Login works, Certificate
+  (expired, fewer than N days left (default 30), not trusted), Firmware (at least a version). Plugins: **Application
+  running** (Applications), **Matches configuration file** (Device configuration: a `.cfg` of Create configuration file or
+  ADM kept in the check; parameters, action rules and stream profiles by name; per-device values and passwords never
+  compared, values the model lacks skipped), **SD card** (Edge storage: no card fails; optional free GB / %; only while Edge
+  storage is on). New types: SDK `IComplianceCheckType`, no host change.
+- Rules that must hold: checks are read only; devices whose status is not Ok are not contacted (Not checked with the
+  reason); 32 devices at once, 15 s per check, all due checks of a device in one run sharing their reads; results kept per
+  check and device (outcome, detail, checked, since) and written in batches; a changed check is checked again on every
+  device; a type whose plugin is off says so and does not run. Every check is a stateful event of the event rules
+  ("Compliance: <name>", on while it fails on a device). No fix actions on the page.
+- **Page** (rail, right below Devices): a count card per check (a click shows the devices that fail it), tabs Problems |
+  Warnings | All, the devices with a Result column and one icon column per check, New check / Edit / Delete / Check now /
+  Export. Dialog `ComplianceCheckWindow` (single operation; the type's settings through the shared `SettingsFormView` of the
+  event rules). **Devices grid**: the Compliance column or one column per check (toggle, per client).
+- Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
+- Tests: `tests/Oadm.Core.Tests/Compliance`, `tests/Oadm.Server.Tests/ComplianceServiceTests`, the check types in their
+  plugins' tests, `tests/Oadm.Client.Tests/ComplianceTests` (+ Perf 30,000 devices x 10 checks, screenshots). Fake mode:
+  `FakeOadmApi.Compliance.cs`.
 
 # Event rules
 
@@ -1481,6 +1518,9 @@ returns null or throws `NotSupportedException`.
   the add page).
 - Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource` (see "Event
   rules").
+- Compliance: `IComplianceCheckType` (standalone in a `*.Server.dll`, or through `IComplianceSource` of a core plugin),
+  `IComplianceContext` with shared `Reads`, `ComplianceResult`; `ActionField.File` and `ChoicesFromDevice` for its
+  settings (see "Compliance"). Tests: `Oadm.Sdk.Testing.FakeComplianceContext`.
 
 Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and never
 ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
@@ -2068,6 +2108,8 @@ cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: 
   (SDK) and `PluginEventWatch.RunAsync` (client SDK).
 - Tests: `tests/Oadm.Plugins.EdgeStorage.Tests` (+ Perf 5,000 cameras); opt-in `StorageHardwareWriteTests`
   (`OADM_STORAGE_WRITE_URL` / `_USER` / `_PASSWORD`, formats the card; every tool, the card ends as it started).
+- Compliance check type **SD card** (`SdCardCheck`, see "Compliance"): a working card, optional free space; only while
+  Edge storage is on.
 
 ## Date and time
 
@@ -2109,6 +2151,7 @@ plugin `README.md`.
 - Tests: `tests/Oadm.Plugins.DeviceConfig.Tests` (+ Perf 5,000 devices, read-only `ConfigureHardwareTests`); opt-in
   `ImportHardwareWriteTests` (`OADM_CONFIG_WRITE_URL` / `_USER` / `_PASSWORD`) and `ConfigureHardwareWriteTests`
   (`OADM_CONFIGURE_WRITE=1`, the first dev camera: writes, writes again, removes everything; passed on the P3265-V).
+- Compliance check type **Matches configuration file** (`Configure/ConfigMatchCheck`, see "Compliance").
 
 ## Applications (ACAP)
 
@@ -2122,6 +2165,8 @@ or on their own, matched by the MAC address in the key). Decision table and rese
   downgrade without the explicit option; a license key is sent only to the device whose MAC address it names, for the
   installed application's id and not expired (a device without a key: Done with warnings, nothing sent); activation with a
   license code is not offered (the device has no API for it, its web page asks Axis online).
+- Compliance check type **Application running** (`ApplicationRunningCheck`, see "Compliance"): the application is
+  installed / running, optionally at least a version and a valid license; the choices are read from one device.
 
 # Settings
 
@@ -2272,6 +2317,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `Roles` maps the old Admin to Administrator and everyone else to Operator. A permission is a key: host keys
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
   `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
+  `compliance.view` ("See compliance", Operator and Viewer yes), `compliance.manage` ("Change compliance checks", Operator no),
   `events.view`, `events.manage`, `events.clearLog`, `logs.server`), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
@@ -2492,7 +2538,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   XML that do not parse yet (`CodeText.Prepare(colorUnparsed: true)`: typing, an HTML body with several elements)), `FormField` (every labeled form row: label,
   input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
   title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
-  needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
+  needs attention; a card that filters a list sits in `Button.statCardButton`, the chosen one with `selected`), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
   search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be used greyed
   with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; `ShowOneAsync` (`DevicePickerOptions.SingleDevice`: checking a device
   unchecks the one before, no Select all / none) returns one id; with
@@ -2641,8 +2687,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,
-least-privilege service accounts, the **Compliance** page with compliance checks from the host and plugins (draft spec
-`docs/compliance.md`).
+least-privilege service accounts.
 
 # Resources
 

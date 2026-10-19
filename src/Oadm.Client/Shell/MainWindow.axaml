@@ -9,6 +9,7 @@
         xmlns:dev="using:Oadm.Client.Devices"
         xmlns:log="using:Oadm.Client.Logging"
         xmlns:rules="using:Oadm.Client.EventRules"
+        xmlns:compliance="using:Oadm.Client.Compliance"
         xmlns:settings="using:Oadm.Client.Settings"
         mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
         x:Class="Oadm.Client.Shell.MainWindow"
@@ -26,6 +27,9 @@
     </DataTemplate>
     <DataTemplate DataType="rules:EventRulesViewModel">
       <rules:EventRulesView />
+    </DataTemplate>
+    <DataTemplate DataType="compliance:ComplianceViewModel">
+      <compliance:ComplianceView />
     </DataTemplate>
     <DataTemplate DataType="log:LogsViewModel">
       <log:LogsView />

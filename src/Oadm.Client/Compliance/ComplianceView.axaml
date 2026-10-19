@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:dev="using:Oadm.Client.Devices"
+             xmlns:vm="using:Oadm.Client.Compliance"
+             x:Class="Oadm.Client.Compliance.ComplianceView"
+             x:DataType="vm:ComplianceViewModel">
+  <!-- A count card per check (a click shows the devices that fail it), then the tabs and the devices with one icon column
+       per check (built in code-behind from ColumnChecks). -->
+  <Grid RowDefinitions="Auto,Auto,*">
+    <c:PageTitleBar Grid.Row="0" Title="Compliance" Subtitle="Which devices need attention." Margin="0,0,0,16" />
+
+    <ScrollViewer Grid.Row="1" MaxHeight="244" Margin="0,0,0,16" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding HasCards}">
+      <ItemsControl ItemsSource="{Binding Cards}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel ItemSpacing="{StaticResource Oadm.Gap}" LineSpacing="{StaticResource Oadm.Gap}" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ComplianceCardViewModel">
+            <Button Classes="statCardButton" Classes.selected="{Binding IsSelected}" ToolTip.Tip="{Binding ToolTip}"
+                    Command="{Binding $parent[UserControl].((vm:ComplianceViewModel)DataContext).SelectCardCommand}" CommandParameter="{Binding}">
+              <ui:StatCard Width="220" Title="{Binding Title}" Value="{Binding Value}" Detail="{Binding Detail}"
+                           IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16">
+          <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
+            <ui:ToolbarButton Text="New check" IconKey="add" IsPrimary="True" Command="{Binding NewCheckCommand}" IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding CardActionBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <Button Classes="toolbar danger" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}"
+                    ToolTip.Tip="{Binding CardActionBlockedReason}" ToolTip.ShowOnDisabled="True">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+            </Button>
+            <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton Text="Check now" IconKey="refresh" Command="{Binding CheckNowCommand}" ToolTip.Tip="The selected devices, else all" />
+            <ui:ToolbarButton Text="Export" IconKey="export" Command="{Binding ExportCommand}" />
+          </ui:ToolbarOverflowPanel>
+          <ui:SearchBox Grid.Column="1" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,8">
+          <Border Classes="segmented">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="segment" Classes.selected="{Binding IsProblemsTab}" Content="{Binding ProblemsText}" Command="{Binding ShowProblemsCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsWarningsTab}" Content="{Binding WarningsText}" Command="{Binding ShowWarningsCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsAllTab}" Content="{Binding AllText}" Command="{Binding ShowAllCommand}" />
+            </StackPanel>
+          </Border>
+          <TextBlock Grid.Column="2" Classes="secondary" VerticalAlignment="Center" Text="{Binding StatusText}" />
+        </Grid>
+
+        <!-- Thousands of devices: virtualized; one icon column per check is added in code-behind. -->
+        <DataGrid x:Name="ResultGrid" Grid.Row="2" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="True" CanUserResizeColumns="True" CanUserReorderColumns="True"
+                  c:GridSelection.SelectedItems="{Binding SelectedRows}">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Width="44" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                  <ui:DeviceIcon Category="{Binding SdkCategory}" Status="{Binding SdkStatus}" ShowStatusToolTip="True"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Address" Width="150" MinWidth="110" Binding="{Binding DisplayAddress}" x:DataType="dev:DeviceRowViewModel" />
+            <DataGridTextColumn Header="Model" Width="140" MinWidth="100" Binding="{Binding Model}" x:DataType="dev:DeviceRowViewModel" />
+            <DataGridTemplateColumn Header="Tags" Width="140" MinWidth="80" SortMemberPath="TagsText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                  <c:TagChipList Tags="{Binding TagChips}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Result" Width="170" MinWidth="120" SortMemberPath="Compliance.SortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                  <vm:ComplianceSummaryCell Compliance="{Binding Compliance}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}"
+                   IsVisible="{Binding EmptyText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                   IsVisible="{Binding ErrorText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -247,6 +247,53 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     /// <summary>Rows of name and value (headers, query parameters).</summary>
     public bool IsKeyValues => Entry.Kind == ActionFieldKind.ActionFieldKeyValues;
 
+    /// <summary>A file (a configuration file of a compliance check), chosen with <see cref="ChooseFileCommand"/>.</summary>
+    public bool IsFile => Entry.Kind == ActionFieldKind.ActionFieldFile;
+
+    /// <summary>A list read from one device the user picks (<see cref="ReadFromDeviceCommand"/>).</summary>
+    public bool ReadsFromDevice => IsChoice && Entry.ChoicesFromDevice;
+
+    /// <summary>Opens the file picker for a <see cref="IsFile"/> field; set by the dialog.</summary>
+    public Func<ActionFieldViewModel, Task>? FilePicker { get; set; }
+
+    /// <summary>Picks a device and reads the choices from it; set by the dialog.</summary>
+    public Func<ActionFieldViewModel, Task>? DeviceReader { get; set; }
+
+    /// <summary>The chosen file's name ("base-config.cfg"); null without one.</summary>
+    [ObservableProperty] public partial string? FileName { get; private set; }
+
+    /// <summary>"12 KB" of the chosen file.</summary>
+    [ObservableProperty] public partial string? FileDetails { get; private set; }
+
+    /// <summary>The chosen file's content in base64.</summary>
+    public string? FileData { get; private set; }
+
+    /// <summary>"Read from 10.0.0.48" after the list was read; null before.</summary>
+    [ObservableProperty] public partial string? ReadFromText { get; set; }
+
+    /// <summary>Sets the chosen file (the dialog's picker).</summary>
+    public void SetFile(string name, byte[] content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        FileName = name;
+        FileData = Convert.ToBase64String(content);
+        FileDetails = SizeText(content.Length);
+        Edited();
+    }
+
+    /// <summary>The file setting as stored: {"name", "data"}; null without a file.</summary>
+    public JsonObject? FileJson() => FileData is null ? null : new JsonObject { ["name"] = FileName ?? string.Empty, ["data"] = FileData };
+
+    private static string SizeText(long bytes) => bytes < 1024
+        ? string.Create(CultureInfo.CurrentCulture, $"{bytes:N0} bytes")
+        : string.Create(CultureInfo.CurrentCulture, $"{bytes / 1024d:N0} KB");
+
+    [RelayCommand]
+    private Task ChooseFileAsync() => FilePicker is { } pick ? pick(this) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task ReadFromDeviceAsync() => DeviceReader is { } read ? read(this) : Task.CompletedTask;
+
     /// <summary>How the code editor colors the body; follows the field <see cref="ActionField.LanguageKey"/>.</summary>
     [ObservableProperty] public partial CodeLanguage Language { get; set; } = CodeLanguage.Plain;
 
@@ -285,7 +332,8 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     public partial bool PasswordStored { get; set; }
 
     /// <summary>The value as text for the settings JSON ("" = empty).</summary>
-    public string Value => IsBool ? (IsChecked ? "true" : "false") : IsChoice ? SelectedChoice?.Value ?? string.Empty : IsKeyValues ? RowsJson().ToJsonString() : Text;
+    public string Value => IsBool ? (IsChecked ? "true" : "false") : IsChoice ? SelectedChoice?.Value ?? string.Empty
+        : IsKeyValues ? RowsJson().ToJsonString() : IsFile ? FileJson()?.ToJsonString() ?? string.Empty : Text;
 
     /// <summary>The rows as the settings store them: [{"name", "value"}], rows that are completely empty left out.</summary>
     public JsonArray RowsJson() =>
@@ -326,7 +374,23 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     public void SetValue(string? value)
     {
-        if (IsKeyValues)
+        if (IsFile)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(value) && JsonNode.Parse(value) is JsonObject file && file["data"]?.GetValue<string>() is { } data)
+                {
+                    FileName = file["name"]?.GetValue<string>() ?? string.Empty;
+                    FileData = data;
+                    FileDetails = SizeText(data.Length * 3L / 4);
+                }
+            }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+            {
+                // A broken stored value starts without a file.
+            }
+        }
+        else if (IsKeyValues)
         {
             Rows.Clear();
             try
@@ -414,7 +478,54 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         Language = entry.Language.Length == 0 ? null : entry.Language,
         LanguageKey = entry.LanguageKey.Length == 0 ? null : entry.LanguageKey,
         Choices = [.. entry.Choices.Select(c => new ActionChoice(c.Value, c.Label))],
+        ChoicesFromDevice = entry.ChoicesFromDevice,
+        Accept = [.. entry.Accept],
     };
+
+    /// <summary>The settings JSON of a form (an empty password keeps the stored value: left out).</summary>
+    public static JsonObject ToSettings(IEnumerable<ActionFieldViewModel> fields)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        var settings = new JsonObject();
+        foreach (var field in fields)
+        {
+            var value = field.Value;
+            if (field.IsPassword && value.Length == 0)
+            {
+                continue; // empty: keep the stored value (StoredSecretFields)
+            }
+
+            settings[field.Key] = field.Field.Type switch
+            {
+                ActionFieldType.KeyValues => field.RowsJson(),
+                ActionFieldType.File => field.FileJson(),
+                ActionFieldType.Number when value.Length == 0 && !field.Field.Required => null,
+                ActionFieldType.Number when int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => JsonValue.Create(n),
+                ActionFieldType.Bool => JsonValue.Create(field.IsChecked),
+                _ => JsonValue.Create(value),
+            };
+        }
+
+        return settings;
+    }
+
+    /// <summary>Visibility, errors and code coloring of a form for its current values (the shared host checks).</summary>
+    public static void Refresh(IReadOnlyList<ActionFieldViewModel> fields, bool statefulRule)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        var settings = ToSettings(fields);
+        var stored = fields.Where(f => f.PasswordStored).Select(f => f.Key).ToList();
+        var errors = ActionSettings.Check([.. fields.Select(f => f.Field)], settings, statefulRule, stored);
+        foreach (var field in fields)
+        {
+            field.IsVisible = ActionSettings.IsVisible(field.Field, settings, statefulRule);
+            field.Problem = field.LoadError ?? errors.GetValueOrDefault(field.Key);
+            if (field.IsCode)
+            {
+                field.Language = LanguageOf(field.Field.Language ?? (field.Field.LanguageKey is { } key ? ActionSettings.Text(settings, key) : null));
+            }
+        }
+    }
 }
 
 /// <summary>One row of a name and value list (an HTTP header, a query parameter).</summary>
