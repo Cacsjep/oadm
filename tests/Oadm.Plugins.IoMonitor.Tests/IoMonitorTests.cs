@@ -140,9 +140,8 @@ public sealed class ServerTests
     public async Task Two_pages_of_one_device_share_one_reading()
     {
         var time = new CountingTimeProvider();
-        // A lease far beyond the clock steps of this test: on a busy machine ReadUntilAsync may step the clock many times
-        // while it waits for the change, and the pages send no keep-alives here (the lease has its own test).
-        await using var rig = await new Rig(leaseTimeout: TimeSpan.FromDays(1), time: time).StartAsync();
+        // the pages send no keep-alives here (the lease has its own test); the clock moves 220 ms, far below the lease
+        await using var rig = await new Rig(time: time).StartAsync();
         var device = new TestDevice("10.0.0.70", "A9210");
         rig.Devices.Items.Add(device);
         var events = await WatchAsync(rig);
@@ -167,7 +166,7 @@ public sealed class ServerTests
         Assert.Equal(10, rig.Vapix.Requests - requests);
 
         rig.Vapix.SetClosed("0");
-        await time.ReadUntilAsync(() => events.Count == 4, TimeSpan.FromMilliseconds(20)); // each page gets the change
+        await time.ReadOnceAsync(() => events.Count == 4, TimeSpan.FromMilliseconds(20)); // each page gets the change
         Assert.Equal(new[] { first, second }.Order(), events.Skip(2).Select(e => IoMonitorJson.Deserialize<PortsEvent>(e.PayloadJson).StreamId).Order());
 
         await rig.Plugin.InvokeAsync(IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(first)), CancellationToken.None);
@@ -311,7 +310,7 @@ public sealed class PageTests : IDisposable
         Assert.Equal("Inactive", vm.Outputs[0].ActiveText);
 
         rig.Vapix.SetClosed("0");
-        await time.ReadUntilAsync(() => vm.Outputs[0].Active, TimeSpan.FromMilliseconds(20));
+        await time.ReadOnceAsync(() => vm.Outputs[0].Active, TimeSpan.FromMilliseconds(20));
         Assert.Equal("Active", vm.Outputs[0].ActiveText);
         Assert.Equal("Closed, normally open · Relay", vm.Outputs[0].Detail);
 
