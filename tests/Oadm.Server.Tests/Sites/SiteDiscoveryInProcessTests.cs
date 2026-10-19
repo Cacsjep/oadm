@@ -60,6 +60,9 @@ public sealed class SiteDiscoveryInProcessTests
         // The first contact of a range scan on the node: .30 answers on 80, nothing is at .31, .29 refuses both ports.
         node.Refuse("192.168.0.29", 80);
         node.Refuse("192.168.0.29", 443);
+        // A host that refuses (sends a reset) is there: the address is taken.
+        Assert.True(await sites.PingAsync(id, "192.168.0.29", TimeSpan.FromSeconds(5), ct));
+        Assert.True(await sites.ProbeTcpAsync(id, "192.168.0.29", 80, TimeSpan.FromSeconds(5), ct));
         var scan = new List<SiteRangeScanResult>();
         await foreach (var result in sites.RangeScanAsync(id, IPAddress.Parse("192.168.0.29"), IPAddress.Parse("192.168.0.31"), 4, TimeSpan.FromSeconds(5), ct))
         {
