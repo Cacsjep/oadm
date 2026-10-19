@@ -91,6 +91,15 @@ message HelloReply {
   string host_name = 7;           // the default site name
   string bound_server_name = 8;   // only to the bound server, else empty
   string site_name = 9;           // only to the bound server, else empty
+  // Outbound: which connection this is, so the server can tell the control connection from the worker connections it
+  // asked for with OpenConnections. Inbound: UNSPECIFIED (the server opened the connection and knows).
+  LinkRole link_role = 10;
+}
+
+enum LinkRole {
+  LINK_ROLE_UNSPECIFIED = 0;
+  LINK_ROLE_CONTROL = 1;
+  LINK_ROLE_WORKER = 2;
 }
 
 message PairStartRequest {}

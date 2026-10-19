@@ -213,6 +213,13 @@ src/
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
+  Oadm.Theme/          the OADM theme (colors of both appearances, icons, OadmTheme.axaml, OadmColors) and the shared
+                       TermsWindow, used by the client and the OADM Site Node app
+  Oadm.Sites/          the link between server and site node (feature/sites): Kestrel over a connection the node opened,
+                       TLS with pinned fingerprints, pairing code and SRP binding
+  Oadm.SiteNode/       OADM Site Node service and command line (feature/sites; README with the manual test plan)
+  Oadm.SiteNode.Admin/ the node's local channel, texts and parsing shared by service, command line and app
+  Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
 plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Restart/   first Task plugin (server only)
   Oadm.Plugins.Firmware(.Client)/         Upgrade firmware
@@ -866,8 +873,8 @@ Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
 Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
 **Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
-colors live in `Themes/Colors.Dark.axaml` and `Themes/Colors.Light.axaml` (same keys, `ThemeColorsTests`);
-`Themes/OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
+colors live in `src/Oadm.Theme/Colors.Dark.axaml` and `Colors.Light.axaml` (same keys, `ThemeColorsTests`);
+`Oadm.Theme.OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
 before the styles load (`JsonClientSettingsStore.ReadAppearance`, `AppOptions.Appearance` overrides it), and the Fluent
 theme variant follows. The color values below are the dark ones. Video stays dark in both: plates over the picture use
 `Oadm.OverlayBrush` (dark or white translucent with the normal text), the autofocus dimming `Oadm.VideoDimBrush`. Headless
@@ -952,7 +959,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   changes the value (`Infrastructure/WheelScroll`, attached in `App`, so plugin views too; test `WheelScrollTests`).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
-- All colors in `Themes/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `Themes/OadmTheme.axaml`; no
+- All colors in `src/Oadm.Theme/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `src/Oadm.Theme/OadmTheme.axaml`
+  (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups, `TagChipList`, `TagColorPicker`); no
   hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the
   Fluent palettes in `OadmTheme.axaml` (accent based, the same in both), fallbacks in code when a key cannot be found.
 
@@ -2714,7 +2722,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   Numeric columns (days, offsets, scores, durations) are right-aligned: `CellStyleClasses="number"` plus a header
   `TextBlock.numberHeader`. Empty lists say in one line what to do first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
-  style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
+  style per element type in `src/Oadm.Theme/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
   item or a greyed toggle unless the spec says so. When a mismatch is found, fix the shared
   style or control, not the single view.

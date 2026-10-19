@@ -11,6 +11,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - Sites (in development): devices of an offline site show **Site offline**. OADM does not poll them, and tasks, plugin
   pages, Log in, Set password, the RTSP port, live view and Web View refuse them; compliance says Not checked. New events
   "Site offline" per site and "Any site offline", and the placeholder {site}.
+- Sites (in development): the **OADM Site Node**, a small service and app for a network the server cannot reach. It
+  connects out to the server (or waits for it), is bound with a pairing code from its app, and reaches only the network
+  cards and ports allowed in the app.
 
 ### Changed
 

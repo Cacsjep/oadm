@@ -132,7 +132,7 @@ and by key without `Icon.` in `IconKey` properties (`IconKey="refresh"`). Some k
 `globe`, `grid`, `hardDrive`, `wrench`, `eraser`, `tag`, `plugin`, `clipboardCheck`, `gauge`, `circle`, `thermometer`, `lightbulb`.
 
 The full list is in [plugins/README.md](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md#icons). A new
-icon goes into `src/Oadm.Client/Themes/Icons.axaml` (a 24 x 24 Lucide stroke geometry).
+icon goes into `src/Oadm.Theme/Icons.axaml` (a 24 x 24 Lucide stroke geometry).
 
 ## Wording
 

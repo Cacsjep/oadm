@@ -21,6 +21,11 @@
   <!-- Device connections only through the route (docs/sites.md, Banned APIs): src/ and plugins/ may not open sockets, ask
        DNS or build HTTP handlers themselves; the few justified exceptions carry a SuppressMessage. tools/, tests/ and
        samples/ stay outside (samples get the same list as warnings from the plugin project SDK). -->
+  <!-- The OADM Site Node is the network endpoint at a site (it dials the devices for the server, docs/sites.md): its own
+       sockets are the route, so its projects are outside the list. -->
+  <PropertyGroup Condition="'$(OadmBannedApis)' == '' and $(MSBuildProjectName.StartsWith('Oadm.SiteNode'))">
+    <OadmBannedApis>none</OadmBannedApis>
+  </PropertyGroup>
   <PropertyGroup>
     <_OadmProjectDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</_OadmProjectDirectory>
     <OadmBannedApis Condition="'$(OadmBannedApis)' == '' and ($(_OadmProjectDirectory.StartsWith('$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'src'))')) or $(_OadmProjectDirectory.StartsWith('$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'plugins'))')))">error</OadmBannedApis>

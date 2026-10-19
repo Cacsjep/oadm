@@ -130,7 +130,10 @@ public sealed class OutboundTests
         Assert.Equal(2, reply.Open);
         await using var worker1 = await server.NextLinkAsync();
         await using var worker2 = await server.NextLinkAsync();
-        Assert.Equal(NodeState.Bound, (await worker1.Client.HelloAsync(new HelloRequest())).State);
+        var workerHello = await worker1.Client.HelloAsync(new HelloRequest());
+        Assert.Equal(NodeState.Bound, workerHello.State);
+        Assert.Equal(LinkRole.Worker, workerHello.LinkRole);
+        Assert.Equal(LinkRole.Control, (await control.Client.HelloAsync(new HelloRequest())).LinkRole);
         Assert.Equal(OutboundConnector.MaxWorkers, (await control.Client.OpenConnectionsAsync(new OpenConnectionsRequest { Count = 20 })).Open);
     }
 

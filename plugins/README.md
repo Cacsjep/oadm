@@ -204,7 +204,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
   | `ui:CodeEditor Text Language PlaceholderText` | **every editable code field** (request bodies): a monospace text box (caret, selection, undo) with the text colored like `ui:CodeView` while typing; `Language` `Json`, `Xml`, `KeyValue` or `Plain`; the text stays exactly as typed |
 
-- Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
+- Styles and classes from the host theme (`src/Oadm.Theme/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary`,
   `Button.secondary`, `Button.toolbar`, `Button.danger` (red: delete or remove; `Button.toolbar.danger` and
   `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
@@ -281,7 +281,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
 
 A plugin's `IconKey` (context menu, toolbar) is the key without `Icon.`, e.g. `restart`. A new icon goes into
-`src/Oadm.Client/Themes/Icons.axaml` (24x24 Lucide stroke geometry) and into this list.
+`src/Oadm.Theme/Icons.axaml` (24x24 Lucide stroke geometry) and into this list.
 
 ## Toolbar plugins
 

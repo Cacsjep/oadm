@@ -67,6 +67,7 @@ public sealed class SiteNodeGrpcService(
             },
             Mode = config.Mode == NodeLinkMode.Wait ? NodeMode.Wait : NodeMode.Connect,
             HostName = options.HostName,
+            LinkRole = !link.Outbound ? LinkRole.Unspecified : link.Worker ? LinkRole.Worker : LinkRole.Control,
         };
         reply.Features.Add(Features);
         if (link.Refusal is null && binding.IsBoundTo(link.ServerFingerprintHex) && binding.Bound is { } bound)
