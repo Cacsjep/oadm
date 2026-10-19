@@ -55,6 +55,39 @@ public enum ActionFieldType
 
     /// <summary>Rows of name and value (HTTP headers, query parameters); stored as a JSON array of {"name", "value"}.</summary>
     KeyValues = 8,
+
+    /// <summary>
+    /// A file the user chooses (a configuration file of a compliance check); stored as {"name", "data"} with the content in
+    /// base64, at most <see cref="ActionField.MaxLength"/> bytes. Read it with <see cref="ActionFile.From"/>. Compliance checks
+    /// only; the rule dialog does not offer it.
+    /// </summary>
+    File = 9,
+}
+
+/// <summary>The value of a <see cref="ActionFieldType.File"/> setting.</summary>
+/// <param name="Name">The file name as chosen ("base-config.cfg").</param>
+/// <param name="Data">The content.</param>
+public sealed record ActionFile(string Name, byte[] Data)
+{
+    /// <summary>The file of a setting value {"name", "data"}; null when it is not one or the content is not base64.</summary>
+    public static ActionFile? From(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object
+            || !value.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var name = value.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() ?? string.Empty : string.Empty;
+        try
+        {
+            return new ActionFile(name, Convert.FromBase64String(data.GetString() ?? string.Empty));
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>A choice of a <see cref="ActionFieldType.Choice"/> or <see cref="ActionFieldType.DynamicChoice"/> field.</summary>
@@ -107,6 +140,15 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>The field whose value is the language of this <see cref="ActionFieldType.Code"/> field.</summary>
     public string? LanguageKey { get; init; }
 
+    /// <summary>
+    /// A <see cref="ActionFieldType.DynamicChoice"/> whose choices are read from one device the user picks ("Read from
+    /// device"), e.g. the applications installed on a camera. Compliance checks only.
+    /// </summary>
+    public bool ChoicesFromDevice { get; init; }
+
+    /// <summary>File name endings a <see cref="ActionFieldType.File"/> field takes (".cfg"); empty = any.</summary>
+    public IReadOnlyList<string> Accept { get; init; } = [];
+
     /// <summary>One line of text.</summary>
     public static ActionField Text(string key, string label, bool required = false, string? defaultValue = null) =>
         new(key, label, ActionFieldType.Text) { Required = required, Default = defaultValue };
@@ -138,6 +180,10 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>A body in the code editor; <paramref name="languageKey"/> names the field whose value is its language.</summary>
     public static ActionField Code(string key, string label, string? languageKey = null, bool required = false) =>
         new(key, label, ActionFieldType.Code) { Required = required, MaxLength = 50_000, LanguageKey = languageKey };
+
+    /// <summary>A file of at most <paramref name="maxBytes"/> bytes with one of the <paramref name="accept"/> endings.</summary>
+    public static ActionField File(string key, string label, IReadOnlyList<string> accept, int maxBytes, bool required = true) =>
+        new(key, label, ActionFieldType.File) { Required = required, Accept = accept, MaxLength = maxBytes };
 
     /// <summary>Name and value rows (headers, query parameters); read them with <see cref="ActionInvocation.GetPairs"/>.</summary>
     public static ActionField KeyValues(string key, string label) =>

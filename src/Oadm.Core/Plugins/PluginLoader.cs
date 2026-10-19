@@ -313,6 +313,22 @@ public sealed partial class PluginLoader
             }
         }
 
+        // Standalone compliance check types; contributed ones were registered with their core plugin.
+        var contributedChecks = _registry.AllComplianceTypes.Where(c => c.Owner is not null).Select(c => c.Type.GetType()).ToHashSet();
+        foreach (var type in types.Where(t => typeof(Sdk.Compliance.IComplianceCheckType).IsAssignableFrom(t) && !typeof(ICorePlugin).IsAssignableFrom(t)))
+        {
+            if (contributedChecks.Contains(type) || type.GetConstructor(Type.EmptyTypes) is null)
+            {
+                LogSkippedType(type.FullName ?? type.Name, origin.PackageId);
+                continue;
+            }
+
+            if (TryCreate(type, origin) is Sdk.Compliance.IComplianceCheckType check && _registry.RegisterComplianceType(check, origin))
+            {
+                count++;
+            }
+        }
+
         return count;
     }
 

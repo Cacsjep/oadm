@@ -1,0 +1,129 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "Protos/events.proto";
+
+// Compliance checks: per check a type (from the host or a plugin), its settings, its devices, Problem or Warning, and
+// how often it reads the devices. The server runs them, keeps the latest result per check and device and publishes an
+// event per check for the event rules. Reading needs "See compliance", changing "Change compliance checks" (audited).
+service ComplianceService {
+  // Every check type (for the check dialog).
+  rpc GetCatalog (Empty) returns (ComplianceCatalog);
+  // Every check with its counts; the default checks first, then by name.
+  rpc ListChecks (Empty) returns (ComplianceCheckList);
+  // The list on subscribe and after every change (a check saved, results changed), at most every 500 ms.
+  rpc WatchChecks (Empty) returns (stream ComplianceCheckList);
+  // One check with its settings. NOT_FOUND.
+  rpc GetCheck (ComplianceCheckId) returns (ComplianceCheckDetail);
+  // Creates (empty id) or replaces a check, then checks its devices at once. INVALID_ARGUMENT with the first problem,
+  // FAILED_PRECONDITION when another user changed it meanwhile (version), RESOURCE_EXHAUSTED over 50 checks.
+  rpc SaveCheck (ComplianceCheckDetail) returns (ComplianceCheckSummary);
+  // FAILED_PRECONDITION for a default check. NOT_FOUND.
+  rpc DeleteCheck (ComplianceCheckId) returns (Empty);
+  // FAILED_PRECONDITION when turning off a default check. NOT_FOUND.
+  rpc SetCheckEnabled (SetComplianceCheckEnabledRequest) returns (ComplianceCheckSummary);
+  // The choices of a setting the type fills (e.g. the applications installed on device_id). NOT_FOUND,
+  // FAILED_PRECONDITION for a device that cannot be contacted.
+  rpc ListChoices (ComplianceChoicesRequest) returns (ActionChoiceList);
+  // Checks again now; empty lists = every check that is on / every device of the check.
+  rpc CheckNow (ComplianceCheckNowRequest) returns (Empty);
+  // Every result in batches (snapshot_end after the last one of the snapshot), then every change.
+  rpc WatchResults (Empty) returns (stream ComplianceResultBatch);
+}
+
+enum ComplianceSeverity {
+  COMPLIANCE_PROBLEM = 0;
+  COMPLIANCE_WARNING = 1;
+}
+
+enum ComplianceOutcome {
+  COMPLIANCE_NOT_CHECKED = 0;
+  COMPLIANCE_PASSED = 1;
+  COMPLIANCE_FAILED = 2;
+  COMPLIANCE_NOT_APPLICABLE = 3;
+  COMPLIANCE_COULD_NOT_CHECK = 4;
+}
+
+message ComplianceTypeEntry {
+  string id = 1;
+  string display_name = 2;
+  string group = 3;
+  string description = 4;
+  string icon_key = 5;
+  repeated ActionFieldEntry fields = 6;
+  ComplianceSeverity default_severity = 7;
+  bool reads_devices = 8;        // false: decided from what OADM knows, no interval
+  bool available = 9;            // false: its plugin is off
+  string source_name = 10;
+}
+
+message ComplianceCatalog { repeated ComplianceTypeEntry entries = 1; }
+
+// Which devices a check is for: every device, or the listed devices and every device with one of the tags.
+message ComplianceDevices {
+  bool all = 1;
+  repeated string device_ids = 2;
+  repeated string tags = 3;
+}
+
+message ComplianceCheckSummary {
+  string id = 1;
+  string name = 2;
+  string type_id = 3;
+  string type_name = 4;
+  string summary = 5;            // "Object Analytics running, at least 1.4"
+  ComplianceSeverity severity = 6;
+  int32 interval_minutes = 7;    // 0 for checks without device reads
+  bool enabled = 8;
+  bool built_in = 9;
+  int32 version = 10;
+  ComplianceDevices devices = 11;
+  int32 passed = 12;
+  int32 failed = 13;
+  int32 not_checked = 14;
+  int32 not_applicable = 15;
+  int32 could_not_check = 16;
+  string problem = 17;           // "Not available: Edge storage is turned off"
+  bool reads_devices = 18;
+}
+
+message ComplianceCheckList { repeated ComplianceCheckSummary checks = 1; }
+
+message ComplianceCheckDetail {
+  ComplianceCheckSummary summary = 1;
+  string settings_json = 2;
+}
+
+message ComplianceCheckId { string id = 1; }
+
+message SetComplianceCheckEnabledRequest {
+  string id = 1;
+  bool enabled = 2;
+}
+
+message ComplianceChoicesRequest {
+  string type_id = 1;
+  string field_key = 2;
+  string device_id = 3;          // the device to read the choices from; empty = none
+}
+
+message ComplianceCheckNowRequest {
+  repeated string check_ids = 1;
+  repeated string device_ids = 2;
+}
+
+message ComplianceResultEntry {
+  string check_id = 1;
+  string device_id = 2;
+  ComplianceOutcome outcome = 3;
+  string detail = 4;
+  int64 checked_unix_ms = 5;     // 0 = not checked yet
+  int64 since_unix_ms = 6;
+  bool removed = 7;              // the device left the check, or the check was deleted
+}
+
+message ComplianceResultBatch {
+  repeated ComplianceResultEntry results = 1;
+  bool snapshot_end = 2;
+}

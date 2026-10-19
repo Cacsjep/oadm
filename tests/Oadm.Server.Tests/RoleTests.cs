@@ -59,8 +59,10 @@ public sealed class RoleTests
         Assert.DoesNotContain(HostPermissions.TagsManage, op);
         Assert.DoesNotContain(HostPermissions.EventsManage, op);
         Assert.DoesNotContain(HostPermissions.TasksDeleteAll, op);
+        Assert.Contains(HostPermissions.ComplianceView, op);
+        Assert.DoesNotContain(HostPermissions.ComplianceManage, op);
 
-        Assert.Equal([HostPermissions.DevicesLiveView], matrix.Roles[2].Permissions);
+        Assert.Equal([HostPermissions.ComplianceView, HostPermissions.DevicesLiveView], matrix.Roles[2].Permissions);
         Assert.Equal(HostPermissions.All.Select(p => p.Key), matrix.Permissions.Select(p => p.Key));
     }
 

@@ -66,6 +66,21 @@ public static class BuiltInEvents
         };
 }
 
+/// <summary>
+/// Events the host publishes besides <see cref="BuiltInEvents"/> (the compliance checks): types that change while the
+/// server runs. Raise <see cref="EventTypesChanged"/> after <see cref="EventTypes"/> changed, then report their states.
+/// </summary>
+public interface IHostEventSource
+{
+    string SourceId { get; }
+
+    string SourceName { get; }
+
+    IReadOnlyList<EventTypeInfo> EventTypes { get; }
+
+    event EventHandler? EventTypesChanged;
+}
+
 /// <summary>An event type with where it comes from and whether that source is on.</summary>
 public sealed record CatalogEventType(EventTypeInfo Info, string SourceId, string SourceName, bool Available)
 {
@@ -101,11 +116,18 @@ public sealed class EventCatalog
     private long _version;
     private int _builds;
 
-    public EventCatalog(PluginRegistry registry)
+    private readonly IReadOnlyList<IHostEventSource> _hostSources;
+
+    public EventCatalog(PluginRegistry registry, IEnumerable<IHostEventSource>? hostSources = null)
     {
         Registry = registry ?? throw new ArgumentNullException(nameof(registry));
         Registry.EnabledChanged += (_, _) => Invalidate();
         Registry.EventTypesChanged += (_, _) => Invalidate();
+        _hostSources = [.. hostSources ?? []];
+        foreach (var source in _hostSources)
+        {
+            source.EventTypesChanged += (_, _) => Invalidate();
+        }
     }
 
     public PluginRegistry Registry { get; }
@@ -172,6 +194,18 @@ public sealed class EventCatalog
 
         var types = BuiltInEvents.Types.Select(t => new CatalogEventType(t, BuiltInEvents.SourceId, BuiltInEvents.SourceName, true)).ToList();
         var typesById = types.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var source in _hostSources)
+        {
+            foreach (var type in source.EventTypes)
+            {
+                var entry = new CatalogEventType(type, source.SourceId, source.SourceName, true);
+                if (typesById.TryAdd(entry.Id, entry))
+                {
+                    types.Add(entry);
+                }
+            }
+        }
+
         var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var core in Registry.AllCorePlugins)
         {

@@ -54,6 +54,10 @@ public static class HostPermissionKeys
     public const string TasksDelete = "tasks.delete";
     /// <summary>Delete the whole task history.</summary>
     public const string TasksDeleteAll = "tasks.deleteAll";
+    /// <summary>See the Compliance page and check devices again.</summary>
+    public const string ComplianceView = "compliance.view";
+    /// <summary>Create, change and delete compliance checks.</summary>
+    public const string ComplianceManage = "compliance.manage";
     /// <summary>See the event rules and their log.</summary>
     public const string EventsView = "events.view";
     /// <summary>Create, change and delete event rules.</summary>

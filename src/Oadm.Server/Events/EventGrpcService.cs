@@ -250,37 +250,41 @@ public sealed class EventGrpcService(
             Available = action.Available,
             SourceName = action.SourceName,
         };
-        foreach (var field in Safe(() => plugin.Fields) ?? [])
-        {
-            var proto = new Proto.ActionFieldEntry
-            {
-                Key = field.Key,
-                Label = field.Label,
-                Kind = (Proto.ActionFieldKind)(int)field.Type,
-                Required = field.Required,
-                Hint = field.Hint ?? string.Empty,
-                Min = field.Min,
-                Max = field.Max,
-                MaxLength = field.MaxLength,
-                OffEdge = field.OffEdge,
-                VisibleWhenKey = field.VisibleWhenKey ?? string.Empty,
-                VisibleWhenValue = field.VisibleWhenValue ?? string.Empty,
-                Language = field.Language ?? string.Empty,
-                LanguageKey = field.LanguageKey ?? string.Empty,
-            };
-            if (field.Default is not null)
-            {
-                proto.DefaultValue = field.Default;
-            }
-
-            proto.Choices.AddRange(field.Choices.Select(c => new Proto.ActionChoiceEntry { Value = c.Value, Label = c.Label }));
-            entry.Fields.Add(proto);
-        }
-
+        entry.Fields.AddRange((Safe(() => plugin.Fields) ?? []).Select(ToProto));
         return entry;
     }
 
-    private static T? Safe<T>(Func<T> read)
+    /// <summary>A setting of an action or a compliance check as the client draws it.</summary>
+    internal static Proto.ActionFieldEntry ToProto(ActionField field)
+    {
+        var proto = new Proto.ActionFieldEntry
+        {
+            Key = field.Key,
+            Label = field.Label,
+            Kind = (Proto.ActionFieldKind)(int)field.Type,
+            Required = field.Required,
+            Hint = field.Hint ?? string.Empty,
+            Min = field.Min,
+            Max = field.Max,
+            MaxLength = field.MaxLength,
+            OffEdge = field.OffEdge,
+            VisibleWhenKey = field.VisibleWhenKey ?? string.Empty,
+            VisibleWhenValue = field.VisibleWhenValue ?? string.Empty,
+            Language = field.Language ?? string.Empty,
+            LanguageKey = field.LanguageKey ?? string.Empty,
+            ChoicesFromDevice = field.ChoicesFromDevice,
+        };
+        if (field.Default is not null)
+        {
+            proto.DefaultValue = field.Default;
+        }
+
+        proto.Choices.AddRange(field.Choices.Select(c => new Proto.ActionChoiceEntry { Value = c.Value, Label = c.Label }));
+        proto.Accept.AddRange(field.Accept);
+        return proto;
+    }
+
+    internal static T? Safe<T>(Func<T> read)
     {
         try
         {

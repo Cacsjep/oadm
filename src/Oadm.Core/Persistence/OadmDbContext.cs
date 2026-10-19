@@ -32,6 +32,8 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<Events.EventRuleEntity> EventRules => Set<Events.EventRuleEntity>();
     public DbSet<Events.EventRuleStateEntity> EventRuleStates => Set<Events.EventRuleStateEntity>();
     public DbSet<Events.EventLogEntryEntity> EventLogEntries => Set<Events.EventLogEntryEntity>();
+    public DbSet<Compliance.ComplianceCheckEntity> ComplianceChecks => Set<Compliance.ComplianceCheckEntity>();
+    public DbSet<Compliance.ComplianceResultEntity> ComplianceResults => Set<Compliance.ComplianceResultEntity>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
         new(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
@@ -288,6 +290,30 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(l => l.Message).IsRequired().HasMaxLength(Events.EventLogEntryEntity.MaxMessageLength);
             e.HasIndex(l => l.TimeUtc);
             e.HasIndex(l => l.RuleId);
+        });
+
+        modelBuilder.Entity<Compliance.ComplianceCheckEntity>(e =>
+        {
+            e.ToTable("ComplianceChecks");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Id).ValueGeneratedNever();
+            e.Property(c => c.Name).IsRequired().HasMaxLength(Compliance.ComplianceStore.MaxNameLength);
+            e.Property(c => c.TypeId).IsRequired().HasMaxLength(200);
+            e.Property(c => c.SettingsJson).IsRequired();
+            e.Property(c => c.DevicesJson).IsRequired();
+            e.Property(c => c.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(c => c.ChangedUtc).HasConversion(UtcConverter);
+        });
+
+        modelBuilder.Entity<Compliance.ComplianceResultEntity>(e =>
+        {
+            e.ToTable("ComplianceResults");
+            e.HasKey(r => new { r.CheckId, r.DeviceId });
+            e.Property(r => r.Detail).IsRequired().HasMaxLength(Compliance.ComplianceResultEntity.MaxDetailLength);
+            e.Property(r => r.CheckedUtc).HasConversion(UtcConverter);
+            e.Property(r => r.SinceUtc).HasConversion(UtcConverter);
+            e.HasOne<Compliance.ComplianceCheckEntity>().WithMany().HasForeignKey(r => r.CheckId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(r => r.DeviceId);
         });
 
         modelBuilder.Entity<Setting>(e =>

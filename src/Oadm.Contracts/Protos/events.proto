@@ -91,6 +91,7 @@ enum ActionFieldKind {
   ACTION_FIELD_PASSWORD = 6;
   ACTION_FIELD_CODE = 7;       // a body drawn as a code editor (language or language_key)
   ACTION_FIELD_KEY_VALUES = 8; // rows of name and value, a JSON array of {"name", "value"}
+  ACTION_FIELD_FILE = 9;       // a file, {"name", "data" (base64)}; compliance checks only
 }
 
 message ActionFieldEntry {
@@ -109,6 +110,8 @@ message ActionFieldEntry {
   string visible_when_value = 13;   // one value or several separated by "|"
   string language = 14;             // code field: json, xml, html, text
   string language_key = 15;         // code field: the field whose value is the language
+  bool choices_from_device = 16;    // dynamic choice read from one device the user picks (compliance checks)
+  repeated string accept = 17;      // file field: the file name endings it takes (".cfg")
 }
 
 message ActionEntry {

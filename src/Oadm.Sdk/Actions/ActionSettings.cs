@@ -94,7 +94,7 @@ public static class ActionSettings
                 var stored = field.Type == ActionFieldType.Password && storedSecrets?.Contains(field.Key) == true;
                 if (field.Required && !stored && field.Type != ActionFieldType.Bool)
                 {
-                    errors[field.Key] = field.Type is ActionFieldType.Choice or ActionFieldType.DynamicChoice
+                    errors[field.Key] = field.Type is ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File
                         ? $"Choose {field.Label.ToLowerInvariant()}."
                         : $"Enter {field.Label.ToLowerInvariant()}.";
                 }
@@ -105,6 +105,7 @@ public static class ActionSettings
             var problem = field.Type switch
             {
                 ActionFieldType.KeyValues => CheckPairs(settings[field.Key], field),
+                ActionFieldType.File => CheckFile(settings[field.Key], field),
                 ActionFieldType.Number => CheckNumber(field, value),
                 ActionFieldType.Bool => value is "true" or "false" ? null : "Must be on or off.",
                 ActionFieldType.Choice => field.Choices.Any(c => string.Equals(c.Value, value, StringComparison.Ordinal)) ? null : "Choose one of the list.",
@@ -150,6 +151,24 @@ public static class ActionSettings
 
         return rows.ToJsonString().Length > field.MaxLength
             ? string.Create(CultureInfo.InvariantCulture, $"At most {field.MaxLength:N0} characters.")
+            : null;
+    }
+
+    private static string? CheckFile(JsonNode? node, ActionField field)
+    {
+        var file = node is null ? null : ActionFile.From(JsonSerializer.SerializeToElement(node));
+        if (file is null || file.Data.Length == 0)
+        {
+            return "Choose a file.";
+        }
+
+        if (field.Accept.Count > 0 && !field.Accept.Any(a => file.Name.EndsWith(a, StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Choose a " + string.Join(" or ", field.Accept) + " file.";
+        }
+
+        return file.Data.Length > field.MaxLength
+            ? string.Create(CultureInfo.InvariantCulture, $"The file is larger than {field.MaxLength / 1024:N0} KB.")
             : null;
     }
 

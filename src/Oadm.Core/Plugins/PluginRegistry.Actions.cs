@@ -109,6 +109,11 @@ public sealed partial class PluginRegistry
             }
         }
 
+        if (plugin is Sdk.Compliance.IComplianceSource complianceSource)
+        {
+            RegisterComplianceTypes(plugin, complianceSource, origin);
+        }
+
         if (plugin is IEventSource eventSource)
         {
             ReadEventTypes(plugin, eventSource, origin);

@@ -26,6 +26,7 @@ public static class HostPermissions
 {
     public const string DevicesGroup = "Devices";
     public const string TasksGroup = "Tasks";
+    public const string ComplianceGroup = "Compliance";
     public const string EventRulesGroup = "Event rules";
     public const string LogsGroup = "Logs";
 
@@ -41,6 +42,8 @@ public static class HostPermissions
     public const string TasksCancel = HostPermissionKeys.TasksCancel;
     public const string TasksDelete = HostPermissionKeys.TasksDelete;
     public const string TasksDeleteAll = HostPermissionKeys.TasksDeleteAll;
+    public const string ComplianceView = HostPermissionKeys.ComplianceView;
+    public const string ComplianceManage = HostPermissionKeys.ComplianceManage;
     public const string EventsView = HostPermissionKeys.EventsView;
     public const string EventsManage = HostPermissionKeys.EventsManage;
     public const string EventsClearLog = HostPermissionKeys.EventsClearLog;
@@ -61,6 +64,8 @@ public static class HostPermissions
         Host(TasksCancel, "Cancel tasks", "Cancel running and waiting tasks of every user.", TasksGroup, 1, true, false),
         Host(TasksDelete, "Delete tasks", "Delete single tasks from the task list.", TasksGroup, 1, true, false),
         Host(TasksDeleteAll, "Delete all tasks", "Delete the whole task list.", TasksGroup, 1, false, false),
+        Host(ComplianceView, "See compliance", "See the Compliance page and check devices again.", ComplianceGroup, 1, true, true),
+        Host(ComplianceManage, "Change compliance checks", "Create, change, turn on or off and delete compliance checks.", ComplianceGroup, 1, false, false),
         Host(EventsView, "See event rules", "See the event rules and the event log.", EventRulesGroup, 2, true, false),
         Host(EventsManage, "Change event rules", "Create, change, turn on or off and delete event rules. Rules act on devices on their own.", EventRulesGroup, 2, false, false, fullControl: true),
         Host(EventsClearLog, "Delete the event log", "Delete every entry of the event log.", EventRulesGroup, 2, false, false),

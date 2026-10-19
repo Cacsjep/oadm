@@ -134,6 +134,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<FileGrpcService>();
         app.MapGrpcService<LiveViewGrpcService>();
         app.MapGrpcService<EventGrpcService>();
+        app.MapGrpcService<Compliance.ComplianceGrpcService>();
         app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
         app.MapGrpcService<Backup.BackupGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
@@ -295,6 +296,30 @@ public static partial class OadmServerHost
             eventPublishers: id => sp.GetRequiredService<RuleEngine>().PublisherFor(id),
             eventSubscriptions: id => sp.GetRequiredService<RuleEngine>().SubscriptionsFor(id)));
 
+        // Compliance checks (host and plugin types); their events go to the event rules.
+        services.AddSingleton<Core.Compliance.ComplianceCatalog>();
+        services.AddSingleton(sp => new Core.Compliance.ComplianceStore(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(new Core.Compliance.ComplianceEngineOptions());
+        services.AddSingleton(sp => new Core.Compliance.ComplianceEngine(
+            sp.GetRequiredService<Core.Compliance.ComplianceCatalog>(),
+            sp.GetRequiredService<Core.Compliance.ComplianceStore>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<IDeviceChangeFeed>(),
+            sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<Core.Compliance.ComplianceEngineOptions>(),
+            sp.GetRequiredService<ILogger<Core.Compliance.ComplianceEngine>>(),
+            () => sp.GetRequiredService<RuleEngine>().PublisherFor(Core.Compliance.ComplianceEngine.EventSourceId)));
+        services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<Core.Compliance.ComplianceEngine>());
+        services.AddSingleton(sp => new Core.Compliance.ComplianceService(
+            sp.GetRequiredService<Core.Compliance.ComplianceStore>(),
+            sp.GetRequiredService<Core.Compliance.ComplianceEngine>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
+            sp.GetRequiredService<ILoggerFactory>()));
+
         // Event rules: IF events THEN actions (built-in device status events, plugin events and actions).
         services.AddSingleton<EventCatalog>();
         services.AddSingleton(sp => new RuleStore(
@@ -448,10 +473,15 @@ public static partial class OadmServerHost
 
         // 4b. Event rules before the core plugins: their publishers queue into a running engine, and each event type
         // waits for its source's first full report before a rule that uses it runs anything.
+        var compliance = sp.GetRequiredService<Core.Compliance.ComplianceEngine>();
+        await compliance.LoadAsync(ct).ConfigureAwait(false);
         var rules = sp.GetRequiredService<RuleEngine>();
         await rules.StartAsync(ct).ConfigureAwait(false);
         registry.EnabledChanged += (_, _) => rules.SourcesChanged();
+        compliance.EventTypesChanged += (_, _) => rules.SourcesChanged();
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
+        // 4c. Compliance checks after the core plugins: the plugins' check types read devices through them.
+        await compliance.StartAsync(ct).ConfigureAwait(false);
         // Rules are evaluated at once, but their actions wait until here: contributed actions (Run VAPIX command) need
         // their core plugin running.
         sp.GetRequiredService<ActionRunner>().PluginsStarted();
@@ -486,6 +516,7 @@ public static partial class OadmServerHost
         ArgumentNullException.ThrowIfNull(app);
         var sp = app.Services;
         await app.StopAsync(ct).ConfigureAwait(false);
+        await sp.GetRequiredService<Core.Compliance.ComplianceEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);

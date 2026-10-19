@@ -127,6 +127,18 @@ public static class AccessPolicy
         ["/oadm.v1.FileService/Upload"] = AccessRule.SignedIn,
         ["/oadm.v1.FileService/Delete"] = AccessRule.SignedIn,
 
+        // Compliance.
+        ["/oadm.v1.ComplianceService/GetCatalog"] = AccessRule.Needs(HostPermissions.ComplianceView),
+        ["/oadm.v1.ComplianceService/ListChecks"] = AccessRule.Needs(HostPermissions.ComplianceView),
+        ["/oadm.v1.ComplianceService/WatchChecks"] = AccessRule.Needs(HostPermissions.ComplianceView),
+        ["/oadm.v1.ComplianceService/GetCheck"] = AccessRule.Needs(HostPermissions.ComplianceView),
+        ["/oadm.v1.ComplianceService/WatchResults"] = AccessRule.Needs(HostPermissions.ComplianceView),
+        ["/oadm.v1.ComplianceService/CheckNow"] = AccessRule.Needs(HostPermissions.ComplianceView),
+        ["/oadm.v1.ComplianceService/SaveCheck"] = AccessRule.Needs(HostPermissions.ComplianceManage),
+        ["/oadm.v1.ComplianceService/DeleteCheck"] = AccessRule.Needs(HostPermissions.ComplianceManage),
+        ["/oadm.v1.ComplianceService/SetCheckEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage),
+        ["/oadm.v1.ComplianceService/ListChoices"] = AccessRule.Needs(HostPermissions.ComplianceManage),
+
         // Event rules.
         ["/oadm.v1.EventService/GetCatalog"] = AccessRule.Needs(HostPermissions.EventsView),
         ["/oadm.v1.EventService/ListRules"] = AccessRule.Needs(HostPermissions.EventsView),

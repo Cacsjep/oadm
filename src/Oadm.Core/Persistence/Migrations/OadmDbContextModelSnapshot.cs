@@ -177,6 +177,84 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.Compliance.ComplianceCheckEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("BuiltIn")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DevicesJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("IntervalMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TypeId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ComplianceChecks", (string)null);
+                });
+
+            modelBuilder.Entity("Oadm.Core.Compliance.ComplianceResultEntity", b =>
+                {
+                    b.Property<Guid>("CheckId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CheckedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("SinceUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("CheckId", "DeviceId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("ComplianceResults", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.Devices.Device", b =>
                 {
                     b.Property<Guid>("Id")
@@ -717,6 +795,15 @@ namespace Oadm.Core.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Oadm.Core.Compliance.ComplianceResultEntity", b =>
+                {
+                    b.HasOne("Oadm.Core.Compliance.ComplianceCheckEntity", null)
+                        .WithMany()
+                        .HasForeignKey("CheckId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

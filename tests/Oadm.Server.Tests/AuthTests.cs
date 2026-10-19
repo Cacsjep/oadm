@@ -95,6 +95,7 @@ public sealed class AuthTests
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
             Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor,
+            Proto.ComplianceService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
         // Both ways: no made-up entry, and no method that falls back to Administrator only by accident.
@@ -113,6 +114,8 @@ public sealed class AuthTests
         Assert.Equal(AccessRule.Needs(HostPermissions.DevicesLogin), AccessPolicy.For("/oadm.v1.DeviceService/LogIn"));
         Assert.Equal(AccessRule.Needs(HostPermissions.DevicesLogin), AccessPolicy.For("/oadm.v1.DeviceService/SetFirstPassword"));
         Assert.Equal(AccessRule.Needs(HostPermissions.TasksDelete), AccessPolicy.For("/oadm.v1.TaskService/Delete"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.ComplianceView), AccessPolicy.For("/oadm.v1.ComplianceService/CheckNow"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.ComplianceManage), AccessPolicy.For("/oadm.v1.ComplianceService/SaveCheck"));
         Assert.Equal(AccessRule.SignedIn, AccessPolicy.For("/oadm.v1.TagService/List"));
         Assert.Equal(AccessRule.Needs(HostPermissions.TagsAssign), AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags"));
         Assert.Equal(AccessRule.Needs(HostPermissions.TagsManage), AccessPolicy.For("/oadm.v1.TagService/Delete"));
