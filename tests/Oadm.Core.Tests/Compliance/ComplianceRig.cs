@@ -45,9 +45,18 @@ internal sealed class ComplianceRig : IAsyncDisposable
     public DeviceRepository Devices => _db.Get<DeviceRepository>();
 
     /// <summary>A rig with compliance turned on (the server's default is off), unless <paramref name="enabled"/> is false.</summary>
-    public static async Task<ComplianceRig> StartAsync(bool enabled = true)
+    public static async Task<ComplianceRig> StartAsync(bool enabled = true, Oadm.Core.Sites.ISiteStates? sites = null)
     {
-        var rig = new ComplianceRig { _db = await TestDatabase.CreateAsync() };
+        var rig = new ComplianceRig
+        {
+            _db = await TestDatabase.CreateAsync(configure: s =>
+            {
+                if (sites is not null)
+                {
+                    Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton(s, sites);
+                }
+            }),
+        };
         rig.Registry.RegisterCorePlugin(rig.Plugin, rig.PluginOrigin);
         rig.Catalog = new ComplianceCatalog(rig.Registry);
         rig.Store = new ComplianceStore(rig._db.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Oadm.Core.Persistence.OadmDbContext>>(), rig.Time);
@@ -163,6 +172,9 @@ internal sealed class FakeReadType(string id) : IComplianceCheckType
 
     public string? ThrowWith { get; set; }
 
+    /// <summary>Set: every evaluation throws it (e.g. a site error).</summary>
+    public Exception? ThrowException { get; set; }
+
     public string Id { get; } = id;
 
     public string DisplayName => "Read " + Id;
@@ -178,6 +190,11 @@ internal sealed class FakeReadType(string id) : IComplianceCheckType
         if (Hold is { } hold)
         {
             await hold.Task.WaitAsync(ct);
+        }
+
+        if (ThrowException is { } exception)
+        {
+            throw exception;
         }
 
         if (ThrowWith is { } message)

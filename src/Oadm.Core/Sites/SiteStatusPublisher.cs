@@ -53,8 +53,10 @@ public sealed partial class SiteStatusPublisher : IAsyncDisposable
 
     private int _batches;
 
-    /// <summary>Raised after a batch was published (tests): the sites and the number of devices.</summary>
-    public event EventHandler<int>? Published;
+    /// <summary>Site changes handled so far, with or without devices (tests).</summary>
+    public int Handled => Volatile.Read(ref _handled);
+
+    private int _handled;
 
     /// <summary>Starts following the sites; the sites that are offline now count from now.</summary>
     public void Start()
@@ -130,7 +132,7 @@ public sealed partial class SiteStatusPublisher : IAsyncDisposable
             }
         }
 
-        Published?.Invoke(this, devices.Count);
+        Interlocked.Increment(ref _handled);
     }
 
     public async ValueTask DisposeAsync()
