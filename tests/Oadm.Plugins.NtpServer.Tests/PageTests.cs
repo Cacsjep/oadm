@@ -76,6 +76,35 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Sites_show_while_the_server_has_them_and_requests_through_a_site_name_it()
+    {
+        using var vm = new NtpServerViewModel(_ctx);
+        Assert.False(vm.HasSites);
+        var site = Guid.NewGuid();
+        _ctx.DeviceList.Add(new Oadm.Sdk.Testing.FakeDevice { Address = "192.168.0.20", Model = "P3265-V", SiteId = site });
+        _ctx.DeviceList.Add(new Oadm.Sdk.Testing.FakeDevice { Address = "192.168.0.20", Model = "M3106" }); // the same address on this server's network
+        _ctx.RaiseDevicesChanged();
+
+        vm.HandleEvent(new PluginEvent(NtpServerMethods.StateTopic, NtpJson.Serialize(new NtpState
+        {
+            Config = new NtpConfig { Enabled = true, ServeAtSites = true },
+            HasSites = true,
+            Sites = [new SiteServing(site, "NTP at Building B: running", true)],
+        })));
+        Assert.True(vm.HasSites);
+        Assert.Equal("NTP at Building B: running", Assert.Single(vm.SiteRows).Text);
+
+        var start = new DateTime(2026, 10, 7, 16, 0, 0, DateTimeKind.Utc);
+        vm.HandleEvent(new PluginEvent(NtpServerMethods.RequestsTopic, NtpJson.Serialize(new RequestsEvent(
+        [
+            new RequestEntry(1, start, "192.168.0.20", 1, RequestEntry.Answered, site, "Building B"),
+            new RequestEntry(2, start, "192.168.0.20", 1, RequestEntry.Answered),
+        ]))));
+        Assert.Equal(("192.168.0.20", "M3106 (192.168.0.20)"), (vm.Requests[0].Client, vm.Requests[0].Device));
+        Assert.Equal(("192.168.0.20 (Building B)", "P3265-V (192.168.0.20)"), (vm.Requests[1].Client, vm.Requests[1].Device));
+    }
+
+    [Fact]
     public void Live_requests_are_newest_first_capped_at_40_and_deduplicated()
     {
         using var vm = new NtpServerViewModel(_ctx);
@@ -255,6 +284,22 @@ public sealed class HeadlessPageTests
             })));
             Pump();
             Capture(window, outDir, "ntp-server-page-upstream-warning.png");
+
+            // Serve at sites: the box and the state of each site's relay below it.
+            vm.ServeAtSites = true;
+            vm.HandleEvent(new PluginEvent(NtpServerMethods.StateTopic, NtpJson.Serialize(new NtpState
+            {
+                Config = new NtpConfig { Enabled = true, InterfaceId = "lo-id", ServeAtSites = true },
+                Status = Status.NtpStatusTexts.Running([new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 123)], false),
+                HasSites = true,
+                Sites =
+                [
+                    new SiteServing(Guid.NewGuid(), "NTP at Building B: running", true),
+                    new SiteServing(Guid.NewGuid(), "NTP at Warehouse: waiting for approval in the OADM Site Node app", false),
+                ],
+            })));
+            Pump();
+            Capture(window, outDir, "ntp-server-page-sites.png");
 
             vm.IsSaving = true; // Save with an upstream: the check runs, the page stays usable
             Pump();

@@ -53,6 +53,19 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_page_says_it_serves_only_this_servers_network_while_devices_are_at_a_site()
+    {
+        using var vm = new DhcpServerViewModel(_ctx);
+        Assert.False(vm.HasSiteDevices);
+
+        _ctx.DeviceList.Add(new Oadm.Sdk.Testing.FakeDevice { Address = "192.168.0.20", SiteId = Guid.NewGuid() });
+        _ctx.RaiseDevicesChanged();
+
+        Assert.True(vm.HasSiteDevices);
+        Assert.Equal("The DHCP server works only on this server's own network.", DhcpServerViewModel.OwnNetworkOnlyText);
+    }
+
+    [Fact]
     public async Task Loading_overlay_shows_until_the_first_state_arrived()
     {
         var gate = new TaskCompletionSource();
