@@ -10,7 +10,7 @@ namespace Oadm.Core.Sites;
 /// <summary>
 /// Follows the sites (<see cref="ISiteStates.Changed"/>): when a site goes offline or online, or is renamed, every device
 /// of it is published once as Updated in one batch with its computed status (<see cref="SiteDeviceStatus"/>); nothing is
-/// written. A site that was offline for longer than <see cref="RefreshAfter"/> gets a full refresh per device when it is
+/// written; a device with a newer change published meanwhile keeps it. A site that was offline for longer than <see cref="RefreshAfter"/> gets a full refresh per device when it is
 /// back (through the polling's refresh queue, at most its <c>RefreshParallelism</c> at once).
 /// </summary>
 public sealed partial class SiteStatusPublisher : IAsyncDisposable
@@ -114,12 +114,15 @@ public sealed partial class SiteStatusPublisher : IAsyncDisposable
             }
         }
 
+        // A device changed (polled, moved, removed) after this read was published with its new data and the site's state
+        // of that moment: the copy read here must not overwrite it (the subscribers coalesce per device, the newest wins).
+        var readAt = _feed.Sequence;
         var devices = await _devices.ListBySitesAsync(siteIds, CancellationToken.None).ConfigureAwait(false);
         if (devices.Count > 0)
         {
-            _feed.PublishMany([.. devices.Select(d => new DeviceChange(DeviceChangeKind.Updated, d.Id, d))]);
+            var published = _feed.PublishUnlessNewer([.. devices.Select(d => new DeviceChange(DeviceChangeKind.Updated, d.Id, d))], readAt);
             Interlocked.Increment(ref _batches);
-            LogPublished(devices.Count, siteIds.Count);
+            LogPublished(published, siteIds.Count);
         }
 
         if (refresh.Count > 0 && _queueRefresh is not null)

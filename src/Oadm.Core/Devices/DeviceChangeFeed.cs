@@ -39,6 +39,24 @@ public interface IDeviceChangeFeed
             Publish(change);
         }
     }
+
+    /// <summary>
+    /// Incremented by every single change (also within a batch); read it before reading devices that
+    /// <see cref="PublishUnlessNewer"/> publishes later. 0 for feeds without it.
+    /// </summary>
+    long Sequence => 0;
+
+    /// <summary>
+    /// Publishes <paramref name="changes"/> as one batch, except the devices that had a change published after
+    /// <paramref name="since"/> (a <see cref="Sequence"/> read before the devices were read): a copy read before a newer
+    /// change never overwrites it. Returns how many were published.
+    /// </summary>
+    int PublishUnlessNewer(IReadOnlyList<DeviceChange> changes, long since)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        PublishMany(changes);
+        return changes.Count;
+    }
 }
 
 /// <summary>
@@ -87,12 +105,21 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
 {
     private readonly ConcurrentDictionary<DeviceChangeSubscription, byte> _subscribers = new();
     private readonly ISiteStates _sites = sites ?? NoSiteStates.Instance;
+
+    // Stamping and the writes to the subscribers happen under one lock, so the subscribers get the changes of a device in
+    // the order they were stamped and PublishUnlessNewer can compare. The Changed event runs outside it.
+    private readonly Lock _publishing = new();
+    private readonly Dictionary<Guid, long> _lastPublished = [];
     private long _version;
+    private long _sequence;
 
     public event EventHandler<DeviceChange>? Changed;
 
     /// <summary>Incremented by every published change; caches derived from the device table compare it.</summary>
     public long Version => Interlocked.Read(ref _version);
+
+    /// <inheritdoc />
+    public long Sequence => Interlocked.Read(ref _sequence);
 
     public DeviceChangeSubscription Subscribe()
     {
@@ -104,34 +131,67 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
     public void Publish(DeviceChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        Interlocked.Increment(ref _version);
-        Deliver(WithSiteStatus(change));
+        var delivered = WithSiteStatus(change);
+        lock (_publishing)
+        {
+            Interlocked.Increment(ref _version);
+            Stamp(delivered);
+            Write(delivered);
+        }
+
+        Changed?.Invoke(this, delivered);
     }
 
     /// <summary>One batch: the version moves once, every subscriber gets the changes in order.</summary>
-    public void PublishMany(IReadOnlyList<DeviceChange> changes)
+    public void PublishMany(IReadOnlyList<DeviceChange> changes) => PublishUnlessNewer(changes, long.MaxValue);
+
+    /// <inheritdoc />
+    public int PublishUnlessNewer(IReadOnlyList<DeviceChange> changes, long since)
     {
         ArgumentNullException.ThrowIfNull(changes);
         if (changes.Count == 0)
         {
-            return;
+            return 0;
         }
 
-        Interlocked.Increment(ref _version);
-        foreach (var change in changes)
+        var prepared = changes.Select(WithSiteStatus).ToList();
+        var delivered = new List<DeviceChange>(prepared.Count);
+        lock (_publishing)
         {
-            Deliver(WithSiteStatus(change));
+            foreach (var change in prepared)
+            {
+                if (_lastPublished.TryGetValue(change.DeviceId, out var last) && last > since)
+                {
+                    continue; // a newer change of this device went out after the caller read it
+                }
+
+                Stamp(change);
+                Write(change);
+                delivered.Add(change);
+            }
+
+            if (delivered.Count > 0)
+            {
+                Interlocked.Increment(ref _version);
+            }
         }
+
+        foreach (var change in delivered)
+        {
+            Changed?.Invoke(this, change);
+        }
+
+        return delivered.Count;
     }
 
-    private void Deliver(DeviceChange change)
+    private void Stamp(DeviceChange change) => _lastPublished[change.DeviceId] = Interlocked.Increment(ref _sequence);
+
+    private void Write(DeviceChange change)
     {
         foreach (var subscriber in _subscribers.Keys)
         {
             subscriber.Write(change);
         }
-
-        Changed?.Invoke(this, change);
     }
 
     /// <summary>A device at a site gets its site's name and, while the site is not online, Site offline (on a copy).</summary>
