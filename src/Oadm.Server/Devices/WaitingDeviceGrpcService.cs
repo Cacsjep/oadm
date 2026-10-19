@@ -182,6 +182,7 @@ public sealed class WaitingDeviceGrpcService(
             Created = Timestamp.FromDateTime(DateTime.SpecifyKind(item.CreatedUtc, DateTimeKind.Utc)),
             LastResult = item.LastResult,
             LoginFailed = item.LoginFailed,
+            Held = item.Held,
             Tries = item.Tries,
             HasLogin = item.HasLogin,
             Checking = runner.IsChecking(item.Id),

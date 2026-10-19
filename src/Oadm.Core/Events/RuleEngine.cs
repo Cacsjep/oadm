@@ -1023,7 +1023,15 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 status = stored;
             }
 
-            if (status != DeviceStatus.SiteOffline)
+            if (device.SiteRemoved)
+            {
+                // The site was removed (devices kept until replaced or removed): it never comes back, so nothing stays on.
+                _statusKnown.Add(id);
+                SetBuiltIn(BuiltInEvents.Unreachable, id, false);
+                SetBuiltIn(BuiltInEvents.CredentialsRequired, id, false);
+                SetBuiltIn(BuiltInEvents.CertificateChanged, id, false);
+            }
+            else if (status != DeviceStatus.SiteOffline)
             {
                 _statusKnown.Add(id);
                 SetBuiltIn(BuiltInEvents.Unreachable, id, status == DeviceStatus.Unreachable);
@@ -1366,6 +1374,9 @@ public sealed record DeviceRef(string Address, string? Model, string Serial, Dev
     /// <summary>The stored status while <see cref="Status"/> is the computed Site offline.</summary>
     public DeviceStatus? StoredStatus { get; init; }
 
+    /// <summary>The device's site was removed with Keep devices: its status events are off.</summary>
+    public bool SiteRemoved { get; init; }
+
     public static DeviceRef From(Device device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -1373,6 +1384,7 @@ public sealed record DeviceRef(string Address, string? Model, string Serial, Dev
             new HashSet<string>(device.Tags, StringComparer.OrdinalIgnoreCase))
         {
             StoredStatus = device.StoredStatus,
+            SiteRemoved = device.SiteRemoved,
         };
     }
 

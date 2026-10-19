@@ -66,6 +66,7 @@ message WaitingDevice {
   bool checking = 13;                       // asked for (Try now) or in the running round and not tried yet
   string site_id = 14;                      // only tried through this site; empty = everywhere
   string site_name = 15;                    // the name of site_id
+  bool held = 16;                           // answers through several sites with different devices: waits for Try now
 }
 
 message WaitingList {

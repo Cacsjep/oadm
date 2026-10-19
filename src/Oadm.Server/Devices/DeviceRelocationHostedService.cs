@@ -149,6 +149,12 @@ public sealed partial class DeviceRelocationHostedService(
 
         foreach (var site in used.Where(s => !sites.IsOnline(s) && !sites.IsStarting(s)))
         {
+            if (sites.IsRemoved(site))
+            {
+                result.Add(site); // removed with its devices kept: it never comes back, look for them at once
+                continue;
+            }
+
             if (!_offlineSince.TryGetValue(site, out var since))
             {
                 _offlineSince[site] = since = now;

@@ -51,6 +51,12 @@ public sealed class WaitingDevice
     /// <summary>The device answered but rejected every login: not tried again by itself (no repeated wrong passwords).</summary>
     public bool LoginFailed { get; set; }
 
+    /// <summary>
+    /// The address answers through several sites with different devices that OADM does not manage: which one is meant is
+    /// not known, so it is not tried again by itself (Try now, or keep it again with a Site column).
+    /// </summary>
+    public bool Held { get; set; }
+
     /// <summary>Tries since the entry was kept (again).</summary>
     public int Tries { get; set; }
 
@@ -84,7 +90,8 @@ public sealed record WaitingDeviceItem(
     bool LoginFailed,
     int Tries,
     bool HasLogin,
-    Guid? SiteId = null);
+    Guid? SiteId = null,
+    bool Held = false);
 
 /// <summary>
 /// A waiting device with its login decrypted, for one try. Server memory only; <see cref="ToString"/> redacts it.
@@ -106,7 +113,7 @@ public sealed record WaitingTry(
 }
 
 /// <summary>The outcome of one try, written back in a batch (only onto the entry as the try read it).</summary>
-public sealed record WaitingResult(Guid Id, DateTime Kept, string Result, bool LoginFailed);
+public sealed record WaitingResult(Guid Id, DateTime Kept, string Result, bool LoginFailed, bool Held = false);
 
 /// <summary>An entry's (site, address) key and MAC address, to find the ones OADM manages by now.</summary>
 public sealed record WaitingKey(Guid Id, string NormalizedAddress, string? ExpectedSerial);
@@ -235,6 +242,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
                 row.Source = source;
                 row.AddedBy = Cut(addedBy, 64);
                 row.LoginFailed = false;
+                row.Held = false;
                 row.Tries = 0;
                 row.LastResult = string.Empty;
                 row.LastTryUtc = null;
@@ -285,7 +293,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         var take = limit <= 0 ? MaxEntries : limit;
         var rows = await query.OrderBy(w => w.NormalizedAddress).Take(take).ToListAsync(ct).ConfigureAwait(false);
         var items = rows.Select(r => new WaitingDeviceItem(r.Id, r.Address, r.ExpectedSerial, r.Tags, r.Source, r.AddedBy, r.CreatedUtc,
-            r.LastTryUtc, r.LastResult, r.LoginFailed, r.Tries, r.EncryptedPassword is not null, r.SiteId)).ToList();
+            r.LastTryUtc, r.LastResult, r.LoginFailed, r.Tries, r.EncryptedPassword is not null, r.SiteId, r.Held)).ToList();
         return new WaitingPage(items, total, rows.Count == take ? rows[^1].NormalizedAddress : null);
     }
 
@@ -316,7 +324,8 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         }
         else
         {
-            rows = await (includeLoginFailed ? query : query.Where(w => !w.LoginFailed)).ToListAsync(ct).ConfigureAwait(false);
+            // A scheduled round leaves the failed logins and the held entries alone; Try now for all takes them too.
+            rows = await (includeLoginFailed ? query : query.Where(w => !w.LoginFailed && !w.Held)).ToListAsync(ct).ConfigureAwait(false);
         }
 
         return rows.OrderBy(r => r.LastTryUtc ?? DateTime.MinValue).ThenBy(r => r.CreatedUtc)
@@ -362,6 +371,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
                     row.LastTryUtc = now;
                     row.LastResult = Cut(result.Result, MaxResultLength);
                     row.LoginFailed = result.LoginFailed;
+                    row.Held = result.Held;
                     row.Tries++;
                 }
             }
@@ -409,6 +419,78 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         }
 
         return removed;
+    }
+
+    /// <summary>The entries kept for <paramref name="siteId"/> are removed (the site was removed). Returns how many.</summary>
+    public async Task<int> RemoveForSiteAsync(Guid siteId, CancellationToken ct)
+    {
+        int removed;
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            removed = await db.WaitingDevices.Where(w => w.SiteId == siteId).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _write.Release();
+        }
+
+        if (removed > 0)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// The entries kept for <paramref name="from"/> wait for <paramref name="to"/> instead (Replace with): their key moves to
+    /// the new site; an address the new site already keeps stays as the new site has it. One transaction. Returns how many moved.
+    /// </summary>
+    public async Task<int> MoveSiteAsync(Guid from, Guid to, CancellationToken ct)
+    {
+        int moved = 0;
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            var rows = await db.WaitingDevices.Where(w => w.SiteId == from).ToListAsync(ct).ConfigureAwait(false);
+            var keys = rows.Select(r => Normalize(r.Address, to)).ToList();
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var chunk in keys.Chunk(500))
+            {
+                taken.UnionWith(await db.WaitingDevices.Where(w => chunk.Contains(w.NormalizedAddress)).Select(w => w.NormalizedAddress).ToListAsync(ct).ConfigureAwait(false));
+            }
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (!taken.Add(keys[i]))
+                {
+                    db.WaitingDevices.Remove(rows[i]);
+                    continue;
+                }
+
+                rows[i].SiteId = to;
+                rows[i].NormalizedAddress = keys[i];
+                moved++;
+            }
+
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            await transaction.CommitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _write.Release();
+        }
+
+        if (moved > 0)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return moved;
     }
 
     /// <summary>

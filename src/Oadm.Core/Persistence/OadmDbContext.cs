@@ -30,6 +30,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
     public DbSet<TagDefinition> TagDefinitions => Set<TagDefinition>();
     public DbSet<Sites.Site> Sites => Set<Sites.Site>();
+    public DbSet<Sites.RemovedSite> RemovedSites => Set<Sites.RemovedSite>();
     public DbSet<Events.EventRuleEntity> EventRules => Set<Events.EventRuleEntity>();
     public DbSet<Events.EventRuleStateEntity> EventRuleStates => Set<Events.EventRuleStateEntity>();
     public DbSet<Events.EventLogEntryEntity> EventLogEntries => Set<Events.EventLogEntryEntity>();
@@ -98,6 +99,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.Apis).HasConversion(ApisConverter, ApisComparer).IsRequired();
             e.Ignore(d => d.SiteName);
             e.Ignore(d => d.StoredStatus);
+            e.Ignore(d => d.SiteRemoved);
             e.HasIndex(d => d.SiteId);
         });
 
@@ -265,6 +267,15 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(t => t.Version).HasMaxLength(32);
             e.Property(t => t.BoundUtc).HasConversion(UtcConverter);
             e.Property(t => t.LastSeenUtc).HasConversion(NullableUtcConverter);
+        });
+
+        modelBuilder.Entity<Sites.RemovedSite>(e =>
+        {
+            e.ToTable("RemovedSites");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Id).ValueGeneratedNever();
+            e.Property(t => t.Name).IsRequired().HasMaxLength(Oadm.Core.Sites.Site.MaxNameLength);
+            e.Property(t => t.RemovedUtc).HasConversion(UtcConverter);
         });
 
         modelBuilder.Entity<TagDefinition>(e =>

@@ -176,7 +176,62 @@ public sealed class SiteDiscoveryTests
         Assert.Equal(a.Id, (await repository.FindBySerialAsync(CameraA, CancellationToken.None))!.SiteId);
         Assert.Equal(b.Id, (await repository.FindBySerialAsync(CameraB, CancellationToken.None))!.SiteId);
         var left = Assert.Single((await waiting.ListAsync(new Proto.ListWaitingRequest())).Devices);
-        Assert.Equal(("192.168.0.21", "Answers through Building A and Building B."), (left.Address, left.LastResult));
+        Assert.Equal(("192.168.0.21", "Answers through Building A and Building B.", true), (left.Address, left.LastResult, left.Held));
+
+        // Held: a scheduled round leaves it alone (no tries counted, nothing written); Try now for all tries it again.
+        Assert.Equal(0, await host.Get<WaitingDeviceRunner>().RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None));
+        Assert.Equal(1, Assert.Single((await waiting.ListAsync(new Proto.ListWaitingRequest())).Devices).Tries);
+        await host.Get<WaitingDeviceRunner>().RunRoundAsync(null, includeLoginFailed: true, CancellationToken.None);
+        Assert.Equal(2, Assert.Single((await waiting.ListAsync(new Proto.ListWaitingRequest())).Devices).Tries);
+    }
+
+    [Fact]
+    public async Task AnEntryAnsweringThroughSeveralSitesWithOneDeviceNotManagedAddsThatOne()
+    {
+        var (sites, a, b, network) = Setup();
+        await using var host = await StartAsync(sites, network);
+        network.AtSite(a.Id).Add("192.168.0.21", "ACCC8E0000A2", null);
+        network.AtSite(b.Id).Add("192.168.0.21", "ACCC8E0000B2", null);
+        await AddDeviceAsync(host, "ACCC8E0000A2", "192.168.0.21", a.Id, SdkStatus.Ok); // managed already at site A
+        var waiting = new Proto.WaitingDeviceService.WaitingDeviceServiceClient(host.Invoker);
+        await waiting.AddAsync(new Proto.AddWaitingRequest { Source = "Import from file", Lines = { new Proto.WaitingLine { Address = "192.168.0.21" } } });
+
+        Assert.Equal(1, await host.Get<WaitingDeviceRunner>().RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None));
+
+        Assert.Equal(b.Id, (await host.Get<DeviceRepository>().FindBySerialAsync("ACCC8E0000B2", CancellationToken.None))!.SiteId);
+        Assert.Empty((await waiting.ListAsync(new Proto.ListWaitingRequest())).Devices);
+    }
+
+    [Fact]
+    public async Task EntriesOfASiteThatIsOfflineAreLeftAloneAndThoseOfARemovedSiteRemoved()
+    {
+        var (sites, a, b, network) = Setup();
+        await using var host = await StartAsync(sites, network);
+        var waiting = new Proto.WaitingDeviceService.WaitingDeviceServiceClient(host.Invoker);
+        await waiting.AddAsync(new Proto.AddWaitingRequest
+        {
+            Source = "Import from file",
+            Lines =
+            {
+                new Proto.WaitingLine { Address = "192.168.0.30", SiteId = a.Id.ToString() },
+                new Proto.WaitingLine { Address = "192.168.0.31", SiteId = b.Id.ToString() },
+            },
+        });
+        sites.SetOnline(a.Id, false);
+        sites.RemoveSite(b.Id);
+        var runner = host.Get<WaitingDeviceRunner>();
+        var dials = sites.Dials.Count;
+
+        await runner.RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None);
+
+        var entry = Assert.Single((await waiting.ListAsync(new Proto.ListWaitingRequest())).Devices);
+        Assert.Equal(("192.168.0.30", 0, ""), (entry.Address, entry.Tries, entry.LastResult)); // not tried, nothing written
+        Assert.Equal(dials, sites.Dials.Count);
+        Assert.False(runner.IsChecking(Guid.Parse(entry.Id)));
+
+        sites.SetOnline(a.Id, true);
+        await runner.RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None);
+        Assert.Equal(1, Assert.Single((await waiting.ListAsync(new Proto.ListWaitingRequest())).Devices).Tries);
     }
 
     [Fact]

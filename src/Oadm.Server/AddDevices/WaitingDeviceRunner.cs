@@ -26,6 +26,12 @@ public enum WaitingOutcomeKind
     /// <summary>The device answered but rejected every login: waits for Try now (no repeated wrong passwords).</summary>
     LoginFailed,
 
+    /// <summary>
+    /// The address answers through several sites with different devices OADM does not manage: which one is meant is not
+    /// known, so it waits for Try now (or for the line kept again with a Site column).
+    /// </summary>
+    Held,
+
     /// <summary>The entry was removed or kept again while it was tried: nothing is added or written back.</summary>
     Changed,
 }
@@ -43,7 +49,9 @@ public sealed record WaitingOutcome(WaitingOutcomeKind Kind, string Message);
 /// login limit) and is stored by <see cref="DeviceAdder"/> like an add from the page: with the login that worked, or as
 /// Password not set for a factory-default device, and only while its entry is still the one the round read (a removed
 /// entry is never added). Added devices get the line's tags, a first full refresh and the audit entry "Device added
-/// automatically". Entries whose device OADM manages by now are removed before each round.
+/// automatically". Entries whose device OADM manages by now are removed before each round. Entries of a site that is not
+/// online are left alone (not tried, nothing written: they keep their last result) until it is back; entries of a site
+/// that no longer exists are removed.
 /// </summary>
 public sealed partial class WaitingDeviceRunner(
     WaitingDeviceStore store,
@@ -220,6 +228,8 @@ public sealed partial class WaitingDeviceRunner(
                     var removed = gone.ToHashSet();
                     entries = [.. entries.Where(e => !removed.Contains(e.Id))];
                 }
+
+                entries = await LeaveOfflineSitesAsync(entries, ct).ConfigureAwait(false);
             }
 
             foreach (var entry in entries)
@@ -285,7 +295,8 @@ public sealed partial class WaitingDeviceRunner(
                     case WaitingOutcomeKind.Changed:
                         break; // removed or kept again meanwhile: nothing to write
                     default:
-                        results.Enqueue(new WaitingResult(entry.Id, entry.Kept, outcome.Message, outcome.Kind == WaitingOutcomeKind.LoginFailed));
+                        results.Enqueue(new WaitingResult(entry.Id, entry.Kept, outcome.Message,
+                            outcome.Kind == WaitingOutcomeKind.LoginFailed, outcome.Kind == WaitingOutcomeKind.Held));
                         break;
                 }
 
@@ -312,6 +323,40 @@ public sealed partial class WaitingDeviceRunner(
             _trying = false;
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// The entries a round tries: those of a site that is not online stay as they are (no try, no "Checking", no result
+    /// written: an offline site is no news about the device); those of a site that no longer exists are removed.
+    /// </summary>
+    private async Task<IReadOnlyList<WaitingTry>> LeaveOfflineSitesAsync(IReadOnlyList<WaitingTry> entries, CancellationToken ct)
+    {
+        if (sites is null || entries.All(e => e.SiteId is null))
+        {
+            return entries;
+        }
+
+        var keep = new List<WaitingTry>(entries.Count);
+        var orphans = new List<Guid>();
+        foreach (var entry in entries)
+        {
+            if (entry.SiteId is not { } site || sites.IsOnline(site))
+            {
+                keep.Add(entry);
+            }
+            else if (sites.NameOf(site) is null && !sites.IsStarting(site))
+            {
+                orphans.Add(entry.Id); // the site was removed (or a removed site's tombstone): nothing will reach it
+            }
+        }
+
+        if (orphans.Count > 0)
+        {
+            await store.RemoveAsync(orphans, all: false, ct).ConfigureAwait(false);
+            LogSiteGone(orphans.Count);
+        }
+
+        return keep;
     }
 
     /// <summary>One try of one waiting device. Never throws (one entry's failure must not end the round for the others).</summary>
@@ -381,11 +426,14 @@ public sealed partial class WaitingDeviceRunner(
                 return new WaitingOutcome(WaitingOutcomeKind.AlreadyManaged, $"{string.Join(", ", answers.Keys)} is managed already.");
             }
 
-            if (answers.Count > 1)
+            if (notManaged.Count > 1)
             {
-                // Different devices at this address through several sites: which one is meant is not known.
-                return new WaitingOutcome(WaitingOutcomeKind.StillWaiting, AnswersThrough(answers.Values));
+                // Different devices OADM does not manage at this address through several sites: which one is meant is not
+                // known. Tried again only with Try now (never every round), or kept again with a Site column.
+                return new WaitingOutcome(WaitingOutcomeKind.Held, AnswersThrough(notManaged));
             }
+
+            // Exactly one device it does not manage yet (the others answering are managed): that one is meant.
 
             var found = notManaged[0];
             authenticator.Ensure(session, found, alreadyManaged: false);
@@ -530,6 +578,9 @@ public sealed partial class WaitingDeviceRunner(
         _wake.Dispose();
         base.Dispose();
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Waiting list: {Count} entries of removed sites removed")]
+    private partial void LogSiteGone(int count);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Waiting list: {Tried} devices tried, {Added} added")]
     private partial void LogRound(int tried, int added);

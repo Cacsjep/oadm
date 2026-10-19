@@ -48,9 +48,6 @@ public static class SiteTexts
 
     public static string CopyOf(string site) => $"This site node is a copy of {site}. Click Reset on the copy.";
 
-    /// <summary>The name a device of a removed site shows in the Site column and its status: "Building B (removed)".</summary>
-    public static string RemovedName(string site) => site + " (removed)";
-
     // ---------- the Sites page ----------
 
     public const string AcceptOffHint = "Turn on Accept site nodes, then enter this server's address in the OADM Site Node app.";

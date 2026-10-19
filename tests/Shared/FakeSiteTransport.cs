@@ -36,6 +36,23 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates, ISiteNetw
         RaiseChanged(siteId);
     }
 
+    private readonly ConcurrentDictionary<Guid, string> _removed = new();
+
+    /// <summary>Removes the site with its devices kept: a tombstone names them "(removed)".</summary>
+    public void MarkRemoved(Guid siteId)
+    {
+        if (_sites.TryRemove(siteId, out var site))
+        {
+            _removed[siteId] = site.Name;
+        }
+
+        RaiseChanged(siteId);
+    }
+
+    public bool IsRemoved(Guid siteId) => _removed.ContainsKey(siteId) && !_sites.ContainsKey(siteId);
+
+    public string? RemovedNameOf(Guid siteId) => _removed.TryGetValue(siteId, out var name) ? name : null;
+
     public void SetOnline(Guid siteId, bool online)
     {
         _sites[siteId].IsOnline = online;

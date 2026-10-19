@@ -11,7 +11,8 @@ public static class SiteDeviceStatus
 {
     /// <summary>
     /// Fills <see cref="Device.SiteName"/> and sets <see cref="Device.Status"/> to <see cref="DeviceStatus.SiteOffline"/>
-    /// while the device's site is not online (an unknown site counts as offline). Devices on the server's own network are
+    /// while the device's site is not online (an unknown site counts as offline). A site removed with Keep devices names
+    /// itself "&lt;site&gt; (removed)" and marks <see cref="Device.SiteRemoved"/>. Devices on the server's own network are
     /// left as they are. Changes <paramref name="device"/> in place.
     /// </summary>
     public static void Apply(Device device, ISiteStates sites)
@@ -21,10 +22,13 @@ public static class SiteDeviceStatus
         if (device.SiteId is not { } siteId)
         {
             device.SiteName = null;
+            device.SiteRemoved = false;
             return;
         }
 
-        device.SiteName = sites.NameOf(siteId);
+        var removed = sites.RemovedNameOf(siteId);
+        device.SiteRemoved = removed is not null && sites.NameOf(siteId) is null;
+        device.SiteName = sites.NameOf(siteId) ?? (removed is null ? null : Sdk.Sites.SiteTexts.RemovedSite(removed));
         if (!sites.IsOnline(siteId) && device.Status != DeviceStatus.SiteOffline)
         {
             device.StoredStatus = device.Status;
