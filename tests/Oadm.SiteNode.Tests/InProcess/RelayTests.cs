@@ -125,6 +125,78 @@ public sealed class RelayTests
     }
 
     [Fact]
+    public async Task ARelayFollowsTheCardsWhenTheyChange()
+    {
+        var port = Ports.FreeUdp();
+        await using var bound = await BoundNodeAsync(c => c.Allowed.Add(new PortEntry(PortUse.Listen, PortProtocol.Udp, port, "NTP server")));
+        using var relay = bound.Link.Client.Relay();
+        await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Udp, Port = port, Reason = "NTP server" } });
+        Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+        var cards = (FakeCards)bound.Node.Options.NetworkCards!;
+        var networks = bound.Node.Get<Networks.NetworkScope>();
+        networks.CheckCards();
+
+        // The camera card loses its address (DHCP gone): the relay lets go of it and waits.
+        var camera = cards.List()[0];
+        cards.Replace(0, camera with { Addresses = [] });
+        networks.CheckCards(); // the card watcher may see it first; either raises the change once
+        Assert.Equal(RelayStateKind.RelayStateWaitingForApproval, (await NextAsync(relay)).State.State);
+        await Eventually.TrueAsync(() => CanBindUdp(port), "the old address is free");
+
+        // It comes back: the relay binds again.
+        cards.Replace(0, camera);
+        networks.CheckCards();
+        Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+        Assert.False(CanBindUdp(port));
+        await relay.RequestStream.CompleteAsync();
+    }
+
+    [Fact]
+    public async Task ATcpRelayHoldsAtMostItsLimitOfConnections()
+    {
+        var port = Ports.FreeTcp();
+        await using var bound = await BoundNodeAsync(c => c.Allowed.Add(new PortEntry(PortUse.Listen, PortProtocol.Tcp, port, "syslog")));
+        using var relay = bound.Link.Client.Relay();
+        await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Tcp, Port = port, Reason = "syslog" } });
+        Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+
+        var devices = new List<TcpClient>();
+        try
+        {
+            for (var i = 0; i < Relays.RelayHost.MaxTcpConnections; i++)
+            {
+                var device = new TcpClient();
+                devices.Add(device);
+                await device.ConnectAsync(IPAddress.Loopback, port);
+                Assert.True((await NextAsync(relay)).Packet.Accepted);
+            }
+
+            using var extra = new TcpClient();
+            await extra.ConnectAsync(IPAddress.Loopback, port);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var read = 0;
+            try
+            {
+                read = await extra.GetStream().ReadAsync(new byte[1], timeout.Token);
+            }
+            catch (IOException)
+            {
+                // closed with a reset
+            }
+
+            Assert.Equal(0, read);
+            await Eventually.TrueAsync(() => bound.Node.Get<Logging.ConnectionLog>().Newest(10).Any(e => e.Result == "Too many connections"), "the refusal is logged");
+        }
+        finally
+        {
+            foreach (var device in devices)
+                device.Dispose();
+        }
+
+        await relay.RequestStream.CompleteAsync();
+    }
+
+    [Fact]
     public async Task AnUnboundNodeOpensNoRelay()
     {
         await using var server = new TestServer();
