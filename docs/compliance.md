@@ -147,7 +147,7 @@ Oadm.Sdk.Client, like `ITaskPluginDialog`) is a later addition when a type needs
     **Turn off compliance** (red, confirmed); right: Export, **Show the result text** (on by default: the first line of the
     detail next to the icon of each check column, wider columns; off: icon only, text on hover), **Group by tag** (a group
     per tag like the Devices page), **Choose columns** (Model, Tags, Result and each check; per client), search. Edit (pen)
-    and Delete (bin, not on the default checks) sit at the top right of a card while the pointer is on it.
+    and Delete (bin) sit at the bottom right of a card while the pointer is on it.
   - Count cards (`ui:StatCard` in `Button.statCardButton`), one per check that is on, in a wrapping row: "Object Analytics
     running" / "12" / "failed · 3 not checked"; a click shows the devices that fail it (tab All; again or a tab: off) and
     selects the check for Edit and Delete.
