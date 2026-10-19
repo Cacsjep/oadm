@@ -146,6 +146,27 @@ public sealed class AssignIpTests
         Assert.Equal(expected, ((ITaskPlugin)new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe())).GetTaskName(payload));
 
     [Fact]
+    public async Task Check_query_lists_only_the_managed_devices_on_the_routes_of_the_device()
+    {
+        // Two sites both use 192.168.0.20 (docs/sites.md, "Overlapping networks"): only the device's own site counts.
+        var siteA = Guid.NewGuid();
+        var siteB = Guid.NewGuid();
+        var mine = new FakeDevice(Guid.NewGuid(), "192.168.0.10", Serial: "ACCC8E0000A0") { SiteId = siteA };
+        var sameSite = new FakeDevice(Guid.NewGuid(), "192.168.0.20", Serial: "ACCC8E0000A1") { SiteId = siteA };
+        var otherSite = new FakeDevice(Guid.NewGuid(), "192.168.0.21", Serial: "ACCC8E0000B1") { SiteId = siteB };
+        var server = new FakeDevice(Guid.NewGuid(), "192.168.0.22", Serial: "ACCC8E0000C1");
+        var ctx = new QueryContext(new FakeNetworkVapix(), [mine, sameSite, otherSite, server]);
+
+        var json = await new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).QueryAsync(ctx, mine, "checkAddresses",
+            new AddressCheckRequest(["192.168.0.20", "192.168.0.21"], Probe: false).ToJson(), CancellationToken.None);
+
+        Assert.Equal(["192.168.0.10", "192.168.0.20"], AddressCheckResponse.Parse(json).Managed.Select(m => m.Address).Order());
+        var onServer = AddressCheckResponse.Parse(await new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).QueryAsync(ctx, server, "checkAddresses",
+            new AddressCheckRequest([], Probe: false).ToJson(), CancellationToken.None));
+        Assert.Equal(["192.168.0.22"], onServer.Managed.Select(m => m.Address));
+    }
+
+    [Fact]
     public async Task Check_query_lists_managed_devices_without_probing()
     {
         var managed = new FakeDevice(Guid.NewGuid(), "10.0.0.20", Serial: "ACCC8E0000AA");

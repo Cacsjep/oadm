@@ -268,7 +268,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
 
         var browsers = new List<Task> { BrowseLocalAsync(session, options, Seen, scan) };
-        browsers.AddRange(OnlineSites().Select(site => BrowseSiteAsync(session, site, Seen, scan)));
+        browsers.AddRange(OnlineSites().Select(site => Task.Run(() => BrowseSiteAsync(session, site, Seen, scan), CancellationToken.None)));
         try
         {
             await Task.WhenAll(browsers).ConfigureAwait(false);
@@ -329,8 +329,16 @@ public sealed class DiscoveryService : IAsyncDisposable
         var route = DeviceRoute.ViaSite(site);
         try
         {
+            var first = true;
             do
             {
+                if (!first)
+                {
+                    // A browse without a limit asks the node again; never in a tight loop when a node ends early.
+                    await Task.Delay(TimeSpan.FromSeconds(1), _time, scan).ConfigureAwait(false);
+                }
+
+                first = false;
                 var duration = session.Duration ?? SiteBrowseChunk;
                 await foreach (var found in _sites!.BrowseAsync(site, duration, scan).ConfigureAwait(false))
                 {
