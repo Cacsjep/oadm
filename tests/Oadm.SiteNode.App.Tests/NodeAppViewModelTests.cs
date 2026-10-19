@@ -191,6 +191,86 @@ public sealed class NodeAppViewModelTests
     }
 
     [Fact]
+    public async Task TheHeaderSaysTheStateAndTheOneThingToDo()
+    {
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.BindingOpen, _vm.Header);
+        Assert.Equal("Not bound. Show the pairing code to bind this node in OADM.", _vm.HeadlineText);
+        Assert.Equal("Binding open for 23 more hours.", _vm.BindingTimeText);
+        await _vm.ShowPairingCodeAsync();
+        Assert.Equal("Type this code at Bind on the Sites page of OADM.", _vm.HeadlineText);
+
+        _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.NeedsServer, _vm.Header);
+        Assert.Equal("Not connected. Enter the address of the OADM server.", _vm.HeadlineText);
+        Assert.False(_vm.ShowServerFormInTab);
+        Assert.Null(_vm.ConnectionProblem);
+
+        _channel.State = FakeChannel.Sample(connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.NeedsServer, _vm.Header);
+        Assert.Equal("Cannot reach 10.0.0.5:5081", _vm.ConnectionProblem);
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Closed);
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.BindingClosed, _vm.Header);
+        Assert.True(_vm.ShowServerFormInTab);
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Bound);
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.Bound, _vm.Header);
+        Assert.Equal("Connected to OADM-SRV · Building B", _vm.BoundChipText);
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
+        await _vm.RefreshAsync();
+        Assert.Equal("Not connected to OADM-SRV · Building B", _vm.BoundChipText);
+        Assert.Equal("Cannot reach 10.0.0.5:5081", _vm.BoundChipDetail);
+        Assert.False(_vm.IsConnected);
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Bound, newIdentity: "0123456789ABCDEF0123456789ABCDEF");
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.NewIdentity, _vm.Header);
+        Assert.StartsWith("OADM-SRV presents a new identity", _vm.HeadlineText, StringComparison.Ordinal);
+
+        _channel.State = null;
+        await _vm.RefreshAsync();
+        Assert.Equal(NodeHeader.NoService, _vm.Header);
+        Assert.Equal(AdminTexts.ServiceNotRunning, _vm.HeadlineText);
+    }
+
+    [Fact]
+    public async Task WaitingForTheServerNeedsNoAddressInTheHeader()
+    {
+        _channel.State = new NodeView { NodeId = "a1", Binding = NodeBinding.Open, Mode = NodeLinkMode.Wait, BindingHoursLeft = 5 };
+
+        await _vm.RefreshAsync();
+
+        Assert.Equal(NodeHeader.BindingOpen, _vm.Header);
+        Assert.Equal("Save", _vm.SaveServerText);
+        _vm.ChooseConnectCommand.Execute(null);
+        Assert.Equal("Connect", _vm.SaveServerText);
+    }
+
+    [Fact]
+    public async Task TheServersRequestsCountOnThePortsTabAndReviewOpensIt()
+    {
+        await _vm.RefreshAsync();
+
+        Assert.Equal(NodeTab.Status, _vm.Tab);
+        Assert.Equal(1, _vm.RequestCount);
+        Assert.Equal("The server asks for 1 port.", _vm.RequestsText);
+        _vm.ShowPortsCommand.Execute(null);
+        Assert.True(_vm.IsPortsTab);
+        Assert.False(_vm.IsStatusTab);
+
+        _channel.State = FakeChannel.Sample(requests: false);
+        await _vm.RefreshAsync();
+        Assert.Equal(0, _vm.RequestCount);
+        Assert.False(_vm.HasRequests);
+    }
+
+    [Fact]
     public async Task TheConnectionLogIsReadOnRequest()
     {
         await _vm.LoadLogAsync();

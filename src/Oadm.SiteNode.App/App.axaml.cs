@@ -39,6 +39,8 @@ public partial class App : Application
             TextOptions.SetBaselinePixelAlignment(window, BaselinePixelAlignment.Aligned);
             window.Icon ??= Icon.Value;
         });
+        WindowFit.Attach(); // a small or scaled screen: the window shrinks to fit
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var settings = new AppSettingsStore(Start.SettingsFolder);
