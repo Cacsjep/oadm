@@ -6,6 +6,12 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- Sites (in development): devices of an offline site show **Site offline**. OADM does not poll them, and tasks, plugin
+  pages, Log in, Set password, the RTSP port, live view and Web View refuse them; compliance says Not checked. New events
+  "Site offline" per site and "Any site offline", and the placeholder {site}.
+
 ### Changed
 
 - Plugins: the plugin SDK warns when a plugin opens its own network connections to devices; use the connections OADM

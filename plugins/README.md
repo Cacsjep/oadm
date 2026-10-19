@@ -68,6 +68,11 @@ without changes. The plugin project SDK shows a warning (RS0030, banned-API anal
 (mail, HTTP endpoints of your company) are the exception: suppress it with a justification
 (`[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`).
 
+**Refuse devices with `DeviceMessages.Refusal(device)`** (the `IDeviceInfo` overload) or
+`TaskSupportReasons.ForStatus(device)`, never with a switch on `DeviceStatus` alone: a device whose site is offline
+(`DeviceStatus.SiteOffline`) is refused with "Site offline: <site>". The host refuses such devices for task runs, queries
+and actions before any plugin call.
+
 - **Name and group.** `DisplayName` is the context menu and toolbar name: at most
   `TaskPluginNames.MaxDisplayNameLength` (32) characters, **no trailing "..."**, also for tasks that open a dialog. The
   host never appends dots and strips them; the server loader shortens longer names with "…" and logs a warning.

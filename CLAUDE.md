@@ -500,7 +500,18 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `Setting`: Key, ValueJson.
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
-(factory default), `CertificateChanged`, `Unknown`.
+(factory default), `CertificateChanged`, `Unknown`, and on branch `feature/sites` `SiteOffline` (computed, never stored:
+the site node of `Device.SiteId` is not online in `ISiteStates`; `DeviceRepository` reads and `DeviceChangeFeed` show it,
+writes keep the stored status; `Oadm.Core.Sites.SiteDeviceStatus`, `NoSiteStates` without sites; `SiteStatusPublisher`
+publishes a site's devices in one batch when it goes offline or online and queues a full refresh after more than 5
+minutes offline). Every status switch refuses it before any request with "Site offline: <site>"
+(`DeviceMessages.Refusal(IDeviceInfo)`, `TaskSupportReasons.ForStatus(IDeviceInfo)`); a `SiteException` never changes a
+status, fails a poll, counts towards the outage share or fails a compliance check (Not checked). Event rules:
+`SiteEventSource` (group Sites): "Site offline: <site>" per site ({site}, {address}) and "Any site offline" ({count},
+{site}); device status events keep their state while the site is offline. `{site}` in `ActionPlaceholders.Fixed`; an empty
+fixed placeholder takes the event's value of the same name. Client: "Site offline", amber icon; fake mode sites Building B
+(online) and Warehouse (offline). Tests: `tests/Oadm.Core.Tests/Sites/*` (+ Perf `SiteOfflineScaleTests`),
+`tests/Oadm.Server.Tests/SiteOfflineServerTests`, `tests/Oadm.Client.Tests/SiteOfflineTests`.
 
 Device category enum (`Oadm.Sdk.Devices.DeviceCategory`, also used by Core): `Camera`,
 `Encoder`, `Speaker`, `Audio`, `Intercom`, `Radar`, `IoModule`, `DoorController`, `Other`,
