@@ -211,6 +211,25 @@ public sealed class NoticesGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void SiteNodeNoticesNameTheNodeAndHaveNoLgpl()
+    {
+        var packages = new Dictionary<string, PackageInfo> { ["Grpc.AspNetCore"] = Info("Grpc.AspNetCore", "2.71.0", "Apache-2.0"), ["Avalonia"] = Info("Avalonia", "12.1.4", "MIT") };
+        var uses = new[] { new PackageUse("Avalonia", "12.1.4", false, "site node app"), new PackageUse("Grpc.AspNetCore", "2.71.0", false, "site node service") };
+        var bundled = File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path("packaging", "notices", "site-node.md"));
+
+        var text = NoticesWriter.Build(
+            new NoticesOptions("1.2.0", "linux-arm64", bundled, ["Apache-2.0", "OFL-1.1"], "OADM Site Node", "the OADM Site Node service and app", "fonts, .NET"),
+            uses, (id, _) => packages[id], Templates()).Text;
+
+        Assert.StartsWith("OADM Site Node third-party notices\n", text, StringComparison.Ordinal);
+        Assert.Contains("OADM Site Node 1.2.0 (linux-arm64)", text, StringComparison.Ordinal);
+        Assert.Contains("Inter font", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("=== LGPL-2.1 ===", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("FFmpeg 9", text, StringComparison.Ordinal);
+        Assert.Contains("site node app", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BundledLicenseTemplatesOfTheRepositoryAreComplete()
     {
         var templates = new LicenseTemplates(Oadm.Tests.Shared.TestRepository.Path("packaging", "notices", "licenses"));

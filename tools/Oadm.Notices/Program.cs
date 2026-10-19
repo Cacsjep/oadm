@@ -13,6 +13,8 @@ using Oadm.Notices;
 //   --packages <folder>      NuGet packages folder (default: NUGET_PACKAGES, the project's assets file, ~/.nuget/packages)
 //   --repo <folder>          repository root (default: found from the working directory); templates in
 //                            packaging/notices/licenses, bundled notes in THIRD-PARTY-NOTICES.md, LICENSE
+//   --product site-node      the OADM Site Node (service and app, "manage package site-node"): bundled notes from
+//                            packaging/notices/site-node.md, no LGPL part, so no LGPL-2.1.txt
 var options = Arguments.Parse(args);
 if (options is null)
 {
@@ -24,10 +26,14 @@ string? assetsFile = null;
 foreach (var app in options.Apps)
 {
     var project = Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(app)));
+    // <Project>.deps.json, or <AssemblyName>.deps.json when the assembly has its own name (oadm-site-node).
     var deps = Directory.Exists(Path.Combine(app, "obj", "Release"))
         ? Directory.GetDirectories(Path.Combine(app, "obj", "Release"))
-            .Select(tfm => Path.Combine(tfm, options.Rid, project + ".deps.json"))
-            .Where(File.Exists)
+            .Select(tfm => Path.Combine(tfm, options.Rid))
+            .Where(Directory.Exists)
+            .SelectMany(folder => File.Exists(Path.Combine(folder, project + ".deps.json"))
+                ? [Path.Combine(folder, project + ".deps.json")]
+                : Directory.GetFiles(folder, "*.deps.json"))
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .FirstOrDefault()
         : null;
@@ -37,7 +43,14 @@ foreach (var app in options.Apps)
         return 1;
     }
 
-    var label = project.EndsWith(".Server", StringComparison.Ordinal) ? "server" : project.EndsWith(".Client", StringComparison.Ordinal) ? "client" : project;
+    var label = project switch
+    {
+        _ when project.EndsWith(".Server", StringComparison.Ordinal) => "server",
+        _ when project.EndsWith(".Client", StringComparison.Ordinal) => "client",
+        "Oadm.SiteNode" => "site node service",
+        "Oadm.SiteNode.App" => "site node app",
+        _ => project,
+    };
     uses.AddRange(DepsFile.Read(deps, label));
     assetsFile ??= Path.Combine(app, "obj", "project.assets.json");
 }
@@ -62,9 +75,13 @@ foreach (var root in options.PluginRoots)
 var packagesRoot = options.Packages ?? Environment.GetEnvironmentVariable("NUGET_PACKAGES") ?? PackagesFolderFromAssets(assetsFile)
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
 var templates = new LicenseTemplates(Path.Combine(options.Repo, "packaging", "notices", "licenses"));
-var bundled = File.ReadAllText(Path.Combine(options.Repo, "THIRD-PARTY-NOTICES.md"));
+var siteNode = options.Product == "site-node";
+var bundled = File.ReadAllText(Path.Combine(options.Repo, siteNode ? Path.Combine("packaging", "notices", "site-node.md") : "THIRD-PARTY-NOTICES.md"));
+var noticesOptions = siteNode
+    ? new NoticesOptions(options.Version, options.Rid, bundled, ["Apache-2.0", "OFL-1.1"], "OADM Site Node", "the OADM Site Node service and app", "fonts, .NET")
+    : new NoticesOptions(options.Version, options.Rid, bundled, ["Apache-2.0", "LGPL-2.1", "OFL-1.1"]);
 var result = NoticesWriter.Build(
-    new NoticesOptions(options.Version, options.Rid, bundled, ["Apache-2.0", "LGPL-2.1", "OFL-1.1"]),
+    noticesOptions,
     uses,
     (id, version) => PackageReader.Read(packagesRoot, id, version),
     templates);
@@ -84,7 +101,11 @@ foreach (var output in options.Outputs)
     File.WriteAllText(Path.Combine(output, NoticesWriter.FileName), result.Text);
     File.WriteAllText(Path.Combine(output, "LICENSE.txt"), license);
     File.WriteAllText(Path.Combine(output, "NOTICE.txt"), notice);
-    File.WriteAllText(Path.Combine(output, "LGPL-2.1.txt"), lgpl);
+    if (!siteNode)
+    {
+        File.WriteAllText(Path.Combine(output, "LGPL-2.1.txt"), lgpl); // FFmpeg (client)
+    }
+
     File.WriteAllText(Path.Combine(output, "TERMS.md"), terms);
     Console.WriteLine($"notices: {result.PackageCount} packages, {result.Text.Length / 1024} KB -> {Path.Combine(output, NoticesWriter.FileName)}");
 }
@@ -104,11 +125,12 @@ static string? PackagesFolderFromAssets(string? assetsFile)
         : null;
 }
 
-internal sealed record Arguments(string Rid, string Version, string Repo, string? Packages, List<string> Apps, List<string> PluginRoots, List<string> Outputs)
+internal sealed record Arguments(string Rid, string Version, string Repo, string? Packages, List<string> Apps, List<string> PluginRoots, List<string> Outputs, string Product)
 {
     public static Arguments? Parse(string[] args)
     {
         string? rid = null, version = null, repo = null, packages = null;
+        var product = "oadm";
         List<string> apps = [], plugins = [], outputs = [];
         for (var i = 0; i < args.Length; i++)
         {
@@ -128,6 +150,7 @@ internal sealed record Arguments(string Rid, string Version, string Repo, string
                 case "--app": apps.Add(value); break;
                 case "--plugins": plugins.Add(value); break;
                 case "--out": outputs.Add(value); break;
+                case "--product" when value is "oadm" or "site-node": product = value; break;
                 default: return Usage($"unknown option {name}");
             }
         }
@@ -138,13 +161,13 @@ internal sealed record Arguments(string Rid, string Version, string Repo, string
             return Usage("--rid, --version, --app and --out are required (and --repo outside the repository)");
         }
 
-        return new Arguments(rid, version, repo, packages, apps, plugins, outputs);
+        return new Arguments(rid, version, repo, packages, apps, plugins, outputs, product);
     }
 
     private static Arguments? Usage(string message)
     {
         Console.Error.WriteLine("error: " + message);
-        Console.Error.WriteLine("usage: Oadm.Notices --rid <rid> --version <v> --app <project folder>... [--plugins <folder>] --out <folder>... [--packages <folder>] [--repo <folder>]");
+        Console.Error.WriteLine("usage: Oadm.Notices --rid <rid> --version <v> --app <project folder>... [--plugins <folder>] --out <folder>... [--packages <folder>] [--repo <folder>] [--product oadm|site-node]");
         return null;
     }
 

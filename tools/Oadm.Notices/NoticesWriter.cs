@@ -9,7 +9,11 @@ namespace Oadm.Notices;
 /// <param name="Rid">Runtime id of the publish ("win-x64"), null when unknown.</param>
 /// <param name="BundledNotices">Hand-written notes on bundled components (THIRD-PARTY-NOTICES.md: FFmpeg, fonts).</param>
 /// <param name="AlwaysIncluded">License texts included even when no package names them (OADM itself, FFmpeg, Inter).</param>
-public sealed record NoticesOptions(string ProductVersion, string? Rid, string BundledNotices, IReadOnlyList<string> AlwaysIncluded);
+/// <param name="Product">The product in the title ("OADM", "OADM Site Node").</param>
+/// <param name="Contents">What the file covers ("the OADM server, the OADM client and the bundled plugins").</param>
+/// <param name="BundledSummary">The bundled components in the table of contents ("FFmpeg, fonts, .NET").</param>
+public sealed record NoticesOptions(string ProductVersion, string? Rid, string BundledNotices, IReadOnlyList<string> AlwaysIncluded,
+    string Product = "OADM", string Contents = "the OADM server, the OADM client and the bundled plugins", string BundledSummary = "FFmpeg, fonts, .NET");
 
 /// <param name="Text">The notices file.</param>
 /// <param name="PackageCount">Distinct package versions listed.</param>
@@ -131,11 +135,11 @@ public static partial class NoticesWriter
         }
 
         var sb = new StringBuilder();
-        var title = "OADM third-party notices";
+        var title = $"{options.Product} third-party notices";
         sb.Append(title).Append('\n').Append(new string('=', title.Length)).Append("\n\n");
-        sb.Append(CultureInfo.InvariantCulture, $"OADM {options.ProductVersion}{(options.Rid is null ? string.Empty : $" ({options.Rid})")}. OADM itself is licensed under the Apache License 2.0 (LICENSE.txt).\n");
-        sb.Append("This file lists the third-party software in the OADM server, the OADM client and the bundled plugins:\n");
-        sb.Append("  1. Bundled components (FFmpeg, fonts, .NET)\n");
+        sb.Append(CultureInfo.InvariantCulture, $"{options.Product} {options.ProductVersion}{(options.Rid is null ? string.Empty : $" ({options.Rid})")}. {options.Product} itself is licensed under the Apache License 2.0 (LICENSE.txt).\n");
+        sb.Append(CultureInfo.InvariantCulture, $"This file lists the third-party software in {options.Contents}:\n");
+        sb.Append(CultureInfo.InvariantCulture, $"  1. Bundled components ({options.BundledSummary})\n");
         sb.Append(CultureInfo.InvariantCulture, $"  2. NuGet packages ({packages.Count})\n");
         sb.Append("  3. License texts\n");
         sb.Append("  4. License and notice files shipped in the packages\n");
@@ -183,8 +187,8 @@ public static partial class NoticesWriter
     /// <summary>Server first, then client, then plugins.</summary>
     private static int UsedByOrder(string usedBy) => usedBy switch
     {
-        "server" => 0,
-        "client" => 1,
+        "server" or "site node service" => 0,
+        "client" or "site node app" => 1,
         _ => 2,
     };
 
