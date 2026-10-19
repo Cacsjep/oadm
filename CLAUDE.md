@@ -522,7 +522,7 @@ Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `Passw
 (factory default), `CertificateChanged`, `Unknown`, and on branch `feature/sites` `SiteOffline` (computed, never stored:
 the site node of `Device.SiteId` is not online in `ISiteStates`; `DeviceRepository` reads and `DeviceChangeFeed` show it,
 writes keep the stored status; `Oadm.Core.Sites.SiteDeviceStatus`, `NoSiteStates` without sites; `SiteStatusPublisher`
-publishes a site's devices in one batch when it goes offline or online and queues a full refresh after more than 5
+publishes a site's devices in one batch when it goes offline or online (a device with a newer change published meanwhile keeps it: `IDeviceChangeFeed.PublishUnlessNewer`) and queues a full refresh after more than 5
 minutes offline). Every status switch refuses it before any request with "Site offline: <site>"
 (`DeviceMessages.Refusal(IDeviceInfo)`, `TaskSupportReasons.ForStatus(IDeviceInfo)`); a `SiteException` never changes a
 status, fails a poll, counts towards the outage share or fails a compliance check (Not checked). Event rules:
@@ -653,7 +653,7 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. `DeviceConnections.For(device |
   discovered)` is the only place that builds `VapixConnectionOptions` (test `RoutingRulesTests`). The factory's cache key
   holds the route; a change of route or address drops the cached client. Through a site: at most 2 connections per
-  device, 30 s idle; every request timeout + 4 x the site's round trip; never Basic over plain HTTP; a `SiteException`
+  device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; never Basic over plain HTTP; a `SiteException`
   passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial. Names resolve on the route
   (`RoutedDns`; through a site in stream 5). With no site everything connects as before.
 - **Banned APIs**: `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`
@@ -2766,8 +2766,15 @@ the server side:
   `SiteSession` (control link with Watch and a 10 s Hello heartbeat and the round trip, up to 8 worker links for Dial,
   a new worker when every one carries 2,000 dials), `SiteIdentityStore` (`Sites.Identity`, purpose `oadm:site-identity`;
   dropped with a replaced master key and named in the notice), `SiteAdmin` (Remove with or without devices, Replace),
-  `SiteGrpcService`. At most 2 large transfers per site (streamed bodies over 1 MB or of unknown size, streamed answers;
-  the wait does not count against the device timeout).
+  `SiteGrpcService`. At most 2 large transfers per site (streamed bodies over 1 MB or of unknown size, streamed answers
+  except the Web View relay's (`VapixClient.RelayedOption`); a task waits as long as it takes, its device timeout starts
+  after the wait and the tasks pane says "<step> - Waiting for the site link" (`SiteLinkWait`); anyone else waits inside
+  the request's timeout, then "Site ... is busy"; a dropped streamed answer frees its slot when collected). A dial gets the
+  site's verdict before the caller's timeout (node timeout less a margin, worker wait and node answer as Busy); a dial whose
+  link or session ends is an `IOException` around "Site offline: ..." (`DialStream`), a cancelled one an
+  `OperationCanceledException`; a poll that gets no answer while the node does not answer a Hello either
+  (`ISiteStates.LinkAnswersAsync`) is a site problem. One control link attaches per site at a time; a port request follows
+  the caller's token and is asked again when it did not arrive and after every reconnect.
 - Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
   Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Changed site address, Replaced site,
   Removed site, Site offline / online (system). Backup: "Sites: N restored".
@@ -2802,8 +2809,7 @@ the server side:
   Network settings / Assign IP address lists only devices on the same route. The address link and Open web interface of a
   device at a site open it in Web View (`ICorePluginClientContext.OpenDeviceRequested`), disabled with "Turn on Web View to
   open devices at a site" while it is off. Texts `Oadm.Contracts.Sites.SiteDiscoveryTexts`.
-- Not built yet: identity rotation over gRPC, "Waiting for the site link" on
-  task steps, the HTTP helper on `IStreamListener`.
+- Not built yet: identity rotation over gRPC, the HTTP helper on `IStreamListener`.
 
 # Not built yet
 

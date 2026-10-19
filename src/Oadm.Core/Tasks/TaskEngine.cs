@@ -725,7 +725,18 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                 steps = context.Steps;
                 task.AttachSteps(steps);
 
-                await plugin.ExecuteAsync(context, device!, task.PayloadJson, ct).ConfigureAwait(false);
+                // A request that waits for a large-transfer slot of the device's site says so in the task list.
+                var stepList = steps;
+                using (Sites.SiteLinkWait.Enter(waiting =>
+                {
+                    if (task.SetSiteLinkWait(deviceId, stepList.Snapshot().FirstOrDefault(s => s.State == TaskStepState.Running), waiting))
+                    {
+                        PublishProgress(task);
+                    }
+                }))
+                {
+                    await plugin.ExecuteAsync(context, device!, task.PayloadJson, ct).ConfigureAwait(false);
+                }
                 steps.Close(succeeded: true, "Not run.");
                 task.SetDevice(deviceId, task.SuccessState(deviceId), task.LastWarning(deviceId), 100);
             }

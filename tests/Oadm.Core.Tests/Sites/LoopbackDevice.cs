@@ -14,7 +14,7 @@ namespace Oadm.Core.Tests.Sites;
 /// A small device on a loopback port, plain HTTP or HTTPS with its own certificate: <c>basicdeviceinfo.cgi</c> answers
 /// 401 with the realm <c>AXIS_&lt;serial&gt;</c> (the probe's Axis check), <c>wssession.cgi</c> a token, an upgrade becomes
 /// a WebSocket that echoes, anything else 200 "ok". Connections are kept open (HTTP keep-alive) unless the request says
-/// <c>Connection: close</c>. A test maps a site address to <see cref="EndPoint"/> in the <c>FakeSiteTransport</c>.
+/// <c>Connection: close</c>; <c>/hold</c> starts an answer that never ends. A test maps a site address to <see cref="EndPoint"/> in the <c>FakeSiteTransport</c>.
 /// </summary>
 internal sealed class LoopbackDevice : IAsyncDisposable
 {
@@ -145,6 +145,14 @@ internal sealed class LoopbackDevice : IAsyncDisposable
             {
                 await EchoWebSocketAsync(stream, keyLine.Split(':', 2)[1].Trim());
                 return;
+            }
+
+            if (path.StartsWith("/hold", StringComparison.Ordinal))
+            {
+                // A long answer that never ends (an MJPEG stream, a long poll): the connection stays busy until the test ends.
+                await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\n\r\nx"), _stop.Token);
+                await stream.FlushAsync(_stop.Token);
+                await Task.Delay(Timeout.Infinite, _stop.Token);
             }
 
             var answer = path.StartsWith("/axis-cgi/basicdeviceinfo.cgi", StringComparison.Ordinal)
