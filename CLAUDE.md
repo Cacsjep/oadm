@@ -751,7 +751,8 @@ password · 3 selected"), search box and the scan progress row. Login status per
 Login failed (error, reason as tooltip), Unreachable (error), Added (ok, row greyed; already managed devices are not
 listed, see above).
 Only addable devices can be checked: authenticated ones, and factory-default ones
-once a first password is entered. **Add** (footer, "Add 3 devices") commits the checked devices
+once a first password is entered. A device is checked by itself the first time it can be added (forum: the button was
+easy to miss and Add did nothing); one the user unchecks stays unchecked, **Select all authenticated** checks all again. **Add** (footer, "Add 3 devices") commits the checked devices
 in one click and the page always closes (no "Keep open" option).
 Every password field (login editor, first password + confirm) is `ui:PasswordBox` with the eye button.
 

@@ -132,6 +132,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
 
     private string _enteredAddress = "";
     private bool _showDnsName;
+    private bool _checkedOnce;
 
     /// <summary>"Use DNS names instead of IP addresses" of the page (set for every row in one pass).</summary>
     public bool ShowDnsName
@@ -310,6 +311,12 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         if (!CanAdd)
         {
             IsSelected = false;
+        }
+        else if (!_checkedOnce)
+        {
+            // Checked by itself the first time it can be added; a device the user unchecks stays unchecked.
+            _checkedOnce = true;
+            IsSelected = true;
         }
 
         OnPropertyChanged(nameof(IsMuted));

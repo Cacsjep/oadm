@@ -58,8 +58,10 @@
         </StackPanel>
 
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
-          <ui:ToolbarButton Text="Select all authenticated" IconKey="check" Command="{Binding SelectAllAuthenticatedCommand}"
-                            ToolTip.Tip="Check every device that is ready to add" />
+          <Button Classes="secondary" Command="{Binding SelectAllAuthenticatedCommand}" VerticalAlignment="Center"
+                  ToolTip.Tip="Check every device that is ready to add">
+            <ui:IconLabel Icon="{StaticResource Icon.check}" Text="Select all authenticated" />
+          </Button>
           <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding SummaryText}" VerticalAlignment="Center" Margin="12,0,0,0" />
           <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
         </Grid>

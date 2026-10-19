@@ -23,6 +23,8 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Count cards (Edge storage, Image Health Dashboard and others) have the card background like every other card.
+- Add devices: devices OADM logged in to are checked by themselves, so **Add** works without clicking **Select all
+  authenticated** first. A device you uncheck stays unchecked.
 
 ## [3.5.1] - 2026-10-18
 

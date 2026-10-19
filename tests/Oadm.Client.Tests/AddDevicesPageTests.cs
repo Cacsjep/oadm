@@ -59,8 +59,9 @@ public sealed class AddDevicesPageTests : IDisposable
         // Already added devices are not listed at all, only counted.
         Assert.DoesNotContain(page.FilteredRows, r => r.IsAlreadyManaged);
         Assert.Equal(8, page.FilteredRows.Count);
-        Assert.Equal("8 found · 3 ready to add · 2 need a login · 2 need a password · 0 selected", page.SummaryText);
-        Assert.False(page.AddCommand.CanExecute(null));
+        // The devices that logged in are checked by themselves: Add works without another click.
+        Assert.Equal("8 found · 3 ready to add · 2 need a login · 2 need a password · 3 selected", page.SummaryText);
+        Assert.True(page.AddCommand.CanExecute(null));
     });
 
     [Fact]
@@ -100,16 +101,27 @@ public sealed class AddDevicesPageTests : IDisposable
     });
 
     [Fact]
-    public Task Only_authenticated_devices_can_be_selected_and_are_added_in_one_click() => _ui.RunAsync(async () =>
+    public Task Authenticated_devices_are_checked_by_themselves_and_added_in_one_click() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
         bool? closed = null;
         page.CloseRequested += (_, added) => closed = added;
+        Assert.Equal(3, page.SelectedCount);
+        Assert.Equal("Add 3 devices", page.AddButtonText);
 
+        // Only devices that can be added can be checked; one the user unchecks stays unchecked.
+        Row(page, "10.0.0.92").IsSelected = false;
         Row(page, "10.0.0.93").IsSelected = true;
         Row(page, "10.0.0.90").IsSelected = true;
         page.Rows.First(r => r.IsAlreadyManaged).IsSelected = true;
-        Assert.Equal(0, page.SelectedCount);
+        Assert.Equal(2, page.SelectedCount);
+        DiscoveredRowViewModel unchecked_ = Row(page, "10.0.0.92");
+        unchecked_.Update(new DiscoveredDevice
+        {
+            Serial = unchecked_.Serial, Address = unchecked_.IpAddress, Model = unchecked_.Model,
+            AuthState = AuthState.Authenticated, AuthUserName = unchecked_.AuthUserName,
+        }); // a later report of the same device
+        Assert.False(Row(page, "10.0.0.92").IsSelected);
 
         page.SelectAllAuthenticatedCommand.Execute(null);
         Assert.Equal(3, page.SelectedCount);
@@ -160,7 +172,7 @@ public sealed class AddDevicesPageTests : IDisposable
 
         // The server tries the working login on the other device whose login failed; the open scan stream reports it.
         await TestSupport.WaitUntilAsync(() => Row(page, "10.0.0.97").ChipText == "Authenticated (admin)");
-        Assert.Equal("8 found · 5 ready to add · 2 need a password · 1 selected", page.SummaryText);
+        Assert.Equal("8 found · 5 ready to add · 2 need a password · 5 selected", page.SummaryText);
     });
 
     [Fact]
@@ -194,7 +206,7 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.False(page.IsEditorOpen);
         Assert.True(simple.IsSelected && complex.IsSelected);
         Assert.True(simple.ShowPasswordReady);
-        Assert.Equal(2, page.SelectedCount);
+        Assert.Equal(5, page.SelectedCount); // the three that logged in and the two with a password ready
 
         bool? closed = null;
         page.CloseRequested += (_, added) => closed = added;
@@ -399,6 +411,8 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(page.KeepWaiting);
         Assert.Equal(2, page.WaitingCount);
         Assert.Equal(["10.0.0.199", "10.99.0.1"], page.Rows.Where(r => r.CanWait).Select(r => r.Address));
+        Assert.Equal("Add 1 device", page.AddButtonText); // the device that logged in is checked by itself
+        Row(page, "10.0.0.93").IsSelected = false;
         Assert.Equal("Keep 2 waiting", page.AddButtonText);
         Assert.True(page.AddCommand.CanExecute(null));
         page.KeepWaiting = false;
@@ -496,7 +510,7 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(page.Rows[6].IsAlreadyManaged);
         Assert.DoesNotContain(page.Rows[6], page.FilteredRows); // already added devices are not listed
         Assert.Equal(["10.0.0.93", "10.0.0.97", "camera7.example.com:8443", "10.0.0.199", "not an address", "10.0.0.97"], page.FilteredRows.Select(r => r.Address));
-        Assert.Equal("3 found · 2 ready to add · 1 need a login · 3 not added · 0 selected", page.SummaryText);
+        Assert.Equal("3 found · 2 ready to add · 1 need a login · 3 not added · 2 selected", page.SummaryText);
         Assert.Equal("Import finished, 3 devices found, 1 already added", page.ScanStatusText);
         Assert.False(page.ShowScanAgain);
 
@@ -587,7 +601,8 @@ public sealed class AddDevicesPageTests : IDisposable
         await using AddDevicesViewModel page = await OpenScanAsync();
         bool? closed = null;
         page.CloseRequested += (_, added) => closed = added;
-        Row(page, "10.0.0.92").IsSelected = true;
+        Row(page, "10.0.0.94").IsSelected = false;
+        Row(page, "10.0.0.96").IsSelected = false;
 
         await page.AddCommand.ExecuteAsync(null);
 

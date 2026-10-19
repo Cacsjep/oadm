@@ -206,7 +206,6 @@ public sealed class HeadlessSmokeTests
             var scanWindow = new AddDevicesWindow { DataContext = scanVm, Width = 1040 };
             scanWindow.Show();
             await PumpUntilAsync(() => scanVm.Rows.Count == 11 && scanVm.Rows.All(r => r.AuthState != AuthState.Pending));
-            scanVm.SelectAllAuthenticatedCommand.Execute(null);
             await PumpUntilAsync(() => true);
             Capture(scanWindow, outDir, "client-add-scan.png");
 
