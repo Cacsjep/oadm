@@ -20,13 +20,19 @@ internal sealed partial class SiteSession
     /// </summary>
     public async Task<RelayCall> OpenRelayAsync(string siteName, CancellationToken ct)
     {
-        var worker = await WorkerAsync(siteName, ct).ConfigureAwait(false);
+        var worker = await WorkerAsync(siteName, Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
         var life = CancellationTokenSource.CreateLinkedTokenSource(_life.Token, ct);
         try
         {
             var call = worker.Link.Client.Relay(cancellationToken: life.Token);
             Interlocked.Increment(ref worker.Open);
             return new RelayCall(call, life, () => Interlocked.Decrement(ref worker.Open));
+        }
+        catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
+        {
+            // The worker link closed just now: the node is gone.
+            life.Dispose();
+            throw Lost(siteName);
         }
         catch
         {

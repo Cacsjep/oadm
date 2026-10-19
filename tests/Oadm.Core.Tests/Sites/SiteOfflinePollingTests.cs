@@ -37,7 +37,7 @@ public sealed class SiteOfflinePollingTests : IAsyncLifetime, IDisposable
         _site = _sites.AddSite("Building B");
         _db = await TestDatabase.CreateAsync(configure: s => s.AddSingleton<ISiteStates>(_sites));
         _factory = new VapixClientFactory(Devices, _db.Get<CredentialStore>(), _cameras);
-        _polling = new DevicePollingService(Devices, _factory, _db.Get<ServerSettingsStore>(), _time);
+        _polling = new DevicePollingService(Devices, _factory, _db.Get<ServerSettingsStore>(), _time, sites: _sites);
     }
 
     public async Task DisposeAsync()
@@ -104,6 +104,36 @@ public sealed class SiteOfflinePollingTests : IAsyncLifetime, IDisposable
         Assert.Equal(DeviceStatus.Ok, (await Devices.GetAsync(devices[0].Id, CancellationToken.None))!.Status);
     }
 
+    [Fact]
+    public async Task NoAnswerWhileTheSiteNodeDoesNotAnswerEitherIsASiteProblem()
+    {
+        // The link to the node dropped: the site does not count as offline yet (30 s), every poll through it fails.
+        var devices = new List<Device>();
+        for (var i = 1; i <= 20; i++)
+        {
+            var device = await AddAsync("192.168.0." + i, _site.Id);
+            devices.Add(device);
+            _cameras.FailAlways(device.Address);
+        }
+
+        _site.LinkAnswers = false;
+        await _polling.PollAllAsync(CancellationToken.None);
+        await _polling.RefreshAsync(devices[0].Id, CancellationToken.None);
+
+        foreach (var device in devices)
+        {
+            // Not Unreachable, no outage of the round, no second try: no "Device unreachable" for the whole site.
+            Assert.Equal(DeviceStatus.Ok, (await Devices.GetAsync(device.Id, CancellationToken.None))!.Status);
+        }
+
+        Assert.Equal(1, _cameras.Requests(devices[1].Address));
+
+        // The node answers: the device itself does not, so it is Unreachable as before.
+        _site.LinkAnswers = true;
+        await _polling.PollAsync(devices[1].Id, CancellationToken.None);
+        Assert.Equal(DeviceStatus.Unreachable, (await Devices.GetAsync(devices[1].Id, CancellationToken.None))!.Status);
+    }
+
     private async Task<Device> AddAsync(string address, Guid? siteId)
     {
         var device = await Devices.AddAsync(new Device
@@ -158,6 +188,8 @@ public sealed class SiteOfflinePollingTests : IAsyncLifetime, IDisposable
         public int Requests(string host) => _requests.GetValueOrDefault(host);
 
         public void FailOnce(string host) => _failures[host] = 1;
+
+        public void FailAlways(string host) => _failures[host] = int.MaxValue;
 
         public void SiteError(string host, SiteException error) => _siteErrors[host] = error;
 
