@@ -21,6 +21,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - Sites (in development): the NTP server serves devices at sites through their site node (**Serve at sites**); the
   Plugins page shows which plugins work at sites and their ports; Assign IP address refuses addresses outside a site's
   networks; plugin SDK 0.2.0 (network checks routed like the device, relays, site support, test fakes).
+- Sites (in development): Discovery, Network range, Add manually, Import from file (column **Site**), Import from ADM and
+  the waiting list find devices through every site; devices that move between sites follow; devices at a site open in
+  Web View.
 
 ### Changed
 

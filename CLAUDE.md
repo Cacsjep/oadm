@@ -2788,7 +2788,21 @@ the server side:
   refuses addresses outside the site's networks (`IDeviceNetwork.Reaches`). The Plugins page has a Sites column
   (`PluginPackageInfo.site_support = 12`, `site_ports = 13`). `Oadm.Sdk.Testing`: `FakeDeviceNetwork`, `FakeSites`,
   `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. SDK 0.2.0. Developer page `dev/sites.md`.
-- Not built yet: discovery and devices at sites (stream 5), identity rotation over gRPC, "Waiting for the site link" on
+- Discovery at sites (stream 5): every add mode asks the server's own network and every online site (`ISiteNetwork`
+  over the control link, `SiteManager.Network`; `Reaches` from the node's Watch). Results carry their route
+  (`DiscoveredDevice.site_id = 21`, `site_name = 22`, `other_sites = 23`, `problem = 24`); the same MAC address through
+  several routes is one row through the site, the others in the Site tooltip; different devices at one address through
+  different routes are separate rows. Commit stores `Device.SiteId`. Import from file reads a Site column (by name); a line
+  without a site that reaches different devices lists all, unchecked, with "Answers through Building A and Building B.";
+  an ADM line only uses the route where its MAC answers. The waiting list is per (site, address)
+  (`WaitingDeviceStore.Normalize(address, siteId)`, `WaitingDevice.site_name = 15`, column Site). Moves: Unreachable
+  devices and devices of a site offline for more than an hour are looked for through every route and moved with route and
+  address together (audited "Device moved", "from Building B 192.168.0.20 to This server 10.0.0.20"); a device answering
+  on its route never moves, names never move, a DHCP lease moves to the server's network. The address conflict check of
+  Network settings / Assign IP address lists only devices on the same route. The address link and Open web interface of a
+  device at a site open it in Web View (`ICorePluginClientContext.OpenDeviceRequested`), disabled with "Turn on Web View to
+  open devices at a site" while it is off. Texts `Oadm.Contracts.Sites.SiteDiscoveryTexts`.
+- Not built yet: identity rotation over gRPC, "Waiting for the site link" on
   task steps, the HTTP helper on `IStreamListener`.
 
 # Not built yet
