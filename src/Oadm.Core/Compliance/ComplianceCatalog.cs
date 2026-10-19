@@ -16,6 +16,26 @@ public sealed record CatalogComplianceType(IComplianceCheckType Type, string Sou
 
     /// <summary>"Not available: Edge storage is turned off".</summary>
     public string UnavailableText => $"Not available: {SourceName} is turned off";
+
+    /// <summary>
+    /// Whether the type checks devices at a site: <see cref="IComplianceCheckType.SiteSupport"/> when the type answers,
+    /// else its package's; the host's own types always. A throwing type counts as none.
+    /// </summary>
+    public Sdk.Sites.SiteSupport SiteSupport { get; } = SiteSupportOf(Type, Origin);
+
+    private static Sdk.Sites.SiteSupport SiteSupportOf(IComplianceCheckType type, PluginOrigin? origin)
+    {
+        try
+        {
+            return type.SiteSupport ?? origin?.SiteSupport ?? Sdk.Sites.SiteSupport.Full;
+        }
+#pragma warning disable CA1031 // A broken plugin answer keeps it away from sites.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return Sdk.Sites.SiteSupport.None;
+        }
+    }
 }
 
 /// <summary>The host's check types plus the types of the registered core plugins (<see cref="IComplianceSource"/>).</summary>

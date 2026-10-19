@@ -186,6 +186,13 @@ public interface IDeviceNetwork
     /// site network (what a device uses to reach OADM's services, e.g. "Use OADM as NTP server"). Null when none.
     /// </summary>
     Task<IPAddress?> LocalAddressTowardsAsync(string address, CancellationToken ct);
+
+    /// <summary>
+    /// True when <paramref name="address"/> is on a network this route reaches: always on the server's own network; at a
+    /// site only the networks the site node reaches (its chosen network cards and extra networks). A device at a site
+    /// cannot move to an address outside them.
+    /// </summary>
+    bool Reaches(IPAddress address) => true;
 }
 
 /// <summary>
@@ -216,4 +223,34 @@ public static class SiteTexts
     /// <summary>The status text of a device whose site is offline: "Site offline: Building B".</summary>
     public static string SiteOffline(string? siteName) =>
         string.IsNullOrWhiteSpace(siteName) ? "Site offline" : "Site offline: " + siteName;
+
+    /// <summary>Why a new address of a device at a site is refused: it is outside the networks the site node reaches.</summary>
+    public const string OutsideSiteNetworks = "The address is outside the networks the site reaches";
+
+    /// <summary>The name of the server's own network in relay texts ("NTP at this server: running").</summary>
+    public const string ThisServer = "this server";
+
+    /// <summary>
+    /// A relay's or listener's state for a page: "NTP at Building B: waiting for approval in the OADM Site Node app".
+    /// </summary>
+    /// <param name="reason">What listens, as the plugin named it ("NTP").</param>
+    /// <param name="where">The site's name, or <see cref="ThisServer"/> for a listener on the server's own network.</param>
+    /// <param name="state">The state.</param>
+    /// <param name="protocol">UDP or TCP.</param>
+    /// <param name="port">The port.</param>
+    public static string RelayStateText(string reason, string where, RelayState state, SiteProtocol protocol, int port)
+    {
+        var name = (protocol == SiteProtocol.Udp ? "UDP " : "TCP ") + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var what = state switch
+        {
+            RelayState.Running => "running",
+            RelayState.WaitingForApproval => "waiting for approval in the OADM Site Node app",
+            RelayState.PortInUse => name + " is used by another program",
+            RelayState.NoPermission => "not allowed to use " + name,
+            RelayState.SiteOffline => "site offline",
+            RelayState.NotSupported => "update the site node",
+            _ => state.ToString(),
+        };
+        return $"{reason} at {where}: {what}";
+    }
 }

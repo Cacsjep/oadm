@@ -26,11 +26,21 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
     /// <summary>Manifest <c>license</c>: the package is sold with a license; null = free.</summary>
     public Sdk.Licensing.PluginLicenseManifest? License { get; init; }
 
+    /// <summary>Manifest <c>siteSupport</c> as declared; null = not declared (counts as <see cref="Sdk.Sites.SiteSupport.None"/>).</summary>
+    public Sdk.Sites.SiteSupport? DeclaredSiteSupport { get; init; }
+
+    /// <summary>Whether the package works with devices at a site: the manifest's <c>siteSupport</c>, none when missing.</summary>
+    public Sdk.Sites.SiteSupport SiteSupport => DeclaredSiteSupport ?? Sdk.Sites.SiteSupport.None;
+
+    /// <summary>Manifest <c>sitePorts</c>: the ports the package listens on at sites; empty = none.</summary>
+    public IReadOnlyList<Sdk.Sites.SitePort> SitePorts { get; init; } = [];
+
+    /// <summary>A plugin compiled into the host (tests, built-in parts): it works wherever the host does.</summary>
     public static PluginOrigin FromAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
         var name = assembly.GetName();
-        return new PluginOrigin(name.Name ?? "builtin", name.Version?.ToString() ?? "0.0.0", null);
+        return new PluginOrigin(name.Name ?? "builtin", name.Version?.ToString() ?? "0.0.0", null) { DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full };
     }
 }
 
@@ -44,6 +54,29 @@ public sealed record RegisteredTaskPlugin(ITaskPlugin Plugin, ICorePlugin? Owner
 
     /// <summary>Context menu group (<see cref="ITaskPlugin.Group"/>), never empty.</summary>
     public string Group { get; init; } = TaskPluginNames.NormalizeGroup(Plugin.Group);
+
+    /// <summary>
+    /// Whether the task runs on devices at a site: <see cref="ITaskPlugin.SiteSupport"/> when the plugin answers, else the
+    /// package's (<see cref="PluginOrigin.SiteSupport"/>). A throwing plugin counts as none.
+    /// </summary>
+    public Sdk.Sites.SiteSupport SiteSupport { get; init; } = SiteSupportOf(Plugin, Origin);
+
+    private static Sdk.Sites.SiteSupport SiteSupportOf(ITaskPlugin plugin, PluginOrigin origin)
+    {
+        try
+        {
+            return plugin.SiteSupport ?? origin.SiteSupport;
+        }
+#pragma warning disable CA1031 // A broken plugin answer keeps it away from sites.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return Sdk.Sites.SiteSupport.None;
+        }
+    }
+
+    /// <summary>Why the task cannot run on <paramref name="device"/> because of its site support; null when it can.</summary>
+    public string? SiteRefusal(Sdk.Devices.IDeviceInfo device) => TaskSupportReasons.ForSiteSupport(SiteSupport, device);
 }
 
 public sealed record RegisteredCorePlugin(ICorePlugin Plugin, PluginOrigin Origin)
