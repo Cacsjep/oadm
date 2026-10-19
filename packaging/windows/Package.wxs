@@ -6,8 +6,9 @@
   - Feature Server: Program Files\OADM\Server: Oadm.Server.exe + plugins\, Windows service "OADM Server" (OadmServer),
     automatic start, LocalSystem (NTP UDP 123 and DHCP UDP 67 need it), data folder %ProgramData%\OADM passed as the
     Oadm:DataDir argument. The single-file host extracts its native libraries to %ProgramData%\OADM\runtime (service
-    environment) instead of C:\Windows\Temp, which every user can write to. One firewall rule: TCP 5080 (gRPC) for
-    Oadm.Server.exe, profiles Domain and Private; the NTP and DHCP plugins add their UDP rule themselves while enabled.
+    environment) instead of C:\Windows\Temp, which every user can write to. Two firewall rules for Oadm.Server.exe,
+    profiles Domain and Private: TCP 5080 (gRPC, clients) and TCP 5081 (site nodes; nothing listens there until Accept
+    site nodes is turned on); the NTP and DHCP plugins add their UDP rule themselves while enabled.
     %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
     master key, logs survive uninstall and upgrades).
   - Feature Client (always): Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".
@@ -55,6 +56,7 @@
         <File Id="ServerExe" Source="$(var.ServerDir)\Oadm.Server.exe" KeyPath="yes">
           <!-- Profile Domain (1) + Private (2) = 3, never Public; the attribute takes one name or a formatted value. -->
           <fw:FirewallException Id="FwGrpc" Name="OADM Server (gRPC, TCP 5080)" Port="5080" Protocol="tcp" Scope="any" Profile="[OADM_FW_PROFILE]" />
+          <fw:FirewallException Id="FwSites" Name="OADM Server (site nodes, TCP 5081)" Port="5081" Protocol="tcp" Scope="any" Profile="[OADM_FW_PROFILE]" />
         </File>
         <ServiceInstall Id="OadmServer"
                         Name="OadmServer"
@@ -107,7 +109,7 @@
     <Feature Id="Client" Title="OADM client" Description="The OADM desktop application." Level="1" AllowAbsent="no" AllowAdvertise="no">
       <ComponentGroupRef Id="Client" />
     </Feature>
-    <Feature Id="Server" Title="OADM server" Description="The OADM server as the Windows service OADM Server (TCP 5080)." Level="1" AllowAdvertise="no">
+    <Feature Id="Server" Title="OADM server" Description="The OADM server as the Windows service OADM Server (TCP 5080 and 5081)." Level="1" AllowAdvertise="no">
       <ComponentGroupRef Id="Server" />
       <ComponentRef Id="DataFolder" />
     </Feature>
@@ -175,7 +177,7 @@
         <Control Id="SetupType" Type="RadioButtonGroup" X="25" Y="60" Width="325" Height="130" Property="OADM_SETUP">
           <RadioButtonGroup Property="OADM_SETUP">
             <RadioButton Value="ServerAndClient" X="0" Y="0" Width="325" Height="50"
-                         Text="Server and client (recommended). The OADM server runs on this computer as the Windows service OADM Server (TCP 5080, opened for Domain and Private networks) and manages the devices." />
+                         Text="Server and client (recommended). The OADM server runs on this computer as the Windows service OADM Server (TCP 5080 and 5081, opened for Domain and Private networks) and manages the devices." />
             <RadioButton Value="ClientOnly" X="0" Y="70" Width="325" Height="50"
                          Text="Client only. The OADM desktop client connects to an OADM server on another computer. No service and no firewall rule." />
           </RadioButtonGroup>

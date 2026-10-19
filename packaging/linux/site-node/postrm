@@ -1,0 +1,30 @@
+#!/bin/sh
+# oadm-site-node postrm: systemd state clean-up like dh_installsystemd. The data folder /var/lib/oadm-site-node (the
+# node's identity: a bound node stays bound after a reinstall) and the user oadm-site-node are kept even on purge;
+# delete them by hand when they are no longer needed.
+set -e
+
+UNIT=oadm-site-node.service
+
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+fi
+
+if command -v deb-systemd-helper >/dev/null 2>&1; then
+    if [ "$1" = remove ]; then
+        deb-systemd-helper mask "$UNIT" >/dev/null || true
+    fi
+    if [ "$1" = purge ]; then
+        deb-systemd-helper purge "$UNIT" >/dev/null || true
+        deb-systemd-helper unmask "$UNIT" >/dev/null || true
+    fi
+fi
+
+if [ "$1" = purge ]; then
+    rm -rf /var/cache/oadm-site-node
+    if [ -d /var/lib/oadm-site-node ]; then
+        echo "oadm-site-node: the data folder /var/lib/oadm-site-node was kept (identity, settings, logs)."
+    fi
+fi
+
+exit 0

@@ -1,0 +1,36 @@
+[Unit]
+Description=OADM Site Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Microsoft.Extensions.Hosting.Systemd reports READY=1 once the node runs.
+Type=notify
+ExecStart=/opt/oadm/site-node/oadm-site-node
+WorkingDirectory=/opt/oadm/site-node
+# Its own system user, never root (docs/sites.md, "Site node program"). It may use ports below 1024 for relays
+# (NTP, UDP 123) and nothing else.
+User=oadm-site-node
+Group=oadm-site-node
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+Environment=OADM_SITE_NODE_DATA_DIR=/var/lib/oadm-site-node
+# Native files of the single-file exe are extracted here instead of $HOME/.net or /var/tmp.
+Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/cache/oadm-site-node
+# Local overrides (not shipped by the package).
+EnvironmentFile=-/etc/default/oadm-site-node
+StateDirectory=oadm-site-node
+StateDirectoryMode=0700
+CacheDirectory=oadm-site-node
+CacheDirectoryMode=0700
+# The local channel of the app and the command line: /run/oadm-site-node/admin.sock.
+RuntimeDirectory=oadm-site-node
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+SyslogIdentifier=oadm-site-node
+
+[Install]
+WantedBy=multi-user.target
