@@ -66,6 +66,11 @@ public static class NodeHost
 
         builder.Services.AddWindowsService(o => o.ServiceName = WindowsServiceName);
         builder.Services.AddSystemd();
+        // A part that fails stops the node with a non-zero exit code, so the service manager restarts it
+        // (systemd Restart=on-failure, the SCM's recovery with "actions for stops with errors").
+        builder.Services.Configure<HostOptions>(o => o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost);
+        builder.Services.AddSingleton<NodeFailure>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeFailure>());
 
         var listener = new AcceptedStreamListener();
         builder.Services.AddSingleton<IConnectionListenerFactory>(listener);

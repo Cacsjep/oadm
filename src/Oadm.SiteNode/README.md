@@ -3,8 +3,11 @@
 The node of a site (`docs/sites.md`): OADM's foot in a network the server cannot reach. A pipe: no database, no
 credentials, no tasks, no plugins. Two programs:
 
-- `oadm-site-node` (this project): the headless service (Windows service "OADM Site Node" `OadmSiteNode`, systemd
-  `Type=notify`), runs without root. The same exe is the command line.
+- `oadm-site-node` (this project): the headless service (Windows service "OADM Site Node" `OadmSiteNode` under its own
+  virtual account `NT SERVICE\OadmSiteNode`, systemd `Type=notify` as the user `oadm-site-node`), runs without root.
+  A background part that fails stops the node with exit code 1 (`NodeFailure`; the SCM's recovery runs for stops with
+  an error, systemd `Restart=on-failure`); the loops themselves log and retry their own errors (a tick that cannot be
+  saved, a local channel that cannot be opened). The same exe is the command line.
 - `oadm-site-node-app` (`src/Oadm.SiteNode.App`): the window, Avalonia with the shared OADM theme (`src/Oadm.Theme`).
 
 Shared: `src/Oadm.SiteNode.Admin` (the local channel, texts, server address and subnet rules), `src/Oadm.Sites` (TLS
@@ -46,7 +49,8 @@ of the link, `AcceptedStreamListener`, SRP pairing), `site_node.proto`.
 - **Local channel** (`AdminChannel/`): named pipe `oadm-site-node` (Windows) or `/run/oadm-site-node/admin.sock` (Linux;
   the unit needs `RuntimeDirectory=oadm-site-node`, mode 0755); a node with its own data folder uses names derived from
   it. Every local user reads the state and the connection log; the pairing code and every change need an administrator
-  (Windows: an elevated token; Linux: root or the service user). The app runs a change through an elevated copy of
+  (Windows: SYSTEM or an elevated token of Administrators, never the service account; Linux: root or the service user).
+  A channel that cannot be opened is logged and tried again every 30 s; the node runs on without it. The app runs a change through an elevated copy of
   itself (`--admin-request ... --out ...`, UAC or pkexec).
 
 ## Command line
@@ -65,7 +69,7 @@ oadm-site-node log [count]
 
 **Firewall (Windows)**: the MSI opens no port. "Wait for the server" adds the inbound rule "OADM Site Node (TCP 5081)"
 (Domain and Private, for `oadm-site-node.exe`), "Connect to the server" removes it (`Admin/NodeFirewall`). The service
-runs as LocalService and cannot change the firewall, so the administrator's process that sent the change runs netsh: the
+runs as its own unprivileged account and cannot change the firewall, so the administrator's process that sent the change runs netsh: the
 elevated copy of the app, the app running as administrator, or the command line. Uninstalling removes the rule. Linux:
 no firewall change.
 

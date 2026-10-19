@@ -16,27 +16,53 @@ namespace Oadm.SiteNode.AdminChannel;
 
 /// <summary>
 /// The local channel of the app and the command line: a named pipe on Windows (every signed-in user may connect; an
-/// administrator is a caller whose token is elevated into Administrators, or the service account), a Unix socket elsewhere
+/// administrator is SYSTEM or a caller whose token is elevated into Administrators), a Unix socket elsewhere
 /// (mode 0666; an administrator is root or the service's own user, read from the peer credentials). One request per
 /// connection.
 /// </summary>
 public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions options, ILogger<AdminChannelHost> logger) : BackgroundService
 {
+    /// <summary>A channel that cannot be opened is tried again after this time.</summary>
+    public static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
+
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>Why the channel is not open right now (null while it answers); the node runs on without it.</summary>
+    public string? Problem { get; private set; }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (options.AdminEndpoint is not { } endpoint)
             return;
-        try
+        var name = OperatingSystem.IsWindows() ? endpoint.PipeName : endpoint.SocketPath;
+        while (!stoppingToken.IsCancellationRequested)
         {
-            if (OperatingSystem.IsWindows())
-                await ServePipeAsync(endpoint.PipeName, stoppingToken).ConfigureAwait(false);
-            else
-                await ServeSocketAsync(endpoint.SocketPath, stoppingToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                    await ServePipeAsync(endpoint.PipeName, stoppingToken).ConfigureAwait(false);
+                else
+                    await ServeSocketAsync(endpoint.SocketPath, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception e) when (e is IOException or SocketException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                // The app and the command line cannot reach the node until the channel opens; the links keep running.
+                Problem = e.Message;
+                LogCannotOpen(logger, name, e.Message);
+            }
+
+            try
+            {
+                await Task.Delay(RetryInterval, options.Time, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
     }
 
@@ -46,23 +72,20 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
         var first = true;
         while (!ct.IsCancellationRequested)
         {
-            NamedPipeServerStream pipe;
-            try
-            {
-                pipe = NamedPipeServerStreamAcl.Create(name, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous | (first ? PipeOptions.FirstPipeInstance : PipeOptions.None), 0, 0, PipeAccess());
-                first = false;
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                LogCannotOpen(logger, name, e.Message);
-                await Task.Delay(TimeSpan.FromSeconds(30), options.Time, ct).ConfigureAwait(false);
-                continue;
-            }
-
+            // A failure to create the pipe (another program holds the name) goes to the caller, which retries later.
+            var pipe = NamedPipeServerStreamAcl.Create(name, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | (first ? PipeOptions.FirstPipeInstance : PipeOptions.None), 0, 0, PipeAccess());
+            first = false;
+            Problem = null;
             try
             {
                 await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // The client went away before the connection was set up: wait for the next one.
+                await pipe.DisposeAsync().ConfigureAwait(false);
+                continue;
             }
             catch
             {
@@ -90,11 +113,21 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.OtherRead | UnixFileMode.OtherWrite);
         listener.Listen(16);
+        Problem = null;
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                var socket = await listener.AcceptAsync(ct).ConfigureAwait(false);
+                Socket socket;
+                try
+                {
+                    socket = await listener.AcceptAsync(ct).ConfigureAwait(false);
+                }
+                catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionAborted or SocketError.ConnectionReset or SocketError.Interrupted)
+                {
+                    continue; // the client went away while it was accepted
+                }
+
                 _ = Task.Run(async () =>
                 {
                     using var stream = new NetworkStream(socket, ownsSocket: true);
@@ -124,7 +157,16 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
             if (request is null)
                 return;
             var admin = !AdminCommands.IsOpen(request.Command) && isAdmin();
-            var response = handler.Handle(request, admin);
+            AdminResponse response;
+            try
+            {
+                response = handler.Handle(request, admin);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                response = AdminResponse.Fail("The site node cannot save its settings: " + e.Message);
+            }
+
             if (response.Ok && !AdminCommands.IsOpen(request.Command))
                 LogCommand(logger, request.Command);
             await AdminLines.WriteAsync(stream, response, timeout.Token).ConfigureAwait(false);
@@ -147,20 +189,22 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
         return security;
     }
 
+    // SYSTEM (the installer) or a member of Administrators with an elevated token, read from the caller's own token. Not
+    // the service's account: with LocalService any other LocalService process would have counted. A request from this
+    // process itself counts too (by process id, never by account).
     [SupportedOSPlatform("windows")]
     private static bool IsAdministrator(NamedPipeServerStream pipe)
     {
         var admin = false;
         try
         {
-            using var service = WindowsIdentity.GetCurrent();
             pipe.RunAsClient(() =>
             {
                 using var caller = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
-                admin = new WindowsPrincipal(caller).IsInRole(WindowsBuiltInRole.Administrator)
-                    || (caller.User is not null && service.User is not null && caller.User.Equals(service.User))
-                    || caller.IsSystem;
+                admin = caller.IsSystem || new WindowsPrincipal(caller).IsInRole(WindowsBuiltInRole.Administrator);
             });
+            if (!admin && NativeMethods.GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var processId) && processId == (uint)Environment.ProcessId)
+                admin = true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
@@ -200,5 +244,11 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
         [SuppressMessage("Interoperability", "SYSLIB1054", Justification = "One call without marshalling.")]
         internal static extern uint geteuid();
+
+        [DllImport("kernel32", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SuppressMessage("Interoperability", "SYSLIB1054", Justification = "One call without marshalling.")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint clientProcessId);
     }
 }
