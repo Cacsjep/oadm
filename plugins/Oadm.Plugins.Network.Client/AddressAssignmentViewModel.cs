@@ -16,13 +16,16 @@ namespace Oadm.Plugins.Network.Client;
 /// (<see cref="AddressAssigner"/>), every row can be edited, conflicts are flagged per row
 /// (<see cref="AddressConflicts"/>). With static IPv6 every row also gets its own IPv6 address
 /// (<see cref="ShowIpv6"/>). <see cref="CheckAsync"/> asks the server (query "checkAddresses") which addresses other
-/// managed devices have and which answer ping or TCP 80/443, then suggests again around them.
+/// managed devices have and which answer ping or TCP 80/443, then suggests again around them. Devices at different sites
+/// are on different networks (docs/sites.md, "Overlapping networks"): the check runs once per route with a device of that
+/// route, and each row is judged by what its own route knows.
 /// </summary>
 public sealed partial class AddressAssignmentViewModel : ObservableObject
 {
     private const int MaxRounds = 3;
 
-    private readonly Dictionary<string, AddressStatus> _known = new(StringComparer.Ordinal);
+    /// <summary>What the server knows per route (the site id; <see cref="Guid.Empty"/> = the server's own network), by address.</summary>
+    private readonly Dictionary<Guid, Dictionary<string, AddressStatus>> _known = [];
     private ITaskDialogContext? _context;
     private IpRangeExpression? _range;
     private int? _prefix;
@@ -227,26 +230,40 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
         IsChecking = true;
         try
         {
-            var probed = new HashSet<string>(StringComparer.Ordinal);
+            var probed = new HashSet<(Guid Route, string Address)>();
             for (var round = 0; round < MaxRounds; round++)
             {
-                var candidates = Rows
-                    .Where(r => r.IsEditable && Ipv4.TryParse(r.NewAddress, out _) && !string.Equals(r.NewAddress.Trim(), r.CurrentAddress, StringComparison.Ordinal))
-                    .Select(r => r.NewAddress.Trim())
-                    .Concat(Rows
-                        .Where(r => r.IsIpv6Editable && PayloadValidator.TryParseIpv6(r.NewIpv6Address, out _) && !AddressCheck.IsOwnAddress(r.NewIpv6Address, [r.CurrentAddress]))
-                        .Select(r => r.NewIpv6Address.Trim()))
-                    .Where(probed.Add)
-                    .Take(AddressCheckRequest.MaxProbes)
-                    .ToList();
-                if (round > 0 && candidates.Count == 0)
+                // One query per route, run for a device of that route: its probes go through that route.
+                var asked = 0;
+                foreach (var group in Rows.GroupBy(RouteOf))
+                {
+                    var route = group.Key;
+                    var candidates = group
+                        .Where(r => r.IsEditable && Ipv4.TryParse(r.NewAddress, out _) && !string.Equals(r.NewAddress.Trim(), r.CurrentAddress, StringComparison.Ordinal))
+                        .Select(r => r.NewAddress.Trim())
+                        .Concat(group
+                            .Where(r => r.IsIpv6Editable && PayloadValidator.TryParseIpv6(r.NewIpv6Address, out _) && !AddressCheck.IsOwnAddress(r.NewIpv6Address, [r.CurrentAddress]))
+                            .Select(r => r.NewIpv6Address.Trim()))
+                        .Where(a => probed.Add((route, a)))
+                        .Take(AddressCheckRequest.MaxProbes)
+                        .ToList();
+                    if (round > 0 && candidates.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    asked += candidates.Count;
+                    CheckStatus = asked == 1 ? "Checking 1 address..." : $"Checking {asked} addresses...";
+                    var queryDevice = group.Any(r => r.Device.Id == QueryDeviceId) ? QueryDeviceId : group.First().Device.Id;
+                    var json = await _context.QueryAsync(queryDevice, AddressCheck.QueryMethod, new AddressCheckRequest(candidates).ToJson(), ct).ConfigureAwait(true);
+                    Merge(AddressCheckResponse.Parse(json), route);
+                }
+
+                if (round > 0 && asked == 0)
                 {
                     break;
                 }
 
-                CheckStatus = candidates.Count == 1 ? "Checking 1 address..." : $"Checking {candidates.Count} addresses...";
-                var json = await _context.QueryAsync(QueryDeviceId, AddressCheck.QueryMethod, new AddressCheckRequest(candidates).ToJson(), ct).ConfigureAwait(true);
-                Merge(AddressCheckResponse.Parse(json));
                 var before = Addresses;
                 Update(() =>
                 {
@@ -261,7 +278,7 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
                 }
             }
 
-            var inUse = _known.Values.Count(s => s.InUse && probed.Contains(s.Address));
+            var inUse = _known.Sum(route => route.Value.Values.Count(s => s.InUse && probed.Contains((route.Key, s.Address))));
             CheckStatus = inUse == 0
                 ? $"Checked {Plural(probed.Count, "address", "addresses")}: none is in use."
                 : $"Checked {Plural(probed.Count, "address", "addresses")}: {Plural(inUse, "address is", "addresses are")} in use{(_range is null ? "." : " and skipped where possible.")}";
@@ -285,28 +302,58 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCheck))]
     private Task Check() => CheckAsync(CancellationToken.None);
 
-    /// <summary>Merges server knowledge (tests and <see cref="CheckAsync"/>).</summary>
+    /// <summary>Merges server knowledge into the route of every row (tests with one route).</summary>
     public void Merge(AddressCheckResponse response)
     {
         ArgumentNullException.ThrowIfNull(response);
-        foreach (var managed in response.Managed)
+        foreach (var route in Rows.Select(RouteOf).Distinct().ToList())
         {
-            _known[managed.Address] = managed with { InUse = _known.GetValueOrDefault(managed.Address)?.InUse ?? false };
-        }
-
-        foreach (var probe in response.Probed)
-        {
-            _known[probe.Address] = _known.TryGetValue(probe.Address, out var existing)
-                ? existing with { InUse = probe.InUse, OutsideSite = probe.OutsideSite }
-                : probe;
+            MergeInto(KnownOf(route), response);
         }
 
         Update(() => { });
     }
 
+    /// <summary>Merges the answer of the query for <paramref name="route"/> (<see cref="CheckAsync"/> and tests).</summary>
+    public void Merge(AddressCheckResponse response, Guid? route)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        MergeInto(KnownOf(route ?? Guid.Empty), response);
+        Update(() => { });
+    }
+
+    private static void MergeInto(Dictionary<string, AddressStatus> known, AddressCheckResponse response)
+    {
+        foreach (var managed in response.Managed)
+        {
+            known[managed.Address] = managed with { InUse = known.GetValueOrDefault(managed.Address)?.InUse ?? false };
+        }
+
+        foreach (var probe in response.Probed)
+        {
+            known[probe.Address] = known.TryGetValue(probe.Address, out var existing)
+                ? existing with { InUse = probe.InUse, OutsideSite = probe.OutsideSite }
+                : probe;
+        }
+    }
+
+    /// <summary>The route of a row: its site, <see cref="Guid.Empty"/> on the server's own network.</summary>
+    private static Guid RouteOf(AddressRowViewModel row) => row.Device.SiteId ?? Guid.Empty;
+
+    private Dictionary<string, AddressStatus> KnownOf(Guid route)
+    {
+        if (!_known.TryGetValue(route, out var known))
+        {
+            _known[route] = known = new Dictionary<string, AddressStatus>(StringComparer.Ordinal);
+        }
+
+        return known;
+    }
+
     private void Suggest()
     {
-        var unavailable = _known.Values
+        // One range for the whole table: an address taken on any route is skipped (never suggests a taken one).
+        var unavailable = _known.Values.SelectMany(k => k.Values)
             .Where(s => s.DeviceId is not null || s.InUse || s.OutsideSite)
             .Select(s => s.Address)
             .Concat(Rows.Where(r => r.IsEdited).Select(r => r.NewAddress.Trim()))
@@ -332,8 +379,28 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
                 Error = null; // the user filled the rows the range had no address for
             }
 
-            var conflicts = AddressConflicts.Find([.. Rows.Select(r => r.ToAssignmentRow())], _prefix, _gateway, _known);
-            var ipv6 = AddressConflicts.FindIpv6([.. Rows.Select(r => r.ToIpv6Row())], _known);
+            // The table's own rules over every row; what the server knows only for the rows of the same route.
+            var rows = Rows.Select(r => r.ToAssignmentRow()).ToList();
+            var ipv6Rows = Rows.Select(r => r.ToIpv6Row()).ToList();
+            var conflicts = AddressConflicts.Find(rows, _prefix, _gateway).ToArray();
+            var ipv6 = AddressConflicts.FindIpv6(ipv6Rows).ToArray();
+            foreach (var group in Enumerable.Range(0, Rows.Count).GroupBy(i => RouteOf(Rows[i])))
+            {
+                if (!_known.TryGetValue(group.Key, out var known))
+                {
+                    continue;
+                }
+
+                var indices = group.ToList();
+                var routeConflicts = AddressConflicts.Find([.. indices.Select(i => rows[i])], _prefix, _gateway, known);
+                var routeIpv6 = AddressConflicts.FindIpv6([.. indices.Select(i => ipv6Rows[i])], known);
+                for (var j = 0; j < indices.Count; j++)
+                {
+                    conflicts[indices[j]] ??= routeConflicts[j];
+                    ipv6[indices[j]] ??= routeIpv6[j];
+                }
+            }
+
             for (var i = 0; i < Rows.Count; i++)
             {
                 Rows[i].Conflict = Rows[i].IsEditable ? conflicts[i] : null;

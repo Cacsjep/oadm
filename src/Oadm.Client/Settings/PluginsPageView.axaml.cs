@@ -23,12 +23,14 @@ public partial class PluginsPageView : UserControl
         if (_vm is not null)
         {
             _vm.Plugins.CollectionChanged -= OnPluginsChanged;
+            _vm.PropertyChanged -= OnViewModelChanged;
         }
 
         _vm = DataContext as PluginsViewModel;
         if (_vm is not null)
         {
             _vm.Plugins.CollectionChanged += OnPluginsChanged;
+            _vm.PropertyChanged += OnViewModelChanged;
         }
 
         Regroup();
@@ -36,6 +38,23 @@ public partial class PluginsPageView : UserControl
     }
 
     private void OnPluginsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Regroup();
+
+    private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PluginsViewModel.HasSites))
+        {
+            ShowSitesColumn();
+        }
+    }
+
+    /// <summary>Sites: only while the server has sites (a grid column is not in the tree: no binding).</summary>
+    private void ShowSitesColumn()
+    {
+        if (PluginGrid.Columns.FirstOrDefault(c => Equals(c.Header, "Sites")) is { } sites)
+        {
+            sites.IsVisible = _vm?.HasSites == true;
+        }
+    }
 
     private void Regroup()
     {
@@ -55,5 +74,6 @@ public partial class PluginsPageView : UserControl
         view.GroupDescriptions.Add(byGroup);
         PluginGrid.ItemsSource = view;
         PluginGrid.Columns[^1].IsVisible = _vm.HasLicensedPlugins; // License: only when a plugin is sold with one
+        ShowSitesColumn();
     }
 }

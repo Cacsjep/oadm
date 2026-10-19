@@ -42,6 +42,9 @@ public sealed class DeviceStore
     /// <summary>The server's waiting list of imports (WaitingDeviceService.Watch).</summary>
     public WaitingDevicesState Waiting { get; } = new();
 
+    /// <summary>Whether the server has sites: the Site columns of the device grid, the add page and the waiting list.</summary>
+    public Sites.SitePresence Sites { get; } = new();
+
     /// <summary>The compliance checks and their results (ComplianceService), the Compliance column of every row.</summary>
     public Compliance.ComplianceStore Compliance { get; } = new();
 

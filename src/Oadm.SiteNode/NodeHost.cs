@@ -129,7 +129,7 @@ public static class NodeHost
         services.AddSingleton<ConnectionState>();
         services.AddSingleton<LinkRegistry>();
         services.AddSingleton<NodeStatusFeed>();
-        services.AddSingleton(sp => new AxisBrowser(sp.GetRequiredService<NetworkScope>(), options.Time));
+        services.AddSingleton<IAxisBrowser>(sp => options.Browser ?? new AxisBrowser(sp.GetRequiredService<NetworkScope>(), options.Time));
         services.AddSingleton(sp => new RangeScanner(sp.GetRequiredService<PortPolicy>(), sp.GetRequiredService<NetworkScope>(),
             sp.GetRequiredService<IDeviceConnector>(), sp.GetRequiredService<ConnectionLog>(), options.Time));
         services.AddSingleton<AdminHandler>();

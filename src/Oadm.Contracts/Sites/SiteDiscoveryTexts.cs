@@ -6,6 +6,12 @@ namespace Oadm.Contracts.Sites;
 /// </summary>
 public static class SiteDiscoveryTexts
 {
+    /// <summary>The subtitle of Discovery while the server has no sites.</summary>
+    public const string FoundLocally = "Axis devices found on the local network.";
+
+    /// <summary>The subtitle of Discovery while the server has sites: it looks through every online site too.</summary>
+    public const string FoundHereAndAtSites = "Axis devices found on this server's network and at the sites.";
+
     /// <summary>The server's own network where a list of routes names it.</summary>
     public const string ThisServer = "this server";
 

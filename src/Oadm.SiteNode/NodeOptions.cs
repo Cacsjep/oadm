@@ -44,6 +44,9 @@ public sealed class NodeOptions
 
     public IPinger? Pinger { get; set; }
 
+    /// <summary>The mDNS browse of Browse; null = <see cref="Discovery.AxisBrowser"/> on the reached cards.</summary>
+    public Discovery.IAxisBrowser? Browser { get; set; }
+
     /// <summary>Longest wait between two connection attempts to the server.</summary>
     public TimeSpan MaxBackoff { get; set; } = TimeSpan.FromSeconds(60);
 

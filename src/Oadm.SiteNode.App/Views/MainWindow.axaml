@@ -232,7 +232,14 @@
               <DataGridTextColumn Header="Server" Binding="{Binding Server}" Width="110" x:DataType="vm:LogRow" />
               <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="150" x:DataType="vm:LogRow" />
               <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90" x:DataType="vm:LogRow" />
-              <DataGridTextColumn Header="Result" Binding="{Binding Result}" Width="*" MinWidth="120" x:DataType="vm:LogRow" />
+              <DataGridTemplateColumn Header="Result" Width="*" MinWidth="120" SortMemberPath="Result" x:DataType="vm:LogRow">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:LogRow">
+                    <ui:StatusChip Text="{Binding Result}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
+                                   IsInfo="{Binding IsInfo}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
         </Grid>

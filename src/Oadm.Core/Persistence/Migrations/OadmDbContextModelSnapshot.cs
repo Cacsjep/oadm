@@ -436,6 +436,9 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Held")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("LastResult")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -786,6 +789,24 @@ namespace Oadm.Core.Persistence.Migrations
                     b.HasKey("Key");
 
                     b.ToTable("Settings", (string)null);
+                });
+
+            modelBuilder.Entity("Oadm.Core.Sites.RemovedSite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RemovedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RemovedSites", (string)null);
                 });
 
             modelBuilder.Entity("Oadm.Core.Sites.Site", b =>

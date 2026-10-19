@@ -12,6 +12,7 @@ using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Contracts.Sites;
 
 namespace Oadm.Client.Sites;
 
@@ -31,15 +32,17 @@ public sealed class SiteRowViewModel
         StateText = SiteTexts.State(site.State);
         IsOk = site.State == SiteState.Online;
         IsError = site.State == SiteState.Offline;
-        IsWarning = site.State == SiteState.NotBound;
+        IsRemoved = site.State == SiteState.Removed;
+        IsWarning = site.State is SiteState.NotBound or SiteState.Removed;
         IsInfo = site.State == SiteState.Waiting;
         IsGreyed = site.State is SiteState.BoundElsewhere or SiteState.BindingClosed;
         Detail = site.Message.Length > 0 ? site.Message : SiteTexts.DefaultDetail(site.State);
+        StateTip = Detail.Length > 0 ? StateText + ": " + Detail : StateText;
         NodeAddressText = SiteTexts.Address(site.NodeAddress, site.NodePort);
         DeviceCountText = IsBound ? site.DeviceCount.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
         RoundTripText = site.RoundTripMs > 0 ? site.RoundTripMs.ToString("N0", CultureInfo.CurrentCulture) + " ms" : string.Empty;
         ConnectionsText = IsBound && site.State == SiteState.Online
-            ? string.Create(CultureInfo.CurrentCulture, $"{site.ShortConnections:N0} / {site.PermanentConnections:N0}")
+            ? (site.ShortConnections + site.PermanentConnections).ToString("N0", CultureInfo.CurrentCulture)
             : string.Empty;
         PortsWaitingText = site.PortsWaiting > 0 ? site.PortsWaiting.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
         LargeTransfersText = site.LargeTransfers > 0 ? site.LargeTransfers.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
@@ -49,7 +52,10 @@ public sealed class SiteRowViewModel
             : string.Empty;
         LastSeenSortKey = site.LastSeen?.ToDateTime() ?? DateTime.MinValue;
         CanBind = mayChange && site.State == SiteState.Waiting && !IsBound;
-        CanManage = mayChange && IsBound;
+        CanManage = mayChange && IsBound && !IsRemoved;
+        CanReplace = mayChange && IsBound;
+        CanRemove = mayChange && IsBound;
+        RemoveTip = IsRemoved ? "Remove devices" : "Remove site";
         CanChangeAddress = CanManage && site.Mode == SiteMode.Inbound;
         _search = string.Join(' ', site.Name, NodeAddressText, StateText, site.Version, site.NodeId);
     }
@@ -66,6 +72,12 @@ public sealed class SiteRowViewModel
     public string StateText { get; }
 
     public string Detail { get; }
+
+    /// <summary>The state with its reason in full ("Offline: The site node does not answer."): the cell's tooltip.</summary>
+    public string StateTip { get; }
+
+    /// <summary>A site removed with its devices kept: only Replace with and Remove devices.</summary>
+    public bool IsRemoved { get; }
 
     public bool IsOk { get; }
 
@@ -108,62 +120,21 @@ public sealed class SiteRowViewModel
 
     public bool CanBind { get; }
 
+    /// <summary>Rename (and Change address for inbound sites): a bound site that is not removed.</summary>
     public bool CanManage { get; }
+
+    /// <summary>Replace with: a bound site, also a removed one with devices.</summary>
+    public bool CanReplace { get; }
+
+    /// <summary>Remove site, or Remove devices of a removed site.</summary>
+    public bool CanRemove { get; }
+
+    /// <summary>"Remove site", or "Remove devices" for a removed site.</summary>
+    public string RemoveTip { get; }
 
     public bool CanChangeAddress { get; }
 
     public bool Matches(string text) => _search.Contains(text, StringComparison.OrdinalIgnoreCase);
-}
-
-/// <summary>The plain texts of the Sites page.</summary>
-public static class SiteTexts
-{
-    public const string AcceptOffHint = "Turn on Accept site nodes, then enter this server's address in the OADM Site Node app.";
-
-    public const string NodeDidNotAnswer = "The site node did not answer. Reset it in the OADM Site Node app.";
-
-    public static string AcceptOnHint(string listenAddress) =>
-        string.IsNullOrEmpty(listenAddress)
-            ? "Enter this server's address in the OADM Site Node app."
-            : $"Enter {listenAddress} as the server address in the OADM Site Node app.";
-
-    public static string State(SiteState state) => state switch
-    {
-        SiteState.Online => "Online",
-        SiteState.Offline => "Offline",
-        SiteState.NotBound => "Not bound",
-        SiteState.Waiting => "Waiting to be bound",
-        SiteState.BoundElsewhere => "Bound to another server",
-        SiteState.BindingClosed => "Binding closed",
-        _ => "Unknown",
-    };
-
-    public static string DefaultDetail(SiteState state) => state switch
-    {
-        SiteState.NotBound => "The site node was reset. Replace or remove the site.",
-        SiteState.BindingClosed => "Click Allow binding in the OADM Site Node app.",
-        _ => string.Empty,
-    };
-
-    /// <summary>"10.0.4.12:51234", "[fd00::5]:5081"; empty without an address.</summary>
-    public static string Address(string address, int port)
-    {
-        if (string.IsNullOrEmpty(address))
-        {
-            return string.Empty;
-        }
-
-        var host = address.Contains(':', StringComparison.Ordinal) && !address.StartsWith('[') ? "[" + address + "]" : address;
-        return port > 0 ? host + ":" + port.ToString(CultureInfo.InvariantCulture) : address;
-    }
-
-    public static string Replaced(ReplaceSiteReply reply)
-    {
-        ArgumentNullException.ThrowIfNull(reply);
-        var moved = reply.Moved == 1 ? "1 device moved" : string.Create(CultureInfo.CurrentCulture, $"{reply.Moved:N0} devices moved");
-        var stayed = reply.StayedDeviceIds.Count;
-        return stayed == 0 ? moved + "." : string.Create(CultureInfo.CurrentCulture, $"{moved}, {stayed:N0} did not answer through the new site and stayed.");
-    }
 }
 
 /// <summary>
@@ -436,12 +407,12 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ReplaceAsync(SiteRowViewModel? row)
     {
-        if (row is not { CanManage: true })
+        if (row is not { CanReplace: true })
         {
             return;
         }
 
-        var others = _all.Where(r => r.IsBound && r.Site.Id != row.Site.Id).Select(r => r.Site).ToList();
+        var others = _all.Where(r => r.IsBound && !r.IsRemoved && r.Site.Id != row.Site.Id).Select(r => r.Site).ToList();
         if (others.Count == 0)
         {
             ErrorText = "Bind the new site node first, then replace " + row.Name + " with it.";
@@ -460,7 +431,7 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RemoveAsync(SiteRowViewModel? row)
     {
-        if (row is not { CanManage: true })
+        if (row is not { CanRemove: true })
         {
             return;
         }

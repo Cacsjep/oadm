@@ -74,6 +74,15 @@ public interface ISiteStates
     /// </summary>
     ValueTask<bool> LinkAnswersAsync(Guid siteId, CancellationToken ct) => ValueTask.FromResult(IsOnline(siteId));
 
+    /// <summary>
+    /// True for a site removed with Keep devices (docs/sites.md, Binding 6): its devices stay Site offline until they are
+    /// replaced or removed, but their status events go off (the site is never coming back).
+    /// </summary>
+    bool IsRemoved(Guid siteId) => false;
+
+    /// <summary>The name of a removed site whose devices were kept; null for any other id.</summary>
+    string? RemovedNameOf(Guid siteId) => null;
+
     /// <summary>A site was added, renamed, removed, or went online or offline. Raised with the ids that changed.</summary>
     event EventHandler<SiteStatesChangedEventArgs>? Changed;
 }

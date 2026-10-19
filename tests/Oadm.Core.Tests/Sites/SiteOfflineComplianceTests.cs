@@ -29,9 +29,19 @@ public sealed class SiteOfflineComplianceTests
         publisher.Start();
         var device = await AddAtSiteAsync(rig, site.Id, DeviceStatus.Unreachable, "ACCC8E100001");
         var ok = await AddAtSiteAsync(rig, site.Id, DeviceStatus.Ok, "ACCC8E100002");
+        var local = await rig.Devices.AddAsync(new Device
+        {
+            Serial = "ACCC8E100009",
+            Address = "10.0.0.20",
+            Model = "P3265-V",
+            FirmwareVersion = "12.11.77",
+            Status = DeviceStatus.Ok,
+            Category = DeviceCategory.Camera,
+        }, CancellationToken.None);
         var check = await rig.SaveAsync("test.read");
         await rig.WaitForAsync(Reachable, device.Id, ComplianceOutcome.Failed);
         await rig.WaitForAsync(check.Id, ok.Id, ComplianceOutcome.Passed);
+        await rig.WaitForAsync(check.Id, local.Id, ComplianceOutcome.Passed);
         var reachableEvent = ComplianceEngine.EventTypeId(Reachable);
         await Eventually.TrueAsync(() => rig.Events.States.GetValueOrDefault(reachableEvent)?.Contains(device.Id) == true, "Reachable fails on the device");
 
@@ -46,9 +56,15 @@ public sealed class SiteOfflineComplianceTests
 
         // A failing check of a device whose site went offline turns its event off; nothing turns on.
         await Eventually.TrueAsync(() => rig.Events.States.GetValueOrDefault(reachableEvent)?.Contains(device.Id) == false, "the event is off");
-        var evaluations = rig.Plugin.Read.Evaluations.Count;
+        // Check now reads the device on the server's network (the positive sign that the run happened), never the site's.
+        var localReads = rig.Plugin.Read.Evaluations.Count(id => id == local.Id);
+        var siteReads = rig.Plugin.Read.Evaluations.Count(id => id == ok.Id || id == device.Id);
         rig.Engine.CheckNow([check.Id], null);
-        await Eventually.StaysTrueAsync(() => rig.Plugin.Read.Evaluations.Count == evaluations, "an offline site is not read", TimeSpan.FromMilliseconds(200));
+        await Eventually.TrueAsync(
+            () => rig.Plugin.Read.Evaluations.Count(id => id == local.Id) > localReads && rig.Result(check.Id, local.Id) is { Checking: false },
+            "the local device read again");
+        Assert.Equal(siteReads, rig.Plugin.Read.Evaluations.Count(id => id == ok.Id || id == device.Id));
+        Assert.Equal(ComplianceOutcome.NotChecked, rig.Result(check.Id, ok.Id)!.Outcome);
     }
 
     [Fact]

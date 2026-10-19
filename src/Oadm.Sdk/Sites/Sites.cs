@@ -232,6 +232,13 @@ public static class SiteTexts
     public static string SiteOffline(string? siteName) =>
         string.IsNullOrWhiteSpace(siteName) ? "Site offline" : "Site offline: " + siteName;
 
+    /// <summary>
+    /// The site name of a device whose site was removed with its devices kept: "Building B (removed)". The device shows Site
+    /// offline until it is moved to another site or removed.
+    /// </summary>
+    /// <param name="siteName">The removed site's name.</param>
+    public static string RemovedSite(string siteName) => siteName + " (removed)";
+
     /// <summary>Why a new address of a device at a site is refused: it is outside the networks the site node reaches.</summary>
     public const string OutsideSiteNetworks = "The address is outside the networks the site reaches";
 

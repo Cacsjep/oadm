@@ -18,7 +18,7 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
     /// <summary>Watch sends the list at most this often.</summary>
     public static readonly TimeSpan WatchInterval = TimeSpan.FromSeconds(1);
 
-    public override Task<Proto.SiteList> ListSites(Proto.Empty request, ServerCallContext context) => sites.SnapshotAsync(context.CancellationToken);
+    public override Task<Proto.SiteList> ListSites(Proto.Empty request, ServerCallContext context) => sites.PageAsync(context.CancellationToken);
 
     public override async Task WatchSites(Proto.Empty request, IServerStreamWriter<Proto.SiteList> responseStream, ServerCallContext context)
     {
@@ -29,12 +29,12 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
         sites.ListChanged += OnChanged;
         try
         {
-            await responseStream.WriteAsync(await sites.SnapshotAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+            await responseStream.WriteAsync(await sites.PageAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
             while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
                 await Task.Delay(WatchInterval, time, ct).ConfigureAwait(false);
                 signal.Reader.TryRead(out _);
-                await responseStream.WriteAsync(await sites.SnapshotAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+                await responseStream.WriteAsync(await sites.PageAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -50,7 +50,7 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
     {
         await sites.SetAcceptAsync(request.Accept, context.CancellationToken).ConfigureAwait(false);
         await audit.WriteAsync(request.Accept ? SiteAudit.AcceptOn : SiteAudit.AcceptOff, "Sites", null, CancellationToken.None).ConfigureAwait(false);
-        return await sites.SnapshotAsync(context.CancellationToken).ConfigureAwait(false);
+        return await sites.PageAsync(context.CancellationToken).ConfigureAwait(false);
     }
 
     public override async Task FindNodes(Proto.FindNodesRequest request, IServerStreamWriter<Proto.FoundNode> responseStream, ServerCallContext context)
@@ -109,12 +109,12 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
     }
 
     private async Task<Proto.Site> FindAsync(string nodeId, CancellationToken ct) =>
-        (await sites.SnapshotAsync(ct).ConfigureAwait(false)).Sites.FirstOrDefault(s => s.NodeId == nodeId && s.Id.Length > 0)
-        ?? throw GrpcGuard.NotFound("The site no longer exists.");
+        (await sites.PageAsync(ct).ConfigureAwait(false)).Sites.FirstOrDefault(s => s.NodeId == nodeId && s.Id.Length > 0)
+        ?? throw GrpcGuard.NotFound(SiteTexts.SiteGone);
 
     private async Task<Proto.Site> FindByIdAsync(Guid id, CancellationToken ct) =>
-        (await sites.SnapshotAsync(ct).ConfigureAwait(false)).Sites.FirstOrDefault(s => s.Id == id.ToString())
-        ?? throw GrpcGuard.NotFound("The site no longer exists.");
+        (await sites.PageAsync(ct).ConfigureAwait(false)).Sites.FirstOrDefault(s => s.Id == id.ToString())
+        ?? throw GrpcGuard.NotFound(SiteTexts.SiteGone);
 
     private static async Task<T> Run<T>(Func<Task<T>> call)
     {

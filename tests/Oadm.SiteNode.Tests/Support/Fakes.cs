@@ -104,10 +104,39 @@ internal sealed class MapConnector : IDeviceConnector
     /// <summary>Addresses where nothing is: a connect fails like on a network without that host (unreachable, no reset).</summary>
     public HashSet<IPAddress> Dead { get; } = [];
 
+    /// <summary>
+    /// End points whose host is there but the port is closed: a connect is refused at once, deterministically (a free
+    /// loopback port can be taken by another process between choosing and connecting).
+    /// </summary>
+    public HashSet<IPEndPoint> Refused { get; } = [];
+
+    /// <summary>Marks <paramref name="address"/>:<paramref name="port"/> as a host that refuses the port.</summary>
+    public void Refuse(string address, int port) => Refused.Add(new IPEndPoint(IPAddress.Parse(address), port));
+
     public Task<Socket> ConnectAsync(IPEndPoint target, CancellationToken ct) =>
         Dead.Contains(target.Address)
             ? Task.FromException<Socket>(new SocketException((int)SocketError.HostUnreachable))
-            : SystemDeviceConnector.Instance.ConnectAsync(Map.TryGetValue(target, out var mapped) ? mapped : target, ct);
+            : Refused.Contains(target)
+                ? Task.FromException<Socket>(new SocketException((int)SocketError.ConnectionRefused))
+                : SystemDeviceConnector.Instance.ConnectAsync(Map.TryGetValue(target, out var mapped) ? mapped : target, ct);
+}
+
+/// <summary>The node's mDNS browse without multicast: answers <see cref="Found"/>, then waits until the browse ends.</summary>
+internal sealed class FakeBrowser : Oadm.SiteNode.Discovery.IAxisBrowser
+{
+    public List<Oadm.Contracts.SiteNode.BrowseResult> Found { get; } = [];
+
+    public int Browses => Volatile.Read(ref _browses);
+
+    private int _browses;
+
+    public async IAsyncEnumerable<Oadm.Contracts.SiteNode.BrowseResult> BrowseAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        Interlocked.Increment(ref _browses);
+        foreach (var found in Found.ToList())
+            yield return found;
+        await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+    }
 }
 
 /// <summary>A pinger that never has the OS ping (the node falls back to TCP 80 / 443).</summary>

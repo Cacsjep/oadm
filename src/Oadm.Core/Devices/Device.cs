@@ -110,6 +110,12 @@ public sealed class Device : IDeviceInfo
     /// </summary>
     public DeviceStatus? StoredStatus { get; set; }
 
+    /// <summary>
+    /// The device's site was removed with Keep devices (not a column, filled by <see cref="Sites.SiteDeviceStatus.Apply"/>):
+    /// it shows Site offline with "&lt;site&gt; (removed)" and its status events are off.
+    /// </summary>
+    public bool SiteRemoved { get; set; }
+
     /// <summary>Detached deep copy, safe to hand to other threads.</summary>
     public Device Clone()
     {

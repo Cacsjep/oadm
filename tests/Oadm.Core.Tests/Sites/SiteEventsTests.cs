@@ -115,6 +115,29 @@ public sealed class SiteEventsTests
         Assert.Equal(DeviceStatus.Unreachable, (await rig.Devices.GetAsync(down.Id, CancellationToken.None))!.Status);
     }
 
+    [Fact]
+    public async Task ARemovedSiteTurnsTheStatusEventsOfItsKeptDevicesOff()
+    {
+        var sites = new FakeSiteTransport();
+        var site = sites.AddSite("Building B");
+        await using var rig = await EventRulesRig.StartAsync(sites: sites);
+        await using var publisher = new SiteStatusPublisher(sites, rig.Devices, rig.Devices.Changes);
+        publisher.Start();
+        var down = await rig.Devices.AddAsync(new Device { Serial = "ACCC8E200003", Address = "192.168.0.22", SiteId = site.Id, Status = DeviceStatus.Unreachable, Model = "P3265-V" }, CancellationToken.None);
+        await rig.SaveAsync(EventRulesRig.Rule(BuiltInEvents.Unreachable, rig.WithoutDevice(new JsonObject { ["text"] = "{address} {state}" })));
+        await WaitRunsAsync(rig, 1);
+
+        // Removed with Keep devices: the device stays (Site offline, "(removed)"), but it never comes back through that site.
+        sites.MarkRemoved(site.Id);
+        await WaitRunsAsync(rig, 2);
+
+        Assert.Equal(["192.168.0.22 on|", "192.168.0.22 off|"], rig.NoDevice.Runs.Select(r => r.Text));
+        var kept = (await rig.Devices.GetAsync(down.Id, CancellationToken.None))!;
+        Assert.Equal(DeviceStatus.SiteOffline, kept.Status);
+        Assert.Equal("Building B (removed)", kept.SiteName);
+        Assert.True(kept.SiteRemoved);
+    }
+
     private static async Task WaitRunsAsync(EventRulesRig rig, int count)
     {
         await Eventually.TrueAsync(async () =>

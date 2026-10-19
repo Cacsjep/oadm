@@ -5,6 +5,7 @@ using Google.Protobuf.WellKnownTypes;
 
 using Grpc.Core;
 
+using Oadm.Contracts.Sites;
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Api;
@@ -73,7 +74,7 @@ public sealed partial class FakeOadmApi
             Id = FakeSiteOfflineId.ToString(), Name = FakeSites[FakeSiteOfflineId], State = SiteState.Offline, Mode = SiteMode.Inbound,
             NodeId = "node-warehouse", NodeAddress = "10.20.0.5", NodePort = 5081, Version = "3.6.9", UpdateAvailable = true,
             LastSeen = Timestamp.FromDateTime(now.AddHours(-3)), Bound = Timestamp.FromDateTime(now.AddDays(-40)),
-            Message = "The site node does not answer.", NodeFingerprint = new string('B', 64),
+            Message = SiteTexts.NodeNotAnswering, NodeFingerprint = new string('B', 64),
         });
         _waitingNodes.Add(new Site
         {
@@ -173,21 +174,26 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             var node = _waitingNodes.Find(n => n.NodeId == nodeId)
-                ?? throw new RpcException(new Status(StatusCode.NotFound, "The site node is not waiting any more."));
+                ?? throw new RpcException(new Status(StatusCode.NotFound, SiteTexts.NodeNotWaiting));
             var trimmed = (name ?? "").Trim();
-            if (trimmed.Length is 0 or > 64)
+            if (SiteTexts.NameProblem(trimmed) is { } problem)
             {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Enter a site name of 1 to 64 characters."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, problem));
             }
 
             if (_sites.Exists(s => string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new RpcException(new Status(StatusCode.AlreadyExists, $"A site named {trimmed} exists already."));
+                throw new RpcException(new Status(StatusCode.AlreadyExists, SiteTexts.NameTaken));
             }
 
-            if (!string.Equals((pairingCode ?? "").Replace("-", "", StringComparison.Ordinal).Trim(), FakePairingCode.Replace("-", "", StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))
+            if (PairingCodeText.Normalize(pairingCode) is null)
             {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "The pairing code is wrong."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, SiteTexts.CodeFormat));
+            }
+
+            if (PairingCodeText.Normalize(pairingCode) != PairingCodeText.Normalize(FakePairingCode))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, SiteTexts.WrongCode));
             }
 
             _waitingNodes.Remove(node);
@@ -210,14 +216,14 @@ public sealed partial class FakeOadmApi
             ThrowIfOffline();
             var site = FindSiteLocked(id);
             var trimmed = (name ?? "").Trim();
-            if (trimmed.Length is 0 or > 64)
+            if (SiteTexts.NameProblem(trimmed) is { } problem)
             {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Enter a site name of 1 to 64 characters."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, problem));
             }
 
             if (_sites.Exists(s => s != site && string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new RpcException(new Status(StatusCode.AlreadyExists, $"A site named {trimmed} exists already."));
+                throw new RpcException(new Status(StatusCode.AlreadyExists, SiteTexts.NameTaken));
             }
 
             site.Name = trimmed;
@@ -240,7 +246,7 @@ public sealed partial class FakeOadmApi
             var site = FindSiteLocked(id);
             if (site.Mode != SiteMode.Inbound)
             {
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, "The site node connects to the server: change the address in the OADM Site Node app."));
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, SiteTexts.InboundOnly));
             }
 
             site.NodeAddress = address.Trim();
@@ -255,7 +261,7 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
-            FindSiteLocked(id);
+            var site = FindSiteLocked(id);
             var target = FindSiteLocked(newSiteId);
             var reply = new ReplaceSiteReply();
             foreach (var device in _devices.Where(d => d.SiteId == id))
@@ -265,6 +271,11 @@ public sealed partial class FakeOadmApi
                 device.Status = target.State == SiteState.Online ? DeviceStatus.Ok : DeviceStatus.SiteOffline;
                 reply.Moved++;
                 PublishUpdated(device);
+            }
+
+            if (site.State == SiteState.Removed)
+            {
+                _sites.Remove(site); // its last device moved
             }
 
             PublishSitesLocked();
@@ -278,17 +289,37 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             var site = FindSiteLocked(id);
-            _sites.Remove(site);
-            var reply = new RemoveSiteReply { NodeAnswered = site.State == SiteState.Online };
-            foreach (var device in _devices.Where(d => d.SiteId == id).ToList())
+            var removedAlready = site.State == SiteState.Removed;
+            if (removedAlready && keepDevices)
             {
-                if (keepDevices)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, SiteTexts.RemovedKeepsDevices));
+            }
+
+            var devices = _devices.Where(d => d.SiteId == id).ToList();
+            var reply = new RemoveSiteReply { NodeAnswered = removedAlready || site.State == SiteState.Online };
+            if (keepDevices && devices.Count > 0)
+            {
+                // Like the server: the site stays listed as Removed until its devices are replaced or removed.
+                var name = site.Name;
+                site.State = SiteState.Removed;
+                site.Message = SiteTexts.RemovedMessage;
+                site.NodeAddress = string.Empty;
+                site.NodePort = 0;
+                site.Version = string.Empty;
+                site.UpdateAvailable = false;
+                site.RoundTripMs = 0;
+                site.PortsWaiting = 0;
+                foreach (var device in devices)
                 {
                     device.Status = DeviceStatus.SiteOffline;
-                    device.SiteName = string.Empty;
+                    device.SiteName = Oadm.Sdk.Sites.SiteTexts.RemovedSite(name);
                     PublishUpdated(device);
                 }
-                else
+            }
+            else
+            {
+                _sites.Remove(site);
+                foreach (var device in devices)
                 {
                     _devices.Remove(device);
                     reply.DevicesRemoved++;
@@ -302,7 +333,7 @@ public sealed partial class FakeOadmApi
     }
 
     private Site FindSiteLocked(string id) =>
-        _sites.Find(s => s.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, "The site does not exist any more."));
+        _sites.Find(s => s.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, SiteTexts.SiteGone));
 
     private SiteList SiteListLocked()
     {

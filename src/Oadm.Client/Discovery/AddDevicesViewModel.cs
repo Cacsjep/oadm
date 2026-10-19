@@ -202,8 +202,22 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         AddDevicesMode.Import => ImportFromAdm
             ? $"Devices from {ImportFileName}{(ImportAdmServers.Count == 1 ? $" (ADM server {ImportAdmServers[0]})" : "")}. Logins in the export are tried first."
             : $"Addresses from {ImportFileName}. Logins in the file are tried first.",
-        _ => "Axis devices found on the local network.",
+        _ => HasSites ? Contracts.Sites.SiteDiscoveryTexts.FoundHereAndAtSites : Contracts.Sites.SiteDiscoveryTexts.FoundLocally,
     };
+
+    /// <summary>
+    /// The server has sites (docs/sites.md, Client: one rule for every Site column): the Site column shows from the start
+    /// and Discovery says it looks at the sites too.
+    /// </summary>
+    public bool HasSites
+    {
+        get;
+        init
+        {
+            field = value;
+            ShowSiteColumn |= value;
+        }
+    }
 
     /// <summary>The hint in the empty list: what to do first in this mode.</summary>
     public string EmptyText => Mode switch
@@ -1200,7 +1214,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
     }
 
-    /// <summary>Column Site: shown once a device answered through a site or the file names sites (stays shown).</summary>
+    /// <summary>Column Site: shown while the server has sites, or once a device answered through a site or the file names sites (stays shown).</summary>
     [ObservableProperty] public partial bool ShowSiteColumn { get; private set; }
 
     /// <summary>The row of an export line whose address now belongs to another device.</summary>

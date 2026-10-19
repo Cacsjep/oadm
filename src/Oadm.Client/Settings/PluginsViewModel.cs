@@ -182,7 +182,8 @@ public sealed partial class PluginsViewModel : ObservableObject
     private readonly IClipboardService? _clipboard;
     private readonly ILogger<PluginsViewModel> _logger;
 
-    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null)
+    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null,
+        Devices.DeviceStore? devices = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger;
@@ -190,6 +191,11 @@ public sealed partial class PluginsViewModel : ObservableObject
         _dialogs = dialogs;
         _clipboard = clipboard;
         store.Changed += (_, _) => Rebuild();
+        if (devices is not null)
+        {
+            HasSites = devices.Sites.HasSites;
+            devices.Sites.PropertyChanged += (_, _) => HasSites = devices.Sites.HasSites;
+        }
         if (session is not null)
         {
             session.PropertyChanged += (_, e) =>
@@ -209,6 +215,10 @@ public sealed partial class PluginsViewModel : ObservableObject
     }
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
+
+    /// <summary>The server has sites: the page shows the Sites column (what works at a site), like the device grid's Site column.</summary>
+    [ObservableProperty]
+    public partial bool HasSites { get; private set; }
 
     /// <summary>At least one plugin is sold with a license: the page shows the License column.</summary>
     public bool HasLicensedPlugins => Plugins.Any(p => p.NeedsLicense);

@@ -29,26 +29,5 @@ public static class PairingCode
     }
 
     /// <summary>The typed code in its stored form, or null when it is not 8 characters of the alphabet.</summary>
-    public static string? Normalize(string? typed)
-    {
-        if (typed is null)
-            return null;
-        Span<char> code = stackalloc char[Length];
-        var n = 0;
-        foreach (var raw in typed)
-        {
-            if (raw is '-' or ' ')
-                continue;
-            var c = char.ToUpperInvariant(raw) switch
-            {
-                'O' => '0',
-                'I' or 'L' => '1',
-                var other => other,
-            };
-            if (Alphabet.IndexOf(c, StringComparison.Ordinal) < 0 || n == Length)
-                return null;
-            code[n++] = c;
-        }
-        return n == Length ? new string(code) : null;
-    }
+    public static string? Normalize(string? typed) => Oadm.Contracts.Sites.PairingCodeText.Normalize(typed);
 }

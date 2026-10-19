@@ -69,6 +69,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _ = Task.Run(() => TaskLoopAsync(ct), ct);
         _ = Task.Run(() => TagLoopAsync(ct), ct);
         _ = Task.Run(() => WaitingLoopAsync(ct), ct);
+        _ = Task.Run(() => SitesLoopAsync(ct), ct);
         _ = Task.Run(() => ComplianceChecksLoopAsync(ct), ct);
         _ = Task.Run(() => ComplianceResultsLoopAsync(ct), ct);
         if (_session is not null)
@@ -296,6 +297,61 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             }
 
             delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
+    }
+
+    /// <summary>
+    /// Whether the server has sites (the Site columns): the site list (SiteService.WatchSites, small, at most once a second)
+    /// for a role with "See sites"; without it the devices decide (one of them at a site). An older server without sites is
+    /// retried like the other streams.
+    /// </summary>
+    private async Task SitesLoopAsync(CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<SiteList>(_ui, lists => _devices.Sites.Apply(lists[^1]));
+        void OnDevices(object? sender, DeviceStoreChangedEventArgs e) =>
+            _devices.Sites.SetFromDevices(_devices.Devices.Any(d => d.IsAtSite));
+        _ui.Post(() => _devices.Changed += OnDevices);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                if (_session is null || _session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.SitesView))
+                {
+                    try
+                    {
+                        await foreach (SiteList list in _api.WatchSitesAsync(ct).ConfigureAwait(false))
+                        {
+                            batcher.Add(list);
+                            delay = MinDelay;
+                        }
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception)
+                    {
+                        // the device loop reports the connection state; just retry
+                    }
+                }
+
+                _ui.Post(_devices.Sites.Clear);
+                try
+                {
+                    await Task.Delay(delay, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+            }
+        }
+        finally
+        {
+            _ui.Post(() => _devices.Changed -= OnDevices);
         }
     }
 

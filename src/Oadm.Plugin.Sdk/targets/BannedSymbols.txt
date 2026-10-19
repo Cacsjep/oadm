@@ -7,3 +7,6 @@ T:System.Net.Http.HttpClientHandler;Talk to devices through IVapixClient (login,
 T:System.Net.Http.SocketsHttpHandler;Talk to devices through IVapixClient (login, pinned certificate, the device's route), never your own HTTP handler.
 M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Threading.CancellationToken);Open device WebSockets with IVapixClient.ConnectWebSocketAsync (login, pinned certificate, the device's route).
 M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Threading.CancellationToken);Open device WebSockets with IVapixClient.ConnectWebSocketAsync (login, pinned certificate, the device's route).
+M:System.Net.Http.HttpClient.#ctor;Talk to devices through IVapixClient (login, pinned certificate, the device's route); an HttpClient without a handler opens its own sockets.
+T:System.Net.WebRequest;Talk to devices through IVapixClient (login, pinned certificate, the device's route), never WebRequest.
+T:System.Net.HttpWebRequest;Talk to devices through IVapixClient (login, pinned certificate, the device's route), never HttpWebRequest.

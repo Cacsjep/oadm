@@ -16,6 +16,7 @@ using Oadm.Client.Sites;
 using Oadm.Contracts.V1;
 
 using Xunit.Abstractions;
+using Oadm.Contracts.Sites;
 
 namespace Oadm.Client.Tests;
 
@@ -51,12 +52,14 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         Assert.True(building.IsOk);
         Assert.Equal("Online", building.StateText);
         Assert.Equal("12 ms", building.RoundTripText);
-        Assert.Equal("3 / 1", building.ConnectionsText);
+        Assert.Equal("4", building.ConnectionsText); // now open
+        Assert.Equal("Online", building.StateTip);
         Assert.Equal("1", building.DeviceCountText);
         var warehouse = page.Rows.Single(r => r.Name == "Warehouse");
         Assert.True(warehouse.IsError);
         Assert.Equal("3.6.9 · Update available", warehouse.VersionText);
         Assert.True(warehouse.CanChangeAddress); // inbound
+        Assert.Equal("Offline: " + SiteTexts.NodeNotAnswering, warehouse.StateTip); // the whole reason as the tooltip
         Assert.False(building.CanChangeAddress);
         var waiting = page.Rows.Single(r => !r.IsBound);
         Assert.Equal("Waiting to be bound", waiting.StateText);
@@ -104,7 +107,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
 
         form.PairingCode = "abc";
         form.FieldLeft(nameof(form.PairingCode));
-        Assert.Equal("Enter the 8 characters the OADM Site Node app shows.", form.ErrorOf(nameof(form.PairingCode)));
+        Assert.Equal(SiteTexts.CodeFormat, form.ErrorOf(nameof(form.PairingCode)));
         Assert.False(form.SubmitCommand.CanExecute(null));
 
         form.PairingCode = "WXYZ-2345";
@@ -116,7 +119,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         form.Name = "Building B"; // taken: the error belongs to the name
         form.PairingCode = "abcd efgh";
         await form.SubmitCommand.ExecuteAsync(null);
-        Assert.Contains("Building B", form.ErrorOf(nameof(form.Name)), StringComparison.Ordinal);
+        Assert.Equal(SiteTexts.NameTaken, form.ErrorOf(nameof(form.Name)));
 
         var closed = false;
         form.CloseRequested += (_, ok) => closed = ok;
@@ -159,6 +162,22 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         var devices = await api.ListDevicesAsync(CancellationToken.None);
         Assert.Equal(2, devices.Count(d => d.SiteId == FakeOadmApi.FakeSiteOfflineId.ToString())); // kept, Site offline
         Assert.Equal(SiteTexts.NodeDidNotAnswer, page.ErrorText); // the offline node could not be told
+        Assert.All(devices.Where(d => d.SiteId == FakeOadmApi.FakeSiteOfflineId.ToString()), d => Assert.Equal("Warehouse (removed)", d.SiteName));
+
+        // The site stays listed as Removed while it has devices: Replace with or Remove devices, nothing else.
+        var removed = page.Rows.Single(r => r.Name == "Warehouse");
+        Assert.Equal((SiteTexts.RemovedState, true, true, false, "Remove devices"), (removed.StateText, removed.CanReplace, removed.CanRemove, removed.CanManage, removed.RemoveTip));
+        Assert.True(removed.IsWarning);
+        dialogs.ShowSiteFormAsync(Arg.Any<SiteFormViewModel>()).Returns(async call =>
+        {
+            var form = call.Arg<SiteFormViewModel>();
+            Assert.Equal(("Remove devices", false, false), (form.Title, form.ShowKeepDevices, form.KeepDevices));
+            await form.SubmitCommand.ExecuteAsync(null);
+            return true;
+        });
+        await page.RemoveCommand.ExecuteAsync(removed);
+        devices = await api.ListDevicesAsync(CancellationToken.None);
+        Assert.DoesNotContain(devices, d => d.SiteId == FakeOadmApi.FakeSiteOfflineId.ToString());
         Assert.DoesNotContain(page.Rows, r => r.Name == "Warehouse");
 
         var building = page.Rows.Single(r => r.Name == "Building B");
@@ -284,7 +303,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
             var (api, _, page) = Create(ui: new AvaloniaUiDispatcher());
-            var window = new Window { Width = 1600, Height = 700, Content = new Avalonia.Controls.Border { Padding = new Avalonia.Thickness(20), Child = new SitesView { DataContext = page } } };
+            var window = new Window { Width = 1920, Height = 700, Content = new Avalonia.Controls.Border { Padding = new Avalonia.Thickness(20), Child = new SitesView { DataContext = page } } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
             await TestSupport.WaitUntilAsync(() =>
@@ -296,6 +315,9 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
             Assert.Contains("Building B", texts);
             Assert.Contains("Waiting to be bound", texts);
+            Assert.Contains("Response time", texts); // plain headers
+            Assert.Contains("Waiting for approval", texts);
+            Assert.Contains("Uploads and downloads", texts);
             Capture(window, outDir, "sites-page.png");
             window.Close();
             page.Dispose();
@@ -316,6 +338,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
 
             using var fixture = new DevicesFixture(api);
             fixture.SeedDevices([.. await api.ListDevicesAsync(CancellationToken.None)]);
+            fixture.Store.Sites.Apply(await api.ListSitesAsync(CancellationToken.None)); // the server has sites: the Site column shows
             var devices = new Window { Width = 1800, Height = 800, Content = new DevicesView { DataContext = fixture.Devices } };
             Oadm.Client.App.ApplyCrispText(devices);
             devices.Show();

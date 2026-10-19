@@ -107,13 +107,19 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
     /// <summary>The server tries it now (or soon, after Try now): the chip spins like the add page's "Checking...".</summary>
     public bool IsChecking => Device.Checking;
 
-    /// <summary>What the last try found; a failed login waits for Try now.</summary>
+    /// <summary>What the last try found; a failed login and an address that answers through several sites wait for Try now.</summary>
     public string ResultText => Device.Checking ? "Checking..."
         : Device.LoginFailed
-        ? "Login failed: " + Device.LastResult + " Waits for Try now."
+        ? "Login failed: " + Device.LastResult + " " + WaitsForTryNow
+        : Device.Held
+        ? Device.LastResult + " " + WaitsForTryNow
         : Device.LastResult.Length > 0 ? Device.LastResult : "Not tried yet";
 
-    public bool IsLoginFailed => Device.LoginFailed && !Device.Checking;
+    /// <summary>A failed login or an address answering through several sites: not tried again by itself (warning chip).</summary>
+    public bool IsLoginFailed => (Device.LoginFailed || Device.Held) && !Device.Checking;
+
+    /// <summary>The end of a result OADM does not try again by itself.</summary>
+    public const string WaitsForTryNow = "Waits for Try now.";
 
     public bool Matches(string? search) =>
         string.IsNullOrWhiteSpace(search)
@@ -139,16 +145,20 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
     private readonly List<WaitingRowViewModel> _all = [];
     private CancellationTokenSource? _loading;
 
-    public WaitingDevicesViewModel(IOadmApi api, IDialogService dialogs, WaitingDevicesState state)
+    public WaitingDevicesViewModel(IOadmApi api, IDialogService dialogs, WaitingDevicesState state, bool hasSites = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         _api = api;
         _dialogs = dialogs;
         State = state;
+        ShowSiteColumn = hasSites;
         Selected.CollectionChanged += (_, _) => OnSelectionChanged();
     }
 
     public WaitingDevicesState State { get; }
+
+    /// <summary>The Site column: shown while the server has sites (docs/sites.md, Client: one rule for every Site column).</summary>
+    public bool ShowSiteColumn { get; }
 
     public RangeObservableCollection<WaitingRowViewModel> Rows { get; } = [];
 

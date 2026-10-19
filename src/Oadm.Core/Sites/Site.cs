@@ -56,6 +56,23 @@ public sealed class Site
     public override string ToString() => $"Site {Name} ({Id})";
 }
 
+/// <summary>
+/// A site removed with Keep devices (row of RemovedSites): its name for the devices that still carry its id, so the Sites
+/// page lists it ("Removed") with Replace with and Remove devices until no device is left. Not a site: no node, never
+/// online; its own table so a new site may take the name and a reset node may bind again.
+/// </summary>
+public sealed class RemovedSite
+{
+    /// <summary>The removed site's id (the devices' SiteId).</summary>
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public DateTime RemovedUtc { get; set; }
+
+    public override string ToString() => $"RemovedSite {Name} ({Id})";
+}
+
 /// <summary>Server settings of the sites (docs/sites.md, Server listener and Server identity).</summary>
 public static class SiteSettings
 {

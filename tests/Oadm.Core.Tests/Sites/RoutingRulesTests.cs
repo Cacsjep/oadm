@@ -79,7 +79,8 @@ public sealed partial class RoutingRulesTests
         foreach (var symbol in (string[])["T:System.Net.Sockets.Socket;", "T:System.Net.Sockets.TcpClient;", "T:System.Net.Sockets.UdpClient;",
             "T:System.Net.NetworkInformation.Ping;", "T:System.Net.Dns;", "T:System.Net.Http.HttpClientHandler;", "T:System.Net.Http.SocketsHttpHandler;",
             "M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Threading.CancellationToken);",
-            "M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Threading.CancellationToken);"])
+            "M:System.Net.WebSockets.ClientWebSocket.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Threading.CancellationToken);",
+            "M:System.Net.Http.HttpClient.#ctor;", "T:System.Net.WebRequest;", "T:System.Net.HttpWebRequest;"])
         {
             Assert.Contains(banned, l => l.StartsWith(symbol, StringComparison.Ordinal));
         }

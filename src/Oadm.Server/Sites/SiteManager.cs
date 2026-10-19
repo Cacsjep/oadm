@@ -1092,28 +1092,3 @@ public static class SiteAudit
     public const string Offline = "Site offline";
     public const string Online = "Site online";
 }
-
-/// <summary>The plain texts of the Sites page and the binding (Wording: one phrase per concept).</summary>
-public static class SiteTexts
-{
-    public const string WrongCode = "The pairing code is wrong.";
-    public const string CodeFormat = "Enter the 8 characters the OADM Site Node app shows.";
-    public const string NameRequired = "Enter a site name.";
-    public const string NameTooLong = "Use at most 64 characters for the name.";
-    public const string NameTaken = "A site with this name exists.";
-    public const string TooManySites = "OADM keeps at most 100 sites. Remove a site first.";
-    public const string NodeGone = "The site node is no longer connected. Check it in the OADM Site Node app.";
-    public const string NodeNotAnswering = "The site node does not answer.";
-    public const string NotBound = "The site node was reset. Replace or remove the site.";
-    public const string Connecting = "Connecting";
-    public const string NodeDidNotAnswer = "The site node did not answer. Reset it in the OADM Site Node app.";
-    public const string WaitingToBeBound = "Waiting to be bound";
-    public const string BindingClosed = "Binding is closed on this site node. Click Allow binding in the OADM Site Node app.";
-    public const string BoundElsewhere = "Bound to another OADM server.";
-    public const string RemovedSite = "This site node is bound to this server, but its site was removed. Click Reset in the OADM Site Node app.";
-    public const string TooOld = "Site node too old. Update it.";
-    public const string OtherNode = "Another site node answers at this address.";
-    public const string InboundOnly = "Only sites whose node waits for the server have an address to change.";
-
-    public static string CopyOf(string site) => $"This site node is a copy of {site}. Click Reset on the copy.";
-}

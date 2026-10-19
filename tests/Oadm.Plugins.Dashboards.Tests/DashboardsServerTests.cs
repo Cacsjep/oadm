@@ -208,15 +208,10 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         var siteType = "oadm.site.offline." + site.ToString("N");
 
         host.Feed.Publish(siteType, null, PublishedEventKind.On, ("site", "Building B"), ("address", "10.1.0.5"));
-        var deadline = DateTime.UtcNow.AddSeconds(30); // the devices of the sites are read in the background
-        while (host.Plugin.Snapshot(key).Stale is null && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(10);
-        }
-
-        Assert.Equal("Site offline: Building B", host.Plugin.Snapshot(key).Stale);
+        // The devices of the sites are read in the background.
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => host.Plugin.Snapshot(key).Stale == "Site offline: Building B", "the value says Site offline");
         host.Feed.Publish(siteType, null, PublishedEventKind.Off);
-        Assert.Null(host.Plugin.Snapshot(key).Stale);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => host.Plugin.Snapshot(key).Stale is null, "the value is fresh again");
     }
 
     [Fact]

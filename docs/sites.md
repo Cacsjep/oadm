@@ -156,7 +156,12 @@ The binding window counts the service's run time (saved every minute), not the w
 6. **Remove site** (Administrator, red, confirmed): "Remove site Building B?" with **Keep devices** (they stay as Site
    offline, to be moved by Replace or the automatic move) or not (removed with their credentials and tags, one
    transaction like `RemoveManyAsync`). The server sends `Unbind`; a node that does not answer is forgotten anyway ("The
-   site node did not answer. Reset it in the OADM Site Node app."). Audited "Removed site".
+   site node did not answer. Reset it in the OADM Site Node app."). Audited "Removed site". With Keep devices the site
+   leaves a tombstone (table `RemovedSites` {Id, Name, RemovedUtc}, migration `RemovedSitesAndHeldWaiting`; its own table,
+   so a new site may take the name and the reset node may bind again): its devices show Site offline with "Building B
+   (removed)", their status events go off (the site never comes back), the re-find looks for them at once, and the Sites
+   page lists it as **Removed** with **Replace with...** and **Remove devices** until its last device left (then the
+   tombstone is dropped). The waiting entries of a removed site are removed; Replace moves them to the new site.
 7. **Reset** in the node app: new id, key and pairing code, the server forgotten, binding open for 24 hours. OADM shows
    the site as **Not bound** (its devices Site offline) until it is replaced or removed.
 
@@ -440,26 +445,39 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   nodes** (Administrator; a switch, see Server listener; while it is off the empty page says "Turn on Accept site nodes,
   then enter this server's address in the OADM Site Node app."), **Search** and **Add manually** (Administrator, for
   nodes that wait for the server); one grid: state icon, Name, Node address,
-  Devices (count), Round trip, Connections (short / permanent), Ports waiting for approval, Large transfers running, Version
-  ("Update available"), Last seen. Row actions (Administrator): Rename, Change address (inbound), Replace with..., **Remove site**
-  (red, confirmed, Keep devices). Nodes that connected and wait, and Search results, appear in the same list as "Waiting
+  Devices (count), **Response time**, **Connections** (now open), **Waiting for approval** (ports to allow in the node app),
+  **Uploads and downloads** (running now), Version ("Update available"), Last seen. The State column has room for the
+  reason ("Offline: The site node does not answer.", the whole text as its tooltip). Row actions (Administrator): Rename,
+  Change address (inbound), Replace with... (tooltip "Replace with another site"), **Remove site** (red, confirmed, Keep
+  devices); a removed site with kept devices: Replace with... and **Remove devices**. Nodes that connected and wait, and Search results, appear in the same list as "Waiting
   to be bound" rows with **Bind** (dialog: Site name, Pairing code); bound to another server or binding closed greyed
   with the reason. Errors below the list. Fake mode: two
   sample sites, one offline.
+- **Site columns, one rule**: the device grid, the add page, the waiting list window and the Plugins page show their
+  Site / Sites column while the server has sites (a bound, not bound or removed site; the client watches the site list
+  with "See sites", else the devices decide) and hide it otherwise; the device grid's column chooser greys Site out
+  meanwhile ("Bind a site first (Sites page)").
 - Device grid: column **Site** (empty for the server's own network), in the search and the export. The address link and
   **Open web interface** of a device at a site open it in **Web View** (the user's PC usually cannot reach the site;
   Web View goes through the server and the node); with Web View off both are disabled: "Turn on Web View to open devices
-  at a site". Status **Site
+  at a site"; with Web View on but a role that may not show it or open devices: "Your role does not allow opening
+  devices." (the Web View page's own text). Status **Site
   offline** (amber device icon). Group by site may come later with Group by tag; `PageDeviceChoice` and the device
   picker may offer sites later like tags.
-- Add page: a column **Site** in every mode (empty for the server's own network); nothing to choose. "No Axis device
+- Add page: a column **Site** in every mode (empty for the server's own network); nothing to choose. While the server has
+  sites, Discovery says "Axis devices found on this server's network and at the sites." "No Axis device
   answered at X." means: not through the server and not through any site that reaches X. The DNS name check box looks up
   each device on its own route.
 - Import from file: an optional column **Site** (by name), also written by the device export. "Listed before in line N"
   compares (site, address). A line without Site that reaches different devices through several sites lists all of them,
   not selected, with "Answers through Building A and Building B." Import from ADM keeps its expected MAC address per
   line.
-- Waiting list window: column **Site**, in its export; "Already waiting" compares (site, address).
+- Waiting list window: column **Site**, in its export; "Already waiting" compares (site, address). Entries of a site that
+  is offline are not tried (nothing written) until it is back. An entry without a site that answers through several sites
+  adds the one device OADM does not manage yet; several unmanaged devices hold it ("Answers through Building A and
+  Building B. Waits for Try now.", `WaitingDevice.Held`), not tried again by itself.
+- Plugins page: column **Sites** ("Works at sites", "Only this server's network", the ports such as "UDP 123" that
+  installers need for firewalls).
 
 ## Roles, audit and secrets
 

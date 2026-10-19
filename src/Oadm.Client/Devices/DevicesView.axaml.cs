@@ -187,6 +187,7 @@ public partial class DevicesView : UserControl
             ApplyLiveViewColumns();
             vm.Compliance.ChecksChanged += OnComplianceChecksChanged;
             ApplyComplianceColumns();
+            ApplySiteColumn();
         }
     }
 
@@ -245,6 +246,26 @@ public partial class DevicesView : UserControl
         else if (e.PropertyName is nameof(DevicesViewModel.ExpandCompliance) or nameof(DevicesViewModel.HasCompliance) or nameof(DevicesViewModel.ComplianceColumnOn))
         {
             ApplyComplianceColumns();
+        }
+        else if (e.PropertyName == nameof(DevicesViewModel.HasSites))
+        {
+            ApplySiteColumn();
+        }
+    }
+
+    /// <summary>The Site column shows while the server has sites and the column chooser has it on.</summary>
+    private void ApplySiteColumn()
+    {
+        if (_viewModel is not { } vm)
+        {
+            return;
+        }
+
+        DeviceGrid.Classes.Set("noSites", !vm.HasSites);
+        if (DeviceGrid.Columns.FirstOrDefault(c => c.Tag as string == DevicesViewModel.SiteColumnKey) is { } column)
+        {
+            column.IsVisible = (vm.Columns.Find(DevicesViewModel.SiteColumnKey)?.IsVisible ?? true)
+                && !DeviceGridLayoutBinder.HiddenByGroupMode(DeviceGrid, DevicesViewModel.SiteColumnKey);
         }
     }
 

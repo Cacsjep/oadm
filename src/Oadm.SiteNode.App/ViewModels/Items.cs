@@ -87,6 +87,18 @@ public sealed record RelayItem(string Text, string State, string Message, bool I
 /// <summary>A line of the connection log as the grid shows it (local time).</summary>
 public sealed record LogRow(string Time, string Server, string Target, string Kind, string Result)
 {
+    /// <summary>A connection that worked ("Connected", a relay's "Accepted").</summary>
+    public bool IsOk => Result is "Connected" or "Accepted";
+
+    /// <summary>Refused by the node's own rules ("Port not allowed", "Outside the networks", "Busy"): something to allow here.</summary>
+    public bool IsWarning => Result is "Port not allowed" or "Outside the networks" or "Busy";
+
+    /// <summary>A range scan's count ("12 answered"): information only.</summary>
+    public bool IsInfo => Result.EndsWith(" answered", StringComparison.Ordinal);
+
+    /// <summary>The device did not answer (refused, timed out, unreachable, reset, name not found).</summary>
+    public bool IsError => !IsOk && !IsWarning && !IsInfo;
+
     public static LogRow From(ConnectionLogEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);

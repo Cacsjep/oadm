@@ -120,7 +120,7 @@
                     <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.ShowOnDisabled="True"
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).OpenWebUiCommand}"
                             CommandParameter="{Binding Row}">
-                      <!-- A device at a site opens in Web View; without Web View its link is off with the reason. -->
+                      <!-- A device at a site opens in Web View; without Web View (off, or not for this role) its link is off with the reason. -->
                       <Button.IsEnabled>
                         <MultiBinding Converter="{x:Static dev:SiteWebViewTexts.LinkEnabled}">
                           <Binding Path="Row.IsAtSite" />
@@ -130,7 +130,7 @@
                       <ToolTip.Tip>
                         <MultiBinding Converter="{x:Static dev:SiteWebViewTexts.LinkTip}">
                           <Binding Path="Row.IsAtSite" />
-                          <Binding Path="$parent[UserControl].((dev:DevicesViewModel)DataContext).IsWebViewOn" />
+                          <Binding Path="$parent[UserControl].((dev:DevicesViewModel)DataContext).SiteWebInterfaceTip" />
                         </MultiBinding>
                       </ToolTip.Tip>
                       <TextBlock Text="{Binding Row.DisplayAddress}" />
