@@ -58,6 +58,25 @@ public sealed partial class SiteManager
         }
     }
 
+    /// <summary>The range against each network's bounds: O(networks), never per address (a /16 x 100 sites).</summary>
+    public bool ReachesRange(Guid siteId, IPAddress first, IPAddress last)
+    {
+        ArgumentNullException.ThrowIfNull(first);
+        ArgumentNullException.ThrowIfNull(last);
+        SiteNetworks networks;
+        lock (_lock)
+        {
+            if (!_sites.TryGetValue(siteId, out var entry))
+            {
+                return false;
+            }
+
+            networks = entry.Networks;
+        }
+
+        return networks.Intersects(first, last);
+    }
+
     public async Task<IReadOnlyList<IPAddress>> ResolveAsync(Guid siteId, string name, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -334,6 +353,31 @@ public sealed class SiteNetworks
         foreach (var (network, prefix, family) in _networks)
         {
             if (family == address.AddressFamily && Mask((byte[])bytes.Clone(), prefix).AsSpan().SequenceEqual(network))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>True when an IPv4 network includes at least one address of <paramref name="first"/>..<paramref name="last"/>.</summary>
+    public bool Intersects(IPAddress first, IPAddress last)
+    {
+        var a = ISiteNetwork.Ipv4Number(first);
+        var b = ISiteNetwork.Ipv4Number(last);
+        var from = Math.Min(a, b);
+        var to = Math.Max(a, b);
+        foreach (var (network, prefix, family) in _networks)
+        {
+            if (family != AddressFamily.InterNetwork)
+            {
+                continue;
+            }
+
+            var start = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(network);
+            var end = prefix >= 32 ? start : start | (uint.MaxValue >> prefix);
+            if (start <= to && end >= from)
             {
                 return true;
             }

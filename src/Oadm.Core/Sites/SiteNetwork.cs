@@ -25,6 +25,42 @@ public interface ISiteNetwork
     /// <summary>True when <paramref name="address"/> is on a network card the node reaches or in one of its extra networks (from Watch).</summary>
     bool Reaches(Guid siteId, IPAddress address);
 
+    /// <summary>
+    /// True when the node reaches at least one address of the IPv4 range <paramref name="first"/>..<paramref name="last"/>
+    /// (a range scan runs there). Implementations compare the range with each network's bounds; the default asks
+    /// <see cref="Reaches"/> for every address of the range.
+    /// </summary>
+    bool ReachesRange(Guid siteId, IPAddress first, IPAddress last)
+    {
+        var from = Ipv4Number(first);
+        var to = Ipv4Number(last);
+        for (var value = (ulong)Math.Min(from, to); value <= Math.Max(from, to); value++)
+        {
+            if (Reaches(siteId, Ipv4Address((uint)value)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>An IPv4 address as a number (192.168.0.1 = 0xC0A80001).</summary>
+    static uint Ipv4Number(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        var bytes = (address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address).GetAddressBytes();
+        return bytes.Length == 4 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes) : throw new ArgumentException("Not an IPv4 address.", nameof(address));
+    }
+
+    /// <summary>The IPv4 address of a number (0xC0A80001 = 192.168.0.1).</summary>
+    static IPAddress Ipv4Address(uint value)
+    {
+        var bytes = new byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
+        return new IPAddress(bytes);
+    }
+
     /// <summary>The addresses of <paramref name="name"/> as the node's DNS resolves it; empty when unknown.</summary>
     Task<IReadOnlyList<IPAddress>> ResolveAsync(Guid siteId, string name, CancellationToken ct);
 

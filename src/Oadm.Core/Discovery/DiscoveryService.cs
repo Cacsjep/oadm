@@ -477,7 +477,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         try
         {
-            return range.Any(address => _sites!.Reaches(site, address));
+            return _sites!.ReachesRange(site, range.From, range.To);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
