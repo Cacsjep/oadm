@@ -145,7 +145,7 @@ internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptio
             return (DeviceMessages.Removed, null);
         }
 
-        if (DeviceConnection.RefusalFor(device.Status) is { } refusal)
+        if (DeviceConnection.RefusalFor(device) is { } refusal)
         {
             return (refusal, null);
         }

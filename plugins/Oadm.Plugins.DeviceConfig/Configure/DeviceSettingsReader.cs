@@ -23,7 +23,7 @@ public static class DeviceSettingsReader
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        if (TaskSupportReasons.ForStatus(device.Status) is { } refused)
+        if (TaskSupportReasons.ForStatus(device) is { } refused)
         {
             return new DeviceSettings { Error = refused };
         }

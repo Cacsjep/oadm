@@ -117,7 +117,7 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     /// <summary>One status request: the app state and its detections, or the reason the camera could not be read.</summary>
     internal async Task<StatusResult> ReadStatusAsync(IDeviceInfo device, CancellationToken ct)
     {
-        if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+        if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
         {
             return StatusResult.Failed(refusal);
         }

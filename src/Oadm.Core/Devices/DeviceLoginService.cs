@@ -174,6 +174,11 @@ public sealed partial class DeviceLoginService
             return new DeviceLoginResult(device.Id, false, Message: CertificateChangedMessage);
         }
 
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return new DeviceLoginResult(device.Id, false, Message: Sdk.Sites.SiteTexts.SiteOffline(device.SiteName)); // no request
+        }
+
         var now = Interlocked.Increment(ref _inFlight);
         lock (_peakLock)
         {
@@ -225,6 +230,8 @@ public sealed partial class DeviceLoginService
                 return new DeviceLoginResult(deviceId, false, Message: "The device has no password yet (factory default).");
             case DeviceStatus.Unreachable:
                 return new DeviceLoginResult(deviceId, false, Message: "Unreachable - " + Innermost(ex));
+            case DeviceStatus.SiteOffline:
+                return new DeviceLoginResult(deviceId, false, Message: Sites.SiteErrors.Find(ex)?.Message ?? Sdk.Sites.SiteTexts.SiteOffline(null));
             default:
                 return new DeviceLoginResult(deviceId, false, Message: "The login could not be checked: " + Innermost(ex));
         }

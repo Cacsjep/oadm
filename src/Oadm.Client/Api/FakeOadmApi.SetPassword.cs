@@ -35,6 +35,10 @@ public sealed partial class FakeOadmApi
                 {
                     result.Message = "Unreachable - No route to host";
                 }
+                else if (device.Status == DeviceStatus.SiteOffline)
+                {
+                    result.Message = FakeSiteOfflineText(device);
+                }
                 else if (device.Status != DeviceStatus.PasswordNotSet)
                 {
                     result.Message = "The device already has a password. Nothing was changed.";

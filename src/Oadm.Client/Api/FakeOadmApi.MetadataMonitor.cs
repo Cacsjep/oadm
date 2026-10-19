@@ -91,6 +91,7 @@ public sealed partial class FakeOadmApi
             DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
             DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
             DeviceStatus.Unreachable => $"Unreachable - RTSP port 554 on {device.Address} is not reachable",
+            DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
             _ => null,
         };
         if (error is not null)

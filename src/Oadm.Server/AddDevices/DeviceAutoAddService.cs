@@ -141,6 +141,7 @@ public sealed partial class DeviceAutoAddService(
         {
             SdkDeviceStatus.PasswordNotSet => (DeviceAutoAddResult.AddedPasswordNotSet, "Added; the device has no password yet (factory default)."),
             SdkDeviceStatus.Ok or SdkDeviceStatus.Unknown => (DeviceAutoAddResult.Added, "Added and logged in as " + (credentials?.UserName ?? "-") + "."),
+            SdkDeviceStatus.SiteOffline => (DeviceAutoAddResult.Added, "Added; " + Sdk.Sites.SiteTexts.SiteOffline(null) + "."),
             _ => (DeviceAutoAddResult.AddedCredentialsRequired, "Added; no password of the credential list works on it."),
         };
         LogAdded(serial, text, source, result);

@@ -72,7 +72,7 @@ public sealed class ComplianceService(
         if (deviceId is { } id)
         {
             var row = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(DeviceMessages.Removed);
-            if (DeviceMessages.Refusal(row.Status, refuseUnreachable: true) is { } refusal)
+            if (DeviceMessages.Refusal(row, refuseUnreachable: true) is { } refusal)
             {
                 throw new InvalidOperationException(refusal);
             }

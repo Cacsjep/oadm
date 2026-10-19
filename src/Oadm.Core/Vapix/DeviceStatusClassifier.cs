@@ -25,11 +25,17 @@ public static class DeviceStatusClassifier
     /// Classifies a failed call. Timeouts, refused connections, unreachable hosts and DNS
     /// failures are <see cref="DeviceStatus.Unreachable"/>. A caller-requested cancellation is
     /// not a device state and is rethrown by callers, never classified; pass it here and you
-    /// get <see cref="DeviceStatus.Unknown"/>.
+    /// get <see cref="DeviceStatus.Unknown"/>. A site problem (<see cref="Sites.SiteException"/>, also inside an HTTP
+    /// error) is never a device error: it is <see cref="DeviceStatus.SiteOffline"/>, which is never stored (the repository
+    /// keeps the last real status), so the device keeps its status.
     /// </summary>
     public static DeviceStatus FromException(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
+        if (Sites.SiteErrors.Find(exception) is not null)
+        {
+            return DeviceStatus.SiteOffline;
+        }
 
         switch (exception)
         {

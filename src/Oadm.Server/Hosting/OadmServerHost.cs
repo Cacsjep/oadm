@@ -313,6 +313,21 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILogger<Core.Compliance.ComplianceEngine>>(),
             () => sp.GetRequiredService<RuleEngine>().PublisherFor(Core.Compliance.ComplianceEngine.EventSourceId)));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<Core.Compliance.ComplianceEngine>());
+        // Sites: "Site offline: <site>" and "Any site offline" for the event rules; devices of a site published when it
+        // goes offline or online (computed status, nothing written).
+        services.AddSingleton(sp => new SiteEventSource(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<Core.Sites.ISiteStates>(),
+            () => sp.GetRequiredService<RuleEngine>().PublisherFor(SiteEventSource.EventSourceId),
+            sp.GetRequiredService<ILogger<SiteEventSource>>()));
+        services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<SiteEventSource>());
+        services.AddSingleton(sp => new Core.Sites.SiteStatusPublisher(
+            sp.GetRequiredService<Core.Sites.ISiteStates>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<IDeviceChangeFeed>(),
+            ids => sp.GetRequiredService<DevicePollingService>().QueueRefresh(ids),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Core.Sites.SiteStatusPublisher>>()));
         services.AddSingleton(sp => new Core.Compliance.ComplianceService(
             sp.GetRequiredService<Core.Compliance.ComplianceStore>(),
             sp.GetRequiredService<Core.Compliance.ComplianceEngine>(),
@@ -475,10 +490,15 @@ public static partial class OadmServerHost
         // waits for its source's first full report before a rule that uses it runs anything.
         var compliance = sp.GetRequiredService<Core.Compliance.ComplianceEngine>();
         await compliance.LoadAsync(ct).ConfigureAwait(false);
+        var siteEvents = sp.GetRequiredService<SiteEventSource>();
+        await siteEvents.LoadAsync(ct).ConfigureAwait(false);
         var rules = sp.GetRequiredService<RuleEngine>();
         await rules.StartAsync(ct).ConfigureAwait(false);
         registry.EnabledChanged += (_, _) => rules.SourcesChanged();
         compliance.EventTypesChanged += (_, _) => rules.SourcesChanged();
+        siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
+        siteEvents.Start();
+        sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().Start();
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
         // 4c. Compliance checks after the core plugins: the plugins' check types read devices through them.
         await compliance.StartAsync(ct).ConfigureAwait(false);
@@ -517,6 +537,8 @@ public static partial class OadmServerHost
         var sp = app.Services;
         await app.StopAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Compliance.ComplianceEngine>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);

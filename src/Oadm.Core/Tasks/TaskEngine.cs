@@ -762,6 +762,11 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             return DeviceMessages.CertificateChanged;
         }
 
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return Sdk.Sites.SiteTexts.SiteOffline(device.SiteName); // refused before any request, whatever the plugin says
+        }
+
         return task.Registration.Plugin.CanRun(device)
             ? null
             : $"{task.Registration.DisplayName} cannot run on this device.";

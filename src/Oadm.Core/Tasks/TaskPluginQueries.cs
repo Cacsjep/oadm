@@ -70,6 +70,11 @@ public sealed partial class TaskPluginQueries
                 throw new TaskQueryException(TaskQueryError.FailedPrecondition, DeviceMessages.CertificateChanged);
             }
 
+            if (device.Status == DeviceStatus.SiteOffline)
+            {
+                throw new TaskQueryException(TaskQueryError.FailedPrecondition, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
+            }
+
             var vapix = await _vapix.CreateAsync(deviceId, token).ConfigureAwait(false);
             var logger = _loggerFactory.CreateLogger("Oadm.Plugins." + registration.Id);
             return await query.QueryAsync(new QueryContext(vapix, logger, _devices), device, method, payloadJson, token).ConfigureAwait(false);

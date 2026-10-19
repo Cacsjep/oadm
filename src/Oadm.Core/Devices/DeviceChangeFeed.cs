@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 using Oadm.Core.Collections;
+using Oadm.Core.Sites;
 
 namespace Oadm.Core.Devices;
 
@@ -28,6 +29,16 @@ public interface IDeviceChangeFeed
     DeviceChangeSubscription Subscribe();
 
     void Publish(DeviceChange change);
+
+    /// <summary>Publishes several changes as one batch (a site going offline or online: one change per device of it).</summary>
+    void PublishMany(IReadOnlyList<DeviceChange> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        foreach (var change in changes)
+        {
+            Publish(change);
+        }
+    }
 }
 
 /// <summary>
@@ -68,9 +79,14 @@ public sealed class DeviceChangeSubscription : IDisposable
     }
 }
 
-public sealed class DeviceChangeFeed : IDeviceChangeFeed
+/// <summary>
+/// The feed of the device table. Every published device shows its computed status: <see cref="Sdk.Devices.DeviceStatus.SiteOffline"/>
+/// while its site is not online (<see cref="SiteDeviceStatus"/>), with its site's name.
+/// </summary>
+public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeFeed
 {
     private readonly ConcurrentDictionary<DeviceChangeSubscription, byte> _subscribers = new();
+    private readonly ISiteStates _sites = sites ?? NoSiteStates.Instance;
     private long _version;
 
     public event EventHandler<DeviceChange>? Changed;
@@ -89,11 +105,45 @@ public sealed class DeviceChangeFeed : IDeviceChangeFeed
     {
         ArgumentNullException.ThrowIfNull(change);
         Interlocked.Increment(ref _version);
+        Deliver(WithSiteStatus(change));
+    }
+
+    /// <summary>One batch: the version moves once, every subscriber gets the changes in order.</summary>
+    public void PublishMany(IReadOnlyList<DeviceChange> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        if (changes.Count == 0)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _version);
+        foreach (var change in changes)
+        {
+            Deliver(WithSiteStatus(change));
+        }
+    }
+
+    private void Deliver(DeviceChange change)
+    {
         foreach (var subscriber in _subscribers.Keys)
         {
             subscriber.Write(change);
         }
 
         Changed?.Invoke(this, change);
+    }
+
+    /// <summary>A device at a site gets its site's name and, while the site is not online, Site offline (on a copy).</summary>
+    private DeviceChange WithSiteStatus(DeviceChange change)
+    {
+        if (change.Device is not { SiteId: not null } device)
+        {
+            return change;
+        }
+
+        var copy = device.Clone();
+        SiteDeviceStatus.Apply(copy, _sites);
+        return change with { Device = copy };
     }
 }

@@ -369,13 +369,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 return;
             }
 
-            var refused = device.Status switch
-            {
-                DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
-                DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
-                DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
-                _ => null,
-            };
+            // Nothing is sent to a device with a changed certificate, rejected credentials, no password or an offline site.
+            var refused = DeviceMessages.Refusal(device);
             if (refused is not null)
             {
                 Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, refused, device);
@@ -669,7 +664,8 @@ public static class Placeholders
             ["firmware"] = device?.FirmwareVersion ?? string.Empty,
             ["category"] = device is null ? string.Empty : CategoryText(device.Category),
             ["tags"] = device is null ? string.Empty : string.Join("; ", device.Tags),
-            ["status"] = device is null ? string.Empty : DeviceMessages.StatusText(device.Status),
+            ["status"] = device is null ? string.Empty : DeviceMessages.StatusText(device),
+            ["site"] = device?.SiteName ?? (trigger.Data.TryGetValue("site", out var site) ? site : string.Empty),
             ["webUrl"] = address.Length == 0 ? string.Empty : (device?.HttpsEnabled == false ? "http://" : "https://") + UrlHost(address) + "/",
         };
 

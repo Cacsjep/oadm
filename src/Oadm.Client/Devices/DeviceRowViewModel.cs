@@ -104,6 +104,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
     SdkStatus IDeviceInfo.Status => DeviceStatusInfo.ToSdk(ContractStatus);
 
+    /// <summary>The site the device is reached through; null on the server's own network.</summary>
+    public Guid? SiteId { get; private set; }
+
+    Guid? IDeviceInfo.SiteId => SiteId;
+
     Oadm.Sdk.Devices.DeviceCategory IDeviceInfo.Category => DeviceCategoryInfo.ToSdk(Category);
 
     bool? IDeviceInfo.DhcpEnabled => _dhcpEnabled;
@@ -138,6 +143,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         _httpsEnabled = device.HasHttpsEnabled ? device.HttpsEnabled : null;
         _dot1xEnabled = device.HasDot1XEnabled ? device.Dot1XEnabled : null;
         ContractStatus = device.Status;
+        SiteId = Guid.TryParse(device.SiteId, out var siteId) ? siteId : null;
         StatusText = DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
         HasCredentials = device.HasCredentials;

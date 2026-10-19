@@ -45,7 +45,7 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the user management API", device);
+        return TaskSupportReasons.ForStatus(device) ?? TaskSupportReasons.NeedsApi("the user management API", device);
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)

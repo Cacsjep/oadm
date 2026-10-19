@@ -88,12 +88,13 @@ public sealed class DeviceIcon : Decorator
         DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
         DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
+        DeviceStatus.SiteOffline => DeviceMessages.StatusText(status),
         _ => null,
     };
 
-    /// <summary>Amber for a device that needs attention.</summary>
+    /// <summary>Amber for a device that needs attention (also a device whose site is offline).</summary>
     public static bool IsWarning(DeviceStatus status) =>
-        status is DeviceStatus.CredentialsRequired or DeviceStatus.PasswordNotSet or DeviceStatus.CertificateChanged;
+        status is DeviceStatus.CredentialsRequired or DeviceStatus.PasswordNotSet or DeviceStatus.CertificateChanged or DeviceStatus.SiteOffline;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

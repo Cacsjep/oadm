@@ -61,13 +61,13 @@ public sealed class StorageTaskPlugin : ITaskPlugin
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) is null && device.Apis.Supports(StorageRequests.DiskManagementApi, "1.0");
+        return TaskSupportReasons.ForStatus(device) is null && device.Apis.Supports(StorageRequests.DiskManagementApi, "1.0");
     }
 
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) ?? StorageTexts.NoApi;
+        return TaskSupportReasons.ForStatus(device) ?? StorageTexts.NoApi;
     }
 
     public string GetTaskName(string? payloadJson)

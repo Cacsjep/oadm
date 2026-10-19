@@ -44,6 +44,8 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<CredentialStore>();
         services.AddSingleton<CredentialListStore>();
 
+        // Sites: without a sites implementation there are none (a device with a site id shows Site offline).
+        services.TryAddSingleton<Sites.ISiteStates>(Sites.NoSiteStates.Instance);
         services.AddSingleton<DeviceChangeFeed>();
         services.AddSingleton<IDeviceChangeFeed>(sp => sp.GetRequiredService<DeviceChangeFeed>());
         services.AddSingleton<DeviceRepository>();

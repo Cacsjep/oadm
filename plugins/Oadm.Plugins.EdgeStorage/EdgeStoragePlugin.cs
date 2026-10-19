@@ -171,7 +171,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     internal async Task<StorageRow> ReadAsync(IDeviceInfo device, CancellationToken ct)
     {
         var row = new StorageRow(device.Id, device.Address, device.Model, CardStates.Error, null, ReadUtc: _options.Time.GetUtcNow());
-        if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+        if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
         {
             return row with { Text = refusal };
         }

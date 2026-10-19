@@ -37,6 +37,7 @@ public sealed partial class DeviceRelocationHostedService(
     public async Task<int> RunOnceAsync(CancellationToken ct)
     {
         var candidates = (await devices.ListDevicesAsync(ct).ConfigureAwait(false))
+            // Computed status: a device of an offline site shows Site offline, never Unreachable, and is not looked for here.
             .Where(d => d.Status == Sdk.Devices.DeviceStatus.Unreachable && !DeviceAddressService.UsesHostName(d))
             .Select(d => d.Serial)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);

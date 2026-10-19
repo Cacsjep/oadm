@@ -226,7 +226,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         var row = new DeviceRulesRow(device.Id, device.Address, device.Model, device.FirmwareVersion, RowStates.Error, null, false, [], null,
             new Dictionary<string, string>(), new Dictionary<string, string>(), _options.Time.GetUtcNow());
         _deviceEvents.TryRemove(device.Id, out _);
-        if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+        if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
         {
             return row with { Text = refusal };
         }
@@ -476,7 +476,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             throw new ArgumentException(DeviceMessages.Removed, nameof(source));
         }
 
-        if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+        if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
         {
             throw new ArgumentException(refusal, nameof(source));
         }

@@ -89,7 +89,7 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return device.Status != DeviceStatus.CertificateChanged;
+        return device.Status is not (DeviceStatus.CertificateChanged or DeviceStatus.SiteOffline);
     }
 
     /// <summary>Unique step names: the command name, "(2)", "(3)" ... for repeats.</summary>

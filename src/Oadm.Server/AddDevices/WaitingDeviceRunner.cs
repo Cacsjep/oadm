@@ -438,6 +438,7 @@ public sealed partial class WaitingDeviceRunner(
         {
             SdkDeviceStatus.PasswordNotSet => "Added; the device has no password yet (factory default).",
             SdkDeviceStatus.Ok or SdkDeviceStatus.Unknown => "Added and logged in as " + (credentials?.UserName ?? "-") + ".",
+            SdkDeviceStatus.SiteOffline => "Added; " + Sdk.Sites.SiteTexts.SiteOffline(null) + ".",
             _ => "Added; the login no longer works on it.",
         };
         LogAdded(found.Serial, found.ConnectAddress, entry.Source);
