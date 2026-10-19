@@ -1,7 +1,7 @@
 # Installs the MSI, checks it and removes it again (release workflow, job "smoke windows").
 #   -Mode ServerAndClient  default install: service, gRPC answer, data folder, firewall rules, decoder, uninstall
 #   -Mode ClientOnly       ADDLOCAL=Client: no service, no server, no firewall rule, decoder, uninstall
-#   -Mode SiteNode         the OADM Site Node MSI with SERVER=<address>: service as LocalService, "status" answers
+#   -Mode SiteNode         the OADM Site Node MSI with SERVER=<address>: service as NT SERVICE\OadmSiteNode, "status" answers
 #                          unbound with that server, no firewall rule until "server --wait", uninstall removes it
 # Every line starts with the time, and while a program runs a line every 20 s shows free memory and the busiest
 # processes. A runner that stops answering leaves no log file behind, but the live log keeps what was printed.
@@ -83,7 +83,7 @@ if ($Mode -eq 'SiteNode') {
     $svc = Get-CimInstance Win32_Service -Filter "Name='OadmSiteNode'"
     Say "service: $($svc.State) $($svc.StartMode) $($svc.StartName)"
     if ($svc.State -ne 'Running') { throw 'service OadmSiteNode not running' }
-    if ($svc.StartName -ne 'NT AUTHORITY\LocalService') { throw "service account LocalService expected, not $($svc.StartName)" }
+    if ($svc.StartName -ne 'NT SERVICE\OadmSiteNode') { throw "service account NT SERVICE\OadmSiteNode expected, not $($svc.StartName)" }
     foreach ($f in 'TERMS.md', 'LICENSE.txt', 'NOTICE.txt', 'THIRD-PARTY-NOTICES.txt', 'oadm-site-node-app.exe') {
         if (-not (Test-Path "C:\Program Files\OADM Site Node\$f")) { throw "$f missing" }
     }

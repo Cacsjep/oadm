@@ -2,10 +2,12 @@
 <!--
   OADM Site Node for Windows (docs/sites.md, "Packaging"): per-machine MSI, x64, one folder Program Files\OADM Site Node
   with the service and the app.
-  - Service "OADM Site Node" (OadmSiteNode), automatic start, LocalService (the node runs without administrator rights;
-    it only connects out, and in mode "Wait for the server" listens on TCP 5081), restart on failure. Its data folder
-    %ProgramData%\OADM Site Node (identity, settings, logs) is created for SYSTEM and LocalService only and kept on
-    uninstall. The single-file exe extracts native files below it (runtime), never to a shared temp folder.
+  - Service "OADM Site Node" (OadmSiteNode), automatic start, its own virtual account NT SERVICE\OadmSiteNode (the node
+    runs without administrator rights; it only connects out, and in mode "Wait for the server" listens on TCP 5081; no
+    other service shares the account), restart on failure, also when it stops with an error. Its data folder
+    %ProgramData%\OADM Site Node (identity, settings, logs) is created for SYSTEM and the service only (the service SID
+    S-1-5-80-4118054575-3786589468-426418864-2630448348-754858313 = SHA-1 of "OADMSITENODE", `sc showsid OadmSiteNode`) and
+    kept on uninstall. The single-file exe extracts native files below it (runtime), never to a shared temp folder.
   - No firewall rule: the node connects out. Turning on "Wait for the server" in the app adds the rule
     "OADM Site Node (TCP 5081)", turning it off removes it; uninstalling removes it too.
   - Start menu shortcut "OADM Site Node" to the app; the folder is on the system PATH for "oadm-site-node status".
@@ -56,8 +58,10 @@
                         Type="ownProcess"
                         Start="auto"
                         ErrorControl="normal"
-                        Account="NT AUTHORITY\LocalService"
+                        Account="NT SERVICE\OadmSiteNode"
                         Vital="yes">
+          <!-- A stop with a non-zero exit code (a part of the node failed) counts as a failure: the SCM restarts it. -->
+          <ServiceConfig FailureActionsWhen="failedToStopOrReturnedError" OnInstall="yes" OnReinstall="yes" />
           <util:ServiceConfig FirstFailureActionType="restart"
                               SecondFailureActionType="restart"
                               ThirdFailureActionType="restart"
@@ -88,10 +92,12 @@
       </Component>
     </ComponentGroup>
 
-    <!-- Data folder: SYSTEM and the service account only (identity key, settings, logs); kept on uninstall. -->
+    <!-- Data folder: SYSTEM and the service's virtual account only (identity key, settings, logs); kept on uninstall. The
+         ACE names the service SID (no account lookup: the service does not exist yet when the folder is created); an
+         upgrade from a LocalService version replaces the folder's ACL and its files inherit it. -->
     <Component Id="DataFolder" Directory="DataFolder" Guid="{D2DA2A39-2749-4877-A2A7-6BA4A3C6D5CB}" Permanent="yes" KeyPath="yes">
       <CreateFolder>
-        <PermissionEx Sddl="O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;LS)" />
+        <PermissionEx Sddl="O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;S-1-5-80-4118054575-3786589468-426418864-2630448348-754858313)" />
       </CreateFolder>
     </Component>
 

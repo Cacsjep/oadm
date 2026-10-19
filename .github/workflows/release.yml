@@ -205,7 +205,7 @@ jobs:
           }
           $service = @(Query 'SELECT Name, DisplayName, StartType, StartName FROM ServiceInstall')
           $service
-          if ($service.Count -ne 1 -or $service[0] -ne 'OadmSiteNode | OADM Site Node | 2 | NT AUTHORITY\LocalService') { throw 'service OadmSiteNode as LocalService expected' }
+          if ($service.Count -ne 1 -or $service[0] -ne 'OadmSiteNode | OADM Site Node | 2 | NT SERVICE\OadmSiteNode') { throw 'service OadmSiteNode as NT SERVICE\OadmSiteNode expected' }
           # No firewall rule: the node connects out; the app adds TCP 5081 only for "Wait for the server".
           if (@(Query "SELECT Name FROM _Tables WHERE Name='Wix5FirewallException'").Count -ne 0) { throw 'the node MSI must not add a firewall rule' }
           $files = @(Query 'SELECT FileName FROM File')

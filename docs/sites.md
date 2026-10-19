@@ -477,13 +477,13 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 ## Packaging
 
 - **Windows**: `OADM-SiteNode-<version>-win-x64.msi` (WiX 6 like the main MSI, `packaging/windows/`): `Program Files\OADM
-  Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, LocalService, restart on failure), Start menu shortcut to the
+  Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, virtual account `NT SERVICE\OadmSiteNode`, restart on failure and after a stop with an error), Start menu shortcut to the
   app; no firewall rule (the node connects out; the app adds TCP 5081, Domain and Private, when "Wait for the server" is
   turned on and removes it when turned off). A silent install takes `SERVER=<address>`.
-  Built (stream 7): data folder for SYSTEM and LocalService only, native files extracted to its `runtime`, the folder on
+  Built (stream 7): data folder for SYSTEM and the service SID only, native files extracted to its `runtime`, the folder on
   the system PATH; `SERVER` runs `oadm-site-node server <address> --timeout 60` after the service started (a refused
   address fails the install); the rule "OADM Site Node (TCP 5081)" is set by whoever sent the change as administrator
-  (`Admin/NodeFirewall`: the elevated app, the app run as administrator, the command line; the service as LocalService
+  (`Admin/NodeFirewall`: the elevated app, the app run as administrator, the command line; the service's own account
   cannot) and removed on uninstall.
 - **Linux**: `oadm-site-node_<version>_<amd64|arm64>.deb` (service, own system user `oadm-site-node`,
   `/opt/oadm/site-node`, `/var/lib/oadm-site-node` 0700) and `oadm-site-node-app_<version>_<arch>.deb` (the app, Depends

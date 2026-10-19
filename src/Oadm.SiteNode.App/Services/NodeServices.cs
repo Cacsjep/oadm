@@ -27,7 +27,7 @@ public sealed class AdminChannel(AdminEndpoint endpoint) : INodeChannel
 
     /// <summary>
     /// "Wait for the server" opens TCP 5081 in Windows Firewall, "Connect to the server" closes it (the service runs as
-    /// LocalService and cannot). A rule that could not be added is the answer's error; the change itself is done.
+    /// its own unprivileged account and cannot). A rule that could not be added is the answer's error; the change itself is done.
     /// </summary>
     public static async Task<AdminResponse> WithFirewallAsync(AdminRequest request, AdminResponse response, CancellationToken ct,
         Func<IReadOnlyList<string>, CancellationToken, Task<int>>? run = null, string? programPath = null) =>
