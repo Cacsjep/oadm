@@ -95,10 +95,11 @@ public sealed partial class OutboundConnector(
         if (value.Contains("://", StringComparison.Ordinal))
             value = value[(value.IndexOf("://", StringComparison.Ordinal) + 3)..];
         value = value.TrimEnd('/');
+        // IPAddress.TryParse accepts "[fd00::5]:5090" and drops the port: end points first.
+        if ((value.StartsWith('[') || value.Count(c => c == ':') == 1) && IPEndPoint.TryParse(value, out var endpoint))
+            return (endpoint.Address.ToString(), endpoint.Port == 0 ? defaultPort : endpoint.Port);
         if (IPAddress.TryParse(value, out var bare))
             return (bare.ToString(), defaultPort);
-        if (IPEndPoint.TryParse(value, out var endpoint) && (value.StartsWith('[') || value.Count(c => c == ':') == 1))
-            return (endpoint.Address.ToString(), endpoint.Port == 0 ? defaultPort : endpoint.Port);
         var colon = value.LastIndexOf(':');
         var host = colon > 0 ? value[..colon] : value;
         var port = defaultPort;

@@ -70,7 +70,7 @@ public sealed class AdminHandler(
                 case AdminCommands.AddSubnet:
                     if (Subnet.Parse(request.Arg("subnet")) is not { } subnet)
                         return AdminResponse.Fail("Enter a network like 10.20.0.0/16.");
-                    var added = store.Update(c =>
+                    var added = store.TryUpdate(c =>
                     {
                         if (c.ExtraSubnets.Count >= MaxExtraSubnets || c.ExtraSubnets.Contains(subnet.ToString(), StringComparer.OrdinalIgnoreCase))
                             return false;
@@ -83,7 +83,7 @@ public sealed class AdminHandler(
                 case AdminCommands.RemoveSubnet:
                     var text = request.Arg("subnet");
                     var normalized = Subnet.Parse(text)?.ToString() ?? text;
-                    store.Update(c => c.ExtraSubnets.RemoveAll(s => string.Equals(s, normalized, StringComparison.OrdinalIgnoreCase)) > 0);
+                    store.TryUpdate(c => c.ExtraSubnets.RemoveAll(s => string.Equals(s, normalized, StringComparison.OrdinalIgnoreCase)) > 0);
                     return Ok();
                 case AdminCommands.AddPort:
                 case AdminCommands.AllowRequest:

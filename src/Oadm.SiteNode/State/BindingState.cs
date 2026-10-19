@@ -101,7 +101,7 @@ public sealed class BindingState
         }
 
         var before = Binding;
-        _store.Update(c =>
+        _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count > 0 || c.BindingSecondsLeft <= 0)
                 return false;
@@ -115,7 +115,7 @@ public sealed class BindingState
     /// <summary>Allow binding: another 24 hours and a new code (only while not bound).</summary>
     public void AllowBinding()
     {
-        _store.Update(c =>
+        _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count > 0)
                 return false;
@@ -210,7 +210,7 @@ public sealed class BindingState
     }
 
     public void Rename(string siteName) =>
-        _store.Update(c =>
+        _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count == 0)
                 return false;
@@ -236,7 +236,7 @@ public sealed class BindingState
             throw new NodeRefusalException(StatusCode.InvalidArgument, AdminTexts.InvalidSignature + " " + e.Message);
         }
 
-        _store.Update(c =>
+        _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count == 0)
                 return false;
@@ -247,7 +247,7 @@ public sealed class BindingState
 
     /// <summary>The bound server (by its address) presented another identity: the app asks to accept it.</summary>
     public void NoteNewServerIdentity(string fingerprintHex) =>
-        _store.Update(c =>
+        _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count == 0 || string.Equals(c.NewServerIdentity, fingerprintHex, StringComparison.Ordinal))
                 return false;
@@ -258,7 +258,7 @@ public sealed class BindingState
     /// <summary>Accept (administrator): the new identity becomes the pinned one.</summary>
     public void AcceptNewServerIdentity()
     {
-        var accepted = _store.Update(c =>
+        var accepted = _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count == 0 || string.IsNullOrEmpty(c.NewServerIdentity))
                 return false;

@@ -19,7 +19,7 @@ public sealed class PortPolicy(NodeStore store)
     {
         ArgumentNullException.ThrowIfNull(ports);
         var added = 0;
-        store.Update(c =>
+        store.TryUpdate(c =>
         {
             foreach (var port in ports)
             {
@@ -41,7 +41,7 @@ public sealed class PortPolicy(NodeStore store)
     {
         if (!IsValid(port))
             throw new ArgumentException("The port must be 1 to 65535.", nameof(port));
-        store.Update(c =>
+        store.TryUpdate(c =>
         {
             var request = c.Requested.Find(port.SameAs);
             c.Requested.RemoveAll(port.SameAs);
@@ -53,10 +53,10 @@ public sealed class PortPolicy(NodeStore store)
 
     /// <summary>Removes the port from its list (and a request for it).</summary>
     public bool Remove(PortEntry port) =>
-        store.Update(c => (c.Allowed.RemoveAll(port.SameAs) + c.Requested.RemoveAll(port.SameAs)) > 0);
+        store.TryUpdate(c => (c.Allowed.RemoveAll(port.SameAs) + c.Requested.RemoveAll(port.SameAs)) > 0);
 
     /// <summary>Dismiss: the request goes away; the server may ask again.</summary>
-    public bool Dismiss(PortEntry port) => store.Update(c => c.Requested.RemoveAll(port.SameAs) > 0);
+    public bool Dismiss(PortEntry port) => store.TryUpdate(c => c.Requested.RemoveAll(port.SameAs) > 0);
 
     public static bool IsValid(PortEntry port) => port is not null && port.Port is > 0 and <= 65535 && Enum.IsDefined(port.Use) && Enum.IsDefined(port.Protocol);
 

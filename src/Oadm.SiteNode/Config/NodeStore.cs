@@ -56,7 +56,7 @@ public sealed partial class NodeStore
     }
 
     /// <summary>Changes the configuration, saves it and raises <see cref="Changed"/>. <paramref name="change"/> returns false for no change.</summary>
-    public bool Update(Func<NodeConfig, bool> change)
+    public bool TryUpdate(Func<NodeConfig, bool> change)
     {
         ArgumentNullException.ThrowIfNull(change);
         lock (_lock)
@@ -75,7 +75,7 @@ public sealed partial class NodeStore
     public void Update(Action<NodeConfig> change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        Update(c =>
+        TryUpdate(c =>
         {
             change(c);
             return true;
