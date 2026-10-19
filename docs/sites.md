@@ -478,9 +478,18 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, LocalService, restart on failure), Start menu shortcut to the
   app; no firewall rule (the node connects out; the app adds TCP 5081, Domain and Private, when "Wait for the server" is
   turned on and removes it when turned off). A silent install takes `SERVER=<address>`.
+  Built (stream 7): data folder for SYSTEM and LocalService only, native files extracted to its `runtime`, the folder on
+  the system PATH; `SERVER` runs `oadm-site-node server <address> --timeout 60` after the service started (a refused
+  address fails the install); the rule "OADM Site Node (TCP 5081)" is set by whoever sent the change as administrator
+  (`Admin/NodeFirewall`: the elevated app, the app run as administrator, the command line; the service as LocalService
+  cannot) and removed on uninstall.
 - **Linux**: `oadm-site-node_<version>_<amd64|arm64>.deb` (service, own system user `oadm-site-node`,
   `/opt/oadm/site-node`, `/var/lib/oadm-site-node` 0700) and `oadm-site-node-app_<version>_<arch>.deb` (the app, Depends
   `oadm-site-node`, desktop file). Raspberry Pi 4 and 5 are a target. Pre-release versions `1.2.0~rc.1`.
+  Built (stream 7): `/usr/bin/oadm-site-node` (command line), app in `/opt/oadm/site-node-app` with
+  `/usr/bin/oadm-site-node-app` and its own icon name `oadm-site-node`; the unit runs as `oadm-site-node` with
+  `AmbientCapabilities=CAP_NET_BIND_SERVICE`, `RuntimeDirectory=oadm-site-node`, `StateDirectory` and `CacheDirectory`
+  0700; data and user kept on purge. Details: `packaging/README.md`.
 - Each package ships `LICENSE.txt`, `NOTICE.txt`, `LGPL-2.1.txt` (only if FFmpeg or other LGPL parts are in it),
   `TERMS.md` and its own `THIRD-PARTY-NOTICES.txt` (`tools/Oadm.Notices` reads the node's deps.json too; Linux in
   `/usr/share/doc/oadm-site-node*/`).
