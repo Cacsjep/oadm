@@ -542,7 +542,17 @@ What the layers check:
 
 ## Work streams
 
-For building with several agents in parallel. **Stream 0 comes first and alone**; afterwards the streams below touch
+For building with several agents in parallel.
+
+**Branches (decision 2026-10-19): main stays at the 3.6.0 state until Sites is accepted.** All work happens on the
+branch `feature/sites`, made from the tag `v3.6.0` (not the old `feature/agents`, which is outdated; its refactor
+commit 2cefed9 is picked over in stream 1). Each stream works on its own branch `feature/sites-<n>-<name>` from
+`feature/sites` (an agent in its own worktree) and merges back into `feature/sites` when its tests are green. Nothing of
+Sites is merged into or pushed to main, and no release tag is made from these branches, until the maintainer accepts the
+whole feature; fixes on main meanwhile are merged into `feature/sites`, never the other way. Dropping Sites = deleting the
+branches; main is untouched.
+
+**Stream 0 comes first and alone**; afterwards the streams below touch
 different files and meet only at the contracts of stream 0. Each stream ends with its tests green and the full unit run
 (`manage test unit`) unchanged; a stream never changes a contract of stream 0 alone (a change goes back to stream 0 and
 every stream that uses it).
