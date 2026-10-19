@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 
+using Oadm.Core.Sites;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Core.Vapix;
@@ -16,15 +17,18 @@ public sealed class VapixProbe
 
     private static readonly string[] Schemes = [Uri.UriSchemeHttps, Uri.UriSchemeHttp];
 
-    private readonly Func<Uri, CertificatePinning, HttpMessageHandler> _handlerFactory;
+    private readonly Func<Uri, CertificatePinning, HttpMessageHandler>? _handlerFactory;
+    private readonly DeviceRouter _router;
     private readonly TimeSpan _timeout;
 
     /// <param name="timeout">Per-request timeout, default 1500 ms.</param>
-    /// <param name="handlerFactory">Creates the HTTP handler per scheme; tests inject fakes. Default: anonymous <see cref="HttpClientHandler"/>.</param>
-    public VapixProbe(TimeSpan? timeout = null, Func<Uri, CertificatePinning, HttpMessageHandler>? handlerFactory = null)
+    /// <param name="handlerFactory">Creates the HTTP handler per scheme; tests inject fakes. Default: an anonymous VAPIX handler on the route.</param>
+    /// <param name="router">Opens the connections on the probed route; default the server's own network only.</param>
+    public VapixProbe(TimeSpan? timeout = null, Func<Uri, CertificatePinning, HttpMessageHandler>? handlerFactory = null, DeviceRouter? router = null)
     {
         _timeout = timeout ?? DefaultTimeout;
-        _handlerFactory = handlerFactory ?? (static (uri, pinning) => VapixClient.CreateHandler(uri, null, pinning));
+        _handlerFactory = handlerFactory;
+        _router = router ?? DeviceRouter.Local;
     }
 
     /// <summary>
@@ -36,7 +40,9 @@ public sealed class VapixProbe
     /// <param name="ct">Cancellation.</param>
     /// <param name="schemes">Schemes to try in order; default HTTPS then HTTP.</param>
     /// <param name="timeout">Per-request timeout of this probe; default the one of the constructor.</param>
-    public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct, IReadOnlyList<string>? schemes = null, TimeSpan? timeout = null)
+    /// <param name="route">Where the address is: the server's own network (default) or a site.</param>
+    public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct, IReadOnlyList<string>? schemes = null, TimeSpan? timeout = null,
+        DeviceRoute route = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
 
@@ -45,7 +51,10 @@ public sealed class VapixProbe
             ct.ThrowIfCancellationRequested();
             var baseAddress = VapixClient.BuildBaseAddress(scheme, address);
             var pinning = new CertificatePinning();
-            using var client = new VapixClient(baseAddress, _handlerFactory(baseAddress, pinning), pinning, timeout ?? _timeout);
+            var requestTimeout = timeout ?? _timeout;
+            var handler = _handlerFactory?.Invoke(baseAddress, pinning)
+                ?? VapixClient.CreateHandler(baseAddress, null, pinning, route: route, router: _router, timeout: requestTimeout);
+            using var client = new VapixClient(baseAddress, handler, pinning, requestTimeout) { Route = route, Router = _router };
 
             HttpResponseMessage response;
             try

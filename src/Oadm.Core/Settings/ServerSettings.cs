@@ -81,6 +81,7 @@ public static class SettingKeys
 }
 
 /// <summary>Typed snapshot of all Goal 1 server settings (defaults applied).</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The server's own host name.")]
 public sealed record ServerSettings(
     int PollingIntervalSeconds,
     int ScanParallelism,

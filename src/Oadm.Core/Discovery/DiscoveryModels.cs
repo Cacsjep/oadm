@@ -86,6 +86,9 @@ public sealed record DiscoveredDevice(
 {
     /// <summary>The address to connect to: the entered one (may carry a port or host name), else the IP.</summary>
     public string ConnectAddress => EnteredAddress ?? Address.ToString();
+
+    /// <summary>Where the device answered: the server's own network (default) or a site. Every connection to it uses this route.</summary>
+    public Sites.DeviceRoute Route { get; init; }
 }
 
 /// <summary>Kind of discovery session.</summary>

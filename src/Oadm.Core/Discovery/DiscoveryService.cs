@@ -374,12 +374,12 @@ public sealed class DiscoveryService : IAsyncDisposable
                 return;
             }
 
-            _ = LookupDnsNameAsync(session, changed.Serial, changed.Address);
+            _ = LookupDnsNameAsync(session, changed.Serial, changed.Address, changed.Route);
         }
     }
 
-    /// <summary>The DNS name of a found device's IP, once per device and address (manual entries keep what was typed).</summary>
-    private async Task LookupDnsNameAsync(Session session, string serial, IPAddress address)
+    /// <summary>The DNS name of a found device's IP on its route, once per device and address (manual entries keep what was typed).</summary>
+    private async Task LookupDnsNameAsync(Session session, string serial, IPAddress address, Sites.DeviceRoute route)
     {
         var ct = session.Stop.Token;
         try
@@ -387,7 +387,7 @@ public sealed class DiscoveryService : IAsyncDisposable
             await _dnsLimit.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var name = SystemDnsNameLookup.Normalize(await _dnsNames!.LookupAsync(address, ct).ConfigureAwait(false));
+                var name = SystemDnsNameLookup.Normalize(await _dnsNames!.LookupAsync(address, route, ct).ConfigureAwait(false));
                 session.SetDnsName(serial, address, name);
                 if (name is not null)
                 {

@@ -7,6 +7,7 @@ using System.Text;
 
 using Oadm.Core.Discovery;
 using Oadm.Core.Security;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
@@ -527,12 +528,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     {
         try
         {
-            using var client = _connector.Connect(new VapixConnectionOptions
-            {
-                Address = device.ConnectAddress,
-                Scheme = device.Scheme ?? Uri.UriSchemeHttps,
-                Timeout = AttemptTimeout,
-            });
+            using var client = _connector.Connect(DeviceConnections.For(device, device.Scheme ?? Uri.UriSchemeHttps, AttemptTimeout));
             var ready = await client.GetSystemReadyAsync(ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(ready.PassphrasePolicy))
             {
@@ -615,12 +611,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     {
         try
         {
-            using var client = _connector.Connect(new VapixConnectionOptions
-            {
-                Address = device.ConnectAddress,
-                Scheme = scheme,
-                Timeout = AttemptTimeout,
-            });
+            using var client = _connector.Connect(DeviceConnections.For(device, scheme, AttemptTimeout));
             var properties = await client.GetUnrestrictedPropertiesAsync(ct).ConfigureAwait(false);
             return Judge(properties, device.Serial);
         }
@@ -697,14 +688,8 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     {
         try
         {
-            using var client = _connector.Connect(new VapixConnectionOptions
-            {
-                Address = device.ConnectAddress,
-                Scheme = scheme,
-                Credentials = new NetworkCredential(userName, password),
-                Timeout = AttemptTimeout,
-                AllowBasicOverHttp = true, // the device passed the Axis check on this scheme
-            });
+            // The device passed the Axis check on this scheme: Basic over plain HTTP is allowed (never through a site).
+            using var client = _connector.Connect(DeviceConnections.For(device, scheme, AttemptTimeout, new NetworkCredential(userName, password), allowBasicOverHttp: true));
             var info = await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
             if (!string.Equals(info.SerialNumber, device.Serial, StringComparison.OrdinalIgnoreCase))
             {

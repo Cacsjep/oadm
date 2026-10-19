@@ -189,4 +189,12 @@ public sealed class CertificatePinning
         var presented = chain?.ChainElements.Select(e => e.Certificate).ToList();
         return Validate(certificate, presented, request?.RequestUri?.Host);
     }
+
+    /// <summary>Callback for <c>SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback</c> (the VAPIX client).</summary>
+    public bool ValidateSslCallback(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors)
+    {
+        var presented = chain?.ChainElements.Select(e => e.Certificate).ToList();
+        var certificate2 = certificate as X509Certificate2 ?? (certificate is null ? null : X509CertificateLoader.LoadCertificate(certificate.GetRawCertData()));
+        return Validate(certificate2, presented, (sender as SslStream)?.TargetHostName);
+    }
 }

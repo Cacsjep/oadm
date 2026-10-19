@@ -51,6 +51,7 @@ public sealed class MdnsBrowseOptions
 /// answers and announcements when the OS lets us share the port.
 /// </para>
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Multicast DNS on the server's own network cards (sites browse on the node).")]
 public sealed class MdnsBrowser : IMdnsBrowser
 {
     private static readonly IPAddress MulticastGroup = IPAddress.Parse("224.0.0.251");

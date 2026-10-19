@@ -9,6 +9,7 @@ using Oadm.Core.Devices;
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
+using Oadm.Core.Sites;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Core.LiveView;
@@ -23,7 +24,8 @@ public sealed class DeviceEventStreams(
     DeviceRepository devices,
     CredentialStore credentials,
     ILoggerFactory? loggerFactory = null,
-    ServerSettingsStore? settings = null) : IDeviceEventStreams, IDisposable
+    ServerSettingsStore? settings = null,
+    DeviceRouter? router = null) : IDeviceEventStreams, IDisposable
 {
     public const string RtspPortsKey = "Devices.RtspPorts";
 
@@ -45,6 +47,8 @@ public sealed class DeviceEventStreams(
                 Address = device.Address,
                 Port = port,
                 Credentials = stored is null ? null : new NetworkCredential(stored.UserName, stored.Password),
+                Route = DeviceConnections.RouteOf(device),
+                Router = router,
             },
             ct,
             _loggerFactory.CreateLogger<RtspMetadataSource>()).ConfigureAwait(false);

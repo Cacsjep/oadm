@@ -195,10 +195,14 @@ public static partial class OadmServerHost
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
         services.AddSingleton<TrustAnchorRegistry>();
-        services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>()));
+        // Routing (docs/sites.md): every device connection opens on its route; without a site transport only the server's
+        // own network exists and everything connects as before.
+        services.AddSingleton(sp => new Core.Sites.DeviceRouter(sp.GetService<Core.Sites.ISiteTransport>(), sp.GetService<Core.Sites.ISiteStates>()));
+        services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>()));
+        services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>(), sp.GetRequiredService<Core.Sites.DeviceRouter>()));
         services.AddSingleton<VapixClientFactory>();
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
-        services.AddSingleton(_ => new VapixProbe(TimeSpan.FromSeconds(3)));
+        services.AddSingleton(sp => new VapixProbe(TimeSpan.FromSeconds(3), router: sp.GetRequiredService<Core.Sites.DeviceRouter>()));
 
         // Uploads (task dialogs: firmware, ACAP packages)
         services.AddSingleton(sp => new Core.Uploads.UploadStore(
@@ -361,10 +365,10 @@ public static partial class OadmServerHost
 
         // Discovery
         services.AddSingleton<IMdnsBrowser, MdnsBrowser>();
-        services.AddSingleton<VapixDeviceProbe>(sp => new VapixDeviceProbe(logger: sp.GetService<ILogger<VapixDeviceProbe>>()));
+        services.AddSingleton<VapixDeviceProbe>(sp => new VapixDeviceProbe(logger: sp.GetService<ILogger<VapixDeviceProbe>>(), router: sp.GetRequiredService<Core.Sites.DeviceRouter>()));
         services.AddSingleton<IDeviceProbe>(sp => sp.GetRequiredService<VapixDeviceProbe>());
         services.AddSingleton<RangeScanner>();
-        services.AddSingleton<IDnsNameLookup>(SystemDnsNameLookup.Instance);
+        services.AddSingleton<IDnsNameLookup>(sp => new SystemDnsNameLookup(sp.GetRequiredService<Core.Sites.RoutedDns>()));
         services.AddSingleton(sp => new CoreDiscoveryService(
             sp.GetRequiredService<IMdnsBrowser>(),
             sp.GetRequiredService<RangeScanner>(),
