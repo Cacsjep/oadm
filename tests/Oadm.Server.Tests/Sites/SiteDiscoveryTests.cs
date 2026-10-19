@@ -204,6 +204,49 @@ public sealed class SiteDiscoveryTests
     }
 
     [Fact]
+    public async Task ADeviceAnnouncedThroughSeveralSitesIsTriedThroughEachUntilOneVerifies()
+    {
+        var (sites, a, b, network) = Setup();
+        var c = sites.AddSite("Building C");
+        // B reaches 192.168.0.40 but the device is not there (another network with the same address); C has it.
+        network.AtSite(c.Id).Add("192.168.0.40", CameraA, "pass");
+        b.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
+        c.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
+        await using var host = await StartAsync(sites, network);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable);
+
+        Assert.Equal(1, await Relocation(host, new FakeTimeProvider()).RunOnceAsync(CancellationToken.None));
+
+        var after = (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!;
+        Assert.Equal((c.Id, "192.168.0.40"), (after.SiteId, after.Address));
+    }
+
+    [Fact]
+    public async Task TheSiteWhoseNetworksIncludeTheAddressIsTriedFirstAndTheCurrentPlaceNever()
+    {
+        var (sites, a, b, network) = Setup();
+        var c = sites.AddSite("Building C");
+        b.Reaches = address => address != "192.168.0.40";
+        var host = await StartAsync(sites, network);
+        await using (host)
+        {
+            var device = (await host.Get<DeviceRepository>().GetAsync(
+                await AddDeviceAsync(host, CameraA, "192.168.0.40", a.Id, SdkStatus.Unreachable), CancellationToken.None))!;
+            var relocation = Relocation(host, new FakeTimeProvider());
+
+            var order = relocation.Order(device,
+            [
+                (DeviceRoute.ViaSite(b.Id), "192.168.0.40"),
+                (DeviceRoute.Local, "192.168.0.40"),
+                (DeviceRoute.ViaSite(a.Id), "192.168.0.40"), // where it is now
+                (DeviceRoute.ViaSite(c.Id), "192.168.0.40"),
+            ]).ToList();
+
+            Assert.Equal([(DeviceRoute.ViaSite(c.Id), "192.168.0.40"), (DeviceRoute.Local, "192.168.0.40"), (DeviceRoute.ViaSite(b.Id), "192.168.0.40")], order);
+        }
+    }
+
+    [Fact]
     public async Task DevicesOfASiteOfflineForAnHourAreLookedForElsewhere()
     {
         var (sites, _, b, network) = Setup();
@@ -300,5 +343,5 @@ public sealed class SiteDiscoveryTests
     private static DeviceRelocationHostedService Relocation(TestServerHost host, TimeProvider time) =>
         new(host.Get<CoreDiscoveryService>(), host.Get<DeviceRepository>(), host.Get<DeviceAddressService>(),
             new DeviceRelocationOptions { BrowseDuration = TimeSpan.FromSeconds(20) }, NullLogger<DeviceRelocationHostedService>.Instance,
-            host.Get<ISiteStates>(), host.Get<AuditLog>(), time);
+            host.Get<ISiteStates>(), host.Get<AuditLog>(), time, host.Get<ISiteNetwork>());
 }

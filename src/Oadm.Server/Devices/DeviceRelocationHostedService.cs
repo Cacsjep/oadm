@@ -21,6 +21,12 @@ public sealed class DeviceRelocationOptions
     /// <summary>How long one run listens to mDNS. Default 15 s.</summary>
     public TimeSpan BrowseDuration { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// Once every device looked for was seen, the browse listens this much longer for the other routes it answers through.
+    /// Default 2 s (all routes browse at the same time).
+    /// </summary>
+    public TimeSpan FoundGrace { get; init; } = TimeSpan.FromSeconds(2);
+
     /// <summary>The devices of a site offline for longer than this are looked for elsewhere too. Default 1 hour.</summary>
     public TimeSpan SiteOfflineMove { get; init; } = TimeSpan.FromHours(1);
 }
@@ -31,8 +37,9 @@ public sealed class DeviceRelocationOptions
 /// on the server's network and through every online site looks for its serial number; when the device announces another
 /// address or answers through another route, <see cref="DeviceAddressService.TryRelocateAsync(string, string, DeviceRoute, string, bool, CancellationToken)"/>
 /// verifies it there and moves the record: route and address together (logged, published as a device change, audited
-/// "Device moved" by "system"). A device that answers on its current route never moves; devices addressed by name never
-/// move. Nothing is browsed while no device is a candidate.
+/// "Device moved" by "system"). Every (route, address) a serial was announced at is kept; the routes are tried one after
+/// another until one verifies, a site whose networks include the address first. A device that answers on its current
+/// route never moves; devices addressed by name never move. Nothing is browsed while no device is a candidate.
 /// </summary>
 public sealed partial class DeviceRelocationHostedService(
     CoreDiscoveryService discovery,
@@ -42,7 +49,8 @@ public sealed partial class DeviceRelocationHostedService(
     ILogger<DeviceRelocationHostedService> logger,
     ISiteStates? sites = null,
     AuditLog? audit = null,
-    TimeProvider? time = null) : BackgroundService
+    TimeProvider? time = null,
+    ISiteNetwork? network = null) : BackgroundService
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly Dictionary<Guid, DateTimeOffset> _offlineSince = [];
@@ -65,23 +73,59 @@ public sealed partial class DeviceRelocationHostedService(
 
         var seen = await BrowseAsync(candidates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase), ct).ConfigureAwait(false);
         var moved = 0;
-        foreach (var (serial, (route, address)) in seen)
+        foreach (var (serial, places) in seen)
         {
             var before = candidates[serial];
-            var result = await addresses.TryRelocateAsync(serial, address, route, "found again by mDNS", requireUnreachable: true, ct).ConfigureAwait(false);
-            if (result == DeviceAddressChangeResult.Updated)
+            foreach (var (route, address) in Order(before, places))
             {
-                moved++;
-                LogRelocated(serial, address);
-                if (audit is not null)
+                var result = await addresses.TryRelocateAsync(serial, address, route, "found again by mDNS", requireUnreachable: true, ct).ConfigureAwait(false);
+                if (result == DeviceAddressChangeResult.Updated)
                 {
-                    await audit.WriteAsync("system", string.Empty, AuditActions.DeviceMoved, serial,
-                        "Found again: " + DeviceMoveText.Of(DeviceConnections.RouteOf(before), before.Address, route, address, sites), ct).ConfigureAwait(false);
+                    moved++;
+                    LogRelocated(serial, address);
+                    if (audit is not null)
+                    {
+                        await audit.WriteAsync("system", string.Empty, AuditActions.DeviceMoved, serial,
+                            "Found again: " + DeviceMoveText.Of(DeviceConnections.RouteOf(before), before.Address, route, address, sites), ct).ConfigureAwait(false);
+                    }
+
+                    break;
+                }
+
+                if (result is not (DeviceAddressChangeResult.NotVerified or DeviceAddressChangeResult.Unchanged))
+                {
+                    break; // not managed any more, answering again, addressed by name: no other route changes that
                 }
             }
         }
 
         return moved;
+    }
+
+    /// <summary>
+    /// The places a device was announced at, in the order to try: never its current route and address; a site whose
+    /// networks include the address first, then the server's own network, then the other sites.
+    /// </summary>
+    internal IEnumerable<(DeviceRoute Route, string Address)> Order(Device device, IReadOnlyList<(DeviceRoute Route, string Address)> places)
+    {
+        var current = DeviceConnections.RouteOf(device);
+        return places
+            .Distinct()
+            .Where(p => !(p.Route == current && string.Equals(p.Address, device.Address, StringComparison.OrdinalIgnoreCase)))
+            .Select((p, i) => (Place: p, Rank: Rank(p), Index: i))
+            .OrderBy(p => p.Rank)
+            .ThenBy(p => p.Index)
+            .Select(p => p.Place);
+
+        int Rank((DeviceRoute Route, string Address) place)
+        {
+            if (place.Route.SiteId is not { } site)
+            {
+                return 1;
+            }
+
+            return network is not null && IPAddress.TryParse(place.Address, out var ip) && network.Reaches(site, ip) ? 0 : 2;
+        }
     }
 
     /// <summary>
@@ -143,9 +187,10 @@ public sealed partial class DeviceRelocationHostedService(
         }
     }
 
-    private async Task<Dictionary<string, (DeviceRoute Route, string Address)>> BrowseAsync(HashSet<string> serials, CancellationToken ct)
+    /// <summary>Every (route, address) each serial was announced at during the browse window, in the order seen.</summary>
+    private async Task<Dictionary<string, IReadOnlyList<(DeviceRoute Route, string Address)>>> BrowseAsync(HashSet<string> serials, CancellationToken ct)
     {
-        var found = new Dictionary<string, (DeviceRoute, string)>(StringComparer.OrdinalIgnoreCase);
+        var found = new Dictionary<string, List<(DeviceRoute, string)>>(StringComparer.OrdinalIgnoreCase);
         var session = discovery.StartZeroConf();
         try
         {
@@ -157,10 +202,25 @@ public sealed partial class DeviceRelocationHostedService(
                 {
                     if (e.Device is { } device && serials.Contains(device.Serial) && !Equals(device.Address, IPAddress.None))
                     {
-                        found[device.Serial] = (device.Route, device.Address.ToString());
+                        // Every route counts (a device answering through two sites). Discovery shows one row per MAC
+                        // address; the other routes it answered through are tried at the same address.
+                        if (!found.TryGetValue(device.Serial, out var places))
+                        {
+                            found[device.Serial] = places = [];
+                        }
+
+                        var address = device.Address.ToString();
+                        foreach (var route in device.OtherRoutes.Items.Prepend(device.Route))
+                        {
+                            if (!places.Contains((route, address)))
+                            {
+                                places.Add((route, address));
+                            }
+                        }
+
                         if (found.Count == serials.Count)
                         {
-                            break;
+                            window.CancelAfter(options.FoundGrace); // a little longer for the other routes
                         }
                     }
                 }
@@ -175,7 +235,7 @@ public sealed partial class DeviceRelocationHostedService(
             await discovery.StopAsync(session.Id).ConfigureAwait(false);
         }
 
-        return found;
+        return found.ToDictionary(p => p.Key, p => (IReadOnlyList<(DeviceRoute, string)>)p.Value, StringComparer.OrdinalIgnoreCase);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} found again by mDNS at {Address}; its address was updated")]
