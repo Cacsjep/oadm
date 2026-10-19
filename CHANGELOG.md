@@ -13,7 +13,9 @@ version and date, and the release workflow copies it into the GitHub release.
   "Site offline" per site and "Any site offline", and the placeholder {site}.
 - Sites (in development): the **OADM Site Node**, a small service and app for a network the server cannot reach. It
   connects out to the server (or waits for it), is bound with a pairing code from its app, and reaches only the network
-  cards and ports allowed in the app.
+  cards and ports allowed in the app. Installers: `OADM-SiteNode-<version>-win-x64.msi` (`SERVER=<address>` for silent
+  installs) and the `oadm-site-node` / `oadm-site-node-app` packages for Linux x64 and ARM64; Site node downloads and a
+  user page Sites on the website. The Windows server installer also opens TCP 5081 for site nodes.
 
 ### Changed
 

@@ -78,7 +78,7 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
-  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, one firewall rule TCP 5080 for `Oadm.Server.exe`, profiles
+  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, two firewall rules for `Oadm.Server.exe`, TCP 5080 and (on branch `feature/sites`) TCP 5081 for site nodes, profiles
   Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
   allowed). Features `Client` (always) and `Server` (service, firewall rule, data folder); own UI `WixUI_Oadm`
   (welcome, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
@@ -96,6 +96,18 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
   0.0.3..1.0.0 is removed on upgrade through `Breaks: oadm`). Both take over the files of the former single package `oadm`
   (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
   LGPL-2.1.txt}`. Pre-release versions are written `1.2.0~rc.1`. No .rpm.
+- **OADM Site Node** (branch `feature/sites`; `manage package site-node [--rid win-x64|linux-x64|linux-arm64]
+  [--version]`, details in `packaging/README.md`): `OADM-SiteNode-<version>-win-x64.msi` (WiX 6,
+  `packaging/windows/site-node/`; `Program Files\OADM Site Node` on the system PATH, service "OADM Site Node"
+  `OadmSiteNode` automatic, LocalService, restart on failure, data folder `%ProgramData%\OADM Site Node` for SYSTEM and
+  LocalService only and kept, Start menu shortcut, no firewall rule, silent `SERVER=<address>`; the main project no longer
+  picks up .wxs files by itself), `oadm-site-node_<version>_<arch>.deb` (service + `/usr/bin/oadm-site-node`, user
+  `oadm-site-node`, `CAP_NET_BIND_SERVICE`, `RuntimeDirectory`, `NoNewPrivileges`, `/var/lib/oadm-site-node` 0700) and
+  `oadm-site-node-app_<version>_<arch>.deb` (Depends oadm-site-node of the same version, Recommends pkexec, icon
+  `oadm-site-node.png`); amd64 and arm64; notices `tools/Oadm.Notices --product site-node` (no LGPL part); no macOS
+  package, no portable ZIP. "Wait for the server" adds the Windows Firewall rule "OADM Site Node (TCP 5081)" through the
+  administrator process that sent the change (`Admin/NodeFirewall`); uninstall removes it. CI: job `installers` builds,
+  installs, checks and removes the node .deb packages, `smoke.ps1 -Mode SiteNode` the node MSI.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS
   only): `/Applications/OADM.app` (Info.plist, icns, license texts and plugins in `Contents/Resources`), server in
   `/Library/Application Support/OADM/server`, LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application
