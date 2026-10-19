@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-10-19
+
 ### Added
 
 - **Compliance** page below Devices: which devices need attention at first glance. It is off until you click **Enable
@@ -23,11 +25,10 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Count cards (Edge storage, Image Health Dashboard and others) have the card background like every other card.
-- Add devices: the check box in the list header checks or unchecks all devices (instead of **Select all
-  authenticated**), the scan status and the counts share one line, and an import offers **Add 4 now, 2 later** next to
-  **Add** instead of the "Keep devices that do not answer" check box.
-- Add devices: devices OADM logged in to are checked by themselves, so **Add** works without clicking **Select all
-  authenticated** first. A device you uncheck stays unchecked.
+- Add devices: devices OADM logged in to are checked by themselves, so **Add** works right away; a device you uncheck
+  stays unchecked. The check box in the list header checks or unchecks all of them (instead of **Select all
+  authenticated**). The scan status and the counts share one line. An import offers **Add 4 now, 2 later** next to
+  **Add** for devices that do not answer yet (instead of the "Keep devices that do not answer" check box).
 
 ## [3.5.1] - 2026-10-18
 
