@@ -38,18 +38,26 @@ internal sealed class FakeChannel : INodeChannel
         });
     }
 
-    public static NodeView Sample(NodeBinding binding = NodeBinding.Open) => new()
+    /// <summary>A node with two cards, the default ports, an NTP relay and (unless <paramref name="requests"/> is false) a request.</summary>
+    public static NodeView Sample(
+        NodeBinding binding = NodeBinding.Open,
+        string serverAddress = "10.0.0.5",
+        bool connected = true,
+        string connectionText = "Connected to 10.0.0.5:5081",
+        string newIdentity = "",
+        bool requests = true) => new()
     {
         NodeId = "a1b2c3d4e5f60718",
         Version = "3.7.0",
         HostName = "site-pc",
         Binding = binding,
         Mode = NodeLinkMode.Connect,
-        ServerAddress = "10.0.0.5",
+        ServerAddress = serverAddress,
         BindingHoursLeft = 22.6,
         Bound = binding == NodeBinding.Bound ? new BoundServerView("OADM-SRV", "AB12", new DateTimeOffset(2026, 10, 19, 8, 0, 0, TimeSpan.Zero), "Building B") : null,
-        ConnectionText = "Connected to 10.0.0.5:5081",
-        Connected = true,
+        ConnectionText = connectionText,
+        Connected = connected,
+        NewServerIdentity = newIdentity,
         Cards =
         [
             new CardView("cam", "Cameras", ["192.168.0.5/24"], true, false),
@@ -57,7 +65,7 @@ internal sealed class FakeChannel : INodeChannel
         ],
         ExtraSubnets = ["10.20.0.0/16"],
         Allowed = [new(PortUse.Connect, PortProtocol.Tcp, 80), new(PortUse.Connect, PortProtocol.Tcp, 443), new(PortUse.Connect, PortProtocol.Tcp, 554), new(PortUse.Listen, PortProtocol.Udp, 123, "NTP server")],
-        Requested = [new(PortUse.Connect, PortProtocol.Tcp, 8443, "camera 192.168.0.30")],
+        Requested = requests ? [new(PortUse.Connect, PortProtocol.Tcp, 8443, "camera 192.168.0.30")] : [],
         Relays = [new RelayView(PortProtocol.Udp, 123, "NTP server", "Running", "")],
         ShortConnections = 3,
         PermanentConnections = 12,

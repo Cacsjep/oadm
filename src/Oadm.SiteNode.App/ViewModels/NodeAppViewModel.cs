@@ -16,6 +16,37 @@ public interface IAppDialogs
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
 }
 
+/// <summary>The tabs of the window below the header.</summary>
+public enum NodeTab
+{
+    Status,
+    Networks,
+    Ports,
+    Activity,
+}
+
+/// <summary>What the header of the window shows: the state in one line and the one thing to do now.</summary>
+public enum NodeHeader
+{
+    /// <summary>The service does not answer.</summary>
+    NoService,
+
+    /// <summary>Not bound, connecting to the server, and no address yet or the server cannot be reached: the address form.</summary>
+    NeedsServer,
+
+    /// <summary>The bound server presents a new identity: Accept.</summary>
+    NewIdentity,
+
+    /// <summary>Not bound, binding open: the pairing code.</summary>
+    BindingOpen,
+
+    /// <summary>Not bound, binding closed: Allow binding.</summary>
+    BindingClosed,
+
+    /// <summary>Bound: the server, the site and whether it is reached.</summary>
+    Bound,
+}
+
 /// <summary>
 /// The one window of the OADM Site Node app (docs/sites.md, "App"): server, binding and pairing code, site, networks,
 /// ports and requests, relays and connections, the connection log, Reset. Reads the service's state every 2 seconds;
@@ -87,6 +118,86 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string? PairingCode { get; private set; }
 
+    /// <summary>The tab shown below the header.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStatusTab), nameof(IsNetworksTab), nameof(IsPortsTab), nameof(IsActivityTab))]
+    public partial NodeTab Tab { get; set; }
+
+    public bool IsStatusTab => Tab == NodeTab.Status;
+
+    public bool IsNetworksTab => Tab == NodeTab.Networks;
+
+    public bool IsPortsTab => Tab == NodeTab.Ports;
+
+    public bool IsActivityTab => Tab == NodeTab.Activity;
+
+    /// <summary>What the header shows now (<see cref="NodeHeader"/>).</summary>
+    public NodeHeader Header => State switch
+    {
+        null => NodeHeader.NoService,
+        { NewServerIdentity.Length: > 0 } => NodeHeader.NewIdentity,
+        { Binding: NodeBinding.Bound } => NodeHeader.Bound,
+        { Binding: NodeBinding.Closed } => NodeHeader.BindingClosed,
+        { Mode: NodeLinkMode.Connect } s when s.ServerAddress.Trim().Length == 0 || HasConnectionProblem => NodeHeader.NeedsServer,
+        _ => NodeHeader.BindingOpen,
+    };
+
+    public bool IsNoServiceHeader => Header == NodeHeader.NoService;
+
+    public bool IsServerHeader => Header == NodeHeader.NeedsServer;
+
+    public bool IsIdentityHeader => Header == NodeHeader.NewIdentity;
+
+    public bool IsOpenHeader => Header == NodeHeader.BindingOpen;
+
+    public bool IsClosedHeader => Header == NodeHeader.BindingClosed;
+
+    public bool IsBoundHeader => Header == NodeHeader.Bound;
+
+    /// <summary>The state in one plain line (the bound state is <see cref="BoundChipText"/>).</summary>
+    public string HeadlineText => Header switch
+    {
+        NodeHeader.NoService => ServiceError ?? AdminTexts.ServiceNotRunning,
+        NodeHeader.NeedsServer => State!.ServerAddress.Trim().Length == 0 ? "Not connected. Enter the address of the OADM server." : "Not connected to OADM.",
+        NodeHeader.NewIdentity => NewIdentityText,
+        NodeHeader.BindingOpen => PairingCode is { Length: > 0 } ? "Type this code at Bind on the Sites page of OADM." : "Not bound. Show the pairing code to bind this node in OADM.",
+        NodeHeader.BindingClosed => "Not bound. Binding is closed.",
+        _ => "",
+    };
+
+    /// <summary>"Binding open for 23 more hours." while binding is open.</summary>
+    public string BindingTimeText => State is { Binding: NodeBinding.Open } s ? $"Binding open for {Hours(s.BindingHoursLeft)}." : "";
+
+    /// <summary>"Connected to OADM-SRV · Building B", or "Not connected to OADM-SRV · Building B" while it is not reached.</summary>
+    public string BoundChipText
+    {
+        get
+        {
+            if (State?.Bound is not { } bound)
+                return "";
+            var server = bound.SiteName is { Length: > 0 } site ? $"{bound.Name} · {site}" : bound.Name;
+            return IsConnected ? $"Connected to {server}" : $"Not connected to {server}";
+        }
+    }
+
+    /// <summary>Why the bound server is not reached ("Cannot reach 10.0.0.5:5081"); null while connected.</summary>
+    public string? BoundChipDetail => State?.Bound is not null && !IsConnected && ConnectionText.Length > 0 ? ConnectionText : null;
+
+    /// <summary>The connection problem below the address field of the header ("Cannot reach 10.0.0.5:5081").</summary>
+    public string? ConnectionProblem => HasConnectionProblem ? ConnectionText : null;
+
+    /// <summary>The Status tab shows the server form unless the header shows it.</summary>
+    public bool ShowServerFormInTab => HasState && Header != NodeHeader.NeedsServer;
+
+    /// <summary>"Connect" while the node connects to the server, else "Save".</summary>
+    public string SaveServerText => IsConnectMode ? "Connect" : "Save";
+
+    /// <summary>Requests of the server that wait (the count badge of the Ports tab).</summary>
+    public int RequestCount => RequestedPorts.Count;
+
+    /// <summary>"The server asks for 2 ports."</summary>
+    public string RequestsText => RequestCount == 1 ? "The server asks for 1 port." : $"The server asks for {RequestCount} ports.";
+
     /// <summary>A refusal of a binding action (below the binding card's buttons).</summary>
     [ObservableProperty]
     public partial string? BindingError { get; private set; }
@@ -96,7 +207,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public partial string? ActionError { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWaitMode))]
+    [NotifyPropertyChangedFor(nameof(IsWaitMode), nameof(SaveServerText))]
     public partial bool IsConnectMode { get; set; } = true;
 
     public bool IsWaitMode
@@ -374,12 +485,44 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     }
 
     [RelayCommand]
+    private void ShowStatus() => Tab = NodeTab.Status;
+
+    [RelayCommand]
+    private void ShowNetworks() => Tab = NodeTab.Networks;
+
+    /// <summary>The Ports tab (also "Review" of the header's request line).</summary>
+    [RelayCommand]
+    private void ShowPorts() => Tab = NodeTab.Ports;
+
+    [RelayCommand]
+    private void ShowActivity() => Tab = NodeTab.Activity;
+
+    [RelayCommand]
     private void ChooseConnect() => IsConnectMode = true;
 
     [RelayCommand]
     private void ChooseWait() => IsConnectMode = false;
 
     partial void OnServerAddressChanged(string value) => _serverEdited = true;
+
+    partial void OnStateChanged(NodeView? value) => RaiseHeader();
+
+    partial void OnServiceErrorChanged(string? value) => RaiseHeader();
+
+    partial void OnPairingCodeChanged(string? value) => RaiseHeader();
+
+    private void RaiseHeader()
+    {
+        foreach (var name in HeaderProperties)
+            OnPropertyChanged(name);
+    }
+
+    private static readonly string[] HeaderProperties =
+    [
+        nameof(Header), nameof(IsNoServiceHeader), nameof(IsServerHeader), nameof(IsIdentityHeader), nameof(IsOpenHeader),
+        nameof(IsClosedHeader), nameof(IsBoundHeader), nameof(HeadlineText), nameof(BindingTimeText), nameof(BoundChipText), nameof(BoundChipDetail),
+        nameof(ConnectionProblem), nameof(ShowServerFormInTab),
+    ];
 
     partial void OnIsConnectModeChanged(bool value) => _serverEdited = true;
 
@@ -449,6 +592,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         Replace(RequestedPorts, view.Requested.Select(PortItem.Requested));
         Replace(Relays, view.Relays.Select(RelayItem.From));
         OnPropertyChanged(nameof(HasRequests));
+        OnPropertyChanged(nameof(RequestCount));
+        OnPropertyChanged(nameof(RequestsText));
         OnPropertyChanged(nameof(HasRelays));
         OnPropertyChanged(nameof(HasNoListenPorts));
     }

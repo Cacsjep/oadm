@@ -13,40 +13,144 @@ namespace Oadm.SiteNode.App.Tests;
 /// <summary>The app's windows rendered offscreen with the real app and theme (screenshots to OADM_SCREENSHOT_DIR).</summary>
 public sealed class HeadlessTests
 {
+    public static TheoryData<string> States => ["open", "open-code", "server", "cannot-reach", "closed", "bound", "bound-offline", "identity", "no-service"];
+
     [Theory]
-    [InlineData(NodeBinding.Open, "site-node-app-open.png")]
-    [InlineData(NodeBinding.Bound, "site-node-app-bound.png")]
-    [InlineData(NodeBinding.Closed, "site-node-app-closed.png")]
-    public async Task TheWindowShowsEveryPart(NodeBinding binding, string screenshot)
+    [MemberData(nameof(States))]
+    public async Task TheHeaderShowsTheStateAndOneThingToDo(string state)
     {
-        var texts = await HeadlessEntry.Session.Dispatch(async () =>
+        var shown = await ShowAsync(StateOf(state), NodeTab.Status, $"site-node-app-{state}.png", showCode: state == "open-code");
+
+        // The one accent button of the window, by state.
+        var expected = state switch
         {
-            var channel = new FakeChannel { State = FakeChannel.Sample(binding) };
+            "server" or "cannot-reach" => "Connect",
+            "open" => "Show pairing code",
+            "closed" => "Allow binding",
+            "identity" => "Accept",
+            _ => null,
+        };
+        Assert.Equal(expected is null ? [] : [expected], shown.Primary);
+
+        switch (state)
+        {
+            case "open":
+                Assert.Contains("Binding open for 23 more hours.", shown.Texts);
+                break;
+            case "open-code":
+                Assert.Contains("ABCD-EFGH", shown.Texts);
+                Assert.Contains("Type this code at Bind on the Sites page of OADM.", shown.Texts);
+                break;
+            case "server":
+                Assert.Contains("Not connected. Enter the address of the OADM server.", shown.Texts);
+                Assert.DoesNotContain("Server", shown.Texts); // the Status tab leaves the form to the header
+                break;
+            case "cannot-reach":
+                Assert.Contains("Cannot reach 10.0.0.5:5081", shown.Texts);
+                break;
+            case "closed":
+                Assert.Contains("Not bound. Binding is closed.", shown.Texts);
+                break;
+            case "bound":
+                Assert.Contains("Connected to OADM-SRV · Building B", shown.Texts);
+                break;
+            case "bound-offline":
+                Assert.Contains("Not connected to OADM-SRV · Building B: Cannot reach 10.0.0.5:5081", shown.Texts);
+                break;
+            case "identity":
+                Assert.Contains(shown.Texts, t => t.StartsWith("OADM-SRV presents a new identity", StringComparison.Ordinal));
+                break;
+            case "no-service":
+                Assert.Contains(AdminTexts.ServiceNotRunning, shown.Texts);
+                Assert.DoesNotContain("Networks", shown.Texts); // no tabs without the service
+                break;
+        }
+
+        if (state != "no-service")
+        {
+            Assert.Contains("Networks", shown.Texts);
+            Assert.Contains("Reset", shown.Texts);
+            Assert.DoesNotContain("Connection log", shown.Texts); // the other tabs stay hidden
+            Assert.DoesNotContain("Review", shown.Texts); // no requests in these states
+        }
+    }
+
+    [Theory]
+    [InlineData(NodeTab.Status, "status")]
+    [InlineData(NodeTab.Networks, "networks")]
+    [InlineData(NodeTab.Ports, "ports")]
+    [InlineData(NodeTab.Activity, "activity")]
+    public async Task EachTabShowsItsPart(NodeTab tab, string name)
+    {
+        var shown = await ShowAsync(FakeChannel.Sample(), tab, $"site-node-app-tab-{name}.png", showCode: true);
+
+        Assert.Contains("The server asks for 1 port.", shown.Texts);
+        Assert.Contains("Review", shown.Texts);
+        Assert.Contains("1", shown.Texts); // the count badge of the Ports tab
+        switch (tab)
+        {
+            case NodeTab.Status:
+                Assert.Contains("Server address", shown.Texts);
+                Assert.Contains("a1b2c3d4e5f60718", shown.Texts);
+                Assert.Contains("Reset", shown.Texts);
+                Assert.DoesNotContain("All cards", shown.Texts);
+                break;
+            case NodeTab.Networks:
+                Assert.Contains("Cameras", shown.Texts);
+                Assert.Contains("All cards", shown.Texts);
+                Assert.Contains("10.20.0.0/16", shown.Texts);
+                Assert.DoesNotContain("Reset", shown.Texts);
+                break;
+            case NodeTab.Ports:
+                Assert.Contains("Connect to TCP 8443: camera 192.168.0.30", shown.Texts);
+                Assert.Contains("Allow", shown.Texts);
+                Assert.Contains("Listen on", shown.Texts);
+                break;
+            case NodeTab.Activity:
+                Assert.Contains("3 short, 12 permanent", shown.Texts);
+                Assert.Contains("NTP server, UDP 123", shown.Texts);
+                Assert.Contains("Connection log", shown.Texts);
+                break;
+        }
+    }
+
+    /// <summary>The node in each state the header knows (no requests, so only the state's own lines show).</summary>
+    private static NodeView? StateOf(string state) => state switch
+    {
+        "open" or "open-code" => FakeChannel.Sample(requests: false),
+        "server" => FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "", requests: false),
+        "cannot-reach" => FakeChannel.Sample(connected: false, connectionText: "Cannot reach 10.0.0.5:5081", requests: false),
+        "closed" => FakeChannel.Sample(NodeBinding.Closed, requests: false),
+        "bound" => FakeChannel.Sample(NodeBinding.Bound, requests: false),
+        "bound-offline" => FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "Cannot reach 10.0.0.5:5081", requests: false),
+        "identity" => FakeChannel.Sample(NodeBinding.Bound, newIdentity: "0123456789ABCDEF0123456789ABCDEF", requests: false),
+        _ => null,
+    };
+
+    /// <summary>The window as it opens (its own size) on <paramref name="tab"/>: the texts it shows and its accent buttons.</summary>
+    private static Task<(List<string> Texts, List<string> Primary)> ShowAsync(NodeView? state, NodeTab tab, string screenshot, bool showCode) =>
+        HeadlessEntry.Session.Dispatch(async () =>
+        {
+            var channel = new FakeChannel { State = state };
             var vm = new NodeAppViewModel(channel, new FakeElevation(channel) { IsAdministrator = true }, new FakeDialogs());
             await vm.RefreshAsync();
             await vm.LoadLogAsync();
-            if (binding == NodeBinding.Open)
+            if (showCode)
                 await vm.ShowPairingCodeAsync();
-            var window = new MainWindow { DataContext = vm, Width = 1180, Height = 1100 };
+            vm.Tab = tab;
+            var window = new MainWindow { DataContext = vm };
             window.Show();
             Dispatcher.UIThread.RunJobs();
             Save(window, screenshot);
-            var shown = window.GetVisualDescendantsTexts();
+            var texts = window.GetVisualDescendantsTexts();
+            var primary = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window)
+                .OfType<Button>()
+                .Where(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"))
+                .Select(b => b.Content as string ?? "")
+                .ToList();
             window.Close();
-            return shown;
+            return (texts, primary);
         }, CancellationToken.None);
-
-        Assert.Contains("Networks", texts);
-        Assert.Contains("Connect to", texts);
-        Assert.Contains("Connection log", texts);
-        Assert.Contains("Reset", texts);
-        if (binding == NodeBinding.Open)
-            Assert.Contains("ABCD-EFGH", texts);
-        if (binding == NodeBinding.Closed)
-            Assert.Contains("Allow binding", texts);
-        if (binding == NodeBinding.Bound)
-            Assert.Contains("Building B", texts);
-    }
 
     [Fact]
     public async Task TheTermsAreAcceptedOncePerComputer()

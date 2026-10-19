@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.SiteNode.App.ViewModels"
+             xmlns:local="using:Oadm.SiteNode.App.Views"
+             x:Class="Oadm.SiteNode.App.Views.ServerForm"
+             x:DataType="vm:NodeAppViewModel">
+  <!-- The server address and how the node reaches it: in the header while the node needs a server, else on the Status tab.
+       The connection problem stands below the address field. -->
+  <StackPanel Spacing="12">
+    <ui:FormField Label="Connection">
+      <Border Classes="segmented" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal">
+          <Button Classes="segment" Classes.selected="{Binding IsConnectMode}" Content="Connect to the server" Command="{Binding ChooseConnectCommand}" />
+          <Button Classes="segment" Classes.selected="{Binding IsWaitMode}" Content="Wait for the server" Command="{Binding ChooseWaitCommand}" />
+        </StackPanel>
+      </Border>
+    </ui:FormField>
+    <ui:FormField Label="Server address" Hint="Port 5081 unless you type another." IsVisible="{Binding IsConnectMode}"
+                  Error="{Binding $parent[local:ServerForm].Problem}">
+      <TextBox Text="{Binding ServerAddress}" Watermark="oadm.example.com or 10.0.0.5" />
+    </ui:FormField>
+    <ui:FormField Label="Server address" IsVisible="{Binding IsWaitMode}">
+      <TextBlock Classes="secondary" TextWrapping="Wrap" VerticalAlignment="Center" Text="The server connects to this computer on port 5081." />
+    </ui:FormField>
+    <ui:FormField Label="">
+      <Button Classes.secondary="{Binding !$parent[local:ServerForm].IsPrimary}" Classes.primary="{Binding $parent[local:ServerForm].IsPrimary}" HorizontalAlignment="Left"
+              Content="{Binding $parent[local:ServerForm].SaveText}" Command="{Binding SaveServerCommand}" IsEnabled="{Binding CanSaveServer}"
+              ToolTip.Tip="{Binding SaveServerBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:FormField>
+  </StackPanel>
+</UserControl>
