@@ -12,6 +12,7 @@ using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Contracts.Sites;
 
 namespace Oadm.Client.Sites;
 
@@ -113,57 +114,6 @@ public sealed class SiteRowViewModel
     public bool CanChangeAddress { get; }
 
     public bool Matches(string text) => _search.Contains(text, StringComparison.OrdinalIgnoreCase);
-}
-
-/// <summary>The plain texts of the Sites page.</summary>
-public static class SiteTexts
-{
-    public const string AcceptOffHint = "Turn on Accept site nodes, then enter this server's address in the OADM Site Node app.";
-
-    public const string NodeDidNotAnswer = "The site node did not answer. Reset it in the OADM Site Node app.";
-
-    public static string AcceptOnHint(string listenAddress) =>
-        string.IsNullOrEmpty(listenAddress)
-            ? "Enter this server's address in the OADM Site Node app."
-            : $"Enter {listenAddress} as the server address in the OADM Site Node app.";
-
-    public static string State(SiteState state) => state switch
-    {
-        SiteState.Online => "Online",
-        SiteState.Offline => "Offline",
-        SiteState.NotBound => "Not bound",
-        SiteState.Waiting => "Waiting to be bound",
-        SiteState.BoundElsewhere => "Bound to another server",
-        SiteState.BindingClosed => "Binding closed",
-        _ => "Unknown",
-    };
-
-    public static string DefaultDetail(SiteState state) => state switch
-    {
-        SiteState.NotBound => "The site node was reset. Replace or remove the site.",
-        SiteState.BindingClosed => "Click Allow binding in the OADM Site Node app.",
-        _ => string.Empty,
-    };
-
-    /// <summary>"10.0.4.12:51234", "[fd00::5]:5081"; empty without an address.</summary>
-    public static string Address(string address, int port)
-    {
-        if (string.IsNullOrEmpty(address))
-        {
-            return string.Empty;
-        }
-
-        var host = address.Contains(':', StringComparison.Ordinal) && !address.StartsWith('[') ? "[" + address + "]" : address;
-        return port > 0 ? host + ":" + port.ToString(CultureInfo.InvariantCulture) : address;
-    }
-
-    public static string Replaced(ReplaceSiteReply reply)
-    {
-        ArgumentNullException.ThrowIfNull(reply);
-        var moved = reply.Moved == 1 ? "1 device moved" : string.Create(CultureInfo.CurrentCulture, $"{reply.Moved:N0} devices moved");
-        var stayed = reply.StayedDeviceIds.Count;
-        return stayed == 0 ? moved + "." : string.Create(CultureInfo.CurrentCulture, $"{moved}, {stayed:N0} did not answer through the new site and stayed.");
-    }
 }
 
 /// <summary>

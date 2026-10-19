@@ -36,6 +36,7 @@ enum SiteState {
   SITE_STATE_WAITING = 4;          // a node that connected or was found and waits to be bound (not a site yet)
   SITE_STATE_BOUND_ELSEWHERE = 5;  // found node bound to another server (greyed)
   SITE_STATE_BINDING_CLOSED = 6;   // found node with binding closed (greyed)
+  SITE_STATE_REMOVED = 7;          // removed with Keep devices: listed while it still has devices (Replace with, Remove devices)
 }
 
 enum SiteMode {
@@ -100,7 +101,8 @@ message ReplaceSiteReply {
 
 message RemoveSiteRequest {
   string id = 1;
-  bool keep_devices = 2;           // keep them as Site offline; else removed with credentials and tags
+  bool keep_devices = 2;           // keep them as Site offline; else removed with credentials and tags. A removed site
+                                   // (SITE_STATE_REMOVED) takes only keep_devices = false: its devices are removed.
 }
 
 message RemoveSiteReply {

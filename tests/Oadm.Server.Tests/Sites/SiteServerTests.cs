@@ -18,6 +18,7 @@ using Oadm.SiteNode.Admin;
 using Oadm.SiteNode.Config;
 using Oadm.SiteNode.Tests.Support;
 using Oadm.SiteNode.State;
+using Oadm.Contracts.Sites;
 
 using Proto = Oadm.Contracts.V1;
 using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;

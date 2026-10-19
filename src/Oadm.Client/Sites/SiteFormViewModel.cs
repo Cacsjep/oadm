@@ -8,6 +8,7 @@ using Grpc.Core;
 using Oadm.Client.Api;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Contracts.Sites;
 
 namespace Oadm.Client.Sites;
 
@@ -28,7 +29,7 @@ public enum SiteFormMode
 /// </summary>
 public sealed partial class SiteFormViewModel : ValidatingViewModel
 {
-    public const string WrongCode = "The pairing code is wrong.";
+    public const string WrongCode = SiteTexts.WrongCode;
 
     private readonly IOadmApi _api;
     private readonly Site? _site;
@@ -47,7 +48,7 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
 
         if (mode == SiteFormMode.Bind)
         {
-            Validation.Rule(nameof(PairingCode), () => NormalizeCode(PairingCode) is null ? "Enter the 8 characters the OADM Site Node app shows." : null);
+            Validation.Rule(nameof(PairingCode), () => NormalizeCode(PairingCode) is null ? SiteTexts.CodeFormat : null);
         }
 
         if (mode is SiteFormMode.ChangeAddress or SiteFormMode.AddManually)
@@ -217,55 +218,10 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
         SubmitCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>The typed code as 8 characters of the pairing alphabet (Crockford base32; case, spaces and dashes ignored; I and L read as 1, O as 0), else null.</summary>
-    public static string? NormalizeCode(string? typed)
-    {
-        const string alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-        if (typed is null)
-        {
-            return null;
-        }
+    /// <summary>The typed code as 8 characters of the pairing alphabet (case, spaces and dashes ignored), else null.</summary>
+    public static string? NormalizeCode(string? typed) => PairingCodeText.Normalize(typed);
 
-        var code = new System.Text.StringBuilder(8);
-        foreach (var raw in typed)
-        {
-            if (raw is '-' or ' ')
-            {
-                continue;
-            }
-
-            var c = char.ToUpperInvariant(raw) switch
-            {
-                'O' => '0',
-                'I' or 'L' => '1',
-                var other => other,
-            };
-            if (!alphabet.Contains(c, StringComparison.Ordinal) || code.Length == 8)
-            {
-                return null;
-            }
-
-            code.Append(c);
-        }
-
-        return code.Length == 8 ? code.ToString() : null;
-    }
-
-    public static string? NameProblem(string? name)
-    {
-        var trimmed = (name ?? "").Trim();
-        if (trimmed.Length == 0)
-        {
-            return "Enter a site name.";
-        }
-
-        if (trimmed.Length > 64)
-        {
-            return "Use at most 64 characters.";
-        }
-
-        return trimmed.Any(char.IsControl) ? "Use letters, digits and spaces." : null;
-    }
+    public static string? NameProblem(string? name) => SiteTexts.NameProblem(name);
 
     private static string? AddressProblem(string? address)
     {
@@ -431,12 +387,11 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
         }
     }
 
-    // ALREADY_EXISTS "A site named X exists already." and INVALID_ARGUMENT about the name belong to Site name; a copy of a
-    // node ("This site node is a copy of X") is ALREADY_EXISTS too but about the node.
+    // The server's name refusals (the shared texts) belong to Site name; a copy of a node ("This site node is a copy of X")
+    // is ALREADY_EXISTS too but about the node.
     private static bool IsNameError(RpcException ex, string detail) =>
         ex.StatusCode is StatusCode.AlreadyExists or StatusCode.InvalidArgument
-        && detail.Contains("name", StringComparison.OrdinalIgnoreCase)
-        && !detail.Contains("copy", StringComparison.OrdinalIgnoreCase);
+        && detail is SiteTexts.NameTaken or SiteTexts.NameRequired or SiteTexts.NameTooLong or SiteTexts.NameInvalid;
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);

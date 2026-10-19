@@ -16,6 +16,7 @@ using Oadm.Client.Sites;
 using Oadm.Contracts.V1;
 
 using Xunit.Abstractions;
+using Oadm.Contracts.Sites;
 
 namespace Oadm.Client.Tests;
 
@@ -104,7 +105,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
 
         form.PairingCode = "abc";
         form.FieldLeft(nameof(form.PairingCode));
-        Assert.Equal("Enter the 8 characters the OADM Site Node app shows.", form.ErrorOf(nameof(form.PairingCode)));
+        Assert.Equal(SiteTexts.CodeFormat, form.ErrorOf(nameof(form.PairingCode)));
         Assert.False(form.SubmitCommand.CanExecute(null));
 
         form.PairingCode = "WXYZ-2345";
@@ -116,7 +117,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         form.Name = "Building B"; // taken: the error belongs to the name
         form.PairingCode = "abcd efgh";
         await form.SubmitCommand.ExecuteAsync(null);
-        Assert.Contains("Building B", form.ErrorOf(nameof(form.Name)), StringComparison.Ordinal);
+        Assert.Equal(SiteTexts.NameTaken, form.ErrorOf(nameof(form.Name)));
 
         var closed = false;
         form.CloseRequested += (_, ok) => closed = ok;
