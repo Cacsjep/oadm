@@ -8,7 +8,7 @@ namespace Oadm.Client.Plugins;
 
 /// <summary>
 /// <c>Oadm.Client --print-folders</c>: prints where this client keeps its settings and plugins as JSON and exits, without
-/// a window. The <c>oadm</c> tool asks the installed client this way instead of guessing (docs/plugin-sdk.md).
+/// a window. The <c>oadm</c> tool asks the installed client this way instead of guessing (website dev/plugin-sdk.md).
 /// </summary>
 internal static class ClientFolderReport
 {

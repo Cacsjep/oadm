@@ -82,7 +82,7 @@ every tool on one camera, the card ends as it started; passed on the Q1615 Mk II
 
 ## Compliance check "SD card"
 
-`SdCardCheck` (type `oadm.edge-storage.sd-card`, group Storage; see `docs/compliance.md`): the device has an SD card
+`SdCardCheck` (type `oadm.edge-storage.sd-card`, group Storage; see "Compliance" in `CLAUDE.md`): the device has an SD card
 that works (`EdgeDisk.ProblemText` is none), optionally at least N GB and / or N % free. A device without a card fails
 "No SD card": the user chose the devices the check is for. Read only: one `disks/list.cgi` per device and run (shared
 key `oadm.edge-storage:disks`). Available while Edge storage is on (off by default). Tests `SdCardCheckTests` (recorded

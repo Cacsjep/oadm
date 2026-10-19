@@ -462,7 +462,7 @@ function Test-Command([string]$Name) { return [bool](Get-Command $Name -CommandT
 function Exit-Environment([string]$Message) { [Console]::Error.WriteLine("error: $Message"); exit 1 }
 
 # Installer for one platform in artifacts/packages; publishes server and client for the RID first.
-# The NuGet packages of the plugin SDK in artifacts/nuget (docs/plugin-sdk.md): the SDK assemblies, the test helpers,
+# The NuGet packages of the plugin SDK in artifacts/nuget (website dev/plugin-sdk.md): the SDK assemblies, the test helpers,
 # the project SDK, the templates (generated from samples/ into artifacts/templates first) and the oadm tool, all with
 # the same version.
 function Invoke-PackageNuget {

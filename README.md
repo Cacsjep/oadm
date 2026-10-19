@@ -173,7 +173,7 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 | `manage test [unit\|perf\|timing\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 30,000 devices and 50,000 tasks (`Category=Perf`, a few minutes), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |
-| `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget/`, see [`docs/plugin-sdk.md`](docs/plugin-sdk.md) |
+| `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget/`, see [Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/) |
 | `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from the matching developer tutorial (`samples/`), renamed, in `plugins/` and `tests/` and added to `Oadm.sln`: it builds, its tests pass and it runs |
 | `manage license keys\|sign` | Key pair and license keys for a commercial plugin |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` (data folders stay) |

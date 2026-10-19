@@ -5,7 +5,7 @@ using System.Xml.Linq;
 namespace Oadm.NewPlugin.Tests;
 
 /// <summary>
-/// The plugin SDK packages (docs/plugin-sdk.md): the project SDK builds plugins against the host's versions, and the
+/// The plugin SDK packages (website dev/plugin-sdk.md): the project SDK builds plugins against the host's versions, and the
 /// templates are the samples with the NuGet references, never a copy that drifts.
 /// </summary>
 public sealed partial class PluginSdkTests : IDisposable

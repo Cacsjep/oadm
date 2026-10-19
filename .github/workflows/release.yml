@@ -108,7 +108,7 @@ jobs:
           grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
           grep -q "^Avalonia " "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
 
-      # The publish folders as ZIPs (plugin development: "oadm dev" runs them without installing; docs/plugin-sdk.md).
+      # The publish folders as ZIPs (plugin development: "oadm dev" runs them without installing; website dev/plugin-sdk.md).
       # One top folder named like the file. zip keeps the executable bits on Linux and macOS.
       - name: Portable archives
         shell: bash
@@ -401,7 +401,7 @@ jobs:
             gh release create "$tag" installers/* --title "OADM $version" "${notes[@]}" "${kind[@]}" --verify-tag
           fi
 
-  # The plugin SDK on nuget.org (docs/plugin-sdk.md), only after the release exists: the packages job nuget-pack built
+  # The plugin SDK on nuget.org (website dev/plugin-sdk.md), only after the release exists: the packages job nuget-pack built
   # and checked. NuGet Trusted Publishing: no API key in GitHub; the job trades its OIDC token for a key that lives one
   # hour. Needs the repository variable NUGET_USER (the nuget.org account) and a trusted publishing policy for this
   # repository and release.yml on nuget.org; without the variable the job is skipped. Versions on nuget.org never change:

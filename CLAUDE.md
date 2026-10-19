@@ -73,8 +73,8 @@ release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<v
 with NuGet Trusted Publishing (`NuGet/login`, `id-token: write`, no API key in GitHub)). Job `nuget-pack` (needs tests,
 before the release): `manage package nuget` with the tag's version, every template created, built and tested against
 only these packages (`packageSourceMapping` `Oadm.*` to the local folder), uploaded as the artifact `nuget-packages`. The
-portable ZIPs are their own artifact (`portable-<version>-<rid>`; smoke-windows downloads only the MSI). Spec
-`docs/plugin-sdk.md`:
+portable ZIPs are their own artifact (`portable-<version>-<rid>`; smoke-windows downloads only the MSI). Plugin
+SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
@@ -260,7 +260,7 @@ samples/               the plugins of the developer tutorials: Oadm.Samples.Upnp
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
 packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
-docs/                  plugin-sdk.md (spec of the plugin SDK: NuGet packages, templates, the `oadm` tool)
+docs/                  specs of features not built yet (sites.md); built features live in this file
 ```
 
 # Architecture
@@ -1253,8 +1253,7 @@ with the labels in the grid, the search, the export and the import; plugins read
 
 # Compliance
 
-Built-in feature (not a plugin): which devices need attention at first glance. Spec, decisions and details:
-`docs/compliance.md`. Core `Oadm.Core.Compliance`, server `Oadm.Server.Compliance`, gRPC `ComplianceService`, client
+Built-in feature (not a plugin): which devices need attention at first glance. Core `Oadm.Core.Compliance`, server `Oadm.Server.Compliance`, gRPC `ComplianceService`, client
 `Compliance/`, SDK `Oadm.Sdk.Compliance`.
 
 - **Off by default** (server setting `Compliance.Enabled`): the page shows an empty state with **Enable Compliance Checks**
@@ -1286,7 +1285,9 @@ Built-in feature (not a plugin): which devices need attention at first glance. S
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
 - Scale (30,000 devices x 50 checks): scope and failing devices as sets per check, events as single changes, one
   `ComplianceInvocation` per check version (a configuration file is serialized and parsed once), results written in key
-  order 5,000 per transaction, the client keeps ids and repeated texts once. Measured in `docs/compliance.md` "Scale".
+  order 5,000 per transaction, the client keeps ids and repeated texts once. Measured: server enable 5.4 s, results written in 19.5 s,
+  1,000 device changes 0.6 s (`ComplianceScaleTests`); client 1.5 million results applied in 0.8 s, filter, tab, card and
+  search 27 ms (`ComplianceTests`, Perf); read checks of 30,000 devices at 32 parallel take about 16 minutes a round.
 - Developer guide: website Developers > Compliance checks (`dev/compliance-checks.md`); `plugins/README.md`.
 - Tests: `tests/Oadm.Core.Tests/Compliance` (+ Perf `ComplianceScaleTests` 30,000 devices x 50 checks),
   `tests/Oadm.Server.Tests/ComplianceServiceTests`, the check types in their plugins' tests,
@@ -1624,7 +1625,7 @@ answers is unchanged. Used by the System report for server reports.
   `ICorePlugin` implementations via reflection, then registers the Core plugins' `TaskPlugins`
   too. Client does the same for `*.Client.dll` with `ITaskPluginDialog`, `ICorePluginPage` and
   `IToolbarPlugin` over the same three roots (`ClientPluginLoader.DefaultRoots`).
-- Plugin development without installing (spec `docs/plugin-sdk.md`: NuGet packages, templates, the `oadm` tool): server
+- Plugin development without installing (developer guide `website/src/content/docs/dev/plugin-sdk.md`: NuGet packages, templates, the `oadm` tool): server
   `--Oadm:PluginDir=<folder>` (several separated by ";", `OadmServerHost.PluginDirKey`) and client `--plugin-dir <folder>`
   (repeatable, `AppOptions.PluginDirs`) load a plugin package straight from a build output, before every other folder, so it
   wins over an installed copy of the same package (the server's later copy is a load error "already loaded from another
@@ -2700,6 +2701,11 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   here in the same PR.
 
 # Not built yet
+
+**Sites** (designed 2026-10-15 as "Agents", re-evaluated and renamed 2026-10-19, spec `docs/sites.md`; first refactor
+on branch `feature/agents`): an OADM Site Node (service + desktop app, MSI and .deb) in a network the server cannot reach;
+the server binds it (first server wins) and sends all device traffic through it, TLS end to end; status and events
+"Site offline"; plugins work unchanged unless they open their own sockets.
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,

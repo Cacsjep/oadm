@@ -10,7 +10,7 @@ namespace Oadm.Server.Hosting;
 /// <summary>
 /// <c>Oadm.Server --print-folders</c>: prints where this server keeps its data and plugins as JSON and exits, without
 /// opening the database or a port. The <c>oadm</c> tool runs the installed server with the service's own arguments and
-/// environment, so the answer is the service's folders, never a guess (docs/plugin-sdk.md).
+/// environment, so the answer is the service's folders, never a guess (website dev/plugin-sdk.md).
 /// </summary>
 public static class FolderReport
 {

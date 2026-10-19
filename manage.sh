@@ -432,7 +432,7 @@ cmd_publish() {
   write_notices "${notices[@]}"
 }
 
-# The NuGet packages of the plugin SDK in artifacts/nuget (docs/plugin-sdk.md): the SDK assemblies, the test helpers,
+# The NuGet packages of the plugin SDK in artifacts/nuget (website dev/plugin-sdk.md): the SDK assemblies, the test helpers,
 # the project SDK, the templates (generated from samples/ into artifacts/templates first) and the oadm tool, all with
 # the same version.
 package_nuget() {

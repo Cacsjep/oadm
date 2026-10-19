@@ -1,6 +1,6 @@
 using Oadm.Tools;
 
-// The oadm command (docs/plugin-sdk.md). Exit codes: 0 done, 1 failed (the message says why), 2 usage error.
+// The oadm command (website dev/plugin-sdk.md). Exit codes: 0 done, 1 failed (the message says why), 2 usage error.
 using var cancel = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {

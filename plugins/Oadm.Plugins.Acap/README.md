@@ -122,7 +122,7 @@ install, start / stop and license keys.
 
 ## Compliance check "Application running"
 
-`ApplicationRunningCheck` (type `oadm.acap.running`, group Applications; see `docs/compliance.md`): the chosen application
+`ApplicationRunningCheck` (type `oadm.acap.running`, group Applications; see "Compliance" in `CLAUDE.md`): the chosen application
 is installed, by default also running, optionally at least a version (leading numbers, "1.4") and with a valid license
 (Valid and not past its expiration date, or None / Custom). The application is chosen from the list of one device ("Read
 from device"). Read only: one `applications/list.cgi` per device and run (shared key `oadm.acap:list`). Detail texts:
