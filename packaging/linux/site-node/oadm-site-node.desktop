@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OADM Site Node
+Comment=Lets an OADM server reach the devices of this network
+Exec=/opt/oadm/site-node-app/oadm-site-node-app
+Icon=oadm-site-node
+Terminal=false
+Categories=Network;Utility;
+StartupWMClass=oadm-site-node-app

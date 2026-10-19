@@ -157,6 +157,7 @@ export default defineConfig({
 						{ label: 'Turn plugins on or off', slug: 'admin/plugins' },
 						{ label: 'Settings', slug: 'admin/settings' },
 						{ label: 'Ports, data and backup', slug: 'admin/ports-and-data' },
+						{ label: 'Sites', slug: 'admin/sites' },
 						{ label: 'Logs and troubleshooting', slug: 'admin/troubleshooting' },
 					],
 				},

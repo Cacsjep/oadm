@@ -23,7 +23,13 @@
     <!-- Same version reinstall (development builds) is allowed on purpose. -->
     <SuppressIces>ICE61</SuppressIces>
     <SuppressPdbOutput>true</SuppressPdbOutput>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only this file: the OADM Site Node MSI below site-node/ is its own project (EnableDefaultCompileItems false). -->
+    <Compile Include="Package.wxs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="WixToolset.Firewall.wixext" Version="6.0.2" />

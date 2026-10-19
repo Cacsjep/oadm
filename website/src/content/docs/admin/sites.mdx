@@ -1,0 +1,141 @@
+---
+title: Sites
+description: Reach devices in a network the OADM server cannot reach, through the OADM Site Node.
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+A **site** is a network the OADM server cannot reach itself: another building, a network behind a router, a camera
+network of its own. Install the **OADM Site Node** on one computer in that network. The server then reaches the devices
+there through the node, and you work with them like with every other device.
+
+- The node connects to the server. Nothing at the site needs an open port.
+- The node keeps no passwords and no device data. Only the server does.
+- One site has one node.
+
+## Install the node
+
+Download the site node from the [latest release](https://github.com/Cacsjep/oadm/releases/latest). A Raspberry Pi 4
+or 5 works well as a node.
+
+<Tabs syncKey="os">
+<TabItem label="Windows">
+
+<Steps>
+
+1. Download `OADM-SiteNode-<version>-win-x64.msi` and double-click it.
+2. Finish. The Windows service **OADM Site Node** starts now and on every boot.
+3. Start menu > **OADM Site Node** opens the app. It asks you to accept the terms of use once.
+
+</Steps>
+
+- Silent install with the server's address: `msiexec /i OADM-SiteNode-<version>-win-x64.msi SERVER=oadm.example.com /qn`.
+- Data folder: `%ProgramData%\OADM Site Node`. Uninstalling keeps it.
+
+</TabItem>
+<TabItem label="Linux">
+
+Debian and Ubuntu (also Raspberry Pi OS), x64 (`amd64`) or ARM64 (`arm64`). Download both `.deb` files of your
+computer's type:
+
+```sh
+sudo apt install ./oadm-site-node_*.deb ./oadm-site-node-app_*.deb   # service and app
+sudo apt install ./oadm-site-node_*.deb                             # service only, no desktop
+```
+
+- Service: `oadm-site-node` (`sudo systemctl status oadm-site-node`). It runs as its own user, not as root.
+- App: app menu > **OADM Site Node**, or `oadm-site-node-app`.
+- Data folder: `/var/lib/oadm-site-node`. Uninstalling keeps it.
+
+</TabItem>
+</Tabs>
+
+## Connect the node to the server
+
+<Steps>
+
+1. In OADM, open **Sites** and turn on **Accept site nodes** (administrators).
+2. In the node app, choose **Connect to the server**, enter the server's name or IP address and click **Save**. Port
+   5081 unless you enter another one.
+3. The app says **Connected to** the server. On the **Sites** page the node shows as **Waiting to be bound**.
+
+</Steps>
+
+Enter the server's DNS name if it has one. The node also learns the server's other addresses and finds it again when
+its address changes.
+
+## Bind the site
+
+<Steps>
+
+1. In the node app, click **Show pairing code**. Windows asks for administrator rights, Linux for your password.
+2. On the **Sites** page, click **Bind** on the node's row.
+3. Enter the **Site name** and the **Pairing code** and click **Bind**.
+
+</Steps>
+
+From now on the node works only with this server. Add devices at the site like any other devices: Discovery, Network
+range and Add manually also search through the node. The **Site** column of the device list shows where a device is.
+
+- Binding is open for 24 hours of the node's run time. Then the app says **Binding closed**: click **Allow binding** for
+  another 24 hours and a new code.
+- After 5 wrong codes the node makes a new code and refuses binding for 10 minutes.
+- When the node is offline, its devices show **Site offline**. Nothing is sent to them until it is back.
+
+## Wait for the server
+
+When the server must connect to the node instead (the node cannot reach the server), choose **Wait for the server** in
+the node app. On Windows the app then opens TCP 5081 in the Windows Firewall, and closes it again when you switch back.
+On the **Sites** page, **Search** finds the waiting node, or **Add manually** connects to its address.
+
+## Networks
+
+The app lists the network cards of the node's computer with a check box each: the node reaches devices on the checked
+ones. All cards are checked except the one with the default router. **All cards** checks all of them. Under **Extra networks** add networks behind a router,
+e.g. a camera network `10.20.0.0/16`.
+
+The node never connects to an address outside these networks.
+
+## Ports
+
+- **Connect to**: the device ports the node may connect to. TCP 80, 443 and 554 by default.
+- **Listen on**: ports the node opens at the site for the server, e.g. UDP 123 when the [NTP server](../../tools/ntp-server/)
+  serves the cameras there. Empty by default.
+
+When the server needs another port, e.g. a camera on TCP 8443, the app lists it with the reason. Click **Allow** or
+**Dismiss**.
+
+## Reset
+
+**Reset** in the node app: the node forgets the server and gets a new identity and pairing code. On the **Sites** page
+the site shows **Not bound** until you bind it again or remove it.
+
+## Without a desktop
+
+On a computer without a desktop, use the command line. Changes and the pairing code need administrator rights (`sudo` on
+Linux).
+
+| Command | Does |
+|---|---|
+| `oadm-site-node status` | State, server, connections |
+| `oadm-site-node pairing-code` | The pairing code |
+| `oadm-site-node server oadm.example.com` | Connect to this server |
+| `oadm-site-node server --wait` | Wait for the server |
+| `oadm-site-node allow-binding` | Binding open for another 24 hours, a new code |
+| `oadm-site-node networks` | Network cards and extra networks; `card`, `all`, `add`, `remove` change them |
+| `oadm-site-node ports` | Allowed and requested ports; `allow`, `remove`, `dismiss` change them |
+| `oadm-site-node log` | The newest connections through the node |
+| `oadm-site-node reset` | Forget the server, new identity and code |
+
+## Good to know
+
+- **Server port**: the server accepts site nodes on TCP 5081, only while **Accept site nodes** is on. The Windows
+  installer of the server opens it for Domain and Private networks.
+- **Many live connections**: every lasting connection through a node (device events, live video, the web interface)
+  uses one outgoing port of the node's computer. Windows has 16,384 of them by default, Linux about 28,000. For more,
+  widen the range: on Windows `netsh int ipv4 set dynamicport tcp start=10000 num=55535`, on Linux the setting
+  `net.ipv4.ip_local_port_range`.
+- **Encryption**: devices reached over HTTPS stay encrypted all the way. Devices on plain HTTP or plain RTSP can be read
+  on the node's computer, like on the network itself.
+- **Connection log**: the app shows the last connections through the node. The node also keeps them in its data folder
+  for 30 days.

@@ -13,30 +13,48 @@ const youtube = 'https://www.youtube.com/@oadm-ca';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
+// OADM-<version>-win-x64.msi, not OADM-SiteNode-<version>-win-x64.msi.
 const links = {
-	windows: find(/win-x64\.msi$/),
+	windows: find(/^OADM-\d.*-win-x64\.msi$/),
 	macos: find(/osx-x64\.pkg$/),
 	server: find(/^oadm-server_.*_amd64\.deb$/),
 	client: find(/^oadm-client_.*_amd64\.deb$/),
 	serverArm: find(/^oadm-server_.*_arm64\.deb$/),
 	clientArm: find(/^oadm-client_.*_arm64\.deb$/),
+	// The OADM Site Node (user docs "Sites"): an MSI, and on Linux the service and the app as two .deb files.
+	nodeWindows: find(/^OADM-SiteNode-.*-win-x64\.msi$/),
+	node: find(/^oadm-site-node_.*_amd64\.deb$/),
+	nodeApp: find(/^oadm-site-node-app_.*_amd64\.deb$/),
+	nodeArm: find(/^oadm-site-node_.*_arm64\.deb$/),
+	nodeAppArm: find(/^oadm-site-node-app_.*_arm64\.deb$/),
 };
 ---
 
 <div class="downloads not-content" data-repo={repo}>
 	<span class="dl-label">Download</span>
 	<div class="download-buttons">
-		<a class="dl" data-asset="win-x64\.msi$" href={links.windows}><Icon name="seti:windows" class="os-windows" />Windows</a>
+		<a class="dl" data-asset="^OADM-\d.*-win-x64\.msi$" href={links.windows}><Icon name="seti:windows" class="os-windows" />Windows</a>
 		<details class="dl-linux">
 			<summary class="dl"><Icon name="linux" class="os-linux" />Linux<Icon name="down-caret" class="dl-caret" /></summary>
 			<div class="dl-menu">
-				<a data-linux="amd64" data-asset="^oadm-server_.*_amd64\.deb$" data-client={links.client} href={links.server}>x64</a>
-				<a data-linux="arm64" data-asset="^oadm-server_.*_arm64\.deb$" data-client={links.clientArm} href={links.serverArm}>ARM64</a>
+				<a data-linux="amd64" data-pair="oadm-client_" data-asset="^oadm-server_.*_amd64\.deb$" data-client={links.client} href={links.server}>x64</a>
+				<a data-linux="arm64" data-pair="oadm-client_" data-asset="^oadm-server_.*_arm64\.deb$" data-client={links.clientArm} href={links.serverArm}>ARM64</a>
 			</div>
 		</details>
 		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" class="os-macos" />macOS</a>
 	</div>
 	<a class="dl-version" href={`${base}project/changelog/`} hidden={!version}>{version}</a>
+	<span class="dl-label site-node-label">Site node</span>
+	<div class="download-buttons">
+		<a class="dl" data-asset="^OADM-SiteNode-.*-win-x64\.msi$" href={links.nodeWindows}><Icon name="seti:windows" class="os-windows" />Windows</a>
+		<details class="dl-linux">
+			<summary class="dl"><Icon name="linux" class="os-linux" />Linux<Icon name="down-caret" class="dl-caret" /></summary>
+			<div class="dl-menu">
+				<a data-linux="amd64" data-pair="oadm-site-node-app_" data-asset="^oadm-site-node_.*_amd64\.deb$" data-client={links.nodeApp} href={links.node}>x64</a>
+				<a data-linux="arm64" data-pair="oadm-site-node-app_" data-asset="^oadm-site-node_.*_arm64\.deb$" data-client={links.nodeAppArm} href={links.nodeArm}>ARM64</a>
+			</div>
+		</details>
+	</div>
 	<span class="dl-label community-label">Community</span>
 	<div class="download-buttons">
 		<a class="dl forum-link" href={portal}><Icon name="comment-alt" class="support-icon" />Support Forum</a>
@@ -65,14 +83,15 @@ const links = {
 	// Refresh the links from the latest release in the browser.
 	const root = document.querySelector<HTMLElement>('.downloads');
 
-	// Linux has two packages: each Linux button downloads the server and the client .deb of its architecture.
-	// The Linux menu closes after a choice and on a click elsewhere.
-	const linuxMenu = root?.querySelector<HTMLDetailsElement>('.dl-linux');
+	// Linux has two packages: each Linux button downloads both .deb files of its architecture (OADM: server and client;
+	// site node: service and app). A Linux menu closes after a choice and on a click elsewhere.
+	const linuxMenus = Array.from(root?.querySelectorAll<HTMLDetailsElement>('.dl-linux') ?? []);
 	document.addEventListener('click', (event) => {
-		if (linuxMenu?.open && !linuxMenu.contains(event.target as Node)) linuxMenu.open = false;
+		for (const menu of linuxMenus) if (menu.open && !menu.contains(event.target as Node)) menu.open = false;
 	});
 	root?.querySelectorAll<HTMLAnchorElement>('a[data-linux]').forEach((button) => button.addEventListener('click', (event) => {
-		if (linuxMenu) linuxMenu.open = false;
+		const menu = button.closest('details');
+		if (menu) menu.open = false;
 		const link = event.currentTarget as HTMLAnchorElement;
 		const client = link.dataset.client;
 		if (!client || client === link.href || !client.endsWith('.deb')) return;
@@ -161,7 +180,8 @@ const links = {
 					if (asset) link.href = asset.browser_download_url;
 				});
 				root.querySelectorAll<HTMLAnchorElement>('a[data-linux]').forEach((linux) => {
-					const client = assets.find((a) => a.name.startsWith('oadm-client_') && a.name.endsWith(`_${linux.dataset.linux}.deb`));
+					const pair = linux.dataset.pair ?? 'oadm-client_';
+					const client = assets.find((a) => a.name.startsWith(pair) && a.name.endsWith(`_${linux.dataset.linux}.deb`));
 					if (client) linux.dataset.client = client.browser_download_url;
 				});
 			})

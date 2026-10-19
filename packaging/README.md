@@ -83,3 +83,33 @@ Notes:
   `/icon/oadm-app-icon-<size>.png`; the client uses `oadm-256.png` as window icon.
 - Building the .deb on Windows: in Docker, e.g. `docker run` with `mcr.microsoft.com/dotnet/sdk:10.0` and
   `./manage.sh package linux --rid linux-x64` inside (the image has `dpkg-deb`).
+
+## OADM Site Node
+
+`manage package site-node [--rid RID] [--version V]` (docs/sites.md, "Packaging") publishes the node service
+(`src/Oadm.SiteNode`, `oadm-site-node`) and the app (`src/Oadm.SiteNode.App`, `oadm-site-node-app`) self-contained
+single-file into `artifacts/publish/site-node/<rid>` and `artifacts/publish/site-node-app/<rid>`, writes the notices
+(`tools/Oadm.Notices --product site-node`: hand-written part `notices/site-node.md`, no LGPL part, so no
+`LGPL-2.1.txt`), then builds the packages into `artifacts/packages/`. RIDs: `win-x64` (on Windows), `linux-x64` and
+`linux-arm64` (with `dpkg-deb`). No macOS package, no portable ZIP.
+
+| | Windows (MSI) | Linux (.deb) |
+|---|---|---|
+| File | `OADM-SiteNode-<version>-win-x64.msi` | `oadm-site-node_<version>_<amd64\|arm64>.deb`, `oadm-site-node-app_<version>_<amd64\|arm64>.deb` |
+| Built with | WiX Toolset 6 (`windows/site-node/Oadm.SiteNode.Installer.wixproj`) | `dpkg-deb` (`linux/build-site-node-deb.sh`, files in `linux/site-node/`) |
+| Program | `C:\Program Files\OADM Site Node` (service and app), on the system PATH | `/opt/oadm/site-node` + `/usr/bin/oadm-site-node`; app `/opt/oadm/site-node-app` + `/usr/bin/oadm-site-node-app`, `oadm-site-node.desktop` + icon (package `oadm-site-node-app`, Depends `oadm-site-node`) |
+| Service | "OADM Site Node" (`OadmSiteNode`), automatic, LocalService, restart on failure | systemd `oadm-site-node.service`, user `oadm-site-node` (created by postinst), `Type=notify`, `AmbientCapabilities=CAP_NET_BIND_SERVICE` (relays below 1024), `RuntimeDirectory=oadm-site-node` (`/run/oadm-site-node/admin.sock`), `Restart=on-failure` |
+| Data folder | `%ProgramData%\OADM Site Node`, SYSTEM + LocalService only | `/var/lib/oadm-site-node` (StateDirectory 0700, owned by the service user) |
+| Native lib extraction | `%ProgramData%\OADM Site Node\runtime` | `/var/cache/oadm-site-node` |
+| Firewall | none at install. "Wait for the server" in the app (or `oadm-site-node server --wait` as administrator) adds "OADM Site Node (TCP 5081)", Domain and Private; "Connect to the server" and uninstalling remove it | not touched |
+| Server address | silent: `msiexec /i OADM-SiteNode-<version>-win-x64.msi SERVER=oadm.example.com /qn` (runs `oadm-site-node server <address> --timeout 60` after the service started; a refused address fails the install) | `sudo oadm-site-node server oadm.example.com` |
+| License texts | `TERMS.md`, `LICENSE.txt`, `NOTICE.txt`, `THIRD-PARTY-NOTICES.txt` next to the exes | same in `/opt/oadm/site-node*` and `/usr/share/doc/<package>/` |
+| Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-site-node-app oadm-site-node`; data and user kept, also on purge |
+
+The server side: the OADM MSI's firewall rules cover TCP 5081 too ("OADM Server (site nodes, TCP 5081)", Domain and
+Private); nothing listens there until Accept site nodes is on. The .deb and .pkg of the server change no firewall.
+
+CI (`release.yml`): job `installers` builds the node packages next to the others on Windows and on both Linux runners,
+installs the .deb packages, checks the service (`oadm-site-node status` answers "Not bound") and removes them;
+`smoke-windows` does the same with the node MSI (`windows/smoke.ps1 -Mode SiteNode`); `release` uploads them with the
+others and lists them in `SHA256SUMS.txt`.

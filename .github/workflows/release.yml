@@ -6,7 +6,9 @@ name: release
 #   2. installers MSI (Windows), .deb packages (Linux amd64 and arm64), .pkg (macOS Intel), built with "manage package"; the MSI
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
 #                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
-#                 plus the portable ZIPs of the server and client publish folders per platform (plugin development)
+#                 plus the portable ZIPs of the server and client publish folders per platform (plugin development);
+#                 the OADM Site Node too: its MSI (installed by smoke-windows) and its .deb packages (amd64, arm64,
+#                 installed, checked and removed here); no portable ZIP and no macOS package for the node
 #   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (a tag with a pre-release
 #                 part, v1.2.0-rc.1, is a pre-release and never the latest; installers are not signed;
 #                 the checksums are published instead)
@@ -97,6 +99,17 @@ jobs:
         shell: bash
         run: ./manage.sh package ${{ matrix.target }} --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
 
+      # The OADM Site Node (docs/sites.md, "Packaging"): the MSI on Windows, both .deb packages on each Linux runner.
+      - name: Build site node package (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: ./manage.ps1 package site-node --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: Build site node packages (Linux)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: ./manage.sh package site-node --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
       - name: License texts next to the published exes
         shell: bash
         run: |
@@ -107,6 +120,17 @@ jobs:
           done
           grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
           grep -q "^Avalonia " "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+          if [ "${{ matrix.target }}" != macos ]; then
+            # The site node has no LGPL part: no LGPL-2.1.txt.
+            for app in site-node site-node-app; do
+              for f in TERMS.md LICENSE.txt NOTICE.txt THIRD-PARTY-NOTICES.txt; do
+                test -s "artifacts/publish/$app/${{ matrix.rid }}/$f" || { echo "$app: $f missing"; exit 1; }
+              done
+              test ! -e "artifacts/publish/$app/${{ matrix.rid }}/LGPL-2.1.txt"
+            done
+            grep -q "^OADM Site Node third-party notices" "artifacts/publish/site-node/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+            grep -q "^Avalonia " "artifacts/publish/site-node-app/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+          fi
 
       # The publish folders as ZIPs (plugin development: "oadm dev" runs them without installing; website dev/plugin-sdk.md).
       # One top folder named like the file. zip keeps the executable bits on Linux and macOS.
@@ -138,7 +162,7 @@ jobs:
         if: matrix.target == 'windows'
         shell: pwsh
         run: |
-          $msi = Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1
+          $msi = Get-ChildItem artifacts/packages/OADM-*.msi | Where-Object Name -notlike 'OADM-SiteNode-*' | Select-Object -First 1
           $wi = New-Object -ComObject WindowsInstaller.Installer
           $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi.FullName, 0))
           function Query([string]$q) {
@@ -153,13 +177,44 @@ jobs:
           "features: $($features -join ', ')"
           if (($features -join ',') -ne 'Client,Server') { throw 'features Client and Server expected' }
           Query 'SELECT Name, DisplayName, StartType, Arguments FROM ServiceInstall'
-          $fw = @(Query 'SELECT Name, Port, Protocol, Profile FROM Wix5FirewallException')
+          $fw = @(Query 'SELECT Name, Port, Protocol, Profile FROM Wix5FirewallException' | Sort-Object)
           $fw
-          if ($fw.Count -ne 1 -or $fw[0] -notmatch '^OADM Server \(gRPC, TCP 5080\) \| 5080 \| 6 \| \[OADM_FW_PROFILE\]$') { throw 'only the TCP 5080 rule expected' }
+          if ($fw.Count -ne 2 -or $fw[0] -notmatch '^OADM Server \(gRPC, TCP 5080\) \| 5080 \| 6 \| \[OADM_FW_PROFILE\]$' -or
+              $fw[1] -notmatch '^OADM Server \(site nodes, TCP 5081\) \| 5081 \| 6 \| \[OADM_FW_PROFILE\]$') { throw 'the rules for TCP 5080 and 5081 expected' }
           if ((Query "SELECT Value FROM Property WHERE Property='OADM_FW_PROFILE'") -ne '3') { throw 'firewall profile must be Domain + Private (3)' }
           $licenses = @(Query 'SELECT FileName FROM File') | Where-Object { $_ -match 'LICENSE\.txt|THIRD-PARTY-NOTICES\.txt|LGPL-2\.1\.txt' }
           if ($licenses.Count -ne 6) { throw "license texts in both folders expected, found $($licenses.Count)" }
           if (@(@(Query 'SELECT FileName FROM File') -match 'TERMS\.md').Count -ne 2) { throw 'TERMS.md in both folders expected' }
+          Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
+
+      - name: Validate site node MSI
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem artifacts/packages/OADM-SiteNode-*-win-x64.msi | Select-Object -First 1
+          if (-not $msi) { throw 'OADM-SiteNode-<version>-win-x64.msi missing' }
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi.FullName, 0))
+          function Query([string]$q) {
+            $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @($q))
+            $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
+            while ($rec = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)) {
+              $n = $rec.GetType().InvokeMember('FieldCount', 'GetProperty', $null, $rec, $null)
+              (1..$n | ForEach-Object { $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @([int]$_)) }) -join ' | '
+            }
+          }
+          $service = @(Query 'SELECT Name, DisplayName, StartType, StartName FROM ServiceInstall')
+          $service
+          if ($service.Count -ne 1 -or $service[0] -ne 'OadmSiteNode | OADM Site Node | 2 | NT AUTHORITY\LocalService') { throw 'service OadmSiteNode as LocalService expected' }
+          # No firewall rule: the node connects out; the app adds TCP 5081 only for "Wait for the server".
+          if (@(Query "SELECT Name FROM _Tables WHERE Name='Wix5FirewallException'").Count -ne 0) { throw 'the node MSI must not add a firewall rule' }
+          $files = @(Query 'SELECT FileName FROM File')
+          $files
+          foreach ($f in 'oadm-site-node.exe', 'oadm-site-node-app.exe', 'THIRD-PARTY-NOTICES.txt', 'LICENSE.txt', 'NOTICE.txt', 'TERMS.md') {
+            if (-not ($files -match [regex]::Escape($f))) { throw "$f missing" }
+          }
+          if ($files -match 'LGPL') { throw 'the node has no LGPL part' }
+          Query "SELECT Action, Target FROM CustomAction WHERE Action='SetOadmSetServer'"
           Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
 
       - name: Inspect .deb packages
@@ -177,6 +232,23 @@ jobs:
           dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
           for p in oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_${{ matrix.deb }}.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
           ! dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'oadm-server.service'
+          # The site node: service + command line, and the app (Depends oadm-site-node); no LGPL text.
+          node=$(ls artifacts/packages/oadm-site-node_*_${{ matrix.deb }}.deb)
+          app=$(ls artifacts/packages/oadm-site-node-app_*_${{ matrix.deb }}.deb)
+          dpkg-deb --info "$node"
+          dpkg-deb --info "$app"
+          dpkg-deb --contents "$node" | grep -q 'usr/lib/systemd/system/oadm-site-node.service'
+          dpkg-deb --contents "$node" | grep -q 'usr/bin/oadm-site-node -> /opt/oadm/site-node/oadm-site-node'
+          dpkg-deb --contents "$node" | grep -q 'usr/share/doc/oadm-site-node/THIRD-PARTY-NOTICES.txt'
+          dpkg-deb --contents "$app" | grep -q 'usr/share/applications/oadm-site-node.desktop'
+          dpkg-deb --contents "$app" | grep -q 'usr/share/doc/oadm-site-node-app/TERMS.md'
+          ! dpkg-deb --contents "$node" | grep -q 'LGPL'
+          ! dpkg-deb --contents "$app" | grep -q 'LGPL'
+          dpkg-deb --field "$app" Depends | grep -q '^oadm-site-node (= '
+          dpkg-deb --fsys-tarfile "$node" | tar -xO ./usr/lib/systemd/system/oadm-site-node.service > node.service
+          grep -qx 'User=oadm-site-node' node.service
+          grep -qx 'RuntimeDirectory=oadm-site-node' node.service
+          grep -qx 'AmbientCapabilities=CAP_NET_BIND_SERVICE' node.service
 
       - name: Check .pkg choices (macOS, not installed)
         if: matrix.target == 'macos'
@@ -232,6 +304,39 @@ jobs:
           test ! -e /usr/bin/oadm-client
           echo "client only: install, decoder, remove ok"
 
+      - name: Smoke test (Linux .deb, site node)
+        if: matrix.target == 'linux' && matrix.smoke
+        run: |
+          sudo apt-get install -y ./artifacts/packages/oadm-site-node_*_${{ matrix.deb }}.deb ./artifacts/packages/oadm-site-node-app_*_${{ matrix.deb }}.deb
+          systemctl status oadm-site-node --no-pager || true
+          # The local channel answers every user; unbound right after the install.
+          ok=0
+          for i in $(seq 60); do if oadm-site-node status > status.txt 2>&1; then ok=1; break; fi; sleep 1; done
+          cat status.txt
+          test "$ok" = 1 || { sudo journalctl -u oadm-site-node --no-pager | tail -60; exit 1; }
+          grep -q 'Not bound' status.txt
+          systemctl is-active oadm-site-node
+          # Its own user, never root; the right to bind ports below 1024 and nothing else.
+          test "$(systemctl show -p User --value oadm-site-node)" = oadm-site-node
+          test "$(ps -o user:32= -C oadm-site-node | head -n 1)" = oadm-site-node
+          systemctl show -p AmbientCapabilities --value oadm-site-node | grep -q cap_net_bind_service
+          test -S /run/oadm-site-node/admin.sock
+          sudo ls -la /var/lib/oadm-site-node
+          test "$(sudo stat -c %a /var/lib/oadm-site-node)" = 700
+          test "$(sudo stat -c %U /var/lib/oadm-site-node)" = oadm-site-node
+          sudo test -f /var/lib/oadm-site-node/node.json
+          # A change needs root (or the service user): refused for this user, done with sudo.
+          ! oadm-site-node server 127.0.0.1
+          sudo oadm-site-node server 127.0.0.1
+          oadm-site-node status | grep -q 'Server: 127.0.0.1'
+          test -x /opt/oadm/site-node-app/oadm-site-node-app && test -L /usr/bin/oadm-site-node-app
+          test -s /usr/share/doc/oadm-site-node/THIRD-PARTY-NOTICES.txt && test ! -e /opt/oadm/site-node/LGPL-2.1.txt
+          sudo apt-get remove -y oadm-site-node-app oadm-site-node
+          ! systemctl is-active oadm-site-node
+          test ! -e /usr/bin/oadm-site-node
+          sudo test -f /var/lib/oadm-site-node/node.json
+          echo "site node: install, service, status, remove ok"
+
       - name: Upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -247,14 +352,14 @@ jobs:
           path: artifacts/portable-zips/*
           if-no-files-found: error
 
-  # The MSI installed, checked and removed on a fresh runner: a job of its own, so a runner that stops answering fails
-  # after 25 minutes instead of the installer job's 60, and "Re-run failed jobs" repeats only this job and the release.
+  # The MSIs (OADM, OADM Site Node) installed, checked and removed on a fresh runner: a job of its own, so a runner that stops answering fails
+  # after 30 minutes instead of the installer job's 60, and "Re-run failed jobs" repeats only this job and the release.
   # packaging/windows/smoke.ps1 prints the time on every line and a heartbeat while a program runs.
   smoke-windows:
     name: smoke windows win-x64
     needs: installers
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -262,7 +367,7 @@ jobs:
           sparse-checkout: packaging/windows/smoke.ps1
           sparse-checkout-cone-mode: false
 
-      - name: Download the MSI
+      - name: Download the MSIs
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: oadm-*-win-x64
@@ -272,12 +377,17 @@ jobs:
       - name: Smoke test (Windows MSI, server and client)
         shell: pwsh
         timeout-minutes: 12
-        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/*.msi | Select-Object -First 1).FullName -Mode ServerAndClient
+        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/OADM-*.msi | Where-Object Name -notlike 'OADM-SiteNode-*' | Select-Object -First 1).FullName -Mode ServerAndClient
 
       - name: Smoke test (Windows MSI, client only)
         shell: pwsh
         timeout-minutes: 8
-        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/*.msi | Select-Object -First 1).FullName -Mode ClientOnly
+        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/OADM-*.msi | Where-Object Name -notlike 'OADM-SiteNode-*' | Select-Object -First 1).FullName -Mode ClientOnly
+
+      - name: Smoke test (Windows MSI, site node)
+        shell: pwsh
+        timeout-minutes: 8
+        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/OADM-SiteNode-*.msi | Select-Object -First 1).FullName -Mode SiteNode
 
   # Classic GitHub release for the tag with the installers and their SHA-256 checksums, only when the tests and every
   # installer job succeeded. A moved tag (re-run of the same version) replaces the files of the existing release.

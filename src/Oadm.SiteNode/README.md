@@ -60,6 +60,15 @@ oadm-site-node ports [allow|remove|dismiss connect|listen tcp|udp <port>]
 oadm-site-node log [count]
 ```
 
+`--timeout <seconds>` waits that long for the service to answer (the MSI's `SERVER=<address>` runs `server <address>
+--timeout 60` right after starting the service).
+
+**Firewall (Windows)**: the MSI opens no port. "Wait for the server" adds the inbound rule "OADM Site Node (TCP 5081)"
+(Domain and Private, for `oadm-site-node.exe`), "Connect to the server" removes it (`Admin/NodeFirewall`). The service
+runs as LocalService and cannot change the firewall, so the administrator's process that sent the change runs netsh: the
+elevated copy of the app, the app running as administrator, or the command line. Uninstalling removes the rule. Linux:
+no firewall change.
+
 ## Tests
 
 `tests/Oadm.SiteNode.Tests`: unit tests with a fake clock and fake cards (states, pairing, networks, ports, the
