@@ -150,6 +150,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="site" Header="Site" Width="120*" MinWidth="90" Binding="{Binding Row.SiteName}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="76" Binding="{Binding Row.DhcpText}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="86" Binding="{Binding Row.HttpsText}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="certExpires" Width="156*" MinWidth="140" SortMemberPath="Row.CertExpiresSortKey" CellStyleClasses="number">

@@ -302,7 +302,7 @@ public sealed class DeviceTagsTests
         using DevicesFixture f = Seeded();
         string csv = DeviceListCsv.Write(f.Store.Devices);
         string[] lines = csv.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-        Assert.StartsWith("MAC address,Status,Address,Tags,Host name,", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("MAC address,Status,Address,Tags,Site,Host name,", lines[0], StringComparison.Ordinal);
         Assert.Contains(",10.0.0.1,Building A; PTZ,", lines[1], StringComparison.Ordinal);
 
         DeviceImportFile file = DeviceImportFile.Parse("export.csv", csv);

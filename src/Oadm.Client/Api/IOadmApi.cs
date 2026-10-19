@@ -235,6 +235,28 @@ public interface IOadmApi
     /// <summary>Admin: removes the license of a plugin. Returns the whole list.</summary>
     Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct);
 
+    // SiteService (reading needs "See sites"; everything else is Administrator only)
+    Task<SiteList> ListSitesAsync(CancellationToken ct) => Task.FromResult(new SiteList());
+
+    /// <summary>The sites and waiting nodes on subscribe and after every change.</summary>
+    IAsyncEnumerable<SiteList> WatchSitesAsync(CancellationToken ct) => AsyncEnumerable.Empty<SiteList>();
+
+    /// <summary>Accept site nodes on or off; returns the list.</summary>
+    Task<SiteList> SetSiteAcceptAsync(bool accept, CancellationToken ct) => throw new NotSupportedException();
+
+    /// <summary>Nodes that wait for the server: by search for <paramref name="durationSeconds"/>, or at one address.</summary>
+    IAsyncEnumerable<FoundNode> FindSiteNodesAsync(int durationSeconds, string? address, CancellationToken ct) => AsyncEnumerable.Empty<FoundNode>();
+
+    Task<Site> BindSiteAsync(string nodeId, string name, string pairingCode, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<Site> RenameSiteAsync(string id, string name, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<Site> ChangeSiteAddressAsync(string id, string address, int port, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<ReplaceSiteReply> ReplaceSiteAsync(string id, string newSiteId, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<RemoveSiteReply> RemoveSiteAsync(string id, bool keepDevices, CancellationToken ct) => throw new NotSupportedException();
+
     // ComplianceService (reading needs "See compliance", changing "Change compliance checks")
     Task<ComplianceCatalog> GetComplianceCatalogAsync(CancellationToken ct) => Task.FromResult(new ComplianceCatalog());
 

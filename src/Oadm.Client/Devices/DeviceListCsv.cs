@@ -18,9 +18,12 @@ public static class DeviceListCsv
     /// <summary>The device's tags, "Building A; PTZ" (the import reads it back).</summary>
     public const string TagsColumn = "Tags";
 
+    /// <summary>The site the device is reached through, by name; empty on the server's own network.</summary>
+    public const string SiteColumn = "Site";
+
     public static IReadOnlyList<string> Columns { get; } =
     [
-        "MAC address", "Status", AddressColumn, TagsColumn, "Host name", "Model", "Firmware", "SoC", "Category", "Product type",
+        "MAC address", "Status", AddressColumn, TagsColumn, SiteColumn, "Host name", "Model", "Firmware", "SoC", "Category", "Product type",
         "DHCP", "HTTPS", "Certificate expires", "Certificate", "IEEE 802.1X", "Compliance",
     ];
 
@@ -42,6 +45,7 @@ public static class DeviceListCsv
                 d.StatusText,
                 d.DisplayAddress,
                 d.TagsText,
+                d.SiteName,
                 d.HostName,
                 d.Model,
                 d.FirmwareVersion,
