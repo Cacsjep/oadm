@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 
-namespace Oadm.Client.Shell;
+namespace Oadm.Theme.Shell;
 
 /// <summary>
 /// Keeps every window (main window, dialogs, plugin dialogs) inside the screen it opens on: a dialog designed for a large

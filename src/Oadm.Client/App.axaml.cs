@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Logging;
 using Oadm.Client.Shell;
+using Oadm.Theme.Shell;
 
 namespace Oadm.Client;
 

@@ -1,6 +1,6 @@
 using Avalonia;
 
-using Oadm.Client.Shell;
+using Oadm.Theme.Shell;
 
 namespace Oadm.Client.Tests;
 

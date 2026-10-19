@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 
+using Oadm.Theme.Shell;
+
 namespace Oadm.Client.Shell;
 
 public partial class MainWindow : Window
