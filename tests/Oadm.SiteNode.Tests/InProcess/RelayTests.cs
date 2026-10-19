@@ -89,7 +89,7 @@ public sealed class RelayTests
     [Fact]
     public async Task APortNotOnListenOnWaitsForApprovalAndStartsOnceAllowed()
     {
-        var port = Ports.FreeUdp();
+        var port = Ports.FreeTcp();
         // TCP on Connect to never allows a listener on the same port.
         await using var bound = await BoundNodeAsync(c => Allow.Connect(c, port));
         using var relay = bound.Link.Client.Relay();

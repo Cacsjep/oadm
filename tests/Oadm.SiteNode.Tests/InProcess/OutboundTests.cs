@@ -223,6 +223,56 @@ public sealed class OutboundTests
         await link.DisposeAsync();
     }
 
+    [Fact]
+    public async Task WithBindingClosedAnUnboundNodeDoesNotConnectUntilAllowBinding()
+    {
+        await using var server = new TestServer();
+        await using var node = await TestNode.StartAsync(c =>
+        {
+            c.ServerAddress = server.Address;
+            c.BindingSecondsLeft = 0;
+        });
+
+        await Eventually.TrueAsync(() => node.Get<ConnectionState>().Text == AdminTexts.BindingClosed, "the app says binding is closed");
+        Assert.False(node.Get<ConnectionState>().Connected);
+
+        node.Get<BindingState>().AllowBinding();
+
+        await using var link = await server.NextLinkAsync();
+        Assert.Equal(NodeState.UnboundOpen, (await link.Client.HelloAsync(new HelloRequest())).State);
+    }
+
+    [Fact]
+    public async Task CancellingADialClosesTheDevicesSocket()
+    {
+        using var device = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        device.Start();
+        var port = ((IPEndPoint)device.LocalEndpoint).Port;
+        await using var server = new TestServer();
+        await using var node = await TestNode.StartAsync(c =>
+        {
+            c.ServerAddress = server.Address;
+            Allow.Connect(c, port);
+        });
+        await using var link = await server.NextLinkAsync();
+        await link.BindAsync(node.Code);
+        using var cancel = new CancellationTokenSource();
+        var call = link.Client.Dial(cancellationToken: cancel.Token);
+        await call.RequestStream.WriteAsync(new DialMessage { Open = new DialOpen { Host = "127.0.0.1", Port = port, Kind = DialKind.Permanent } });
+        Assert.True(await call.ResponseStream.MoveNext());
+        using var accepted = await device.AcceptSocketAsync();
+        Assert.Equal(1, node.Get<Devices.Dialer>().PermanentConnections);
+
+        await cancel.CancelAsync();
+        call.Dispose();
+
+        var buffer = new byte[1];
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var read = await accepted.ReceiveAsync(buffer, System.Net.Sockets.SocketFlags.None, timeout.Token);
+        Assert.Equal(0, read); // the node closed its side
+        await Eventually.TrueAsync(() => node.Get<Devices.Dialer>().PermanentConnections == 0, "the connection is counted out");
+    }
+
     internal static async Task<DialResult> DialResultAsync(SiteNodeService.SiteNodeServiceClient client, string host, int port, DialKind kind = DialKind.Short)
     {
         using var call = client.Dial();
