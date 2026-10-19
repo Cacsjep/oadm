@@ -381,6 +381,13 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         EnsureSameDevice(request.RequestUri);
         var deviceTimeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
         request.Options.Set(DeviceRouter.ConnectTimeoutOption, deviceTimeout);
+        var streamed = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream;
+
+        // Through a site at most a few large transfers run at once (docs/sites.md): the wait is not part of the device's
+        // timeout. A streamed answer keeps its slot until the caller disposes the response.
+        var slot = !Route.IsLocal && (streamed || IsLargeBody(request.Content))
+            ? await Router.EnterLargeTransferAsync(Route, ct).ConfigureAwait(false)
+            : null;
         var timeout = Router.Timeout(Route, deviceTimeout);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (timeout != System.Threading.Timeout.InfiniteTimeSpan)
@@ -392,11 +399,15 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         {
             // Streamed answers (VapixRequestOptions.StreamResponse) are not buffered, so MaxResponseBytes does not apply:
             // the caller reads the body itself and enforces its own limit.
-            var completion = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream
-                ? HttpCompletionOption.ResponseHeadersRead
-                : HttpCompletionOption.ResponseContentRead;
+            var completion = streamed ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead;
             var response = await _http.SendAsync(request, completion, timeoutCts.Token).ConfigureAwait(false);
             NormalizeCharset(response.Content);
+            if (slot is not null && streamed)
+            {
+                response.Content = new SlotContent(response.Content, slot);
+                slot = null;
+            }
+
             return response;
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
@@ -418,6 +429,59 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         catch (HttpRequestException ex) when (Pinning?.MismatchFingerprint is { } actual)
         {
             throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
+        }
+        finally
+        {
+            slot?.Dispose();
+        }
+    }
+
+    /// <summary>Request bodies above this size (or of unknown size) are large transfers through a site.</summary>
+    public const long LargeBodyBytes = 1024 * 1024;
+
+    private static bool IsLargeBody(HttpContent? content) =>
+        content is not null && (content.Headers.ContentLength is not { } length || length > LargeBodyBytes);
+
+    /// <summary>A streamed answer that frees its site slot when the response is disposed.</summary>
+    private sealed class SlotContent : HttpContent
+    {
+        private readonly HttpContent _inner;
+        private IDisposable? _slot;
+
+        public SlotContent(HttpContent inner, IDisposable slot)
+        {
+            _inner = inner;
+            _slot = slot;
+            foreach (var header in inner.Headers)
+            {
+                Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => _inner.CopyToAsync(stream);
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
+            _inner.CopyToAsync(stream, cancellationToken);
+
+        protected override Task<Stream> CreateContentReadStreamAsync() => _inner.ReadAsStreamAsync();
+
+        protected override Task<Stream> CreateContentReadStreamAsync(CancellationToken cancellationToken) => _inner.ReadAsStreamAsync(cancellationToken);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = _inner.Headers.ContentLength ?? 0;
+            return _inner.Headers.ContentLength is not null;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+                Interlocked.Exchange(ref _slot, null)?.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
     }
 

@@ -54,6 +54,18 @@ public sealed class DeviceRouter
     public TimeSpan ExtraTimeout(DeviceRoute route) =>
         route.SiteId is { } site && _states is not null ? _states.RoundTrip(site) * NewConnectionRoundTrips : TimeSpan.Zero;
 
+    /// <summary>
+    /// A large transfer (a streamed upload or answer) on <paramref name="route"/>: through a site it waits for one of the
+    /// site's slots (<see cref="ISiteLargeTransfers"/>); on the server's own network, or without such a transport, null at once.
+    /// </summary>
+    public ValueTask<IDisposable?> EnterLargeTransferAsync(DeviceRoute route, CancellationToken ct) =>
+        route.SiteId is { } site && _transport is ISiteLargeTransfers transfers
+            ? Enter(transfers, site, ct)
+            : ValueTask.FromResult<IDisposable?>(null);
+
+    private static async ValueTask<IDisposable?> Enter(ISiteLargeTransfers transfers, Guid site, CancellationToken ct) =>
+        await transfers.EnterLargeTransferAsync(site, ct).ConfigureAwait(false);
+
     /// <summary><paramref name="timeout"/> with <see cref="ExtraTimeout"/> on top (an infinite timeout stays infinite).</summary>
     public TimeSpan Timeout(DeviceRoute route, TimeSpan timeout) =>
         timeout == System.Threading.Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero ? timeout : timeout + ExtraTimeout(route);
