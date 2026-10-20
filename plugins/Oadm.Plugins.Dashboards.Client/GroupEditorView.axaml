@@ -34,10 +34,10 @@
     </ui:CardHeader>
 
     <ui:FormField Classes="wide" Label="Width" Hint="Cells (2 to 20)">
-      <TextBox Text="{Binding WidthText}" Watermark="{Binding WidthWatermark}" MaxLength="2" />
+      <TextBox Text="{Binding WidthText}" PlaceholderText="{Binding WidthWatermark}" MaxLength="2" />
     </ui:FormField>
     <ui:FormField Classes="wide" Label="Height" Hint="Cells (2 to 20)">
-      <TextBox Text="{Binding HeightText}" Watermark="{Binding HeightWatermark}" MaxLength="2" />
+      <TextBox Text="{Binding HeightText}" PlaceholderText="{Binding HeightWatermark}" MaxLength="2" />
     </ui:FormField>
     <ui:FormField Classes="wide" Label="Show name" IsVisible="{Binding ShowValueSettings}">
       <ComboBox ItemsSource="{Binding YesNoChoices}" SelectedItem="{Binding ShowNameChoice}" PlaceholderText="Mixed" />
@@ -51,7 +51,7 @@
         <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding OnColor}" PlaceholderText="Mixed" ItemTemplate="{StaticResource DashboardColorTemplate}" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="On text" Hint="Optional">
-        <TextBox Text="{Binding OnText}" Watermark="{Binding OnTextWatermark}" MaxLength="64" />
+        <TextBox Text="{Binding OnText}" PlaceholderText="{Binding OnTextWatermark}" MaxLength="64" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Off icon">
         <ComboBox ItemsSource="{Binding Icons}" SelectedItem="{Binding OffIcon}" PlaceholderText="Mixed" ItemTemplate="{StaticResource DashboardIconTemplate}" />
@@ -60,7 +60,7 @@
         <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding OffColor}" PlaceholderText="Mixed" ItemTemplate="{StaticResource DashboardColorTemplate}" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Off text" Hint="Optional">
-        <TextBox Text="{Binding OffText}" Watermark="{Binding OffTextWatermark}" MaxLength="64" />
+        <TextBox Text="{Binding OffText}" PlaceholderText="{Binding OffTextWatermark}" MaxLength="64" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Icon size" Hint="{Binding IconSizeText}">
         <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding IconSizeValue}" />
@@ -76,10 +76,10 @@
 
     <StackPanel Spacing="10" IsVisible="{Binding ShowGauge}">
       <ui:FormField Classes="wide" Label="Min">
-        <TextBox Text="{Binding MinText}" Watermark="{Binding MinWatermark}" />
+        <TextBox Text="{Binding MinText}" PlaceholderText="{Binding MinWatermark}" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Max">
-        <TextBox Text="{Binding MaxText}" Watermark="{Binding MaxWatermark}" />
+        <TextBox Text="{Binding MaxText}" PlaceholderText="{Binding MaxWatermark}" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Line width" Hint="{Binding LineWidthText}">
         <Slider Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding LineWidthValue}" />
@@ -91,7 +91,7 @@
         <ComboBox ItemsSource="{Binding DecimalChoices}" SelectedItem="{Binding Decimals}" PlaceholderText="Mixed" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Unit" Hint="Optional">
-        <TextBox Text="{Binding Unit}" Watermark="{Binding UnitWatermark}" MaxLength="10" />
+        <TextBox Text="{Binding Unit}" PlaceholderText="{Binding UnitWatermark}" MaxLength="10" />
       </ui:FormField>
     </StackPanel>
   </StackPanel>
