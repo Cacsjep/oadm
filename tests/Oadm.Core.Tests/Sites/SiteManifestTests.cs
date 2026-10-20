@@ -32,6 +32,25 @@ public sealed class SiteManifestTests : IDisposable
         Assert.Null(manifest.SitePorts);
     }
 
+    [Fact]
+    public void TheManifestKeepsTheConstructorAndDeconstructOfSdk010()
+    {
+        // Plugins built against SDK 0.1.0 call these exact members: a new manifest entry must never change them.
+        Type[] parameters =
+        [
+            typeof(string), typeof(string), typeof(string), typeof(string), typeof(bool), typeof(bool), typeof(string),
+            typeof(Sdk.Licensing.PluginLicenseManifest),
+        ];
+        var type = typeof(Sdk.Plugins.PluginManifest);
+        Assert.NotNull(type.GetConstructor(parameters));
+        var deconstruct = Assert.Single(type.GetMethods(), m => m.Name == "Deconstruct");
+        Assert.Equal(parameters, deconstruct.GetParameters().Select(p => p.ParameterType.GetElementType()));
+
+        var manifest = new Sdk.Plugins.PluginManifest("a", "1.0", "0.1.0") { SiteSupport = SiteSupport.Full };
+        Assert.Equal(SiteSupport.Full, manifest.SiteSupport);
+        Assert.NotEqual(manifest, manifest with { SiteSupport = null });
+    }
+
     private Sdk.Plugins.PluginManifest Read(string json)
     {
         var path = Path.Combine(_folder, "plugin.json");

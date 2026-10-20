@@ -448,8 +448,10 @@ public interface IPluginSettings
 /// <param name="AlwaysOn">True: core functionality that cannot be turned off.</param>
 /// <param name="Description">One short sentence for the Plugins page.</param>
 /// <param name="License">The plugin is sold with a license (public key, features, trial days); null = free.</param>
-/// <param name="SiteSupport">Whether the package works with devices at a site; null (not declared) counts as <see cref="Sites.SiteSupport.None"/>.</param>
-/// <param name="SitePorts">Ports the package listens on at sites (relays), known in advance; null = none.</param>
+/// <remarks>
+/// The positional parameters are those of SDK 0.1.0 (constructor and <c>Deconstruct</c> stay binary compatible); later
+/// entries are init properties.
+/// </remarks>
 public sealed record PluginManifest(
     string Id,
     string Version,
@@ -458,9 +460,14 @@ public sealed record PluginManifest(
     bool EnabledByDefault = true,
     bool AlwaysOn = false,
     string? Description = null,
-    PluginLicenseManifest? License = null,
-    Sites.SiteSupport? SiteSupport = null,
-    IReadOnlyList<Sites.SitePort>? SitePorts = null);
+    PluginLicenseManifest? License = null)
+{
+    /// <summary>Whether the package works with devices at a site; null (not declared) counts as <see cref="Sites.SiteSupport.None"/>.</summary>
+    public Sites.SiteSupport? SiteSupport { get; init; }
+
+    /// <summary>Ports the package listens on at sites (relays), known in advance; null = none.</summary>
+    public IReadOnlyList<Sites.SitePort>? SitePorts { get; init; }
+}
 
 /// <summary>
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related
