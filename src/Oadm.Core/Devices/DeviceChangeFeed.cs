@@ -110,6 +110,11 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
     // the order they were stamped and PublishUnlessNewer can compare. The Changed event runs outside it.
     private readonly Lock _publishing = new();
     private readonly Dictionary<Guid, long> _lastPublished = [];
+
+    // A removed device keeps its stamp for a while (a stale copy read before the removal must not bring it back), but
+    // never for good: at most TombstoneLimit removals are remembered, the oldest dropped first.
+    private readonly Dictionary<Guid, long> _removed = [];
+    private readonly Queue<(Guid Id, long Stamp)> _removedOrder = new();
     private long _version;
     private long _sequence;
 
@@ -160,7 +165,7 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         {
             foreach (var change in prepared)
             {
-                if (_lastPublished.TryGetValue(change.DeviceId, out var last) && last > since)
+                if ((_lastPublished.TryGetValue(change.DeviceId, out var last) || _removed.TryGetValue(change.DeviceId, out last)) && last > since)
                 {
                     continue; // a newer change of this device went out after the caller read it
                 }
@@ -184,7 +189,43 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         return delivered.Count;
     }
 
-    private void Stamp(DeviceChange change) => _lastPublished[change.DeviceId] = Interlocked.Increment(ref _sequence);
+    /// <summary>How many removed devices keep their stamp (default: the device limit, one whole table).</summary>
+    internal int TombstoneLimit { get; init; } = Sdk.Devices.DeviceLimits.MaxDevices;
+
+    /// <summary>Devices with a stamp now, removed ones included (tests).</summary>
+    internal int StampCount
+    {
+        get
+        {
+            lock (_publishing)
+            {
+                return _lastPublished.Count + _removed.Count;
+            }
+        }
+    }
+
+    private void Stamp(DeviceChange change)
+    {
+        var stamp = Interlocked.Increment(ref _sequence);
+        if (change.Kind != DeviceChangeKind.Removed)
+        {
+            _lastPublished[change.DeviceId] = stamp;
+            _removed.Remove(change.DeviceId);
+            return;
+        }
+
+        _lastPublished.Remove(change.DeviceId);
+        _removed[change.DeviceId] = stamp;
+        _removedOrder.Enqueue((change.DeviceId, stamp));
+        while (_removedOrder.Count > TombstoneLimit)
+        {
+            var (id, old) = _removedOrder.Dequeue();
+            if (_removed.TryGetValue(id, out var current) && current == old)
+            {
+                _removed.Remove(id);
+            }
+        }
+    }
 
     private void Write(DeviceChange change)
     {
