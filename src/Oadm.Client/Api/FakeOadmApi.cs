@@ -610,6 +610,19 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     /// <summary>The server's device limit (<see cref="Oadm.Sdk.Devices.DeviceLimits.MaxDevices"/>; tests lower it).</summary>
     public int DeviceLimit { get; set; } = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
 
+    /// <summary>Adds devices and tasks before a client connects (start tests with a large server).</summary>
+    internal void AddForTests(IEnumerable<Device> devices, IEnumerable<TaskInfo>? tasks = null)
+    {
+        lock (_gate)
+        {
+            _devices.AddRange(devices);
+            if (tasks is not null)
+            {
+                _tasks.AddRange(tasks);
+            }
+        }
+    }
+
     /// <summary>Number of managed devices (tests).</summary>
     public int DeviceCount
     {
