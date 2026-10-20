@@ -4,7 +4,9 @@ using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Sdk.Testing;
 using Oadm.Server.Sites;
+using Oadm.SiteNode.Admin;
 using Oadm.SiteNode.Links;
+using Oadm.SiteNode.State;
 
 using Proto = Oadm.Contracts.V1;
 
@@ -136,6 +138,33 @@ public sealed class SiteSessionRulesTests
         Assert.Single(server.Manager.Sites); // bound and stored: the node connects again once site nodes are turned on
         await Eventually.TrueAsync(() => node.Get<LinkRegistry>().Links.Count == 0, "the bind's link closed");
         Assert.Equal(0, server.Manager.LiveSessions);
+    }
+
+    [Fact]
+    public async Task ABindTheAdministratorCancelsAfterTheNodeBoundIsStoredAnyway()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var proxy = new PausableProxy(new IPEndPoint(IPAddress.Loopback, server.Manager.ListenPort));
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = proxy.Address);
+        var waiting = await server.WaitingAsync(node.NodeId);
+        var gate = PointGate.Hold(server.Manager, "bind-call");
+        using var cancel = new CancellationTokenSource();
+
+        // The call's token is the one of the administrator's BindSite call (closing the dialog cancels it).
+        var bind = server.Manager.BindAsync(waiting.NodeId, waiting.NodeFingerprint, "Building B", node.Code, cancel.Token);
+        await gate.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+        proxy.Pause(toServer: true, toNode: false); // the node gets Bind, its answer is late
+        gate.Open();
+        await Eventually.TrueAsync(() => node.Get<BindingState>().Binding == NodeBinding.Bound, "the node bound");
+        await cancel.CancelAsync(); // the administrator closes the dialog
+        proxy.Resume();
+        await bind;
+
+        // The node is bound, so the site is stored and comes online: never a node bound to a server without its site.
+        await Eventually.TrueAsync(() => server.Manager.Sites.Count == 1, "the site stored");
+        var id = server.Manager.Sites.Single().Id;
+        await Eventually.TrueAsync(() => server.Manager.IsOnline(id), "the site online");
+        Assert.Contains(SiteAudit.Bound, await server.AuditActionsAsync());
     }
 
     [Fact]

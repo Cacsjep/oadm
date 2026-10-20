@@ -177,13 +177,26 @@ public sealed partial class SiteManager
                 throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.InvalidAnswer);
             }
 
-            var reply = await client.BindAsync(new BindRequest
+            // Bind runs to its end whatever the caller does: a node that bound and whose answer the server never read would
+            // stay bound to a server without the site. A lost answer (no refusal) is followed by Unbind for the same reason.
+            await Point("bind-call", ct).ConfigureAwait(false);
+            BindReply reply;
+            try
             {
-                SiteName = siteName,
-                ServerName = _serverName,
-                ServerRound2 = round2,
-                Proof = ByteString.CopyFrom(proof),
-            }, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: ct).ConfigureAwait(false);
+                reply = await client.BindAsync(new BindRequest
+                {
+                    SiteName = siteName,
+                    ServerName = _serverName,
+                    ServerRound2 = round2,
+                    Proof = ByteString.CopyFrom(proof),
+                }, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (RpcException e) when (e.StatusCode is not (StatusCode.PermissionDenied or StatusCode.ResourceExhausted or StatusCode.FailedPrecondition or StatusCode.InvalidArgument))
+            {
+                await UnbindQuietlyAsync(link).ConfigureAwait(false);
+                throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering + " " + (HelloRules.IsText(e.Status.Detail, 200) ? e.Status.Detail : string.Empty));
+            }
+
             if (!pairing.Check(reply.Proof.ToByteArray()))
             {
                 // The node did not prove the same code on this connection: something in between.

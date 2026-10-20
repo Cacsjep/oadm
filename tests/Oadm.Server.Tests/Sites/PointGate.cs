@@ -14,9 +14,6 @@ internal sealed class PointGate
     /// <summary>Completes when the manager reached the point.</summary>
     public Task Entered => _entered.Task;
 
-    /// <summary>The call's token at the point (the bind's: tests see when the caller's cancellation arrived).</summary>
-    public CancellationToken Token { get; private set; }
-
     public static PointGate Hold(SiteManager manager, string name)
     {
         var gate = new PointGate(name);
@@ -33,7 +30,6 @@ internal sealed class PointGate
             return Task.CompletedTask;
         }
 
-        Token = ct;
         _entered.TrySetResult();
         return _open.Task.WaitAsync(TimeSpan.FromSeconds(60), CancellationToken.None); // held whatever the call does: the test decides
     }
