@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 
@@ -23,8 +22,7 @@ public sealed partial class AppShell(
     Func<LoginViewModel> loginFactory,
     MainWindowViewModel main,
     ILogger<AppShell> logger,
-    LiveView.GpuDecodingService? gpu = null,
-    TimeProvider? time = null)
+    LiveView.GpuDecodingService? gpu = null)
 {
     public const string SessionEndedMessage = "Your session has ended. Log in again.";
 
@@ -73,9 +71,8 @@ public sealed partial class AppShell(
 
     /// <summary>
     /// The real loading behind the splash: connect and resume a remembered login (real server), then start the streams and
-    /// wait for the first device list. The splash stays at least <see cref="SplashViewModel.MinimumDuration"/> (the logo
-    /// animation is complete). Then the next window opens behind the splash (topmost) and draws its first frame, and only
-    /// then the splash fades out over it: no blank window in between (the main window's first layout takes a moment).
+    /// wait for the first device list. The splash stays at least <see cref="SplashViewModel.MinimumDuration"/> (the logo is
+    /// complete), then fades out and the login or main window opens.
     /// </summary>
     private async Task StartupAsync(SplashWindow window, SplashViewModel splash)
     {
@@ -118,12 +115,17 @@ public sealed partial class AppShell(
         await minimum.ConfigureAwait(true);
         splash.Step("Ready", 100);
         await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(true);
-        window.Topmost = true;
-        Window next = login is not null ? ShowLogin(null, login) : ShowMain(started: true);
-        await FirstFrameAsync(next).ConfigureAwait(true);
         await window.FadeOutAsync().ConfigureAwait(true);
+        if (login is not null)
+        {
+            ShowLogin(null, login);
+        }
+        else
+        {
+            ShowMain(started: true);
+        }
+
         window.Close();
-        next.Activate(); // the splash was in front: the next window takes the focus
     }
 
     /// <summary>Starts the streams and waits for the first device list (at most <see cref="SplashViewModel.DevicesTimeout"/>).</summary>
@@ -143,30 +145,14 @@ public sealed partial class AppShell(
         }
     }
 
-    /// <summary>
-    /// Waits until <paramref name="window"/> drew its first frame (two animation frames after Show: the first layout of the
-    /// main window takes a moment), at most <see cref="FirstFrameLimit"/>.
-    /// </summary>
-    internal async Task FirstFrameAsync(TopLevel window)
-    {
-        var drawn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        window.RequestAnimationFrame(_ => window.RequestAnimationFrame(_ => drawn.TrySetResult()));
-        await Task.WhenAny(drawn.Task, Task.Delay(FirstFrameLimit, time ?? TimeProvider.System)).ConfigureAwait(true);
-    }
-
-    /// <summary>The handover never waits longer than this for the next window's first frame.</summary>
-    internal static readonly TimeSpan FirstFrameLimit = TimeSpan.FromSeconds(3);
-
-    private LoginWindow ShowLogin(string? notice, LoginViewModel? initialized = null)
+    private void ShowLogin(string? notice, LoginViewModel? initialized = null)
     {
         LoginViewModel vm = initialized ?? loginFactory();
         vm.Notice = notice;
         var window = new LoginWindow { DataContext = vm };
-        vm.LoggedIn += async (_, _) =>
+        vm.LoggedIn += (_, _) =>
         {
-            // The login window stays in front until the main window drew its first frame (no blank window).
-            window.Topmost = true;
-            await FirstFrameAsync(ShowMain()).ConfigureAwait(true);
+            ShowMain();
             window.Close();
         };
         if (_desktop is not null)
@@ -175,10 +161,9 @@ public sealed partial class AppShell(
         }
 
         window.Show();
-        return window;
     }
 
-    private MainWindow ShowMain(bool started = false)
+    private void ShowMain(bool started = false)
     {
         var window = new MainWindow { DataContext = main };
         if (_desktop is not null)
@@ -191,8 +176,6 @@ public sealed partial class AppShell(
         {
             main.Start();
         }
-
-        return window;
     }
 
     private async Task LogoutAsync(string? message)
