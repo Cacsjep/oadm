@@ -330,17 +330,17 @@ internal sealed class CountingTimeProvider : Microsoft.Extensions.Time.Testing.F
         return timer;
     }
 
-    /// <summary>Moves the clock by <paramref name="interval"/> each time the reading waits, until <paramref name="condition"/> holds.</summary>
-    public async Task ReadUntilAsync(Func<bool> condition, TimeSpan interval)
+    /// <summary>
+    /// Moves the clock by <paramref name="interval"/> once the reading waits, so it reads exactly once more, then waits
+    /// (real time) until <paramref name="condition"/> holds. The clock moves only this once: a consumer on another thread
+    /// that is slow to see the read never lets the clock run on (a test that stepped it on each wait could pass the lease
+    /// and the stream ended under the page).
+    /// </summary>
+    public async Task ReadOnceAsync(Func<bool> condition, TimeSpan interval)
     {
-        while (!condition())
-        {
-            await Wait.UntilAsync(() => condition() || Waiting > 0);
-            if (!condition())
-            {
-                Advance(interval);
-            }
-        }
+        await Wait.UntilAsync(() => Waiting > 0);
+        Advance(interval);
+        await Wait.UntilAsync(condition);
     }
 
     private sealed class OneShot(CountingTimeProvider owner) : ITimer
