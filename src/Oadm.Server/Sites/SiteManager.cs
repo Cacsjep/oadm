@@ -289,6 +289,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         var now = Time.GetTimestamp();
         var changed = false;
         var reset = false;
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             if (!_sites.TryGetValue(session.SiteId, out var entry) || entry.Session != session)
@@ -305,10 +306,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
             else
             {
-                changed = Apply(entry, status, now, Time.GetUtcNow());
+                changed = Apply(entry, status, now, Time.GetUtcNow(), edges);
             }
         }
 
+        WriteEdges(edges);
         if (reset)
         {
             Observe(MarkNotBoundAsync(session.SiteId), "mark the site not bound");
@@ -324,7 +326,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 
     // Under the lock.
-    private bool Apply(SiteEntry entry, NodeStatus status, long now, DateTimeOffset wall)
+    private bool Apply(SiteEntry entry, NodeStatus status, long now, DateTimeOffset wall, List<SiteEdge> edges)
     {
         entry.Status = status;
         entry.Networks = SiteNetworks.From(status);
@@ -336,7 +338,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             entry.Requested.Remove(port);
         }
 
-        return Evaluate(entry, now);
+        return Evaluate(entry, now, edges);
     }
 
     internal void OnHeartbeat(SiteSession session, HelloReply hello, TimeSpan roundTrip)
@@ -434,6 +436,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         bool changed = false;
         Site? row = null;
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             if (_sites.TryGetValue(session.SiteId, out var entry) && entry.Session == session)
@@ -441,10 +444,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 entry.Session = null;
                 entry.ConnectedSince = null;
                 row = entry.Row;
-                changed = Evaluate(entry, Time.GetTimestamp());
+                changed = Evaluate(entry, Time.GetTimestamp(), edges);
             }
         }
 
+        WriteEdges(edges);
         if (row is not null)
         {
             LogSessionEnded(row.Name);
@@ -569,11 +573,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         var changed = new List<Guid>();
         var expired = new List<WaitingNode>();
         var seen = new List<(Guid Id, DateTime At)>();
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             foreach (var entry in _sites.Values)
             {
-                if (Evaluate(entry, now))
+                if (Evaluate(entry, now, edges))
                 {
                     changed.Add(entry.Row.Id);
                 }
@@ -593,6 +598,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
         }
 
+        WriteEdges(edges);
         if (seen.Count > 0)
         {
             _ = WriteLastSeenAsync(seen);
@@ -616,10 +622,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 
     /// <summary>
-    /// Moves the site between starting, online and offline (under the lock); true when it changed. Audits the edges.
-    /// <paramref name="now"/> is a <see cref="TimeProvider.GetTimestamp"/>: the waiting times never follow the wall clock.
+    /// Moves the site between starting, online and offline (under the lock); true when it changed. The online and offline
+    /// edges are added to <paramref name="edges"/>: the caller writes them with <see cref="WriteEdges"/> after the lock (an
+    /// audit write is a database write, and SQLite writes synchronously). <paramref name="now"/> is a
+    /// <see cref="TimeProvider.GetTimestamp"/>: the waiting times never follow the wall clock.
     /// </summary>
-    private bool Evaluate(SiteEntry entry, long now)
+    private bool Evaluate(SiteEntry entry, long now, List<SiteEdge> edges)
     {
         var connected = entry.Session is { IsEnded: false, Ready: true };
         var before = entry.State;
@@ -659,20 +667,31 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         if (before != SiteState.Starting || entry.State == SiteState.Offline)
         {
-            var online = entry.State == SiteState.Online;
-            var name = entry.Row.Name;
-            _ = _audit.WriteAsync("system", string.Empty, online ? SiteAudit.Online : SiteAudit.Offline, name, null);
-            if (online)
-            {
-                LogOnline(name);
-            }
-            else
-            {
-                LogOffline(name);
-            }
+            edges.Add(new SiteEdge(entry.Row.Name, entry.State == SiteState.Online));
         }
 
         return true;
+    }
+
+    /// <summary>A site that went online or offline (written after the lock).</summary>
+    private readonly record struct SiteEdge(string Name, bool Online);
+
+    /// <summary>Logs and audits the edges <see cref="Evaluate"/> collected; never under the lock.</summary>
+    private void WriteEdges(List<SiteEdge> edges)
+    {
+        foreach (var edge in edges)
+        {
+            if (edge.Online)
+            {
+                LogOnline(edge.Name);
+            }
+            else
+            {
+                LogOffline(edge.Name);
+            }
+
+            Observe(_audit.WriteAsync("system", string.Empty, edge.Online ? SiteAudit.Online : SiteAudit.Offline, edge.Name, null, CancellationToken.None), "write the audit entry");
+        }
     }
 
     // ---------- listener ----------
@@ -912,16 +931,18 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         SiteSession? session;
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             session = _sites.GetValueOrDefault(siteId)?.Session;
             if (_sites.TryGetValue(siteId, out var entry))
             {
                 entry.Row.NotBound = true;
-                Evaluate(entry, Time.GetTimestamp());
+                Evaluate(entry, Time.GetTimestamp(), edges);
             }
         }
 
+        WriteEdges(edges);
         var name = NameOf(siteId) ?? siteId.ToString();
         LogNotBound(name);
         await _audit.WriteAsync("system", string.Empty, SiteAudit.NodeReset, name, null, CancellationToken.None).ConfigureAwait(false);

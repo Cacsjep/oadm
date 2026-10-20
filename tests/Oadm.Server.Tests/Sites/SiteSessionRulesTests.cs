@@ -28,4 +28,35 @@ public sealed class SiteSessionRulesTests
 
         await Eventually.TrueAsync(() => !server.Manager.IsOnline(id), "the site offline 30 s after the last answer");
     }
+
+    [Fact]
+    public async Task TheAuditOfAnOfflineSiteIsWrittenOutsideTheLock()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gate = new DatabaseGate();
+        await using var server = await SiteServer.StartAsync(time: time, configure: gate.Install);
+        var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var id = await server.BindAsync(node);
+        await node.DisposeAsync();
+        await Eventually.TrueAsync(() => !server.Manager.HasSession(id), "the node's connection gone");
+
+        gate.Hold(SiteAudit.Offline);
+        var tick = Task.Run(() => time.Advance(TimeSpan.FromSeconds(31))); // the tick writes the offline edge
+        try
+        {
+            await gate.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+
+            // The audit write is held (a slow disk): everyone else who asks the manager still gets an answer at once.
+            var online = await Task.Run(() => server.Manager.IsOnline(id)).WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.False(online);
+            Assert.Equal("Building B", await Task.Run(() => server.Manager.NameOf(id)).WaitAsync(TimeSpan.FromSeconds(30)));
+        }
+        finally
+        {
+            gate.Open();
+        }
+
+        await tick;
+        await Eventually.TrueAsync(async () => (await server.AuditActionsAsync()).Contains(SiteAudit.Offline), "the offline edge audited");
+    }
 }
