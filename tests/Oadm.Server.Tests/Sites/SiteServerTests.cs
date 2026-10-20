@@ -358,7 +358,11 @@ public sealed class SiteServerTests
 
         await Eventually.TrueAsync(() =>
         {
-            time.Advance(TimeSpan.FromSeconds(10)); // the heartbeat measures the round trip
+            if (server.Manager.AnswerAge(id) < TimeSpan.FromSeconds(20))
+            {
+                time.Advance(TimeSpan.FromSeconds(1)); // the heartbeat measures the round trip; never ahead of the node's answers
+            }
+
             return server.Manager.RoundTrip(id) > TimeSpan.Zero;
         }, "a measured round trip");
 
@@ -400,11 +404,15 @@ public sealed class SiteServerTests
             // The node comes back: online only after 60 s stable.
             await using var back = await SiteTestNode.StartAsync(folder: folder);
             await Eventually.TrueAsync(() => SessionAlive(server, id), "the node connected again");
-            time.Advance(TimeSpan.FromSeconds(50));
+            await server.AdvanceWhileAnsweringAsync(id, TimeSpan.FromSeconds(50));
             Assert.False(server.Manager.IsOnline(id));
             await Eventually.TrueAsync(() =>
             {
-                time.Advance(TimeSpan.FromSeconds(1));
+                if (server.Manager.AnswerAge(id) < TimeSpan.FromSeconds(20))
+                {
+                    time.Advance(TimeSpan.FromSeconds(1));
+                }
+
                 return server.Manager.IsOnline(id);
             }, "the site online after 60 s");
             Assert.Contains(SiteAudit.Online, await server.AuditActionsAsync());

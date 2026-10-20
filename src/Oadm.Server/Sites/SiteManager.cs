@@ -160,6 +160,17 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
+    /// <summary>How long ago the site's node last answered (tests: advance a fake clock only as fast as the node answers).</summary>
+    internal TimeSpan AnswerAge(Guid siteId)
+    {
+        lock (_lock)
+        {
+            return _sites.TryGetValue(siteId, out var entry)
+                ? Time.GetElapsedTime(entry.Session is { } session ? Math.Max(entry.LastAnswer, session.Started) : entry.LastAnswer)
+                : TimeSpan.MaxValue;
+        }
+    }
+
     public TimeSpan RoundTrip(Guid siteId)
     {
         lock (_lock)
@@ -574,10 +585,20 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         var expired = new List<WaitingNode>();
         var seen = new List<(Guid Id, DateTime At)>();
         var edges = new List<SiteEdge>();
+        var silent = new List<(SiteSession Session, string Name)>();
         lock (_lock)
         {
             foreach (var entry in _sites.Values)
             {
+                // A node that is connected but has not answered for the offline time: its session ends now (the heartbeat
+                // would only notice after its own call timed out), so the site goes offline 30 s after the last answer.
+                if (entry.Session is { IsEnded: false } session && Time.GetElapsedTime(Math.Max(entry.LastAnswer, session.Started), now) >= _options.OfflineAfter)
+                {
+                    entry.Session = null;
+                    entry.ConnectedSince = null;
+                    silent.Add((session, entry.Row.Name));
+                }
+
                 if (Evaluate(entry, now, edges))
                 {
                     changed.Add(entry.Row.Id);
@@ -599,6 +620,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         WriteEdges(edges);
+        foreach (var (session, name) in silent)
+        {
+            LogNotAnswering(name);
+            Observe(session.EndAsync(), "end the session of a node that does not answer");
+        }
+
         if (seen.Count > 0)
         {
             _ = WriteLastSeenAsync(seen);
@@ -615,11 +642,14 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             Raise(changed);
         }
 
-        if (changed.Count > 0 || expired.Count > 0)
+        if (changed.Count > 0 || expired.Count > 0 || silent.Count > 0)
         {
             RaiseList();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The site node of {Site} stopped answering: its connection is closed")]
+    private partial void LogNotAnswering(string site);
 
     /// <summary>
     /// Moves the site between starting, online and offline (under the lock); true when it changed. The online and offline

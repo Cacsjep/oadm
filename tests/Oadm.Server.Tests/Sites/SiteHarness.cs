@@ -100,6 +100,20 @@ internal sealed class SiteServer : IAsyncDisposable
         return id;
     }
 
+    /// <summary>
+    /// Advances the fake clock by <paramref name="total"/> one second at a time, never further than 20 s past the node's last
+    /// answer: a node that answers is never judged silent because the fake clock ran ahead of the real network.
+    /// </summary>
+    public async Task AdvanceWhileAnsweringAsync(Guid siteId, TimeSpan total)
+    {
+        var time = Time ?? throw new InvalidOperationException("The server runs on the real clock.");
+        for (var done = TimeSpan.Zero; done < total; done += TimeSpan.FromSeconds(1))
+        {
+            await Eventually.TrueAsync(() => Manager.AnswerAge(siteId) < TimeSpan.FromSeconds(20), "the node answers");
+            time.Advance(TimeSpan.FromSeconds(1));
+        }
+    }
+
     /// <summary>The server's log lines about sites (a failed wait names what happened).</summary>
     public string ServerLog()
     {

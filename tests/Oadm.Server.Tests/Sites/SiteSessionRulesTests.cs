@@ -1,3 +1,5 @@
+using System.Net;
+
 using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Sdk.Testing;
@@ -27,6 +29,32 @@ public sealed class SiteSessionRulesTests
         clock.Fake.Advance(TimeSpan.FromSeconds(6));
 
         await Eventually.TrueAsync(() => !server.Manager.IsOnline(id), "the site offline 30 s after the last answer");
+    }
+
+    [Fact]
+    public async Task ANodeThatIsConnectedButSilentGoesOfflineAfterThirtySeconds()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        // The control call's own timeout is far away: only the 30 s rule can end the session in time.
+        await using var server = await SiteServer.StartAsync(options: new SiteOptions
+        {
+            ListenUrl = "127.0.0.1:0",
+            Time = time,
+            WorkerWait = TimeSpan.FromSeconds(30),
+            CallTimeout = TimeSpan.FromMinutes(10),
+        });
+        await using var proxy = new PausableProxy(new IPEndPoint(IPAddress.Loopback, server.Manager.ListenPort));
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = proxy.Address);
+        var id = await server.BindAsync(node);
+
+        proxy.Pause(); // the link stays open, nothing gets through
+        time.Advance(TimeSpan.FromSeconds(25));
+        Assert.True(server.Manager.IsOnline(id));
+        time.Advance(TimeSpan.FromSeconds(6));
+
+        Assert.False(server.Manager.IsOnline(id)); // the tick of second 30 ended the session and set the site offline
+        Assert.False(server.Manager.HasSession(id));
+        await Eventually.TrueAsync(async () => (await server.AuditActionsAsync()).Contains(SiteAudit.Offline), "the offline edge audited");
     }
 
     [Fact]
