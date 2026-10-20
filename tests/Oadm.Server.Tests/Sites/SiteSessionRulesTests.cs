@@ -4,6 +4,9 @@ using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Sdk.Testing;
 using Oadm.Server.Sites;
+using Oadm.SiteNode.Links;
+
+using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Tests.Sites;
 
@@ -55,6 +58,84 @@ public sealed class SiteSessionRulesTests
         Assert.False(server.Manager.IsOnline(id)); // the tick of second 30 ended the session and set the site offline
         Assert.False(server.Manager.HasSession(id));
         await Eventually.TrueAsync(async () => (await server.AuditActionsAsync()).Contains(SiteAudit.Offline), "the offline edge audited");
+    }
+
+    [Fact]
+    public async Task ANodeThatConnectsAgainWhileItsSiteIsRemovedGetsNoSession()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var id = await server.BindAsync(node);
+        var gate = PointGate.Hold(server.Manager, "forgetting");
+
+        var remove = server.Client.RemoveSiteAsync(new Proto.RemoveSiteRequest { Id = id.ToString(), KeepDevices = true }).ResponseAsync;
+        await gate.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+        // The node's connection drops while the site is being removed; it connects again at once, still bound.
+        node.Get<LinkRegistry>().CloseAll();
+        await Eventually.TrueAsync(async () => (await server.ListAsync()).Sites.Any(s => s.NodeId == node.NodeId && s.Id.Length == 0), "the node connected again");
+        gate.Open();
+        await remove;
+
+        Assert.Empty(server.Manager.Sites);
+        Assert.Equal(1, server.Manager.SessionsStarted);
+        await Eventually.TrueAsync(() => server.Manager.LiveSessions == 0, "no session left");
+    }
+
+    [Fact]
+    public async Task ALinkThatSaysHelloWhileSiteNodesAreTurnedOffBecomesNothing()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var id = await server.BindAsync(node);
+        var gate = PointGate.Hold(server.Manager, "after-hello");
+
+        node.Get<LinkRegistry>().CloseAll(); // the node connects again
+        await gate.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+        await server.Manager.SetAcceptAsync(false, CancellationToken.None);
+        gate.Open();
+
+        await Eventually.TrueAsync(() => node.Get<LinkRegistry>().Links.Count == 0, "the link closed");
+        Assert.Equal(1, server.Manager.SessionsStarted);
+        Assert.False(server.Manager.HasSession(id));
+        await Eventually.TrueAsync(() => server.Manager.LiveSessions == 0, "no session left");
+        Assert.DoesNotContain((await server.ListAsync()).Sites, s => s.Id.Length == 0);
+    }
+
+    [Fact]
+    public async Task NoSessionStartsWhileTheServerStops()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        await server.BindAsync(node);
+        var gate = PointGate.Hold(server.Manager, "after-hello");
+
+        node.Get<LinkRegistry>().CloseAll();
+        await gate.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+        await server.Manager.DisposeAsync(); // a restore rebuilds the host in this process
+        gate.Open();
+
+        await Eventually.TrueAsync(() => node.Get<LinkRegistry>().Links.Count == 0, "the link closed");
+        Assert.Equal(1, server.Manager.SessionsStarted);
+        Assert.Equal(0, server.Manager.LiveSessions);
+    }
+
+    [Fact]
+    public async Task ABindWhoseSiteNodesAreTurnedOffMeanwhileClosesItsLink()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var waiting = await server.WaitingAsync(node.NodeId);
+        var gate = PointGate.Hold(server.Manager, "bound");
+
+        var bind = server.Client.BindSiteAsync(new Proto.BindSiteRequest { NodeId = waiting.NodeId, NodeFingerprint = waiting.NodeFingerprint, Name = "Building B", PairingCode = node.Code }).ResponseAsync;
+        await gate.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+        await server.Manager.SetAcceptAsync(false, CancellationToken.None);
+        gate.Open();
+        await bind;
+
+        Assert.Single(server.Manager.Sites); // bound and stored: the node connects again once site nodes are turned on
+        await Eventually.TrueAsync(() => node.Get<LinkRegistry>().Links.Count == 0, "the bind's link closed");
+        Assert.Equal(0, server.Manager.LiveSessions);
     }
 
     [Fact]

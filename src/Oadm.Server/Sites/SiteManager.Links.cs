@@ -46,10 +46,20 @@ public sealed partial class SiteManager
                 return;
             }
 
+            await Point("after-hello", _stopping).ConfigureAwait(false);
             Guid? siteId;
+            bool accepting;
             lock (_lock)
             {
+                // Accept site nodes turned off (or the server stopping) while the link said Hello: it becomes nothing.
+                accepting = CanAttach();
                 siteId = _sites.Values.FirstOrDefault(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase))?.Row.Id;
+            }
+
+            if (!accepting)
+            {
+                await link.DisposeAsync().ConfigureAwait(false);
+                return;
             }
 
             if (siteId is { } id && hello.State == NodeState.Bound)
@@ -112,7 +122,7 @@ public sealed partial class SiteManager
     {
         try
         {
-            var hello = await link.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + (timeout ?? _options.CallTimeout), cancellationToken: _stop.Token).ConfigureAwait(false);
+            var hello = await link.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + (timeout ?? _options.CallTimeout), cancellationToken: _stopping).ConfigureAwait(false);
             if (HelloRules.Problem(hello) is { } problem)
             {
                 LogBadHello(link.RemoteHost, problem);
@@ -152,6 +162,11 @@ public sealed partial class SiteManager
         var node = new WaitingNode(link, hello, Time.GetUtcNow(), Time.GetTimestamp());
         lock (_lock)
         {
+            if (!CanAttach())
+            {
+                return false; // Accept site nodes is off or the server stops: nothing waits
+            }
+
             var same = _sites.Values.FirstOrDefault(e =>
                 string.Equals(e.Row.NodeId, hello.NodeId, StringComparison.Ordinal)
                 || string.Equals(e.Row.NodeKeyFingerprint, key, StringComparison.OrdinalIgnoreCase));

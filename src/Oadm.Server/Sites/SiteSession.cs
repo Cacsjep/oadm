@@ -349,6 +349,11 @@ internal sealed partial class SiteSession : IAsyncDisposable
         while (!_life.IsCancellationRequested)
         {
             await Task.Delay(_options.HeartbeatInterval, _manager.Time, _life.Token).ConfigureAwait(false);
+            if (!_manager.IsCurrent(this))
+            {
+                return; // the site was forgotten or another session took over: this one ends
+            }
+
             var started = Stopwatch.GetTimestamp();
             HelloReply hello;
             try

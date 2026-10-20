@@ -32,6 +32,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private readonly Dictionary<Guid, SiteEntry> _sites = [];
     private readonly Dictionary<string, WaitingNode> _waiting = new(StringComparer.OrdinalIgnoreCase); // by node key fingerprint, never by the id a node reports
     private readonly CancellationTokenSource _stop = new();
+    private readonly CancellationToken _stopping; // _stop's token, read once: it stays usable after the source is disposed
     private readonly SemaphoreSlim _acceptLock = new(1, 1);
     private SiteListener? _listener;
     private ITimer? _tick;
@@ -54,6 +55,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         _options = options;
         Time = time;
         _logger = logger;
+        _stopping = _stop.Token;
     }
 
     public TimeProvider Time { get; }
@@ -64,7 +66,16 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>Second control connections refused while the current one answers (tests).</summary>
     internal int SessionsRefused => Volatile.Read(ref _sessionsRefused);
 
+    /// <summary>Sessions started and not ended yet, also any that lost their site (tests: none may outlive it).</summary>
+    internal int LiveSessions => Volatile.Read(ref _liveSessions);
+
+    /// <summary>Called at named points of the links and binds (tests hold the work there with a gate).</summary>
+    internal Func<string, CancellationToken, Task>? TestPoint { get; set; }
+
+    private Task Point(string name, CancellationToken ct) => TestPoint?.Invoke(name, ct) ?? Task.CompletedTask;
+
     private int _sessionsStarted;
+    private int _liveSessions;
     private int _disposed;
     private int _sessionsRefused;
 
@@ -415,7 +426,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
             if (entry.LinkCheck is not { IsCompleted: false } running || entry.LinkCheckSession != session)
             {
-                running = session.AnswersAsync(_stop.Token);
+                running = session.AnswersAsync(_stopping);
                 entry.LinkCheck = running;
                 entry.LinkCheckSession = session;
             }
@@ -443,8 +454,18 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
+    /// <summary>True while <paramref name="session"/> is its site's session; a session whose site is gone ends.</summary>
+    internal bool IsCurrent(SiteSession session)
+    {
+        lock (_lock)
+        {
+            return _sites.TryGetValue(session.SiteId, out var entry) && entry.Session == session;
+        }
+    }
+
     internal void SessionEnded(SiteSession session)
     {
+        Interlocked.Decrement(ref _liveSessions);
         bool changed = false;
         Site? row = null;
         var edges = new List<SiteEdge>();
@@ -476,13 +497,16 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>
     /// Makes <paramref name="control"/> the control link of the site. One session per node identity: while the current
     /// session still answers, a second control link with the same key is refused (a copied node); otherwise it replaces it.
+    /// False (nothing started, the caller disposes the link) when the site is gone, Accept site nodes is off or the server
+    /// stops: a session never starts that <see cref="ForgetAsync"/>, <see cref="SetAcceptAsync"/> or
+    /// <see cref="DisposeAsync"/> would not end.
     /// </summary>
     private async Task<bool> AttachControlAsync(Guid siteId, NodeLink control, bool fresh)
     {
         SiteEntry? attaching;
         lock (_lock)
         {
-            attaching = _sites.GetValueOrDefault(siteId);
+            attaching = CanAttach() ? _sites.GetValueOrDefault(siteId) : null;
         }
 
         if (attaching is null)
@@ -492,7 +516,15 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         // One attach at a time per site: two control links attaching at once would both start a session, and the loser
         // would keep running beside the winner. The second one sees the first one's session and is judged against it.
-        await attaching.Attaching.WaitAsync(_stop.Token).ConfigureAwait(false);
+        try
+        {
+            await attaching.Attaching.WaitAsync(_stopping).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return false; // the server stops
+        }
+
         Site row;
         SiteSession session;
         try
@@ -512,13 +544,18 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             {
                 try
                 {
-                    await old.Control.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
+                    await old.Control.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stopping).ConfigureAwait(false);
                     Interlocked.Increment(ref _sessionsRefused);
                     LogSecondSession(NameOf(siteId) ?? siteId.ToString(), control.RemoteHost, old.Control.RemoteHost);
                     return false;
                 }
-                catch (Exception e) when (e is Grpc.Core.RpcException or ObjectDisposedException or InvalidOperationException)
+                catch (Exception e) when (e is Grpc.Core.RpcException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
                 {
+                    if (_stopping.IsCancellationRequested)
+                    {
+                        return false; // cancelled by the stop, not a dead link: no new session while the server stops
+                    }
+
                     // The old link is dead: the new one takes over.
                 }
             }
@@ -527,7 +564,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             var now = Time.GetTimestamp();
             lock (_lock)
             {
-                if (!_sites.TryGetValue(siteId, out var entry) || entry != attaching)
+                if (!CanAttach() || !_sites.TryGetValue(siteId, out var entry) || entry != attaching)
                 {
                     _ = session.DisposeAsync().AsTask();
                     return false;
@@ -551,7 +588,26 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 await old.EndAsync().ConfigureAwait(false);
             }
 
-            session.Start();
+            // Checked again right before the start, in the same lock section that Forget, Accept off and Dispose take their
+            // sessions in: whatever happened while the old session ended, this one is either theirs to end or never starts.
+            lock (_lock)
+            {
+                var entry = _sites.GetValueOrDefault(siteId);
+                if (!CanAttach() || entry != attaching || entry.Session != session)
+                {
+                    if (entry?.Session == session)
+                    {
+                        entry.Session = null;
+                    }
+
+                    _ = session.DisposeAsync().AsTask();
+                    return false;
+                }
+
+                Interlocked.Increment(ref _liveSessions);
+                session.Start();
+            }
+
             Interlocked.Increment(ref _sessionsStarted);
         }
         finally
@@ -564,6 +620,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         RaiseList();
         return true;
     }
+
+    // Under the lock: links become sessions or waiting nodes only while Accept site nodes is on and the server runs.
+    private bool CanAttach() => _accept && Volatile.Read(ref _disposed) == 0;
 
     /// <summary>Logs a background task's failure instead of leaving it unobserved.</summary>
     private void Observe(Task task, string what) =>
@@ -894,13 +953,13 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         try
         {
-            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
+            await using var db = await _db.CreateDbContextAsync(_stopping).ConfigureAwait(false);
             var now = Time.GetUtcNow().UtcDateTime;
             var version = link.Hello?.Version;
             await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u
                 .SetProperty(s => s.LastSeenUtc, now)
                 .SetProperty(s => s.Version, version)
-                .SetProperty(s => s.Address, link.RemoteHost), _stop.Token).ConfigureAwait(false);
+                .SetProperty(s => s.Address, link.RemoteHost), _stopping).ConfigureAwait(false);
 
             lock (_lock)
             {
@@ -924,10 +983,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         try
         {
-            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
+            await using var db = await _db.CreateDbContextAsync(_stopping).ConfigureAwait(false);
             foreach (var (id, at) in seen)
             {
-                await db.Sites.Where(s => s.Id == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.LastSeenUtc, at), _stop.Token).ConfigureAwait(false);
+                await db.Sites.Where(s => s.Id == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.LastSeenUtc, at), _stopping).ConfigureAwait(false);
             }
         }
 #pragma warning disable CA1031 // The last seen time is information only.
@@ -946,10 +1005,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         try
         {
-            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
-            await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u.SetProperty(s => s.NotBound, true), _stop.Token).ConfigureAwait(false);
+            await using var db = await _db.CreateDbContextAsync(_stopping).ConfigureAwait(false);
+            await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u.SetProperty(s => s.NotBound, true), _stopping).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
         {
             return; // the server stops
         }

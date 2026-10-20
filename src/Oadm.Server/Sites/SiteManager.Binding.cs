@@ -119,7 +119,13 @@ public sealed partial class SiteManager
         }
 
         link.Trust();
-        await AttachControlAsync(row.Id, link, fresh: true).ConfigureAwait(false);
+        await Point("bound", CancellationToken.None).ConfigureAwait(false);
+        if (!await AttachControlAsync(row.Id, link, fresh: true).ConfigureAwait(false))
+        {
+            // Accept site nodes turned off or the server stops: the site is bound and stored, its node connects again later.
+            await link.DisposeAsync().ConfigureAwait(false);
+        }
+
         await _audit.WriteAsync(SiteAudit.Bound, siteName, $"Site node {node.Name}, from {link.RemoteHost}", CancellationToken.None).ConfigureAwait(false);
         LogBound(siteName, link.RemoteHost);
         _ = SendServerAddressesAsync(row.Id);
@@ -270,7 +276,7 @@ public sealed partial class SiteManager
     {
         try
         {
-            await link.Client.UnbindAsync(new UnbindRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
+            await link.Client.UnbindAsync(new UnbindRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stopping).ConfigureAwait(false);
         }
         catch (RpcException)
         {
@@ -368,12 +374,18 @@ public sealed partial class SiteManager
     /// </summary>
     public async Task<bool> ForgetAsync(Guid siteId, CancellationToken ct)
     {
+        // The site leaves memory and its session is taken in one lock section: a node that connects again meanwhile finds
+        // no site (AttachControlAsync), so no session can start that nobody ends.
         SiteSession? session;
         lock (_lock)
         {
             var entry = _sites.GetValueOrDefault(siteId) ?? throw new SiteRefusedException(StatusCode.NotFound, "The site no longer exists.");
             session = entry.Session;
+            entry.Session = null;
+            _sites.Remove(siteId);
         }
+
+        await Point("forgetting", ct).ConfigureAwait(false);
 
         var answered = false;
         if (session is { IsEnded: false })
@@ -391,11 +403,6 @@ public sealed partial class SiteManager
         await using (var db = await _db.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false))
         {
             await db.Sites.Where(s => s.Id == siteId).ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-
-        lock (_lock)
-        {
-            _sites.Remove(siteId);
         }
 
         if (session is not null)
