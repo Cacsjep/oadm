@@ -71,7 +71,10 @@ than 5 guesses); Reset = new id, key and code, the server forgotten.
   it. Every local user reads the state and the connection log; the pairing code and every change need an administrator
   (Windows: SYSTEM or an elevated token of Administrators, never the service account; Linux: root or the service user).
   A channel that cannot be opened is logged and tried again every 30 s; the node runs on without it. The app runs a change through an elevated copy of
-  itself (`--admin-request ... --out ...`, UAC or pkexec).
+  itself (`--admin-request ... --out ...`, UAC or pkexec). The copy hands the answer back over its standard output on
+  Linux (`--out -`, a line `OADM-ANSWER <base64>`; never a file in /tmp), in a file in the user's own temp folder on
+  Windows. A dismissed prompt (UAC 1223, pkexec 126 / 127) shows nothing; no pkexec or a copy without an answer shows
+  why in the app.
 
 ## Development
 
