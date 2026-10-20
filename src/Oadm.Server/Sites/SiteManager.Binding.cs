@@ -119,7 +119,13 @@ public sealed partial class SiteManager
         }
 
         link.Trust();
-        await AttachControlAsync(row.Id, link, fresh: true).ConfigureAwait(false);
+        await Point("bound", CancellationToken.None).ConfigureAwait(false);
+        if (!await AttachControlAsync(row.Id, link, fresh: true).ConfigureAwait(false))
+        {
+            // Accept site nodes turned off or the server stops: the site is bound and stored, its node connects again later.
+            await link.DisposeAsync().ConfigureAwait(false);
+        }
+
         await _audit.WriteAsync(SiteAudit.Bound, siteName, $"Site node {node.Name}, from {link.RemoteHost}", CancellationToken.None).ConfigureAwait(false);
         LogBound(siteName, link.RemoteHost);
         _ = SendServerAddressesAsync(row.Id);
@@ -171,13 +177,26 @@ public sealed partial class SiteManager
                 throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.InvalidAnswer);
             }
 
-            var reply = await client.BindAsync(new BindRequest
+            // Bind runs to its end whatever the caller does: a node that bound and whose answer the server never read would
+            // stay bound to a server without the site. A lost answer (no refusal) is followed by Unbind for the same reason.
+            await Point("bind-call", ct).ConfigureAwait(false);
+            BindReply reply;
+            try
             {
-                SiteName = siteName,
-                ServerName = _serverName,
-                ServerRound2 = round2,
-                Proof = ByteString.CopyFrom(proof),
-            }, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: ct).ConfigureAwait(false);
+                reply = await client.BindAsync(new BindRequest
+                {
+                    SiteName = siteName,
+                    ServerName = _serverName,
+                    ServerRound2 = round2,
+                    Proof = ByteString.CopyFrom(proof),
+                }, deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (RpcException e) when (e.StatusCode is not (StatusCode.PermissionDenied or StatusCode.ResourceExhausted or StatusCode.FailedPrecondition or StatusCode.InvalidArgument))
+            {
+                await UnbindQuietlyAsync(link).ConfigureAwait(false);
+                throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering + " " + (HelloRules.IsText(e.Status.Detail, 200) ? e.Status.Detail : string.Empty));
+            }
+
             if (!pairing.Check(reply.Proof.ToByteArray()))
             {
                 // The node did not prove the same code on this connection: something in between.
@@ -255,11 +274,11 @@ public sealed partial class SiteManager
                 entry.Row.Version = row.Version;
                 entry.Row.NotBound = false;
                 entry.State = SiteState.Online;
-                entry.LastAnswer = Time.GetUtcNow();
+                entry.LastAnswer = Time.GetTimestamp();
             }
             else
             {
-                _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetUtcNow() };
+                _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetTimestamp() };
             }
         }
 
@@ -270,7 +289,7 @@ public sealed partial class SiteManager
     {
         try
         {
-            await link.Client.UnbindAsync(new UnbindRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
+            await link.Client.UnbindAsync(new UnbindRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stopping).ConfigureAwait(false);
         }
         catch (RpcException)
         {
@@ -368,12 +387,18 @@ public sealed partial class SiteManager
     /// </summary>
     public async Task<bool> ForgetAsync(Guid siteId, CancellationToken ct)
     {
+        // The site leaves memory and its session is taken in one lock section: a node that connects again meanwhile finds
+        // no site (AttachControlAsync), so no session can start that nobody ends.
         SiteSession? session;
         lock (_lock)
         {
             var entry = _sites.GetValueOrDefault(siteId) ?? throw new SiteRefusedException(StatusCode.NotFound, "The site no longer exists.");
             session = entry.Session;
+            entry.Session = null;
+            _sites.Remove(siteId);
         }
+
+        await Point("forgetting", ct).ConfigureAwait(false);
 
         var answered = false;
         if (session is { IsEnded: false })
@@ -391,11 +416,6 @@ public sealed partial class SiteManager
         await using (var db = await _db.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false))
         {
             await db.Sites.Where(s => s.Id == siteId).ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-
-        lock (_lock)
-        {
-            _sites.Remove(siteId);
         }
 
         if (session is not null)

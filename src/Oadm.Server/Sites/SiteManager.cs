@@ -7,6 +7,7 @@ using Oadm.Core.Auth;
 using Oadm.Core.Persistence;
 using Oadm.Core.Settings;
 using Oadm.Core.Sites;
+using Oadm.Sdk.Network;
 using Oadm.Sites.Transport;
 
 using Proto = Oadm.Contracts.V1;
@@ -32,8 +33,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private readonly Dictionary<Guid, SiteEntry> _sites = [];
     private readonly Dictionary<string, WaitingNode> _waiting = new(StringComparer.OrdinalIgnoreCase); // by node key fingerprint, never by the id a node reports
     private readonly CancellationTokenSource _stop = new();
+    private readonly CancellationToken _stopping; // _stop's token, read once: it stays usable after the source is disposed
     private readonly SemaphoreSlim _acceptLock = new(1, 1);
     private SiteListener? _listener;
+    private readonly IFirewallRules? _firewall; // the Windows service only: the site port's rule while Accept site nodes is on
+    private FirewallRuleKeeper? _firewallRule;
     private ITimer? _tick;
     private bool _accept;
     private string _serverName = Environment.MachineName;
@@ -45,8 +49,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         AuditLog audit,
         SiteOptions options,
         TimeProvider time,
-        ILogger<SiteManager> logger)
+        ILogger<SiteManager> logger,
+        IFirewallRules? firewall = null)
     {
+        _firewall = firewall;
         _db = db;
         _settings = settings;
         _identity = identity;
@@ -54,6 +60,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         _options = options;
         Time = time;
         _logger = logger;
+        _stopping = _stop.Token;
     }
 
     public TimeProvider Time { get; }
@@ -64,7 +71,16 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>Second control connections refused while the current one answers (tests).</summary>
     internal int SessionsRefused => Volatile.Read(ref _sessionsRefused);
 
+    /// <summary>Sessions started and not ended yet, also any that lost their site (tests: none may outlive it).</summary>
+    internal int LiveSessions => Volatile.Read(ref _liveSessions);
+
+    /// <summary>Called at named points of the links and binds (tests hold the work there with a gate).</summary>
+    internal Func<string, CancellationToken, Task>? TestPoint { get; set; }
+
+    private Task Point(string name, CancellationToken ct) => TestPoint?.Invoke(name, ct) ?? Task.CompletedTask;
+
     private int _sessionsStarted;
+    private int _liveSessions;
     private int _disposed;
     private int _sessionsRefused;
 
@@ -99,7 +115,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             rows = await db.Sites.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
         }
 
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         lock (_lock)
         {
             foreach (var row in rows)
@@ -107,15 +123,27 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 _sites[row.Id] = new SiteEntry(row, _options.MaxLargeTransfers)
                 {
                     State = row.NotBound ? SiteState.Offline : SiteState.Starting,
-                    StartingUntil = now + _options.StartWindow,
+                    StartingSince = now,
                     LastAnswer = now,
                 };
             }
         }
 
-        if (await _settings.GetAsync<bool>(SiteSettings.Accept, ct).ConfigureAwait(false))
+        await _acceptLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            await OpenListenerAsync(ct).ConfigureAwait(false);
+            var accept = await _settings.GetAsync<bool>(SiteSettings.Accept, ct).ConfigureAwait(false);
+            if (accept)
+            {
+                await OpenListenerAsync(ct).ConfigureAwait(false);
+            }
+
+            // The first sync always applies: a rule a crashed server left open is removed while site nodes are off.
+            await SyncFirewallAsync(accept, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _acceptLock.Release();
         }
 
         _tick = Time.CreateTimer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
@@ -157,6 +185,17 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         lock (_lock)
         {
             return _sites.TryGetValue(siteId, out var entry) && entry.Session is { IsEnded: false, Ready: true };
+        }
+    }
+
+    /// <summary>How long ago the site's node last answered (tests: advance a fake clock only as fast as the node answers).</summary>
+    internal TimeSpan AnswerAge(Guid siteId)
+    {
+        lock (_lock)
+        {
+            return _sites.TryGetValue(siteId, out var entry)
+                ? Time.GetElapsedTime(entry.Session is { } session ? Math.Max(entry.LastAnswer, session.Started) : entry.LastAnswer)
+                : TimeSpan.MaxValue;
         }
     }
 
@@ -286,9 +325,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>A Watch answer of the node: allowed ports, counts, version; or the notice that the node was reset.</summary>
     internal void OnStatus(SiteSession session, NodeStatus status)
     {
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         var changed = false;
         var reset = false;
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             if (!_sites.TryGetValue(session.SiteId, out var entry) || entry.Session != session)
@@ -305,10 +345,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
             else
             {
-                changed = Apply(entry, status, now);
+                changed = Apply(entry, status, now, Time.GetUtcNow(), edges);
             }
         }
 
+        WriteEdges(edges);
         if (reset)
         {
             Observe(MarkNotBoundAsync(session.SiteId), "mark the site not bound");
@@ -324,24 +365,24 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 
     // Under the lock.
-    private bool Apply(SiteEntry entry, NodeStatus status, DateTimeOffset now)
+    private bool Apply(SiteEntry entry, NodeStatus status, long now, DateTimeOffset wall, List<SiteEdge> edges)
     {
         entry.Status = status;
         entry.Networks = SiteNetworks.From(status);
         entry.LastAnswer = now;
-        entry.LastSeen = now;
+        entry.LastSeen = wall;
         entry.ConnectedSince ??= now;
         foreach (var port in entry.Requested.Where(p => Allows(status, p)).ToList())
         {
             entry.Requested.Remove(port);
         }
 
-        return Evaluate(entry, now);
+        return Evaluate(entry, now, edges);
     }
 
     internal void OnHeartbeat(SiteSession session, HelloReply hello, TimeSpan roundTrip)
     {
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         Site? notBound = null;
         lock (_lock)
         {
@@ -351,7 +392,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
 
             entry.LastAnswer = now;
-            entry.LastSeen = now;
+            entry.LastSeen = Time.GetUtcNow();
             entry.RoundTrip = roundTrip;
             entry.Version = hello.Version;
             if (hello.State != NodeState.Bound && !entry.Row.NotBound)
@@ -382,8 +423,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 return true;
             }
 
-            var last = entry.LastAnswer > session.Started ? entry.LastAnswer : session.Started;
-            return Time.GetUtcNow() - last >= _options.OfflineAfter;
+            return Time.GetElapsedTime(Math.Max(entry.LastAnswer, session.Started)) >= _options.OfflineAfter;
         }
     }
 
@@ -403,7 +443,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
             if (entry.LinkCheck is not { IsCompleted: false } running || entry.LinkCheckSession != session)
             {
-                running = session.AnswersAsync(_stop.Token);
+                running = session.AnswersAsync(_stopping);
                 entry.LinkCheck = running;
                 entry.LinkCheckSession = session;
             }
@@ -431,10 +471,21 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
+    /// <summary>True while <paramref name="session"/> is its site's session; a session whose site is gone ends.</summary>
+    internal bool IsCurrent(SiteSession session)
+    {
+        lock (_lock)
+        {
+            return _sites.TryGetValue(session.SiteId, out var entry) && entry.Session == session;
+        }
+    }
+
     internal void SessionEnded(SiteSession session)
     {
+        Interlocked.Decrement(ref _liveSessions);
         bool changed = false;
         Site? row = null;
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             if (_sites.TryGetValue(session.SiteId, out var entry) && entry.Session == session)
@@ -442,10 +493,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 entry.Session = null;
                 entry.ConnectedSince = null;
                 row = entry.Row;
-                changed = Evaluate(entry, Time.GetUtcNow());
+                changed = Evaluate(entry, Time.GetTimestamp(), edges);
             }
         }
 
+        WriteEdges(edges);
         if (row is not null)
         {
             LogSessionEnded(row.Name);
@@ -462,13 +514,16 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>
     /// Makes <paramref name="control"/> the control link of the site. One session per node identity: while the current
     /// session still answers, a second control link with the same key is refused (a copied node); otherwise it replaces it.
+    /// False (nothing started, the caller disposes the link) when the site is gone, Accept site nodes is off or the server
+    /// stops: a session never starts that <see cref="ForgetAsync"/>, <see cref="SetAcceptAsync"/> or
+    /// <see cref="DisposeAsync"/> would not end.
     /// </summary>
     private async Task<bool> AttachControlAsync(Guid siteId, NodeLink control, bool fresh)
     {
         SiteEntry? attaching;
         lock (_lock)
         {
-            attaching = _sites.GetValueOrDefault(siteId);
+            attaching = CanAttach() ? _sites.GetValueOrDefault(siteId) : null;
         }
 
         if (attaching is null)
@@ -478,7 +533,15 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         // One attach at a time per site: two control links attaching at once would both start a session, and the loser
         // would keep running beside the winner. The second one sees the first one's session and is judged against it.
-        await attaching.Attaching.WaitAsync(_stop.Token).ConfigureAwait(false);
+        try
+        {
+            await attaching.Attaching.WaitAsync(_stopping).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return false; // the server stops
+        }
+
         Site row;
         SiteSession session;
         try
@@ -498,22 +561,27 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             {
                 try
                 {
-                    await old.Control.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stop.Token).ConfigureAwait(false);
+                    await old.Control.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + TimeSpan.FromSeconds(5), cancellationToken: _stopping).ConfigureAwait(false);
                     Interlocked.Increment(ref _sessionsRefused);
                     LogSecondSession(NameOf(siteId) ?? siteId.ToString(), control.RemoteHost, old.Control.RemoteHost);
                     return false;
                 }
-                catch (Exception e) when (e is Grpc.Core.RpcException or ObjectDisposedException or InvalidOperationException)
+                catch (Exception e) when (e is Grpc.Core.RpcException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
                 {
+                    if (_stopping.IsCancellationRequested)
+                    {
+                        return false; // cancelled by the stop, not a dead link: no new session while the server stops
+                    }
+
                     // The old link is dead: the new one takes over.
                 }
             }
 
             session = new SiteSession(this, siteId, control, _options);
-            var now = Time.GetUtcNow();
+            var now = Time.GetTimestamp();
             lock (_lock)
             {
-                if (!_sites.TryGetValue(siteId, out var entry) || entry != attaching)
+                if (!CanAttach() || !_sites.TryGetValue(siteId, out var entry) || entry != attaching)
                 {
                     _ = session.DisposeAsync().AsTask();
                     return false;
@@ -537,7 +605,26 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 await old.EndAsync().ConfigureAwait(false);
             }
 
-            session.Start();
+            // Checked again right before the start, in the same lock section that Forget, Accept off and Dispose take their
+            // sessions in: whatever happened while the old session ended, this one is either theirs to end or never starts.
+            lock (_lock)
+            {
+                var entry = _sites.GetValueOrDefault(siteId);
+                if (!CanAttach() || entry != attaching || entry.Session != session)
+                {
+                    if (entry?.Session == session)
+                    {
+                        entry.Session = null;
+                    }
+
+                    _ = session.DisposeAsync().AsTask();
+                    return false;
+                }
+
+                Interlocked.Increment(ref _liveSessions);
+                session.Start();
+            }
+
             Interlocked.Increment(ref _sessionsStarted);
         }
         finally
@@ -550,6 +637,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         RaiseList();
         return true;
     }
+
+    // Under the lock: links become sessions or waiting nodes only while Accept site nodes is on and the server runs.
+    private bool CanAttach() => _accept && Volatile.Read(ref _disposed) == 0;
 
     /// <summary>Logs a background task's failure instead of leaving it unobserved.</summary>
     private void Observe(Task task, string what) =>
@@ -566,15 +656,26 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     private void Tick()
     {
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         var changed = new List<Guid>();
         var expired = new List<WaitingNode>();
         var seen = new List<(Guid Id, DateTime At)>();
+        var edges = new List<SiteEdge>();
+        var silent = new List<(SiteSession Session, string Name)>();
         lock (_lock)
         {
             foreach (var entry in _sites.Values)
             {
-                if (Evaluate(entry, now))
+                // A node that is connected but has not answered for the offline time: its session ends now (the heartbeat
+                // would only notice after its own call timed out), so the site goes offline 30 s after the last answer.
+                if (entry.Session is { IsEnded: false } session && Time.GetElapsedTime(Math.Max(entry.LastAnswer, session.Started), now) >= _options.OfflineAfter)
+                {
+                    entry.Session = null;
+                    entry.ConnectedSince = null;
+                    silent.Add((session, entry.Row.Name));
+                }
+
+                if (Evaluate(entry, now, edges))
                 {
                     changed.Add(entry.Row.Id);
                 }
@@ -587,11 +688,18 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 }
             }
 
-            foreach (var waiting in _waiting.Values.Where(w => now - w.Since >= _options.WaitingMaxAge).ToList())
+            foreach (var waiting in _waiting.Values.Where(w => Time.GetElapsedTime(w.SinceTimestamp, now) >= _options.WaitingMaxAge).ToList())
             {
                 _waiting.Remove(waiting.Key);
                 expired.Add(waiting);
             }
+        }
+
+        WriteEdges(edges);
+        foreach (var (session, name) in silent)
+        {
+            LogNotAnswering(name);
+            Observe(session.EndAsync(), "end the session of a node that does not answer");
         }
 
         if (seen.Count > 0)
@@ -610,14 +718,22 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             Raise(changed);
         }
 
-        if (changed.Count > 0 || expired.Count > 0)
+        if (changed.Count > 0 || expired.Count > 0 || silent.Count > 0)
         {
             RaiseList();
         }
     }
 
-    /// <summary>Moves the site between starting, online and offline (under the lock); true when it changed. Audits the edges.</summary>
-    private bool Evaluate(SiteEntry entry, DateTimeOffset now)
+    [LoggerMessage(Level = LogLevel.Information, Message = "The site node of {Site} stopped answering: its connection is closed")]
+    private partial void LogNotAnswering(string site);
+
+    /// <summary>
+    /// Moves the site between starting, online and offline (under the lock); true when it changed. The online and offline
+    /// edges are added to <paramref name="edges"/>: the caller writes them with <see cref="WriteEdges"/> after the lock (an
+    /// audit write is a database write, and SQLite writes synchronously). <paramref name="now"/> is a
+    /// <see cref="TimeProvider.GetTimestamp"/>: the waiting times never follow the wall clock.
+    /// </summary>
+    private bool Evaluate(SiteEntry entry, long now, List<SiteEdge> edges)
     {
         var connected = entry.Session is { IsEnded: false, Ready: true };
         var before = entry.State;
@@ -628,21 +744,21 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 {
                     entry.State = SiteState.Online; // after a start no waiting: nothing changed meanwhile
                 }
-                else if (now >= entry.StartingUntil || entry.Row.NotBound)
+                else if (Time.GetElapsedTime(entry.StartingSince, now) >= _options.StartWindow || entry.Row.NotBound)
                 {
                     entry.State = SiteState.Offline;
                 }
 
                 break;
             case SiteState.Online:
-                if (entry.Row.NotBound || (!connected && now - entry.LastAnswer >= _options.OfflineAfter))
+                if (entry.Row.NotBound || (!connected && Time.GetElapsedTime(entry.LastAnswer, now) >= _options.OfflineAfter))
                 {
                     entry.State = SiteState.Offline;
                 }
 
                 break;
             case SiteState.Offline:
-                if (connected && !entry.Row.NotBound && entry.ConnectedSince is { } since && now - since >= _options.OnlineAfter)
+                if (connected && !entry.Row.NotBound && entry.ConnectedSince is { } since && Time.GetElapsedTime(since, now) >= _options.OnlineAfter)
                 {
                     entry.State = SiteState.Online;
                 }
@@ -657,20 +773,31 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         if (before != SiteState.Starting || entry.State == SiteState.Offline)
         {
-            var online = entry.State == SiteState.Online;
-            var name = entry.Row.Name;
-            _ = _audit.WriteAsync("system", string.Empty, online ? SiteAudit.Online : SiteAudit.Offline, name, null);
-            if (online)
-            {
-                LogOnline(name);
-            }
-            else
-            {
-                LogOffline(name);
-            }
+            edges.Add(new SiteEdge(entry.Row.Name, entry.State == SiteState.Online));
         }
 
         return true;
+    }
+
+    /// <summary>A site that went online or offline (written after the lock).</summary>
+    private readonly record struct SiteEdge(string Name, bool Online);
+
+    /// <summary>Logs and audits the edges <see cref="Evaluate"/> collected; never under the lock.</summary>
+    private void WriteEdges(List<SiteEdge> edges)
+    {
+        foreach (var edge in edges)
+        {
+            if (edge.Online)
+            {
+                LogOnline(edge.Name);
+            }
+            else
+            {
+                LogOffline(edge.Name);
+            }
+
+            Observe(_audit.WriteAsync("system", string.Empty, edge.Online ? SiteAudit.Online : SiteAudit.Offline, edge.Name, null, CancellationToken.None), "write the audit entry");
+        }
     }
 
     // ---------- listener ----------
@@ -690,6 +817,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             {
                 await CloseListenerAsync().ConfigureAwait(false);
             }
+
+            await SyncFirewallAsync(accept, CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -699,6 +828,45 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         RaiseList();
     }
 
+    /// <summary>
+    /// The site port's inbound rule "OADM Server (Site nodes, TCP 5081)" (Windows service only, like the NTP and DHCP
+    /// servers): open while Accept site nodes is on, removed when it is off or the server stops. Best effort: a refused
+    /// change is logged and tried again with the next one. Under <see cref="_acceptLock"/>.
+    /// </summary>
+    private async Task SyncFirewallAsync(bool open, CancellationToken ct)
+    {
+        if (_firewall is null)
+        {
+            return;
+        }
+
+        var port = SiteListener.Parse(await ListenUrlAsync(ct).ConfigureAwait(false)).Port;
+        if (port == 0)
+        {
+            port = _listener?.Port ?? _firewallRule?.Rule.Port ?? 0; // a port the OS chose (tests): known once it listened
+        }
+
+        if (port == 0)
+        {
+            return;
+        }
+
+        if (_firewallRule is not { } keeper || keeper.Rule.Port != port)
+        {
+            if (_firewallRule is { IsOpen: true } old)
+            {
+                await old.SyncAsync(false, ct).ConfigureAwait(false);
+            }
+
+            _firewallRule = keeper = new FirewallRuleKeeper(FirewallRule.ForService("Site nodes", FirewallProtocol.Tcp, port), _firewall, _logger);
+        }
+
+        await keeper.SyncAsync(open, ct).ConfigureAwait(false);
+    }
+
+    private async Task<string> ListenUrlAsync(CancellationToken ct) =>
+        _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
+
     private async Task OpenListenerAsync(CancellationToken ct)
     {
         if (_listener is not null)
@@ -706,9 +874,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             return;
         }
 
-        var url = _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
+        var url = await ListenUrlAsync(ct).ConfigureAwait(false);
         var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
-            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time));
+            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress);
         listener.Start();
         _listener = listener;
         lock (_lock)
@@ -761,16 +929,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     // ---------- the list ----------
 
-    /// <summary>The Sites page: bound sites by name, then the waiting nodes.</summary>
+    /// <summary>The Sites page: bound sites by name, then the waiting nodes. The device counts come from memory unless a device changed its site.</summary>
     public async Task<Proto.SiteList> SnapshotAsync(CancellationToken ct)
     {
-        Dictionary<Guid, int> counts;
-        await using (var db = await _db.CreateDbContextAsync(ct).ConfigureAwait(false))
-        {
-            counts = await db.Devices.AsNoTracking().Where(d => d.SiteId != null).GroupBy(d => d.SiteId!.Value)
-                .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct).ConfigureAwait(false);
-        }
-
+        var counts = await DeviceCountsAsync(ct).ConfigureAwait(false);
         var list = new Proto.SiteList { Accept = Accept, ListenAddress = ListenAddress() };
         lock (_lock)
         {
@@ -843,13 +1005,13 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         try
         {
-            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
+            await using var db = await _db.CreateDbContextAsync(_stopping).ConfigureAwait(false);
             var now = Time.GetUtcNow().UtcDateTime;
             var version = link.Hello?.Version;
             await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u
                 .SetProperty(s => s.LastSeenUtc, now)
                 .SetProperty(s => s.Version, version)
-                .SetProperty(s => s.Address, link.RemoteHost), _stop.Token).ConfigureAwait(false);
+                .SetProperty(s => s.Address, link.RemoteHost), _stopping).ConfigureAwait(false);
 
             lock (_lock)
             {
@@ -873,10 +1035,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         try
         {
-            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
+            await using var db = await _db.CreateDbContextAsync(_stopping).ConfigureAwait(false);
             foreach (var (id, at) in seen)
             {
-                await db.Sites.Where(s => s.Id == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.LastSeenUtc, at), _stop.Token).ConfigureAwait(false);
+                await db.Sites.Where(s => s.Id == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.LastSeenUtc, at), _stopping).ConfigureAwait(false);
             }
         }
 #pragma warning disable CA1031 // The last seen time is information only.
@@ -895,10 +1057,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     {
         try
         {
-            await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
-            await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u.SetProperty(s => s.NotBound, true), _stop.Token).ConfigureAwait(false);
+            await using var db = await _db.CreateDbContextAsync(_stopping).ConfigureAwait(false);
+            await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u.SetProperty(s => s.NotBound, true), _stopping).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
         {
             return; // the server stops
         }
@@ -910,16 +1072,18 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         SiteSession? session;
+        var edges = new List<SiteEdge>();
         lock (_lock)
         {
             session = _sites.GetValueOrDefault(siteId)?.Session;
             if (_sites.TryGetValue(siteId, out var entry))
             {
                 entry.Row.NotBound = true;
-                Evaluate(entry, Time.GetUtcNow());
+                Evaluate(entry, Time.GetTimestamp(), edges);
             }
         }
 
+        WriteEdges(edges);
         var name = NameOf(siteId) ?? siteId.ToString();
         LogNotBound(name);
         await _audit.WriteAsync("system", string.Empty, SiteAudit.NodeReset, name, null, CancellationToken.None).ConfigureAwait(false);
@@ -939,6 +1103,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         await _stop.CancelAsync().ConfigureAwait(false);
+        StopWatchingDevices();
         if (_tick is not null)
         {
             await _tick.DisposeAsync().ConfigureAwait(false);
@@ -968,6 +1133,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             await node.Link.DisposeAsync().ConfigureAwait(false);
         }
 
+        if (_firewallRule is { IsOpen: true } rule)
+        {
+            await _acceptLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            await rule.SyncAsync(false, CancellationToken.None).ConfigureAwait(false); // the port is closed: so is its rule
+        }
+
         _acceptLock.Dispose();
         _bindLock.Dispose();
         _stop.Dispose();
@@ -990,12 +1161,16 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         public SiteSession? Session { get; set; }
 
-        public DateTimeOffset LastAnswer { get; set; }
+        /// <summary>The last answer of the node (a <see cref="TimeProvider.GetTimestamp"/>, never the wall clock).</summary>
+        public long LastAnswer { get; set; }
 
-        public DateTimeOffset? ConnectedSince { get; set; }
+        /// <summary>Since when the node is connected and answering (timestamp).</summary>
+        public long? ConnectedSince { get; set; }
 
-        public DateTimeOffset StartingUntil { get; set; }
+        /// <summary>When the start window began (timestamp).</summary>
+        public long StartingSince { get; set; }
 
+        /// <summary>The wall clock time of the last answer (shown and stored only).</summary>
         public DateTimeOffset? LastSeen { get; set; }
 
         public TimeSpan RoundTrip { get; set; }

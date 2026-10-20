@@ -167,11 +167,11 @@ foreach ($app in 'Server', 'Client') {
     }
 }
 (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
-# TCP 5080 (clients) and 5081 (site nodes) for Domain and Private; the NTP and DHCP plugins add their UDP rules only
-# while enabled.
+# TCP 5080 (clients) for Domain and Private; the server adds TCP 5081 only while Accept site nodes is on (off by default),
+# the NTP and DHCP plugins their UDP rules only while enabled.
 $rules = @(Get-NetFirewallRule -DisplayName 'OADM Server*' | Sort-Object DisplayName)
 $rules | Format-Table DisplayName, Enabled, Direction, Profile -AutoSize | Out-String | Write-Host
-if (($rules.DisplayName -join ',') -ne 'OADM Server (gRPC, TCP 5080),OADM Server (site nodes, TCP 5081)') { throw 'the rules for TCP 5080 and 5081 expected' }
+if (($rules.DisplayName -join ',') -ne 'OADM Server (gRPC, TCP 5080)') { throw 'only the rule for TCP 5080 expected' }
 foreach ($rule in $rules) {
     if (($rule.Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw "profile Domain, Private expected, not $($rule.Profile)" }
 }

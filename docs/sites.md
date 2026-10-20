@@ -199,14 +199,19 @@ nodes" / "Turned off site nodes", setting `Sites.Accept`) opens it without a res
 node connection (every site goes offline: the server never dials a node). The server accepts site nodes on
 `Sites.ListenUrl` (default `https://0.0.0.0:5081`, its own Kestrel endpoint with the site identity certificate, never
 the clients' endpoint, TLS 1.3 or 1.2, see Transport). A node that is not bound may only `Hello`, `PairStart` and
-wait for `Bind`: at most 50 waiting nodes and 10 new connections a minute per source address **(default)**; a waiting node
-not bound within 24 hours is dropped. Before any TLS work the listener counts new connections per source address (IPv6
-per /64): 120 a minute **(default)**, wider than the 10 for unknown keys because bound nodes reconnect with a control and
-up to 8 worker links; at most 64 handshakes at once, at most 64 links whose Hello has not answered (5 s for it). Until a
+wait for `Bind`: at most 50 waiting nodes, 3 of them per source address, and 10 new connections a minute per source
+address **(default)**; a full list makes room by dropping the node that waits longest; a waiting node not bound within 24
+hours is dropped. Before any TLS work the listener counts new connections per source address (IPv6 per /64): 120 a minute
+**(default)**, wider than the 10 for unknown keys because bound nodes reconnect with a control and up to 8 worker links;
+at most 64 handshakes at once and 8 per address, at most 64 links of unknown keys whose Hello has not answered (5 s for
+it; a link with a bound site's key is not counted, so strangers cannot keep the sites' nodes out). Closing the listener
+waits for every handshake. Links become sessions or waiting nodes only while Accept site nodes is on and the server
+runs; Remove takes the site and its session in one step, so a node that connects meanwhile finds no site. Until a
 link carries a bound site's key the server reads at most 16 KB per answer (`NodeLink.Trust`). A Hello is checked before
 anything of it is stored, logged, audited or shown (`HelloRules`: node id 8..64 hex digits or a GUID, host name at most 253
 characters, names at most 64, version at most 32 printable ASCII, no control or format characters); one that breaks a rule
-is refused whole. The per-address tables drop entries by age and are bounded (`AddressRateLimiter`). Bound nodes
+is refused whole. The per-address tables drop entries by age and are bounded; a full table drops the oldest address
+(`AddressRateLimiter`). Bound nodes
 reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
 node its DNS name and every address of its network cards (`Watch` of the control connection, again after every change);
 the node keeps them and tries the typed address first, then the others in order. A server that moved is found again as
@@ -267,7 +272,9 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   A separate connection for large transfers can be added later inside `ISiteTransport` if the perf test shows polls
   waiting behind uploads on slow links.
 - **Online check** on the control connection only: HTTP/2 keepalive pings plus `Watch`. Offline after 30 s without an
-  answer, online again after 60 s stable **(defaults)** (no flapping).
+  answer, online again after 60 s stable **(defaults)** (no flapping). The server's tick ends the session of a node that
+  is connected but silent for 30 s (no waiting for a call's own timeout); the times run on the monotonic clock, so a
+  change of the server's wall clock never moves them.
 - **`ISiteTransport.OpenStreamAsync(site, host, port, kind, deadline) -> Stream`** is the only way the server opens a
   connection through a node (`kind` = Short or Permanent, see Limits).
 - **Capabilities**: `Hello` returns `protocol_version` and `features` (`dial`, `browse`, `resolve`, `relay.udp`,
@@ -565,9 +572,10 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 - Each package ships `LICENSE.txt`, `NOTICE.txt`, `LGPL-2.1.txt` (only if FFmpeg or other LGPL parts are in it),
   `TERMS.md` and its own `THIRD-PARTY-NOTICES.txt` (`tools/Oadm.Notices` reads the node's deps.json too; Linux in
   `/usr/share/doc/oadm-site-node*/`).
-- **Server side**: the main MSI's firewall rule covers TCP 5081 too (Domain, Private) for the site listener (nothing
-  listens there until Accept site nodes is on); the .deb and
-  .pkg change no firewall today and stay so.
+- **Server side** (decision 2026-10-20: dynamic like NTP and DHCP): the main MSI opens only TCP 5080; the Windows service
+  adds "OADM Server (Site nodes, TCP 5081)" (Domain, Private) itself while Accept site nodes is on and removes it when it
+  is off or the server stops (the first sync at start always applies); the .deb and .pkg change no firewall today and
+  stay so.
 - `manage package site-node [--rid] [--version]` (both manage scripts and `scripts/manage-help.txt`).
 - Release workflow (`release.yml`): job `installers` builds the node packages next to the others (the arm64 .deb on
   `ubuntu-24.04-arm`), installs, checks (service up, `Hello` answers unbound) and removes the .deb; `smoke-windows`

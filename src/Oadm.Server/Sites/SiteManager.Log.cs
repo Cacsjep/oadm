@@ -41,8 +41,11 @@ public sealed partial class SiteManager
     [LoggerMessage(Level = LogLevel.Information, Message = "A site node connection from {Remote} failed: {Reason}")]
     private partial void LogLinkFailed(string remote, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Too many site nodes wait to be bound; the one from {Remote} was refused")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Too many site nodes from {Remote} wait to be bound; one more was refused")]
     private partial void LogTooManyWaiting(string remote);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Too many site nodes wait to be bound; {Node} from {Remote}, waiting longest, was dropped")]
+    private partial void LogWaitingEvicted(string node, string remote);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Site node {Node} from {Remote} waits to be bound")]
     private partial void LogWaiting(string node, string remote);

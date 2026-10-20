@@ -24,14 +24,20 @@ public sealed class SiteOptions
     /// <summary>A node that waits to be bound is dropped after this time.</summary>
     public TimeSpan WaitingMaxAge { get; init; } = TimeSpan.FromHours(24);
 
-    /// <summary>Nodes waiting to be bound at most.</summary>
+    /// <summary>Nodes waiting to be bound at most; when full, the one waiting longest makes room.</summary>
     public int MaxWaiting { get; init; } = 50;
+
+    /// <summary>Nodes waiting to be bound from one address (IPv6 per /64) at most.</summary>
+    public int MaxWaitingPerAddress { get; init; } = 3;
 
     /// <summary>New connections a minute from one address of nodes the server does not know.</summary>
     public int NewConnectionsPerMinute { get; init; } = 10;
 
     /// <summary>TLS handshakes in progress at most.</summary>
     public int MaxHandshakes { get; init; } = 64;
+
+    /// <summary>TLS handshakes in progress from one address (IPv6 per /64) at most: one address never holds them all.</summary>
+    public int MaxHandshakesPerAddress { get; init; } = 8;
 
     /// <summary>Large transfers (streamed uploads and answers) per site at once.</summary>
     public int MaxLargeTransfers { get; init; } = 2;
@@ -61,7 +67,10 @@ public sealed class SiteOptions
     /// </summary>
     public int ConnectionsPerMinute { get; init; } = 120;
 
-    /// <summary>Accepted links whose Hello has not answered yet, at most.</summary>
+    /// <summary>
+    /// Accepted links of unknown keys whose Hello has not answered yet, at most. Links with the key of a bound site do not
+    /// count: strangers cannot keep the sites' own nodes out.
+    /// </summary>
     public int MaxPendingLinks { get; init; } = 64;
 
     /// <summary>How long the first Hello on a new link may take.</summary>

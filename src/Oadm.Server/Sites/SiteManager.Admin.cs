@@ -112,13 +112,7 @@ public sealed partial class SiteManager
             return list;
         }
 
-        var ids = removed.Select(r => r.Id).ToList();
-        Dictionary<Guid, int> counts;
-        await using (var db = await _db.CreateDbContextAsync(ct).ConfigureAwait(false))
-        {
-            counts = await db.Devices.AsNoTracking().Where(d => d.SiteId != null && ids.Contains(d.SiteId.Value)).GroupBy(d => d.SiteId!.Value)
-                .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct).ConfigureAwait(false);
-        }
+        var counts = await DeviceCountsAsync(ct).ConfigureAwait(false);
 
         var rows = new List<Proto.Site>();
         foreach (var site in removed.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase))

@@ -205,7 +205,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Core.Auth.AuditLog>(),
             sp.GetRequiredService<Sites.SiteOptions>(),
             sp.GetRequiredService<Sites.SiteOptions>().Time ?? sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ILogger<Sites.SiteManager>>()));
+            sp.GetRequiredService<ILogger<Sites.SiteManager>>(),
+            sp.GetService<Sdk.Network.IFirewallRules>())); // the Windows service: the site port's rule while Accept site nodes is on
         services.RemoveAll<Core.Sites.ISiteStates>();
         services.AddSingleton<Core.Sites.ISiteStates>(sp => sp.GetRequiredService<Sites.SiteManager>());
         services.AddSingleton<Core.Sites.ISiteTransport>(sp => sp.GetRequiredService<Sites.SiteManager>());
@@ -517,6 +518,7 @@ public static partial class OadmServerHost
         // 2d. Sites: the identity and the bound sites, each "starting" until its node settles (before the event rules and
         // the polling read site states); the site listener opens when Accept site nodes is on.
         await sp.GetRequiredService<Sites.SiteManager>().LoadRemovedAsync(ct).ConfigureAwait(false); // removed sites with kept devices
+        sp.GetRequiredService<Sites.SiteManager>().WatchDevices(sp.GetRequiredService<IDeviceChangeFeed>()); // the page's device counts
         await sp.GetRequiredService<Sites.SiteManager>().StartAsync(ct).ConfigureAwait(false);
 
         // 3. Tasks left running by a previous process (the parallel task limit is loaded first).

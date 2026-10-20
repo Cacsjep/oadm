@@ -20,10 +20,18 @@ public sealed partial class SiteManager
     {
         try
         {
-            // Links that did not answer Hello yet are capped and get a short deadline: a flood of connections that pass
-            // TLS and then say nothing cannot pile up.
+            // Links of unknown keys that did not answer Hello yet are capped and get a short deadline: a flood of
+            // connections that pass TLS and then say nothing cannot pile up. A bound site's key (from the TLS handshake)
+            // is not capped, so the flood cannot keep the sites' own nodes out; its Hello is checked all the same.
             HelloReply? hello;
-            if (Interlocked.Increment(ref _pendingLinks) > _options.MaxPendingLinks)
+            bool known;
+            lock (_lock)
+            {
+                known = link.NodeFingerprintHex.Length > 0
+                    && _sites.Values.Any(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!known && Interlocked.Increment(ref _pendingLinks) > _options.MaxPendingLinks)
             {
                 Interlocked.Decrement(ref _pendingLinks);
                 LogTooManyConnections(link.RemoteHost);
@@ -37,7 +45,10 @@ public sealed partial class SiteManager
             }
             finally
             {
-                Interlocked.Decrement(ref _pendingLinks);
+                if (!known)
+                {
+                    Interlocked.Decrement(ref _pendingLinks);
+                }
             }
 
             if (hello is null)
@@ -46,10 +57,20 @@ public sealed partial class SiteManager
                 return;
             }
 
+            await Point("after-hello", _stopping).ConfigureAwait(false);
             Guid? siteId;
+            bool accepting;
             lock (_lock)
             {
+                // Accept site nodes turned off (or the server stopping) while the link said Hello: it becomes nothing.
+                accepting = CanAttach();
                 siteId = _sites.Values.FirstOrDefault(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase))?.Row.Id;
+            }
+
+            if (!accepting)
+            {
+                await link.DisposeAsync().ConfigureAwait(false);
+                return;
             }
 
             if (siteId is { } id && hello.State == NodeState.Bound)
@@ -112,7 +133,7 @@ public sealed partial class SiteManager
     {
         try
         {
-            var hello = await link.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + (timeout ?? _options.CallTimeout), cancellationToken: _stop.Token).ConfigureAwait(false);
+            var hello = await link.Client.HelloAsync(new HelloRequest(), deadline: DateTime.UtcNow + (timeout ?? _options.CallTimeout), cancellationToken: _stopping).ConfigureAwait(false);
             if (HelloRules.Problem(hello) is { } problem)
             {
                 LogBadHello(link.RemoteHost, problem);
@@ -130,6 +151,17 @@ public sealed partial class SiteManager
     }
 
     private int _pendingLinks;
+
+    private int _waitingRefused;
+
+    /// <summary>Nodes refused a place in the waiting list because their address has enough there (tests).</summary>
+    internal int WaitingRefused => Volatile.Read(ref _waitingRefused);
+
+    /// <summary>Links of unknown keys waiting for their first Hello (tests).</summary>
+    internal int PendingLinks => Volatile.Read(ref _pendingLinks);
+
+    /// <summary>The site listener while Accept site nodes is on (tests).</summary>
+    internal SiteListener? Listener => _listener;
     private AddressRateLimiter? _unknownLinks;
 
     // New links of keys the server does not know, per address (IPv6 per /64) and minute; old entries are dropped by age.
@@ -149,9 +181,15 @@ public sealed partial class SiteManager
 
         var key = link.NodeFingerprintHex;
         WaitingNode? replaced;
-        var node = new WaitingNode(link, hello, Time.GetUtcNow());
+        WaitingNode? evicted = null;
+        var node = new WaitingNode(link, hello, Time.GetUtcNow(), Time.GetTimestamp());
         lock (_lock)
         {
+            if (!CanAttach())
+            {
+                return false; // Accept site nodes is off or the server stops: nothing waits
+            }
+
             var same = _sites.Values.FirstOrDefault(e =>
                 string.Equals(e.Row.NodeId, hello.NodeId, StringComparison.Ordinal)
                 || string.Equals(e.Row.NodeKeyFingerprint, key, StringComparison.OrdinalIgnoreCase));
@@ -165,10 +203,22 @@ public sealed partial class SiteManager
             }
 
             _waiting.TryGetValue(key, out replaced);
-            if (replaced is null && _waiting.Count >= _options.MaxWaiting)
+            if (replaced is null)
             {
-                LogTooManyWaiting(link.RemoteHost);
-                return false;
+                // A few per address (IPv6 per /64): one address cannot fill the list. When the list is full, the node that
+                // waits longest makes room (a flood from many addresses never locks out a new node for good).
+                if (_waiting.Values.Count(w => w.AddressKey == node.AddressKey) >= _options.MaxWaitingPerAddress)
+                {
+                    Interlocked.Increment(ref _waitingRefused);
+                    LogTooManyWaiting(link.RemoteHost);
+                    return false;
+                }
+
+                if (_waiting.Count >= _options.MaxWaiting && _waiting.Values.MinBy(w => w.SinceTimestamp) is { } oldest)
+                {
+                    _waiting.Remove(oldest.Key);
+                    evicted = oldest;
+                }
             }
 
             _waiting[key] = node;
@@ -177,6 +227,12 @@ public sealed partial class SiteManager
         if (replaced is not null && replaced.Link != link)
         {
             _ = replaced.Link.DisposeAsync().AsTask();
+        }
+
+        if (evicted is not null)
+        {
+            LogWaitingEvicted(evicted.Name, evicted.Link.RemoteHost);
+            _ = evicted.Link.DisposeAsync().AsTask();
         }
 
         _ = link.Closed.ContinueWith(_ =>
@@ -210,18 +266,25 @@ public sealed partial class SiteManager
     private partial void LogBadHello(string remote, string problem);
 
     /// <summary>A node that waits to be bound: the connection it opened.</summary>
-    private sealed class WaitingNode(NodeLink link, HelloReply hello, DateTimeOffset since)
+    private sealed class WaitingNode(NodeLink link, HelloReply hello, DateTimeOffset since, long sinceTimestamp)
     {
         public NodeLink Link { get; } = link;
 
         public HelloReply Hello { get; } = hello;
 
+        /// <summary>When the node connected (wall clock, shown).</summary>
         public DateTimeOffset Since { get; } = since;
+
+        /// <summary>When the node connected (<see cref="TimeProvider.GetTimestamp"/>: the 24 hours never follow the wall clock).</summary>
+        public long SinceTimestamp { get; } = sinceTimestamp;
 
         public string NodeId => Hello.NodeId;
 
         /// <summary>The key of the waiting list: the fingerprint of the node's key on this link.</summary>
         public string Key => Link.NodeFingerprintHex;
+
+        /// <summary>The address the node connects from (IPv6 per /64), for the limit per address.</summary>
+        public string AddressKey { get; } = link.Remote is { } remote ? AddressRateLimiter.KeyOf(remote.Address) : "?";
 
         public string Name => string.IsNullOrWhiteSpace(Hello.HostName) ? Link.RemoteHost : Hello.HostName;
 

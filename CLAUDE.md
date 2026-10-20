@@ -78,7 +78,7 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
-  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, two firewall rules for `Oadm.Server.exe`, TCP 5080 and (on branch `feature/sites`) TCP 5081 for site nodes, profiles
+  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rule for `Oadm.Server.exe` TCP 5080 (TCP 5081 for site nodes, on branch `feature/sites`, is the server's own rule while Accept site nodes is on, see "# Sites"), profiles
   Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
   allowed). Features `Client` (always) and `Server` (service, firewall rule, data folder); own UI `WixUI_Oadm`
   (welcome, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
@@ -2779,12 +2779,20 @@ Reset; Networks = one choice All cards or ticked cards, plus Extra networks.
 - `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
   30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
   starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),
-  `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; 120 new connections a minute
-  per address before TLS (IPv6 per /64, `Oadm.Sites.Transport.AddressRateLimiter`), handshake timeout, 64 handshakes at
-  once, 64 links before Hello (5 s), 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`), Hello
-  checked by `HelloRules`, 10 new unknown connections a minute per address, 50 waiting nodes kept by key fingerprint,
-  dropped after 24 h; binding with J-PAKE (`Oadm.Sites.Binding`), binds one at a time, Unbind when the site cannot be
-  stored, a node that accepted a new server identity binds its site again with the code),
+  `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; Windows service: the rule
+  "OADM Server (Site nodes, TCP 5081)" through `FirewallRuleKeeper` while it is on, the first sync at start always
+  applies, removed when off or stopped; 120 new connections a minute per address before TLS (IPv6 per /64,
+  `Oadm.Sites.Transport.AddressRateLimiter`: full = the oldest address makes room), handshake timeout, 64 handshakes at
+  once and 8 per address, closing waits for every handshake, 64 links of unknown keys before Hello (5 s; a bound site's
+  key is not capped), 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`), Hello checked by
+  `HelloRules`, 10 new unknown connections a minute per address, 50 waiting nodes kept by key fingerprint, 3 per address,
+  full = the one waiting longest makes room, dropped after 24 h; binding with J-PAKE (`Oadm.Sites.Binding`), binds one at
+  a time, the node's Bind runs to its end whatever the caller does, Unbind when the site cannot be stored or Bind's answer
+  was lost, a node that accepted a new server identity binds its site again with the code; links become sessions or
+  waiting nodes only while Accept is on and the server runs, Remove takes the site and its session in one step, a session
+  whose site is gone ends; the waiting times run on `TimeProvider.GetTimestamp`, never the wall clock; the tick ends the
+  session of a node silent for 30 s; online / offline audits are written after the lock; the Sites page reads the device
+  counts only after the device feed shows a device that changed its site),
   `SiteSession` (control link with Watch and a 10 s Hello heartbeat and the round trip, up to 8 worker links for Dial,
   a new worker when every one carries 2,000 dials), `SiteIdentityStore` (`Sites.Identity`, purpose `oadm:site-identity`;
   dropped with a replaced master key and named in the notice), `SiteAdmin` (Remove with or without devices, Replace),

@@ -12,8 +12,8 @@ description: Network ports, the data folder and what to back up.
 | UDP 123 | [NTP server](../../tools/ntp-server/), only when enabled |
 | UDP 67 | [DHCP server](../../tools/dhcp-server/), only when enabled |
 
-The Windows installer opens TCP 5080 and 5081 for Domain and Private networks. The NTP and DHCP servers open their port while
-enabled. The server runs as Local System / root because these two servers need privileged ports.
+The Windows installer opens TCP 5080 for Domain and Private networks. The server opens TCP 5081 while **Accept site
+nodes** is on, the NTP and DHCP servers their port while enabled. The server runs as Local System / root because these two servers need privileged ports.
 
 The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
 Metadata Monitor.
