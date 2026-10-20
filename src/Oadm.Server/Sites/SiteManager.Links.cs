@@ -152,6 +152,11 @@ public sealed partial class SiteManager
 
     private int _pendingLinks;
 
+    private int _waitingRefused;
+
+    /// <summary>Nodes refused a place in the waiting list because their address has enough there (tests).</summary>
+    internal int WaitingRefused => Volatile.Read(ref _waitingRefused);
+
     /// <summary>Links of unknown keys waiting for their first Hello (tests).</summary>
     internal int PendingLinks => Volatile.Read(ref _pendingLinks);
 
@@ -176,6 +181,7 @@ public sealed partial class SiteManager
 
         var key = link.NodeFingerprintHex;
         WaitingNode? replaced;
+        WaitingNode? evicted = null;
         var node = new WaitingNode(link, hello, Time.GetUtcNow(), Time.GetTimestamp());
         lock (_lock)
         {
@@ -197,10 +203,22 @@ public sealed partial class SiteManager
             }
 
             _waiting.TryGetValue(key, out replaced);
-            if (replaced is null && _waiting.Count >= _options.MaxWaiting)
+            if (replaced is null)
             {
-                LogTooManyWaiting(link.RemoteHost);
-                return false;
+                // A few per address (IPv6 per /64): one address cannot fill the list. When the list is full, the node that
+                // waits longest makes room (a flood from many addresses never locks out a new node for good).
+                if (_waiting.Values.Count(w => w.AddressKey == node.AddressKey) >= _options.MaxWaitingPerAddress)
+                {
+                    Interlocked.Increment(ref _waitingRefused);
+                    LogTooManyWaiting(link.RemoteHost);
+                    return false;
+                }
+
+                if (_waiting.Count >= _options.MaxWaiting && _waiting.Values.MinBy(w => w.SinceTimestamp) is { } oldest)
+                {
+                    _waiting.Remove(oldest.Key);
+                    evicted = oldest;
+                }
             }
 
             _waiting[key] = node;
@@ -209,6 +227,12 @@ public sealed partial class SiteManager
         if (replaced is not null && replaced.Link != link)
         {
             _ = replaced.Link.DisposeAsync().AsTask();
+        }
+
+        if (evicted is not null)
+        {
+            LogWaitingEvicted(evicted.Name, evicted.Link.RemoteHost);
+            _ = evicted.Link.DisposeAsync().AsTask();
         }
 
         _ = link.Closed.ContinueWith(_ =>
@@ -258,6 +282,9 @@ public sealed partial class SiteManager
 
         /// <summary>The key of the waiting list: the fingerprint of the node's key on this link.</summary>
         public string Key => Link.NodeFingerprintHex;
+
+        /// <summary>The address the node connects from (IPv6 per /64), for the limit per address.</summary>
+        public string AddressKey { get; } = link.Remote is { } remote ? AddressRateLimiter.KeyOf(remote.Address) : "?";
 
         public string Name => string.IsNullOrWhiteSpace(Hello.HostName) ? Link.RemoteHost : Hello.HostName;
 

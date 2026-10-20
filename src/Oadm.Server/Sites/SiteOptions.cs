@@ -24,8 +24,11 @@ public sealed class SiteOptions
     /// <summary>A node that waits to be bound is dropped after this time.</summary>
     public TimeSpan WaitingMaxAge { get; init; } = TimeSpan.FromHours(24);
 
-    /// <summary>Nodes waiting to be bound at most.</summary>
+    /// <summary>Nodes waiting to be bound at most; when full, the one waiting longest makes room.</summary>
     public int MaxWaiting { get; init; } = 50;
+
+    /// <summary>Nodes waiting to be bound from one address (IPv6 per /64) at most.</summary>
+    public int MaxWaitingPerAddress { get; init; } = 3;
 
     /// <summary>New connections a minute from one address of nodes the server does not know.</summary>
     public int NewConnectionsPerMinute { get; init; } = 10;

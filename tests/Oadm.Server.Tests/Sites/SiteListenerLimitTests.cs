@@ -9,6 +9,8 @@ using Oadm.Server.Sites;
 using Oadm.SiteNode.Links;
 using Oadm.Sites.Transport;
 
+using Proto = Oadm.Contracts.V1;
+
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
@@ -78,6 +80,52 @@ public sealed class SiteListenerLimitTests
         await Eventually.TrueAsync(() => server.Manager.SessionsStarted > started && server.Manager.HasSession(id), "the bound node connected");
         Assert.Equal(1, server.Manager.PendingLinks);
     }
+
+    [Fact]
+    public async Task OneAddressKeepsAtMostThreeNodesWaiting()
+    {
+        await using var server = await SiteServer.StartAsync();
+        var nodes = new List<SiteTestNode>();
+        try
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                nodes.Add(await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address, hostName: "site-pc-" + i));
+            }
+
+            await Eventually.TrueAsync(async () => server.Manager.WaitingRefused >= 1 && Waiting(await server.ListAsync()) == 3, "three wait, the fourth refused");
+        }
+        finally
+        {
+            foreach (var node in nodes)
+            {
+                await node.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task AFullWaitingListDropsTheNodeWaitingLongest()
+    {
+        await using var server = await SiteServer.StartAsync(options: new SiteOptions
+        {
+            ListenUrl = "127.0.0.1:0",
+            WorkerWait = TimeSpan.FromSeconds(30),
+            MaxWaiting = 2,
+        });
+        await using var first = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address, hostName: "site-pc-1");
+        await server.WaitingAsync(first.NodeId);
+        await using var second = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address, hostName: "site-pc-2");
+        await server.WaitingAsync(second.NodeId);
+
+        await using var third = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address, hostName: "site-pc-3");
+
+        // The newest node always gets a place; the list never grows past its size.
+        await server.WaitingAsync(third.NodeId);
+        Assert.Equal(2, Waiting(await server.ListAsync()));
+    }
+
+    private static int Waiting(Proto.SiteList list) => list.Sites.Count(s => s.Id.Length == 0);
 
     // A TLS client with a key the server does not know that never answers Hello.
     private static async Task<SslStream> StrangerAsync(int port)
