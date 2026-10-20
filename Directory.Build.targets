@@ -8,6 +8,16 @@
     <None Remove="$(NuGetPackageRoot)xunit.runner.visualstudio\*\build\*\xunit.abstractions.dll" />
   </ItemGroup>
 
+  <!-- Native debug files of packages (libSkiaSharp.pdb, libHarfBuzzSharp.pdb, about 80 MB each, one per Windows
+       processor type) are never used, but every project that references Avalonia copied them: about 8 GB of a full build.
+       They stay out of build and publish folders; managed .pdb files are not touched. -->
+  <Target Name="OadmSkipNativeDebugFiles" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(NativeCopyLocalItems.Extension)' == '.pdb'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.Extension)' == '.pdb' and '%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native'" />
+    </ItemGroup>
+  </Target>
+
   <!-- NuGet packages (the plugin SDK, "manage package nuget"): one README and the app icon for every package page. -->
   <PropertyGroup Condition="'$(IsPackable)' == 'true'">
     <PackageReadmeFile>README.md</PackageReadmeFile>
