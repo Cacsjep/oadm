@@ -48,7 +48,7 @@ public sealed class ConnectionState
             _connected = connected;
         }
 
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 }
 
@@ -184,13 +184,13 @@ public sealed class NodeStatusFeed
     private void Raise()
     {
         Interlocked.Increment(ref _version);
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 
     private void RaiseCounts()
     {
         Interlocked.Increment(ref _version);
-        Counts?.Invoke();
-        Changed?.Invoke();
+        NodeEvents.Raise(Counts);
+        NodeEvents.Raise(Changed);
     }
 }

@@ -68,7 +68,7 @@ public sealed partial class NodeStore
             _config = copy;
         }
 
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
         return true;
     }
 

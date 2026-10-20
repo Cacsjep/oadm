@@ -176,9 +176,11 @@ public sealed class SiteNodeGrpcService(
     {
         Guard(context);
         var ct = context.CancellationToken;
-        using var changed = new SemaphoreSlim(0);
+        // A wake-up, never a disposable semaphore: a handler still running on another thread after this call ended
+        // must not throw into the dial, config write or card change that raised it.
+        var changed = new Wakeup();
         var other = 0;
-        void OnChanged() => changed.Release();
+        void OnChanged() => changed.Set();
         void OnOther() => Interlocked.Exchange(ref other, 1);
         feed.Changed += OnChanged;
         feed.Counts += OnChanged;
@@ -190,34 +192,8 @@ public sealed class SiteNodeGrpcService(
         using var watching = resetNotice.Enter();
         try
         {
-            var sentAt = options.Time.GetTimestamp();
-            await responseStream.WriteAsync(feed.Status(), ct).ConfigureAwait(false);
-            while (!ct.IsCancellationRequested)
-            {
-                await changed.WaitAsync(ct).ConfigureAwait(false);
-                if (resetNotice.Pending)
-                {
-                    // Reset: the last message; the server marks the site not bound and ends this call.
-                    await responseStream.WriteAsync(new NodeStatus { State = NodeState.UnboundOpen, Reset = true, Version = options.Version }, ct).ConfigureAwait(false);
-                    await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, options.Time, ct).ConfigureAwait(false);
-                }
-
-                if (Interlocked.Exchange(ref other, 0) == 0)
-                {
-                    // Only connection counts changed: at most once a second.
-                    var wait = CountsInterval - options.Time.GetElapsedTime(sentAt);
-                    if (wait > TimeSpan.Zero)
-                        await Task.Delay(wait, options.Time, ct).ConfigureAwait(false);
-                }
-
-                while (changed.CurrentCount > 0)
-                    await changed.WaitAsync(ct).ConfigureAwait(false);
-                sentAt = options.Time.GetTimestamp();
-                await responseStream.WriteAsync(feed.Status(), ct).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
+            await WatchLoop.RunAsync(changed, () => Interlocked.Exchange(ref other, 0) != 0, feed.Status, resetNotice, options,
+                (status, token) => responseStream.WriteAsync(status, token), ct).ConfigureAwait(false);
         }
         finally
         {

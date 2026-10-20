@@ -77,13 +77,13 @@ public sealed class LinkRegistry(AcceptedStreamListener listener, BindingState s
     {
         lock (_lock)
             _links[link.Id] = link;
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 
     private void Remove(SiteLink link)
     {
         lock (_lock)
             _links.Remove(link.Id);
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 }

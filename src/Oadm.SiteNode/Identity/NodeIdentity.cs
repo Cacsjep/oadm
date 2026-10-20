@@ -53,7 +53,7 @@ public sealed class NodeIdentity : IDisposable
         var next = CreateAndSave(name);
         lock (_lock)
             _certificate = next;
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 
     public void Dispose()

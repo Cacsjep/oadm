@@ -121,7 +121,7 @@ public sealed class BindingState
             return true;
         });
         if (before != Binding)
-            Changed?.Invoke();
+            NodeEvents.Raise(Changed);
     }
 
     /// <summary>Allow binding: another 24 hours and a new code (only while not bound).</summary>
@@ -151,7 +151,7 @@ public sealed class BindingState
             c.Requested.Clear();
         });
         NewCode(clearAttempts: true);
-        IdentityReset?.Invoke();
+        NodeEvents.Raise(IdentityReset);
     }
 
     /// <summary>True while a server with <paramref name="fingerprintHex"/> may pair: binding open, or its new identity accepted in the app.</summary>
@@ -320,7 +320,7 @@ public sealed class BindingState
             return true;
         });
         if (noted)
-            Changed?.Invoke();
+            NodeEvents.Raise(Changed);
         return noted;
     }
 
@@ -386,7 +386,7 @@ public sealed class BindingState
             }
         }
 
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
         return locked
             ? new NodeRefusalException(StatusCode.ResourceExhausted, AdminTexts.TooManyWrongCodes)
             : new NodeRefusalException(StatusCode.PermissionDenied, AdminTexts.WrongCode);
@@ -406,7 +406,7 @@ public sealed class BindingState
             }
         }
 
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 
     private static string Clean(string? text)
