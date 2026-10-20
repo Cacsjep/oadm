@@ -3,8 +3,11 @@
 The node of a site (`docs/sites.md`): OADM's foot in a network the server cannot reach. A pipe: no database, no
 credentials, no tasks, no plugins. Two programs:
 
-- `oadm-site-node` (this project): the headless service (Windows service "OADM Site Node" `OadmSiteNode`, systemd
-  `Type=notify`), runs without root. The same exe is the command line.
+- `oadm-site-node` (this project): the headless service (Windows service "OADM Site Node" `OadmSiteNode` under its own
+  virtual account `NT SERVICE\OadmSiteNode`, systemd `Type=notify` as the user `oadm-site-node`), runs without root.
+  A background part that fails stops the node with exit code 1 (`NodeFailure`; the SCM's recovery runs for stops with
+  an error, systemd `Restart=on-failure`); the loops themselves log and retry their own errors (a tick that cannot be
+  saved, a local channel that cannot be opened). The same exe is the command line.
 - `oadm-site-node-app` (`src/Oadm.SiteNode.App`): the window, Avalonia with the shared OADM theme (`src/Oadm.Theme`).
 
 Shared: `src/Oadm.SiteNode.Admin` (the local channel, texts, server address and subnet rules), `src/Oadm.Sites` (TLS
@@ -16,8 +19,11 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   `node.json` (`Config/NodeConfig`: id, mode, server address, cards, all cards, extra subnets, both port lists, requests,
   binding run time left, bound server, the server's own addresses, a new server identity waiting for Accept),
   `identity.bin` (the TLS identity, PKCS#12 under AES-256-GCM) with `local.key` (32 bytes, 0600 on Linux), `logs/`
-  (`site-node-*.log` rolling daily or 20 MB, 30 files, 14 days; `connections-yyyyMMdd.log` 30 days). Never device data
-  or passwords.
+  (`site-node-*.log` rolling daily or 20 MB, 30 files, 14 days; `connections-yyyyMMdd.log` 30 days and at most 1 GB
+  together, the oldest first; the same line within a minute is written once with "(N more)"; at most 10,000 lines wait
+  for the disk, more are dropped and counted). Never device data or passwords. Only absent files mean a first start:
+  `node.json`, `identity.bin` or `local.key` that exist but cannot be read (5 tries) fail the start, damaged content is
+  kept as `.unreadable`; writes go through a temporary file flushed to the disk (`Config/DataFiles`).
 - **Links** (`Links/`): every TLS connection to a server is a `SiteLink`; Kestrel serves `SiteNodeService` on it through
   `AcceptedStreamListener` (no socket endpoint of its own). Mode Connect (default): `OutboundConnector` connects to the
   typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4 ... 60
@@ -44,19 +50,29 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   then closed until Allow binding; the pairing code lives in memory (new at start, Allow binding, Reset, Unbind and after
   5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so parallel links get no more
 than 5 guesses); Reset = new id, key and code, the server forgotten.
-- **Dial** (`Devices/Dialer`): the port must be on Connect to, the address (after DNS on the node) on a reached card or
-  extra subnet; short dials at most 1,024 open and 256 connecting, permanent ones at most 64 connecting; device socket
-  errors come back as `DEVICE_*`, the node's problems as `SITE_*`. Every dial is a line of the connection log.
+- **Reach** (`Networks/NetworkScope`): the reached cards' networks and the extra networks (at least /8, IPv6 /16), never
+  special addresses (0.0.0.0/8, loopback, 169.254/16, multicast, 240/4; IPv6 loopback, link-local, multicast) and never
+  the node's own card addresses. `CardWatcher` reads the cards every 10 s and on the OS's address change; a change goes
+  to the server's Watch and the app at once and relays bind again.
+- **Dial** (`Devices/Dialer`, `DialPipe`): the port must be on Connect to, the address (after DNS on the node) on a
+  reached card or extra subnet; short dials at most 1,024 open and 256 connecting, permanent ones at most 64 connecting;
+  the socket and its place are released on every path; device socket errors come back as `DEVICE_*`, the node's
+  problems as `SITE_*`. Every dial is a line of the connection log. Probes (ProbeTcp, the ping fallback, each address of a
+  range scan) wait for one of 64 places; at most 4 range scans at once (RESOURCE_EXHAUSTED).
 - **Relay** (`Relays/RelayHost`): UDP or TCP on the reached cards for as long as the call lives, only for ports on Listen
   on; a port that is not is requested with its reason and the relay waits; a port in use or without permission is
-  reported and tried again every 30 s and after every change.
-- **Network checks and discovery**: Resolve, ReverseLookup (a full name, not `.local` / `.arpa`, that resolves back to the
-  address), Ping (the OS, else TCP 80 / 443), ProbeTcp, LocalAddressFor, Browse (`_axis-video._tcp` on the reached cards),
+  reported and tried again every 30 s and after every change of the app or the cards. Only senders inside the reached
+  networks are relayed and answered; a UDP sender is answered for 2 minutes after its last datagram (`UdpSenders`, at
+  most 100,000); a TCP relay holds at most 256 connections.
+- **Network checks and discovery** (only for reached addresses): Resolve (only the reached addresses of a name),
+  ReverseLookup (a full name, not `.local` / `.arpa`, that resolves back to the address; empty outside the networks),
+  Ping (the OS, else TCP 80 / 443 when on Connect to), ProbeTcp, LocalAddressFor (empty outside the networks), Browse (`_axis-video._tcp` on the reached cards),
   RangeScan (open 443 / 80 on the reached part of a range, only ports on Connect to).
 - **Local channel** (`AdminChannel/`): named pipe `oadm-site-node` (Windows) or `/run/oadm-site-node/admin.sock` (Linux;
   the unit needs `RuntimeDirectory=oadm-site-node`, mode 0755); a node with its own data folder uses names derived from
   it. Every local user reads the state and the connection log; the pairing code and every change need an administrator
-  (Windows: an elevated token; Linux: root or the service user). The app runs a change through an elevated copy of
+  (Windows: SYSTEM or an elevated token of Administrators, never the service account; Linux: root or the service user).
+  A channel that cannot be opened is logged and tried again every 30 s; the node runs on without it. The app runs a change through an elevated copy of
   itself (`--admin-request ... --out ...`, UAC or pkexec).
 
 ## Command line
@@ -75,7 +91,7 @@ oadm-site-node log [count]
 
 **Firewall (Windows)**: the MSI opens no port. "Wait for the server" adds the inbound rule "OADM Site Node (TCP 5081)"
 (Domain and Private, for `oadm-site-node.exe`), "Connect to the server" removes it (`Admin/NodeFirewall`). The service
-runs as LocalService and cannot change the firewall, so the administrator's process that sent the change runs netsh: the
+runs as its own unprivileged account and cannot change the firewall, so the administrator's process that sent the change runs netsh: the
 elevated copy of the app, the app running as administrator, or the command line. Uninstalling removes the rule. Linux:
 no firewall change.
 

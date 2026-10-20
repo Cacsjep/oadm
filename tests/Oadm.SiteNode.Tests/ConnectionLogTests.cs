@@ -44,4 +44,59 @@ public sealed class ConnectionLogTests
         Assert.False(File.Exists(old));
         Assert.True(File.Exists(recent));
     }
+
+    [Fact]
+    public async Task TheSameLineWithinAMinuteIsCountedAndWrittenOnceWithItsCount()
+    {
+        using var folder = new TempFolder();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 19, 12, 0, 5, TimeSpan.Zero));
+        await using var log = new ConnectionLog(folder.Path, time);
+
+        for (var i = 0; i < 5; i++)
+            log.Add("OADM-SRV", "192.168.0.20:443", "Short", "Connected");
+        log.Add("OADM-SRV", "192.168.0.21:443", "Short", "Connected");
+        Assert.Equal(2, log.Newest(10).Count);
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        log.Add("OADM-SRV", "192.168.0.20:443", "Short", "Connected");
+
+        Assert.Equal(["Connected", "Connected (4 more)", "Connected", "Connected"], log.Newest(10).Select(e => e.Result));
+        await log.FlushAsync(CancellationToken.None);
+        var lines = File.ReadAllLines(Path.Combine(folder.Path, "connections-20261019.log"));
+        Assert.Equal(4, lines.Length);
+        Assert.Contains(lines, l => l.EndsWith("192.168.0.20:443	Short	Connected (4 more)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheFilesStayUnderTheSizeCapOldestFirst()
+    {
+        using var folder = new TempFolder();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero));
+        foreach (var day in new[] { "20261016", "20261017", "20261018" })
+            File.WriteAllText(Path.Combine(folder.Path, $"connections-{day}.log"), new string('x', 1000));
+        await using var log = new ConnectionLog(folder.Path, time, maxBytes: 2500);
+
+        log.Add("OADM-SRV", "192.168.0.20:443", "Short", "Connected");
+        await log.FlushAsync(CancellationToken.None);
+
+        Assert.False(File.Exists(Path.Combine(folder.Path, "connections-20261016.log")));
+        Assert.True(File.Exists(Path.Combine(folder.Path, "connections-20261018.log")));
+        Assert.True(File.Exists(Path.Combine(folder.Path, "connections-20261019.log")));
+        Assert.True(Directory.EnumerateFiles(folder.Path).Sum(f => new FileInfo(f).Length) <= 2500 + 200);
+    }
+
+    [Fact]
+    public async Task LinesTheDiskCannotTakeAreDroppedAndCountedNeverQueuedWithoutEnd()
+    {
+        using var folder = new TempFolder();
+        await using var log = new ConnectionLog(folder.Path, TimeProvider.System, capacity: 100, maxPending: 1);
+
+        for (var i = 0; i < 5000; i++)
+            log.Add("OADM-SRV", $"10.{i / 65536}.{i / 256 % 256}.{i % 256}:443", "Short", "Connected");
+        await log.FlushAsync(CancellationToken.None);
+
+        Assert.Equal(100, log.Count);
+        var written = Directory.EnumerateFiles(folder.Path).SelectMany(File.ReadAllLines).Count(l => l.Contains("	Short	", StringComparison.Ordinal));
+        Assert.Equal(5000, written + log.Dropped);
+    }
 }

@@ -35,6 +35,9 @@ public sealed class NodeOptions
 
     public TimeProvider Time { get; set; } = TimeProvider.System;
 
+    /// <summary>Tests only: loopback counts as a camera network (the fake cards put one there). Never set by the program.</summary>
+    public bool AllowLoopbackDevices { get; set; }
+
     /// <summary>Fakes for tests; null = the OS.</summary>
     public INetworkCards? NetworkCards { get; set; }
 

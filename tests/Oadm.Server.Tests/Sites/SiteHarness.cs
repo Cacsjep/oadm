@@ -170,6 +170,7 @@ internal sealed class SiteTestNode : IAsyncDisposable
             UseSerilog = false,
             HostName = hostName,
             Version = "3.7.0-test",
+            AllowLoopbackDevices = true,
             NetworkCards = new FakeCards(
                 new NetworkCard("cam", "Cameras", [new CardAddress(IPAddress.Parse("192.168.0.5"), 24), new CardAddress(IPAddress.Loopback, 8)], HasDefaultRouter: false),
                 new NetworkCard("office", "Office", [new CardAddress(IPAddress.Parse("10.0.0.7"), 24)], HasDefaultRouter: true)),

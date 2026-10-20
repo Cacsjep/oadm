@@ -67,6 +67,11 @@ public static class NodeHost
 
         builder.Services.AddWindowsService(o => o.ServiceName = WindowsServiceName);
         builder.Services.AddSystemd();
+        // A part that fails stops the node with a non-zero exit code, so the service manager restarts it
+        // (systemd Restart=on-failure, the SCM's recovery with "actions for stops with errors").
+        builder.Services.Configure<HostOptions>(o => o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost);
+        builder.Services.AddSingleton<NodeFailure>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeFailure>());
 
         var listener = new AcceptedStreamListener();
         builder.Services.AddSingleton<IConnectionListenerFactory>(listener);
@@ -145,7 +150,7 @@ public static class NodeHost
         services.AddSingleton(sp => new BindingState(sp.GetRequiredService<NodeStore>(), sp.GetRequiredService<NodeIdentity>(), options.Time, options.HostName));
         services.AddSingleton<PortPolicy>();
         services.AddSingleton<INetworkCards>(_ => options.NetworkCards ?? new SystemNetworkCards(options.Time));
-        services.AddSingleton<NetworkScope>();
+        services.AddSingleton(sp => new NetworkScope(sp.GetRequiredService<NodeStore>(), sp.GetRequiredService<INetworkCards>(), options.AllowLoopbackDevices));
         services.AddSingleton(options.Connector ?? SystemDeviceConnector.Instance);
         services.AddSingleton(options.Dns ?? SystemNodeDns.Instance);
         services.AddSingleton(options.Pinger ?? SystemPinger.Instance);
@@ -160,7 +165,7 @@ public static class NodeHost
         services.AddSingleton<NodeStatusFeed>();
         services.AddSingleton<IAxisBrowser>(sp => options.Browser ?? new AxisBrowser(sp.GetRequiredService<NetworkScope>(), options.Time));
         services.AddSingleton(sp => new RangeScanner(sp.GetRequiredService<PortPolicy>(), sp.GetRequiredService<NetworkScope>(),
-            sp.GetRequiredService<IDeviceConnector>(), sp.GetRequiredService<ConnectionLog>(), options.Time));
+            sp.GetRequiredService<Dialer>(), sp.GetRequiredService<ConnectionLog>()));
         services.AddSingleton<AdminHandler>();
         services.AddSingleton<OutboundConnector>();
         services.AddSingleton<InboundListener>();
@@ -168,6 +173,7 @@ public static class NodeHost
         services.AddHostedService(sp => sp.GetRequiredService<InboundListener>());
         services.AddHostedService<NodeAnnouncer>();
         services.AddHostedService<BindingClock>();
+        services.AddHostedService<CardWatcher>();
         services.AddHostedService<AdminChannelHost>();
         services.AddHostedService<ResetWatcher>();
     }

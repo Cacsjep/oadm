@@ -6,7 +6,7 @@ namespace Oadm.SiteNode.Admin;
 /// <summary>
 /// The Windows Firewall rule of "Wait for the server" (docs/sites.md, "Packaging"): the MSI opens no port (the node
 /// connects out); turning on Wait adds an inbound rule for the node's port, profiles Domain and Private, and turning it
-/// off removes it. The service runs as LocalService and cannot change the firewall, so the administrator's process that
+/// off removes it. The service runs as its own unprivileged account and cannot change the firewall, so the administrator's process that
 /// sent the change does it: the elevated copy of the app, the app running as administrator, or the command line. Other
 /// systems: nothing (the .deb changes no firewall).
 /// </summary>

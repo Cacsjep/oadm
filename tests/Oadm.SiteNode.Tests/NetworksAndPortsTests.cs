@@ -65,6 +65,42 @@ public sealed class NetworksAndPortsTests : IDisposable
     }
 
     [Fact]
+    public void TheNodesOwnAddressesAndSpecialAddressesAreNeverReached()
+    {
+        _store.Update(c =>
+        {
+            c.AllCards = true;
+            c.ExtraSubnets.Add("169.0.0.0/8"); // wide enough to hold link-local; still never reached
+        });
+
+        Assert.False(_scope.Reaches(IPAddress.Parse("192.168.0.5")));
+        Assert.False(_scope.Reaches(IPAddress.Parse("fd00::5")));
+        Assert.False(_scope.Reaches(IPAddress.Parse("10.0.0.7")));
+        Assert.False(_scope.Reaches(IPAddress.Parse("::ffff:192.168.0.5")));
+        Assert.False(_scope.Reaches(IPAddress.Loopback));
+        Assert.False(_scope.Reaches(IPAddress.Parse("169.254.10.20")));
+        Assert.False(_scope.Reaches(IPAddress.Parse("224.0.0.251")));
+        Assert.True(_scope.Reaches(IPAddress.Parse("169.1.2.3")));
+        Assert.True(_scope.Reaches(IPAddress.Parse("192.168.0.6")));
+        Assert.False(new NetworkScope(_store, FakeCards.LoopbackSite()).Reaches(IPAddress.Parse("127.0.0.9")));
+        Assert.True(new NetworkScope(_store, FakeCards.LoopbackSite(), allowLoopback: true).Reaches(IPAddress.Parse("127.0.0.9")));
+    }
+
+    [Fact]
+    public void ACardChangeIsNoticedOnce()
+    {
+        var raised = 0;
+        _scope.CardsChanged += () => raised++;
+
+        Assert.False(_scope.CheckCards()); // the first look only remembers
+        Assert.False(_scope.CheckCards());
+        _cards.Replace(0, _cards.List()[0] with { Addresses = [new CardAddress(IPAddress.Parse("192.168.0.77"), 24)] });
+        Assert.True(_scope.CheckCards());
+        Assert.False(_scope.CheckCards());
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
     public void TheLocalAddressTowardsADeviceIsTheReachedCardOnItsNetwork()
     {
         Assert.Equal(IPAddress.Parse("192.168.0.5"), _scope.LocalAddressFor(IPAddress.Parse("192.168.0.30")));
@@ -82,6 +118,18 @@ public sealed class NetworksAndPortsTests : IDisposable
     [InlineData("10.20.0.0/0", null)]
     [InlineData("fe80::/64", null)]
     [InlineData("camera/24", null)]
+    [InlineData("10.0.0.0/8", "10.0.0.0/8")]
+    [InlineData("10.0.0.0/7", null)]
+    [InlineData("0.0.0.0/1", null)]
+    [InlineData("0.0.0.0/8", null)]
+    [InlineData("127.0.0.0/8", null)]
+    [InlineData("169.254.0.0/16", null)]
+    [InlineData("224.0.0.0/8", null)]
+    [InlineData("239.1.0.0/16", null)]
+    [InlineData("255.255.255.255/32", null)]
+    [InlineData("::1/128", null)]
+    [InlineData("ff02::/16", null)]
+    [InlineData("fd00::/8", null)]
     public void SubnetsAreParsedAndNormalized(string text, string? expected) =>
         Assert.Equal(expected, Subnet.Parse(text)?.ToString());
 

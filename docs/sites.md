@@ -105,7 +105,8 @@ Two parts, one installer:
   - **Activity**: the connections now (short and permanent, see Limits), the relays open now ("NTP, UDP 123, for
     SERVER") and their problems ("UDP 123 is used by another program"), and the **Connection log**: the last
     connections through the node (time, server, target address and port, short or permanent, result), newest 10,000
-    **(default)**, also in a daily file kept 30 days (`logs/`); never contents.
+    **(default)**, also in a daily file kept 30 days and at most 1 GB together (`logs/`; the same line within a minute
+    once with "(N more)"); never contents.
 
   It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state
   except the pairing code; showing the code and every change need administrator rights (UAC on Windows, `pkexec` on
@@ -295,6 +296,10 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
     own cap below the device limit (30,000 per server; Device triggers watch at most 10,000), at most 64 connecting at
     once. The node app and the Sites page show both counts. The outgoing port range of the node's OS bounds them (Windows
     16,384 by default): the user docs say so, like Device triggers today.
+  - **Probes** (ProbeTcp, the ping fallback, every address of a range scan): 64 at once, the rest wait; at most 4 range
+    scans at once. **Relays**: a UDP sender is answered for 2 minutes after its last datagram, a TCP relay holds 256
+    connections; only senders inside the reached networks are relayed. Never reached: the node's own addresses,
+    loopback, link-local, multicast; extra networks at least /8.
 - **Large transfers** **(default)**: at most 2 per site at once (streamed request bodies: firmware and ACAP uploads,
   configuration imports; streamed answers: system reports, recording export), so a slow site link keeps room for polls,
   live view and the heartbeat. The route handler holds a per-site gate for requests that stream; a task step waiting for
@@ -525,13 +530,13 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 ## Packaging
 
 - **Windows**: `OADM-SiteNode-<version>-win-x64.msi` (WiX 6 like the main MSI, `packaging/windows/`): `Program Files\OADM
-  Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, LocalService, restart on failure), Start menu shortcut to the
+  Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, virtual account `NT SERVICE\OadmSiteNode`, restart on failure and after a stop with an error), Start menu shortcut to the
   app; no firewall rule (the node connects out; the app adds TCP 5081, Domain and Private, when "Wait for the server" is
   turned on and removes it when turned off). A silent install takes `SERVER=<address>`.
-  Built (stream 7): data folder for SYSTEM and LocalService only, native files extracted to its `runtime`, the folder on
+  Built (stream 7): data folder for SYSTEM and the service SID only, native files extracted to its `runtime`, the folder on
   the system PATH; `SERVER` runs `oadm-site-node server <address> --timeout 60` after the service started (a refused
   address fails the install); the rule "OADM Site Node (TCP 5081)" is set by whoever sent the change as administrator
-  (`Admin/NodeFirewall`: the elevated app, the app run as administrator, the command line; the service as LocalService
+  (`Admin/NodeFirewall`: the elevated app, the app run as administrator, the command line; the service's own account
   cannot) and removed on uninstall.
 - **Linux**: `oadm-site-node_<version>_<amd64|arm64>.deb` (service, own system user `oadm-site-node`,
   `/opt/oadm/site-node`, `/var/lib/oadm-site-node` 0700) and `oadm-site-node-app_<version>_<arch>.deb` (the app, Depends

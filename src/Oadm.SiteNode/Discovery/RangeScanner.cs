@@ -10,6 +10,7 @@ using Oadm.SiteNode.Config;
 using Oadm.SiteNode.Devices;
 using Oadm.SiteNode.Logging;
 using Oadm.SiteNode.Networks;
+using Oadm.SiteNode.State;
 
 namespace Oadm.SiteNode.Discovery;
 
@@ -17,9 +18,10 @@ namespace Oadm.SiteNode.Discovery;
 /// <c>RangeScan</c>: the first contact of a range scan on the node (docs/sites.md, "Discovery"), so thousands of short
 /// connects stay at the site: every address of an IPv4 range on the reached networks with an open TCP 443 and / or 80
 /// (only the ports on Connect to). Addresses outside the networks are counted as tried. Progress every 1 % of the range;
-/// the last message has <c>finished</c>. One line in the connection log per scan.
+/// the last message has <c>finished</c>. One line in the connection log per scan. Every connect is a probe of the
+/// <see cref="Dialer"/> (shared with ProbeTcp and the ping fallback), and only <see cref="DialLimits.Scans"/> scans run at once.
 /// </summary>
-public sealed class RangeScanner(PortPolicy ports, NetworkScope networks, IDeviceConnector connector, ConnectionLog log, TimeProvider time)
+public sealed class RangeScanner(PortPolicy ports, NetworkScope networks, Dialer dialer, ConnectionLog log)
 {
     /// <summary>The largest range (a /16), as on the server.</summary>
     public const int MaxSize = 65536;
@@ -52,8 +54,10 @@ public sealed class RangeScanner(PortPolicy ports, NetworkScope networks, IDevic
         return true;
     }
 
+    /// <summary>The scan; throws <see cref="NodeRefusalException"/> (RESOURCE_EXHAUSTED) while the most scans run.</summary>
     public async IAsyncEnumerable<RangeScanResult> ScanAsync(uint first, uint last, int parallelism, TimeSpan timeout, [EnumeratorCancellation] CancellationToken ct)
     {
+        using var place = dialer.TryStartScan() ?? throw new NodeRefusalException(Grpc.Core.StatusCode.ResourceExhausted, AdminTexts.SiteBusy);
         var total = (int)(last - first + 1);
         int[] candidates = [.. ScanPorts.Where(p => ports.Allows(PortUse.Connect, PortProtocol.Tcp, p))];
         var results = Channel.CreateUnbounded<RangeScanResult>(new UnboundedChannelOptions { SingleReader = true });
@@ -73,7 +77,7 @@ public sealed class RangeScanner(PortPolicy ports, NetworkScope networks, IDevic
                     {
                         foreach (var port in candidates)
                         {
-                            if (await IsOpenAsync(address, port, timeout, token).ConfigureAwait(false))
+                            if (await dialer.ProbeAsync(new IPEndPoint(address, port), timeout, token).ConfigureAwait(false) == ProbeResult.Open)
                                 open.Add(port);
                         }
                     }
@@ -119,25 +123,6 @@ public sealed class RangeScanner(PortPolicy ports, NetworkScope networks, IDevic
             catch (OperationCanceledException)
             {
             }
-        }
-    }
-
-    private async Task<bool> IsOpenAsync(IPAddress address, int port, TimeSpan timeout, CancellationToken ct)
-    {
-        using var limit = new CancellationTokenSource(timeout, time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, limit.Token);
-        try
-        {
-            using var socket = await connector.ConnectAsync(new IPEndPoint(address, port), linked.Token).ConfigureAwait(false);
-            return true;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (SocketException)
-        {
-            return false;
         }
     }
 

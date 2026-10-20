@@ -50,7 +50,10 @@ public sealed class SiteDiscoveryInProcessTests
 
         // Ping: the node has no OS ping in the test, so it checks TCP 80 / 443.
         Assert.True(await sites.PingAsync(id, "192.168.0.30", TimeSpan.FromSeconds(5), ct));
-        Assert.False(await sites.PingAsync(id, "192.168.0.31", TimeSpan.FromSeconds(5), ct));
+        // A host that refuses (sends a reset) is there; one where nothing is does not answer.
+        Assert.True(await sites.PingAsync(id, "192.168.0.31", TimeSpan.FromSeconds(5), ct));
+        node.Connector.Dead.Add(IPAddress.Parse("192.168.0.32"));
+        Assert.False(await sites.PingAsync(id, "192.168.0.32", TimeSpan.FromSeconds(5), ct));
         Assert.True(await sites.ProbeTcpAsync(id, "192.168.0.30", 80, TimeSpan.FromSeconds(5), ct));
         var port = await Assert.ThrowsAsync<SiteException>(() => sites.ProbeTcpAsync(id, "192.168.0.30", 8443, TimeSpan.FromSeconds(5), ct));
         Assert.Equal(SiteProblem.PortNotAllowed, port.Problem);

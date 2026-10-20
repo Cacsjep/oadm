@@ -9,8 +9,11 @@ using Oadm.SiteNode.Networks;
 
 namespace Oadm.SiteNode.Devices;
 
-/// <summary>The limits of one node (docs/sites.md, "Limits per node").</summary>
-public sealed record DialLimits(int ShortOpen = 1024, int ShortConnecting = 256, int PermanentConnecting = 64)
+/// <summary>
+/// The limits of one node (docs/sites.md, "Limits per node"). Probes (ProbeTcp, the ping fallback and every address of a
+/// range scan) wait for one of <paramref name="Probes"/> places; at most <paramref name="Scans"/> range scans run at once.
+/// </summary>
+public sealed record DialLimits(int ShortOpen = 1024, int ShortConnecting = 256, int PermanentConnecting = 64, int Probes = 64, int Scans = 4)
 {
     public static DialLimits Default { get; } = new();
 }
@@ -47,6 +50,19 @@ public sealed class DialConnection : IDisposable
     }
 }
 
+/// <summary>What a probe found at an address and port.</summary>
+public enum ProbeResult
+{
+    /// <summary>Nothing answered in time (or the network is unreachable).</summary>
+    NoAnswer,
+
+    /// <summary>A host answered with a reset: something is at this address, the port is closed.</summary>
+    Refused,
+
+    /// <summary>The port accepted the connection.</summary>
+    Open,
+}
+
 /// <summary>
 /// Opens the TCP connections of <c>Dial</c> (docs/sites.md, "Transport"): the port must be on Connect to, the address on
 /// a reached network, the node under its limits; then the device's own socket error comes back as a DEVICE_* error and
@@ -59,12 +75,14 @@ public sealed class Dialer(
     INodeDns dns,
     ConnectionLog log,
     TimeProvider time,
-    DialLimits? limits = null)
+    DialLimits? limits = null) : IDisposable
 {
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
     public static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
 
     private readonly DialLimits _limits = limits ?? DialLimits.Default;
+    private readonly SemaphoreSlim _probes = new((limits ?? DialLimits.Default).Probes);
+    private int _scans;
     private int _shortOpen;
     private int _shortConnecting;
     private int _permanentOpen;
@@ -157,6 +175,53 @@ public sealed class Dialer(
         }
     }
 
+    /// <summary>
+    /// A short connect that is closed at once (ProbeTcp, the ping fallback, the range scan). The caller checked the address
+    /// and port; the probe waits for a free place of <see cref="DialLimits.Probes"/>, so probes never pile up sockets.
+    /// </summary>
+    public async Task<ProbeResult> ProbeAsync(IPEndPoint target, TimeSpan timeout, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        await _probes.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var limit = new CancellationTokenSource(timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, limit.Token);
+            using var socket = await connector.ConnectAsync(target, linked.Token).ConfigureAwait(false);
+            return ProbeResult.Open;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return ProbeResult.NoAnswer;
+        }
+        catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            return ProbeResult.Refused;
+        }
+        catch (SocketException)
+        {
+            return ProbeResult.NoAnswer;
+        }
+        finally
+        {
+            _probes.Release();
+        }
+    }
+
+    /// <summary>A place for one range scan (released on dispose), or null while <see cref="DialLimits.Scans"/> run.</summary>
+    public IDisposable? TryStartScan()
+    {
+        if (Interlocked.Increment(ref _scans) > _limits.Scans)
+        {
+            Interlocked.Decrement(ref _scans);
+            return null;
+        }
+
+        return new ScanPlace(this);
+    }
+
+    public void Dispose() => _probes.Dispose();
+
     /// <summary>The device's socket error as a dial error (anything unknown counts as unreachable).</summary>
     public static DialError Map(SocketError error) => error switch
     {
@@ -236,6 +301,17 @@ public sealed class Dialer(
         else
             Interlocked.Decrement(ref _shortOpen);
         CountsChanged?.Invoke();
+    }
+
+    private sealed class ScanPlace(Dialer owner) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                Interlocked.Decrement(ref owner._scans);
+        }
     }
 
     private static DialResult Site(DialError error, string message) => new() { Error = error, Message = message };

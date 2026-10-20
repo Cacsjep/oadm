@@ -19,11 +19,17 @@ namespace Oadm.SiteNode.Relays;
 /// <c>Relay</c> (docs/sites.md, "Relay"): a UDP or TCP listener on the reached cards for as long as the call lives; every
 /// datagram or connection goes to the server and the answers go back to the sender. The port must be on Listen on: a port
 /// that is not is requested (with the reason) and the relay waits for approval in the app. A port another program holds or
-/// the node may not use is reported and tried again every 30 seconds and after every change in the app.
+/// the node may not use is reported and tried again every 30 seconds and after every change in the app or of the cards
+/// (a card that gets a new address binds again). Only senders inside the reached networks are relayed and answered; a UDP
+/// sender is forgotten 2 minutes after its last datagram (<see cref="UdpSenders"/>); a TCP relay holds at most
+/// <see cref="MaxTcpConnections"/> connections.
 /// </summary>
 public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope networks, ConnectionLog log, TimeProvider time)
 {
     public static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>Open connections of one TCP relay; more are closed at once.</summary>
+    public const int MaxTcpConnections = 256;
 
     private readonly ConcurrentDictionary<long, RelayView> _relays = new();
     private long _nextId;
@@ -52,7 +58,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         var id = Interlocked.Increment(ref _nextId);
         var outgoing = Channel.CreateBounded<RelayMessage>(new BoundedChannelOptions(1024) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var session = new RelaySession(protocol, open.Port, open.Reason ?? "", outgoing.Writer, log, server);
+        var session = new RelaySession(protocol, open.Port, open.Reason ?? "", outgoing.Writer, log, server, networks, time);
         var writer = WriteLoopAsync(outgoing.Reader, responses, stop.Token);
         var reader = ReadLoopAsync(requests, session, stop.Token);
         try
@@ -79,6 +85,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         var changed = new SemaphoreSlim(0);
         void OnChange() => changed.Release();
         store.Changed += OnChange;
+        networks.CardsChanged += OnChange;
         try
         {
             string? running = null;
@@ -143,6 +150,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         finally
         {
             store.Changed -= OnChange;
+            networks.CardsChanged -= OnChange;
             changed.Dispose();
         }
     }
@@ -183,11 +191,12 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
     }
 
     /// <summary>The sockets of one relay call.</summary>
-    private sealed class RelaySession(PortProtocol protocol, int port, string reason, ChannelWriter<RelayMessage> outgoing, ConnectionLog log, string server)
+    private sealed class RelaySession(PortProtocol protocol, int port, string reason, ChannelWriter<RelayMessage> outgoing, ConnectionLog log, string server,
+        NetworkScope networks, TimeProvider time)
     {
         private readonly Lock _lock = new();
         private readonly ConcurrentDictionary<ulong, Socket> _connections = new();
-        private readonly ConcurrentDictionary<string, Socket> _senders = new(StringComparer.Ordinal);
+        private readonly UdpSenders _senders = new(time);
         private List<Socket> _sockets = [];
         private CancellationTokenSource? _running;
         private TaskCompletionSource _failed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -293,8 +302,8 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         {
             if (protocol == PortProtocol.Udp)
             {
-                if (!IPEndPoint.TryParse(packet.RemoteAddress, out var to) || !_senders.TryGetValue(to.ToString(), out var socket))
-                    return; // only answers to a sender the relay heard from
+                if (!IPEndPoint.TryParse(packet.RemoteAddress, out var to) || !networks.Reaches(to.Address) || _senders.Find(to) is not { } socket)
+                    return; // only answers to a sender the relay heard from lately, inside the reached networks
                 try
                 {
                     await socket.SendToAsync(packet.Data.Memory, SocketFlags.None, to, ct).ConfigureAwait(false);
@@ -333,8 +342,10 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
                 {
                     var result = await socket.ReceiveFromAsync(buffer, SocketFlags.None, any, ct).ConfigureAwait(false);
                     var from = (IPEndPoint)result.RemoteEndPoint;
-                    if (_senders.Count < 100_000)
-                        _senders[from.ToString()] = socket;
+                    // Senders outside the reached networks (or spoofed as such) never reach the server, so the relay
+                    // cannot be used to send answers elsewhere; a full table of recent senders drops new ones.
+                    if (!networks.Reaches(from.Address) || !_senders.Touch(from, socket))
+                        continue;
                     await outgoing.WriteAsync(new RelayMessage { Packet = new RelayPacket { RemoteAddress = from.ToString(), Data = ByteString.CopyFrom(buffer, 0, result.ReceivedBytes) } }, ct).ConfigureAwait(false);
                 }
                 catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.MessageSize)
@@ -372,9 +383,23 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
                     return;
                 }
 
+                var remote = connection.RemoteEndPoint?.ToString() ?? "";
+                if (connection.RemoteEndPoint is not IPEndPoint peer || !networks.Reaches(peer.Address))
+                {
+                    connection.Dispose();
+                    log.Add(server, $"{AdminTexts.Name(protocol)} {port} from {remote}", "Relay", "Outside the networks");
+                    continue;
+                }
+
+                if (_connections.Count >= MaxTcpConnections)
+                {
+                    connection.Dispose();
+                    log.Add(server, $"{AdminTexts.Name(protocol)} {port} from {remote}", "Relay", "Too many connections");
+                    continue;
+                }
+
                 var id = (ulong)Interlocked.Increment(ref _nextConnection);
                 _connections[id] = connection;
-                var remote = connection.RemoteEndPoint?.ToString() ?? "";
                 log.Add(server, $"{AdminTexts.Name(protocol)} {port} from {remote}", "Relay", "Accepted");
                 try
                 {

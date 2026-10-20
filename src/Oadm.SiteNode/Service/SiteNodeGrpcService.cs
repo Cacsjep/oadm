@@ -36,7 +36,6 @@ public sealed class SiteNodeGrpcService(
     NodeStatusFeed feed,
     INodeDns dns,
     IPinger pinger,
-    IDeviceConnector connector,
     OutboundConnector outbound,
     LinkRegistry links,
     IAxisBrowser browser,
@@ -188,6 +187,7 @@ public sealed class SiteNodeGrpcService(
         store.Changed += OnOther;
         binding.Changed += OnOther;
         relays.Changed += OnOther;
+        networks.CardsChanged += OnOther;
         try
         {
             var sentAt = options.Time.GetTimestamp();
@@ -219,6 +219,7 @@ public sealed class SiteNodeGrpcService(
             store.Changed -= OnOther;
             binding.Changed -= OnOther;
             relays.Changed -= OnOther;
+            networks.CardsChanged -= OnOther;
         }
     }
 
@@ -228,29 +229,7 @@ public sealed class SiteNodeGrpcService(
         var ct = context.CancellationToken;
         if (!await requestStream.MoveNext(ct).ConfigureAwait(false) || requestStream.Current.KindCase != DialMessage.KindOneofCase.Open)
             throw new RpcException(new Status(StatusCode.InvalidArgument, "The first message must open the connection."));
-        var (result, connection) = await dialer.OpenAsync(requestStream.Current.Open, ServerName(link), ct).ConfigureAwait(false);
-        await responseStream.WriteAsync(new DialMessage { Result = result }, ct).ConfigureAwait(false);
-        if (connection is null)
-            return;
-        using (connection)
-        {
-            using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var socket = connection.Socket;
-            var up = Task.Run(() => UpAsync(requestStream, socket, stop.Token), CancellationToken.None);
-            var down = Task.Run(() => DownAsync(socket, responseStream, stop.Token), CancellationToken.None);
-            var first = await Task.WhenAny(up, down).ConfigureAwait(false);
-            if (first.IsFaulted || first.IsCanceled)
-                await stop.CancelAsync().ConfigureAwait(false);
-            try
-            {
-                await Task.WhenAll(up, down).ConfigureAwait(false);
-            }
-            catch (Exception e) when (e is SocketException or IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
-            {
-                await stop.CancelAsync().ConfigureAwait(false);
-                // The socket closes with the connection; the server sees the end of the call.
-            }
-        }
+        await DialPipe.RunAsync(dialer, requestStream.Current.Open, ServerName(link), requestStream, responseStream, ct).ConfigureAwait(false);
     }
 
     public override Task Relay(IAsyncStreamReader<RelayMessage> requestStream, IServerStreamWriter<RelayMessage> responseStream, ServerCallContext context)
@@ -266,7 +245,8 @@ public sealed class SiteNodeGrpcService(
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 253)
             return reply;
         var found = await dns.ResolveAsync(request.Name.Trim(), context.CancellationToken).ConfigureAwait(false);
-        reply.Addresses.Add(found.Select(a => a.ToString()));
+        // Only addresses the node may reach: its DNS never tells the server about other networks.
+        reply.Addresses.Add(found.Where(networks.Reaches).Select(a => a.ToString()));
         return reply;
     }
 
@@ -274,6 +254,8 @@ public sealed class SiteNodeGrpcService(
     {
         Guard(context);
         var address = Address(request.Address);
+        if (!networks.Reaches(address))
+            return new ReverseLookupReply(); // no name for an address outside the networks, as for one without a name
         var name = await DnsNameRules.ReverseLookupAsync(dns, address, TimeSpan.FromSeconds(3), context.CancellationToken).ConfigureAwait(false);
         return new ReverseLookupReply { Name = name ?? "" };
     }
@@ -290,11 +272,13 @@ public sealed class SiteNodeGrpcService(
         }
         catch (NotSupportedException)
         {
-            // No ping for this user: a device that answers on 80 or 443 counts as answering.
+            // No ping for this user: a device that answers on 80 or 443 (only those on Connect to) counts as answering.
             var start = options.Time.GetTimestamp();
             foreach (var port in new[] { 80, 443 })
             {
-                if (await ProbeAsync(address, port, timeout, context.CancellationToken).ConfigureAwait(false))
+                if (!ports.Allows(PortUse.Connect, PortProtocol.Tcp, port))
+                    continue;
+                if (await dialer.ProbeAsync(new IPEndPoint(address, port), timeout, context.CancellationToken).ConfigureAwait(false) != ProbeResult.NoAnswer)
                     return new PingReply { Answered = true, RoundTripMs = (int)options.Time.GetElapsedTime(start).TotalMilliseconds };
             }
 
@@ -308,14 +292,16 @@ public sealed class SiteNodeGrpcService(
         var address = Reached(request.Address);
         if (!ports.Allows(PortUse.Connect, PortProtocol.Tcp, request.Port))
             throw new RpcException(new Status(StatusCode.FailedPrecondition, AdminTexts.PortNotAllowed(PortProtocol.Tcp, request.Port)));
-        return new ProbeTcpReply { Open = await ProbeAsync(address, request.Port, Timeout(request.TimeoutMs, 1000), context.CancellationToken).ConfigureAwait(false) };
+        var found = await dialer.ProbeAsync(new IPEndPoint(address, request.Port), Timeout(request.TimeoutMs, 1000), context.CancellationToken).ConfigureAwait(false);
+        return new ProbeTcpReply { Open = found != ProbeResult.NoAnswer }; // a reset also means something is at this address
     }
 
     public override Task<LocalAddressForReply> LocalAddressFor(LocalAddressForRequest request, ServerCallContext context)
     {
         Guard(context);
         var address = Address(request.Address);
-        return Task.FromResult(new LocalAddressForReply { Address = networks.LocalAddressFor(address)?.ToString() ?? "" });
+        var local = networks.Reaches(address) ? networks.LocalAddressFor(address) : null; // empty outside the networks
+        return Task.FromResult(new LocalAddressForReply { Address = local?.ToString() ?? "" });
     }
 
     public override async Task Browse(BrowseRequest request, IServerStreamWriter<BrowseResult> responseStream, ServerCallContext context)
@@ -340,8 +326,15 @@ public sealed class SiteNodeGrpcService(
         if (!RangeScanner.TryParse(request.From, request.To, out var first, out var last, out var error))
             throw new RpcException(new Status(StatusCode.InvalidArgument, error));
         var timeout = Timeout(request.TimeoutMs, 1500);
-        await foreach (var result in rangeScanner.ScanAsync(first, last, request.Parallelism, timeout, context.CancellationToken).ConfigureAwait(false))
-            await responseStream.WriteAsync(result, context.CancellationToken).ConfigureAwait(false);
+        try
+        {
+            await foreach (var result in rangeScanner.ScanAsync(first, last, request.Parallelism, timeout, context.CancellationToken).ConfigureAwait(false))
+                await responseStream.WriteAsync(result, context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (NodeRefusalException e)
+        {
+            throw e.ToRpc();
+        }
     }
 
     /// <summary>The link of a call (set by the connection middleware from <see cref="LinkEndPoint"/>).</summary>
@@ -396,29 +389,6 @@ public sealed class SiteNodeGrpcService(
     private static TimeSpan Timeout(int milliseconds, int fallback) =>
         TimeSpan.FromMilliseconds(Math.Clamp(milliseconds <= 0 ? fallback : milliseconds, 50, 60_000));
 
-    private async Task<bool> ProbeAsync(IPAddress address, int port, TimeSpan timeout, CancellationToken ct)
-    {
-        using var limit = new CancellationTokenSource(timeout, options.Time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, limit.Token);
-        try
-        {
-            using var socket = await connector.ConnectAsync(new IPEndPoint(address, port), linked.Token).ConfigureAwait(false);
-            return true;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionRefused)
-        {
-            return true; // a host sent a reset: something is at this address
-        }
-        catch (SocketException)
-        {
-            return false;
-        }
-    }
-
     private static async Task<T> Run<T>(Func<T> call)
     {
         await Task.Yield();
@@ -429,42 +399,6 @@ public sealed class SiteNodeGrpcService(
         catch (NodeRefusalException e)
         {
             throw e.ToRpc();
-        }
-    }
-
-    private static async Task UpAsync(IAsyncStreamReader<DialMessage> requests, Socket socket, CancellationToken ct)
-    {
-        while (await requests.MoveNext(ct).ConfigureAwait(false))
-        {
-            var message = requests.Current;
-            if (message.KindCase == DialMessage.KindOneofCase.Data && !message.Data.IsEmpty)
-            {
-                await socket.SendAsync(message.Data.Memory, SocketFlags.None, ct).ConfigureAwait(false);
-            }
-            else if (message.KindCase == DialMessage.KindOneofCase.End)
-            {
-                socket.Shutdown(SocketShutdown.Send);
-                return;
-            }
-        }
-
-        // The server ended its stream without a half-close: the same for the device.
-        socket.Shutdown(SocketShutdown.Send);
-    }
-
-    private static async Task DownAsync(Socket socket, IServerStreamWriter<DialMessage> responses, CancellationToken ct)
-    {
-        var buffer = new byte[64 * 1024];
-        while (true)
-        {
-            var read = await socket.ReceiveAsync(buffer, SocketFlags.None, ct).ConfigureAwait(false);
-            if (read == 0)
-            {
-                await responses.WriteAsync(new DialMessage { End = true }, ct).ConfigureAwait(false);
-                return;
-            }
-
-            await responses.WriteAsync(new DialMessage { Data = ByteString.CopyFrom(buffer, 0, read) }, ct).ConfigureAwait(false);
         }
     }
 }

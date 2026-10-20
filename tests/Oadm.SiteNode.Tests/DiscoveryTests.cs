@@ -119,7 +119,8 @@ public sealed class DiscoveryTests
         }
 
         await using var log = new ConnectionLog(null, TimeProvider.System);
-        var scanner = new RangeScanner(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite()), connector, log, TimeProvider.System);
+        using var dialer = new Dialer(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite(), allowLoopback: true), connector, new FakeDns(), log, TimeProvider.System);
+        var scanner = new RangeScanner(new PortPolicy(store), new NetworkScope(store, FakeCards.LoopbackSite(), allowLoopback: true), dialer, log);
         Assert.True(RangeScanner.TryParse("127.0.0.1", "127.0.0.9", out var first, out var last, out _));
 
         var results = new List<RangeScanResult>();
@@ -217,6 +218,10 @@ public sealed class DiscoveryTests
         Assert.Equal(AdminTexts.OutsideNetworks, outside.Status.Detail);
         Assert.Equal("127.0.0.1", (await link.Client.LocalAddressForAsync(new LocalAddressForRequest { Address = "127.0.0.40" })).Address);
         Assert.Empty((await link.Client.LocalAddressForAsync(new LocalAddressForRequest { Address = "10.0.0.40" })).Address);
+
+        // The fallback only probes ports on Connect to.
+        node.Get<NodeStore>().Update(c => c.Allowed.RemoveAll(p => p.Use == PortUse.Connect && p.Port is 80 or 443));
+        Assert.False((await link.Client.PingAsync(new PingRequest { Address = "127.0.0.7", TimeoutMs = 10_000 })).Answered);
     }
 
     [Fact]
@@ -224,15 +229,27 @@ public sealed class DiscoveryTests
     {
         await using var server = new TestServer();
         var dns = new FakeDns();
-        dns.Names["camera.site.example"] = [Camera];
+        var office = IPAddress.Parse("10.0.0.20");
+        dns.Names["camera.site.example"] = [office, Camera];
+        dns.Names["printer.office.example"] = [office];
         dns.Reverse[Camera] = "camera.site.example";
-        await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o => o.Dns = dns);
+        dns.Reverse[office] = "printer.office.example";
+        var cards = FakeCards.LoopbackSite();
+        cards.Cards.Add(new Networks.NetworkCard("cam2", "Cameras 2", [new CardAddress(IPAddress.Parse("192.168.0.5"), 24)], HasDefaultRouter: false));
+        await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o =>
+        {
+            o.Dns = dns;
+            o.NetworkCards = cards;
+        });
         await using var link = await server.NextLinkAsync();
         await link.BindAsync(node.Code);
 
+        // Only addresses on the reached networks: the office card (default router) is not reached.
         Assert.Equal(["192.168.0.20"], (await link.Client.ResolveAsync(new ResolveRequest { Name = "camera.site.example" })).Addresses);
+        Assert.Empty((await link.Client.ResolveAsync(new ResolveRequest { Name = "printer.office.example" })).Addresses);
         Assert.Empty((await link.Client.ResolveAsync(new ResolveRequest { Name = "unknown" })).Addresses);
         Assert.Equal("camera.site.example", (await link.Client.ReverseLookupAsync(new ReverseLookupRequest { Address = "192.168.0.20" })).Name);
+        Assert.Empty((await link.Client.ReverseLookupAsync(new ReverseLookupRequest { Address = "10.0.0.20" })).Name);
     }
 
     [Fact]

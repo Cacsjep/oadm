@@ -35,9 +35,22 @@ internal sealed class TempFolder : IDisposable
 /// <summary>A fixed list of network cards.</summary>
 internal sealed class FakeCards(params NetworkCard[] cards) : INetworkCards
 {
+    private readonly Lock _lock = new();
+
+    /// <summary>Change only before the node starts; while it runs use <see cref="Replace"/> (the card watcher reads them).</summary>
     public List<NetworkCard> Cards { get; } = [.. cards];
 
-    public IReadOnlyList<NetworkCard> List() => Cards;
+    public IReadOnlyList<NetworkCard> List()
+    {
+        lock (_lock)
+            return [.. Cards];
+    }
+
+    public void Replace(int index, NetworkCard card)
+    {
+        lock (_lock)
+            Cards[index] = card;
+    }
 
     /// <summary>Loopback as a camera network (reached by default), and an office card with the default router.</summary>
     public static FakeCards LoopbackSite() => new(

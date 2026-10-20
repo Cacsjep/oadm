@@ -99,8 +99,9 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
 - **OADM Site Node** (branch `feature/sites`; `manage package site-node [--rid win-x64|linux-x64|linux-arm64]
   [--version]`, details in `packaging/README.md`): `OADM-SiteNode-<version>-win-x64.msi` (WiX 6,
   `packaging/windows/site-node/`; `Program Files\OADM Site Node` on the system PATH, service "OADM Site Node"
-  `OadmSiteNode` automatic, LocalService, restart on failure, data folder `%ProgramData%\OADM Site Node` for SYSTEM and
-  LocalService only and kept, Start menu shortcut, no firewall rule, silent `SERVER=<address>`; the main project no longer
+  `OadmSiteNode` automatic, its own virtual account `NT SERVICE\OadmSiteNode`, restart on failure (also after a stop with
+  an error: a part of the node that fails ends it with exit code 1), data folder `%ProgramData%\OADM Site Node` for SYSTEM
+  and the service SID only and kept, Start menu shortcut, no firewall rule, silent `SERVER=<address>`; the main project no longer
   picks up .wxs files by itself), `oadm-site-node_<version>_<arch>.deb` (service + `/usr/bin/oadm-site-node`, user
   `oadm-site-node`, `CAP_NET_BIND_SERVICE`, `RuntimeDirectory`, `NoNewPrivileges`, `/var/lib/oadm-site-node` 0700) and
   `oadm-site-node-app_<version>_<arch>.deb` (Depends oadm-site-node of the same version, Recommends pkexec, icon

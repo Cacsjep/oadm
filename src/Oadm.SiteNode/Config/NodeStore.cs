@@ -84,38 +84,30 @@ public sealed partial class NodeStore
 
     public static string NewId() => Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
 
+    // Absent = first start. A file that cannot be read fails the start (DataFiles); only a file that reads but is not a
+    // node.json (damaged content) is kept aside as .unreadable and replaced by defaults.
     private NodeConfig Load()
     {
+        if (!DataFiles.Exists(_path))
+            return new NodeConfig();
+        var bytes = DataFiles.ReadAllBytes(_path);
         try
         {
-            if (File.Exists(_path))
-                return JsonSerializer.Deserialize<NodeConfig>(File.ReadAllText(_path), Json) ?? new NodeConfig();
+            return JsonSerializer.Deserialize<NodeConfig>(bytes, Json) ?? new NodeConfig();
         }
-        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException e)
         {
             LogUnreadable(_logger, e, _path);
-            try
-            {
-                File.Copy(_path, _path + ".unreadable", overwrite: true);
-            }
-            catch (IOException)
-            {
-            }
+            File.WriteAllBytes(_path + ".unreadable", bytes);
+            return new NodeConfig();
         }
-
-        return new NodeConfig();
     }
 
-    private void Save(NodeConfig config)
-    {
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(config, Json));
-        File.Move(temp, _path, overwrite: true);
-    }
+    private void Save(NodeConfig config) => DataFiles.WriteDurable(_path, JsonSerializer.SerializeToUtf8Bytes(config, Json));
 
     private static NodeConfig Clone(NodeConfig config) =>
         JsonSerializer.Deserialize<NodeConfig>(JsonSerializer.SerializeToUtf8Bytes(config, Json), Json)!;
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "{Path} cannot be read; the site node starts with defaults (a copy is kept as .unreadable)")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Path} is damaged; the site node starts with defaults (a copy is kept as .unreadable)")]
     private static partial void LogUnreadable(ILogger logger, Exception error, string path);
 }
