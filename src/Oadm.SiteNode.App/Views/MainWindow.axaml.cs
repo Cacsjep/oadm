@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
+        viewModel.CloseRequested += (_, _) => Close();
         var closing = new CancellationTokenSource();
         Closed += (_, _) =>
         {
