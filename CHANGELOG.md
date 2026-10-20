@@ -6,6 +6,10 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Changed
+
+- The start splash shows the OADM mark slicing in, and the loading step.
+
 ## [3.6.0] - 2026-10-19
 
 ### Added
