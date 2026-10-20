@@ -22,6 +22,19 @@ public sealed class DeviceStoreChangedEventArgs : EventArgs
 }
 
 /// <summary>
+/// A device snapshot whose rows were built off the UI thread (<see cref="DeviceStore.Prepare"/>): one row per distinct
+/// device id, in snapshot order. <see cref="DeviceStore.Reset(PreparedDeviceSnapshot)"/> applies it on the UI thread.
+/// </summary>
+public sealed class PreparedDeviceSnapshot
+{
+    internal PreparedDeviceSnapshot(List<(Device Device, DeviceRowViewModel Row)> items) => Items = items;
+
+    internal IReadOnlyList<(Device Device, DeviceRowViewModel Row)> Items { get; }
+
+    public int Count => Items.Count;
+}
+
+/// <summary>
 /// In-memory mirror of the server's device table. Must be used from the UI thread. Scale (5,000 devices):
 /// lookups by id are O(1), a change costs O(1) plus the changed row, a batch of changes raises one
 /// collection notification and one <see cref="Changed"/>, and a change that alters nothing raises nothing.
@@ -62,10 +75,36 @@ public sealed class DeviceStore
     public event EventHandler? Loaded;
 
     /// <summary>
+    /// Builds the rows of a snapshot; any thread, touches no store. The work that does not need the UI thread (30,000
+    /// devices: about half a second) runs here, so the UI thread only attaches and swaps the rows.
+    /// </summary>
+    public static PreparedDeviceSnapshot Prepare(IEnumerable<Device> snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var items = new List<(Device, DeviceRowViewModel)>();
+        foreach (Device device in snapshot)
+        {
+            if (seen.Add(device.Id))
+            {
+                items.Add((device, new DeviceRowViewModel(device)));
+            }
+        }
+
+        return new PreparedDeviceSnapshot(items);
+    }
+
+    /// <summary>
     /// Reconciles with a full snapshot: updates rows in place, appends new ones, removes missing ones; one
     /// collection notification at most.
     /// </summary>
-    public void Reset(IEnumerable<Device> snapshot)
+    public void Reset(IEnumerable<Device> snapshot) => Reset(Prepare(snapshot));
+
+    /// <summary>
+    /// <see cref="Reset(IEnumerable{Device})"/> with rows built by <see cref="Prepare"/>: a device the store has keeps its
+    /// row (updated in place), a new one takes its prepared row.
+    /// </summary>
+    public void Reset(PreparedDeviceSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         try
@@ -82,26 +121,22 @@ public sealed class DeviceStore
         }
     }
 
-    private void ResetCore(IEnumerable<Device> snapshot)
+    private void ResetCore(PreparedDeviceSnapshot snapshot)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var added = new List<DeviceRowViewModel>();
-        foreach (Device device in snapshot)
+        foreach ((Device device, DeviceRowViewModel prepared) in snapshot.Items)
         {
-            if (!seen.Add(device.Id))
-            {
-                continue;
-            }
-
+            seen.Add(device.Id);
             if (_byId.TryGetValue(device.Id, out DeviceRowViewModel? row))
             {
                 row.Apply(device);
             }
             else
             {
-                row = new DeviceRowViewModel(device, Tags, Compliance);
-                _byId[device.Id] = row;
-                added.Add(row);
+                prepared.AttachStores(Tags, Compliance);
+                _byId[device.Id] = prepared;
+                added.Add(prepared);
             }
         }
 

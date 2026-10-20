@@ -103,15 +103,15 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// One Watch stream: the snapshot (one ADDED per device, then SNAPSHOT_END) is collected off the UI
-    /// thread and applied as one <see cref="DeviceStore.Reset"/>; live changes go through a
+    /// One Watch stream: the snapshot (one ADDED per device, then SNAPSHOT_END) is collected and its rows are built
+    /// (<see cref="DeviceStore.Prepare"/>) off the UI thread, then applied as one <see cref="DeviceStore.Reset(PreparedDeviceSnapshot)"/>; live changes go through a
     /// <see cref="ChangeBatcher{T}"/> so a burst of 5,000 changes becomes a few UI batches. Snapshot and
     /// changes share the batcher, so they are applied in stream order.
     /// </summary>
     private async Task DeviceLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<StreamItem<Device, DeviceChanged>>(_ui, ApplyDevices);
+        var batcher = new ChangeBatcher<StreamItem<PreparedDeviceSnapshot, DeviceChanged>>(_ui, ApplyDevices);
         while (!ct.IsCancellationRequested)
         {
             try
@@ -121,11 +121,12 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                 {
                     if (snapshot is null)
                     {
-                        batcher.Add(StreamItem<Device, DeviceChanged>.Of(change));
+                        batcher.Add(StreamItem<PreparedDeviceSnapshot, DeviceChanged>.Of(change));
                     }
                     else if (change.Kind == DeviceChanged.Types.Kind.SnapshotEnd)
                     {
-                        batcher.Add(StreamItem<Device, DeviceChanged>.Of(snapshot));
+                        // The rows are built here, off the UI thread; the UI thread only swaps them in.
+                        batcher.Add(StreamItem<PreparedDeviceSnapshot, DeviceChanged>.Of(DeviceStore.Prepare(snapshot)));
                         snapshot = null;
                         LogConnected(_logger, _api.ServerAddress);
                         delay = MinDelay;
@@ -164,11 +165,11 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Like <see cref="DeviceLoopAsync"/>: snapshot (newest <see cref="TaskStore.MaxTasks"/> plus active) as one reset, then batched changes.</summary>
+    /// <summary>Like <see cref="DeviceLoopAsync"/>: snapshot (newest <see cref="TaskStore.MaxTasks"/> plus active, rows built off the UI thread) as one reset, then batched changes.</summary>
     private async Task TaskLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<StreamItem<TaskInfo, TaskChanged>>(_ui, ApplyTasks);
+        var batcher = new ChangeBatcher<StreamItem<PreparedTaskSnapshot, TaskChanged>>(_ui, ApplyTasks);
         while (!ct.IsCancellationRequested)
         {
             try
@@ -178,11 +179,11 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                 {
                     if (snapshot is null)
                     {
-                        batcher.Add(StreamItem<TaskInfo, TaskChanged>.Of(change));
+                        batcher.Add(StreamItem<PreparedTaskSnapshot, TaskChanged>.Of(change));
                     }
                     else if (change.Kind == TaskChanged.Types.Kind.SnapshotEnd)
                     {
-                        batcher.Add(StreamItem<TaskInfo, TaskChanged>.Of(snapshot));
+                        batcher.Add(StreamItem<PreparedTaskSnapshot, TaskChanged>.Of(TaskStore.Prepare(snapshot)));
                         snapshot = null;
                         delay = MinDelay;
                     }
@@ -448,10 +449,10 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     }
 
     /// <summary>UI thread: applies a batch in order; consecutive changes go to the store as one batch.</summary>
-    private void ApplyDevices(IReadOnlyList<StreamItem<Device, DeviceChanged>> items)
+    private void ApplyDevices(IReadOnlyList<StreamItem<PreparedDeviceSnapshot, DeviceChanged>> items)
     {
         var changes = new List<DeviceChanged>();
-        foreach (StreamItem<Device, DeviceChanged> item in items)
+        foreach (StreamItem<PreparedDeviceSnapshot, DeviceChanged> item in items)
         {
             if (item.Snapshot is null)
             {
@@ -469,10 +470,10 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _devices.ApplyBatch(changes);
     }
 
-    private void ApplyTasks(IReadOnlyList<StreamItem<TaskInfo, TaskChanged>> items)
+    private void ApplyTasks(IReadOnlyList<StreamItem<PreparedTaskSnapshot, TaskChanged>> items)
     {
         var changes = new List<TaskChanged>();
-        foreach (StreamItem<TaskInfo, TaskChanged> item in items)
+        foreach (StreamItem<PreparedTaskSnapshot, TaskChanged> item in items)
         {
             if (item.Snapshot is null)
             {
@@ -489,12 +490,13 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     }
 
     /// <summary>Either a whole snapshot or one live change of a Watch stream.</summary>
-    private sealed record StreamItem<TItem, TChange>(IReadOnlyList<TItem>? Snapshot, TChange? Change)
+    private sealed record StreamItem<TSnapshot, TChange>(TSnapshot? Snapshot, TChange? Change)
+        where TSnapshot : class
         where TChange : class
     {
-        public static StreamItem<TItem, TChange> Of(IReadOnlyList<TItem> snapshot) => new(snapshot, null);
+        public static StreamItem<TSnapshot, TChange> Of(TSnapshot snapshot) => new(snapshot, null);
 
-        public static StreamItem<TItem, TChange> Of(TChange change) => new(null, change);
+        public static StreamItem<TSnapshot, TChange> Of(TChange change) => new(null, change);
     }
 
     private void SetState(ConnectionState state, string text)

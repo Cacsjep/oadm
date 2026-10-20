@@ -5,6 +5,19 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Tasks;
 
 /// <summary>
+/// A task snapshot whose rows were built off the UI thread (<see cref="TaskStore.Prepare"/>): one row per distinct task
+/// id, in snapshot order. <see cref="TaskStore.Reset(PreparedTaskSnapshot)"/> applies it on the UI thread.
+/// </summary>
+public sealed class PreparedTaskSnapshot
+{
+    internal PreparedTaskSnapshot(List<(TaskInfo Task, TaskRowViewModel Row)> items) => Items = items;
+
+    internal IReadOnlyList<(TaskInfo Task, TaskRowViewModel Row)> Items { get; }
+
+    public int Count => Items.Count;
+}
+
+/// <summary>
 /// In-memory mirror of the server's task table, newest first. Must be used from the UI thread.
 /// Task rows name their devices through the <see cref="DeviceStore"/> and follow its changes.
 /// Scale (50,000 tasks on the server, 5,000 per Run): the mirror keeps at most <see cref="MaxTasks"/>
@@ -42,20 +55,39 @@ public sealed class TaskStore
 
     public TaskRowViewModel? Find(string id) => _byId.GetValueOrDefault(id);
 
-    /// <summary>Replaces the mirror with a snapshot (any order); one collection notification.</summary>
-    public void Reset(IEnumerable<TaskInfo> snapshot)
+    /// <summary>Builds the rows of a snapshot; any thread, touches no store (the device labels follow on the UI thread).</summary>
+    public static PreparedTaskSnapshot Prepare(IEnumerable<TaskInfo> snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var rows = new List<TaskRowViewModel>();
+        var items = new List<(TaskInfo, TaskRowViewModel)>();
         foreach (TaskInfo task in snapshot)
         {
-            if (task is null || !seen.Add(task.Id))
+            if (task is not null && seen.Add(task.Id))
             {
-                continue;
+                items.Add((task, new TaskRowViewModel(task)));
             }
+        }
 
-            rows.Add(Upsert(task, out _));
+        return new PreparedTaskSnapshot(items);
+    }
+
+    /// <summary>Replaces the mirror with a snapshot (any order); one collection notification.</summary>
+    public void Reset(IEnumerable<TaskInfo> snapshot) => Reset(Prepare(snapshot));
+
+    /// <summary>
+    /// <see cref="Reset(IEnumerable{TaskInfo})"/> with rows built by <see cref="Prepare"/>: a task the store has keeps its
+    /// row (updated in place), a new one takes its prepared row.
+    /// </summary>
+    public void Reset(PreparedTaskSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var rows = new List<TaskRowViewModel>(snapshot.Count);
+        foreach ((TaskInfo task, TaskRowViewModel prepared) in snapshot.Items)
+        {
+            seen.Add(task.Id);
+            rows.Add(Upsert(task, out _, prepared));
         }
 
         foreach (TaskRowViewModel stale in _byId.Values.Where(r => !seen.Contains(r.Id)).ToList())
@@ -181,7 +213,7 @@ public sealed class TaskStore
 
     private static int NewestFirst(TaskRowViewModel a, TaskRowViewModel b) => b.Created.CompareTo(a.Created);
 
-    private TaskRowViewModel Upsert(TaskInfo task, out bool isNew)
+    private TaskRowViewModel Upsert(TaskInfo task, out bool isNew, TaskRowViewModel? prepared = null)
     {
         if (_byId.TryGetValue(task.Id, out TaskRowViewModel? row))
         {
@@ -199,7 +231,16 @@ public sealed class TaskStore
         }
         else
         {
-            row = new TaskRowViewModel(task, _devices);
+            if (prepared is not null)
+            {
+                prepared.AttachDevices(_devices);
+                row = prepared;
+            }
+            else
+            {
+                row = new TaskRowViewModel(task, _devices);
+            }
+
             _byId[task.Id] = row;
             _activeCount += row.IsActive ? 1 : 0;
             Index(row);

@@ -27,8 +27,8 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     /// <summary>Separator of <see cref="TagsText"/> and of the "Tags" column of the device export and import.</summary>
     public const string TagSeparator = "; ";
 
-    private readonly TagStore? _tagStore;
-    private readonly Compliance.ComplianceStore? _complianceStore;
+    private TagStore? _tagStore;
+    private Compliance.ComplianceStore? _complianceStore;
     private Compliance.DeviceCompliance? _compliance;
 
     public DeviceRowViewModel(Device device, TagStore? tags = null, Compliance.ComplianceStore? compliance = null)
@@ -41,6 +41,20 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     }
 
     public string Id { get; }
+
+    /// <summary>
+    /// Gives a row built off the UI thread without the stores (<see cref="DeviceStore.Prepare"/>) the client's tag and
+    /// compliance stores; UI thread, before the row is shown. The tag chips then use the shared tags.
+    /// </summary>
+    internal void AttachStores(TagStore? tags, Compliance.ComplianceStore? compliance)
+    {
+        _tagStore = tags;
+        _complianceStore = compliance;
+        if (tags is not null && Tags.Count > 0)
+        {
+            TagChips = Tags.Select(tags.Resolve).ToList();
+        }
+    }
 
     /// <summary>The device's compliance (Compliance column); the same object for the whole session.</summary>
     public Compliance.DeviceCompliance Compliance => _compliance ??= _complianceStore?.For(Id) ?? new Compliance.ComplianceStore().For(Id);
