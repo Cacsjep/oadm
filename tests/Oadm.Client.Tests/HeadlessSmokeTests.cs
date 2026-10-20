@@ -153,6 +153,10 @@ public sealed class HeadlessSmokeTests
             Assert.False(panel.IsOpen);
             await PumpUntilAsync(() => true);
 
+            // The built-in pages without a group: Devices, Compliance, then Sites (decision 2026-10-20: not in a group).
+            Assert.Equal(["devices", "compliance", "sites"], vm.NavItems.Take(3).Select(n => n.Key).ToArray());
+            Assert.All(vm.NavItems.Take(3), n => Assert.Null(n.GroupTitle));
+
             // Fake mode is the administrator: every host page is in the bottom group of the rail.
             Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
             var pageTitles = new Dictionary<string, string>

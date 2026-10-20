@@ -120,12 +120,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (sites is not null)
         {
-            // Built-in page in the Servers group, before the plugin pages of that group; shown while the role may see sites.
-            _sitesItem = new NavItemViewModel(HostPages.Sites, "Sites", "server", sites)
-            {
-                GroupTitle = CorePluginGroup.Servers.ToString(),
-                GroupOrder = (int)CorePluginGroup.Servers,
-            };
+            // Built-in page right below Compliance (no group), shown while the role may see sites.
+            _sitesItem = new NavItemViewModel(HostPages.Sites, "Sites", "server", sites);
             SyncSitesItem();
         }
 
@@ -519,7 +515,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>The Sites entry (Servers group) shows while the role may see sites; a hidden page that was open falls back to Devices.</summary>
+    /// <summary>The Sites entry (right below Compliance, else Devices) shows while the role may see sites; a hidden page that was open falls back to Devices.</summary>
     private void SyncSitesItem()
     {
         if (_sitesItem is null)
@@ -531,8 +527,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         bool shown = NavItems.Contains(_sitesItem);
         if (wanted && !shown)
         {
-            NavItems.Insert(Math.Min(1, NavItems.Count), _sitesItem);
-            OrderCorePluginPages();
+            var above = _complianceItem is not null && NavItems.Contains(_complianceItem) ? _complianceItem : _devicesItem;
+            NavItems.Insert(Math.Min(NavItems.IndexOf(above) + 1, NavItems.Count), _sitesItem);
+            UpdateNavGroups();
         }
         else if (!wanted && shown)
         {
