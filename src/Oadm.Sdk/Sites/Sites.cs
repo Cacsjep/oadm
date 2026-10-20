@@ -228,6 +228,9 @@ public static class SiteTexts
     /// <summary>Why a task, compliance type, page or action of a <see cref="SiteSupport.None"/> package refuses a device at a site.</summary>
     public const string NotAvailableAtSite = "Not available for devices at a site";
 
+    /// <summary>The site's node was reset (its site is not bound any more) and what to do about it.</summary>
+    public const string NodeWasReset = "The site node was reset. Replace or remove the site.";
+
     /// <summary>The status text of a device whose site is offline: "Site offline: Building B".</summary>
     public static string SiteOffline(string? siteName) =>
         string.IsNullOrWhiteSpace(siteName) ? "Site offline" : "Site offline: " + siteName;

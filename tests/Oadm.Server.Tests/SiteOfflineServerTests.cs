@@ -144,6 +144,15 @@ public sealed class SiteOfflineServerTests
     }
 
     [Fact]
+    public void TheNotBoundRefusalGivesTheSameAdviceAsTheSitesPage()
+    {
+        // Not bound means the node was reset already: one phrase for it, on the Sites page and in every refusal.
+        Assert.Equal(Oadm.Contracts.Sites.SiteTexts.NotBound, Oadm.Sdk.Sites.SiteTexts.NodeWasReset);
+        var refusal = Core.Sites.SiteException.For(Guid.NewGuid(), "Building B", Core.Sites.SiteProblem.NotBound);
+        Assert.Equal("Site Building B is not bound. " + Oadm.Sdk.Sites.SiteTexts.NodeWasReset, refusal.Message);
+    }
+
+    [Fact]
     public void TheMapperSendsSiteOfflineAndTheSite()
     {
         var site = Guid.NewGuid();
