@@ -57,15 +57,24 @@ public sealed class AdminHandler(
                         return AdminResponse.Fail("This network card is not on this computer.");
                     var id = card.Id;
                     var reached = Bool(request.Arg("reached"));
-                    store.Update(c =>
-                    {
-                        c.AllCards = false;
-                        c.Cards[id] = reached;
-                    });
+                    store.Update(c => ChooseCard(c, id, reached));
                     return Ok();
                 case AdminCommands.AllCards:
-                    var all = Bool(request.Arg("on"));
-                    store.Update(c => c.AllCards = all);
+                    if (Bool(request.Arg("on")))
+                    {
+                        store.Update(c =>
+                        {
+                            c.AllCards = true;
+                            c.Cards.Clear();
+                        });
+                    }
+
+                    // Off without a chosen card changes nothing: no chosen card means all cards.
+                    else
+                    {
+                        store.Update(c => c.AllCards = !c.Cards.Any(e => e.Value));
+                    }
+
                     return Ok();
                 case AdminCommands.AddSubnet:
                     if (Subnet.Parse(request.Arg("subnet")) is not { } subnet)
@@ -121,26 +130,34 @@ public sealed class AdminHandler(
 
     private AdminResponse SetServer(AdminRequest request)
     {
-        var mode = request.Arg("mode") switch
-        {
-            "" => store.Read(c => c.Mode),
-            var m when m.Equals("wait", StringComparison.OrdinalIgnoreCase) => NodeLinkMode.Wait,
-            var m when m.Equals("connect", StringComparison.OrdinalIgnoreCase) => NodeLinkMode.Connect,
-            _ => (NodeLinkMode?)null,
-        };
-        if (mode is null)
-            return AdminResponse.Fail("Choose connect or wait.");
-        var address = request.Args.TryGetValue("address", out var typed) ? typed.Trim() : store.Read(c => c.ServerAddress);
-        if (address.Length > 0 && OutboundConnector.ParseAddress(address, NodeConfig.DefaultPort) is null)
-            return AdminResponse.Fail("Enter the server's name or IP address, like oadm.example.com or 10.0.0.5.");
-        if (mode == NodeLinkMode.Connect && address.Length == 0)
+        var address = request.Arg("address").Trim();
+        if (address.Length == 0)
             return AdminResponse.Fail("Enter the server's name or IP address.");
-        store.Update(c =>
-        {
-            c.Mode = mode.Value;
-            c.ServerAddress = address;
-        });
+        if (OutboundConnector.ParseAddress(address, NodeConfig.DefaultPort) is null)
+            return AdminResponse.Fail("Enter the server's name or IP address, like oadm.example.com or 10.0.0.5.");
+        store.Update(c => c.ServerAddress = address);
         return Ok();
+    }
+
+    // A card chosen: All cards goes off and the card joins the choice. A card unchosen leaves the choice; without a chosen
+    // card the node reaches all cards again (unticking a card while all cards are reached changes nothing).
+    private static void ChooseCard(NodeConfig config, string id, bool reached)
+    {
+        if (reached)
+        {
+            if (config.AllCards)
+                config.Cards.Clear();
+            config.AllCards = false;
+            config.Cards[id] = true;
+            return;
+        }
+
+        config.Cards.Remove(id);
+        if (!config.Cards.Any(e => e.Value))
+        {
+            config.Cards.Clear();
+            config.AllCards = true;
+        }
     }
 
     private AdminResponse Ok() => new() { Ok = true, State = feed.View() };

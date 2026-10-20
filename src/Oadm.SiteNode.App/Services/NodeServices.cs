@@ -18,22 +18,7 @@ public sealed class AdminChannel(AdminEndpoint endpoint) : INodeChannel
 {
     private readonly AdminClient _client = new(endpoint);
 
-    /// <summary>Sends the request; a server change of the app running as administrator also sets the firewall rule.</summary>
-    public async Task<AdminResponse> SendAsync(AdminRequest request, CancellationToken ct)
-    {
-        var response = await _client.SendAsync(request, ct).ConfigureAwait(false);
-        return await WithFirewallAsync(request, response, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// "Wait for the server" opens TCP 5081 in Windows Firewall, "Connect to the server" closes it (the service runs as
-    /// its own unprivileged account and cannot). A rule that could not be added is the answer's error; the change itself is done.
-    /// </summary>
-    public static async Task<AdminResponse> WithFirewallAsync(AdminRequest request, AdminResponse response, CancellationToken ct,
-        Func<IReadOnlyList<string>, CancellationToken, Task<int>>? run = null, string? programPath = null) =>
-        await NodeFirewall.ApplyAsync(request, response, ct, run, programPath).ConfigureAwait(false) is { } problem
-            ? AdminResponse.Fail(problem)
-            : response;
+    public Task<AdminResponse> SendAsync(AdminRequest request, CancellationToken ct) => _client.SendAsync(request, ct);
 }
 
 /// <summary>
@@ -116,7 +101,6 @@ public sealed class SystemElevation(string? dataDirectory) : IElevation
         if (request is null || output is null)
             return 2;
         var response = await new AdminClient(endpoint).SendAsync(request, CancellationToken.None).ConfigureAwait(false);
-        response = await AdminChannel.WithFirewallAsync(request, response, CancellationToken.None).ConfigureAwait(false);
         await File.WriteAllTextAsync(output, JsonSerializer.Serialize(response, AdminJson.Options)).ConfigureAwait(false);
         return response.Ok ? 0 : 1;
     }

@@ -23,6 +23,7 @@ public sealed class DialerTests : IAsyncDisposable
     public DialerTests()
     {
         _store = new NodeStore(_folder.Path);
+        _store.Update(FakeCards.ChooseCameraCard);
         _log = new ConnectionLog(Path.Combine(_folder.Path, "logs"), TimeProvider.System);
     }
 

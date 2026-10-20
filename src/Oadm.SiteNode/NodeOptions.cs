@@ -6,7 +6,7 @@ using Oadm.SiteNode.Feed;
 
 namespace Oadm.SiteNode;
 
-/// <summary>How a node runs: the installed service takes the defaults; tests set their own folder, ports and fakes.</summary>
+/// <summary>How a node runs: the installed service takes the defaults; tests set their own folder and fakes.</summary>
 public sealed class NodeOptions
 {
     /// <summary>Environment variable with the data folder (like <c>--data-dir</c>).</summary>
@@ -14,16 +14,10 @@ public sealed class NodeOptions
 
     public string DataDirectory { get; set; } = DefaultDataDirectory();
 
-    /// <summary>The port the node waits on in mode Wait (0 = any free port, tests).</summary>
-    public int ListenPort { get; set; } = NodeConfig.DefaultPort;
-
     public string Version { get; set; } = NodeStatusFeed.ProgramVersion;
 
     /// <summary>The default site name the server suggests.</summary>
     public string HostName { get; set; } = Environment.MachineName;
-
-    /// <summary>Announce a waiting node over mDNS (_oadm-site._tcp).</summary>
-    public bool Announce { get; set; } = true;
 
     /// <summary>The local admin channel; null = none (tests that drive the node only through gRPC).</summary>
     public AdminEndpoint? AdminEndpoint { get; set; }

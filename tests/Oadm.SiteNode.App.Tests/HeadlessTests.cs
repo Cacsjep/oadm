@@ -31,6 +31,7 @@ public sealed class HeadlessTests
         {
             case "open":
                 Assert.Contains("Not bound. Binding open for 23 more hours.", shown.Texts);
+                Assert.Contains("Pairing code", shown.Texts);
                 Assert.Contains("Show pairing code", shown.Texts);
                 Assert.Contains("Status: Connected to 10.0.0.5:5081", shown.Texts);
                 break;
@@ -41,7 +42,9 @@ public sealed class HeadlessTests
                 break;
             case "server":
                 Assert.Contains("Server address", shown.Texts);
-                Assert.Contains("Status: Not connected", shown.Texts);
+                Assert.Contains(NodeAppViewModel.EnterServer + " " + NodeAppViewModel.PortHint, shown.Texts);
+                Assert.Contains("Status: No server address yet", shown.Texts);
+                Assert.DoesNotContain("Show pairing code", shown.Texts); // the address comes first
                 break;
             case "cannot-reach":
                 Assert.Contains("Cannot reach 10.0.0.5:5081", shown.Texts); // below the address field
@@ -56,6 +59,7 @@ public sealed class HeadlessTests
                 Assert.Contains("Status: Connected to OADM-SRV · Building B", shown.Texts);
                 Assert.Contains("Building B", shown.Texts);
                 Assert.DoesNotContain("Show pairing code", shown.Texts);
+                Assert.DoesNotContain("Pairing code", shown.Texts);
                 break;
             case "bound-offline":
                 Assert.Contains("Status: Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
@@ -74,10 +78,11 @@ public sealed class HeadlessTests
         if (state != "no-service")
         {
             Assert.Contains("Networks", shown.Texts);
-            Assert.Contains("Server", shown.Texts);
+            Assert.Contains("Server address", shown.Texts);
             Assert.Contains("Binding", shown.Texts);
-            Assert.Contains("This node", shown.Texts);
+            Assert.Contains("Node ID", shown.Texts);
             Assert.Contains("Reset", shown.Texts);
+            Assert.DoesNotContain("Wait for the server", shown.Texts); // the node always connects to the server
             Assert.DoesNotContain("Connection log", shown.Texts); // the other tabs stay hidden
             Assert.DoesNotContain("Review", shown.Texts); // no requests in these states
         }
@@ -106,8 +111,10 @@ public sealed class HeadlessTests
                 Assert.DoesNotContain("All cards", shown.Texts);
                 break;
             case NodeTab.Networks:
+                Assert.Contains("Reach devices on", shown.Texts);
                 Assert.Contains("Cameras", shown.Texts);
                 Assert.Contains("All cards", shown.Texts);
+                Assert.Contains("Default router", shown.Texts);
                 Assert.Contains("10.20.0.0/16", shown.Texts);
                 Assert.DoesNotContain("Reset", shown.Texts);
                 break;
@@ -122,6 +129,16 @@ public sealed class HeadlessTests
                 Assert.Contains("Connection log", shown.Texts);
                 break;
         }
+    }
+
+    [Fact]
+    public async Task TheNetworksTabWithAllCards()
+    {
+        var shown = await ShowAsync(FakeChannel.Sample(requests: false, allCards: true), NodeTab.Networks, "site-node-app-tab-networks-all.png", showCode: false);
+
+        Assert.Contains("All cards", shown.Texts);
+        Assert.Contains("Office", shown.Texts);
+        Assert.Contains("10.20.0.0/16", shown.Texts);
     }
 
     [Fact]

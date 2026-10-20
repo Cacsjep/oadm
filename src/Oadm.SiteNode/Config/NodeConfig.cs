@@ -11,20 +11,22 @@ public sealed class NodeConfig
     /// <summary>Hours of run time binding stays open after install, Reset or Allow binding.</summary>
     public static readonly TimeSpan BindingWindow = TimeSpan.FromHours(24);
 
-    /// <summary>The default port of the site link (server listener and the node's own in mode Wait).</summary>
+    /// <summary>The default port of the server's site listener.</summary>
     public const int DefaultPort = 5081;
 
     public string Id { get; set; } = "";
 
-    public NodeLinkMode Mode { get; set; } = NodeLinkMode.Connect;
-
     /// <summary>As typed: "oadm.example.com", "10.0.0.5", "10.0.0.5:5082".</summary>
     public string ServerAddress { get; set; } = "";
 
-    /// <summary>Cards the user switched; a card without an entry is reached unless it has the default router.</summary>
+    /// <summary>
+    /// The chosen cards (true) while <see cref="AllCards"/> is off. No chosen card counts as all cards
+    /// (<see cref="Networks.NetworkScope.ReachesAllCards"/>); false entries of older versions are ignored.
+    /// </summary>
     public Dictionary<string, bool> Cards { get; set; } = new(StringComparer.Ordinal);
 
-    public bool AllCards { get; set; }
+    /// <summary>Reach devices on every card (default). Restricted to chosen cards when the machine also sits in an office network.</summary>
+    public bool AllCards { get; set; } = true;
 
     /// <summary>Routed camera networks: "10.20.0.0/16".</summary>
     public List<string> ExtraSubnets { get; set; } = [];

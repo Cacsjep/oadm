@@ -41,16 +41,31 @@ public sealed class AdminTests
         var handler = node.Get<AdminHandler>();
         var store = node.Get<NodeStore>();
 
-        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("mode", "connect"), ("address", "oadm.example.com")), true).Ok);
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "oadm.example.com")), true).Ok);
         Assert.Equal("oadm.example.com", store.Read(c => c.ServerAddress));
-        Assert.False(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("mode", "connect"), ("address", "not a host!")), true).Ok);
-        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("mode", "wait")), true).Ok);
-        Assert.Equal(NodeLinkMode.Wait, store.Read(c => c.Mode));
+        Assert.False(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "not a host!")), true).Ok);
+        Assert.False(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "")), true).Ok); // the node always needs a server
+        Assert.Equal("oadm.example.com", store.Read(c => c.ServerAddress));
 
+        // Choosing a card unticks All cards, ticking All cards clears the choice (the test node starts with the camera card).
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.AllCards, ("on", "true")), true).Ok);
+        Assert.True(store.Read(c => c.AllCards));
         Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetCard, ("id", "Office"), ("reached", "true")), true).Ok);
         Assert.True(store.Read(c => c.Cards["office"]));
+        Assert.False(store.Read(c => c.AllCards));
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetCard, ("id", "cam"), ("reached", "true")), true).Ok);
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetCard, ("id", "office"), ("reached", "false")), true).Ok);
+        Assert.Equal(["cam"], store.Read(c => c.Cards.Where(e => e.Value).Select(e => e.Key).ToList()));
         Assert.False(handler.Handle(AdminRequest.Of(AdminCommands.SetCard, ("id", "wifi"), ("reached", "true")), true).Ok);
         Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.AllCards, ("on", "true")), true).Ok);
+        Assert.True(store.Read(c => c.AllCards));
+        Assert.Empty(store.Read(c => c.Cards));
+
+        // Unchoosing the last card is all cards again; All cards off without a chosen card changes nothing.
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetCard, ("id", "cam"), ("reached", "true")), true).Ok);
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetCard, ("id", "cam"), ("reached", "false")), true).Ok);
+        Assert.True(store.Read(c => c.AllCards));
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.AllCards, ("on", "false")), true).Ok);
         Assert.True(store.Read(c => c.AllCards));
 
         Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.AddSubnet, ("subnet", "10.20.5.0/16")), true).Ok);
@@ -112,7 +127,6 @@ public sealed class AdminTests
     [InlineData("status", "", AdminCommands.State)]
     [InlineData("pairing-code", "", AdminCommands.PairingCode)]
     [InlineData("server", "oadm.example.com", AdminCommands.SetServer)]
-    [InlineData("server", "--wait", AdminCommands.SetServer)]
     [InlineData("allow-binding", "", AdminCommands.AllowBinding)]
     [InlineData("networks", "", AdminCommands.State)]
     [InlineData("networks", "card eth1 on", AdminCommands.SetCard)]
@@ -132,6 +146,7 @@ public sealed class AdminTests
 
     [Theory]
     [InlineData("status", "x")]
+    [InlineData("server", "--wait")]
     [InlineData("networks", "card eth1 maybe")]
     [InlineData("ports", "allow both tcp 80")]
     [InlineData("format", "")]
@@ -139,13 +154,12 @@ public sealed class AdminTests
         Assert.Null(CommandLine.Request(verb, args.Length == 0 ? [] : args.Split(' ')));
 
     [Fact]
-    public void TheDataFolderAndPortOptionsAreTakenOut()
+    public void TheDataFolderOptionIsTakenOut()
     {
-        var (verb, rest, dataDirectory, port) = CommandLine.Split(["--data-dir", "C:/node", "networks", "add", "10.0.0.0/8", "--port", "5090"]);
+        var (verb, rest, dataDirectory) = CommandLine.Split(["--data-dir", "C:/node", "networks", "add", "10.0.0.0/8"]);
         Assert.Equal("networks", verb);
         Assert.Equal(["add", "10.0.0.0/8"], rest);
         Assert.Equal("C:/node", dataDirectory);
-        Assert.Equal(5090, port);
         Assert.Null(CommandLine.Split([]).Verb);
     }
 

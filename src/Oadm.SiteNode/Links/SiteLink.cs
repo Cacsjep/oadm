@@ -7,7 +7,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.SiteNode.Links;
 
 /// <summary>
-/// One TLS connection between the node and a server, whichever side opened it. Kestrel serves gRPC on it; every call
+/// One TLS connection the node opened to a server. Kestrel serves gRPC on it; every call
 /// finds its link through <see cref="LinkEndPoint"/> (what the server's certificate was, where it came from).
 /// </summary>
 public sealed class SiteLink
@@ -16,13 +16,11 @@ public sealed class SiteLink
     private readonly Lock _lock = new();
     private NodePairing? _pairing;
     private string? _pairingCode;
-    private long _lastActivity;
     private bool _served;
 
-    public SiteLink(bool outbound, bool worker, string remote, X509Certificate2 serverCertificate, byte[] nodeFingerprint)
+    public SiteLink(bool worker, string remote, X509Certificate2 serverCertificate, byte[] nodeFingerprint)
     {
         ArgumentNullException.ThrowIfNull(serverCertificate);
-        Outbound = outbound;
         Worker = worker;
         Remote = remote;
         RemoteHost = HostOf(remote);
@@ -35,9 +33,6 @@ public sealed class SiteLink
     }
 
     public long Id { get; }
-
-    /// <summary>The node opened it (mode Connect).</summary>
-    public bool Outbound { get; }
 
     /// <summary>A worker connection the server asked for with OpenConnections.</summary>
     public bool Worker { get; }
@@ -60,13 +55,8 @@ public sealed class SiteLink
     /// <summary>The source for the attempt limits: the address, IPv6 by its /64 (<see cref="AddressRateLimiter.KeyOf"/>).</summary>
     public string RemoteKey { get; }
 
-    /// <summary>The TimeProvider timestamp of the last call on this link (unbound links idle too long are closed).</summary>
-    public long LastActivity => Interlocked.Read(ref _lastActivity);
-
     /// <summary>True once a call of the bound server was served on it (the outbound connector's backoff starts over then).</summary>
     public bool Served => Volatile.Read(ref _served);
-
-    public void Touch(long timestamp) => Interlocked.Exchange(ref _lastActivity, timestamp);
 
     public void MarkServed() => Volatile.Write(ref _served, true);
 

@@ -7,8 +7,8 @@ using Oadm.SiteNode.Config;
 namespace Oadm.SiteNode.Networks;
 
 /// <summary>
-/// Which networks the node reaches (docs/sites.md, "Reach"): the cards chosen in the app (default every card except the
-/// one with the default router), all cards, and extra routed subnets. Every address the server asks for is checked here;
+/// Which networks the node reaches (docs/sites.md, "Reach"): all cards (default) or the cards chosen in the app, and extra
+/// routed subnets. Every address the server asks for is checked here;
 /// the server cannot widen it. Never reached: special addresses (<see cref="Subnet.IsUsable"/>: loopback, link-local,
 /// multicast, 0.0.0.0/8, broadcast) and the node's own addresses on any card (its own services are not the devices').
 /// </summary>
@@ -100,16 +100,18 @@ public sealed class NetworkScope(NodeStore store, INetworkCards cards, bool allo
         return [.. cards.List().Where(c => IsReached(config, c)).SelectMany(c => c.Addresses)];
     }
 
-    /// <summary>Every card address (the announcement of a waiting node goes out on all cards: the server is usually on the office side).</summary>
-    public IReadOnlyList<CardAddress> AllAddresses() => [.. cards.List().SelectMany(c => c.Addresses)];
-
     public static bool IsReached(NodeConfig config, NetworkCard card)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(card);
-        if (config.AllCards)
-            return true;
-        return config.Cards.TryGetValue(card.Id, out var reached) ? reached : !card.HasDefaultRouter;
+        return ReachesAllCards(config) || (config.Cards.TryGetValue(card.Id, out var chosen) && chosen);
+    }
+
+    /// <summary>All cards: the default, and also when no card is chosen (a choice of none would reach nothing).</summary>
+    public static bool ReachesAllCards(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        return config.AllCards || !config.Cards.Any(e => e.Value);
     }
 
     private static IEnumerable<Subnet> ExtraSubnets(NodeConfig config) =>

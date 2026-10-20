@@ -29,9 +29,9 @@ using Serilog.Events;
 namespace Oadm.SiteNode;
 
 /// <summary>
-/// The node's host: Kestrel serves <c>SiteNodeService</c> only on links (connections the node opened, or accepted and
-/// put through TLS itself; no socket endpoint of its own), plus the outbound connector, the inbound listener, the mDNS
-/// announcement, the binding clock and the local admin channel. Windows service "OADM Site Node" (OadmSiteNode) or
+/// The node's host: Kestrel serves <c>SiteNodeService</c> only on links (connections the node opened to the server and put
+/// through TLS itself; no socket endpoint of its own: the node never listens), plus the outbound connector, the binding
+/// clock and the local admin channel. Windows service "OADM Site Node" (OadmSiteNode) or
 /// systemd (Type=notify); both are no-ops on a console.
 /// </summary>
 public static class NodeHost
@@ -90,7 +90,7 @@ public static class NodeHost
             k.Limits.Http2.KeepAlivePingDelay = TimeSpan.FromSeconds(15);
             k.Limits.Http2.KeepAlivePingTimeout = TimeSpan.FromSeconds(30);
             // Links stay open as long as both sides answer the HTTP/2 pings: an idle worker link or a node waiting to be
-            // bound must not be dropped every 130 s (Kestrel's default). Unbound inbound links have their own idle limit.
+            // bound must not be dropped every 130 s (Kestrel's default).
             // Not Timeout.InfiniteTimeSpan: Kestrel adds the ticks to a timestamp, and -1 ms closed idle links after the
             // next heartbeat (about a second).
             k.Limits.KeepAliveTimeout = KeepAliveTimeout;
@@ -111,7 +111,7 @@ public static class NodeHost
 
         AddNode(builder.Services, options);
         var app = builder.Build();
-        app.Use(LinkLimits(app.Services.GetRequiredService<BindingState>(), options.Time));
+        app.Use(LinkLimits(app.Services.GetRequiredService<BindingState>()));
         app.MapGrpcService<SiteNodeGrpcService>();
         return app;
     }
@@ -123,17 +123,13 @@ public static class NodeHost
     public const int UnboundRequestBytes = 64 * 1024;
 
     /// <summary>
-    /// Every call counts as activity of its link; a caller that is not the bound server may send at most
-    /// <see cref="UnboundRequestBytes"/> per call (gRPC lifts Kestrel's body limit, so the body stream is limited here).
+    /// A caller that is not the bound server may send at most <see cref="UnboundRequestBytes"/> per call (gRPC lifts
+    /// Kestrel's body limit, so the body stream is limited here).
     /// </summary>
-    internal static Func<HttpContext, RequestDelegate, Task> LinkLimits(BindingState binding, TimeProvider time) => (context, next) =>
+    internal static Func<HttpContext, RequestDelegate, Task> LinkLimits(BindingState binding) => (context, next) =>
     {
-        if (context.Features.Get<SiteLink>() is { } link)
-        {
-            link.Touch(time.GetTimestamp());
-            if (!binding.IsBoundTo(link.ServerFingerprintHex))
-                context.Request.Body = new LimitedReadStream(context.Request.Body, UnboundRequestBytes);
-        }
+        if (context.Features.Get<SiteLink>() is { } link && !binding.IsBoundTo(link.ServerFingerprintHex))
+            context.Request.Body = new LimitedReadStream(context.Request.Body, UnboundRequestBytes);
 
         return next(context);
     };
@@ -168,10 +164,7 @@ public static class NodeHost
             sp.GetRequiredService<Dialer>(), sp.GetRequiredService<ConnectionLog>()));
         services.AddSingleton<AdminHandler>();
         services.AddSingleton<OutboundConnector>();
-        services.AddSingleton<InboundListener>();
         services.AddHostedService(sp => sp.GetRequiredService<OutboundConnector>());
-        services.AddHostedService(sp => sp.GetRequiredService<InboundListener>());
-        services.AddHostedService<NodeAnnouncer>();
         services.AddHostedService<BindingClock>();
         services.AddHostedService<CardWatcher>();
         services.AddHostedService<AdminChannelHost>();

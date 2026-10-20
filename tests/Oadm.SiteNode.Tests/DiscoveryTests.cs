@@ -12,7 +12,7 @@ using Oadm.SiteNode.Tests.Support;
 
 namespace Oadm.SiteNode.Tests;
 
-/// <summary>mDNS browse and announce, the range scan, DNS names and server addresses.</summary>
+/// <summary>mDNS browse, the range scan, DNS names and server addresses.</summary>
 public sealed class DiscoveryTests
 {
     private static readonly IPAddress Camera = IPAddress.Parse("192.168.0.20");
@@ -78,24 +78,6 @@ public sealed class DiscoveryTests
     }
 
     [Fact]
-    public void AWaitingNodeAnswersQueriesForItsServiceWithoutTheServerName()
-    {
-        var self = new Announcement("a1b2c3d4", "site-pc", "3.7.0", "unbound", 5081, [IPAddress.Parse("10.0.0.7"), IPAddress.Parse("192.168.0.5")]);
-        var query = DnsWire.Parse(DnsWire.Query(77, new DnsQuestion(NodeAnnouncer.Service, DnsType.DomainPointer)))!;
-
-        var answer = DnsWire.Parse(NodeAnnouncer.Answer(query, self)!)!;
-
-        Assert.True(answer.IsResponse);
-        Assert.Equal(77, answer.Id);
-        Assert.Contains(answer.Records, r => r.Type == DnsType.DomainPointer && r.Target == "site-pc - a1b2c3d4._oadm-site._tcp.local");
-        Assert.Contains(answer.Records, r => r.Type == DnsType.Srv && r.Port == 5081 && r.Target == "oadm-site-a1b2c3d4.local");
-        var txt = Assert.Single(answer.Records, r => r.Type == DnsType.Txt).Texts;
-        Assert.Equal(["id=a1b2c3d4", "version=3.7.0", "state=unbound"], txt);
-        Assert.Equal(2, answer.Records.Count(r => r.Type == DnsType.A));
-        Assert.Null(NodeAnnouncer.Answer(DnsWire.Parse(DnsWire.Query(1, new DnsQuestion(AxisAggregator.Service, DnsType.DomainPointer)))!, self));
-    }
-
-    [Fact]
     public void BrokenPacketsAreIgnored()
     {
         Assert.Null(DnsWire.Parse([1, 2, 3]));
@@ -108,6 +90,7 @@ public sealed class DiscoveryTests
     {
         using var folder = new TempFolder();
         var store = new NodeStore(folder.Path);
+        store.Update(FakeCards.ChooseCameraCard);
         store.Update(c => c.Allowed.RemoveAll(p => p.Port == 80));
         await using var https = new EchoServer();
         var connector = new MapConnector();
@@ -236,7 +219,13 @@ public sealed class DiscoveryTests
         dns.Reverse[office] = "printer.office.example";
         var cards = FakeCards.LoopbackSite();
         cards.Cards.Add(new Networks.NetworkCard("cam2", "Cameras 2", [new CardAddress(IPAddress.Parse("192.168.0.5"), 24)], HasDefaultRouter: false));
-        await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o =>
+        await using var node = await TestNode.StartAsync(c =>
+        {
+            c.ServerAddress = server.Address;
+            c.AllCards = false; // the camera cards only, not the office
+            c.Cards["cam"] = true;
+            c.Cards["cam2"] = true;
+        }, o =>
         {
             o.Dns = dns;
             o.NetworkCards = cards;
@@ -244,7 +233,7 @@ public sealed class DiscoveryTests
         await using var link = await server.NextLinkAsync();
         await link.BindAsync(node.Code);
 
-        // Only addresses on the reached networks: the office card (default router) is not reached.
+        // Only addresses on the reached networks: the office card is not chosen.
         Assert.Equal(["192.168.0.20"], (await link.Client.ResolveAsync(new ResolveRequest { Name = "camera.site.example" })).Addresses);
         Assert.Empty((await link.Client.ResolveAsync(new ResolveRequest { Name = "printer.office.example" })).Addresses);
         Assert.Empty((await link.Client.ResolveAsync(new ResolveRequest { Name = "unknown" })).Addresses);

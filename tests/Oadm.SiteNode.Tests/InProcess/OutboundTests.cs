@@ -28,7 +28,7 @@ public sealed class OutboundTests
         var hello = await link.Client.HelloAsync(new HelloRequest());
 
         Assert.Equal(NodeState.UnboundOpen, hello.State);
-        Assert.Equal(NodeMode.Connect, hello.Mode);
+        Assert.Equal(LinkRole.Control, hello.LinkRole);
         Assert.Equal("site-pc", hello.HostName);
         Assert.Equal(1, hello.ProtocolVersion);
         Assert.Contains("dial", hello.Features);
