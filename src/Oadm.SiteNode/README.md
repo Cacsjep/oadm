@@ -114,8 +114,9 @@ behind each. Read-only towards the camera.
    (`systemctl status oadm-site-node`, Services on Windows) and `oadm-site-node status` says "Not bound. Binding open for
    24 more hours.".
 2. **Outbound through NAT**: server in the office network, node behind a NAT router. Turn on Accept site nodes on the
-   Sites page, type the server's address in the app: "Connected to ...". Show pairing code (UAC / pkexec prompt), Bind
-   on the Sites page with it. A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
+   Sites page, type the server's address in the app and Save (UAC / pkexec prompt): the pairing code shows below the
+   address at once, Node status says "Connected to ...". Close and open the app: Show pairing code (another prompt).
+   Bind on the Sites page with the code; Node status shows "Connected to SERVER", "Site NAME", "Bound since ...". A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
    Five wrong codes: a new code, Bind refused for 10 minutes.
 3. **Another server**: point the bound node at a second OADM server; it refuses the connection (the pinned key) and the
    app shows the new identity with **Accept**; nothing binds without the pairing code.
@@ -130,8 +131,11 @@ behind each. Read-only towards the camera.
 8. **NTP relay**: turn on NTP at sites; the app asks for Listen on UDP 123; Allow; the camera set to "Use OADM as NTP
    server" syncs; on Linux without `CAP_NET_BIND_SERVICE` the relay says "No permission to use UDP 123"; another program
    on UDP 123: "UDP 123 is used by another program".
-9. **Reset**: Reset in the app (confirmed); the node connects again with a new identity and waits to be bound; the old
-   site's devices show Site offline; bind the node again with the new code and Replace the old site with it.
+9. **Reset**: Reset in the app (confirmed) while the node is connected: within a few seconds the old site shows **Not
+   bound** on the Sites page (audit "Site node was reset", user system), its devices Site offline; the node connects
+   again with a new identity and waits to be bound; bind it again with the new code and Replace the old site with it.
+   Reset again with the server stopped: the node resets at once (no hang), the old site stays Offline. Then stop the
+   service (and Ctrl+C a console run): it ends within seconds, exit code 0, no crash dump.
 10. **Server identity lost**: replace the server's key (test server only); the app shows "... presents a new identity";
     Accept; the node connects again.
 11. **Restart and clock**: restart the service and the machine; the binding time left only counts run time; a node

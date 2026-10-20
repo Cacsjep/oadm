@@ -41,8 +41,11 @@ public sealed class AdminTests
         var handler = node.Get<AdminHandler>();
         var store = node.Get<NodeStore>();
 
-        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "oadm.example.com")), true).Ok);
+        var saved = handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "oadm.example.com")), true);
+        Assert.True(saved.Ok);
         Assert.Equal("oadm.example.com", store.Read(c => c.ServerAddress));
+        // Not bound: the save (an administrator's) answers with the pairing code, so the app shows it at once.
+        Assert.Equal(Sites.Binding.PairingCode.Format(node.Code), saved.PairingCode);
         Assert.False(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "not a host!")), true).Ok);
         Assert.False(handler.Handle(AdminRequest.Of(AdminCommands.SetServer, ("address", "")), true).Ok); // the node always needs a server
         Assert.Equal("oadm.example.com", store.Read(c => c.ServerAddress));

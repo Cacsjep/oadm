@@ -2799,7 +2799,7 @@ Reset; Networks = one choice All cards or ticked cards, plus Extra networks.
   the caller's token and is asked again when it did not arrive and after every reconnect.
 - Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
   Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Replaced site,
-  Removed site, Site offline / online (system). Backup: "Sites: N restored".
+  Removed site, Site offline / online, Site node was reset (system). Backup: "Sites: N restored".
 - Client: rail page **Sites** (group Servers, `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
   `SiteFormWindow` for Bind / Rename / Replace / Remove), device column **Site**
   (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.

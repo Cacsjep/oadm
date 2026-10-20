@@ -56,8 +56,10 @@ sudo apt install ./oadm-site-node_*.deb                             # service on
 
 1. In OADM, open **Sites** and turn on **Accept site nodes** (administrators).
 2. In the node app, enter the server's name or IP address under **Server address** and click **Save**. Port 5081
-   unless you enter another one.
-3. The app says **Connected to** the server. On the **Sites** page the node shows as **Waiting to be bound**.
+   unless you enter another one. Windows asks for administrator rights, Linux for your password. The pairing code
+   appears below the address.
+3. Under **Node status** the app says **Connected to** the server. On the **Sites** page the node shows as **Waiting to
+   be bound**.
 
 </Steps>
 
@@ -68,8 +70,8 @@ its address changes.
 
 <Steps>
 
-1. In the node app, click **Show pairing code** below the server address. Windows asks for administrator rights, Linux
-   for your password.
+1. In the node app, read the **Pairing code** below the server address. When you opened the app later, click **Show
+   pairing code** (administrator rights).
 2. On the **Sites** page, click **Bind** on the node's row.
 3. Enter the **Site name** and the **Pairing code** and click **Bind**.
 
@@ -102,9 +104,10 @@ When the server needs another port, e.g. a camera on TCP 8443, the app lists it 
 
 ## Reset
 
-**Reset** in the node app: the node forgets the server and gets a new identity and pairing code. It connects again and
-waits to be bound. Bind it as a new site, then **Replace with** moves the old site's devices to it, or remove the old
-site.
+**Reset** in the node app: the node tells the server, forgets it and gets a new identity and pairing code. The old site
+shows **Not bound** on the **Sites** page and its devices **Site offline**. The node connects again and waits to be
+bound. Bind it as a new site, then **Replace with** moves the old site's devices to it, or remove the old site. When the
+node cannot reach the server at Reset, the old site shows **Offline** instead.
 
 ## Without a desktop
 
@@ -115,7 +118,7 @@ Linux).
 |---|---|
 | `oadm-site-node status` | State, server, connections |
 | `oadm-site-node pairing-code` | The pairing code |
-| `oadm-site-node server oadm.example.com` | Connect to this server |
+| `oadm-site-node server oadm.example.com` | Connect to this server; shows the pairing code while not bound |
 | `oadm-site-node allow-binding` | Binding open for another 24 hours, a new code |
 | `oadm-site-node networks` | Network cards and extra networks; `card <name> on\|off`, `all on`, `add`, `remove` change them |
 | `oadm-site-node ports` | Allowed and requested ports; `allow`, `remove`, `dismiss` change them |

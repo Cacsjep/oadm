@@ -90,21 +90,25 @@ Two parts, one installer:
   (`WindowFit`), the custom title bar of the client (`Border.titleBar`,
   `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and close right, no
   maximize), **the tabs directly on the window background** (no card: the window is narrow; `ui:PageTab` without a close
-  command, `Count` badge), label / field rows (`ui:FormField`); below the tabs **Node status**: one line "Status:
-  Connected to SERVER · SITE" as a status chip ("Status: Not connected: Cannot reach 10.0.0.5:5081", "Status: No server
-  address yet", "Status: Service not running"; then the window says "Start the OADM Site Node service." and shows no tabs)
-  and, while ports wait, "The server asks for N ports." with **Review** (opens Ports); the footer **Save** (the one accent
+  command, `Count` badge), label / field rows (`ui:FormField`); below the tabs **Node status** (simplified 2026-10-20:
+  every state line lives here, each name once): the status chip "Connected to SERVER" ("Not connected: Cannot reach
+  10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then the
+  window says "Start the OADM Site Node service." and shows no tabs), "Site SITE" once bound, the binding line ("Bound
+  since 2026-10-20 07:44", "Not bound. Binding open for 23 more hours.", "Binding is closed."), small and grey "Node ID
+  1457a0b5… · Version 1.0.0" (the whole ID as tooltip) and, while ports wait, "The server asks for N ports." with
+  **Review** (opens Ports); the footer **Save** (the one accent
   button: enabled while the address has unsaved changes) and **Close**, both on the right. No start / stop buttons. Tabs:
   - **General**, top to bottom: **Server address** (`oadm.example.com` or `10.0.0.5`; hint "Port 5081 unless you type
     another.", while no address is saved "Enter the address of the OADM server." first, so a new node shows what to do;
     the connection problem below the field); then, once an address is saved and while not bound (or a new server
     identity was accepted), **Pairing code**: the code in large letters with "Type this code at Bind on the Sites page of
     OADM.", the wrong codes, and the button the state needs: **Show pairing code** or **Allow binding** (another 24
-    hours, a new code); a new identity of the server ("SERVER presents a new identity (fingerprint).", see Binding) with
-    **Accept new server identity**; then the state lines **Binding** ("Not bound. Binding open for 23 more hours.", "Not
-    bound. Binding is closed.", "Bound to SERVER since ..."), **Site** (from the server once bound), **Node ID**,
-    **Version**, and **Reset** at the bottom (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it
-    again in OADM."). No mode switch: the node always connects to the server;
+    hours, a new code). **Save** of the address runs as an administrator already, so its answer carries the current code
+    while not bound and the app shows it right away (the code never enters the state everyone reads); Show pairing code
+    is for an app opened later. Then a new identity of the server ("SERVER presents a new identity (fingerprint).", see
+    Binding) with **Accept new server identity**, and **Reset** at the bottom (red, confirmed: "The node forgets SERVER
+    and gets a new identity. Bind it again in OADM."; it tells the server first, Binding 7). Binding, site, node ID and
+    version are in Node status. No mode switch: the node always connects to the server;
   - **Networks**: **Reach devices on**: one choice, **All cards** (default) or chosen cards (a check list of the cards
     with their addresses, "Default router" on the office side; ticking a card unticks All cards, ticking All cards clears
     the choice; unticking the last card is All cards again), and **Extra networks** (routed camera VLANs: add, remove);
@@ -181,9 +185,13 @@ The binding window counts the service's run time (saved every minute), not the w
    (removed)", their status events go off (the site never comes back), the re-find looks for them at once, and the Sites
    page lists it as **Removed** with **Replace with...** and **Remove devices** until its last device left (then the
    tombstone is dropped). The waiting entries of a removed site are removed; Replace moves them to the new site.
-7. **Reset** in the node app: new id, key and pairing code, the server forgotten, binding open for 24 hours. The node
-   connects again with its new identity and waits to be bound; the old site's devices show Site offline (the site shows
-   **Not bound** when its session saw the reset) until it is replaced (bind the node again, then Replace with) or removed.
+7. **Reset** in the node app (or `oadm-site-node reset`): new id, key and pairing code, the server forgotten, binding
+   open for 24 hours. **The node tells the server first** (decision 2026-10-20): while the bound server watches it, its
+   `Watch` sends a last `NodeStatus` with `reset = 13`; the server marks the site **Not bound** (`SiteTexts.NotBound`,
+   stored), audits "Site node was reset" (user system) and ends the session; the node waits for that at most 3 s
+   (`NodeOptions.ResetWaitLimit`, `ResetNotice`), then resets anyway. Without a session (server not reachable) it resets
+   at once and the old site stays Offline. The node connects again with its new identity and waits to be bound; the old
+   site's devices show Site offline until it is replaced (bind the node again, then Replace with) or removed.
 
 **Server listener.** Off by default. **Accept site nodes** on the Sites page (Administrator, audited "Turned on site
 nodes" / "Turned off site nodes", setting `Sites.Accept`) opens it without a restart; turning it off closes it and every
@@ -525,7 +533,7 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 - `sites.view` "See sites" (Operator and Viewer yes): the Sites page. Administrator only, never grantable: Accept site nodes,
   Bind (with the pairing code), Rename, Replace, Remove site. Adding devices at a site: `devices.addRemove`.
 - Audited: "Turned on site nodes" / "Turned off site nodes", "Bound site", "Wrong pairing code" (the node, from where), "Renamed site", "Replaced site", "Removed site", and (user "system",
-  after the hysteresis) "Site offline" / "Site online"; "Device moved" and "Device added automatically" as today.
+  after the hysteresis) "Site offline" / "Site online", "Site node was reset"; "Device moved" and "Device added automatically" as today.
 - What the node's machine sees: HTTPS and RTSP over TLS stay encrypted end to end. Plain HTTP devices and plain RTSP
   cross it readable (Digest never sends the password itself). **Basic over plain HTTP is never sent through a site**
   (the add page's `AllowBasicOverHttp` exception is off for site routes). User docs say so.
