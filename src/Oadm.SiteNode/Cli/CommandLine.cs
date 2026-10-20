@@ -101,6 +101,8 @@ public static class CommandLine
             default:
                 if (response.State is { } state)
                     await output.WriteLineAsync(Status(state)).ConfigureAwait(false);
+                if (response.PairingCode.Length > 0) // server <address> while not bound
+                    await output.WriteLineAsync("Pairing code: " + response.PairingCode).ConfigureAwait(false);
                 break;
         }
 

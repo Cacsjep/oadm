@@ -149,7 +149,14 @@ public sealed class AdminHandler(
         if (OutboundConnector.ParseAddress(address, NodeConfig.DefaultPort) is null)
             return AdminResponse.Fail("Enter the server's name or IP address, like oadm.example.com or 10.0.0.5.");
         store.Update(c => c.ServerAddress = address);
-        return Ok();
+        // Saving the address needs an administrator too: the app shows the pairing code right below it, without another
+        // request (never in the state everyone may read).
+        return new AdminResponse
+        {
+            Ok = true,
+            State = feed.View(),
+            PairingCode = binding.ShowsPairingCode ? Sites.Binding.PairingCode.Format(binding.PairingCode) : "",
+        };
     }
 
     // A card chosen: All cards goes off and the card joins the choice. A card unchosen leaves the choice; without a chosen
