@@ -447,6 +447,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             DiscoveredRowViewModel row = DiscoveredRowViewModel.ForImport(line);
             row.PropertyChanged += OnRowPropertyChanged;
             _rowsById.TryAdd(row.DiscoveredId, row);
+            row.ListOrder = NextListOrder();
             Rows.Add(row);
             Recount(row);
             if (line.Problem is null)
@@ -536,12 +537,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
                 _ui.Post(() =>
                 {
-                    row.LineSiteId = siteId;
-                    _sessions.Add(sessionId);
-                    _scanning.Add(sessionId);
-                    _importRows[sessionId] = row;
-                    _importSlotHeld.Add(sessionId);
-                    row.SessionId = sessionId;
+                    TrackImportSession(row, sessionId, siteId);
                     StartWatch(sessionId);
                 });
             }
@@ -568,6 +564,17 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             _importRunning = false;
             ScanFinished(null);
         });
+    }
+
+    /// <summary>The probe of an import line started: its session's devices belong to the line's row (tests start none).</summary>
+    internal void TrackImportSession(DiscoveredRowViewModel row, string sessionId, string siteId)
+    {
+        row.LineSiteId = siteId;
+        _sessions.Add(sessionId);
+        _scanning.Add(sessionId);
+        _importRows[sessionId] = row;
+        _importSlotHeld.Add(sessionId);
+        row.SessionId = sessionId;
     }
 
     // Import: the addresses the server keeps waiting from earlier imports (upper case, like the server's key).
@@ -1214,6 +1221,44 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
     }
 
+    // The place of each row in Rows and FilteredRows (both always in this order): rows appended get the next step, a second
+    // device of one address the order right after the first one's.
+    private long _lastListOrder;
+    private const long ListOrderStep = 1L << 16;
+
+    private long NextListOrder() => _lastListOrder += ListOrderStep;
+
+    /// <summary>The first index whose row comes after <paramref name="order"/> (binary search: the lists are ordered).</summary>
+    internal static int InsertIndex(IList<DiscoveredRowViewModel> rows, long order)
+    {
+        int low = 0;
+        int high = rows.Count;
+        while (low < high)
+        {
+            int middle = (low + high) >>> 1;
+            if (rows[middle].ListOrder <= order)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+
+    /// <summary>Takes a row out of the shown rows; finds it by binary search (O(log n) instead of a walk).</summary>
+    private void RemoveShown(DiscoveredRowViewModel row)
+    {
+        int index = InsertIndex(FilteredRows, row.ListOrder) - 1;
+        if (index >= 0 && ReferenceEquals(FilteredRows[index], row))
+        {
+            FilteredRows.RemoveAt(index);
+        }
+    }
+
     /// <summary>Column Site: shown while the server has sites, or once a device answered through a site or the file names sites (stays shown).</summary>
     [ObservableProperty] public partial bool ShowSiteColumn { get; private set; }
 
@@ -1258,7 +1303,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 _rowsById.TryAdd(line.DiscoveredId, line);
                 if (!line.IsAlreadyManaged && !line.Matches(SearchText))
                 {
-                    FilteredRows.Remove(line); // the search no longer matches (managed ones leave in OnRowPropertyChanged)
+                    RemoveShown(line); // the search no longer matches (managed ones leave in OnRowPropertyChanged)
                 }
 
                 row = line;
@@ -1272,15 +1317,17 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 if (after is not null)
                 {
                     // Another device at the same address through another site: right below the first one (file order stays).
-                    Rows.Insert(Rows.IndexOf(after) + 1, row);
+                    // Both lists are ordered by ListOrder: the place is a binary search, never a walk over 30,000 rows.
+                    row.ListOrder = after.ListOrder + 1;
+                    Rows.Insert(InsertIndex(Rows, row.ListOrder), row);
                     if (IsListed(row, SearchText))
                     {
-                        int shown = FilteredRows.IndexOf(after);
-                        FilteredRows.Insert(shown < 0 ? FilteredRows.Count : shown + 1, row);
+                        FilteredRows.Insert(InsertIndex(FilteredRows, row.ListOrder), row);
                     }
                 }
                 else
                 {
+                    row.ListOrder = NextListOrder();
                     Rows.Add(row);
                     if (IsListed(row, SearchText))
                     {
@@ -1380,7 +1427,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         if (e.PropertyName == nameof(DiscoveredRowViewModel.IsAlreadyManaged) && sender is DiscoveredRowViewModel { IsAlreadyManaged: true } managed)
         {
             // A device found as "Checking" turned out to be managed already: it leaves the list.
-            FilteredRows.Remove(managed);
+            RemoveShown(managed);
             if (FocusedRow == managed)
             {
                 FocusedRow = null;

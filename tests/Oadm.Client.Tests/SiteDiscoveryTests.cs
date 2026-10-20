@@ -168,6 +168,51 @@ public sealed class SiteDiscoveryTests(ITestOutputHelper output) : IDisposable
     });
 
     [Fact]
+    [Trait("Category", "Perf")]
+    public Task Thirty_thousand_import_lines_that_each_answer_through_two_sites_are_listed_fast() => _ui.RunAsync(async () =>
+    {
+        int count = DeviceImportFile.MaxLines;
+        DeviceImportFile file = DeviceImportFile.Parse("two-routes.csv", "Address\n" + string.Join('\n',
+            Enumerable.Range(0, count).Select(i => $"10.{i / 65536}.{i / 256 % 256}.{i % 256}")));
+        await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
+        page.SetImport(file);
+        DiscoveredRowViewModel[] lines = [.. page.Rows];
+
+        var watch = Stopwatch.StartNew();
+        for (int i = 0; i < count; i++)
+        {
+            string session = "s" + i;
+            page.TrackImportSession(lines[i], session, "");
+            page.OnDiscovered(session, Found(i, 'a', "Building B", lines[i].Address));
+            page.OnDiscovered(session, Found(i, 'b', "", lines[i].Address));
+        }
+
+        long elapsed = watch.ElapsedMilliseconds;
+        output.WriteLine($"30,000 lines answering through two sites: listed in {elapsed} ms");
+        Assert.Equal(2 * count, page.Rows.Count);
+        Assert.Equal(2 * count, page.FilteredRows.Count);
+        for (int i = 0; i < 2 * count; i += 2)
+        {
+            Assert.Equal(page.Rows[i].Address, page.Rows[i + 1].Address); // the second device right below the first
+            Assert.Same(page.Rows[i], page.FilteredRows[i]);
+        }
+
+        Assert.True(elapsed < 15_000, $"too slow: {elapsed} ms");
+        await Task.CompletedTask;
+    });
+
+    private static DiscoveredDevice Found(int i, char route, string site, string address) => new()
+    {
+        DiscoveredId = $"d{i}{route}",
+        Serial = $"ACCC{(route == 'a' ? 0 : 1)}{i:X7}",
+        Address = address,
+        Model = "P3265-V",
+        SiteName = site,
+        AuthState = AuthState.Authenticated,
+        AuthUserName = "root",
+    };
+
+    [Fact]
     public async Task The_add_page_with_sites_and_the_waiting_list_render_headless()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");

@@ -50,6 +50,9 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         }
     }
 
+    /// <summary>The row's place in the add page's lists (they stay ordered by it; the page sets it).</summary>
+    internal long ListOrder { get; set; }
+
     /// <summary>Stable within the session; an import row takes the id of the device it found.</summary>
     public string DiscoveredId { get; private set; }
 
