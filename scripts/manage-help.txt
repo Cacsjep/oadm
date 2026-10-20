@@ -64,7 +64,7 @@ Examples:
   manage build docs
 
 ## run
-Usage: manage run <server|client|dev> [options] [-- app args]
+Usage: manage run <server|client|dev|node|node-app> [options] [-- app args]
 
 Targets:
   server   Build server and plugins, run the server in the foreground (Ctrl+C stops it)
@@ -72,12 +72,18 @@ Targets:
   dev      Build everything, start the server in the background (log in
            artifacts/logs/server-dev.log), wait until it listens, then run the client.
            Closing the client stops the server. App args after -- go to the client
+  node     Build and run the OADM Site Node on the console (Ctrl+C stops it), with its own data
+           folder (never the installed node's). Enter this server in the node app, turn on Accept
+           site nodes on the Sites page, then Bind with the code. Changes need an administrator
+  node-app Build and run the OADM Site Node app for that node (same data folder)
 
 Options:
   --port N       server, dev: listen on https://0.0.0.0:N (default: the server setting, 5080).
-                 dev also points the client at localhost:N (TLS)
+                 dev also points the client at localhost:N (TLS). node: the port of
+                 "Wait for the server" (default 5081)
   --data DIR     server, dev: server data folder (default: OADM_DATA_DIR, else
-                 LocalApplicationData/Oadm). client: client settings and log folder
+                 LocalApplicationData/Oadm). client: client settings and log folder.
+                 node, node-app: the node's data folder (default artifacts/dev-node)
   --server URL   client: server address for this run (default: the client setting)
   --fake         client: run on built-in sample data without a server
   --release      Build and run Release instead of {CONFIGURATION}
@@ -92,6 +98,8 @@ Examples:
   manage run client --server 10.0.0.5:5080
   manage run client --no-plugin-build
   manage run dev --port 5099 --data ./tmp-data
+  manage run node
+  manage run node-app
 
 ## test
 Usage: manage test [unit|perf|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]

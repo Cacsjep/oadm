@@ -154,8 +154,8 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             if ($script:Target -cnotin 'all', 'server', 'client', 'plugins', 'docs') { Exit-Usage build "unknown target '$($script:Target)' for build" }
         }
         'run' {
-            if (-not $script:Target) { Exit-Usage run 'missing target for run (server, client or dev)' }
-            if ($script:Target -cnotin 'server', 'client', 'dev') { Exit-Usage run "unknown target '$($script:Target)' for run" }
+            if (-not $script:Target) { Exit-Usage run 'missing target for run (server, client, dev, node or node-app)' }
+            if ($script:Target -cnotin 'server', 'client', 'dev', 'node', 'node-app') { Exit-Usage run "unknown target '$($script:Target)' for run" }
         }
         'test' {
             if (-not $script:Target) { $script:Target = 'unit' }
@@ -256,6 +256,27 @@ function Get-AppDll([string]$Name) {
         exit 1
     }
     return $dll
+}
+
+# Built app host (the program itself, not "dotnet exec"): bin/<configuration>/<tfm>/<name>[.exe]. The site node app starts
+# an elevated copy of itself for a change, so it must run as its own program.
+function Get-AppHost([string]$Project, [string]$Name) {
+    $bin = Join-Path $RepoRoot "src/$Project/bin/$($script:Configuration)"
+    $file = if ($IsWindows -or $env:OS -eq 'Windows_NT') { "$Name.exe" } else { $Name }
+    $exe = Get-ChildItem -LiteralPath $bin -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName $file } |
+        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $exe) {
+        [Console]::Error.WriteLine("error: $file not found under src/$Project/bin/$($script:Configuration)")
+        exit 1
+    }
+    return $exe
+}
+
+# Data folder of the development site node (never the installed node's): --data, else artifacts/dev-node.
+function Get-NodeDataDir {
+    if ($script:OptData) { return Get-AbsoluteDir $script:OptData }
+    return Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/dev-node')
 }
 
 # Arguments for the server from --port and --data.
@@ -370,6 +391,18 @@ function Invoke-Run {
             if ($script:OptServer) { $clientArgs += '--server', $script:OptServer }
             if ($script:OptData) { $clientArgs += '--data', (Get-AbsoluteDir $script:OptData) }
             & $script:Dotnet exec (Get-AppDll 'Oadm.Client') @clientArgs @appArgs
+            exit $LASTEXITCODE
+        }
+        'node' {
+            Build-Project $SiteNodeProject
+            $nodeArgs = @('--data-dir', (Get-NodeDataDir))
+            if ($script:OptPort) { $nodeArgs += '--port', $script:OptPort }
+            & (Get-AppHost 'Oadm.SiteNode' 'oadm-site-node') @nodeArgs @appArgs
+            exit $LASTEXITCODE
+        }
+        'node-app' {
+            Build-Project $SiteNodeAppProject
+            & (Get-AppHost 'Oadm.SiteNode.App' 'oadm-site-node-app') '--data-dir' (Get-NodeDataDir) @appArgs
             exit $LASTEXITCODE
         }
         'dev' {

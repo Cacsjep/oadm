@@ -150,8 +150,8 @@ parse_args() {
 
   case "$verb" in
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
-    run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client or dev)"
-             case "$TARGET" in server|client|dev) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
+    run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
+             case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node or nuget)"
@@ -247,6 +247,22 @@ app_dll() {
   done
   echo "error: $1.dll not found under src/$1/bin/$CONFIGURATION" >&2
   exit 1
+}
+
+# Built app host (the program itself, not "dotnet exec"): bin/<configuration>/<tfm>/<name>. The site node app starts an
+# elevated copy of itself for a change, so it must run as its own program.
+app_host() {
+  local exe
+  for exe in "$REPO_ROOT/src/$1/bin/$CONFIGURATION"/*/"$2" "$REPO_ROOT/src/$1/bin/$CONFIGURATION"/*/"$2.exe"; do
+    [ -f "$exe" ] && { echo "$exe"; return 0; }
+  done
+  echo "error: $2 not found under src/$1/bin/$CONFIGURATION" >&2
+  exit 1
+}
+
+# Data folder of the development site node (never the installed node's): --data, else artifacts/dev-node.
+node_data_dir() {
+  if [ -n "$OPT_DATA" ]; then abs_dir "$OPT_DATA"; else abs_dir "$REPO_ROOT/artifacts/dev-node"; fi
 }
 
 # Arguments for the server from --port and --data.
@@ -353,6 +369,16 @@ cmd_run() {
       if [ -n "$OPT_SERVER" ]; then client_args+=(--server "$OPT_SERVER"); fi
       if [ -n "$OPT_DATA" ]; then client_args+=(--data "$(abs_dir "$OPT_DATA")"); fi
       exec "$DOTNET" exec "$(app_dll Oadm.Client)" ${client_args[@]+"${client_args[@]}"} ${app_args[@]+"${app_args[@]}"}
+      ;;
+    node)
+      build_project "$SITE_NODE_PROJECT"
+      local node_args=(--data-dir "$(node_data_dir)")
+      if [ -n "$OPT_PORT" ]; then node_args+=(--port "$OPT_PORT"); fi
+      exec "$(app_host Oadm.SiteNode oadm-site-node)" "${node_args[@]}" ${app_args[@]+"${app_args[@]}"}
+      ;;
+    node-app)
+      build_project "$SITE_NODE_APP_PROJECT"
+      exec "$(app_host Oadm.SiteNode.App oadm-site-node-app)" --data-dir "$(node_data_dir)" ${app_args[@]+"${app_args[@]}"}
       ;;
     dev)
       if [ "$OPT_NO_PLUGIN_BUILD" -eq 1 ]; then

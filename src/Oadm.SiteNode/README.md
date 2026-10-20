@@ -75,6 +75,13 @@ than 5 guesses); Reset = new id, key and code, the server forgotten.
   A channel that cannot be opened is logged and tried again every 30 s; the node runs on without it. The app runs a change through an elevated copy of
   itself (`--admin-request ... --out ...`, UAC or pkexec).
 
+## Development
+
+`manage run node` builds and runs the node on the console and `manage run node-app` its app, both on the data folder
+`artifacts/dev-node` (never the installed node's; `--data` for another one, `--port` for "Wait for the server"). With
+`manage run server`: turn on Accept site nodes on the Sites page, enter `localhost` as the server in the node app, then
+Bind with the code. Changes in the app need an administrator (UAC).
+
 ## Command line
 
 ```
