@@ -274,7 +274,11 @@ Two processes, like ADM:
   It subscribes to `DeviceService.Watch` and `TaskService.Watch` streams (with snapshot end marker; the
   task snapshot is limited to `TaskStore.MaxTasks` = 10,000 plus the active tasks) and keeps an
   in-memory mirror for the grids. Stream changes reach the UI thread through a coalescing
-  `ChangeBatcher` (one dispatcher post per burst) and are applied to the stores as batches.
+  `ChangeBatcher` (one dispatcher post per burst) and are applied to the stores as batches. The rows of a snapshot are
+  built on the stream thread (`DeviceStore.Prepare`, `TaskStore.Prepare`); the UI thread only attaches the shared stores
+  and swaps them in (30,000 devices: 500 ms less on the UI thread). `TaskPluginCatalog` reads the task list and builds the
+  runnable sets on the thread pool; the plugin pages of a connect are created one per UI job below rendering
+  (`IUiDispatcher.RunInBackgroundAsync`, a newer list takes over), so the start splash keeps its frames.
 - Server change feeds (devices, tasks) deliver every change in order while a watcher keeps up; beyond
   1,024 waiting changes they coalesce per entity (`KeyedCoalescingChannel`: the latest snapshot wins,
   an Added stays Added), so a slow client never loses a final state and never blocks the server.
@@ -853,7 +857,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   complete), then opens the login window (nobody remembered; the login view model is already initialized) or the main
   window behind it (the splash on top, still showing "Ready"), waits for that window's first frame (at most 3 s) and only
   then fades the whole splash window out (0.35 s); a login does the same, the login window stays until the main window
-  drew. Log out shows the login window directly, without the splash. Tests: `SplashTests`.
+  drew. Log out shows the login window directly, without the splash. Tests: `SplashTests`; `StartupStallTests` runs the
+  start through `AppShell` against the fake server with a stall probe (`UiStallProbe`: how long a Render job waits), Perf
+  with 30,000 devices: the longest UI stall until "Ready" stays under 400 ms (measured about 45 ms, before 420 to 590 ms;
+  `OADM_STARTUP_PLUGINS=<folder>` also loads client plugins).
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
   top-left, the user and Log out top-right before the window buttons, background near-black `#141414`. Caption button hover
