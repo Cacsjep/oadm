@@ -88,9 +88,35 @@ public sealed class SiteLinkTests
         var site = sites.AddSite("Building B").Map("192.168.0.20", 80, device.EndPoint);
         using var client = VapixClient.Create(Options(site.Id), new DeviceRouter(sites, sites));
 
-        // Two answers that never end (a Web View MJPEG stream, a long poll) take both connections of the device.
+        // Two answers that never end (streamed downloads of tasks) take both shared connections of the device.
         var holds = new List<HttpResponseMessage>();
         for (var i = 0; i < DeviceRouter.SiteConnectionsPerDevice; i++)
+        {
+            var hold = Request("/hold");
+            hold.Options.Set(VapixRequestOptions.StreamResponse, true);
+            holds.Add(await client.SendAsync(hold, CancellationToken.None));
+        }
+
+        // The poll goes on the device's status connections: it gets the device's answer (401 here), never a timeout.
+        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(Generous, CancellationToken.None));
+        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(CancellationToken.None));
+        foreach (var hold in holds)
+        {
+            hold.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task WebViewAnswersNeverTakeTheConnectionsOfTasksAndChecks()
+    {
+        await using var device = LoopbackDevice.StartHttp();
+        var sites = new FakeSiteTransport();
+        var site = sites.AddSite("Building B").Map("192.168.0.20", 80, device.EndPoint);
+        using var client = VapixClient.Create(Options(site.Id), new DeviceRouter(sites, sites));
+
+        // More endless relayed answers (MJPEG streams, long polls of a page) than the shared pool has connections.
+        var holds = new List<HttpResponseMessage>();
+        for (var i = 0; i < DeviceRouter.SiteConnectionsPerDevice + 1; i++)
         {
             var hold = Request("/hold");
             hold.Options.Set(VapixRequestOptions.StreamResponse, true);
@@ -98,9 +124,14 @@ public sealed class SiteLinkTests
             holds.Add(await client.SendAsync(hold, CancellationToken.None));
         }
 
-        // The poll goes on the device's status connections: it gets the device's answer (401 here), never a timeout.
-        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(Generous, CancellationToken.None));
-        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(CancellationToken.None));
+        // A task's request still gets a connection of its own: the device's answer, never a timeout.
+        using (var request = Request("/axis-cgi/param.cgi"))
+        {
+            request.Options.Set(VapixRequestOptions.Timeout, Generous);
+            using var response = await client.SendAsync(request, CancellationToken.None);
+            Assert.Equal("ok", await response.Content.ReadAsStringAsync());
+        }
+
         foreach (var hold in holds)
         {
             hold.Dispose();
