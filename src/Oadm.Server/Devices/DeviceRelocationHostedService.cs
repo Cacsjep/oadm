@@ -39,7 +39,8 @@ public sealed class DeviceRelocationOptions
 /// verifies it there and moves the record: route and address together (logged, published as a device change, audited
 /// "Device moved" by "system"). Every (route, address) a serial was announced at is kept; the routes are tried one after
 /// another until one verifies, a site whose networks include the address first. A device that answers on its current
-/// route never moves; devices addressed by name never move. Nothing is browsed while no device is a candidate.
+/// route never moves; devices addressed by name never move; a device OADM reaches over HTTP (no pinned certificate) moves
+/// only within its own route (<see cref="DeviceAddressChangeResult.NotPinned"/>). Nothing is browsed while no device is a candidate.
 /// </summary>
 public sealed partial class DeviceRelocationHostedService(
     CoreDiscoveryService discovery,
@@ -92,7 +93,7 @@ public sealed partial class DeviceRelocationHostedService(
                     break;
                 }
 
-                if (result is not (DeviceAddressChangeResult.NotVerified or DeviceAddressChangeResult.Unchanged))
+                if (result is not (DeviceAddressChangeResult.NotVerified or DeviceAddressChangeResult.Unchanged or DeviceAddressChangeResult.NotPinned))
                 {
                     break; // not managed any more, answering again, addressed by name: no other route changes that
                 }

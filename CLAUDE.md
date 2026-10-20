@@ -2827,7 +2827,9 @@ Reset; Networks = one choice All cards or ticked cards, plus Extra networks.
   (`WaitingDeviceStore.Normalize(address, siteId)`, `WaitingDevice.site_name = 15`, column Site). Moves: Unreachable
   devices and devices of a site offline for more than an hour are looked for through every route and moved with route and
   address together (audited "Device moved", "from Building B 192.168.0.20 to This server 10.0.0.20"); a device answering
-  on its route never moves, names never move, a DHCP lease moves to the server's network. The address conflict check of
+  on its route never moves, names never move, a DHCP lease moves to the server's network; to another route only a device
+  with a pinned HTTPS certificate, verified against that pin there (over HTTP a node could answer the login itself: such a
+  device moves only within its route, `DeviceAddressChangeResult.NotPinned`, logged once). The address conflict check of
   Network settings / Assign IP address lists only devices on the same route. The address link and Open web interface of a
   device at a site open it in Web View (`ICorePluginClientContext.OpenDeviceRequested`), disabled with "Turn on Web View to
   open devices at a site" while it is off. Texts `Oadm.Contracts.Sites.SiteDiscoveryTexts`.

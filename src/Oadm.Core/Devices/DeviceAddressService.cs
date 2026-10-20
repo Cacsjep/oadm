@@ -27,6 +27,7 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
     private readonly VapixClientFactory _clients;
     private readonly Action<Guid> _queueRefresh;
     private readonly ILogger _logger;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _notPinnedLogged = new(StringComparer.OrdinalIgnoreCase);
 
     public DeviceAddressService(DeviceRepository devices, VapixClientFactory clients, DevicePollingService polling, ILogger<DeviceAddressService>? logger = null)
         : this(devices, clients, id => (polling ?? throw new ArgumentNullException(nameof(polling))).QueueRefresh([id]), logger)
@@ -208,6 +209,18 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             return DeviceAddressChangeResult.StillReachable;
         }
 
+        if (DeviceConnections.RouteOf(device) != route && !IsPinned(device))
+        {
+            // Over HTTP a site node (or anything on the other route) could answer an authenticated basicdeviceinfo
+            // itself: only the pinned certificate proves the device there.
+            if (_notPinnedLogged.TryAdd(device.Serial, 0))
+            {
+                LogNotPinned(device.Serial, DeviceConnections.RouteOf(device), device.Address, route, address);
+            }
+
+            return DeviceAddressChangeResult.NotPinned;
+        }
+
         try
         {
             return await MoveAsync(device, address, route, reason, ct).ConfigureAwait(false);
@@ -217,6 +230,16 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             LogRelocationRejected(device.Serial, device.Address, address, ex.Message);
             return DeviceAddressChangeResult.NotVerified;
         }
+    }
+
+    /// <summary>
+    /// True when OADM talks to the device over HTTPS with a pinned certificate: only such a device is verified strongly
+    /// enough to move to another route (a site node cannot present the device's certificate).
+    /// </summary>
+    public static bool IsPinned(Device device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Scheme == DeviceScheme.Https && !string.IsNullOrWhiteSpace(device.CertFingerprintSha256);
     }
 
     /// <summary>True when OADM addresses the device by host name rather than by an IP literal.</summary>
@@ -238,6 +261,12 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
         if (SameAddress(device.Address, address) && oldRoute == route)
         {
             return DeviceAddressChangeResult.Unchanged;
+        }
+
+        if (oldRoute != route && !IsPinned(device))
+        {
+            throw new DeviceIdentityException(
+                "OADM has no pinned certificate of the device to verify it through another route. The OADM device record is unchanged.");
         }
 
         await VerifyIdentityAsync(device, address, route, ct).ConfigureAwait(false);
@@ -339,6 +368,10 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Device {Serial} announced at {NewAddress} (stored {OldAddress}) was not moved: {Reason}")]
     private partial void LogRelocationRejected(string serial, string oldAddress, string newAddress, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Device {Serial} ({OldRoute} {OldAddress}) was seen through {NewRoute} at {NewAddress}; it is not moved there because OADM connects to it over HTTP without a pinned certificate. Turn on HTTPS or add it there again")]
+    private partial void LogNotPinned(string serial, DeviceRoute oldRoute, string oldAddress, DeviceRoute newRoute, string newAddress);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Device {Serial} moves to {Address}, which the record of device {OtherSerial} still has")]
     private partial void LogAddressShared(string serial, string address, string otherSerial);
