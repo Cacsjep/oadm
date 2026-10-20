@@ -372,9 +372,7 @@ cmd_run() {
       ;;
     node)
       build_project "$SITE_NODE_PROJECT"
-      local node_args=(--data-dir "$(node_data_dir)")
-      if [ -n "$OPT_PORT" ]; then node_args+=(--port "$OPT_PORT"); fi
-      exec "$(app_host Oadm.SiteNode oadm-site-node)" "${node_args[@]}" ${app_args[@]+"${app_args[@]}"}
+      exec "$(app_host Oadm.SiteNode oadm-site-node)" --data-dir "$(node_data_dir)" ${app_args[@]+"${app_args[@]}"}
       ;;
     node-app)
       build_project "$SITE_NODE_APP_PROJECT"

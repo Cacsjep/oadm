@@ -2,7 +2,7 @@
 #   -Mode ServerAndClient  default install: service, gRPC answer, data folder, firewall rules, decoder, uninstall
 #   -Mode ClientOnly       ADDLOCAL=Client: no service, no server, no firewall rule, decoder, uninstall
 #   -Mode SiteNode         the OADM Site Node MSI with SERVER=<address>: service as NT SERVICE\OadmSiteNode, "status" answers
-#                          unbound with that server, no firewall rule until "server --wait", uninstall removes it
+#                          unbound with that server, no firewall rule (the node only connects out), uninstall
 # Every line starts with the time, and while a program runs a line every 20 s shows free memory and the busiest
 # processes. A runner that stops answering leaves no log file behind, but the live log keeps what was printed.
 param(
@@ -98,15 +98,10 @@ if ($Mode -eq 'SiteNode') {
     (Get-Acl $data).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
     if (-not (Test-Path "$data\node.json")) { throw 'node.json missing in the data folder' }
 
-    # "Wait for the server" opens TCP 5081 (Domain, Private); "Connect to the server" closes it again.
-    $null = Invoke-Node @('server', '--wait')
-    $rules = Get-NodeRule
-    $rules | Format-Table DisplayName, Enabled, Direction, Profile -AutoSize | Out-String | Write-Host
-    if ($rules.Count -ne 1 -or ($rules[0].Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw 'one rule for Domain and Private expected' }
-    if (($rules[0] | Get-NetFirewallPortFilter).LocalPort -ne '5081') { throw 'the rule must open TCP 5081' }
-    $null = Invoke-Node @('server', 'oadm.example.com')
-    if ((Get-NodeRule).Count -ne 0) { throw 'Connect to the server must remove the rule' }
-    $null = Invoke-Node @('server', '--wait') # left for the uninstall to remove
+    # Another server address is taken; the node never listens, so still no firewall rule.
+    $null = Invoke-Node @('server', 'oadm2.example.com')
+    if ((Invoke-Node @('status')) -notmatch 'oadm2\.example\.com') { throw 'the new server address was not set' }
+    if ((Get-NodeRule).Count -ne 0) { throw 'the node must not add a firewall rule' }
 
     Say 'stop the service'
     Stop-Service OadmSiteNode -ErrorAction SilentlyContinue
@@ -116,7 +111,7 @@ if ($Mode -eq 'SiteNode') {
     if (Test-Path $node) { throw 'node still installed' }
     if ((Get-NodeRule).Count -ne 0) { throw 'firewall rule left behind' }
     if (-not (Test-Path "$data\node.json")) { throw 'data folder was removed' }
-    Say 'site node: install, service, status, firewall rule, uninstall ok'
+    Say 'site node: install, service, status, no firewall rule, uninstall ok'
     return
 }
 

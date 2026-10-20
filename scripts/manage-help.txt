@@ -79,8 +79,7 @@ Targets:
 
 Options:
   --port N       server, dev: listen on https://0.0.0.0:N (default: the server setting, 5080).
-                 dev also points the client at localhost:N (TLS). node: the port of
-                 "Wait for the server" (default 5081)
+                 dev also points the client at localhost:N (TLS)
   --data DIR     server, dev: server data folder (default: OADM_DATA_DIR, else
                  LocalApplicationData/Oadm). client: client settings and log folder.
                  node, node-app: the node's data folder (default artifacts/dev-node)
