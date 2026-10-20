@@ -83,6 +83,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     // Through a site: the status reads on a connection pool of their own (DeviceRouter.SiteStatusConnectionsPerDevice).
     private HttpClient? _statusHttp;
 
+    // Through a site: the Web View relay on a pool of its own (DeviceRouter.SiteRelayConnectionsPerDevice), made on first use.
+    private Lazy<HttpClient>? _relayHttp;
+
     /// <summary>
     /// A request whose answer is passed on to a page as it arrives (the Web View relay): its answer never takes a large
     /// transfer slot of a site (a page, an MJPEG stream or a long poll would hold it), a large request body still does.
@@ -157,6 +160,12 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             var status = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
             status.MaxConnectionsPerServer = DeviceRouter.SiteStatusConnectionsPerDevice;
             client._statusHttp = client.NewHttpClient(status, disposeHandler: true);
+            client._relayHttp = new Lazy<HttpClient>(() =>
+            {
+                var relay = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
+                relay.MaxConnectionsPerServer = DeviceRouter.SiteRelayConnectionsPerDevice;
+                return client.NewHttpClient(relay, disposeHandler: true);
+            });
         }
 
         return client;
@@ -410,7 +419,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         request.Options.Set(DeviceRouter.ConnectTimeoutOption, deviceTimeout);
         var streamed = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream;
         var relayed = request.Options.TryGetValue(RelayedOption, out var relay) && relay;
-        var http = _statusHttp is not null && request.Options.TryGetValue(StatusReadOption, out var status) && status ? _statusHttp : _http;
+        var http = relayed && _relayHttp is not null ? _relayHttp.Value
+            : _statusHttp is not null && request.Options.TryGetValue(StatusReadOption, out var status) && status ? _statusHttp
+            : _http;
 
         // Through a site at most a few large transfers run at once (docs/sites.md). A task waits as long as it takes and
         // says "Waiting for the site link"; its device timeout starts after the wait. Anyone else waits inside the request's
@@ -715,7 +726,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         timeoutCts.CancelAfter(Router.Timeout(Route, _timeout));
         try
         {
-            await socket.ConnectAsync(uri, _http, timeoutCts.Token).ConfigureAwait(false);
+            await socket.ConnectAsync(uri, _relayHttp?.Value ?? _http, timeoutCts.Token).ConfigureAwait(false);
             return (socket, []);
         }
         catch (Exception ex)
@@ -849,6 +860,10 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     {
         _http.Dispose();
         _statusHttp?.Dispose();
+        if (_relayHttp is { IsValueCreated: true } relay)
+        {
+            relay.Value.Dispose();
+        }
     }
 
     /// <summary>The <see cref="SiteException"/> a connect through a site failed with (HttpClient and ClientWebSocket wrap it), else null.</summary>

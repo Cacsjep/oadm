@@ -5,11 +5,16 @@ using System.Text;
 using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Core.Compliance;
+using Oadm.Core.Devices;
+using Oadm.Core.LiveView;
 using Oadm.Core.Plugins;
+using Oadm.Core.Security;
 using Oadm.Core.Sites;
 using Oadm.Core.Tasks;
 using Oadm.Core.Tests.Compliance;
+using Oadm.Core.Tests.Persistence;
 using Oadm.Core.Tests.Tasks;
+using Oadm.Core.Vapix;
 using Oadm.Sdk.Compliance;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -304,6 +309,61 @@ public sealed class PluginNetworkTests
     }
 
     [Fact]
+    public async Task TheServersFactoryAndEventStreamsRefuseSiteDevicesWithoutAnExtraRead()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var rows = database.Get<DeviceRepository>();
+        using var factory = new VapixClientFactory(rows, database.Get<CredentialStore>(), new PlainConnector());
+        using var streams = new DeviceEventStreams(rows, database.Get<CredentialStore>());
+        var local = await rows.AddAsync(new Device { Id = Guid.NewGuid(), Serial = "ACCC8E000011", Address = "10.0.0.20", Status = DeviceStatus.Ok }, CancellationToken.None);
+        var atSite = await rows.AddAsync(new Device { Id = Guid.NewGuid(), Serial = "ACCC8E000012", Address = "192.168.0.20", SiteId = Guid.NewGuid(), Status = DeviceStatus.Ok }, CancellationToken.None);
+        var devices = new CountingRepository(rows);
+
+        var vapix = SiteSupportGuard.Guard(factory, devices, SiteSupport.None);
+        Assert.NotNull(await vapix.CreateAsync(local.Id, CancellationToken.None));
+        var refused = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => vapix.CreateAsync(atSite.Id, CancellationToken.None));
+        Assert.Equal(SiteTexts.NotAvailableAtSite, refused.Message);
+        var events = SiteSupportGuard.Guard(streams, devices, SiteSupport.None)!;
+        refused = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => events.OpenAsync(atSite.Id, CancellationToken.None));
+        Assert.Equal(SiteTexts.NotAvailableAtSite, refused.Message);
+
+        // The server's own factory and event streams decide from the row they read anyway: no second read per call.
+        Assert.Equal(0, devices.Finds);
+    }
+
+    [Fact]
+    public async Task ACorePluginWithoutSiteSupportGetsNoNetworkIntoASiteAndNoRelays()
+    {
+        var registry = new PluginRegistry();
+        var devices = new FakeDeviceRepository();
+        var vapix = new FakeVapixClientFactory();
+        var relays = new RecordingRelays();
+        var siteId = relays.Add("Building B");
+        var sites = new FakeSiteTransport();
+        await using var engine = new TaskEngine(new InMemoryTaskStore(), registry, devices, vapix);
+        await using var host = new CorePluginHost(registry, devices, vapix, engine, new InMemoryPluginSettingsProvider(),
+            networks: () => new PluginNetworkScope(new DeviceNetworks(sites, sites), relays, loopbackOnly: true));
+        var plugin = new ContextPlugin();
+        Assert.True(registry.RegisterCorePlugin(plugin, new PluginOrigin("third.party", "1.0", null)));
+
+        await host.StartAllAsync(CancellationToken.None);
+
+        var context = plugin.Context!;
+        Assert.Null(context.Sites);
+        var network = context.Network!;
+        var refused = Assert.Throws<DeviceNotCompatibleException>(() => network.ForDevice(new FakeDevice { SiteId = siteId }));
+        Assert.Equal(SiteTexts.NotAvailableAtSite, refused.Message);
+        Assert.Throws<DeviceNotCompatibleException>(() => network.ForSite(siteId));
+        Assert.Null(network.ForDevice(new FakeDevice()).SiteId);
+        Assert.Null(network.ForSite(null).SiteId);
+        await using (await network.ListenUdpAsync(0, "Syslog", CancellationToken.None))
+        {
+        }
+
+        Assert.Empty(relays.Opened);
+    }
+
+    [Fact]
     public async Task AComplianceTypeWithoutSiteSupportIsNotCheckedAtASite()
     {
         var sites = new FakeSiteTransport();
@@ -376,6 +436,51 @@ public sealed class PluginNetworkTests
         public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>(Items);
 
         public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(d => d.Id == id));
+    }
+
+    private sealed class CountingRepository(IDeviceRepository inner) : IDeviceRepository
+    {
+        private int _finds;
+
+        public int Finds => Volatile.Read(ref _finds);
+
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => inner.ListAsync(ct);
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _finds);
+            return inner.FindAsync(id, ct);
+        }
+    }
+
+    /// <summary>Real clients that are never used to send anything.</summary>
+    private sealed class PlainConnector : IVapixConnector
+    {
+        public VapixClient Connect(VapixConnectionOptions options) => VapixClient.Create(options);
+    }
+
+    /// <summary>Keeps the context it was started with.</summary>
+    private sealed class ContextPlugin : ICorePlugin
+    {
+        public ICorePluginContext? Context { get; private set; }
+
+        public string Id => "third.party.page";
+
+        public string DisplayName => "Third party";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+        public Task StartAsync(ICorePluginContext context, CancellationToken ct)
+        {
+            Context = context;
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
     }
 
     private sealed class SiteTask(string id, SiteSupport support) : ITaskPlugin

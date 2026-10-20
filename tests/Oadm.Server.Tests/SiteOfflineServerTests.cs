@@ -108,7 +108,7 @@ public sealed class SiteOfflineServerTests
     }
 
     [Fact]
-    public async Task LiveViewWebViewAndTheRtspPortRefuseTheDevice()
+    public async Task LiveViewAndWebViewRefuseTheDeviceButItsRtspPortIsStored()
     {
         var (sites, site) = Sites();
         await using var host = await StartAsync(sites);
@@ -129,13 +129,27 @@ public sealed class SiteOfflineServerTests
         Assert.Equal(StatusCode.FailedPrecondition, watch.StatusCode);
         Assert.Equal(Offline, watch.Status.Detail);
 
-        var port = await Assert.ThrowsAsync<RpcException>(() => host.LiveView.SetRtspPortAsync(new Proto.SetRtspPortRequest { Port = 8554, DeviceIds = { id } }).ResponseAsync);
-        Assert.Equal(StatusCode.FailedPrecondition, port.StatusCode);
-        Assert.Equal(Offline + ".", port.Status.Detail);
+        // The RTSP port lives only in OADM: it is stored for a device of an offline site like for any other.
+        var online = await host.Get<DeviceRepository>().AddAsync(
+            new Device { Serial = FakeSerials.Make(2), Address = "10.0.0.21", Scheme = DeviceScheme.Http, Status = DeviceStatus.Ok, Category = DeviceCategory.Camera },
+            CancellationToken.None);
+        var port = await host.LiveView.SetRtspPortAsync(new Proto.SetRtspPortRequest { Port = 8554, DeviceIds = { id, online.Id.ToString() } });
+        Assert.Equal(8554, port.Port);
+        var read = await host.LiveView.GetRtspPortAsync(new Proto.RtspPortRequest { DeviceIds = { id, online.Id.ToString() } });
+        Assert.Equal((8554, false), (read.Port, read.Mixed));
 
         Assert.False((await host.LiveView.GetOpticsAsync(new Proto.OpticsRequest { DeviceId = id })).Supported);
         var optics = await Assert.ThrowsAsync<RpcException>(() => host.LiveView.SetOpticsAsync(new Proto.SetOpticsRequest { DeviceId = id, Autofocus = true }).ResponseAsync);
         Assert.Equal(Offline + ".", optics.Status.Detail);
+    }
+
+    [Fact]
+    public void TheNotBoundRefusalGivesTheSameAdviceAsTheSitesPage()
+    {
+        // Not bound means the node was reset already: one phrase for it, on the Sites page and in every refusal.
+        Assert.Equal(Oadm.Contracts.Sites.SiteTexts.NotBound, Oadm.Sdk.Sites.SiteTexts.NodeWasReset);
+        var refusal = Core.Sites.SiteException.For(Guid.NewGuid(), "Building B", Core.Sites.SiteProblem.NotBound);
+        Assert.Equal("Site Building B is not bound. " + Oadm.Sdk.Sites.SiteTexts.NodeWasReset, refusal.Message);
     }
 
     [Fact]

@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 using Grpc.Core;
 
@@ -10,6 +12,7 @@ using Oadm.Core.Auth;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
 using Oadm.Core.Sites;
+using Oadm.Core.Tasks;
 using Oadm.Sdk.Testing;
 using Oadm.Server.AddDevices;
 using Oadm.Server.Devices;
@@ -238,13 +241,13 @@ public sealed class SiteDiscoveryTests
     public async Task AnUnreachableDeviceFoundThroughAnotherSiteMovesThereAndADeviceThatAnswersNeverMoves()
     {
         var (sites, a, b, network) = Setup();
-        network.AtSite(b.Id).Add("192.168.0.40", CameraA, "pass");
-        network.AtSite(b.Id).Add("192.168.0.41", CameraB, "pass");
+        Pinned(network.AtSite(b.Id).Add("192.168.0.40", CameraA, "pass"));
+        Pinned(network.AtSite(b.Id).Add("192.168.0.41", CameraB, "pass"));
         b.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
         b.Announced.Add(new SiteBrowseResult(CameraB, "Cam - " + CameraB, [IPAddress.Parse("192.168.0.41")], 80, "axis-b.local"));
         await using var host = await StartAsync(sites, network);
-        var moved = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable);
-        var answering = await AddDeviceAsync(host, CameraB, "192.168.0.21", a.Id, SdkStatus.Ok);
+        var moved = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable, pinned: true);
+        var answering = await AddDeviceAsync(host, CameraB, "192.168.0.21", a.Id, SdkStatus.Ok, pinned: true);
         var relocation = Relocation(host, new FakeTimeProvider());
 
         Assert.Equal(1, await relocation.RunOnceAsync(CancellationToken.None));
@@ -264,11 +267,11 @@ public sealed class SiteDiscoveryTests
         var (sites, a, b, network) = Setup();
         var c = sites.AddSite("Building C");
         // B reaches 192.168.0.40 but the device is not there (another network with the same address); C has it.
-        network.AtSite(c.Id).Add("192.168.0.40", CameraA, "pass");
+        Pinned(network.AtSite(c.Id).Add("192.168.0.40", CameraA, "pass"));
         b.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
         c.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
         await using var host = await StartAsync(sites, network);
-        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable, pinned: true);
 
         Assert.Equal(1, await Relocation(host, new FakeTimeProvider()).RunOnceAsync(CancellationToken.None));
 
@@ -306,10 +309,10 @@ public sealed class SiteDiscoveryTests
     {
         var (sites, _, b, network) = Setup();
         var gone = sites.AddSite("Warehouse", online: false);
-        network.AtSite(b.Id).Add("192.168.0.40", CameraA, "pass");
+        Pinned(network.AtSite(b.Id).Add("192.168.0.40", CameraA, "pass"));
         b.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
         await using var host = await StartAsync(sites, network);
-        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", gone.Id, SdkStatus.Ok);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", gone.Id, SdkStatus.Ok, pinned: true);
         var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         var relocation = Relocation(host, time);
 
@@ -326,9 +329,9 @@ public sealed class SiteDiscoveryTests
     public async Task ADhcpLeaseMovesASiteDeviceToTheServersOwnNetwork()
     {
         var (sites, a, _, network) = Setup();
-        network.Add("10.0.0.20", CameraA, "pass");
+        Pinned(network.Add("10.0.0.20", CameraA, "pass"));
         await using var host = await StartAsync(sites, network);
-        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Ok);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Ok, pinned: true);
 
         var result = await host.Get<DeviceAutoAddService>().FollowAsync(CameraA, "10.0.0.20", "DHCP server", CancellationToken.None);
 
@@ -339,7 +342,83 @@ public sealed class SiteDiscoveryTests
         Assert.Equal("DHCP server: from Building A 192.168.0.20 to This server 10.0.0.20", audit.Detail);
     }
 
+    [Fact]
+    public async Task ADeviceOverHttpNeverMovesToAnotherRouteButWithinItsOwnSite()
+    {
+        var (sites, a, b, network) = Setup();
+        // Over HTTP a node of site B could answer the login itself: that answer never moves a device without a pin.
+        network.AtSite(b.Id).Add("192.168.0.40", CameraA, "pass");
+        b.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
+        await using var host = await StartAsync(sites, network);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable);
+        var relocation = Relocation(host, new FakeTimeProvider());
+
+        Assert.Equal(0, await relocation.RunOnceAsync(CancellationToken.None));
+        Assert.Equal(DeviceAddressChangeResult.NotPinned, await host.Get<DeviceAddressService>().TryRelocateAsync(
+            CameraA, "192.168.0.40", DeviceRoute.ViaSite(b.Id), "test", requireUnreachable: true, CancellationToken.None));
+        var after = (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!;
+        Assert.Equal((a.Id, "192.168.0.20"), (after.SiteId, after.Address));
+
+        // Its own site announces it at a new address: that move stays allowed.
+        network.AtSite(a.Id).Add("192.168.0.41", CameraA, "pass");
+        a.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.41")], 80, "axis-a.local"));
+        Assert.Equal(1, await relocation.RunOnceAsync(CancellationToken.None));
+        after = (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!;
+        Assert.Equal((a.Id, "192.168.0.41"), (after.SiteId, after.Address));
+    }
+
+    [Fact]
+    public async Task APinnedDeviceIsNotMovedToAnotherSiteWhereTheAnswerHasAnotherCertificate()
+    {
+        var (sites, a, b, network) = Setup();
+        using var other = MakeCertificate("imitation");
+        var imitation = network.AtSite(b.Id).Add("192.168.0.40", CameraA, "pass");
+        imitation.ServesHttps = true;
+        imitation.Certificate = other;
+        b.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.40")], 80, "axis-a.local"));
+        await using var host = await StartAsync(sites, network);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Unreachable, pinned: true);
+
+        Assert.Equal(0, await Relocation(host, new FakeTimeProvider()).RunOnceAsync(CancellationToken.None));
+
+        var after = (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!;
+        Assert.Equal((a.Id, "192.168.0.20"), (after.SiteId, after.Address));
+    }
+
+    [Fact]
+    public async Task ADhcpLeaseNeverMovesASiteDeviceOverHttpToTheServersNetwork()
+    {
+        var (sites, a, _, network) = Setup();
+        network.Add("10.0.0.20", CameraA, "pass");
+        await using var host = await StartAsync(sites, network);
+        var id = await AddDeviceAsync(host, CameraA, "192.168.0.20", a.Id, SdkStatus.Ok);
+
+        var result = await host.Get<DeviceAutoAddService>().FollowAsync(CameraA, "10.0.0.20", "DHCP server", CancellationToken.None);
+
+        Assert.Equal(Sdk.Devices.DeviceFollowResult.NotVerified, result);
+        var after = (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!;
+        Assert.Equal((a.Id, "192.168.0.20"), (after.SiteId, after.Address));
+        Assert.DoesNotContain((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.DeviceMoved);
+    }
+
     // ---------- helpers ----------
+
+    /// <summary>The certificate every real camera of these tests presents; devices added with <c>pinned</c> pin it.</summary>
+    private static readonly X509Certificate2 DeviceCertificate = MakeCertificate("camera");
+
+    private static X509Certificate2 MakeCertificate(string cn)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        return new CertificateRequest("CN=" + cn, key, HashAlgorithmName.SHA256)
+            .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(365));
+    }
+
+    /// <summary>The real camera: serves HTTPS with <see cref="DeviceCertificate"/>.</summary>
+    private static void Pinned(FakeAxisDevice device)
+    {
+        device.ServesHttps = true;
+        device.Certificate = DeviceCertificate;
+    }
 
     internal sealed record Watched(IReadOnlyList<Proto.DiscoveredDevice> Devices, Proto.DiscoveredDevice? Finished);
 
@@ -380,7 +459,7 @@ public sealed class SiteDiscoveryTests
             s.AddSingleton<ISiteNetwork>(sites);
         });
 
-    private static async Task<Guid> AddDeviceAsync(TestServerHost host, string serial, string address, Guid? siteId, SdkStatus status)
+    private static async Task<Guid> AddDeviceAsync(TestServerHost host, string serial, string address, Guid? siteId, SdkStatus status, bool pinned = false)
     {
         var device = await host.Get<DeviceRepository>().AddAsync(new Device
         {
@@ -388,7 +467,8 @@ public sealed class SiteDiscoveryTests
             Address = address,
             SiteId = siteId,
             Status = status,
-            Scheme = DeviceScheme.Http,
+            Scheme = pinned ? DeviceScheme.Https : DeviceScheme.Http,
+            CertFingerprintSha256 = pinned ? Convert.ToHexString(SHA256.HashData(DeviceCertificate.RawData)) : null,
             Model = "P3265-V",
         }, CancellationToken.None);
         await host.Get<CredentialStore>().SetAsync(device.Id, "root", "pass", CancellationToken.None);

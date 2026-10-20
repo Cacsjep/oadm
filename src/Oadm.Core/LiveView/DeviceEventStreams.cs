@@ -35,10 +35,20 @@ public sealed class DeviceEventStreams(
     /// <summary>RTSP port of the devices without a stored port (tests use a loopback server).</summary>
     public int RtspPort { get; init; } = RtspClient.DefaultPort;
 
-    public async Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct)
+    public Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct) => OpenAsync(deviceId, refuseSiteDevices: false, ct);
+
+    /// <summary>
+    /// <see cref="OpenAsync(Guid, CancellationToken)"/>; with <paramref name="refuseSiteDevices"/> a device at a site is
+    /// refused ("Not available for devices at a site") right after the one read of its row, before any connection.
+    /// </summary>
+    internal async Task<IDeviceEventSource> OpenAsync(Guid deviceId, bool refuseSiteDevices, CancellationToken ct)
     {
         var device = await devices.GetAsync(deviceId, ct).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Device {deviceId} not found.");
+        if (refuseSiteDevices && device.SiteId is not null)
+        {
+            throw new Sdk.Vapix.DeviceNotCompatibleException(Sdk.Sites.SiteTexts.NotAvailableAtSite);
+        }
         var stored = await credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
         var port = await GetRtspPortAsync(deviceId, ct).ConfigureAwait(false) ?? RtspPort;
         return await RtspMetadataSource.OpenAsync(

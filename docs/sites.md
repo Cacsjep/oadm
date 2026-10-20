@@ -411,8 +411,10 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   A device found by its MAC address through another route is verified there as today (serial, pinned certificate,
   stored credentials) and moved: route and address change together, the cached client is dropped. A device that answers
   on its current route never moves (no ping-pong between two routes that both reach it). Devices addressed by name never
-  move, also not between routes. The DHCP server's `IDeviceAutoAdd.FollowAsync` moves a device to the server's own
-  network. Logged and audited "Device moved" (user "system", "from Building B 192.168.0.20 to This server 10.0.0.20").
+  move, also not between routes. **Only a device with a pinned HTTPS certificate moves to another route**, verified
+  against that pin there: over HTTP a compromised node could answer the authenticated basicdeviceinfo itself and capture
+  the device's traffic, so a device stored with HTTP moves only within its own route (logged once). The DHCP server's
+  `IDeviceAutoAdd.FollowAsync` moves a device to the server's own network under the same rule. Logged and audited "Device moved" (user "system", "from Building B 192.168.0.20 to This server 10.0.0.20").
 - **Ports.** Before a dial the server checks the site's allowed ports (from `Watch`): a device whose port is not allowed
   is not contacted and keeps its last status; the Sites page row says "1 port waiting for approval in the node app"; the
   add page row says "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." The server sends

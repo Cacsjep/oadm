@@ -27,6 +27,13 @@ public sealed class DeviceRouter
     /// </summary>
     public const int SiteStatusConnectionsPerDevice = 2;
 
+    /// <summary>
+    /// Connections per device through a site for the Web View relay: a pool of its own, so a page's MJPEG stream or long
+    /// poll never takes the connections tasks, compliance checks and API reads share (those would time out as device
+    /// errors). As many as a browser opens to one host.
+    /// </summary>
+    public const int SiteRelayConnectionsPerDevice = 6;
+
     /// <summary>How long an idle connection through a site stays open.</summary>
     public static readonly TimeSpan SiteIdleTimeout = TimeSpan.FromSeconds(30);
 

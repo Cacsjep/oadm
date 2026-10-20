@@ -46,4 +46,10 @@ public enum DeviceAddressChangeResult
 
     /// <summary>The device at the announced address could not be verified (not answering or another serial).</summary>
     NotVerified = 5,
+
+    /// <summary>
+    /// The device was seen through another route, but OADM has no pinned HTTPS certificate of it to verify it there
+    /// (stored with HTTP): it moves only within its own route, never to another one by itself.
+    /// </summary>
+    NotPinned = 6,
 }

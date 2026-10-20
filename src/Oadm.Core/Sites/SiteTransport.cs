@@ -154,7 +154,7 @@ public sealed class SiteException : Exception
         new(siteId, problem, problem switch
         {
             SiteProblem.Offline => "Site offline: " + siteName,
-            SiteProblem.NotBound => $"Site {siteName} is not bound. Reset its site node and bind it again.",
+            SiteProblem.NotBound => $"Site {siteName} is not bound. {Sdk.Sites.SiteTexts.NodeWasReset}",
             SiteProblem.Busy => $"Site {siteName} is busy.",
             SiteProblem.OutsideNetworks => $"The address is outside the networks of {siteName}.",
             SiteProblem.PortNotAllowed => $"Port {port} is not allowed at {siteName}. Allow it in the OADM Site Node app.",

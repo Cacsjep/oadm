@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
 
@@ -88,9 +89,35 @@ public sealed class SiteLinkTests
         var site = sites.AddSite("Building B").Map("192.168.0.20", 80, device.EndPoint);
         using var client = VapixClient.Create(Options(site.Id), new DeviceRouter(sites, sites));
 
-        // Two answers that never end (a Web View MJPEG stream, a long poll) take both connections of the device.
+        // Two answers that never end (streamed downloads of tasks) take both shared connections of the device.
         var holds = new List<HttpResponseMessage>();
         for (var i = 0; i < DeviceRouter.SiteConnectionsPerDevice; i++)
+        {
+            var hold = Request("/hold");
+            hold.Options.Set(VapixRequestOptions.StreamResponse, true);
+            holds.Add(await client.SendAsync(hold, CancellationToken.None));
+        }
+
+        // The poll goes on the device's status connections: it gets the device's answer (401 here), never a timeout.
+        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(Generous, CancellationToken.None));
+        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(CancellationToken.None));
+        foreach (var hold in holds)
+        {
+            hold.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task WebViewAnswersNeverTakeTheConnectionsOfTasksAndChecks()
+    {
+        await using var device = LoopbackDevice.StartHttp();
+        var sites = new FakeSiteTransport();
+        var site = sites.AddSite("Building B").Map("192.168.0.20", 80, device.EndPoint);
+        using var client = VapixClient.Create(Options(site.Id), new DeviceRouter(sites, sites));
+
+        // More endless relayed answers (MJPEG streams, long polls of a page) than the shared pool has connections.
+        var holds = new List<HttpResponseMessage>();
+        for (var i = 0; i < DeviceRouter.SiteConnectionsPerDevice + 1; i++)
         {
             var hold = Request("/hold");
             hold.Options.Set(VapixRequestOptions.StreamResponse, true);
@@ -98,9 +125,14 @@ public sealed class SiteLinkTests
             holds.Add(await client.SendAsync(hold, CancellationToken.None));
         }
 
-        // The poll goes on the device's status connections: it gets the device's answer (401 here), never a timeout.
-        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(Generous, CancellationToken.None));
-        await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(CancellationToken.None));
+        // A task's request still gets a connection of its own: the device's answer, never a timeout.
+        using (var request = Request("/axis-cgi/param.cgi"))
+        {
+            request.Options.Set(VapixRequestOptions.Timeout, Generous);
+            using var response = await client.SendAsync(request, CancellationToken.None);
+            Assert.Equal("ok", await response.Content.ReadAsStringAsync());
+        }
+
         foreach (var hold in holds)
         {
             hold.Dispose();
@@ -170,6 +202,27 @@ public sealed class SiteLinkTests
         }
 
         Assert.Equal(["10.0.0.20", "192.168.0.21"], seen.Select(c => c.Device!.Address));
+    }
+
+    [Fact]
+    public void RemovedDevicesKeepTheirStampOnlyForTheLastRemovalsAndNoStaleCopyBringsThemBack()
+    {
+        var feed = new DeviceChangeFeed { TombstoneLimit = 10 };
+        var devices = Enumerable.Range(0, 100)
+            .Select(i => new Device { Id = Guid.NewGuid(), Serial = "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture), Address = "10.0.0.1" })
+            .ToList();
+        var readAt = feed.Sequence;
+        foreach (var device in devices)
+        {
+            feed.Publish(new DeviceChange(DeviceChangeKind.Added, device.Id, device));
+            feed.Publish(new DeviceChange(DeviceChangeKind.Removed, device.Id, null));
+        }
+
+        Assert.Equal(10, feed.StampCount); // not 100: the table does not grow with every device ever removed
+        using var subscription = feed.Subscribe();
+        var last = devices[^1];
+        Assert.Equal(0, feed.PublishUnlessNewer([new DeviceChange(DeviceChangeKind.Updated, last.Id, last)], readAt));
+        Assert.False(subscription.Reader.TryRead(out _));
     }
 
     private static VapixConnectionOptions Options(Guid siteId) => new()
