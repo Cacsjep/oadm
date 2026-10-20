@@ -269,6 +269,108 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
     });
 
     [Fact]
+    public async Task A_login_before_any_list_shows_the_ring_and_another_login_starts_empty()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.WatchSitesAsync(Arg.Any<CancellationToken>()).Returns(call => Never(call.Arg<CancellationToken>()));
+        var session = new Shell.UserSession();
+        using var page = new SitesViewModel(api, Substitute.For<IDialogService>(), new ImmediateUiDispatcher(), session);
+
+        // The login raises IsAdmin before the page ever saw a list: still loading, never "Site nodes are off".
+        session.SignIn(new UserInfo { UserName = "admin", Role = UserRole.Admin, RoleId = FakeOadmApi.AdministratorRoleId, AllPermissions = true }, "server-a");
+        page.Activate();
+        Assert.True(page.IsLoading);
+        Assert.False(page.ShowOffState);
+        Assert.False(page.ShowEmpty);
+
+        // Server A's sites and a message of the page.
+        var only = new Site { Id = Guid.NewGuid().ToString(), Name = "Plant A", State = SiteState.Online, NodeId = "a" };
+        page.Apply(new SiteList { Accept = true, Sites = { only } });
+        await page.ReplaceCommand.ExecuteAsync(page.Rows.Single());
+        Assert.NotNull(page.ErrorText);
+        page.Deactivate();
+
+        // Log out, log in to server B: nothing of server A stays.
+        session.SignOut();
+        session.SignIn(new UserInfo { UserName = "admin", Role = UserRole.Admin, RoleId = FakeOadmApi.AdministratorRoleId, AllPermissions = true }, "server-b");
+        page.Activate();
+        Assert.Empty(page.Rows);
+        Assert.True(page.IsLoading);
+        Assert.Null(page.ErrorText);
+        Assert.Null(page.NoticeText);
+        Assert.False(page.ShowOffState);
+
+        // The page shown again in the same session keeps what it has.
+        page.Apply(new SiteList { Accept = false });
+        Assert.True(page.ShowOffState);
+        page.Deactivate();
+        page.Activate();
+        Assert.True(page.ShowOffState);
+        page.Deactivate();
+    }
+
+    private static async IAsyncEnumerable<SiteList> Never([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+        yield break;
+    }
+
+    [Fact]
+    public Task Replace_offers_only_online_bound_sites() => _ui.RunAsync(async () =>
+    {
+        var (api, _, page) = Create();
+        Site Bound(string name, SiteState state) => new() { Id = Guid.NewGuid().ToString(), Name = name, State = state, NodeId = name };
+        var list = new SiteList
+        {
+            Accept = true,
+            Sites =
+            {
+                Bound("Old", SiteState.Offline), Bound("Online", SiteState.Online), Bound("Offline", SiteState.Offline),
+                Bound("Reset", SiteState.NotBound), Bound("Gone", SiteState.Removed),
+                new Site { Name = "node", State = SiteState.Waiting, NodeId = "w" },
+            },
+        };
+        page.Apply(list);
+        var old = page.Rows.Single(r => r.Name == "Old");
+        Assert.Equal(["Online"], page.ReplaceTargets(old).Select(s => s.Name));
+
+        // No other site online: the page says so instead of a dialog the server would refuse.
+        list.Sites.Remove(list.Sites.Single(s => s.Name == "Online"));
+        page.Apply(list);
+        await page.ReplaceCommand.ExecuteAsync(page.Rows.Single(r => r.Name == "Old"));
+        Assert.Equal("The site that replaces Old must be online.", page.ErrorText);
+        api.Dispose();
+    });
+
+    [Fact]
+    public void Bind_suggests_a_free_name_and_keeps_the_name_of_a_site_bound_again()
+    {
+        var reset = new Site { Id = Guid.NewGuid().ToString(), Name = "acs", State = SiteState.NotBound, NodeId = "old-node", NodeFingerprint = "aa" };
+        var node = new Site { Name = "acs", State = SiteState.Waiting, NodeId = "new-node", NodeFingerprint = "bb", Message = SiteTexts.WaitingToBeBound };
+        Assert.Equal("acs (2)", SiteFormViewModel.SuggestName(node, [reset, node]));
+
+        var second = new Site { Id = Guid.NewGuid().ToString(), Name = "ACS (2)", State = SiteState.Online, NodeId = "n2" };
+        Assert.Equal("acs (3)", SiteFormViewModel.SuggestName(node, [reset, second, node]));
+
+        // A removed site no longer holds its name; a free host name stays as it is.
+        var removed = new Site { Id = Guid.NewGuid().ToString(), Name = "acs", State = SiteState.Removed, NodeId = "x" };
+        Assert.Equal("acs", SiteFormViewModel.SuggestName(node, [removed, node]));
+
+        // Long names stay within the limit.
+        var longName = new string('n', SiteTexts.MaxNameLength);
+        var longSite = new Site { Id = Guid.NewGuid().ToString(), Name = longName, State = SiteState.Online, NodeId = "l" };
+        var suggested = SiteFormViewModel.SuggestName(new Site { Name = longName, NodeId = "m", State = SiteState.Waiting }, [longSite]);
+        Assert.EndsWith(" (2)", suggested, StringComparison.Ordinal);
+        Assert.Null(SiteTexts.NameProblem(suggested));
+
+        // The node of a site that accepted this server's new identity: Bind keeps the site's name (no silent rename).
+        var site = new Site { Id = Guid.NewGuid().ToString(), Name = "Warehouse", State = SiteState.Offline, NodeId = "wh-node", NodeFingerprint = "cc" };
+        var again = new Site { Name = "wh-pc", State = SiteState.Waiting, NodeId = "wh-node", NodeFingerprint = "cc", Message = SiteTexts.BindAgain("Warehouse") };
+        var form = SiteFormViewModel.Bind(Substitute.For<IOadmApi>(), again, [site, again]);
+        Assert.Equal("Warehouse", form.Name);
+    }
+
+    [Fact]
     public void Hundred_sites_and_fifty_waiting_nodes_apply_and_filter_fast()
     {
         var (api, _, page) = Create();

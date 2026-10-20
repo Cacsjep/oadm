@@ -149,6 +149,12 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     private SiteList _list = new();
     private CancellationTokenSource? _active;
 
+    /// <summary>A list of the server arrived for this session; until then nothing is shown as the server's state.</summary>
+    private bool _received;
+
+    /// <summary>The session the shown list belongs to (<see cref="UserSession.SignInCount"/>); another one starts empty.</summary>
+    private int _shownSession = -1;
+
     public SitesViewModel(IOadmApi api, IDialogService dialogs, IUiDispatcher ui, UserSession? session = null)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
@@ -205,7 +211,7 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     /// Accept site nodes is off and there is nothing to list: the page shows what sites are and Accept site nodes instead
     /// of the list (like Compliance while it is off).
     /// </summary>
-    public bool ShowOffState => !IsLoading && !_list.Accept && _all.Count == 0;
+    public bool ShowOffState => _received && !IsLoading && !_list.Accept && _all.Count == 0;
 
     public bool ShowList => !ShowOffState;
 
@@ -217,6 +223,7 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
 
     public string EmptyText => _all.Count > 0
         ? "No site matches the search."
+        : !_received ? string.Empty // the error below the list says why
         : _list.Accept ? SiteTexts.AcceptOnHint(_list.ListenAddress) : SiteTexts.AcceptOffHint;
 
     partial void OnSearchTextChanged(string value) => Filter();
@@ -234,6 +241,14 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         if (_active is not null)
         {
             return;
+        }
+
+        int session = _session?.SignInCount ?? 0;
+        if (session != _shownSession)
+        {
+            // Another login (maybe another server) since the page was last shown: nothing of the earlier one stays.
+            _shownSession = session;
+            Clear();
         }
 
         _active = new CancellationTokenSource();
@@ -263,10 +278,36 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     public void Apply(SiteList list)
     {
         ArgumentNullException.ThrowIfNull(list);
+        _received = true;
+        Show(list);
+        IsLoading = false;
+    }
+
+    // Back to "loading": the list, the rows and the texts of an earlier session go.
+    private void Clear()
+    {
+        _received = false;
+        _list = new SiteList();
+        _all = [];
+        ErrorText = null;
+        NoticeText = null;
+        SearchText = string.Empty;
+        IsLoading = true;
+        RaiseListChanged(acceptChanged: true);
+        Filter();
+    }
+
+    private void Show(SiteList list)
+    {
         var acceptChanged = list.Accept != _list.Accept;
         _list = list;
-        IsLoading = false;
         _all = [.. list.Sites.Select(s => new SiteRowViewModel(s, MayChange))];
+        RaiseListChanged(acceptChanged);
+        Filter();
+    }
+
+    private void RaiseListChanged(bool acceptChanged)
+    {
         if (acceptChanged)
         {
             OnPropertyChanged(nameof(Accept));
@@ -277,8 +318,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(ShowOffState));
         OnPropertyChanged(nameof(ShowList));
-
-        Filter();
     }
 
     /// <summary>Accept site nodes on or off (Administrator; the check box in the toolbar).</summary>
@@ -335,7 +374,7 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var form = SiteFormViewModel.Bind(_api, row.Site);
+        var form = SiteFormViewModel.Bind(_api, row.Site, [.. _all.Select(r => r.Site)]);
         if (await _dialogs.ShowSiteFormAsync(form).ConfigureAwait(true))
         {
             NoticeText = null;
@@ -365,10 +404,12 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var others = _all.Where(r => r.IsBound && !r.IsRemoved && r.Site.Id != row.Site.Id).Select(r => r.Site).ToList();
+        var others = ReplaceTargets(row);
         if (others.Count == 0)
         {
-            ErrorText = "Bind the new site node first, then replace " + row.Name + " with it.";
+            ErrorText = _all.Any(r => r.IsBound && !r.IsRemoved && r.Site.Id != row.Site.Id)
+                ? "The site that replaces " + row.Name + " must be online."
+                : "Bind the new site node first, then replace " + row.Name + " with it.";
             return;
         }
 
@@ -397,6 +438,13 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             await ReloadAsync().ConfigureAwait(true);
         }
     }
+
+    /// <summary>
+    /// The sites Replace with can move the devices to: what the server accepts (SiteAdmin.ReplaceAsync), another bound site
+    /// that is online (not removed, not Not bound, not offline).
+    /// </summary>
+    internal List<Site> ReplaceTargets(SiteRowViewModel row) =>
+        [.. _all.Where(r => r.IsBound && r.Site.State == SiteState.Online && r.Site.Id != row.Site.Id).Select(r => r.Site)];
 
     private async Task ReloadAsync()
     {
@@ -440,6 +488,11 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
                 {
                     _ui.Post(() =>
                     {
+                        if (ct.IsCancellationRequested)
+                        {
+                            return; // the page closed or another session started: a list of the old watch never shows
+                        }
+
                         Apply(list);
                         ErrorText = ErrorText == ReadError ? null : ErrorText;
                     });
@@ -458,8 +511,11 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             {
                 _ui.Post(() =>
                 {
-                    IsLoading = false;
-                    ErrorText = ex.Status.Detail;
+                    if (!ct.IsCancellationRequested)
+                    {
+                        IsLoading = false;
+                        ErrorText = ex.Status.Detail;
+                    }
                 });
             }
 #pragma warning disable CA1031 // The connection dropped: watch again after a short delay.
@@ -468,8 +524,11 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             {
                 _ui.Post(() =>
                 {
-                    IsLoading = false;
-                    ErrorText ??= ReadError;
+                    if (!ct.IsCancellationRequested)
+                    {
+                        IsLoading = false;
+                        ErrorText ??= ReadError;
+                    }
                 });
             }
 
@@ -495,7 +554,10 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(MayChange));
             OnPropertyChanged(nameof(ShowTurnOff));
             OnPropertyChanged(nameof(ShowAcceptButton));
-            Apply(_list); // row actions follow the role
+            if (_received)
+            {
+                Show(_list); // row actions follow the role; nothing to show before the server sent a list
+            }
         }
     }
 

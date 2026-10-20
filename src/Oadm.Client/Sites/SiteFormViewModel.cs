@@ -131,17 +131,57 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
     /// <summary>True: done (the dialog closes); false: cancelled.</summary>
     public event EventHandler<bool>? CloseRequested;
 
-    public static SiteFormViewModel Bind(IOadmApi api, Site node)
+    /// <param name="sites">The page's list (bound sites and waiting nodes): the name is chosen against it.</param>
+    public static SiteFormViewModel Bind(IOadmApi api, Site node, IReadOnlyCollection<Site>? sites = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         var form = new SiteFormViewModel(api, SiteFormMode.Bind, node, "Bind site node", "Bind")
         {
             Intro = $"Enter the pairing code the OADM Site Node app shows on {(node.Name.Length > 0 ? node.Name : node.NodeAddress)}.",
         };
-        form.Name = node.Name;
+        form.Name = SuggestName(node, sites ?? []);
         form.Validation.Reset(nameof(Name));
         return form;
     }
+
+    /// <summary>
+    /// The name Bind starts with: binding a site again (its node accepted this server's new identity) keeps the site's own
+    /// name; otherwise the node's host name, or "acs (2)" when a site has that name already (typical after a Reset on the
+    /// node: the old site, Not bound, keeps it).
+    /// </summary>
+    public static string SuggestName(Site node, IReadOnlyCollection<Site> sites)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(sites);
+        var bound = sites.Where(s => s.Id.Length > 0 && s.State != SiteState.Removed).ToList();
+        if (bound.FirstOrDefault(s => IsRebindOf(node, s)) is { } own)
+        {
+            return own.Name;
+        }
+
+        var taken = new HashSet<string>(bound.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        var name = node.Name.Trim();
+        if (name.Length == 0 || !taken.Contains(name))
+        {
+            return name;
+        }
+
+        for (var n = 2; ; n++)
+        {
+            var suffix = string.Create(CultureInfo.InvariantCulture, $" ({n})");
+            var start = name.Length + suffix.Length > SiteTexts.MaxNameLength ? name[..(SiteTexts.MaxNameLength - suffix.Length)].TrimEnd() : name;
+            if (!taken.Contains(start + suffix))
+            {
+                return start + suffix;
+            }
+        }
+    }
+
+    // The server marks a node that binds its own site again with the shared text (SiteTexts.BindAgain) and the site's node.
+    private static bool IsRebindOf(Site node, Site site) =>
+        (string.Equals(site.NodeId, node.NodeId, StringComparison.Ordinal)
+            || (site.NodeFingerprint.Length > 0 && string.Equals(site.NodeFingerprint, node.NodeFingerprint, StringComparison.OrdinalIgnoreCase)))
+        && string.Equals(node.Message, SiteTexts.BindAgain(site.Name), StringComparison.Ordinal);
 
     public static SiteFormViewModel Rename(IOadmApi api, Site site)
     {
