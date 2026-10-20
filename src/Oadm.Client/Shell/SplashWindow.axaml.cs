@@ -15,7 +15,10 @@ public partial class SplashWindow : Window
         InitializeComponent();
     }
 
-    /// <summary>Fades the content out (with a slight zoom like the mockup); the caller closes the window afterwards.</summary>
+    /// <summary>
+    /// Fades the whole window out (its background too, so the main window behind it shows through); the caller closes it
+    /// afterwards.
+    /// </summary>
     public Task FadeOutAsync()
     {
         var animation = new Animation
@@ -29,6 +32,6 @@ public partial class SplashWindow : Window
                 new KeyFrame { Cue = new Cue(1), Setters = { new Setter(OpacityProperty, 0.0) } },
             },
         };
-        return animation.RunAsync(Root);
+        return animation.RunAsync(this);
     }
 }
