@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 
@@ -115,20 +116,17 @@ public sealed partial class AppShell(
             }
         }
 
-        void ShowNext()
+        // The next window opens behind the splash (topmost) and draws its first frame before the exit plays over it.
+        Task ShowNextAsync()
         {
-            if (login is not null)
-            {
-                ShowLogin(null, login);
-            }
-            else
-            {
-                ShowMain(started: true);
-            }
+            window.Topmost = true;
+            Window next = login is not null ? ShowLogin(null, login) : ShowMain(started: true);
+            return FirstFrameAsync(next);
         }
 
-        await SplashSequence.RunAsync(window, splash, LoadAsync, ShowNext, time ?? TimeProvider.System).ConfigureAwait(true);
+        await SplashSequence.RunAsync(window, splash, LoadAsync, ShowNextAsync, time ?? TimeProvider.System).ConfigureAwait(true);
         window.Close();
+        _desktop?.MainWindow?.Activate(); // the splash was in front: the next window takes the focus
     }
 
     /// <summary>Starts the streams and waits for the first device list (at most <see cref="SplashViewModel.DevicesTimeout"/>).</summary>
@@ -148,14 +146,30 @@ public sealed partial class AppShell(
         }
     }
 
-    private void ShowLogin(string? notice, LoginViewModel? initialized = null)
+    /// <summary>
+    /// Waits until <paramref name="window"/> drew its first frame (two animation frames after Show: the first layout of the
+    /// main window takes a moment), at most <see cref="FirstFrameLimit"/>.
+    /// </summary>
+    internal async Task FirstFrameAsync(TopLevel window)
+    {
+        var drawn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.RequestAnimationFrame(_ => window.RequestAnimationFrame(_ => drawn.TrySetResult()));
+        await Task.WhenAny(drawn.Task, Task.Delay(FirstFrameLimit, time ?? TimeProvider.System)).ConfigureAwait(true);
+    }
+
+    /// <summary>The handover never waits longer than this for the next window's first frame.</summary>
+    internal static readonly TimeSpan FirstFrameLimit = TimeSpan.FromSeconds(3);
+
+    private LoginWindow ShowLogin(string? notice, LoginViewModel? initialized = null)
     {
         LoginViewModel vm = initialized ?? loginFactory();
         vm.Notice = notice;
         var window = new LoginWindow { DataContext = vm };
-        vm.LoggedIn += (_, _) =>
+        vm.LoggedIn += async (_, _) =>
         {
-            ShowMain();
+            // The login window stays in front until the main window drew its first frame (no blank window).
+            window.Topmost = true;
+            await FirstFrameAsync(ShowMain()).ConfigureAwait(true);
             window.Close();
         };
         if (_desktop is not null)
@@ -164,9 +178,10 @@ public sealed partial class AppShell(
         }
 
         window.Show();
+        return window;
     }
 
-    private void ShowMain(bool started = false)
+    private MainWindow ShowMain(bool started = false)
     {
         var window = new MainWindow { DataContext = main };
         if (_desktop is not null)
@@ -179,6 +194,8 @@ public sealed partial class AppShell(
         {
             main.Start();
         }
+
+        return window;
     }
 
     private async Task LogoutAsync(string? message)

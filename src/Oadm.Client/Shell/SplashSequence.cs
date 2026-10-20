@@ -12,8 +12,9 @@ public interface ISplashAnimation
 
 /// <summary>
 /// When the start splash closes: the intro plays while the client loads; the splash stays until the intro is done, at
-/// least <see cref="MinimumShown"/> after the start and until the loading is done; then "Ready", the exit, and only then
-/// the next window.
+/// least <see cref="MinimumShown"/> after the start and until the loading is done; then "Ready", the next window opens
+/// behind the splash and draws its first frame, and only then the exit plays over it (no blank window in between: the
+/// main window's first layout takes a moment).
 /// </summary>
 public static class SplashSequence
 {
@@ -21,7 +22,7 @@ public static class SplashSequence
     public static readonly TimeSpan MinimumShown = TimeSpan.FromMilliseconds(650);
 
     public static async Task RunAsync(
-        ISplashAnimation view, SplashViewModel splash, Func<Task> load, Action showNext, TimeProvider time)
+        ISplashAnimation view, SplashViewModel splash, Func<Task> load, Func<Task> showNext, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(splash);
@@ -34,7 +35,7 @@ public static class SplashSequence
         await load().ConfigureAwait(true);
         await Task.WhenAll(intro, minimum).ConfigureAwait(true);
         splash.Step("Ready");
+        await showNext().ConfigureAwait(true);
         await view.PlayExitAsync().ConfigureAwait(true);
-        showNext();
     }
 }

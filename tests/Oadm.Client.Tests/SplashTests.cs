@@ -29,7 +29,7 @@ public sealed class SplashTests
     }
 
     [Fact]
-    public async Task The_exit_runs_after_the_loading_and_the_minimum_time_and_before_the_next_window()
+    public async Task The_next_window_draws_behind_the_splash_before_the_exit_runs()
     {
         var time = new FakeTimeProvider();
         var view = new FakeSplash();
@@ -37,10 +37,12 @@ public sealed class SplashTests
         var loaded = new TaskCompletionSource();
         var shown = false;
 
+        var nextDrawn = new TaskCompletionSource();
         var run = SplashSequence.RunAsync(view, vm, () => loaded.Task, () =>
         {
-            Assert.True(view.ExitDone, "the exit is done before the next window shows");
+            Assert.False(view.ExitStarted, "the next window opens behind the splash, before the exit");
             shown = true;
+            return nextDrawn.Task;
         }, time);
 
         Assert.True(view.IntroStarted);
@@ -49,13 +51,14 @@ public sealed class SplashTests
         await Eventually.StaysTrueAsync(() => !view.ExitStarted, "no exit before the minimum time", TimeSpan.FromMilliseconds(200));
 
         time.Advance(SplashSequence.MinimumShown);
-        await Eventually.TrueAsync(() => view.ExitStarted, "the exit starts");
+        await Eventually.TrueAsync(() => shown, "the next window opens");
         Assert.Equal("Ready", vm.Status);
-        Assert.False(shown);
+        await Eventually.StaysTrueAsync(() => !view.ExitStarted, "no exit before its first frame", TimeSpan.FromMilliseconds(200));
 
+        nextDrawn.SetResult();
+        await Eventually.TrueAsync(() => view.ExitStarted, "the exit plays over the drawn window");
         view.Exit.SetResult();
         await run;
-        Assert.True(shown);
     }
 
     [Fact]
@@ -64,7 +67,7 @@ public sealed class SplashTests
         var time = new FakeTimeProvider();
         var view = new FakeSplash();
         var loaded = new TaskCompletionSource();
-        var run = SplashSequence.RunAsync(view, new SplashViewModel(), () => loaded.Task, () => { }, time);
+        var run = SplashSequence.RunAsync(view, new SplashViewModel(), () => loaded.Task, () => Task.CompletedTask, time);
 
         time.Advance(TimeSpan.FromSeconds(5));
         view.Intro.SetResult();
