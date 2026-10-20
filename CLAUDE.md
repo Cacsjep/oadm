@@ -931,7 +931,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
   `plugin`, `users`, `key`, `logs`, `settings`, `info`), then the expand toggle. The logged-in user (an initial avatar and
   the name, `Button.titleUser`, opens "Your role") and Log out (icon-only `ui:ToolbarButton`) sit at the right of the title
-  bar, next to the system window buttons (`Shell/TitleBarLayout` keeps clear of them: right on Windows and Linux, left on
+  bar, next to the system window buttons (`Oadm.Theme.Shell.TitleBarLayout` keeps clear of them: `ContentMargin`, or `ContentMarginWithoutMaximize` for the OADM Site Node app; title bars use the theme style `Border.titleBar`: right on Windows and Linux, left on
   macOS, where the app name moves past them; Avalonia reports only the title bar height, not where the buttons are). Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
