@@ -818,7 +818,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         var url = _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
         var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
-            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time));
+            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress);
         listener.Start();
         _listener = listener;
         lock (_lock)

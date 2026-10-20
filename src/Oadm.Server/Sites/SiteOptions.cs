@@ -33,6 +33,9 @@ public sealed class SiteOptions
     /// <summary>TLS handshakes in progress at most.</summary>
     public int MaxHandshakes { get; init; } = 64;
 
+    /// <summary>TLS handshakes in progress from one address (IPv6 per /64) at most: one address never holds them all.</summary>
+    public int MaxHandshakesPerAddress { get; init; } = 8;
+
     /// <summary>Large transfers (streamed uploads and answers) per site at once.</summary>
     public int MaxLargeTransfers { get; init; } = 2;
 
@@ -61,7 +64,10 @@ public sealed class SiteOptions
     /// </summary>
     public int ConnectionsPerMinute { get; init; } = 120;
 
-    /// <summary>Accepted links whose Hello has not answered yet, at most.</summary>
+    /// <summary>
+    /// Accepted links of unknown keys whose Hello has not answered yet, at most. Links with the key of a bound site do not
+    /// count: strangers cannot keep the sites' own nodes out.
+    /// </summary>
     public int MaxPendingLinks { get; init; } = 64;
 
     /// <summary>How long the first Hello on a new link may take.</summary>

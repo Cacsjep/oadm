@@ -20,10 +20,18 @@ public sealed partial class SiteManager
     {
         try
         {
-            // Links that did not answer Hello yet are capped and get a short deadline: a flood of connections that pass
-            // TLS and then say nothing cannot pile up.
+            // Links of unknown keys that did not answer Hello yet are capped and get a short deadline: a flood of
+            // connections that pass TLS and then say nothing cannot pile up. A bound site's key (from the TLS handshake)
+            // is not capped, so the flood cannot keep the sites' own nodes out; its Hello is checked all the same.
             HelloReply? hello;
-            if (Interlocked.Increment(ref _pendingLinks) > _options.MaxPendingLinks)
+            bool known;
+            lock (_lock)
+            {
+                known = link.NodeFingerprintHex.Length > 0
+                    && _sites.Values.Any(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!known && Interlocked.Increment(ref _pendingLinks) > _options.MaxPendingLinks)
             {
                 Interlocked.Decrement(ref _pendingLinks);
                 LogTooManyConnections(link.RemoteHost);
@@ -37,7 +45,10 @@ public sealed partial class SiteManager
             }
             finally
             {
-                Interlocked.Decrement(ref _pendingLinks);
+                if (!known)
+                {
+                    Interlocked.Decrement(ref _pendingLinks);
+                }
             }
 
             if (hello is null)
@@ -140,6 +151,12 @@ public sealed partial class SiteManager
     }
 
     private int _pendingLinks;
+
+    /// <summary>Links of unknown keys waiting for their first Hello (tests).</summary>
+    internal int PendingLinks => Volatile.Read(ref _pendingLinks);
+
+    /// <summary>The site listener while Accept site nodes is on (tests).</summary>
+    internal SiteListener? Listener => _listener;
     private AddressRateLimiter? _unknownLinks;
 
     // New links of keys the server does not know, per address (IPv6 per /64) and minute; old entries are dropped by age.

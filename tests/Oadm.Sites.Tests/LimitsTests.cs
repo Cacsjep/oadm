@@ -45,15 +45,46 @@ public sealed class LimitsTests
         var time = new FakeTimeProvider();
         var limiter = new AddressRateLimiter(perAddress: 1, total: 0, TimeSpan.FromMinutes(1), time, maxAddresses: 100);
         for (var i = 0; i < 100; i++)
+        {
             Assert.True(limiter.TryAcquire(IPAddress.Parse($"10.0.{i}.1")));
+            time.Advance(TimeSpan.FromMilliseconds(100));
+        }
 
-        // Full: a new address waits for the window; the table never grows past its size.
-        Assert.False(limiter.TryAcquire(IPAddress.Parse("10.1.0.1")));
+        // Full: a new address is never locked out; the oldest one makes room and the table never grows past its size.
+        Assert.True(limiter.TryAcquire(IPAddress.Parse("10.1.0.1")));
+        Assert.Equal(100, limiter.Addresses);
+        Assert.True(limiter.TryAcquire(IPAddress.Parse("10.0.0.1"))); // it was the oldest: counted from nothing again
+        Assert.False(limiter.TryAcquire(IPAddress.Parse("10.0.99.1"))); // the newest is still counted
         Assert.Equal(100, limiter.Addresses);
 
         time.Advance(TimeSpan.FromMinutes(1));
-        Assert.True(limiter.TryAcquire(IPAddress.Parse("10.1.0.1")));
+        Assert.True(limiter.TryAcquire(IPAddress.Parse("10.2.0.1")));
         Assert.Equal(1, limiter.Addresses);
+    }
+
+    [Fact]
+    public void TheWindowFollowsTheMonotonicClock()
+    {
+        var fake = new FakeTimeProvider();
+        var clock = new WallClockOnly(fake);
+        var limiter = new AddressRateLimiter(perAddress: 1, total: 0, TimeSpan.FromMinutes(1), clock);
+        var a = IPAddress.Parse("10.0.0.5");
+        Assert.True(limiter.TryAcquire(a));
+
+        clock.Offset = TimeSpan.FromHours(2); // the wall clock jumps ahead: the window has not ended
+        Assert.False(limiter.TryAcquire(a));
+    }
+
+    /// <summary>A clock whose wall time jumps while its timestamps stay with the fake clock.</summary>
+    private sealed class WallClockOnly(FakeTimeProvider fake) : TimeProvider
+    {
+        public TimeSpan Offset { get; set; }
+
+        public override DateTimeOffset GetUtcNow() => fake.GetUtcNow() + Offset;
+
+        public override long GetTimestamp() => fake.GetTimestamp();
+
+        public override long TimestampFrequency => fake.TimestampFrequency;
     }
 
     [Fact]
