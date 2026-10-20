@@ -160,7 +160,7 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
             AdminResponse response;
             try
             {
-                response = handler.Handle(request, admin);
+                response = await handler.HandleAsync(request, admin, timeout.Token).ConfigureAwait(false);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {

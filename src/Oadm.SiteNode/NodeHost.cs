@@ -116,6 +116,19 @@ public static class NodeHost
         return app;
     }
 
+    /// <summary>
+    /// Runs the node until <paramref name="ct"/> or a stop (Ctrl+C, the service manager) and returns the exit code: 1 when a
+    /// part failed (so systemd or the SCM restarts the node), else 0. The host is disposed at the end.
+    /// </summary>
+    public static async Task<int> RunAsync(WebApplication app, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        // Resolved before the run: RunAsync disposes the host and its services when it returns.
+        var failure = app.Services.GetRequiredService<NodeFailure>();
+        await ((IHost)app).RunAsync(ct).ConfigureAwait(false);
+        return failure.Failed ? 1 : 0;
+    }
+
     /// <summary>Kestrel's keep-alive timeout on links: in effect none (ten years); the HTTP/2 pings decide.</summary>
     public static readonly TimeSpan KeepAliveTimeout = TimeSpan.FromDays(3650);
 

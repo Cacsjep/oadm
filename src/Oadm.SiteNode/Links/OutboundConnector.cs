@@ -29,6 +29,7 @@ public sealed partial class OutboundConnector(
     LinkRegistry links,
     ConnectionState connection,
     NodeOptions options,
+    IHostApplicationLifetime lifetime,
     ILogger<OutboundConnector> logger) : BackgroundService
 {
     public const int MaxWorkers = 8;
@@ -106,6 +107,14 @@ public sealed partial class OutboundConnector(
     public static (string Host, int Port)? ParseAddress(string? text, int defaultPort) => ServerAddress.Parse(text, defaultPort);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // The links close as soon as the node begins to stop. Kestrel stops before this service and waits for open calls
+        // (the server's Watch never ends by itself) until the host's shutdown timeout; a closed link ends them at once.
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, lifetime.ApplicationStopping);
+        await ConnectAsync(stopping.Token).ConfigureAwait(false);
+    }
+
+    private async Task ConnectAsync(CancellationToken stoppingToken)
     {
         void Wake() => _wake.Release();
         store.Changed += Wake;
@@ -190,6 +199,10 @@ public sealed partial class OutboundConnector(
             {
                 var wake = _wake.WaitAsync(control.Token);
                 await Task.WhenAny(serving, wake).ConfigureAwait(false);
+                // The node stops (control cancelled): every further wait would end at once, so stop waiting and let the
+                // link close below (looping here spun a thread and held up the host's stop).
+                if (wake.IsCanceled)
+                    break;
                 if (wake.IsCompletedSuccessfully && !string.Equals(KeyOf(store.Snapshot()), key, StringComparison.Ordinal))
                     break;
                 if (!wake.IsCompleted)

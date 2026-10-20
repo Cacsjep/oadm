@@ -40,6 +40,15 @@ internal sealed class TestNode : IAsyncDisposable
     public static async Task<TestNode> StartAsync(Action<NodeConfig>? config = null, Action<NodeOptions>? options = null)
     {
         var folder = new TempFolder();
+        var (app, nodeOptions) = Build(folder, config, options);
+        await app.StartAsync();
+        return new TestNode(folder, app, nodeOptions);
+    }
+
+    /// <summary>The node as <see cref="StartAsync"/> builds it, not started (tests that run it like Program does).</summary>
+    public static (WebApplication App, NodeOptions Options) Build(TempFolder folder, Action<NodeConfig>? config = null, Action<NodeOptions>? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
         var nodeOptions = new NodeOptions
         {
             DataDirectory = folder.Path,
@@ -57,9 +66,7 @@ internal sealed class TestNode : IAsyncDisposable
         new NodeStore(folder.Path).Update(FakeCards.ChooseCameraCard); // the office card is not reached
         if (config is not null)
             new NodeStore(folder.Path).Update(config);
-        var app = NodeHost.Build(nodeOptions);
-        await app.StartAsync();
-        return new TestNode(folder, app, nodeOptions);
+        return (NodeHost.Build(nodeOptions), nodeOptions);
     }
 
     public T Get<T>()

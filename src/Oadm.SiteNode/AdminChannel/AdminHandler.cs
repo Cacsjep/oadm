@@ -25,6 +25,13 @@ public sealed class AdminHandler(
 {
     public const int MaxExtraSubnets = 64;
 
+    /// <summary>A command of the app or the command line (what the admin channel calls).</summary>
+    public Task<AdminResponse> HandleAsync(AdminRequest request, bool isAdmin, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(Handle(request, isAdmin));
+    }
+
     public AdminResponse Handle(AdminRequest request, bool isAdmin)
     {
         ArgumentNullException.ThrowIfNull(request);

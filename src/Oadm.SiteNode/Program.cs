@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 using Oadm.SiteNode;
 using Oadm.SiteNode.Cli;
 
@@ -14,14 +12,7 @@ var options = new NodeOptions();
 if (dataDirectory is not null)
     options.DataDirectory = Path.GetFullPath(dataDirectory);
 options.AdminEndpoint = NodeOptions.EndpointFor(options.DataDirectory);
-var app = NodeHost.Build(options, rest);
-var failed = false;
-await using (app.ConfigureAwait(false))
-{
-    await app.RunAsync().ConfigureAwait(false);
-    // A part that failed stops the host: exit non-zero so that systemd or the SCM restarts the node.
-    failed = app.Services.GetRequiredService<NodeFailure>().Failed;
-}
-
+// A part that failed stops the host: exit non-zero so that systemd or the SCM restarts the node.
+var exitCode = await NodeHost.RunAsync(NodeHost.Build(options, rest)).ConfigureAwait(false);
 await Serilog.Log.CloseAndFlushAsync().ConfigureAwait(false);
-return failed ? 1 : 0;
+return exitCode;
