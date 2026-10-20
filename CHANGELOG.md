@@ -12,8 +12,8 @@ version and date, and the release workflow copies it into the GitHub release.
   pages, Log in, Set password, the RTSP port, live view and Web View refuse them; compliance says Not checked. New events
   "Site offline" per site and "Any site offline", and the placeholder {site}.
 - Sites (in development): the **OADM Site Node**, a small service and app for a network the server cannot reach. It
-  connects out to the server (or waits for it), is bound with a pairing code from its app, and reaches only the network
-  cards and ports allowed in the app. Installers: `OADM-SiteNode-<version>-win-x64.msi` (`SERVER=<address>` for silent
+  always connects out to the server and never listens, is bound with a pairing code from its app, and reaches the
+  network cards (all by default, or the ones chosen) and ports allowed in the app. Installers: `OADM-SiteNode-<version>-win-x64.msi` (`SERVER=<address>` for silent
   installs) and the `oadm-site-node` / `oadm-site-node-app` packages for Linux x64 and ARM64; Site node downloads and a
   user page Sites on the website. The Windows server installer also opens TCP 5081 for site nodes.
 - Sites (in development): **Accept site nodes**, binding with the pairing code, the **Sites** page and the device column

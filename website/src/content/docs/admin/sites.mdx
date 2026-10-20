@@ -9,7 +9,7 @@ A **site** is a network the OADM server cannot reach itself: another building, a
 network of its own. Install the **OADM Site Node** on one computer in that network. The server then reaches the devices
 there through the node, and you work with them like with every other device.
 
-- The node connects to the server. Nothing at the site needs an open port.
+- The node connects to the server. It never listens: nothing at the site needs an open port.
 - The node keeps no passwords and no device data. Only the server does.
 - One site has one node.
 
@@ -55,8 +55,8 @@ sudo apt install ./oadm-site-node_*.deb                             # service on
 <Steps>
 
 1. In OADM, open **Sites** and turn on **Accept site nodes** (administrators).
-2. In the node app, choose **Connect to the server**, enter the server's name or IP address and click **Save**. Port
-   5081 unless you enter another one.
+2. In the node app, enter the server's name or IP address under **Server address** and click **Save**. Port 5081
+   unless you enter another one.
 3. The app says **Connected to** the server. On the **Sites** page the node shows as **Waiting to be bound**.
 
 </Steps>
@@ -68,7 +68,8 @@ its address changes.
 
 <Steps>
 
-1. In the node app, click **Show pairing code**. Windows asks for administrator rights, Linux for your password.
+1. In the node app, click **Show pairing code** below the server address. Windows asks for administrator rights, Linux
+   for your password.
 2. On the **Sites** page, click **Bind** on the node's row.
 3. Enter the **Site name** and the **Pairing code** and click **Bind**.
 
@@ -82,17 +83,11 @@ range and Add manually also search through the node. The **Site** column of the 
 - After 5 wrong codes the node makes a new code and refuses binding for 10 minutes.
 - When the node is offline, its devices show **Site offline**. Nothing is sent to them until it is back.
 
-## Wait for the server
-
-When the server must connect to the node instead (the node cannot reach the server), choose **Wait for the server** in
-the node app. On Windows the app then opens TCP 5081 in the Windows Firewall, and closes it again when you switch back.
-On the **Sites** page, **Search** finds the waiting node, or **Add manually** connects to its address.
-
 ## Networks
 
-The app lists the network cards of the node's computer with a check box each: the node reaches devices on the checked
-ones. All cards are checked except the one with the default router. **All cards** checks all of them. Under **Extra networks** add networks behind a router,
-e.g. a camera network `10.20.0.0/16`.
+On the **Networks** tab, **Reach devices on** says where the node looks for devices: **All cards** (default), or the
+cards you tick. Tick only the camera cards when the node's computer also sits in an office network. Under **Extra
+networks** add networks behind a router, e.g. a camera network `10.20.0.0/16`.
 
 The node never connects to an address outside these networks.
 
@@ -107,8 +102,9 @@ When the server needs another port, e.g. a camera on TCP 8443, the app lists it 
 
 ## Reset
 
-**Reset** in the node app: the node forgets the server and gets a new identity and pairing code. On the **Sites** page
-the site shows **Not bound** until you bind it again or remove it.
+**Reset** in the node app: the node forgets the server and gets a new identity and pairing code. It connects again and
+waits to be bound. Bind it as a new site, then **Replace with** moves the old site's devices to it, or remove the old
+site.
 
 ## Without a desktop
 
@@ -120,9 +116,8 @@ Linux).
 | `oadm-site-node status` | State, server, connections |
 | `oadm-site-node pairing-code` | The pairing code |
 | `oadm-site-node server oadm.example.com` | Connect to this server |
-| `oadm-site-node server --wait` | Wait for the server |
 | `oadm-site-node allow-binding` | Binding open for another 24 hours, a new code |
-| `oadm-site-node networks` | Network cards and extra networks; `card`, `all`, `add`, `remove` change them |
+| `oadm-site-node networks` | Network cards and extra networks; `card <name> on\|off`, `all on`, `add`, `remove` change them |
 | `oadm-site-node ports` | Allowed and requested ports; `allow`, `remove`, `dismiss` change them |
 | `oadm-site-node log` | The newest connections through the node |
 | `oadm-site-node reset` | Forget the server, new identity and code |
