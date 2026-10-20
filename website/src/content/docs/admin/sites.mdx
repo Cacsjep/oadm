@@ -102,12 +102,51 @@ The node never connects to an address outside these networks.
 When the server needs another port, e.g. a camera on TCP 8443, the app lists it with the reason. Click **Allow** or
 **Dismiss**.
 
-## Reset
+## Manage sites
+
+On the **Sites** page (administrators):
+
+- **Rename**: a new name for the site. The node app shows it too.
+- **Replace with**: moves the devices of a site to another site that is online. Each device must answer there first;
+  devices that do not stay where they are.
+- **Remove site**: with **Keep devices** checked, the devices stay and show **Site offline**. Later **Replace with**
+  moves them to another site, or **Remove devices** removes them. Unchecked, the devices are removed with their logins
+  and tags. The node forgets the server; when it is offline, click **Reset** in the node app.
+- **Turn off site nodes**: the server stops accepting nodes and disconnects the connected ones. Their devices show
+  **Site offline** until you turn on **Accept site nodes** again. Sites and devices stay.
+
+## Reset the node
 
 **Reset** in the node app: the node tells the server, forgets it and gets a new identity and pairing code. The old site
 shows **Not bound** on the **Sites** page and its devices **Site offline**. The node connects again and waits to be
-bound. Bind it as a new site, then **Replace with** moves the old site's devices to it, or remove the old site. When the
-node cannot reach the server at Reset, the old site shows **Offline** instead.
+bound.
+
+<Steps>
+
+1. Click **Bind** on the node's row. The name starts as the node's name, with "(2)" when the old site has it. Enter
+   the pairing code.
+2. On the old site's row, click **Replace with** and choose the new site. Its devices move.
+3. Or click **Remove site** on the old site's row instead.
+
+</Steps>
+
+When the node cannot reach the server at Reset, the old site shows **Offline** instead.
+
+## New server identity
+
+The server proves itself to its nodes with a key of its own. When the server's key is replaced (the warning "The
+server's key was replaced" in OADM), the nodes no longer know the server and its sites show **Offline**.
+
+<Steps>
+
+1. In the node app, check the server and the fingerprint the app shows, then click **Accept new server identity**
+   (administrator rights). The pairing code appears.
+2. On the **Sites** page the node waits to be bound again. Click **Bind**: the site keeps its name. Enter the pairing
+   code.
+
+</Steps>
+
+The site and its devices stay as they were. Accept alone binds nothing: only the pairing code does.
 
 ## Without a desktop
 

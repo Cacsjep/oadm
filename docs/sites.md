@@ -490,7 +490,8 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 
 ## Client
 
-- Rail page **Sites** (group Servers **(default)**, icon `server`; shown with `sites.view`): **Accept site nodes**
+- Rail page **Sites** (right below Compliance, else Devices, no group; icon `server`; shown with `sites.view`; loading
+  until the server's first list, a new login starts empty): **Accept site nodes**
   (Administrator; off and nothing listed: an empty page with what sites are and **Accept site nodes**; on: **Turn off
   site nodes** in the toolbar, red, confirmed; on and empty: "Enter 10.0.0.5:5081 as the server address in the OADM Site
   Node app."); one grid: state icon, Name, Node address (where it connected from),
@@ -499,8 +500,10 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   reason ("Offline: The site node does not answer.", the whole text as its tooltip). Row actions (Administrator): Rename,
   Replace with... (tooltip "Replace with another site"), **Remove site** (red, confirmed, Keep devices); a removed site
   with kept devices: Replace with... and **Remove devices**. Nodes that connected and wait appear in the same list as
-  "Waiting to be bound" rows with **Bind** (dialog: Site name, Pairing code); bound to another server or binding closed
-  greyed with the reason. Errors below the list. Fake mode: two
+  "Waiting to be bound" rows with **Bind** (dialog: Site name, Pairing code; the name starts as the node's host name, "acs (2)" when a site has
+  it, or the site's own name when its node binds it again after accepting a new server identity). Replace with... lists
+  only the other online sites (what the server accepts). A node with binding closed does not connect and one bound to
+  another server fails TLS before Hello: neither appears. Errors below the list. Fake mode: two
   sample sites, one offline.
 - **Site columns, one rule**: the device grid, the add page, the waiting list window and the Plugins page show their
   Site / Sites column while the server has sites (a bound, not bound or removed site; the client watches the site list

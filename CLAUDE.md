@@ -2800,8 +2800,9 @@ Reset; Networks = one choice All cards or ticked cards, plus Extra networks.
 - Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
   Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Replaced site,
   Removed site, Site offline / online, Site node was reset (system). Backup: "Sites: N restored".
-- Client: rail page **Sites** (group Servers, `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
-  `SiteFormWindow` for Bind / Rename / Replace / Remove), device column **Site**
+- Client: rail page **Sites** (right below Compliance, else Devices, no group; `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
+  `SiteFormWindow` for Bind / Rename / Replace / Remove; Bind starts with the node's host name, "acs (2)" when a site has
+  it, or the site's own name when its node binds it again; Replace with lists only other online sites), device column **Site**
   (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.
 - Plugins at sites (stream 6): `IDeviceNetwork` (`Oadm.Core.Sites.DeviceNetworks`: `LocalDeviceNetwork` on the server's
   own network, `SiteDeviceNetwork` over `ISiteNetwork`) in `ITaskExecutionContext` / `ITaskQueryContext.Network` and
