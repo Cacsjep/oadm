@@ -22,7 +22,8 @@ public sealed partial class AppShell(
     Func<LoginViewModel> loginFactory,
     MainWindowViewModel main,
     ILogger<AppShell> logger,
-    LiveView.GpuDecodingService? gpu = null)
+    LiveView.GpuDecodingService? gpu = null,
+    TimeProvider? time = null)
 {
     public const string SessionEndedMessage = "Your session has ended. Log in again.";
 
@@ -71,60 +72,62 @@ public sealed partial class AppShell(
 
     /// <summary>
     /// The real loading behind the splash: connect and resume a remembered login (real server), then start the streams and
-    /// wait for the first device list. The splash stays at least <see cref="SplashViewModel.MinimumDuration"/> (the logo is
-    /// complete), then fades out and the login or main window opens.
+    /// wait for the first device list. <see cref="SplashSequence"/> plays the intro meanwhile and the exit afterwards, then
+    /// the login or main window opens.
     /// </summary>
     private async Task StartupAsync(SplashWindow window, SplashViewModel splash)
     {
-        var minimum = Task.Delay(SplashViewModel.MinimumDuration);
         LoginViewModel? login = null;
-        try
+        async Task LoadAsync()
         {
-            if (options.UseFake)
+            try
             {
-                session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
+                if (options.UseFake)
+                {
+                    session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
+                }
+                else
+                {
+                    splash.Step("Connecting to " + api.ServerAddress);
+                    login = loginFactory();
+                    var loggedIn = false;
+                    void OnLoggedIn(object? sender, EventArgs e) => loggedIn = true;
+                    login.LoggedIn += OnLoggedIn;
+                    await login.InitializeAsync().ConfigureAwait(true); // resumes a remembered session
+                    login.LoggedIn -= OnLoggedIn;
+                    if (loggedIn)
+                    {
+                        login = null;
+                    }
+                }
+
+                if (login is null)
+                {
+                    splash.Step("Loading devices");
+                    await LoadDevicesAsync().ConfigureAwait(true);
+                }
+            }
+#pragma warning disable CA1031 // The splash must never keep the client from starting: the next window shows the problem.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogStartupFailed(logger, ex.Message);
+            }
+        }
+
+        void ShowNext()
+        {
+            if (login is not null)
+            {
+                ShowLogin(null, login);
             }
             else
             {
-                splash.Step("Connecting to " + api.ServerAddress, 25);
-                login = loginFactory();
-                var loggedIn = false;
-                void OnLoggedIn(object? sender, EventArgs e) => loggedIn = true;
-                login.LoggedIn += OnLoggedIn;
-                await login.InitializeAsync().ConfigureAwait(true); // resumes a remembered session
-                login.LoggedIn -= OnLoggedIn;
-                if (loggedIn)
-                {
-                    login = null;
-                }
-            }
-
-            if (login is null)
-            {
-                splash.Step("Loading devices", 60);
-                await LoadDevicesAsync().ConfigureAwait(true);
+                ShowMain(started: true);
             }
         }
-#pragma warning disable CA1031 // The splash must never keep the client from starting: the next window shows the problem.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            LogStartupFailed(logger, ex.Message);
-        }
 
-        await minimum.ConfigureAwait(true);
-        splash.Step("Ready", 100);
-        await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(true);
-        await window.FadeOutAsync().ConfigureAwait(true);
-        if (login is not null)
-        {
-            ShowLogin(null, login);
-        }
-        else
-        {
-            ShowMain(started: true);
-        }
-
+        await SplashSequence.RunAsync(window, splash, LoadAsync, ShowNext, time ?? TimeProvider.System).ConfigureAwait(true);
         window.Close();
     }
 
