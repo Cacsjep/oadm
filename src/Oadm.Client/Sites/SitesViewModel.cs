@@ -213,13 +213,32 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
 
     public bool ShowEmpty => !IsLoading && Rows.Count == 0;
 
+    /// <summary>
+    /// Accept site nodes is off and there is nothing to list: the page shows what sites are and Accept site nodes instead
+    /// of the list (like Compliance while it is off). Sites whose node waits for the server keep the list visible.
+    /// </summary>
+    public bool ShowOffState => !IsLoading && !_list.Accept && _all.Count == 0;
+
+    public bool ShowList => !ShowOffState;
+
+    /// <summary>Turn off site nodes in the toolbar (administrators, while it is on).</summary>
+    public bool ShowTurnOff => MayChange && _list.Accept;
+
+    /// <summary>Accept site nodes in the toolbar (administrators, while it is off but sites are listed).</summary>
+    public bool ShowAcceptButton => MayChange && !_list.Accept;
+
     public string EmptyText => _all.Count > 0
         ? "No site matches the search."
         : _list.Accept ? SiteTexts.AcceptOnHint(_list.ListenAddress) : SiteTexts.AcceptOffHint;
 
     partial void OnSearchTextChanged(string value) => Filter();
 
-    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(ShowEmpty));
+    partial void OnIsLoadingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowEmpty));
+        OnPropertyChanged(nameof(ShowOffState));
+        OnPropertyChanged(nameof(ShowList));
+    }
 
     /// <summary>The page is shown: read and watch the list.</summary>
     public void Activate()
@@ -274,7 +293,12 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         {
             OnPropertyChanged(nameof(Accept));
             OnPropertyChanged(nameof(AcceptText));
+            OnPropertyChanged(nameof(ShowTurnOff));
+            OnPropertyChanged(nameof(ShowAcceptButton));
         }
+
+        OnPropertyChanged(nameof(ShowOffState));
+        OnPropertyChanged(nameof(ShowList));
 
         Filter();
     }
@@ -303,6 +327,26 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         {
             IsChangingAccept = false;
         }
+    }
+
+    /// <summary>Accept site nodes (the button of the empty page and of the toolbar while it is off).</summary>
+    [RelayCommand]
+    private Task AcceptAsync() => SetAcceptAsync(true);
+
+    /// <summary>Turn off site nodes (red, left of the search, confirmed): nodes that connect to the server are cut off.</summary>
+    [RelayCommand]
+    private async Task TurnOffAsync()
+    {
+        ErrorText = null;
+        if (!await _dialogs.ConfirmAsync(
+            "Turn off site nodes",
+            "Turn off site nodes? Site nodes that connect to this server are disconnected and their devices show Site offline. Sites whose node waits for the server stay reachable.",
+            "Turn off").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        await SetAcceptAsync(false).ConfigureAwait(true);
     }
 
     private bool CanSearch => MayChange && !IsSearching;
@@ -552,6 +596,8 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         if (e.PropertyName == nameof(UserSession.IsAdmin))
         {
             OnPropertyChanged(nameof(MayChange));
+            OnPropertyChanged(nameof(ShowTurnOff));
+            OnPropertyChanged(nameof(ShowAcceptButton));
             AddManuallyCommand.NotifyCanExecuteChanged();
             SearchNodesCommand.NotifyCanExecuteChanged();
             Apply(_list); // row actions follow the role

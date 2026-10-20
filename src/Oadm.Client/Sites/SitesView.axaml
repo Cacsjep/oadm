@@ -10,21 +10,43 @@
   <Grid RowDefinitions="Auto,*">
     <c:PageTitleBar Grid.Row="0" Title="Sites" Subtitle="Networks OADM reaches through an OADM Site Node." Margin="0,0,0,16" />
 
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+    <!-- Accept site nodes is off and nothing to list: what sites are and Accept site nodes (like Compliance while off). -->
+    <Border Grid.Row="1" Classes="card" IsVisible="{Binding ShowOffState}">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="460">
+        <ui:OadmIcon Data="{StaticResource Icon.server}" Width="32" Height="32" HorizontalAlignment="Center" />
+        <TextBlock Classes="cardTitle" HorizontalAlignment="Center" Text="Site nodes are off" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap" TextAlignment="Center"
+                   Text="Manage devices in networks this server cannot reach. An OADM Site Node in that network connects to this server." />
+        <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding AcceptCommand}" IsVisible="{Binding MayChange}"
+                IsEnabled="{Binding !IsChangingAccept}">
+          <ui:IconLabel Icon="{StaticResource Icon.server}" Text="Accept site nodes" />
+        </Button>
+        <Button Classes="link" HorizontalAlignment="Center" Command="{Binding AddManuallyCommand}" IsVisible="{Binding MayChange}"
+                Content="Add a site node that waits for the server" />
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" IsVisible="{Binding !MayChange}"
+                   Text="An administrator can turn them on." />
+        <TextBlock Classes="error" HorizontalAlignment="Center" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding ShowList}">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
-            <CheckBox Content="Accept site nodes" IsChecked="{Binding Accept}" IsVisible="{Binding MayChange}" VerticalAlignment="Center"
-                      ToolTip.Tip="Site nodes may connect to this server" />
             <TextBlock Classes="secondary" Text="{Binding AcceptText}" IsVisible="{Binding !MayChange}" VerticalAlignment="Center" />
             <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayChange}">
-              <ui:ToolbarSeparator />
               <ui:ToolbarButton Text="Search" IconKey="search" Command="{Binding SearchNodesCommand}"
                                 ToolTip.Tip="Find site nodes that wait for the server" />
               <ui:ToolbarButton Text="Add manually" IconKey="add" Command="{Binding AddManuallyCommand}" />
             </StackPanel>
           </StackPanel>
-          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search sites" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+            <Button Classes="toolbar danger" Command="{Binding TurnOffCommand}" IsEnabled="{Binding !IsChangingAccept}" IsVisible="{Binding ShowTurnOff}">
+              <ui:IconLabel Icon="{StaticResource Icon.stop}" Text="Turn off site nodes" Spacing="8" />
+            </Button>
+            <ui:ToolbarButton Text="Accept site nodes" IconKey="server" Command="{Binding AcceptCommand}" IsEnabled="{Binding !IsChangingAccept}" IsVisible="{Binding ShowAcceptButton}" />
+            <ui:SearchBox Text="{Binding SearchText}" Placeholder="Search sites" />
+          </StackPanel>
         </Grid>
 
         <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusText}" Margin="2,14,0,8" />

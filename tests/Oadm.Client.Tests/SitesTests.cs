@@ -96,6 +96,41 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
     });
 
     [Fact]
+    public Task Off_and_empty_shows_accept_in_the_middle_and_on_shows_turn_off_confirmed() => _ui.RunAsync(async () =>
+    {
+        var (api, dialogs, page) = Create();
+        page.Apply(new SiteList { Accept = false });
+        Assert.True(page.ShowOffState);
+        Assert.False(page.ShowList);
+
+        // Accept site nodes from the empty page: the list shows, Turn off sits in the toolbar.
+        page.Apply(await api.ListSitesAsync(CancellationToken.None));
+        await page.SetAcceptAsync(false);
+        await page.AcceptCommand.ExecuteAsync(null);
+        Assert.True(page.Accept);
+        Assert.False(page.ShowOffState);
+        Assert.True(page.ShowTurnOff);
+        Assert.False(page.ShowAcceptButton);
+
+        // Turn off asks first; No keeps it on, Turn off turns it off.
+        dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+        await page.TurnOffCommand.ExecuteAsync(null);
+        Assert.True(page.Accept);
+        dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        await page.TurnOffCommand.ExecuteAsync(null);
+        Assert.False(page.Accept);
+        Assert.False((await api.ListSitesAsync(CancellationToken.None)).Accept);
+        Assert.False(page.ShowTurnOff);
+
+        // An operator sees neither button.
+        var (_, _, operatorPage) = Create(isAdmin: false);
+        operatorPage.Apply(new SiteList { Accept = true });
+        Assert.False(operatorPage.ShowTurnOff);
+        Assert.False(operatorPage.ShowAcceptButton);
+        api.Dispose();
+    });
+
+    [Fact]
     public Task Bind_shows_a_wrong_code_below_the_code_and_binds_with_the_right_one() => _ui.RunAsync(async () =>
     {
         var (api, _, page) = Create();
