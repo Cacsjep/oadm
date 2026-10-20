@@ -85,18 +85,25 @@ Two parts, one installer:
   `OadmTheme.axaml`, `Icons.axaml`, `OadmColors`) moves to a shared assembly the client and the app both use; the app
   takes the OS's dark or light setting (it has no client settings). It may use `Oadm.Sdk.Client` controls (`StatusChip`,
   `MessageWindow`, `PasswordBox`, `FormField`). First start: the terms of use like the client (`TermsWindow`, the
-  accepted SHA-256 in the app's own settings). One window (760 x 560, fitted to small screens; redesigned 2026-10-19
-  after the maintainer found the first version overwhelming: everything at once, nothing to focus on). A **header** says
-  the state in one line and shows the one thing to do now (at most one accent button): no server address or the server
-  cannot be reached: the address form (**Connect to the server** / **Wait for the server**, Connect; the problem below the
-  field); binding open: **Show pairing code**, then the code in large letters ("Type this code at Bind on the Sites page
-  of OADM.", "Binding open for 23 more hours."); binding closed: **Allow binding** (another 24 hours, a new code); bound:
-  "Connected to SERVER · SITE" (warning "Not connected to SERVER · SITE: Cannot reach 10.0.0.5:5081"); a new identity of
-  the server: "SERVER presents a new identity (fingerprint). **Accept**" (see Binding); ports the server asks for: "The
-  server asks for N ports." with **Review**. Below it fixed tabs (`ui:PageTab` without a close command, `Count` badge):
-  - **Status**: server address and mode (`oadm.example.com` or `10.0.0.5`, port 5081 unless typed; "Wait for the server"
-    is inbound on port 5081 and adds the firewall rule), binding, site name (from the server once bound), node id,
-    version, **Reset** (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it again in OADM.");
+  accepted SHA-256 in the app's own settings). One window laid out like a service control window (redesigned again 2026-10-20 after the
+  AXIS Device Manager Service Control): about 440 x 780, fitted to small screens (`WindowFit`), the custom title bar of the
+  client (`Border.titleBar`, `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and
+  close right, no maximize), **one card with the tabs** at its top (`ui:PageTab` without a close command, `Count` badge),
+  each tab in sections with large headings and label / field rows (`ui:FormField`); below the card, outside the tabs,
+  **Node status**: one line "Status: Connected to SERVER · SITE" as a status chip ("Status: Not connected: Cannot reach
+  10.0.0.5:5081", "Status: Waiting for the server on port 5081", "Status: Service not running"; then the card says "Start
+  the OADM Site Node service." and shows no tabs) and, while ports wait, "The server asks for N ports." with **Review**
+  (opens Ports); the footer **Save** (the one accent button: enabled while the General form has unsaved changes) and
+  **Close**, both on the right. No start / stop buttons. Tabs:
+  - **General**: section **Server**: **Connect to the server** / **Wait for the server**, the address
+    (`oadm.example.com` or `10.0.0.5`, "Port 5081 unless you type another."; the connection problem below the field;
+    "Wait for the server" is inbound on port 5081 and adds the firewall rule); section **Binding**: the state ("Not bound.
+    Binding open for 23 more hours.", "Not bound. Binding is closed.", "Bound to SERVER since ..."), a new identity of
+    the server ("SERVER presents a new identity (fingerprint).", see Binding), the pairing code in large letters with
+    "Type this code at Bind on the Sites page of OADM.", the wrong codes, and the button the state needs: **Show pairing
+    code**, **Allow binding** (another 24 hours, a new code) or **Accept new server identity**; section **This node**:
+    site name (from the server once bound), node ID, version, **Reset** (red, confirmed: "The node forgets SERVER and
+    gets a new identity. Bind it again in OADM.");
   - **Networks**: each network card with its addresses and a switch "Reach devices on this network" (default: on for
     every card except the one with the default router), **All cards** as a shortcut, and **Extra networks** (routed
     camera VLANs: add, remove);
