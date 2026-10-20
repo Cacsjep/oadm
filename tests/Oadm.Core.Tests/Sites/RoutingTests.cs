@@ -240,6 +240,20 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public async Task TheProbeLetsASiteProblemThroughWhenTheLinkDropsAfterTheConnect()
+    {
+        var site = Guid.NewGuid();
+        var dropped = new SiteException(site, SiteProblem.Offline, "Site offline: Building B");
+        // The shape SocketsHttpHandler gives a stream that ends while the answer is read: IOException around IOException.
+        using var handler = new ThrowingHandler(new IOException("The response ended prematurely.", new IOException("read", dropped)));
+        using var probe = new VapixDeviceProbe(handler, Generous);
+
+        var error = await Assert.ThrowsAsync<SiteException>(() => probe.ProbeAsync(IPAddress.Parse("192.168.0.20"), DeviceRoute.ViaSite(site), Generous, CancellationToken.None));
+
+        Assert.Same(dropped, error);
+    }
+
+    [Fact]
     public async Task TheAddProbeConnectsOnTheRoute()
     {
         await using var device = LoopbackDevice.StartHttp();
@@ -446,6 +460,13 @@ public sealed class RoutingTests
             Options.Add(options);
             return VapixClient.Create(options);
         }
+    }
+
+    /// <summary>Throws <paramref name="error"/> for every request.</summary>
+    private sealed class ThrowingHandler(Exception error) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromException<HttpResponseMessage>(error);
     }
 
     /// <summary>Answers nothing (404) and records the route each request carries.</summary>

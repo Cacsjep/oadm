@@ -286,8 +286,9 @@ public sealed class VapixDeviceProbe : IDeviceProbe, IDisposable
         {
             return null; // per-request timeout
         }
-        catch (HttpRequestException ex) when (ex.InnerException is SiteException site)
+        catch (Exception ex) when (ex is HttpRequestException or IOException && SiteErrors.Find(ex) is { } site)
         {
+            // Also a link that drops after the connect: an IOException with the SiteException a few levels deep.
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
             throw;
         }
