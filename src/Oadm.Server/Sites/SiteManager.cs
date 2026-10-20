@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 
 using Oadm.Contracts.SiteNode;
 using Oadm.Core.Auth;
-using Oadm.Core.Discovery.Mdns;
 using Oadm.Core.Persistence;
 using Oadm.Core.Settings;
 using Oadm.Core.Sites;
@@ -27,7 +26,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private readonly ServerSettingsStore _settings;
     private readonly SiteIdentityStore _identity;
     private readonly AuditLog _audit;
-    private readonly IMdnsBrowser? _mdns;
     private readonly SiteOptions _options;
     private readonly ILogger<SiteManager> _logger;
     private readonly Lock _lock = new();
@@ -47,8 +45,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         AuditLog audit,
         SiteOptions options,
         TimeProvider time,
-        ILogger<SiteManager> logger,
-        IMdnsBrowser? mdns = null)
+        ILogger<SiteManager> logger)
     {
         _db = db;
         _settings = settings;
@@ -57,7 +54,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         _options = options;
         Time = time;
         _logger = logger;
-        _mdns = mdns;
     }
 
     public TimeProvider Time { get; }
@@ -92,7 +88,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
-    /// <summary>Loads the identity and the sites (each "starting"), opens the listener when Accept is on, starts reaching inbound sites.</summary>
+    /// <summary>Loads the identity and the sites (each "starting"), opens the listener when Accept is on.</summary>
     public async Task StartAsync(CancellationToken ct)
     {
         _serverName = (await _settings.GetServerSettingsAsync(ct).ConfigureAwait(false)).ServerName;
@@ -115,11 +111,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                     LastAnswer = now,
                 };
             }
-        }
-
-        foreach (var row in rows.Where(r => r.Mode == SiteMode.Inbound && !r.NotBound))
-        {
-            StartConnector(row.Id);
         }
 
         if (await _settings.GetAsync<bool>(SiteSettings.Accept, ct).ConfigureAwait(false))
@@ -435,10 +426,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         if (row is not null)
         {
             LogSessionEnded(row.Name);
-            if (row.Mode == SiteMode.Inbound && !row.NotBound && !_stop.IsCancellationRequested)
-            {
-                StartConnector(row.Id);
-            }
         }
 
         if (changed)
@@ -499,7 +486,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 }
             }
 
-            session = new SiteSession(this, siteId, control, _options, control.OpenedByNode ? null : ct => DialWorkerAsync(siteId, ct));
+            session = new SiteSession(this, siteId, control, _options);
             var now = Time.GetUtcNow();
             lock (_lock)
             {
@@ -548,45 +535,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
-
-    /// <summary>
-    /// The inbound connector of a site (<see cref="ConnectLoopAsync"/>) under a guard: an unexpected error is logged and the
-    /// loop starts again after 1, 2, 4 ... up to <see cref="SiteOptions.MaxBackoff"/>, so an inbound site is never left
-    /// without a connector. Ends when <paramref name="ct"/> ends or the loop ends by itself (session running, site gone).
-    /// </summary>
-    private async Task RunConnectorAsync(Guid siteId, CancellationToken ct)
-    {
-        var backoff = TimeSpan.FromSeconds(1);
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                await ConnectLoopAsync(siteId, ct).ConfigureAwait(false);
-                return;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-#pragma warning disable CA1031 // The connector never dies silently: logged, then tried again.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                LogBackgroundFailed("reach the site node of " + (NameOf(siteId) ?? siteId.ToString()), ex);
-            }
-
-            try
-            {
-                await Task.Delay(backoff, Time, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, _options.MaxBackoff.Ticks));
-        }
-    }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Sites: could not {What}")]
     private partial void LogBackgroundFailed(string what, Exception ex);
@@ -657,7 +605,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 {
                     entry.State = SiteState.Online; // after a start no waiting: nothing changed meanwhile
                 }
-                else if (now >= entry.StartingUntil || entry.FirstAttemptFailed || entry.Row.NotBound)
+                else if (now >= entry.StartingUntil || entry.Row.NotBound)
                 {
                     entry.State = SiteState.Offline;
                 }
@@ -704,7 +652,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     // ---------- listener ----------
 
-    /// <summary>Accept site nodes: opens or closes the site listener without a restart. Off closes every node connection (inbound sites stay).</summary>
+    /// <summary>Accept site nodes: opens or closes the site listener without a restart. Off closes every node connection.</summary>
     public async Task SetAcceptAsync(bool accept, CancellationToken ct)
     {
         await _acceptLock.WaitAsync(ct).ConfigureAwait(false);
@@ -766,13 +714,13 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         List<SiteSession> sessions;
         lock (_lock)
         {
-            waiting = [.. _waiting.Values.Where(w => w.Mode == SiteMode.Outbound)];
+            waiting = [.. _waiting.Values];
             foreach (var node in waiting)
             {
                 _waiting.Remove(node.Key);
             }
 
-            sessions = [.. _sites.Values.Select(e => e.Session).OfType<SiteSession>().Where(s => s.Control.OpenedByNode)];
+            sessions = [.. _sites.Values.Select(e => e.Session).OfType<SiteSession>()];
         }
 
         foreach (var node in waiting)
@@ -826,10 +774,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             Id = row.Id.ToString(),
             Name = row.Name,
             State = row.NotBound ? Proto.SiteState.NotBound : entry.State == SiteState.Online ? Proto.SiteState.Online : Proto.SiteState.Offline,
-            Mode = row.Mode == SiteMode.Inbound ? Proto.SiteMode.Inbound : Proto.SiteMode.Outbound,
             NodeId = row.NodeId,
             NodeAddress = row.Address ?? string.Empty,
-            NodePort = row.Port ?? 0,
             Version = entry.Version ?? row.Version ?? string.Empty,
             DeviceCount = devices,
             RoundTripMs = (int)Math.Ceiling(entry.RoundTrip.TotalMilliseconds),
@@ -877,19 +823,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             await using var db = await _db.CreateDbContextAsync(_stop.Token).ConfigureAwait(false);
             var now = Time.GetUtcNow().UtcDateTime;
             var version = link.Hello?.Version;
-            if (link.OpenedByNode)
-            {
-                await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u
-                    .SetProperty(s => s.LastSeenUtc, now)
-                    .SetProperty(s => s.Version, version)
-                    .SetProperty(s => s.Address, link.RemoteHost), _stop.Token).ConfigureAwait(false);
-            }
-            else
-            {
-                await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u
-                    .SetProperty(s => s.LastSeenUtc, now)
-                    .SetProperty(s => s.Version, version), _stop.Token).ConfigureAwait(false);
-            }
+            await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u
+                .SetProperty(s => s.LastSeenUtc, now)
+                .SetProperty(s => s.Version, version)
+                .SetProperty(s => s.Address, link.RemoteHost), _stop.Token).ConfigureAwait(false);
 
             lock (_lock)
             {
@@ -897,10 +834,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 {
                     entry.Row.LastSeenUtc = now;
                     entry.Row.Version = version;
-                    if (link.OpenedByNode)
-                    {
-                        entry.Row.Address = link.RemoteHost;
-                    }
+                    entry.Row.Address = link.RemoteHost;
                 }
             }
         }
@@ -992,18 +926,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         List<SiteSession> sessions;
         List<WaitingNode> waiting;
-        List<CancellationTokenSource> connectors;
         lock (_lock)
         {
             sessions = [.. _sites.Values.Select(e => e.Session).OfType<SiteSession>()];
-            connectors = [.. _sites.Values.Select(e => e.Connector).OfType<CancellationTokenSource>()];
             waiting = [.. _waiting.Values];
             _waiting.Clear();
-        }
-
-        foreach (var connector in connectors)
-        {
-            await connector.CancelAsync().ConfigureAwait(false);
         }
 
         foreach (var session in sessions)
@@ -1046,8 +973,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         public DateTimeOffset? LastSeen { get; set; }
 
-        public bool FirstAttemptFailed { get; set; }
-
         public TimeSpan RoundTrip { get; set; }
 
         public string? Version { get; set; }
@@ -1065,9 +990,6 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         public SemaphoreSlim Large { get; } = new(largeTransfers, largeTransfers);
 
         public int LargeRunning;
-
-        /// <summary>Inbound: the loop that reaches the node.</summary>
-        public CancellationTokenSource? Connector { get; set; }
 
         /// <summary>One control link attaches at a time (two at once would both start a session).</summary>
         public SemaphoreSlim Attaching { get; } = new(1, 1);
@@ -1088,7 +1010,6 @@ public static class SiteAudit
     public const string Bound = "Bound site";
     public const string WrongCode = "Wrong pairing code";
     public const string Renamed = "Renamed site";
-    public const string AddressChanged = "Changed site address";
     public const string Replaced = "Replaced site";
     public const string Removed = "Removed site";
     public const string Offline = "Site offline";

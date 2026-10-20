@@ -27,7 +27,7 @@ namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
 /// The server side of the sites with the real OADM Site Node in this process (docs/sites.md, Tests: "Server with an
-/// in-process node"), over real TLS and gRPC on loopback, in both modes.
+/// in-process node"), over real TLS and gRPC on loopback.
 /// </summary>
 public sealed class SiteServerTests
 {
@@ -69,7 +69,6 @@ public sealed class SiteServerTests
         var site = (await server.ListAsync()).Sites.Single(s => s.Id == id.ToString());
         Assert.Equal("Building B", site.Name);
         Assert.Equal(Proto.SiteState.Online, site.State);
-        Assert.Equal(Proto.SiteMode.Outbound, site.Mode);
         Assert.Equal(node.Get<SiteNode.Identity.NodeIdentity>().FingerprintHex, site.NodeFingerprint);
         Assert.Equal(NodeBinding.Bound, node.Get<BindingState>().Binding);
         Assert.Equal("Building B", node.Get<BindingState>().Bound!.SiteName);
@@ -462,75 +461,6 @@ public sealed class SiteServerTests
             SiteTestNode.TryDelete(folder);
             SiteTestNode.TryDelete(data);
         }
-    }
-
-    [Fact]
-    public async Task InboundTheServerFindsBindsAndReachesANodeThatWaits()
-    {
-        await using var device = LoopbackDevice.StartHttp();
-        await using var server = await SiteServer.StartAsync(accept: false);
-        await using var node = await SiteTestNode.StartAsync(c => c.Mode = NodeLinkMode.Wait);
-        node.Map("192.168.0.20", 80, device.EndPoint);
-        var port = await node.Get<SiteNode.Links.InboundListener>().Port;
-
-        var found = new List<Proto.FoundNode>();
-        using (var call = server.Client.FindNodes(new Proto.FindNodesRequest { Address = "127.0.0.1:" + port }))
-        {
-            while (await call.ResponseStream.MoveNext())
-            {
-                found.Add(call.ResponseStream.Current);
-            }
-        }
-
-        Assert.True(found[^1].Finished);
-        var waiting = found[0].Node;
-        Assert.Equal(Proto.SiteState.Waiting, waiting.State);
-        Assert.Equal(Proto.SiteMode.Inbound, waiting.Mode);
-        var site = await server.Client.BindSiteAsync(new Proto.BindSiteRequest { NodeId = waiting.NodeId, Name = "Basement", PairingCode = node.Code });
-        var id = Guid.Parse(site.Id);
-        Assert.Equal(Proto.SiteMode.Inbound, site.Mode);
-        await Eventually.TrueAsync(() => server.Manager.IsOnline(id), "the inbound site online");
-
-        await using (var stream = await server.Manager.OpenStreamAsync(id, "192.168.0.20", 80, SiteDialKind.Short, TimeSpan.FromSeconds(5), CancellationToken.None))
-        {
-            await stream.WriteAsync("GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"u8.ToArray());
-            using var reader = new StreamReader(stream);
-            Assert.StartsWith("HTTP/1.1 200", await reader.ReadLineAsync(), StringComparison.Ordinal);
-        }
-
-        // Change address: the same node at another name is accepted, another key refused.
-        var changed = await server.Client.ChangeSiteAddressAsync(new Proto.ChangeSiteAddressRequest { Id = id.ToString(), Address = "localhost", Port = port });
-        Assert.Equal("localhost", changed.NodeAddress);
-        await Eventually.TrueAsync(() => server.Manager.IsOnline(id) && SessionAlive(server, id), "the site reached at its new address");
-        await using var other = await SiteTestNode.StartAsync(c => c.Mode = NodeLinkMode.Wait, hostName: "other");
-        var otherPort = await other.Get<SiteNode.Links.InboundListener>().Port;
-        var refused = await SiteAsserts.RefusedAsync(StatusCode.FailedPrecondition, async () =>
-            await server.Client.ChangeSiteAddressAsync(new Proto.ChangeSiteAddressRequest { Id = id.ToString(), Address = "127.0.0.1", Port = otherPort }));
-        Assert.Equal(SiteTexts.OtherNode, refused.Status.Detail);
-        Assert.Contains(SiteAudit.AddressChanged, await server.AuditActionsAsync());
-    }
-
-    [Fact]
-    public async Task InboundAResetNodeMakesTheSiteNotBound()
-    {
-        await using var server = await SiteServer.StartAsync(accept: false);
-        await using var node = await SiteTestNode.StartAsync(c => c.Mode = NodeLinkMode.Wait);
-        var port = await node.Get<SiteNode.Links.InboundListener>().Port;
-        using (var call = server.Client.FindNodes(new Proto.FindNodesRequest { Address = "127.0.0.1:" + port }))
-        {
-            while (await call.ResponseStream.MoveNext())
-            {
-            }
-        }
-
-        var id = await server.BindAsync(node, "Basement");
-        node.Get<BindingState>().Reset();
-
-        await Eventually.TrueAsync(async () => (await server.ListAsync()).Sites.Single(s => s.Id == id.ToString()).State == Proto.SiteState.NotBound, "Not bound");
-        Assert.False(server.Manager.IsOnline(id));
-        var error = await Assert.ThrowsAsync<SiteException>(async () =>
-            await server.Manager.OpenStreamAsync(id, "192.168.0.20", 80, SiteDialKind.Short, TimeSpan.FromSeconds(5), CancellationToken.None));
-        Assert.Equal(SiteProblem.NotBound, error.Problem);
     }
 
     [Fact]

@@ -19,9 +19,6 @@ public static class AdminTexts
     public const string SiteBusy = "The site node is busy.";
     public const string OutsideNetworks = "The address is outside the networks of this site node.";
 
-    /// <summary>"Another OADM server with this identity is connected from 10.0.0.5".</summary>
-    public static string AnotherSession(string from) => "Another OADM server with this identity is connected from " + from;
-
     /// <summary>"Port 8443 is not allowed at this site node. Allow it in the OADM Site Node app."</summary>
     public static string PortNotAllowed(PortProtocol protocol, int port) =>
         $"{(protocol == PortProtocol.Udp ? "UDP " : "Port ")}{port} is not allowed at this site node. Allow it in the OADM Site Node app.";
@@ -36,8 +33,6 @@ public static class AdminTexts
     public static string Connected(string target) => "Connected to " + target;
 
     public static string CannotReach(string target) => "Cannot reach " + target;
-
-    public static string WaitingOnPort(int port) => $"Waiting for the server on port {port}";
 
     public static string Name(PortProtocol protocol) => protocol == PortProtocol.Udp ? "UDP" : "TCP";
 }

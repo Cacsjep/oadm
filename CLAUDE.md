@@ -106,9 +106,8 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
   `oadm-site-node`, `CAP_NET_BIND_SERVICE`, `RuntimeDirectory`, `NoNewPrivileges`, `/var/lib/oadm-site-node` 0700) and
   `oadm-site-node-app_<version>_<arch>.deb` (Depends oadm-site-node of the same version, Recommends pkexec, icon
   `oadm-site-node.png`); amd64 and arm64; notices `tools/Oadm.Notices --product site-node` (no LGPL part); no macOS
-  package, no portable ZIP. "Wait for the server" adds the Windows Firewall rule "OADM Site Node (TCP 5081)" through the
-  administrator process that sent the change (`Admin/NodeFirewall`); uninstall removes it. CI: job `installers` builds,
-  installs, checks and removes the node .deb packages, `smoke.ps1 -Mode SiteNode` the node MSI.
+  package, no portable ZIP. The node only connects out (it never listens): no firewall rule on either system. CI: job
+  `installers` builds, installs, checks and removes the node .deb packages, `smoke.ps1 -Mode SiteNode` the node MSI.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS
   only): `/Applications/OADM.app` (Info.plist, icns, license texts and plugins in `Contents/Resources`), server in
   `/Library/Application Support/OADM/server`, LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application
@@ -2769,7 +2768,14 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 
 Spec and decisions: `docs/sites.md`. Built so far (2026-10-19): the contracts and the link (`Oadm.Sites`), routing
 (see "Device Communication"), Site offline (see "Data Model"), the node program (`Oadm.SiteNode*`) and its installers, and
-the server side:
+the server side. **Outbound only** (decision 2026-10-20): the site node always connects to the server and never listens;
+the inbound mode ("Wait for the server", the node's listener and mDNS announce, the server dialing nodes, Search / Add
+manually / Change address on the Sites page, `FindNodes`, `ChangeSiteAddress`, `SiteMode`, the node firewall rule) is
+gone; the columns `Sites.Mode` / `Port` stay for the migrations, unused. The node reaches **all network cards by default**
+(`NodeConfig.AllCards`; chosen cards restrict it, no chosen card = all cards, `NetworkScope.ReachesAllCards`). Node app
+(`Oadm.SiteNode.App`): the tabs on the window background (no card); General = Server address (hint "Enter the address of
+the OADM server." while none is saved), then while not bound the pairing code, then Binding, Site, Node ID, Version and
+Reset; Networks = one choice All cards or ticked cards, plus Extra networks.
 - `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
   30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
   starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),
@@ -2792,10 +2798,10 @@ the server side:
   (`ISiteStates.LinkAnswersAsync`) is a site problem. One control link attaches per site at a time; a port request follows
   the caller's token and is asked again when it did not arrive and after every reconnect.
 - Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
-  Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Changed site address, Replaced site,
+  Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Replaced site,
   Removed site, Site offline / online (system). Backup: "Sites: N restored".
 - Client: rail page **Sites** (group Servers, `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
-  `SiteFormWindow` for Bind / Rename / Change address / Add manually / Replace / Remove), device column **Site**
+  `SiteFormWindow` for Bind / Rename / Replace / Remove), device column **Site**
   (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.
 - Plugins at sites (stream 6): `IDeviceNetwork` (`Oadm.Core.Sites.DeviceNetworks`: `LocalDeviceNetwork` on the server's
   own network, `SiteDeviceNetwork` over `ISiteNetwork`) in `ITaskExecutionContext` / `ITaskQueryContext.Network` and

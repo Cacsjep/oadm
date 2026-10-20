@@ -4,18 +4,21 @@ using Oadm.SiteNode.Admin;
 
 namespace Oadm.SiteNode.App.ViewModels;
 
-/// <summary>A network card with "Reach devices on this network"; a change goes to the service.</summary>
+/// <summary>
+/// A network card in the choice of the Networks tab: ticked when it is chosen (All cards off); a change goes to the
+/// service. While All cards is on no card is ticked.
+/// </summary>
 public sealed partial class CardItem : ObservableObject
 {
     private readonly Func<CardItem, bool, Task> _changed;
     private bool _applying;
 
-    public CardItem(CardView card, Func<CardItem, bool, Task> changed)
+    public CardItem(CardView card, bool allCards, Func<CardItem, bool, Task> changed)
     {
         ArgumentNullException.ThrowIfNull(card);
         _changed = changed;
         Id = card.Id;
-        Apply(card);
+        Apply(card, allCards);
     }
 
     public string Id { get; }
@@ -26,26 +29,27 @@ public sealed partial class CardItem : ObservableObject
     [ObservableProperty]
     public partial string AddressesText { get; private set; } = "";
 
-    /// <summary>"Default router" for the office side (not reached by default).</summary>
+    /// <summary>"Default router": usually the office side.</summary>
     [ObservableProperty]
     public partial string Hint { get; private set; } = "";
 
+    /// <summary>Chosen: the node reaches devices on this card (and the other chosen ones only).</summary>
     [ObservableProperty]
-    public partial bool Reached { get; set; }
+    public partial bool Chosen { get; set; }
 
     /// <summary>The service's state (no change is sent).</summary>
-    public void Apply(CardView card)
+    public void Apply(CardView card, bool allCards)
     {
         ArgumentNullException.ThrowIfNull(card);
         _applying = true;
         Name = card.Name;
         AddressesText = card.Addresses.Count == 0 ? "No address" : string.Join(", ", card.Addresses);
         Hint = card.HasDefaultRouter ? "Default router" : "";
-        Reached = card.Reached;
+        Chosen = !allCards && card.Reached;
         _applying = false;
     }
 
-    partial void OnReachedChanged(bool value)
+    partial void OnChosenChanged(bool value)
     {
         if (!_applying)
             _ = _changed(this, value);

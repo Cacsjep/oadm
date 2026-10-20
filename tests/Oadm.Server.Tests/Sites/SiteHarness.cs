@@ -157,6 +157,11 @@ internal sealed class SiteTestNode : IAsyncDisposable
         folder ??= Path.Combine(Path.GetTempPath(), "oadm-site-node-" + Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(folder);
         connector ??= new MapConnector();
+        if (owns)
+        {
+            new NodeStore(folder).Update(FakeCards.ChooseCameraCard); // the office card is not reached
+        }
+
         if (config is not null)
         {
             new NodeStore(folder).Update(config);
@@ -165,8 +170,6 @@ internal sealed class SiteTestNode : IAsyncDisposable
         var options = new NodeOptions
         {
             DataDirectory = folder,
-            ListenPort = 0,
-            Announce = false,
             UseSerilog = false,
             HostName = hostName,
             Version = "3.7.0-test",

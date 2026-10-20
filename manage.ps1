@@ -395,9 +395,7 @@ function Invoke-Run {
         }
         'node' {
             Build-Project $SiteNodeProject
-            $nodeArgs = @('--data-dir', (Get-NodeDataDir))
-            if ($script:OptPort) { $nodeArgs += '--port', $script:OptPort }
-            & (Get-AppHost 'Oadm.SiteNode' 'oadm-site-node') @nodeArgs @appArgs
+            & (Get-AppHost 'Oadm.SiteNode' 'oadm-site-node') '--data-dir' (Get-NodeDataDir) @appArgs
             exit $LASTEXITCODE
         }
         'node-app' {

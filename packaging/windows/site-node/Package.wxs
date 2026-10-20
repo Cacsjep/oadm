@@ -3,13 +3,11 @@
   OADM Site Node for Windows (docs/sites.md, "Packaging"): per-machine MSI, x64, one folder Program Files\OADM Site Node
   with the service and the app.
   - Service "OADM Site Node" (OadmSiteNode), automatic start, its own virtual account NT SERVICE\OadmSiteNode (the node
-    runs without administrator rights; it only connects out, and in mode "Wait for the server" listens on TCP 5081; no
-    other service shares the account), restart on failure, also when it stops with an error. Its data folder
+    runs without administrator rights; it only connects out and never listens; no other service shares the account), restart on failure, also when it stops with an error. Its data folder
     %ProgramData%\OADM Site Node (identity, settings, logs) is created for SYSTEM and the service only (the service SID
     S-1-5-80-4118054575-3786589468-426418864-2630448348-754858313 = SHA-1 of "OADMSITENODE", `sc showsid OadmSiteNode`) and
     kept on uninstall. The single-file exe extracts native files below it (runtime), never to a shared temp folder.
-  - No firewall rule: the node connects out. Turning on "Wait for the server" in the app adds the rule
-    "OADM Site Node (TCP 5081)", turning it off removes it; uninstalling removes it too.
+  - No firewall rule: the node only connects out.
   - Start menu shortcut "OADM Site Node" to the app; the folder is on the system PATH for "oadm-site-node status".
   - A silent install takes SERVER=<address> (oadm.example.com, 10.0.0.5, 10.0.0.5:5081): after the service started,
     "oadm-site-node server <address>" sets it, waiting up to 60 s for the service (an address the node refuses fails the
@@ -114,15 +112,8 @@
     <CustomAction Id="OadmSetServer" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
                   Execute="deferred" Return="check" Impersonate="no" />
 
-    <!-- The firewall rule of "Wait for the server" goes with the node. -->
-    <SetProperty Id="OadmRemoveFirewallRule" Value="&quot;[System64Folder]netsh.exe&quot; advfirewall firewall delete rule &quot;name=OADM Site Node (TCP 5081)&quot;"
-                 Before="OadmRemoveFirewallRule" Sequence="execute" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
-    <CustomAction Id="OadmRemoveFirewallRule" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
-                  Execute="deferred" Return="ignore" Impersonate="no" />
-
     <InstallExecuteSequence>
       <Custom Action="OadmSetServer" After="StartServices" Condition="SERVER AND NOT (REMOVE~=&quot;ALL&quot;)" />
-      <Custom Action="OadmRemoveFirewallRule" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
 
     <!-- Setup wizard: welcome, ready, progress, finish with "Launch OADM Site Node" (the app asks for the terms of use and

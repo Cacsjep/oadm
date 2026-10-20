@@ -16,7 +16,7 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
 ## How it works
 
 - **Data folder** `%ProgramData%\OADM Site Node` or `/var/lib/oadm-site-node` (`--data-dir`, `OADM_SITE_NODE_DATA_DIR`):
-  `node.json` (`Config/NodeConfig`: id, mode, server address, cards, all cards, extra subnets, both port lists, requests,
+  `node.json` (`Config/NodeConfig`: id, server address, all cards or the chosen cards, extra subnets, both port lists, requests,
   binding run time left, bound server, the server's own addresses, a new server identity waiting for Accept),
   `identity.bin` (the TLS identity, PKCS#12 under AES-256-GCM) with `local.key` (32 bytes, 0600 on Linux), `logs/`
   (`site-node-*.log` rolling daily or 20 MB, 30 files, 14 days; `connections-yyyyMMdd.log` 30 days and at most 1 GB
@@ -24,33 +24,31 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   for the disk, more are dropped and counted). Never device data or passwords. Only absent files mean a first start:
   `node.json`, `identity.bin` or `local.key` that exist but cannot be read (5 tries) fail the start, damaged content is
   kept as `.unreadable`; writes go through a temporary file flushed to the disk (`Config/DataFiles`).
-- **Links** (`Links/`): every TLS connection to a server is a `SiteLink`; Kestrel serves `SiteNodeService` on it through
-  `AcceptedStreamListener` (no socket endpoint of its own). Mode Connect (default): `OutboundConnector` connects to the
+- **Links** (`Links/`): the node always connects to the server and never listens. Every TLS connection it opens is a
+  `SiteLink`; Kestrel serves `SiteNodeService` on it through `AcceptedStreamListener` (no socket endpoint of its own).
+  `OutboundConnector` connects to the
   typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4 ... 60
   s, started over only after a session that lasted 30 s or served the bound server (a server that accepts TLS and
   closes at once is not tried every second); dual mode where the OS has IPv6, else IPv4. Unbound: any server key (the
   pairing proves it); bound: only the pinned key, another one is noted with where it came from (a waiting one is not
   replaced for an hour, never once accepted); **Accept** lets that identity pair with the code, it binds nothing by
-  itself; binding closed: no connection. `OpenConnections` adds worker links (at most 8). Mode Wait: `InboundListener` listens on
-  5081 (0.0.0.0 without IPv6) and does TLS itself with the same options, so everything above the socket is one code
-  path; 30 new connections a minute per address (IPv6 per /64) before TLS, at most 16 links of servers the node is not
-  bound to (4 per address), each closed after 2 minutes without a call; `NodeAnnouncer`
-  answers mDNS `_oadm-site._tcp` (TXT id, version, state) on every card. Every handshake ends within
-  `SiteTls.HandshakeTimeout`.
+  itself; binding closed: no connection. `OpenConnections` adds worker links to the same address (at most 8). Every
+  handshake ends within `SiteTls.HandshakeTimeout`.
 - **Calls** (`Service/SiteNodeGrpcService`): Hello to anyone; a bound node tells strangers its state, version and
   protocol version only (the bound server also gets its name and the site's). PairStart and Bind while not bound (or for
   an accepted new server identity), J-PAKE: PairStart answers with a fresh participant's rounds 1 and 2, Bind checks the
   server's round 2 and proof; PairStart 10 a minute per address and 30 in all. Calls of servers the node is not bound to
-  may send at most 64 KB (`NodeHost.LinkLimits`). Everything else only to the bound identity, one session at a time, checked
-  on every call (`LinkRegistry.RefusalFor`: the session of the oldest link that bound or served; another address with that
-  identity is refused "Another OADM server with this identity is connected from ..."). Kestrel keeps idle links (no
+  may send at most 64 KB (`NodeHost.LinkLimits`). Everything else only to the bound identity, checked on every call
+  against the binding of that moment. All links go to the one address the node chose, so they are one server session (the
+  server refuses a second control link of the same identity). Kestrel keeps idle links (no
   keep-alive timeout: the HTTP/2 pings keep them). Refusals: FAILED_PRECONDITION with the text; a wrong code PERMISSION_DENIED; too many
   wrong codes RESOURCE_EXHAUSTED.
 - **States** (`State/BindingState`): binding open for 24 hours of run time (`BindingClock` ticks every minute and saves),
   then closed until Allow binding; the pairing code lives in memory (new at start, Allow binding, Reset, Unbind and after
   5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so parallel links get no more
 than 5 guesses); Reset = new id, key and code, the server forgotten.
-- **Reach** (`Networks/NetworkScope`): the reached cards' networks and the extra networks (at least /8, IPv6 /16), never
+- **Reach** (`Networks/NetworkScope`): all cards (default) or the chosen cards (no chosen card = all cards; a machine that
+  also sits in an office network chooses the camera cards), and the extra networks (at least /8, IPv6 /16), never
   special addresses (0.0.0.0/8, loopback, 169.254/16, multicast, 240/4; IPv6 loopback, link-local, multicast) and never
   the node's own card addresses. `CardWatcher` reads the cards every 10 s and on the OS's address change; a change goes
   to the server's Watch and the app at once and relays bind again.
@@ -78,7 +76,7 @@ than 5 guesses); Reset = new id, key and code, the server forgotten.
 ## Development
 
 `manage run node` builds and runs the node on the console and `manage run node-app` its app, both on the data folder
-`artifacts/dev-node` (never the installed node's; `--data` for another one, `--port` for "Wait for the server"). With
+`artifacts/dev-node` (never the installed node's; `--data` for another one). With
 `manage run server`: turn on Accept site nodes on the Sites page, enter `localhost` as the server in the node app, then
 Bind with the code. Changes in the app need an administrator (UAC).
 
@@ -87,8 +85,8 @@ Bind with the code. Changes in the app need an administrator (UAC).
 ```
 oadm-site-node                          run the service on a console
 oadm-site-node status | pairing-code | allow-binding | accept-server | reset
-oadm-site-node server <address> | server --wait
-oadm-site-node networks [card <name> on|off | all on|off | add|remove <network>]
+oadm-site-node server <address>
+oadm-site-node networks [card <name> on|off | all on | add|remove <network>]
 oadm-site-node ports [allow|remove|dismiss connect|listen tcp|udp <port>]
 oadm-site-node log [count]
 ```
@@ -96,18 +94,15 @@ oadm-site-node log [count]
 `--timeout <seconds>` waits that long for the service to answer (the MSI's `SERVER=<address>` runs `server <address>
 --timeout 60` right after starting the service).
 
-**Firewall (Windows)**: the MSI opens no port. "Wait for the server" adds the inbound rule "OADM Site Node (TCP 5081)"
-(Domain and Private, for `oadm-site-node.exe`), "Connect to the server" removes it (`Admin/NodeFirewall`). The service
-runs as its own unprivileged account and cannot change the firewall, so the administrator's process that sent the change runs netsh: the
-elevated copy of the app, the app running as administrator, or the command line. Uninstalling removes the rule. Linux:
-no firewall change.
+**Firewall**: none. The node only connects out to the server (TCP 5081 unless the address names another port); the
+installers open no port, on Windows and Linux.
 
 ## Tests
 
 `tests/Oadm.SiteNode.Tests`: unit tests with a fake clock and fake cards (states, pairing, networks, ports, the
 connection log, dial limits with gates, the admin commands, DNS and mDNS records, the range scan) and in-process tests:
-the real node (Kestrel, links) against a test server over loopback in both modes, pairing end to end, dial on real
-loopback sockets (refused vs site errors), relays UDP and TCP, one session at a time, Reset, Accept of a new identity.
+the real node (Kestrel, links) against a test server over loopback, pairing end to end, dial on real loopback sockets
+(refused vs site errors), relays UDP and TCP, reconnects with backoff, worker links, Reset, Accept of a new identity.
 `tests/Oadm.SiteNode.App.Tests`: the app's view model and headless windows (screenshots with `OADM_SCREENSHOT_DIR`).
 
 ## Manual test plan
@@ -122,10 +117,10 @@ behind each. Read-only towards the camera.
    Sites page, type the server's address in the app: "Connected to ...". Show pairing code (UAC / pkexec prompt), Bind
    on the Sites page with it. A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
    Five wrong codes: a new code, Bind refused for 10 minutes.
-3. **Inbound**: switch the node to Wait for the server; the Sites page's Search finds it (state unbound), Add manually by
-   address works; bind; a second OADM server is refused ("This site node is bound to another OADM server.").
-4. **Two network cards**: the office card (default router) is not reached; a camera on the office network is "outside
-   the networks"; turning on the card or All cards reaches it; an extra network (a routed camera VLAN) is reached.
+3. **Another server**: point the bound node at a second OADM server; it refuses the connection (the pinned key) and the
+   app shows the new identity with **Accept**; nothing binds without the pairing code.
+4. **Two network cards**: All cards (default) reaches both; choose only the camera card: a camera on the office network
+   is "outside the networks"; All cards again reaches it; an extra network (a routed camera VLAN) is reached.
 5. **Ports**: add a camera on 8443: the server asks, the app lists "Connect to TCP 8443: camera ..."; Allow; the camera
    is reached. Dismiss: the server asks again later. A port not allowed is never dialed (connection log: "Port not
    allowed").
@@ -135,7 +130,8 @@ behind each. Read-only towards the camera.
 8. **NTP relay**: turn on NTP at sites; the app asks for Listen on UDP 123; Allow; the camera set to "Use OADM as NTP
    server" syncs; on Linux without `CAP_NET_BIND_SERVICE` the relay says "No permission to use UDP 123"; another program
    on UDP 123: "UDP 123 is used by another program".
-9. **Reset**: Reset in the app (confirmed); the Sites page shows Not bound; bind again with the new code.
+9. **Reset**: Reset in the app (confirmed); the node connects again with a new identity and waits to be bound; the old
+   site's devices show Site offline; bind the node again with the new code and Replace the old site with it.
 10. **Server identity lost**: replace the server's key (test server only); the app shows "... presents a new identity";
     Accept; the node connects again.
 11. **Restart and clock**: restart the service and the machine; the binding time left only counts run time; a node

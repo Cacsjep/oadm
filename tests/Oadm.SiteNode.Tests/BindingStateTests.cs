@@ -278,7 +278,7 @@ public sealed class BindingStateTests : IDisposable
         var attempts = new List<(SiteLink Link, PakeRound2 Round2, byte[] Proof)>();
         for (var i = 0; i < 12; i++)
         {
-            var link = new SiteLink(outbound: false, worker: false, $"10.0.{i}.5:51000", server, _identity.Fingerprint);
+            var link = new SiteLink(worker: false, $"10.0.{i}.5:51000", server, _identity.Fingerprint);
             var pairing = new ServerPairing(Other(code), link.NodeFingerprint, link.ServerFingerprint);
             var (round1, round2) = _state.StartPairing(link, pairing.Round1);
             var (serverRound2, proof) = pairing.Continue(round1, round2);
@@ -305,16 +305,16 @@ public sealed class BindingStateTests : IDisposable
         Assert.Equal(AdminTexts.TooManyPairingAttempts, refused.Message);
 
         // One /64 counts as one address; other addresses still get in until the total.
-        var sameNet = new SiteLink(outbound: false, worker: false, "[2001:db8:1:2::5]:51000", server, _identity.Fingerprint);
-        var sameNetOther = new SiteLink(outbound: false, worker: false, "[2001:db8:1:2::77]:51000", server, _identity.Fingerprint);
+        var sameNet = new SiteLink(worker: false, "[2001:db8:1:2::5]:51000", server, _identity.Fingerprint);
+        var sameNetOther = new SiteLink(worker: false, "[2001:db8:1:2::77]:51000", server, _identity.Fingerprint);
         for (var i = 0; i < BindingState.PairAttemptsPerAddress; i++)
             _state.StartPairing(sameNet, new ServerPairing(_state.PairingCode, [1], [2]).Round1);
         Assert.Throws<NodeRefusalException>(() => _state.StartPairing(sameNetOther, new ServerPairing(_state.PairingCode, [1], [2]).Round1));
 
         for (var i = 0; i < BindingState.PairAttemptsTotal - 2 * BindingState.PairAttemptsPerAddress; i++)
-            _state.StartPairing(new SiteLink(outbound: false, worker: false, $"10.9.{i}.1:51000", server, _identity.Fingerprint), new ServerPairing(_state.PairingCode, [1], [2]).Round1);
+            _state.StartPairing(new SiteLink(worker: false, $"10.9.{i}.1:51000", server, _identity.Fingerprint), new ServerPairing(_state.PairingCode, [1], [2]).Round1);
         Assert.Equal(StatusCode.ResourceExhausted, Assert.Throws<NodeRefusalException>(() =>
-            _state.StartPairing(new SiteLink(outbound: false, worker: false, "10.99.0.1:51000", server, _identity.Fingerprint), new ServerPairing(_state.PairingCode, [1], [2]).Round1)).Code);
+            _state.StartPairing(new SiteLink(worker: false, "10.99.0.1:51000", server, _identity.Fingerprint), new ServerPairing(_state.PairingCode, [1], [2]).Round1)).Code);
 
         // A minute later every address may try again.
         _time.Advance(TimeSpan.FromMinutes(1));
@@ -352,7 +352,7 @@ public sealed class BindingStateTests : IDisposable
     }
 
     private SiteLink Link(System.Security.Cryptography.X509Certificates.X509Certificate2 server) =>
-        new(outbound: true, worker: false, "10.0.0.5:51000", server, _identity.Fingerprint);
+        new(worker: false, "10.0.0.5:51000", server, _identity.Fingerprint);
 
     private void Bind(SiteLink link, string code)
     {

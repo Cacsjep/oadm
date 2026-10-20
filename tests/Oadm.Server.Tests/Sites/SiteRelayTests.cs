@@ -208,8 +208,6 @@ public sealed class SiteRelayTests
             var app = NodeHost.Build(new NodeOptions
             {
                 DataDirectory = folder,
-                ListenPort = 0,
-                Announce = false,
                 UseSerilog = false,
                 HostName = "relay-pc",
                 Version = "3.7.0-test",

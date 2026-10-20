@@ -12,17 +12,13 @@ service SiteService {
   // The list on subscribe and after every change (state, counts, round trip), at most every second.
   rpc WatchSites (Empty) returns (stream SiteList);
   // Administrator: turns the site listener on or off (setting Sites.Accept) without a restart. Off closes every node
-  // connection (inbound sites stay reachable).
+  // connection. Site nodes always connect to the server; the server never connects to a node.
   rpc SetAccept (SetAcceptRequest) returns (SiteList);
-  // Administrator: nodes that wait for the server (inbound), by mDNS for `duration_seconds` or at one address.
-  rpc FindNodes (FindNodesRequest) returns (stream FoundNode);
   // Administrator. INVALID_ARGUMENT for a bad name or a wrong pairing code ("The pairing code is wrong."), ALREADY_EXISTS
   // for a node id or key the server knows ("This site node is a copy of X. Click Reset on the copy."),
   // FAILED_PRECONDITION while binding is closed on the node, RESOURCE_EXHAUSTED over 100 sites or after 5 wrong codes.
   rpc BindSite (BindSiteRequest) returns (Site);
   rpc RenameSite (RenameSiteRequest) returns (Site);
-  // Inbound sites only: another address of the same node (checked by its key).
-  rpc ChangeSiteAddress (ChangeSiteAddressRequest) returns (Site);
   // Moves every device of a site to another bound site after checking each one there. Reply: the devices that stayed.
   rpc ReplaceSite (ReplaceSiteRequest) returns (ReplaceSiteReply);
   rpc RemoveSite (RemoveSiteRequest) returns (RemoveSiteReply);
@@ -33,26 +29,19 @@ enum SiteState {
   SITE_STATE_ONLINE = 1;
   SITE_STATE_OFFLINE = 2;
   SITE_STATE_NOT_BOUND = 3;        // the node was reset or forgot the server
-  SITE_STATE_WAITING = 4;          // a node that connected or was found and waits to be bound (not a site yet)
-  SITE_STATE_BOUND_ELSEWHERE = 5;  // found node bound to another server (greyed)
-  SITE_STATE_BINDING_CLOSED = 6;   // found node with binding closed (greyed)
+  SITE_STATE_WAITING = 4;          // a node that connected and waits to be bound (not a site yet)
+  SITE_STATE_BOUND_ELSEWHERE = 5;  // a connected node bound to another server (greyed)
+  SITE_STATE_BINDING_CLOSED = 6;   // a connected node with binding closed (greyed)
   SITE_STATE_REMOVED = 7;          // removed with Keep devices: listed while it still has devices (Replace with, Remove devices)
-}
-
-enum SiteMode {
-  SITE_MODE_UNSPECIFIED = 0;
-  SITE_MODE_OUTBOUND = 1;          // the node connects to the server (default)
-  SITE_MODE_INBOUND = 2;           // the server connects to the node
 }
 
 message Site {
   string id = 1;                   // Guid; for a waiting node empty (use node_id)
   string name = 2;
   SiteState state = 3;
-  SiteMode mode = 4;
+  reserved 4, 7;                   // mode and node_port: site nodes always connect to the server
   string node_id = 5;
-  string node_address = 6;         // inbound: where the server connects; outbound: last seen from
-  int32 node_port = 7;
+  string node_address = 6;         // where the node last connected from
   string version = 8;
   bool update_available = 9;
   int32 device_count = 10;
@@ -75,13 +64,6 @@ message SiteList {
 
 message SetAcceptRequest { bool accept = 1; }
 
-message FindNodesRequest {
-  int32 duration_seconds = 1;      // mDNS search; ignored with an address
-  string address = 2;              // Add manually: host or IP, optional port
-}
-
-message FoundNode { Site node = 1; bool finished = 2; }
-
 message BindSiteRequest {
   string node_id = 1;
   string name = 2;
@@ -92,8 +74,6 @@ message BindSiteRequest {
 }
 
 message RenameSiteRequest { string id = 1; string name = 2; }
-
-message ChangeSiteAddressRequest { string id = 1; string address = 2; int32 port = 3; }
 
 message ReplaceSiteRequest { string id = 1; string new_site_id = 2; }
 

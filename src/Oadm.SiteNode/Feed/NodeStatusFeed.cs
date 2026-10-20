@@ -11,7 +11,7 @@ using Oadm.SiteNode.State;
 
 namespace Oadm.SiteNode.Feed;
 
-/// <summary>The connection to the server as the app shows it, set by the outbound connector or the inbound listener.</summary>
+/// <summary>The connection to the server as the app shows it, set by the outbound connector.</summary>
 public sealed class ConnectionState
 {
     private readonly Lock _lock = new();
@@ -110,9 +110,8 @@ public sealed class NodeStatusFeed
                 NodeBinding.Closed => Contracts.SiteNode.NodeState.UnboundClosed,
                 _ => Contracts.SiteNode.NodeState.UnboundOpen,
             },
-            Mode = config.Mode == NodeLinkMode.Wait ? NodeMode.Wait : NodeMode.Connect,
             SiteName = config.BoundServers.FirstOrDefault()?.SiteName ?? "",
-            AllCards = config.AllCards,
+            AllCards = NetworkScope.ReachesAllCards(config),
             ShortConnections = _dialer.ShortConnections,
             PermanentConnections = _dialer.PermanentConnections,
             Version = _options.Version,
@@ -153,15 +152,13 @@ public sealed class NodeStatusFeed
             Version = _options.Version,
             HostName = _options.HostName,
             Binding = _state.Binding,
-            Mode = config.Mode,
             ServerAddress = config.ServerAddress,
-            ListenPort = _options.ListenPort,
             BindingHoursLeft = Math.Round(_state.BindingLeft.TotalHours, 2),
             Bound = bound is null ? null : new BoundServerView(bound.Name, bound.Fingerprint, bound.BoundUtc, bound.SiteName),
             ConnectionText = _connection.Text,
             Connected = _connection.Connected,
             Cards = _networks.Cards(),
-            AllCards = config.AllCards,
+            AllCards = NetworkScope.ReachesAllCards(config),
             ExtraSubnets = config.ExtraSubnets,
             Allowed = config.Allowed,
             Requested = config.Requested,

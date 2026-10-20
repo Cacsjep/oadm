@@ -52,7 +52,18 @@ internal sealed class FakeCards(params NetworkCard[] cards) : INetworkCards
             Cards[index] = card;
     }
 
-    /// <summary>Loopback as a camera network (reached by default), and an office card with the default router.</summary>
+    /// <summary>
+    /// The machine also sits in the office network, so only the camera card ("cam") is chosen (docs/sites.md, "Reach"):
+    /// the office card's addresses stay outside the node's networks.
+    /// </summary>
+    public static void ChooseCameraCard(Oadm.SiteNode.Config.NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        config.AllCards = false;
+        config.Cards["cam"] = true;
+    }
+
+    /// <summary>Loopback as a camera network, and an office card with the default router (not reached once <see cref="ChooseCameraCard"/> chose the camera card).</summary>
     public static FakeCards LoopbackSite() => new(
         new NetworkCard("cam", "Cameras", [new CardAddress(IPAddress.Loopback, 8)], HasDefaultRouter: false),
         new NetworkCard("office", "Office", [new CardAddress(IPAddress.Parse("10.0.0.7"), 24)], HasDefaultRouter: true));

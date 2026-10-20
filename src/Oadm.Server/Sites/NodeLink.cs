@@ -26,14 +26,13 @@ public sealed class NodeLink : IAsyncDisposable
     private int _handedOut;
     private bool _trusted;
 
-    public NodeLink(SslStream tls, IPEndPoint? remote, bool openedByNode)
+    public NodeLink(SslStream tls, IPEndPoint? remote)
     {
         ArgumentNullException.ThrowIfNull(tls);
         NodeFingerprint = tls.RemoteCertificate is { } certificate ? SiteTls.Fingerprint(certificate) : [];
         NodeFingerprintHex = Convert.ToHexString(NodeFingerprint);
         Remote = remote;
         RemoteHost = remote is null ? string.Empty : (remote.Address.IsIPv4MappedToIPv6 ? remote.Address.MapToIPv4() : remote.Address).ToString();
-        OpenedByNode = openedByNode;
         _stream = new LinkStream(tls);
         var handler = new SocketsHttpHandler
         {
@@ -88,9 +87,6 @@ public sealed class NodeLink : IAsyncDisposable
 
     /// <summary>"10.0.0.7" (IPv4-mapped addresses as IPv4).</summary>
     public string RemoteHost { get; }
-
-    /// <summary>The node opened it (outbound mode); false: the server dialed the node.</summary>
-    public bool OpenedByNode { get; }
 
     /// <summary>The node's Hello on this link (set by whoever asked first).</summary>
     public HelloReply? Hello { get; set; }

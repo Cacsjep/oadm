@@ -43,8 +43,6 @@ internal sealed class TestNode : IAsyncDisposable
         var nodeOptions = new NodeOptions
         {
             DataDirectory = folder.Path,
-            ListenPort = 0,
-            Announce = false,
             UseSerilog = false,
             HostName = "site-pc",
             Version = "3.7.0-test",
@@ -56,6 +54,7 @@ internal sealed class TestNode : IAsyncDisposable
             MaxBackoff = TimeSpan.FromSeconds(1),
         };
         options?.Invoke(nodeOptions);
+        new NodeStore(folder.Path).Update(FakeCards.ChooseCameraCard); // the office card is not reached
         if (config is not null)
             new NodeStore(folder.Path).Update(config);
         var app = NodeHost.Build(nodeOptions);
@@ -140,18 +139,6 @@ internal sealed class TestServer : IAsyncDisposable
                 await link.DisposeAsync();
             }
         }
-    }
-
-    /// <summary>Opens TCP + TLS to a waiting node (mode Wait) from <paramref name="local"/> (127.0.0.1 by default).</summary>
-    public async Task<ServerLink> ConnectAsync(int port, IPAddress? local = null)
-    {
-        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        socket.Bind(new IPEndPoint(local ?? IPAddress.Loopback, 0));
-        await socket.ConnectAsync(IPAddress.Loopback, port);
-        var tls = new SslStream(new NetworkStream(socket, ownsSocket: true), leaveInnerStreamOpen: false);
-        using var handshake = new CancellationTokenSource(SiteTls.HandshakeTimeout);
-        await tls.AuthenticateAsClientAsync(SiteTls.ClientOptions(Identity, fp => fp is not null), handshake.Token);
-        return Track(new ServerLink(tls, Fingerprint));
     }
 
     public async ValueTask DisposeAsync()

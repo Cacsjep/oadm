@@ -1,11 +1,15 @@
 namespace Oadm.Core.Sites;
 
-/// <summary>How the server and a site node find each other (docs/sites.md, Decisions: Direction).</summary>
+/// <summary>
+/// How the server and a site node find each other (docs/sites.md, Decisions: Direction): the node always connects to the
+/// server's site port. The column Sites.Mode stays for the migrations (never deleted); nothing else is stored in it.
+/// </summary>
 public enum SiteMode
 {
-    /// <summary>The node connects to the server's site port (default).</summary>
+    /// <summary>The node connects to the server's site port (the only mode).</summary>
     Outbound = 0,
-    /// <summary>The server connects to the node's port.</summary>
+
+    /// <summary>The former mode where the server connected to the node; kept only so stored rows still read. Treated as <see cref="Outbound"/>.</summary>
     Inbound = 1,
 }
 
@@ -29,11 +33,13 @@ public sealed class Site
     /// <summary>Upper invariant of <see cref="Name"/>: the unique index.</summary>
     public string NormalizedName { get; set; } = string.Empty;
 
+    /// <summary>Always <see cref="SiteMode.Outbound"/> (the column stays for the migrations).</summary>
     public SiteMode Mode { get; set; }
 
-    /// <summary>Inbound: where the server connects. Outbound: where the node last connected from.</summary>
+    /// <summary>Where the node last connected from.</summary>
     public string? Address { get; set; }
 
+    /// <summary>Not used (the column stays for the migrations): the node connects from a port of its own choice.</summary>
     public int? Port { get; set; }
 
     /// <summary>Hex SHA-256 of the node's certificate, pinned at bind.</summary>

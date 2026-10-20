@@ -36,7 +36,7 @@ public sealed class SiteRefusedException : Exception
     public StatusCode Code { get; } = StatusCode.FailedPrecondition;
 }
 
-/// <summary>Binding, renaming, the address and forgetting of sites (docs/sites.md, Binding).</summary>
+/// <summary>Binding, renaming and forgetting of sites (docs/sites.md, Binding).</summary>
 public sealed partial class SiteManager
 {
     private readonly SemaphoreSlim _bindLock = new(1, 1);
@@ -95,7 +95,7 @@ public sealed partial class SiteManager
             }
         }
 
-        var link = await LinkForBindAsync(node, ct).ConfigureAwait(false);
+        var link = LinkForBind(node);
         if (link.Hello?.ProtocolVersion < _options.MinProtocolVersion)
         {
             throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.TooOld);
@@ -147,46 +147,9 @@ public sealed partial class SiteManager
         };
     }
 
-    // The waiting node's link; a node that waits for the server closes idle links of servers it is not bound to, so its
-    // address is reached again (the same key only).
-    private async Task<NodeLink> LinkForBindAsync(WaitingNode node, CancellationToken ct)
-    {
-        if (!node.Link.IsClosed)
-        {
-            return node.Link;
-        }
-
-        if (node.Mode != SiteMode.Inbound || node.Address is not { } address)
-        {
-            throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone);
-        }
-
-        NodeLink link;
-        try
-        {
-            link = await ConnectToNodeAsync(address.Host, address.Port, ct).ConfigureAwait(false);
-        }
-        catch (Exception e) when (e is System.Net.Sockets.SocketException or IOException or System.Security.Authentication.AuthenticationException || (e is OperationCanceledException && !ct.IsCancellationRequested))
-        {
-            throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering);
-        }
-
-        if (!string.Equals(link.NodeFingerprintHex, node.Key, StringComparison.OrdinalIgnoreCase) || await HelloAsync(link, _options.HelloTimeout).ConfigureAwait(false) is null)
-        {
-            await link.DisposeAsync().ConfigureAwait(false);
-            throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.OtherNode);
-        }
-
-        lock (_lock)
-        {
-            if (_waiting.GetValueOrDefault(node.Key) == node)
-            {
-                _waiting[node.Key] = new WaitingNode(link, link.Hello!, node.Mode, node.Address, node.Since) { CopyOf = node.CopyOf, RebindOf = node.RebindOf };
-            }
-        }
-
-        return link;
-    }
+    // The waiting node's link (the connection the node opened); gone when the node went away.
+    private static NodeLink LinkForBind(WaitingNode node) =>
+        node.Link.IsClosed ? throw new SiteRefusedException(StatusCode.NotFound, SiteTexts.NodeGone) : node.Link;
 
     // PairStart and Bind: the server's round 1, the node's rounds 1 and 2, the server's round 2 and proof, the node's proof.
     private async Task PairAsync(WaitingNode node, NodeLink link, string siteName, string normalized, CancellationToken ct)
@@ -247,9 +210,7 @@ public sealed partial class SiteManager
     private async Task<Site> StoreBoundAsync(WaitingNode node, NodeLink link, string siteName, Guid? rebind)
     {
         var now = Time.GetUtcNow().UtcDateTime;
-        var mode = node.Mode;
-        var host = node.Address?.Host ?? link.RemoteHost;
-        var port = node.Address?.Port;
+        var host = link.RemoteHost;
         var version = link.Hello?.Version ?? node.Hello.Version;
         Site row;
         await using (var db = await _db.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false))
@@ -266,9 +227,9 @@ public sealed partial class SiteManager
 
             row.Name = siteName;
             row.NormalizedName = siteName.ToUpperInvariant();
-            row.Mode = mode;
+            row.Mode = SiteMode.Outbound;
             row.Address = host;
-            row.Port = port;
+            row.Port = null;
             row.BoundUtc = now;
             row.LastSeenUtc = now;
             row.Version = version;
@@ -287,7 +248,6 @@ public sealed partial class SiteManager
             {
                 entry.Row.Name = row.Name;
                 entry.Row.NormalizedName = row.NormalizedName;
-                entry.Row.Mode = row.Mode;
                 entry.Row.Address = row.Address;
                 entry.Row.Port = row.Port;
                 entry.Row.BoundUtc = row.BoundUtc;
@@ -402,74 +362,6 @@ public sealed partial class SiteManager
         return row;
     }
 
-    /// <summary>Inbound sites: another address of the same node (its key must match).</summary>
-    public async Task<Site> ChangeAddressAsync(Guid siteId, string address, int port, CancellationToken ct)
-    {
-        var text = port > 0 && !address.Contains(':', StringComparison.Ordinal) ? address.Trim() + ":" + port : address;
-        var target = ParseNodeAddress(text) ?? throw new SiteRefusedException(StatusCode.InvalidArgument, "Enter an address such as 192.168.0.5 or node.example.com:5081.");
-        string pinned;
-        lock (_lock)
-        {
-            var entry = _sites.GetValueOrDefault(siteId) ?? throw new SiteRefusedException(StatusCode.NotFound, "The site no longer exists.");
-            if (entry.Row.Mode != SiteMode.Inbound)
-            {
-                throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.InboundOnly);
-            }
-
-            pinned = entry.Row.NodeKeyFingerprint;
-        }
-
-        NodeLink link;
-        try
-        {
-            link = await ConnectToNodeAsync(target.Host, target.Port, ct).ConfigureAwait(false);
-        }
-        catch (Exception e) when (e is System.Net.Sockets.SocketException or IOException or System.Security.Authentication.AuthenticationException || (e is OperationCanceledException && !ct.IsCancellationRequested))
-        {
-            throw new SiteRefusedException(StatusCode.Unavailable, SiteTexts.NodeNotAnswering);
-        }
-
-        var same = string.Equals(link.NodeFingerprintHex, pinned, StringComparison.OrdinalIgnoreCase);
-        await link.DisposeAsync().ConfigureAwait(false);
-        if (!same)
-        {
-            throw new SiteRefusedException(StatusCode.FailedPrecondition, SiteTexts.OtherNode);
-        }
-
-        string old;
-        SiteSession? session;
-        await using (var db = await _db.CreateDbContextAsync(ct).ConfigureAwait(false))
-        {
-            await db.Sites.Where(s => s.Id == siteId).ExecuteUpdateAsync(u => u
-                .SetProperty(s => s.Address, target.Host)
-                .SetProperty(s => s.Port, target.Port), ct).ConfigureAwait(false);
-        }
-
-        Site row;
-        lock (_lock)
-        {
-            var entry = _sites[siteId];
-            old = entry.Row.Address + ":" + entry.Row.Port;
-            entry.Row.Address = target.Host;
-            entry.Row.Port = target.Port;
-            session = entry.Session;
-            row = Copy(entry.Row);
-        }
-
-        if (session is not null)
-        {
-            await session.EndAsync().ConfigureAwait(false); // reached again at the new address
-        }
-        else
-        {
-            StartConnector(siteId);
-        }
-
-        await _audit.WriteAsync(SiteAudit.AddressChanged, row.Name, $"{old} to {target.Host}:{target.Port}", CancellationToken.None).ConfigureAwait(false);
-        RaiseList();
-        return row;
-    }
-
     /// <summary>
     /// Forgets the site: sends Unbind (the node opens binding again), ends the session and deletes the row. Returns whether
     /// the node answered; a node that does not answer is forgotten anyway.
@@ -477,12 +369,10 @@ public sealed partial class SiteManager
     public async Task<bool> ForgetAsync(Guid siteId, CancellationToken ct)
     {
         SiteSession? session;
-        CancellationTokenSource? connector;
         lock (_lock)
         {
             var entry = _sites.GetValueOrDefault(siteId) ?? throw new SiteRefusedException(StatusCode.NotFound, "The site no longer exists.");
             session = entry.Session;
-            connector = entry.Connector;
         }
 
         var answered = false;
@@ -508,14 +398,9 @@ public sealed partial class SiteManager
             _sites.Remove(siteId);
         }
 
-        if (connector is not null)
-        {
-            await connector.CancelAsync().ConfigureAwait(false);
-        }
-
         if (session is not null)
         {
-            // An outbound node that unbound itself connects again and waits to be bound.
+            // A node that unbound itself connects again and waits to be bound.
             await session.EndAsync().ConfigureAwait(false);
         }
 

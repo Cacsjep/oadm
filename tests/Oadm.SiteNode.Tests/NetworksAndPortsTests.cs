@@ -27,26 +27,35 @@ public sealed class NetworksAndPortsTests : IDisposable
     public void Dispose() => _folder.Dispose();
 
     [Fact]
-    public void EveryCardButTheOneWithTheDefaultRouterIsReachedByDefault()
+    public void EveryCardIsReachedByDefault()
     {
+        Assert.True(_store.Read(c => c.AllCards));
         Assert.True(_scope.Reaches(IPAddress.Parse("192.168.0.20")));
         Assert.True(_scope.Reaches(IPAddress.Parse("fd00::20")));
-        Assert.False(_scope.Reaches(IPAddress.Parse("10.0.0.20")));
+        Assert.True(_scope.Reaches(IPAddress.Parse("10.0.0.20"))); // the card with the default router too
         Assert.False(_scope.Reaches(IPAddress.Parse("192.168.1.20")));
         Assert.False(_scope.Reaches(IPAddress.Parse("8.8.8.8")));
-        Assert.Contains(_scope.Cards(), c => c.Id == "office" && !c.Reached && c.HasDefaultRouter);
+        Assert.Contains(_scope.Cards(), c => c.Id == "office" && c.Reached && c.HasDefaultRouter);
         Assert.Contains(_scope.Cards(), c => c.Id == "cam" && c.Reached && c.Addresses.Contains("192.168.0.5/24"));
     }
 
     [Fact]
-    public void CardsAllCardsAndExtraSubnetsWidenOnlyWhatTheAppAllows()
+    public void ChosenCardsRestrictTheReachAndExtraSubnetsWidenIt()
     {
-        _store.Update(c => c.Cards["office"] = true);
-        Assert.True(_scope.Reaches(IPAddress.Parse("10.0.0.20")));
-        _store.Update(c => c.Cards["cam"] = false);
-        Assert.False(_scope.Reaches(IPAddress.Parse("192.168.0.20")));
-        _store.Update(c => c.AllCards = true);
+        // The machine also sits in the office network: only the camera card is chosen.
+        _store.Update(c =>
+        {
+            c.AllCards = false;
+            c.Cards["cam"] = true;
+        });
         Assert.True(_scope.Reaches(IPAddress.Parse("192.168.0.20")));
+        Assert.False(_scope.Reaches(IPAddress.Parse("10.0.0.20")));
+        Assert.Contains(_scope.Cards(), c => c.Id == "office" && !c.Reached);
+
+        // No chosen card is all cards again (a choice of none would reach nothing); false entries of older versions count as none.
+        _store.Update(c => c.Cards["cam"] = false);
+        Assert.True(NetworkScope.ReachesAllCards(_store.Snapshot()));
+        Assert.True(_scope.Reaches(IPAddress.Parse("10.0.0.20")));
 
         Assert.False(_scope.Reaches(IPAddress.Parse("10.20.5.9")));
         _store.Update(c => c.ExtraSubnets.Add("10.20.0.0/16"));
@@ -104,6 +113,8 @@ public sealed class NetworksAndPortsTests : IDisposable
     public void TheLocalAddressTowardsADeviceIsTheReachedCardOnItsNetwork()
     {
         Assert.Equal(IPAddress.Parse("192.168.0.5"), _scope.LocalAddressFor(IPAddress.Parse("192.168.0.30")));
+        Assert.Equal(IPAddress.Parse("10.0.0.7"), _scope.LocalAddressFor(IPAddress.Parse("10.0.0.30"))); // all cards by default
+        _store.Update(FakeCards.ChooseCameraCard);
         Assert.Null(_scope.LocalAddressFor(IPAddress.Parse("10.0.0.30")));
     }
 
@@ -185,17 +196,17 @@ public sealed class NetworksAndPortsTests : IDisposable
     {
         _store.Update(c =>
         {
+            c.AllCards = false;
             c.Cards["office"] = true;
             c.ExtraSubnets.Add("10.20.0.0/16");
-            c.Mode = NodeLinkMode.Wait;
             c.Allowed.Add(new PortEntry(PortUse.Listen, PortProtocol.Udp, 123, "NTP server"));
         });
 
         var reloaded = new NodeStore(_folder.Path).Snapshot();
 
         Assert.True(reloaded.Cards["office"]);
+        Assert.False(reloaded.AllCards);
         Assert.Equal(["10.20.0.0/16"], reloaded.ExtraSubnets);
-        Assert.Equal(NodeLinkMode.Wait, reloaded.Mode);
         Assert.Contains(reloaded.Allowed, p => p is { Use: PortUse.Listen, Protocol: PortProtocol.Udp, Port: 123 });
         Assert.Equal(_store.Read(c => c.Id), reloaded.Id);
         Assert.DoesNotContain("password", File.ReadAllText(Path.Combine(_folder.Path, NodeStore.FileName)), StringComparison.OrdinalIgnoreCase);

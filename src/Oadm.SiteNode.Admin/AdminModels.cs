@@ -17,17 +17,6 @@ public enum NodeBinding
     Bound,
 }
 
-/// <summary>How the node and the server find each other.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<NodeLinkMode>))]
-public enum NodeLinkMode
-{
-    /// <summary>The node connects to the server (default).</summary>
-    Connect,
-
-    /// <summary>The node waits for the server on its port.</summary>
-    Wait,
-}
-
 /// <summary>Connect to (devices) or Listen on (relays).</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<PortUse>))]
 public enum PortUse
@@ -76,25 +65,23 @@ public sealed class NodeView
     public string Version { get; init; } = "";
     public string HostName { get; init; } = "";
     public NodeBinding Binding { get; init; }
-    public NodeLinkMode Mode { get; init; }
 
     /// <summary>The typed server address ("oadm.example.com", "10.0.0.5:5081"); empty when none.</summary>
     public string ServerAddress { get; init; } = "";
-
-    /// <summary>The port the node waits on in mode Wait.</summary>
-    public int ListenPort { get; init; }
 
     /// <summary>Hours of run time left for binding (only while not bound and open).</summary>
     public double BindingHoursLeft { get; init; }
 
     public BoundServerView? Bound { get; init; }
 
-    /// <summary>"Connected to 10.0.0.5:5081", "Cannot reach 10.0.0.5:5081", "Waiting for the server on port 5081".</summary>
+    /// <summary>"Connected to 10.0.0.5:5081", "Cannot reach 10.0.0.5:5081".</summary>
     public string ConnectionText { get; init; } = "";
 
     public bool Connected { get; init; }
 
     public IReadOnlyList<CardView> Cards { get; init; } = [];
+
+    /// <summary>The node reaches every card (the default, or no card chosen).</summary>
     public bool AllCards { get; init; }
     public IReadOnlyList<string> ExtraSubnets { get; init; } = [];
     public IReadOnlyList<PortEntry> Allowed { get; init; } = [];

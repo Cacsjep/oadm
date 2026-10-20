@@ -101,7 +101,7 @@ single-file into `artifacts/publish/site-node/<rid>` and `artifacts/publish/site
 | Service | "OADM Site Node" (`OadmSiteNode`), automatic, virtual account `NT SERVICE\OadmSiteNode`, restart on failure and after a stop with an error (exit code 1) | systemd `oadm-site-node.service`, user `oadm-site-node` (created by postinst), `Type=notify`, `AmbientCapabilities=CAP_NET_BIND_SERVICE` (relays below 1024), `RuntimeDirectory=oadm-site-node` (`/run/oadm-site-node/admin.sock`), `Restart=on-failure` |
 | Data folder | `%ProgramData%\OADM Site Node`, SYSTEM + the service SID (`NT SERVICE\OadmSiteNode`) only | `/var/lib/oadm-site-node` (StateDirectory 0700, owned by the service user) |
 | Native lib extraction | `%ProgramData%\OADM Site Node\runtime` | `/var/cache/oadm-site-node` |
-| Firewall | none at install. "Wait for the server" in the app (or `oadm-site-node server --wait` as administrator) adds "OADM Site Node (TCP 5081)", Domain and Private; "Connect to the server" and uninstalling remove it | not touched |
+| Firewall | none: the node only connects out to the server (TCP 5081 by default) and never listens | not touched |
 | Server address | silent: `msiexec /i OADM-SiteNode-<version>-win-x64.msi SERVER=oadm.example.com /qn` (runs `oadm-site-node server <address> --timeout 60` after the service started; a refused address fails the install) | `sudo oadm-site-node server oadm.example.com` |
 | License texts | `TERMS.md`, `LICENSE.txt`, `NOTICE.txt`, `THIRD-PARTY-NOTICES.txt` next to the exes | same in `/opt/oadm/site-node*` and `/usr/share/doc/<package>/` |
 | Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-site-node-app oadm-site-node`; data and user kept, also on purge |

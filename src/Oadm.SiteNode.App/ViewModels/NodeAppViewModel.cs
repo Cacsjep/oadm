@@ -16,7 +16,7 @@ public interface IAppDialogs
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
 }
 
-/// <summary>The tabs of the window's card.</summary>
+/// <summary>The tabs of the window.</summary>
 public enum NodeTab
 {
     General,
@@ -25,7 +25,7 @@ public enum NodeTab
     Activity,
 }
 
-/// <summary>How the node status line below the card is colored.</summary>
+/// <summary>How the node status line below the tabs is colored.</summary>
 public enum NodeStatusKind
 {
     Neutral,
@@ -42,6 +42,12 @@ public enum NodeStatusKind
 public sealed partial class NodeAppViewModel : ValidatingViewModel
 {
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>What to do first on a new node: the hint of the empty address field.</summary>
+    public const string EnterServer = "Enter the address of the OADM server.";
+
+    /// <summary>The hint of the address field once an address is saved.</summary>
+    public const string PortHint = "Port 5081 unless you type another.";
     /// <summary>"The node forgets OADM-SRV and gets a new identity. Bind it again in OADM."</summary>
     public static string ResetMessage(string server) => $"The node forgets {server} and gets a new identity. Bind it again in OADM.";
 
@@ -63,8 +69,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         _dialogs = dialogs;
         _time = time ?? TimeProvider.System;
         Validation.Rule(nameof(ServerAddress), () =>
-            IsConnectMode && ServerAddress.Trim().Length == 0 ? "Enter the server's name or IP address."
-            : ServerAddress.Trim().Length > 0 && Admin.ServerAddress.Parse(ServerAddress, 5081) is null ? "Enter a name or IP address, like oadm.example.com or 10.0.0.5."
+            ServerAddress.Trim().Length == 0 ? EnterServer
+            : Admin.ServerAddress.Parse(ServerAddress, 5081) is null ? "Enter a name or IP address, like oadm.example.com or 10.0.0.5."
             : null);
         Validation.Rule(nameof(NewSubnet), () => NewSubnet.Trim().Length > 0 && Subnet.Parse(NewSubnet) is null ? "Enter a network like 10.20.0.0/16." : null);
         Validation.Rule(nameof(NewPort), () => NewPort.Trim().Length > 0 && Port() is null ? "Enter a port from 1 to 65535." : null);
@@ -95,7 +101,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [NotifyPropertyChangedFor(nameof(HasState), nameof(IsBound), nameof(IsBindingOpen), nameof(IsBindingClosed), nameof(BindingText),
         nameof(SiteText), nameof(IdText), nameof(VersionText), nameof(ConnectionsText), nameof(HasNewIdentity), nameof(NewIdentityText),
         nameof(WrongCodesText), nameof(IsConnected), nameof(ConnectionText), nameof(HasConnectionProblem), nameof(HasRequests),
-        nameof(HasRelays), nameof(AllCards), nameof(HasNoListenPorts))]
+        nameof(HasRelays), nameof(AllCards), nameof(HasNoListenPorts), nameof(HasServerAddress), nameof(ServerHint))]
     public partial NodeView? State { get; private set; }
 
     /// <summary>"The OADM Site Node service is not running."</summary>
@@ -105,7 +111,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string? PairingCode { get; private set; }
 
-    /// <summary>The tab of the card.</summary>
+    /// <summary>The tab shown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGeneralTab), nameof(IsNetworksTab), nameof(IsPortsTab), nameof(IsActivityTab))]
     public partial NodeTab Tab { get; set; }
@@ -119,8 +125,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public bool IsActivityTab => Tab == NodeTab.Activity;
 
     /// <summary>
-    /// The node status below the card: "Status: Connected to OADM-SRV · Building B", "Status: Not connected: Cannot reach
-    /// 10.0.0.5:5081", "Status: Waiting for the server on port 5081", "Status: Service not running".
+    /// The node status below the tabs: "Status: Connected to OADM-SRV · Building B", "Status: Not connected: Cannot reach
+    /// 10.0.0.5:5081", "Status: No server address yet", "Status: Service not running".
     /// </summary>
     public string NodeStatusText => "Status: " + NodeStatus.Text;
 
@@ -143,8 +149,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
                 return (ServiceError is null or AdminTexts.ServiceNotRunning ? "Service not running" : ServiceError, NodeStatusKind.Error);
             if (s.Connected)
                 return (s.Bound is { } bound ? $"Connected to {ServerName(bound)}" : s.ConnectionText.Length > 0 ? s.ConnectionText : "Connected", NodeStatusKind.Ok);
-            if (s.Mode == NodeLinkMode.Wait && s.ConnectionText.Length > 0 && !HasConnectionProblem)
-                return (s.ConnectionText, NodeStatusKind.Neutral);
+            if (s.ServerAddress.Length == 0)
+                return ("No server address yet", NodeStatusKind.Warning);
             return s.ConnectionText.Length > 0
                 ? ("Not connected: " + s.ConnectionText, HasConnectionProblem ? NodeStatusKind.Error : NodeStatusKind.Warning)
                 : ("Not connected", NodeStatusKind.Warning);
@@ -161,8 +167,16 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     };
 
     /// <summary>Show pairing code: binding is open (or a new server identity was accepted) and no code is shown yet.</summary>
-    public bool CanShowPairingCode => PairingCode is not { Length: > 0 }
-        && (IsBindingOpen || State is { NewServerAccepted: true, NewServerIdentity.Length: > 0 });
+    public bool CanShowPairingCode => PairingCode is not { Length: > 0 } && IsPairing;
+
+    /// <summary>Binding is open, or a new server identity was accepted: the server binds with the pairing code.</summary>
+    public bool IsPairing => IsBindingOpen || State is { NewServerAccepted: true, NewServerIdentity.Length: > 0 };
+
+    /// <summary>
+    /// The pairing code part of the General tab: once a server address is saved and the node is not bound (or a new server
+    /// identity was accepted). Before an address the field is the one thing to do.
+    /// </summary>
+    public bool ShowPairing => HasServerAddress && (IsPairing || IsBindingClosed);
 
     public bool HasPairingCode => PairingCode is { Length: > 0 };
 
@@ -170,7 +184,13 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public bool CanAcceptServer => State is { NewServerAccepted: false, NewServerIdentity.Length: > 0 };
 
     /// <summary>The connection problem below the address field ("Cannot reach 10.0.0.5:5081").</summary>
-    public string? ConnectionProblem => HasConnectionProblem && IsConnectMode ? ConnectionText : null;
+    public string? ConnectionProblem => HasConnectionProblem ? ConnectionText : null;
+
+    /// <summary>The service has a server address (saved).</summary>
+    public bool HasServerAddress => State?.ServerAddress.Length > 0;
+
+    /// <summary>The address field's hint: what to do first on a new node, else the port.</summary>
+    public string ServerHint => State is not null && !HasServerAddress ? EnterServer + " " + PortHint : PortHint;
 
     /// <summary>Requests of the server that wait (the count badge of the Ports tab).</summary>
     public int RequestCount => RequestedPorts.Count;
@@ -185,16 +205,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>A refusal of another change (below the card it came from is not known: below the toolbar).</summary>
     [ObservableProperty]
     public partial string? ActionError { get; private set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWaitMode), nameof(ConnectionProblem))]
-    public partial bool IsConnectMode { get; set; } = true;
-
-    public bool IsWaitMode
-    {
-        get => !IsConnectMode;
-        set => IsConnectMode = !value;
-    }
 
     [ObservableProperty]
     public partial string ServerAddress { get; set; } = "";
@@ -223,13 +233,19 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     public bool IsBindingClosed => State?.Binding == NodeBinding.Closed;
 
+    /// <summary>
+    /// All cards (the default) of the Networks tab's choice: ticking it clears the chosen cards; choosing a card unticks it.
+    /// Unticking it without a chosen card changes nothing (no chosen card means all cards).
+    /// </summary>
     public bool AllCards
     {
-        get => State?.AllCards ?? false;
+        get => State?.AllCards ?? true;
         set
         {
             if (State is not null && value != State.AllCards)
                 _ = ChangeAsync(AdminRequest.Of(AdminCommands.AllCards, ("on", value ? "true" : "false")));
+            else
+                OnPropertyChanged();
         }
     }
 
@@ -277,10 +293,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     public bool HasNoListenPorts => ListenPorts.Count == 0;
 
-    /// <summary>The General form differs from the service's state: the mode, or the address in Connect mode.</summary>
-    public bool HasUnsavedChanges => State is { } s
-        && (IsConnectMode != (s.Mode == NodeLinkMode.Connect)
-            || (IsConnectMode && !string.Equals(ServerAddress.Trim(), s.ServerAddress.Trim(), StringComparison.OrdinalIgnoreCase)));
+    /// <summary>The address field differs from the service's server address.</summary>
+    public bool HasUnsavedChanges => State is { } s && !string.Equals(ServerAddress.Trim(), s.ServerAddress.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Why Save is disabled (the address field's error, or nothing changed), null when it is not.</summary>
     public string? SaveServerBlockedReason => ErrorOf(nameof(ServerAddress)) ?? (HasUnsavedChanges ? null : "No changes to save.");
@@ -350,7 +364,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         Validation.ShowAll(nameof(ServerAddress));
         if (!Validation.IsValidFor(nameof(ServerAddress)) || !HasUnsavedChanges)
             return;
-        var response = await ChangeAsync(AdminRequest.Of(AdminCommands.SetServer, ("mode", IsConnectMode ? "connect" : "wait"), ("address", ServerAddress.Trim()))).ConfigureAwait(true);
+        var response = await ChangeAsync(AdminRequest.Of(AdminCommands.SetServer, ("address", ServerAddress.Trim()))).ConfigureAwait(true);
         if (response.Ok)
         {
             _serverEdited = false;
@@ -482,12 +496,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [RelayCommand]
     private void ShowActivity() => Tab = NodeTab.Activity;
 
-    [RelayCommand]
-    private void ChooseConnect() => IsConnectMode = true;
-
-    [RelayCommand]
-    private void ChooseWait() => IsConnectMode = false;
-
     /// <summary>Closes the window (Close of the footer).</summary>
     public event EventHandler? CloseRequested;
 
@@ -495,12 +503,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
     partial void OnServerAddressChanged(string value)
-    {
-        _serverEdited = true;
-        RaiseSave();
-    }
-
-    partial void OnIsConnectModeChanged(bool value)
     {
         _serverEdited = true;
         RaiseSave();
@@ -529,7 +531,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private static readonly string[] StateProperties =
     [
         nameof(NodeStatusText), nameof(NodeStatusKind), nameof(IsNodeStatusOk), nameof(IsNodeStatusWarning), nameof(IsNodeStatusError),
-        nameof(CanShowPairingCode), nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ConnectionProblem),
+        nameof(CanShowPairingCode), nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
     ];
 
     private async Task<AdminResponse> ChangeAsync(AdminRequest request)
@@ -570,7 +572,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         if (!_serverEdited)
         {
             ServerAddress = view.ServerAddress;
-            IsConnectMode = view.Mode == NodeLinkMode.Connect;
             _serverEdited = false;
         }
 
@@ -580,12 +581,12 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
             _cardsKey = cardsKey;
             Cards.Clear();
             foreach (var card in view.Cards)
-                Cards.Add(new CardItem(card, SetCardAsync));
+                Cards.Add(new CardItem(card, view.AllCards, SetCardAsync));
         }
         else
         {
             foreach (var (item, card) in Cards.Zip(view.Cards))
-                item.Apply(card);
+                item.Apply(card, view.AllCards);
         }
 
         var listsKey = string.Join('|', view.ExtraSubnets) + "#" + string.Join('|', view.Allowed.Select(p => p.ToString()))
@@ -605,8 +606,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(HasNoListenPorts));
     }
 
-    private async Task SetCardAsync(CardItem card, bool reached) =>
-        await ChangeAsync(AdminRequest.Of(AdminCommands.SetCard, ("id", card.Id), ("reached", reached ? "true" : "false"))).ConfigureAwait(true);
+    private async Task SetCardAsync(CardItem card, bool chosen) =>
+        await ChangeAsync(AdminRequest.Of(AdminCommands.SetCard, ("id", card.Id), ("reached", chosen ? "true" : "false"))).ConfigureAwait(true);
 
     private int? Port() =>
         int.TryParse(NewPort.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var port) && port is > 0 and <= 65535 ? port : null;

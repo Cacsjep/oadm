@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
-  <!-- Bind, Rename, Change address, Add manually, Replace with and Remove site of the Sites page: single operation.
+  <!-- Bind, Rename, Replace with and Remove site of the Sites page: single operation.
        Errors and the server's refusals below the fields. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
@@ -24,13 +24,6 @@
         </ui:FormField>
         <ui:FormField Label="Pairing code" IsVisible="{Binding ShowCode}">
           <TextBox x:Name="CodeBox" Text="{Binding PairingCode}" MaxLength="12" PlaceholderText="ABCD-EFGH" IsEnabled="{Binding IsIdle}" />
-        </ui:FormField>
-
-        <ui:FormField Label="Address" IsVisible="{Binding ShowAddress}">
-          <TextBox x:Name="AddressBox" Text="{Binding Address}" PlaceholderText="10.20.0.5" IsEnabled="{Binding IsIdle}" />
-        </ui:FormField>
-        <ui:FormField Label="Port" IsVisible="{Binding ShowAddress}" Hint="Optional">
-          <TextBox Text="{Binding PortText}" Width="120" HorizontalAlignment="Left" PlaceholderText="5081" IsEnabled="{Binding IsIdle}" />
         </ui:FormField>
 
         <ui:FormField Label="Replace with" IsVisible="{Binding ShowReplace}">

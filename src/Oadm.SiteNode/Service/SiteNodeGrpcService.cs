@@ -22,8 +22,7 @@ namespace Oadm.SiteNode.Service;
 
 /// <summary>
 /// <c>SiteNodeService</c> (site_node.proto), hosted by the node on every link. Hello answers anyone; PairStart and Bind
-/// only while not bound; everything else only the bound server's identity on a link that is not refused (one session at a
-/// time). A refusal is FAILED_PRECONDITION with the plain text, a wrong pairing code PERMISSION_DENIED, too many wrong
+/// only while not bound; everything else only the bound server's identity. A refusal is FAILED_PRECONDITION with the plain text, a wrong pairing code PERMISSION_DENIED, too many wrong
 /// codes RESOURCE_EXHAUSTED.
 /// </summary>
 public sealed class SiteNodeGrpcService(
@@ -37,7 +36,6 @@ public sealed class SiteNodeGrpcService(
     INodeDns dns,
     IPinger pinger,
     OutboundConnector outbound,
-    LinkRegistry links,
     IAxisBrowser browser,
     RangeScanner rangeScanner,
     NodeOptions options) : SiteNodeService.SiteNodeServiceBase
@@ -55,7 +53,7 @@ public sealed class SiteNodeGrpcService(
         var link = LinkOf(context);
         var config = store.Snapshot();
         var state = binding.Binding;
-        var isServer = state == NodeBinding.Bound && binding.IsBoundTo(link.ServerFingerprintHex) && links.RefusalFor(link) is null;
+        var isServer = state == NodeBinding.Bound && binding.IsBoundTo(link.ServerFingerprintHex);
         var pairing = state == NodeBinding.Bound && !isServer && binding.IsPairingOpenFor(link.ServerFingerprintHex);
         var reply = new HelloReply
         {
@@ -69,13 +67,12 @@ public sealed class SiteNodeGrpcService(
             },
         };
 
-        // Strangers learn nothing about a bound node beyond its state and version (who owns it, its id, its name, its mode).
+        // Strangers learn nothing about a bound node beyond its state and version (who owns it, its id, its name).
         if (state != NodeBinding.Bound || isServer || pairing)
         {
             reply.NodeId = config.Id;
-            reply.Mode = config.Mode == NodeLinkMode.Wait ? NodeMode.Wait : NodeMode.Connect;
             reply.HostName = options.HostName;
-            reply.LinkRole = !link.Outbound ? LinkRole.Unspecified : link.Worker ? LinkRole.Worker : LinkRole.Control;
+            reply.LinkRole = link.Worker ? LinkRole.Worker : LinkRole.Control;
             reply.Features.Add(Features);
             reply.NewIdentityAccepted = pairing;
         }
@@ -357,8 +354,8 @@ public sealed class SiteNodeGrpcService(
         }
     }
 
-    // Everything but Hello and the binding calls: the bound server, in its one active session (checked on every call
-    // against the binding of that moment, so a bind, a rotation or another session applies at once).
+    // Everything but Hello and the binding calls: the bound server (checked on every call against the binding of that
+    // moment, so a bind or a rotation applies at once).
     private SiteLink RequireServer(ServerCallContext context)
     {
         var link = LinkOf(context);
@@ -366,8 +363,6 @@ public sealed class SiteNodeGrpcService(
             throw new NodeRefusalException(binding.Binding == NodeBinding.Closed ? AdminTexts.BindingClosed : AdminTexts.NotBoundToCaller);
         if (!binding.IsBoundTo(link.ServerFingerprintHex))
             throw new NodeRefusalException(AdminTexts.BoundToAnotherServer);
-        if (links.RefusalFor(link) is { } refusal)
-            throw new NodeRefusalException(refusal);
         link.MarkServed();
         return link;
     }

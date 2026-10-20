@@ -10,8 +10,8 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// gRPC SiteService (sites.proto): the Sites page. List and Watch need "See sites"; Accept site nodes, Search / Add
-/// manually, Bind, Rename, Change address, Replace and Remove are Administrator only (AccessPolicy) and audited.
+/// gRPC SiteService (sites.proto): the Sites page. List and Watch need "See sites"; Accept site nodes, Bind, Rename,
+/// Replace and Remove are Administrator only (AccessPolicy) and audited.
 /// </summary>
 public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog audit, TimeProvider time, IHostApplicationLifetime lifetime) : Proto.SiteService.SiteServiceBase
 {
@@ -53,24 +53,6 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
         return await sites.PageAsync(context.CancellationToken).ConfigureAwait(false);
     }
 
-    public override async Task FindNodes(Proto.FindNodesRequest request, IServerStreamWriter<Proto.FoundNode> responseStream, ServerCallContext context)
-    {
-        var duration = TimeSpan.FromSeconds(Math.Clamp(request.DurationSeconds <= 0 ? 10 : request.DurationSeconds, 1, 60));
-        try
-        {
-            await foreach (var node in sites.FindNodesAsync(request.Address, duration, context.CancellationToken).ConfigureAwait(false))
-            {
-                await responseStream.WriteAsync(new Proto.FoundNode { Node = node }, context.CancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (ArgumentException e)
-        {
-            throw GrpcGuard.InvalidArgument(e.Message);
-        }
-
-        await responseStream.WriteAsync(new Proto.FoundNode { Finished = true }, context.CancellationToken).ConfigureAwait(false);
-    }
-
     public override async Task<Proto.Site> BindSite(Proto.BindSiteRequest request, ServerCallContext context)
     {
         await Run(() => sites.BindAsync(request.NodeId, request.NodeFingerprint, request.Name, request.PairingCode, context.CancellationToken)).ConfigureAwait(false);
@@ -81,13 +63,6 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
     {
         var id = GrpcGuard.ParseId(request.Id, "site id");
         await Run(() => sites.RenameAsync(id, request.Name, context.CancellationToken)).ConfigureAwait(false);
-        return await FindByIdAsync(id, context.CancellationToken).ConfigureAwait(false);
-    }
-
-    public override async Task<Proto.Site> ChangeSiteAddress(Proto.ChangeSiteAddressRequest request, ServerCallContext context)
-    {
-        var id = GrpcGuard.ParseId(request.Id, "site id");
-        await Run(() => sites.ChangeAddressAsync(id, request.Address, request.Port, context.CancellationToken)).ConfigureAwait(false);
         return await FindByIdAsync(id, context.CancellationToken).ConfigureAwait(false);
     }
 

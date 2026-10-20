@@ -30,7 +30,6 @@ public partial class SiteFormWindow : Window
         {
             SiteFormMode.Bind => CodeBox,
             SiteFormMode.Rename => NameBox,
-            SiteFormMode.ChangeAddress or SiteFormMode.AddManually => AddressBox,
             _ => null,
         };
         first?.Focus();

@@ -16,7 +16,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.SiteNode.Links;
 
 /// <summary>
-/// Mode Connect (default, docs/sites.md "Direction"): the node opens TCP + TLS to the server's site port and then serves
+/// The node's only way to the server (docs/sites.md "Direction"; the node never listens): it opens TCP + TLS to the server's site port and then serves
 /// gRPC on that connection. Not bound with binding open: any server key (the pairing proves both sides); bound: only the
 /// pinned key (another one is noted for "Accept" in the app); binding closed: no connection. The typed address first,
 /// then the server's own addresses (SetServerAddresses); after a failure 1, 2, 4 ... 60 s. OpenConnections adds worker
@@ -118,10 +118,9 @@ public sealed partial class OutboundConnector(
             {
                 var config = store.Snapshot();
                 var targets = Targets(config);
-                if (config.Mode != NodeLinkMode.Connect || binding.Binding == NodeBinding.Closed || targets.Count == 0)
+                if (binding.Binding == NodeBinding.Closed || targets.Count == 0)
                 {
-                    if (config.Mode == NodeLinkMode.Connect)
-                        connection.Set(binding.Binding == NodeBinding.Closed ? AdminTexts.BindingClosed : "", false);
+                    connection.Set(binding.Binding == NodeBinding.Closed ? AdminTexts.BindingClosed : "", false);
                     await WaitAsync(Timeout.InfiniteTimeSpan, stoppingToken).ConfigureAwait(false);
                     continue;
                 }
@@ -171,7 +170,7 @@ public sealed partial class OutboundConnector(
         }
     }
 
-    // Serves the control link until it closes, or until something the link depends on changes (mode, address, binding,
+    // Serves the control link until it closes, or until something the link depends on changes (address, binding,
     // identity): then it and every worker close and the loop connects again. True when the bound server called on it.
     private async Task<bool> ServeControlAsync(SslStream tls, (string Host, int Port) target, string key, CancellationToken stoppingToken)
     {
@@ -262,7 +261,7 @@ public sealed partial class OutboundConnector(
     private SiteLink NewLink(SslStream tls, (string Host, int Port) target, bool worker)
     {
         var certificate = tls.RemoteCertificate is X509Certificate2 c2 ? c2 : X509CertificateLoader.LoadCertificate(tls.RemoteCertificate!.GetRawCertData());
-        return new SiteLink(outbound: true, worker, Name(target), certificate, identity.Fingerprint);
+        return new SiteLink(worker, Name(target), certificate, identity.Fingerprint);
     }
 
     private async Task<SslStream?> TryConnectAsync((string Host, int Port) target, CancellationToken ct)
@@ -339,7 +338,7 @@ public sealed partial class OutboundConnector(
 
     // What the control link depends on (not the bound server: Unbind and RotateIdentity answer on the link and keep it).
     private string KeyOf(NodeConfig config) =>
-        string.Join('|', config.Mode, config.ServerAddress, binding.Binding == NodeBinding.Closed, identity.FingerprintHex);
+        string.Join('|', config.ServerAddress, binding.Binding == NodeBinding.Closed, identity.FingerprintHex);
 
     // True when woken (a change), false after the time.
     private async Task<bool> WaitAsync(TimeSpan time, CancellationToken ct)

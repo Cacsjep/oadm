@@ -6,8 +6,10 @@ test plan on hardware (node README) is still to do. First agreed 2026-10-15 as "
 day the node connects out to the server, binding needs a pairing code and the node opens only allowed ports; an
 architecture, SDK and security review added the rest of that day's decisions. While building: TLS 1.2 is allowed next to
 1.3 (Windows Server 2019), and a review of the built code replaced the first SRP-6a pairing with J-PAKE, added the limits
-on strangers and moved the Windows node service to its own account (see Binding, Server listener, Security review).
-Defaults marked **(default)** were not asked and may change.
+on strangers and moved the Windows node service to its own account (see Binding, Server listener, Security review). On
+2026-10-20 the inbound mode ("Wait for the server") was removed: the node always connects to the server, the node app
+became simpler and the node reaches all network cards by default. Defaults marked **(default)** were not asked and may
+change.
 
 ## Purpose
 
@@ -30,13 +32,11 @@ Client ──► OADM server ◄──TLS 5081── OADM Site Node, site "Build
 |---|---|
 | Name (2026-10-19) | **Site** in the UI: rail page **Sites**, device column **Site**, status and event **Site offline**. The program is **OADM Site Node**. One site = one remote network with exactly one node in v1. "Agent" was dropped (reads as AI), "network" clashes with Network settings. |
 | Model (2026-10-19) | Kept: one server, nodes are pipes. The parked multi-server "nodes" draft (full OADM servers as relays, 2026-10-13) stays dropped. |
-| Direction (2026-10-19, security review) | **The node connects to the server** (outbound only: no inbound port at the site, nothing to scan there). The server listens for site nodes on its own port, TCP 5081 **(default)**, apart from the clients' 5080, **only after an
-administrator turns on "Accept site nodes"** on the Sites page (off by default: a server without sites opens no extra
-port). **Inbound** (the server connects to the node, which listens on 5081) stays an option in the node app ("Wait for the server") for sites the server must reach itself. One protocol for both (see Transport). |
-| Finding | Outbound (default): the node app takes the server's address; once it connects, the node shows on the Sites page as **Waiting to be bound**. Inbound: an unbound node announces itself over mDNS; the Sites page finds it with **Search** (mDNS) or **Add manually** (address). |
+| Direction (2026-10-19, security review; 2026-10-20) | **The node always connects to the server; the node never listens** (no inbound port at the site, nothing to scan there). The server listens for site nodes on its own port, TCP 5081 **(default)**, apart from the clients' 5080, **only after an administrator turns on "Accept site nodes"** on the Sites page (off by default: a server without sites opens no extra port). The inbound mode of 2026-10-19 (the node waiting on 5081, the server dialing it, mDNS announce, Search and Add manually on the Sites page) was removed on 2026-10-20: one direction, one code path. |
+| Finding | The node app takes the server's address; once the node connects, it shows on the Sites page as **Waiting to be bound**. |
 | Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other through J-PAKE, a balanced PAKE (see Binding), so neither another server nor anything in between can bind, and nobody (not even an impostor node or server taking part) can test codes offline. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
 | Removing | From OADM (rare), with "Keep devices" or not. Locally with **Reset** in the node app when the server is gone. |
-| Reach | The node reaches the devices on the **network cards chosen in the node app** ("Reach devices on this network", or all cards). Default: every card except the one with the default router (the office side). Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
+| Reach (2026-10-20) | The node reaches the devices on **all network cards (default)** or on the **cards chosen in the node app** (one choice: All cards, or ticked cards; ticking a card unticks All cards, ticking All cards clears the choice; no chosen card counts as all cards). Restrict to chosen cards when the machine also sits in an office network. Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
 | Ports (2026-10-19, security review) | The node uses **only allowed ports**, in two lists: **Connect to** (devices; TCP 80, 443 and 554 by default) and **Listen on** (relays; empty by default), so a port allowed for a camera never opens a listener at the site. Further ports (a plugin's ports, a camera on 8443, a per-device RTSP port, the NTP relay's UDP 123) are **requested by the server and allowed in the node app** ("Building B asks to connect to TCP 8443: camera 192.168.0.30. Allow"); nothing is allowed by itself. A dial to another port is a site error "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." |
 | Local UI | A small desktop app (Avalonia, OADM look) next to the headless service. Most installers do not use command lines. |
 | Installers (2026-10-19) | **Windows MSI and Linux .deb only** (amd64 and arm64). No portable ZIP, no macOS node in v1. |
@@ -47,7 +47,7 @@ port). **Inbound** (the server connects to the node, which listens on 5081) stay
 | Limits (2026-10-19) | **Permanent streams and short connections are counted apart** (see Transport). |
 | Plugins (2026-10-19) | Declared per package in `plugin.json` (`siteSupport`, `sitePorts`, written by the plugin project SDK); a DIM on `ITaskPlugin` / `IComplianceCheckType` only where one item differs. `IPlugin` stays unchanged. The plugin project SDK always writes `siteSupport` (default `full`); a manifest without it counts as `none` (no third-party plugins exist yet, so there is no "not tested" state). |
 | Notifications (2026-10-19) | Send HTTP request, Send email and Send TCP message stay on the server's own network in v1 (a "Send through site" option can come later). |
-| Roles (2026-10-19) | New permission **`sites.view`** "See sites" (group Devices, Operator and Viewer yes). Bind, rename, change address, replace and remove: **Administrator only**, never grantable. Adding devices at a site needs `devices.addRemove` ("Add and remove devices"), as every add mode, the waiting list and Import from ADM today. |
+| Roles (2026-10-19) | New permission **`sites.view`** "See sites" (group Devices, Operator and Viewer yes). Bind, rename, replace and remove: **Administrator only**, never grantable. Adding devices at a site needs `devices.addRemove` ("Add and remove devices"), as every add mode, the waiting list and Import from ADM today. |
 | Node app (2026-10-19) | Asks for the terms of use (`TERMS.md`) on its first start like the client; follows the OS's dark or light setting. |
 | Updates | Manual, with the node's installer. OADM shows "Update Building B" for a missing feature and refuses only a node below its minimum version. No push updates in v1. |
 | Moving devices | **Automatic**: a device found by its MAC address through another route moves after the same checks as today's re-find, under the rules in "Moving devices". |
@@ -77,8 +77,8 @@ Two parts, one installer:
 
 - **Service** `oadm-site-node` (headless; Windows service "OADM Site Node", systemd unit). No plugins, so Native AOT is
   allowed (CLAUDE.md: helpers without plugin loading); the mDNS, probe and DNS code it shares with the server moves to a
-  small library without EF Core first, else self-contained single-file. Runs **without root**: outbound connections to the server (inbound mode: listens on port 5081 and announces itself on
-  mDNS 5353 with address reuse), ping through the OS without raw sockets (Windows `IcmpSendEcho`, Linux `ping_group_range`, else a TCP
+  small library without EF Core first, else self-contained single-file. Runs **without root**: outbound connections to the
+  server only (it never listens for the server; mDNS browse of `_axis-video._tcp` only), ping through the OS without raw sockets (Windows `IcmpSendEcho`, Linux `ping_group_range`, else a TCP
   check of 80 / 443). A relay of a port below 1024 (NTP 123) needs the right to bind it (Linux `CAP_NET_BIND_SERVICE` on
   the unit; the Windows service account may bind it).
 - **App** "OADM Site Node" (Avalonia). The theme (`Oadm.Client/Themes`: `Colors.Dark.axaml`, `Colors.Light.axaml`,
@@ -86,27 +86,28 @@ Two parts, one installer:
   takes the OS's dark or light setting (it has no client settings). It may use `Oadm.Sdk.Client` controls (`StatusChip`,
   `MessageWindow`, `PasswordBox`, `FormField`). First start: the terms of use like the client (`TermsWindow`, the
   accepted SHA-256 in the app's own settings). One window laid out like a service control window (redesigned again 2026-10-20 after the
-  AXIS Device Manager Service Control): about 440 x 780, fitted to small screens (`WindowFit`), the custom title bar of the
-  client (`Border.titleBar`, `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and
-  close right, no maximize), **one card with the tabs** at its top (`ui:PageTab` without a close command, `Count` badge),
-  each tab in sections with large headings and label / field rows (`ui:FormField`); below the card, outside the tabs,
-  **Node status**: one line "Status: Connected to SERVER · SITE" as a status chip ("Status: Not connected: Cannot reach
-  10.0.0.5:5081", "Status: Waiting for the server on port 5081", "Status: Service not running"; then the card says "Start
-  the OADM Site Node service." and shows no tabs) and, while ports wait, "The server asks for N ports." with **Review**
-  (opens Ports); the footer **Save** (the one accent button: enabled while the General form has unsaved changes) and
-  **Close**, both on the right. No start / stop buttons. Tabs:
-  - **General**: section **Server**: **Connect to the server** / **Wait for the server**, the address
-    (`oadm.example.com` or `10.0.0.5`, "Port 5081 unless you type another."; the connection problem below the field;
-    "Wait for the server" is inbound on port 5081 and adds the firewall rule); section **Binding**: the state ("Not bound.
-    Binding open for 23 more hours.", "Not bound. Binding is closed.", "Bound to SERVER since ..."), a new identity of
-    the server ("SERVER presents a new identity (fingerprint).", see Binding), the pairing code in large letters with
-    "Type this code at Bind on the Sites page of OADM.", the wrong codes, and the button the state needs: **Show pairing
-    code**, **Allow binding** (another 24 hours, a new code) or **Accept new server identity**; section **This node**:
-    site name (from the server once bound), node ID, version, **Reset** (red, confirmed: "The node forgets SERVER and
-    gets a new identity. Bind it again in OADM.");
-  - **Networks**: each network card with its addresses and a switch "Reach devices on this network" (default: on for
-    every card except the one with the default router), **All cards** as a shortcut, and **Extra networks** (routed
-    camera VLANs: add, remove);
+  AXIS Device Manager Service Control, and simplified the same day): about 440 x 780, fitted to small screens
+  (`WindowFit`), the custom title bar of the client (`Border.titleBar`,
+  `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and close right, no
+  maximize), **the tabs directly on the window background** (no card: the window is narrow; `ui:PageTab` without a close
+  command, `Count` badge), label / field rows (`ui:FormField`); below the tabs **Node status**: one line "Status:
+  Connected to SERVER · SITE" as a status chip ("Status: Not connected: Cannot reach 10.0.0.5:5081", "Status: No server
+  address yet", "Status: Service not running"; then the window says "Start the OADM Site Node service." and shows no tabs)
+  and, while ports wait, "The server asks for N ports." with **Review** (opens Ports); the footer **Save** (the one accent
+  button: enabled while the address has unsaved changes) and **Close**, both on the right. No start / stop buttons. Tabs:
+  - **General**, top to bottom: **Server address** (`oadm.example.com` or `10.0.0.5`; hint "Port 5081 unless you type
+    another.", while no address is saved "Enter the address of the OADM server." first, so a new node shows what to do;
+    the connection problem below the field); then, once an address is saved and while not bound (or a new server
+    identity was accepted), **Pairing code**: the code in large letters with "Type this code at Bind on the Sites page of
+    OADM.", the wrong codes, and the button the state needs: **Show pairing code** or **Allow binding** (another 24
+    hours, a new code); a new identity of the server ("SERVER presents a new identity (fingerprint).", see Binding) with
+    **Accept new server identity**; then the state lines **Binding** ("Not bound. Binding open for 23 more hours.", "Not
+    bound. Binding is closed.", "Bound to SERVER since ..."), **Site** (from the server once bound), **Node ID**,
+    **Version**, and **Reset** at the bottom (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it
+    again in OADM."). No mode switch: the node always connects to the server;
+  - **Networks**: **Reach devices on**: one choice, **All cards** (default) or chosen cards (a check list of the cards
+    with their addresses, "Default router" on the office side; ticking a card unticks All cards, ticking All cards clears
+    the choice; unticking the last card is All cards again), and **Extra networks** (routed camera VLANs: add, remove);
   - **Ports** (the tab shows the number of requests): the ports the server asks for first, each with the list and why
     ("Connect to TCP 8443: camera 192.168.0.30", "Listen on UDP 123: NTP server") and **Allow** / **Dismiss**, then two
     lists, **Connect to** (TCP 80, 443, 554 by default) and **Listen on** (empty by default), each with remove and add;
@@ -121,8 +122,8 @@ Two parts, one installer:
   Linux; the code is **Show pairing code**, so a local user without those rights cannot bind a server). Headless machines use `oadm-site-node
   status`, `pairing-code` (administrators), `server <address>`, `allow-binding`, `networks`, `ports`, `accept-server`,
   `reset`.
-- **Data** (`%ProgramData%\OADM Site Node`, `/var/lib/oadm-site-node`; service account only): `node.json` {id, mode
-  (connect / wait), server address, port, reached cards, all cards, extra subnets, allowed ports (connect, listen), requested ports,
+- **Data** (`%ProgramData%\OADM Site Node`, `/var/lib/oadm-site-node`; service account only): `node.json` {id, server
+  address (with its port), all cards or the chosen cards, extra subnets, allowed ports (connect, listen), requested ports,
   binding run time left, bound servers (a list with at most one entry in v1: name, identity fingerprint, bound time)}, the node's TLS key (Windows a CNG key like the server's, else encrypted with a
   local key file). No device data, no passwords, ever.
 - **Identity**: a random id and a new key at first start and at every Reset (a copied VM keeps the original's identity
@@ -131,21 +132,19 @@ Two parts, one installer:
 
 ### States
 
-| State | Outbound (default) | Inbound |
-|---|---|---|
-| Unbound, binding open | Connects to the server; answers `Hello`, and `Bind` with the right code; the app shows the code | Listens; `Hello`, `Bind` with the right code; mDNS `_oadm-site._tcp`, TXT `id`, `version`, `state=unbound` |
-| Unbound, binding closed | Does not connect; the app says "Binding is closed. Click Allow binding." | `Hello`; `Bind` refused: "Binding is closed on this site node. Click Allow binding in the OADM Site Node app."; TXT `state=closed` (Search shows it greyed with that text) |
-| Bound | Connects to the bound server only and checks its identity | `Hello` to anyone (state and version only); everything else only to the bound server's identity, one session at a time; TXT `state=bound` (no server name) |
+| State | The node |
+|---|---|
+| Unbound, binding open | Connects to the server; answers `Hello`, and `Bind` with the right code; the app shows the code |
+| Unbound, binding closed | Does not connect; the app says "Binding is closed. Click Allow binding." |
+| Bound | Connects to the bound server only and checks its identity |
 
 The binding window counts the service's run time (saved every minute), not the wall clock.
 
 ## Binding
 
-1. **Outbound (default)**: in the node app the installer types the server's address. The node connects; its check of the
-   server's key waits for the pairing (the key is not known yet). The Sites page lists it as **Waiting to be bound**
-   (node name = its host name, its address as the server sees it, version). **Inbound**: the Sites page finds the node
-   (Search lists unbound nodes, greys out bound and closed ones; Add manually asks for an address and optional port) and
-   the server opens TLS to it.
+1. In the node app the installer types the server's address. The node connects; its check of the server's key waits for
+   the pairing (the key is not known yet). The Sites page lists it as **Waiting to be bound** (node name = its host name,
+   its address as the server sees it, version).
 2. **Bind** (Administrator): dialog with the site name (default the node's host name) and **Pairing code** (the 8
    characters the node app shows; Crockford base32, no look-alikes, case and dashes ignored, 40 bits). Both sides have
    seen each other's key fingerprint in the TLS handshake. **J-PAKE** (a balanced password-authenticated key exchange,
@@ -182,12 +181,13 @@ The binding window counts the service's run time (saved every minute), not the w
    (removed)", their status events go off (the site never comes back), the re-find looks for them at once, and the Sites
    page lists it as **Removed** with **Replace with...** and **Remove devices** until its last device left (then the
    tombstone is dropped). The waiting entries of a removed site are removed; Replace moves them to the new site.
-7. **Reset** in the node app: new id, key and pairing code, the server forgotten, binding open for 24 hours. OADM shows
-   the site as **Not bound** (its devices Site offline) until it is replaced or removed.
+7. **Reset** in the node app: new id, key and pairing code, the server forgotten, binding open for 24 hours. The node
+   connects again with its new identity and waits to be bound; the old site's devices show Site offline (the site shows
+   **Not bound** when its session saw the reset) until it is replaced (bind the node again, then Replace with) or removed.
 
 **Server listener.** Off by default. **Accept site nodes** on the Sites page (Administrator, audited "Turned on site
 nodes" / "Turned off site nodes", setting `Sites.Accept`) opens it without a restart; turning it off closes it and every
-node connection (inbound sites stay reachable, the server dials them). The server accepts site nodes on
+node connection (every site goes offline: the server never dials a node). The server accepts site nodes on
 `Sites.ListenUrl` (default `https://0.0.0.0:5081`, its own Kestrel endpoint with the site identity certificate, never
 the clients' endpoint, TLS 1.3 or 1.2, see Transport). A node that is not bound may only `Hello`, `PairStart` and
 wait for `Bind`: at most 50 waiting nodes and 10 new connections a minute per source address **(default)**; a waiting node
@@ -197,10 +197,8 @@ up to 8 worker links; at most 64 handshakes at once, at most 64 links whose Hell
 link carries a bound site's key the server reads at most 16 KB per answer (`NodeLink.Trust`). A Hello is checked before
 anything of it is stored, logged, audited or shown (`HelloRules`: node id 8..64 hex digits or a GUID, host name at most 253
 characters, names at most 64, version at most 32 printable ASCII, no control or format characters); one that breaks a rule
-is refused whole. The per-address tables drop entries by age and are bounded (`AddressRateLimiter`). Inbound nodes: the
-node accepts 30 new connections a minute per address before TLS, at most 16 links of servers it is not bound to (4 per
-address) and closes such a link after 2 minutes without a call; the server keeps an inbound waiting node listed and reaches
-it again at Bind. Bound nodes reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
+is refused whole. The per-address tables drop entries by age and are bounded (`AddressRateLimiter`). Bound nodes
+reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
 node its DNS name and every address of its network cards (`Watch` of the control connection, again after every change);
 the node keeps them and tries the typed address first, then the others in order. A server that moved is found again as
 long as one of them still answers; otherwise change the address in each node app (`oadm-site-node server <address>`);
@@ -220,14 +218,13 @@ addresses can raise the request, so it never binds without the code. A request w
 another identity for an hour, and never once accepted (`BindingState.NewIdentityHold`). A node serves **one server session at a
 time**: a second connection with the same identity is refused ("Another OADM server with this identity is connected from
 10.0.0.5"), so a restored test copy of the server cannot drive the production nodes alongside the real one. The node
-checks it on every call against the binding of that moment (`LinkRegistry.RefusalFor`): the session is the one of the
-oldest open link of the bound identity that bound or served a call (outbound: every link the node opened; inbound: the
-links from one address); when that session ends, another may take over.
+opens every link itself, to the one address it chose, so its links are always one session; the server refuses a second
+control link of the same identity while the first one answers.
 
 **Security review (2026-10-19).** The node holds no passwords, but whoever binds it gets a pipe into the networks it
 reaches (factory-default cameras, default passwords, old firmware), and whoever controls the OADM server controls every
-site. So: the server opens its site port only after Accept site nodes; the node connects out (no inbound port at the site by
-default); TLS 1.3 (1.2 where the OS has no 1.3) with pinned keys on both sides; binding needs the pairing code from the node
+site. So: the server opens its site port only after Accept site nodes; the node connects out and never listens (no
+inbound port at the site); TLS 1.3 (1.2 where the OS has no 1.3) with pinned keys on both sides; binding needs the pairing code from the node
 app (an administrator of the node's machine), open 24 hours of run time only, proved with J-PAKE so no side can test codes
 offline; strangers learn nothing about a bound node (its Hello to them carries the state, version and protocol version
 only: no id, host name, mode, features or owner); what strangers send is limited before TLS, before Hello and before
@@ -238,13 +235,12 @@ readable (see Roles, audit and secrets); updates are manual (the Sites page show
 
 ## Transport and protocol
 
-gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node, called by the server) in both modes:
+gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node, called by the server):
 
-- **Who opens the TCP connection.** Outbound (default): the node opens TCP + TLS to the server's site port; after TLS the
-  roles turn: the server is the HTTP/2 client on that socket (`SocketsHttpHandler.ConnectCallback` hands it the accepted
+- **Who opens the TCP connection.** Always the node: it opens TCP + TLS to the server's site port; after TLS the roles
+  turn: the server is the HTTP/2 client on that socket (`SocketsHttpHandler.ConnectCallback` hands it the accepted
   connection), the node the HTTP/2 server (Kestrel on a connection it opened, through its own
-  `IConnectionListenerFactory`). Inbound: the server opens TCP + TLS to the node's port 5081. Everything above the socket
-  is the same code. **Spike passed (2026-10-19)**: Kestrel serves HTTP/2 on a connection the node opened itself
+  `IConnectionListenerFactory`). **Spike passed (2026-10-19)**: Kestrel serves HTTP/2 on a connection the node opened itself
   (`Oadm.Sites.Transport.AcceptedStreamListener`: an `IConnectionListenerFactory` for `AcceptedStreamEndPoint`, the stream
   pumped through two pipes like Kestrel's socket transport, so the end of the stream is the end of Kestrel's input; Unbind
   ends the accept loop so Kestrel stops), and the server's `SocketsHttpHandler.ConnectCallback` returns the accepted TLS
@@ -257,14 +253,14 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   WebSockets). A firmware upload or a live view never delays the heartbeat, so it never causes a false Site offline. The
   node's Kestrel allows 4,096 streams per connection **(default)**; the server sets `EnableMultipleHttp2Connections`, so
   the worker side opens further connections by itself when one is full (10,000 trigger WebSockets need at least three).
-  Outbound: the node keeps the control connection and opens worker connections when the server asks (`OpenConnections(n)`
+  The node keeps the control connection and opens worker connections when the server asks (`OpenConnections(n)`
   on the control connection, at most 8 **(default)**); the server hands them to the handler's pool.
   A separate connection for large transfers can be added later inside `ISiteTransport` if the perf test shows polls
   waiting behind uploads on slow links.
 - **Online check** on the control connection only: HTTP/2 keepalive pings plus `Watch`. Offline after 30 s without an
   answer, online again after 60 s stable **(defaults)** (no flapping).
 - **`ISiteTransport.OpenStreamAsync(site, host, port, kind, deadline) -> Stream`** is the only way the server opens a
-  connection through a node (`kind` = Short or Permanent, see Limits); callers never know the mode.
+  connection through a node (`kind` = Short or Permanent, see Limits).
 - **Capabilities**: `Hello` returns `protocol_version` and `features` (`dial`, `browse`, `resolve`, `relay.udp`,
   `relay.tcp`, `local-address`, ...). The server refuses a node below its minimum version ("Site node too old. Update
   it."); a missing feature turns off only that feature ("Update Building B to serve NTP").
@@ -273,7 +269,7 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
     answers anyone else with state, version and protocol version only.
   - `PairStart(server round 1)` -> the node's rounds 1 and 2; `Bind(site name, server round 2, proof)` -> the node's proof (see Binding); `Unbind`, `Rename`,
     `RotateIdentity(new certificate, signed by the old key)`; `SetServerAddresses` (see Server listener);
-    `OpenConnections(n)` (outbound worker connections).
+    `OpenConnections(n)` (worker connections).
   - `RequestPorts([{direction connect | listen, protocol, port, reason}])`: the server asks for ports (a plugin's `sitePorts` while it is on, a device
     or address with another port); the node lists them in its app until allowed or dismissed. `Watch` carries both allowed
     lists, so the server knows them before it dials or opens a relay.
@@ -313,7 +309,7 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   live view and the heartbeat. The route handler holds a per-site gate for requests that stream; a task step waiting for
   it says "Waiting for the site link". The Sites page shows the transfers running.
 - **IPv4** and global / unique-local **IPv6**; link-local addresses with a zone id are refused in v1.
-- **TLS 1.3, or 1.2** on the link between server and node, in both modes (decision 2026-10-19: Windows Server 2019 and
+- **TLS 1.3, or 1.2** on the link between server and node (decision 2026-10-19: Windows Server 2019 and
   Windows 10 1809 / LTSC 2019 have no TLS 1.3, and many recording servers run them). 1.3 whenever both sides have it;
   forward-secret AEAD suites only where the OS lets an application choose (Linux). Both sides present a self-signed
   ECDSA P-256 certificate (100 years) and check the other's fingerprint only (`Oadm.Sites.Transport.SiteTls`). Every
@@ -323,13 +319,15 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 ## Server
 
 - **Data model** (new migration `Sites`; migrations are never deleted): table `Sites` {Id, Name (1..64, unique
-  case-insensitive), Mode (Outbound / Inbound), Address and Port (inbound: where to connect; outbound: last seen from),
+  case-insensitive), Mode and Port (kept for the migrations, not used since the inbound mode went: Mode is always
+  Outbound), Address (where the node last connected from),
   NodeKeyFingerprint, NodeId, BoundUtc, LastSeenUtc (written at most once a minute),
   Version, NotBound (bool)}; online / offline lives in memory only. `Device.SiteId` (nullable = the server's own
   network), `WaitingDevice.SiteId` (nullable = try everywhere; set by the import's Site column). At most 100 sites
   **(default)**.
-- **Proto**: `sites.proto` `SiteService` for the client (`ListSites`, `WatchSites`, `FindNodes`, `BindSite`,
-  `RenameSite`, `ChangeSiteAddress`, `ReplaceSite`, `RemoveSite`; `BindSite` carries the pairing code), every method in `AccessPolicy` (`sites.view` or Admin;
+- **Proto**: `sites.proto` `SiteService` for the client (`ListSites`, `WatchSites`, `SetAccept`, `BindSite`,
+  `RenameSite`, `ReplaceSite`, `RemoveSite`; `BindSite` carries the pairing code; `Site.mode` and `node_port` are
+  reserved), every method in `AccessPolicy` (`sites.view` or Admin;
   the contract test fails on a missing rule); `DeviceInfo.site_id`, `DiscoveredDevice.site_id`, `WaitingDevice.site_id`;
   `DeviceStatus.SITE_OFFLINE = 6` in `common.proto`.
 - **Status `SiteOffline`** (SDK `Oadm.Sdk.Devices.DeviceStatus.SiteOffline = 6`, `SdkInfo.Version` raised,
@@ -410,8 +408,8 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   is not contacted and keeps its last status; the Sites page row says "1 port waiting for approval in the node app"; the
   add page row says "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." The server sends
   `RequestPorts` once per new port.
-- **Replace and change address.** **Change address** (inbound sites) points the site to a new node address (verified by
-  the node's fingerprint); outbound nodes report their address themselves. **Replace with...** moves every device of a site to another bound site after checking each device's
+- **Replace.** Nodes report their address themselves (where they connect from). **Replace with...** moves every device
+  of a site to another bound site after checking each device's
   serial at the same address through the new one (a dead Raspberry Pi replaced by a new one; devices that do not answer
   stay and are listed).
 - **Timeouts.** VAPIX keeps 15 s per request and the status poll 3 s (`StatusPollTimeout`). A new connection through a
@@ -484,17 +482,17 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 
 ## Client
 
-- Rail page **Sites** (group Servers **(default)**, icon to be chosen; shown with `sites.view`): toolbar **Accept site
-  nodes** (Administrator; a switch, see Server listener; while it is off the empty page says "Turn on Accept site nodes,
-  then enter this server's address in the OADM Site Node app."), **Search** and **Add manually** (Administrator, for
-  nodes that wait for the server); one grid: state icon, Name, Node address,
+- Rail page **Sites** (group Servers **(default)**, icon `server`; shown with `sites.view`): **Accept site nodes**
+  (Administrator; off and nothing listed: an empty page with what sites are and **Accept site nodes**; on: **Turn off
+  site nodes** in the toolbar, red, confirmed; on and empty: "Enter 10.0.0.5:5081 as the server address in the OADM Site
+  Node app."); one grid: state icon, Name, Node address (where it connected from),
   Devices (count), **Response time**, **Connections** (now open), **Waiting for approval** (ports to allow in the node app),
   **Uploads and downloads** (running now), Version ("Update available"), Last seen. The State column has room for the
   reason ("Offline: The site node does not answer.", the whole text as its tooltip). Row actions (Administrator): Rename,
-  Change address (inbound), Replace with... (tooltip "Replace with another site"), **Remove site** (red, confirmed, Keep
-  devices); a removed site with kept devices: Replace with... and **Remove devices**. Nodes that connected and wait, and Search results, appear in the same list as "Waiting
-  to be bound" rows with **Bind** (dialog: Site name, Pairing code); bound to another server or binding closed greyed
-  with the reason. Errors below the list. Fake mode: two
+  Replace with... (tooltip "Replace with another site"), **Remove site** (red, confirmed, Keep devices); a removed site
+  with kept devices: Replace with... and **Remove devices**. Nodes that connected and wait appear in the same list as
+  "Waiting to be bound" rows with **Bind** (dialog: Site name, Pairing code); bound to another server or binding closed
+  greyed with the reason. Errors below the list. Fake mode: two
   sample sites, one offline.
 - **Site columns, one rule**: the device grid, the add page, the waiting list window and the Plugins page show their
   Site / Sites column while the server has sites (a bound, not bound or removed site; the client watches the site list
@@ -525,8 +523,8 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 ## Roles, audit and secrets
 
 - `sites.view` "See sites" (Operator and Viewer yes): the Sites page. Administrator only, never grantable: Accept site nodes,
-  Search / Add manually / Bind (with the pairing code), Rename, Change address, Replace, Remove site. Adding devices at a site: `devices.addRemove`.
-- Audited: "Turned on site nodes" / "Turned off site nodes", "Bound site", "Wrong pairing code" (the node, from where), "Renamed site", "Changed site address", "Replaced site", "Removed site", and (user "system",
+  Bind (with the pairing code), Rename, Replace, Remove site. Adding devices at a site: `devices.addRemove`.
+- Audited: "Turned on site nodes" / "Turned off site nodes", "Bound site", "Wrong pairing code" (the node, from where), "Renamed site", "Replaced site", "Removed site", and (user "system",
   after the hysteresis) "Site offline" / "Site online"; "Device moved" and "Device added automatically" as today.
 - What the node's machine sees: HTTPS and RTSP over TLS stay encrypted end to end. Plain HTTP devices and plain RTSP
   cross it readable (Digest never sends the password itself). **Basic over plain HTTP is never sent through a site**
@@ -539,13 +537,10 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
 
 - **Windows**: `OADM-SiteNode-<version>-win-x64.msi` (WiX 6 like the main MSI, `packaging/windows/`): `Program Files\OADM
   Site Node`, service "OADM Site Node" (`OadmSiteNode`, automatic, virtual account `NT SERVICE\OadmSiteNode`, restart on failure and after a stop with an error), Start menu shortcut to the
-  app; no firewall rule (the node connects out; the app adds TCP 5081, Domain and Private, when "Wait for the server" is
-  turned on and removes it when turned off). A silent install takes `SERVER=<address>`.
+  app; no firewall rule (the node only connects out). A silent install takes `SERVER=<address>`.
   Built (stream 7): data folder for SYSTEM and the service SID only, native files extracted to its `runtime`, the folder on
   the system PATH; `SERVER` runs `oadm-site-node server <address> --timeout 60` after the service started (a refused
-  address fails the install); the rule "OADM Site Node (TCP 5081)" is set by whoever sent the change as administrator
-  (`Admin/NodeFirewall`: the elevated app, the app run as administrator, the command line; the service's own account
-  cannot) and removed on uninstall.
+  address fails the install).
 - **Linux**: `oadm-site-node_<version>_<amd64|arm64>.deb` (service, own system user `oadm-site-node`,
   `/opt/oadm/site-node`, `/var/lib/oadm-site-node` 0700) and `oadm-site-node-app_<version>_<arch>.deb` (the app, Depends
   `oadm-site-node`, desktop file). Raspberry Pi 4 and 5 are a target. Pre-release versions `1.2.0~rc.1`.
@@ -574,12 +569,12 @@ networks are checked by hand on hardware before a release. **No Docker tests in 
 isolation, a real subnet, a pulled link) the manual test plan covers; Docker comes later only if real bugs show up there.
 
 - **Unit** (no network): the node's logic with fakes (fake clock, fake list of network cards, in-memory connections).
-- **In-process** (server and node in one test process, real gRPC and TLS over loopback, both modes): the node gets a test
+- **In-process** (server and node in one test process, real gRPC and TLS over loopback): the node gets a test
   dialer that maps addresses to fake cameras (`FakeCamera` on random loopback ports), so two sites can both have
   192.168.0.20 pointing to different cameras; a few tests let the node dial real loopback ports (a closed port = refused,
   a port that never answers = timed out) so device socket errors and site errors are told apart on real sockets.
 - **Manual test plan** (node `README.md`, like the DHCP plugin's): a Raspberry Pi and a Windows machine as nodes with the
-  development camera behind them; outbound through NAT, inbound, two network cards (office side not reached), pull the
+  development camera behind them; through NAT, two network cards (all cards, then only the camera card), pull the
   cable (Site offline, back online after the waiting time), mDNS and range scan in the real subnet, NTP relay, a port not
   allowed. Read-only towards the camera; opt-in hardware tests (`Category=Hardware`) for what can be automated there.
 
@@ -587,12 +582,12 @@ What the layers check:
 
 - Node: state machine with a fake clock (unbound open, closed after 24 h of run time, Allow binding, bound, reset with a
   new identity and code), pairing (right code, wrong code, 5 wrong = new code and 10 minutes closed, a server in between
-  with its own key fails both proofs), outbound and inbound mode (the same calls over both, reconnect with backoff,
-  worker connections on request), reached cards and extra subnets (allowed and refused addresses), ports (both lists:
+  with its own key fails both proofs), the connection to the server (reconnect with backoff, worker connections on
+  request), all cards by default, chosen cards and extra subnets (allowed and refused addresses), ports (both lists:
   allowed, refused, requested, allowed in the app, dismissed; a Connect to port never allows a relay), the connection log, `Dial` (bytes, half-close, cancel, deadline,
   device socket errors vs site errors, short and permanent limits), `Relay` (UDP and TCP: open, accept, half-close, close with the stream, port
-  in use), mDNS announce, `RangeScan`, capabilities.
-- Server with an in-process node, in both modes: Accept site nodes (off = nothing listens, on without restart, off
+  in use), `RangeScan`, capabilities.
+- Server with an in-process node: Accept site nodes (off = nothing listens, on without restart, off
   closes the node connections), waiting nodes (limits, dropped after 24 hours), the server addresses a node falls back to,
   at most 2 large transfers per site (the third waits, polls go on), timeouts with the round trip on top, a manifest
   without `siteSupport` = none, the Web View link for site devices, bind with
@@ -602,7 +597,7 @@ What the layers check:
   sites (discovery, imports, the waiting list, the address conflict check), Site offline (computed status not stored,
   every status switch, refused new tasks and plugin calls, Log in / Set password refused, a running task across a short
   dropout, the site events, no "Device unreachable", hysteresis, compliance Not checked), moving devices (sticky route,
-  1 hour rule, names never move, DHCP follow), replace and change address, DNS lookups per route, a backup restored on a
+  1 hour rule, names never move, DHCP follow), replace, DNS lookups per route, a backup restored on a
   new server keeps its sites.
 - The banned-API analyzer in the build (Send TCP message, NTP upstream still allowed); a test that every
   `VapixConnectionOptions` comes from the one helper.
@@ -617,11 +612,11 @@ What the layers check:
 1. Foundations: the spike of the reversed connection (Kestrel over a connection the node opened); `VapixClient` on
    `SocketsHttpHandler` (rebase the branch refactor, fix `RtspClient`), `DeviceRoute`
    through the one options helper, the factory, the probe and RTSP, the banned-API analyzer; `SiteOffline` in the SDK
-   enum and every status switch; node service and app (identity, outbound connection and inbound listener, pairing code, Hello / Bind / Unbind,
+   enum and every status switch; node service and app (identity, the connection to the server, pairing code, Hello / Bind / Unbind,
    Dial, networks, ports and requests, connection log, terms, theme assembly); server identity key, the site listener,
-   `ISiteTransport` (control and worker connections in both modes, short and permanent limits), Sites page, `sites.view`, `Device.SiteId`, Add manually through the sites, polling, tasks, Site offline.
+   `ISiteTransport` (control and worker connections, short and permanent limits), Sites page, `sites.view`, `Device.SiteId`, Add manually through the sites, polling, tasks, Site offline.
 2. Discovery at sites (every add mode, mDNS, `RangeScan`, Resolve, DNS names), imports and Import from ADM with Site,
-   the waiting list per (site, address), moving devices, Replace, Change address.
+   the waiting list per (site, address), moving devices, Replace.
 3. RTSP route in use (live view, PTZ, metadata, events), Device triggers, Web View, recording export, compliance.
 4. SDK: `IDeviceNetwork`, `siteSupport` / `sitePorts`, relays for UDP (`IDatagramEndpoint`) and TCP (`IStreamListener`,
    the HTTP helper), local listeners through the same interfaces, NTP at sites, DHCP message, the site events.
@@ -655,14 +650,14 @@ every stream that uses it).
    banned-API analyzer (repo and plugin project SDK). With no site, OADM behaves exactly as before.
 2. **Site offline everywhere**: the computed status, every status switch of the list in "Server" (host, plugins, client,
    fake mode), the site events, compliance Not checked, "Site errors are not device errors".
-3. **Node program**: service and app (identity, both modes, pairing, states, networks, both port lists and requests,
+3. **Node program**: service and app (identity, the connection to the server, pairing, states, networks, both port lists and requests,
    connection log, `Dial`, `Relay`, `Browse`, `RangeScan`, `Resolve`, `Ping`, terms, theme assembly), its tests and
    manual test plan. Needs only stream 0.
-4. **Server side of sites**: the site listener and Accept site nodes, `ISiteTransport` over the real node (both modes,
+4. **Server side of sites**: the site listener and Accept site nodes, `ISiteTransport` over the real node (the
    control and worker connections, limits, large transfers, timeouts), binding, `SiteService`, the Sites page and Bind
    dialog, roles and audit, backup. Joins streams 1 and 3 in the in-process tests.
 5. **Discovery and devices at sites**: every add mode, imports and Import from ADM with Site, the waiting list per
-   (site, address), overlapping networks, moving devices, Replace, Change address, the Site column, the Web View link.
+   (site, address), overlapping networks, moving devices, Replace, the Site column, the Web View link.
    After streams 1 and 4.
 6. **SDK and plugins**: `IDeviceNetwork` in Network settings and the NTP task, relays and local listeners, the HTTP
    helper, NTP at sites, DHCP message, `siteSupport` in every bundled plugin and the templates, `Oadm.Sdk.Testing` fakes,

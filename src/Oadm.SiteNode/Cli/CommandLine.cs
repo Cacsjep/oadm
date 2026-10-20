@@ -18,11 +18,10 @@ public static class CommandLine
         oadm-site-node status                   state, server, networks and ports
         oadm-site-node pairing-code             the pairing code (administrators)
         oadm-site-node server <address>         connect to the OADM server (oadm.example.com, 10.0.0.5:5081)
-        oadm-site-node server --wait            wait for the server on port 5081 instead
         oadm-site-node allow-binding            binding open for another 24 hours, a new code
         oadm-site-node networks                 network cards and extra networks
-        oadm-site-node networks card <name> on|off
-        oadm-site-node networks all on|off
+        oadm-site-node networks card <name> on|off   choose a card (no card chosen = all cards)
+        oadm-site-node networks all on          reach devices on all cards again
         oadm-site-node networks add|remove <network like 10.20.0.0/16>
         oadm-site-node ports                    allowed and requested ports
         oadm-site-node ports allow|remove|dismiss connect|listen tcp|udp <port>
@@ -31,16 +30,14 @@ public static class CommandLine
         oadm-site-node log [count]              the newest connections
 
         --data-dir <folder>   another data folder (default: the installed node's)
-        --port <port>         the port of "wait for the server" (default 5081)
         --timeout <seconds>   wait this long for the service to answer (default: no wait; installers)
         """;
 
-    /// <summary>The verb, the arguments without the data folder and port options, the data folder and port when given.</summary>
-    public static (string? Verb, string[] Arguments, string? DataDirectory, int? Port) Split(string[] args)
+    /// <summary>The verb, the arguments without the data folder option, and the data folder when given.</summary>
+    public static (string? Verb, string[] Arguments, string? DataDirectory) Split(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
         string? dataDirectory = null;
-        int? port = null;
         var rest = new List<string>();
         for (var i = 0; i < args.Length; i++)
         {
@@ -48,11 +45,6 @@ public static class CommandLine
                 dataDirectory = args[++i];
             else if (args[i].StartsWith("--data-dir=", StringComparison.Ordinal))
                 dataDirectory = args[i]["--data-dir=".Length..];
-            else if (args[i] is "--port" && i + 1 < args.Length && int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var p))
-            {
-                port = p;
-                i++;
-            }
             else
             {
                 rest.Add(args[i]);
@@ -60,12 +52,11 @@ public static class CommandLine
         }
 
         var verb = rest.Count > 0 && !rest[0].StartsWith('-') ? rest[0] : null;
-        return (verb, verb is null ? [.. rest] : [.. rest.Skip(1)], dataDirectory, port);
+        return (verb, verb is null ? [.. rest] : [.. rest.Skip(1)], dataDirectory);
     }
 
-    /// <param name="firewall">Runs one netsh call (tests); null = netsh on Windows, nothing elsewhere.</param>
     public static async Task<int> RunAsync(string verb, string[] args, string? dataDirectory, TextWriter output, TextWriter error, CancellationToken ct,
-        AdminClient? client = null, Func<IReadOnlyList<string>, CancellationToken, Task<int>>? firewall = null)
+        AdminClient? client = null)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -90,10 +81,6 @@ public static class CommandLine
             await error.WriteLineAsync(response.Error).ConfigureAwait(false);
             return 1;
         }
-
-        // "server --wait" opens TCP 5081 in Windows Firewall, "server <address>" closes it (the service cannot).
-        if (await NodeFirewall.ApplyAsync(request, response, ct, firewall).ConfigureAwait(false) is { } firewallProblem)
-            await error.WriteLineAsync(firewallProblem).ConfigureAwait(false);
 
         switch (verb)
         {
@@ -161,8 +148,7 @@ public static class CommandLine
             ("reset", 0) => AdminRequest.Of(AdminCommands.Reset),
             ("log", 0) => AdminRequest.Of(AdminCommands.Log, ("count", "50")),
             ("log", 1) => AdminRequest.Of(AdminCommands.Log, ("count", args[0])),
-            ("server", 1) when args[0] == "--wait" => AdminRequest.Of(AdminCommands.SetServer, ("mode", "wait")),
-            ("server", 1) => AdminRequest.Of(AdminCommands.SetServer, ("mode", "connect"), ("address", args[0])),
+            ("server", 1) when !args[0].StartsWith('-') => AdminRequest.Of(AdminCommands.SetServer, ("address", args[0])),
             ("networks", 0) => AdminRequest.Of(AdminCommands.State),
             ("networks", 2) when args[0] == "all" && OnOff(args[1]) is { } on => AdminRequest.Of(AdminCommands.AllCards, ("on", on)),
             ("networks", 2) when args[0] == "add" => AdminRequest.Of(AdminCommands.AddSubnet, ("subnet", args[1])),
@@ -187,7 +173,7 @@ public static class CommandLine
                 NodeBinding.Closed => "Binding closed. Run allow-binding.",
                 _ => $"Not bound. Binding open for {Math.Ceiling(view.BindingHoursLeft).ToString(CultureInfo.InvariantCulture)} more hours.",
             },
-            view.Mode == NodeLinkMode.Wait ? $"Waits for the server on port {view.ListenPort}" : $"Server: {(view.ServerAddress.Length > 0 ? view.ServerAddress : "not set")}",
+            $"Server: {(view.ServerAddress.Length > 0 ? view.ServerAddress : "not set")}",
         };
         if (view.ConnectionText.Length > 0)
             lines.Add(view.ConnectionText);
@@ -211,7 +197,7 @@ public static class CommandLine
         var lines = new List<string>();
         foreach (var card in view.Cards)
             lines.Add($"{(card.Reached ? "[x]" : "[ ]")} {card.Name} {string.Join(", ", card.Addresses)}{(card.HasDefaultRouter ? " (default router)" : "")}");
-        lines.Add(view.AllCards ? "All cards: on" : "All cards: off");
+        lines.Add(view.AllCards ? "Reaches devices on: all cards" : "Reaches devices on: the chosen cards");
         foreach (var subnet in view.ExtraSubnets)
             lines.Add("Extra network " + subnet);
         return string.Join(Environment.NewLine, lines);

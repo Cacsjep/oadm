@@ -148,7 +148,9 @@ public sealed class SiteBindingSecurityTests
         await using var server = await SiteServer.StartAsync();
         await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address, hostName: "site‮pc");
 
-        await Eventually.TrueAsync(() => server.ServerLog().Contains("invalid host name", StringComparison.Ordinal), "the server refuses the Hello");
+        // The server closes the link after the Hello (the node then says it cannot reach the server). Not checked through the
+        // server's log file: with several hosts in one test process the log lines may land in another host's file.
+        await Eventually.TrueAsync(() => node.Get<SiteNode.Feed.ConnectionState>().Text == SiteNode.Admin.AdminTexts.CannotReach(server.Address), "the server refuses the Hello");
         Assert.DoesNotContain((await server.ListAsync()).Sites, s => s.NodeId == node.NodeId);
     }
 

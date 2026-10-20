@@ -25,12 +25,15 @@ public sealed class NodeAppViewModelTests
         Assert.Equal("Not bound. Binding open for 23 more hours.", _vm.BindingText);
         Assert.True(_vm.IsBindingOpen);
         Assert.Equal("10.0.0.5", _vm.ServerAddress);
-        Assert.True(_vm.IsConnectMode);
+        Assert.Equal(NodeAppViewModel.PortHint, _vm.ServerHint);
+        Assert.True(_vm.ShowPairing);
         Assert.True(_vm.IsConnected);
         Assert.Equal("Not bound yet", _vm.SiteText);
         Assert.Equal(2, _vm.Cards.Count);
         Assert.Equal("Default router", _vm.Cards[1].Hint);
-        Assert.False(_vm.Cards[1].Reached);
+        Assert.True(_vm.Cards[0].Chosen);
+        Assert.False(_vm.Cards[1].Chosen);
+        Assert.False(_vm.AllCards);
         Assert.Equal(["TCP 80", "TCP 443", "TCP 554"], _vm.ConnectPorts.Select(p => p.Text));
         Assert.Equal("UDP 123", Assert.Single(_vm.ListenPorts).Text);
         Assert.Equal("Connect to TCP 8443: camera 192.168.0.30", Assert.Single(_vm.RequestedPorts).Text);
@@ -73,7 +76,7 @@ public sealed class NodeAppViewModelTests
         Assert.Equal(1, _elevation.Runs);
         Assert.True(_channel.Requests[^1].AsAdmin);
 
-        _vm.Cards[1].Reached = true;
+        _vm.Cards[1].Chosen = true;
         await Sdk.Testing.Eventually.TrueAsync(() => _elevation.Runs == 2, "the card change runs elevated");
         var request = _channel.Requests[^1].Request;
         Assert.Equal((AdminCommands.SetCard, "office", "true"), (request.Command, request.Arg("id"), request.Arg("reached")));
@@ -125,7 +128,8 @@ public sealed class NodeAppViewModelTests
         Assert.True(_vm.CanSaveServer);
         await _vm.SaveServerAsync();
         var request = _channel.Requests.Last(r => r.Request.Command == AdminCommands.SetServer).Request;
-        Assert.Equal(("connect", "oadm.example.com:5082"), (request.Arg("mode"), request.Arg("address")));
+        Assert.Equal("oadm.example.com:5082", request.Arg("address"));
+        Assert.False(request.Args.ContainsKey("mode")); // the node always connects to the server
     }
 
     [Fact]
@@ -143,16 +147,45 @@ public sealed class NodeAppViewModelTests
     }
 
     [Fact]
-    public async Task WaitModeNeedsNoAddress()
+    public async Task ANewNodeAsksForTheServerAddressFirst()
     {
+        _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
+        _elevation.IsAdministrator = true;
         await _vm.RefreshAsync();
 
-        _vm.ChooseWaitCommand.Execute(null);
-        _vm.ServerAddress = "";
-        _elevation.IsAdministrator = true;
-        await _vm.SaveServerAsync();
+        Assert.False(_vm.HasServerAddress);
+        Assert.StartsWith(NodeAppViewModel.EnterServer, _vm.ServerHint, StringComparison.Ordinal);
+        Assert.False(_vm.ShowPairing); // the pairing code comes once the node has a server
+        Assert.Null(_vm.ErrorOf(nameof(NodeAppViewModel.ServerAddress))); // nothing red on an untouched form
 
-        Assert.Equal("wait", _channel.Requests.Last(r => r.Request.Command == AdminCommands.SetServer).Request.Arg("mode"));
+        _vm.FieldLeft(nameof(NodeAppViewModel.ServerAddress));
+        Assert.Equal(NodeAppViewModel.EnterServer, _vm.ErrorOf(nameof(NodeAppViewModel.ServerAddress)));
+        var sent = _channel.Requests.Count;
+        await _vm.SaveServerAsync();
+        Assert.Equal(sent, _channel.Requests.Count);
+    }
+
+    [Fact]
+    public async Task NetworksAreAllCardsOrTheChosenCards()
+    {
+        _elevation.IsAdministrator = true;
+        _channel.State = FakeChannel.Sample(allCards: true);
+        await _vm.RefreshAsync();
+
+        Assert.True(_vm.AllCards);
+        Assert.All(_vm.Cards, c => Assert.False(c.Chosen)); // All cards: no card is ticked
+
+        _vm.Cards[0].Chosen = true;
+        await Sdk.Testing.Eventually.TrueAsync(() => _channel.Requests[^1].Request.Command == AdminCommands.SetCard, "the card is chosen");
+        var card = _channel.Requests[^1].Request;
+        Assert.Equal(("cam", "true"), (card.Arg("id"), card.Arg("reached")));
+
+        _channel.State = FakeChannel.Sample();
+        await _vm.RefreshAsync();
+        Assert.False(_vm.AllCards);
+        _vm.AllCards = true;
+        await Sdk.Testing.Eventually.TrueAsync(() => _channel.Requests[^1].Request.Command == AdminCommands.AllCards, "All cards is ticked");
+        Assert.Equal("true", _channel.Requests[^1].Request.Arg("on"));
     }
 
     [Fact]
@@ -199,9 +232,14 @@ public sealed class NodeAppViewModelTests
 
         _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Not connected", _vm.NodeStatusText);
+        Assert.Equal("Status: No server address yet", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusWarning);
         Assert.Null(_vm.ConnectionProblem);
+
+        _channel.State = FakeChannel.Sample(connected: false, connectionText: "");
+        await _vm.RefreshAsync();
+        Assert.Equal("Status: Not connected", _vm.NodeStatusText);
+        Assert.True(_vm.IsNodeStatusWarning);
 
         _channel.State = FakeChannel.Sample(connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
         await _vm.RefreshAsync();
@@ -216,11 +254,6 @@ public sealed class NodeAppViewModelTests
         _channel.State = FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
         await _vm.RefreshAsync();
         Assert.Equal("Status: Not connected: Cannot reach 10.0.0.5:5081", _vm.NodeStatusText);
-
-        _channel.State = new NodeView { NodeId = "a1", Binding = NodeBinding.Open, Mode = NodeLinkMode.Wait, ConnectionText = "Waiting for the server on port 5081" };
-        await _vm.RefreshAsync();
-        Assert.Equal("Status: Waiting for the server on port 5081", _vm.NodeStatusText);
-        Assert.Equal(NodeStatusKind.Neutral, _vm.NodeStatusKind);
 
         _channel.State = null;
         await _vm.RefreshAsync();
@@ -263,11 +296,6 @@ public sealed class NodeAppViewModelTests
         Assert.True(_vm.CanSaveServer);
 
         _vm.ServerAddress = "10.0.0.5";
-        Assert.False(_vm.CanSaveServer);
-
-        _vm.ChooseWaitCommand.Execute(null);
-        Assert.True(_vm.CanSaveServer);
-        _vm.ChooseConnectCommand.Execute(null);
         Assert.False(_vm.CanSaveServer);
     }
 
