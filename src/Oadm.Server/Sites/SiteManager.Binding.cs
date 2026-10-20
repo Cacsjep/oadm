@@ -255,11 +255,11 @@ public sealed partial class SiteManager
                 entry.Row.Version = row.Version;
                 entry.Row.NotBound = false;
                 entry.State = SiteState.Online;
-                entry.LastAnswer = Time.GetUtcNow();
+                entry.LastAnswer = Time.GetTimestamp();
             }
             else
             {
-                _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetUtcNow() };
+                _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetTimestamp() };
             }
         }
 

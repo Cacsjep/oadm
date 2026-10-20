@@ -99,7 +99,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             rows = await db.Sites.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
         }
 
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         lock (_lock)
         {
             foreach (var row in rows)
@@ -107,7 +107,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 _sites[row.Id] = new SiteEntry(row, _options.MaxLargeTransfers)
                 {
                     State = row.NotBound ? SiteState.Offline : SiteState.Starting,
-                    StartingUntil = now + _options.StartWindow,
+                    StartingSince = now,
                     LastAnswer = now,
                 };
             }
@@ -286,7 +286,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>A Watch answer of the node: allowed ports, counts, version; or the notice that the node was reset.</summary>
     internal void OnStatus(SiteSession session, NodeStatus status)
     {
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         var changed = false;
         var reset = false;
         lock (_lock)
@@ -305,7 +305,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
             else
             {
-                changed = Apply(entry, status, now);
+                changed = Apply(entry, status, now, Time.GetUtcNow());
             }
         }
 
@@ -324,12 +324,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 
     // Under the lock.
-    private bool Apply(SiteEntry entry, NodeStatus status, DateTimeOffset now)
+    private bool Apply(SiteEntry entry, NodeStatus status, long now, DateTimeOffset wall)
     {
         entry.Status = status;
         entry.Networks = SiteNetworks.From(status);
         entry.LastAnswer = now;
-        entry.LastSeen = now;
+        entry.LastSeen = wall;
         entry.ConnectedSince ??= now;
         foreach (var port in entry.Requested.Where(p => Allows(status, p)).ToList())
         {
@@ -341,7 +341,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     internal void OnHeartbeat(SiteSession session, HelloReply hello, TimeSpan roundTrip)
     {
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         Site? notBound = null;
         lock (_lock)
         {
@@ -351,7 +351,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
 
             entry.LastAnswer = now;
-            entry.LastSeen = now;
+            entry.LastSeen = Time.GetUtcNow();
             entry.RoundTrip = roundTrip;
             entry.Version = hello.Version;
             if (hello.State != NodeState.Bound && !entry.Row.NotBound)
@@ -382,8 +382,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 return true;
             }
 
-            var last = entry.LastAnswer > session.Started ? entry.LastAnswer : session.Started;
-            return Time.GetUtcNow() - last >= _options.OfflineAfter;
+            return Time.GetElapsedTime(Math.Max(entry.LastAnswer, session.Started)) >= _options.OfflineAfter;
         }
     }
 
@@ -442,7 +441,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 entry.Session = null;
                 entry.ConnectedSince = null;
                 row = entry.Row;
-                changed = Evaluate(entry, Time.GetUtcNow());
+                changed = Evaluate(entry, Time.GetTimestamp());
             }
         }
 
@@ -510,7 +509,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
 
             session = new SiteSession(this, siteId, control, _options);
-            var now = Time.GetUtcNow();
+            var now = Time.GetTimestamp();
             lock (_lock)
             {
                 if (!_sites.TryGetValue(siteId, out var entry) || entry != attaching)
@@ -566,7 +565,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     private void Tick()
     {
-        var now = Time.GetUtcNow();
+        var now = Time.GetTimestamp();
         var changed = new List<Guid>();
         var expired = new List<WaitingNode>();
         var seen = new List<(Guid Id, DateTime At)>();
@@ -587,7 +586,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 }
             }
 
-            foreach (var waiting in _waiting.Values.Where(w => now - w.Since >= _options.WaitingMaxAge).ToList())
+            foreach (var waiting in _waiting.Values.Where(w => Time.GetElapsedTime(w.SinceTimestamp, now) >= _options.WaitingMaxAge).ToList())
             {
                 _waiting.Remove(waiting.Key);
                 expired.Add(waiting);
@@ -616,8 +615,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
-    /// <summary>Moves the site between starting, online and offline (under the lock); true when it changed. Audits the edges.</summary>
-    private bool Evaluate(SiteEntry entry, DateTimeOffset now)
+    /// <summary>
+    /// Moves the site between starting, online and offline (under the lock); true when it changed. Audits the edges.
+    /// <paramref name="now"/> is a <see cref="TimeProvider.GetTimestamp"/>: the waiting times never follow the wall clock.
+    /// </summary>
+    private bool Evaluate(SiteEntry entry, long now)
     {
         var connected = entry.Session is { IsEnded: false, Ready: true };
         var before = entry.State;
@@ -628,21 +630,21 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 {
                     entry.State = SiteState.Online; // after a start no waiting: nothing changed meanwhile
                 }
-                else if (now >= entry.StartingUntil || entry.Row.NotBound)
+                else if (Time.GetElapsedTime(entry.StartingSince, now) >= _options.StartWindow || entry.Row.NotBound)
                 {
                     entry.State = SiteState.Offline;
                 }
 
                 break;
             case SiteState.Online:
-                if (entry.Row.NotBound || (!connected && now - entry.LastAnswer >= _options.OfflineAfter))
+                if (entry.Row.NotBound || (!connected && Time.GetElapsedTime(entry.LastAnswer, now) >= _options.OfflineAfter))
                 {
                     entry.State = SiteState.Offline;
                 }
 
                 break;
             case SiteState.Offline:
-                if (connected && !entry.Row.NotBound && entry.ConnectedSince is { } since && now - since >= _options.OnlineAfter)
+                if (connected && !entry.Row.NotBound && entry.ConnectedSince is { } since && Time.GetElapsedTime(since, now) >= _options.OnlineAfter)
                 {
                     entry.State = SiteState.Online;
                 }
@@ -916,7 +918,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             if (_sites.TryGetValue(siteId, out var entry))
             {
                 entry.Row.NotBound = true;
-                Evaluate(entry, Time.GetUtcNow());
+                Evaluate(entry, Time.GetTimestamp());
             }
         }
 
@@ -990,12 +992,16 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         public SiteSession? Session { get; set; }
 
-        public DateTimeOffset LastAnswer { get; set; }
+        /// <summary>The last answer of the node (a <see cref="TimeProvider.GetTimestamp"/>, never the wall clock).</summary>
+        public long LastAnswer { get; set; }
 
-        public DateTimeOffset? ConnectedSince { get; set; }
+        /// <summary>Since when the node is connected and answering (timestamp).</summary>
+        public long? ConnectedSince { get; set; }
 
-        public DateTimeOffset StartingUntil { get; set; }
+        /// <summary>When the start window began (timestamp).</summary>
+        public long StartingSince { get; set; }
 
+        /// <summary>The wall clock time of the last answer (shown and stored only).</summary>
         public DateTimeOffset? LastSeen { get; set; }
 
         public TimeSpan RoundTrip { get; set; }

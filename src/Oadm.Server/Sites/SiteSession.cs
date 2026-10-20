@@ -30,7 +30,7 @@ internal sealed partial class SiteSession : IAsyncDisposable
         SiteId = siteId;
         Control = control;
         _options = options;
-        Started = manager.Time.GetUtcNow();
+        Started = manager.Time.GetTimestamp();
     }
 
     public Guid SiteId { get; }
@@ -293,8 +293,11 @@ internal sealed partial class SiteSession : IAsyncDisposable
         }
     }
 
-    /// <summary>When this session started: a new session is judged by its own answers, never by the last session's.</summary>
-    public DateTimeOffset Started { get; }
+    /// <summary>
+    /// When this session started (<see cref="TimeProvider.GetTimestamp"/>): a new session is judged by its own answers, never
+    /// by the last session's.
+    /// </summary>
+    public long Started { get; }
 
     /// <summary>
     /// True when the node answers a Hello on the control link now (within the round trip twice and 3 s). The control link

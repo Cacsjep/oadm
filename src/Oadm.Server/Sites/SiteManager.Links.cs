@@ -149,7 +149,7 @@ public sealed partial class SiteManager
 
         var key = link.NodeFingerprintHex;
         WaitingNode? replaced;
-        var node = new WaitingNode(link, hello, Time.GetUtcNow());
+        var node = new WaitingNode(link, hello, Time.GetUtcNow(), Time.GetTimestamp());
         lock (_lock)
         {
             var same = _sites.Values.FirstOrDefault(e =>
@@ -210,13 +210,17 @@ public sealed partial class SiteManager
     private partial void LogBadHello(string remote, string problem);
 
     /// <summary>A node that waits to be bound: the connection it opened.</summary>
-    private sealed class WaitingNode(NodeLink link, HelloReply hello, DateTimeOffset since)
+    private sealed class WaitingNode(NodeLink link, HelloReply hello, DateTimeOffset since, long sinceTimestamp)
     {
         public NodeLink Link { get; } = link;
 
         public HelloReply Hello { get; } = hello;
 
+        /// <summary>When the node connected (wall clock, shown).</summary>
         public DateTimeOffset Since { get; } = since;
+
+        /// <summary>When the node connected (<see cref="TimeProvider.GetTimestamp"/>: the 24 hours never follow the wall clock).</summary>
+        public long SinceTimestamp { get; } = sinceTimestamp;
 
         public string NodeId => Hello.NodeId;
 

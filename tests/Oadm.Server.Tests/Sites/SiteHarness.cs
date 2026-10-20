@@ -41,12 +41,14 @@ internal sealed class SiteServer : IAsyncDisposable
     /// <summary>What a node types as the server address.</summary>
     public string Address => "127.0.0.1:" + Manager.ListenPort;
 
-    public static async Task<SiteServer> StartAsync(bool accept = true, FakeTimeProvider? time = null, string? dataDirectory = null, Action<IServiceCollection>? configure = null)
+    /// <param name="clock">The sites' clock when it is not <paramref name="time"/> (a clock whose wall time jumps).</param>
+    /// <param name="options">The site options in full (listen on 127.0.0.1:0); null = the defaults of the tests.</param>
+    public static async Task<SiteServer> StartAsync(bool accept = true, FakeTimeProvider? time = null, string? dataDirectory = null, Action<IServiceCollection>? configure = null, TimeProvider? clock = null, SiteOptions? options = null)
     {
         var host = await TestServerHost.StartAsync(dataDirectory: dataDirectory, configureServices: s =>
         {
             s.RemoveAll<SiteOptions>();
-            s.AddSingleton(new SiteOptions { ListenUrl = "127.0.0.1:0", Time = time, WorkerWait = TimeSpan.FromSeconds(30) });
+            s.AddSingleton(options ?? new SiteOptions { ListenUrl = "127.0.0.1:0", Time = clock ?? time, WorkerWait = TimeSpan.FromSeconds(30) });
             configure?.Invoke(s);
         });
         if (accept)
