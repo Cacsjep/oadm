@@ -66,19 +66,6 @@
               <TextBlock Classes="error" Text="{Binding BindingError}" TextWrapping="Wrap"
                          IsVisible="{Binding BindingError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-              <!-- The state of the node -->
-              <ui:FormField Classes="wide" Label="Binding">
-                <TextBlock Text="{Binding BindingText}" TextWrapping="Wrap" />
-              </ui:FormField>
-              <ui:FormField Classes="wide" Label="Site">
-                <TextBlock Text="{Binding SiteText}" />
-              </ui:FormField>
-              <ui:FormField Classes="wide" Label="Node ID">
-                <SelectableTextBlock Classes="mono" Text="{Binding IdText}" />
-              </ui:FormField>
-              <ui:FormField Classes="wide" Label="Version">
-                <TextBlock Text="{Binding VersionText}" />
-              </ui:FormField>
               <ui:FormField Classes="wide" Label="">
                 <Button Classes="danger" Content="Reset" Command="{Binding ResetCommand}" HorizontalAlignment="Left"
                         ToolTip.Tip="Forget the server and get a new identity" />
@@ -248,11 +235,14 @@
       </Grid>
     </Panel>
 
-    <!-- Node status, outside the tabs -->
+    <!-- Node status, outside the tabs: the connection, the site, the binding, then the node's ID and version -->
     <StackPanel Grid.Row="2" Spacing="8" Margin="20,16,20,0">
       <TextBlock Classes="cardTitle" Text="Node status" />
       <ui:StatusChip Text="{Binding NodeStatusText}" IsOk="{Binding IsNodeStatusOk}" IsWarning="{Binding IsNodeStatusWarning}"
                      IsError="{Binding IsNodeStatusError}" MaxLines="2" />
+      <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" IsVisible="{Binding HasSite}" />
+      <TextBlock Text="{Binding BindingText}" TextWrapping="Wrap" IsVisible="{Binding HasState}" />
+      <TextBlock Classes="small secondary" Text="{Binding NodeInfoText}" ToolTip.Tip="{Binding IdText}" IsVisible="{Binding HasState}" />
       <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasRequests}">
         <ui:StatusChip Text="{Binding RequestsText}" IsInfo="True" VerticalAlignment="Center" />
         <Button Classes="link" Content="Review" Command="{Binding ShowPortsCommand}" VerticalAlignment="Center" />

@@ -99,7 +99,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>The last state read; null while the service does not answer.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasState), nameof(IsBound), nameof(IsBindingOpen), nameof(IsBindingClosed), nameof(BindingText),
-        nameof(SiteText), nameof(IdText), nameof(VersionText), nameof(ConnectionsText), nameof(HasNewIdentity), nameof(NewIdentityText),
+        nameof(SiteText), nameof(HasSite), nameof(IdText), nameof(NodeInfoText), nameof(ConnectionsText), nameof(HasNewIdentity), nameof(NewIdentityText),
         nameof(WrongCodesText), nameof(IsConnected), nameof(ConnectionText), nameof(HasConnectionProblem), nameof(HasRequests),
         nameof(HasRelays), nameof(AllCards), nameof(HasNoListenPorts), nameof(HasServerAddress), nameof(ServerHint))]
     public partial NodeView? State { get; private set; }
@@ -125,10 +125,10 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public bool IsActivityTab => Tab == NodeTab.Activity;
 
     /// <summary>
-    /// The node status below the tabs: "Status: Connected to OADM-SRV · Building B", "Status: Not connected: Cannot reach
-    /// 10.0.0.5:5081", "Status: No server address yet", "Status: Service not running".
+    /// The status line of the Node status block below the tabs: "Connected to OADM-SRV", "Not connected: Cannot reach
+    /// 10.0.0.5:5081", "No server address yet", "Service not running". The site has a line of its own (<see cref="SiteText"/>).
     /// </summary>
-    public string NodeStatusText => "Status: " + NodeStatus.Text;
+    public string NodeStatusText => NodeStatus.Text;
 
     public NodeStatusKind NodeStatusKind => NodeStatus.Kind;
 
@@ -138,9 +138,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     public bool IsNodeStatusError => NodeStatusKind == NodeStatusKind.Error;
 
-    /// <summary>"OADM-SRV · Building B" (the site once the server named it).</summary>
-    private static string ServerName(BoundServerView bound) => bound.SiteName is { Length: > 0 } site ? $"{bound.Name} · {site}" : bound.Name;
-
     private (string Text, NodeStatusKind Kind) NodeStatus
     {
         get
@@ -148,21 +145,26 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
             if (State is not { } s)
                 return (ServiceError is null or AdminTexts.ServiceNotRunning ? "Service not running" : ServiceError, NodeStatusKind.Error);
             if (s.Connected)
-                return (s.Bound is { } bound ? $"Connected to {ServerName(bound)}" : s.ConnectionText.Length > 0 ? s.ConnectionText : "Connected", NodeStatusKind.Ok);
+                return (s.Bound is { } bound ? $"Connected to {bound.Name}" : s.ConnectionText.Length > 0 ? s.ConnectionText : "Connected", NodeStatusKind.Ok);
             if (s.ServerAddress.Length == 0)
                 return ("No server address yet", NodeStatusKind.Warning);
+            if (s.Binding == NodeBinding.Closed)
+                return ("Not connected", NodeStatusKind.Warning); // the binding line says why
             return s.ConnectionText.Length > 0
                 ? ("Not connected: " + s.ConnectionText, HasConnectionProblem ? NodeStatusKind.Error : NodeStatusKind.Warning)
                 : ("Not connected", NodeStatusKind.Warning);
         }
     }
 
-    /// <summary>"Not bound. Binding open for 23 more hours." / "Not bound. Binding is closed." / "Bound to OADM-SRV since 2026-10-19 08:00".</summary>
+    /// <summary>
+    /// The binding line of the Node status block: "Bound since 2026-10-19 08:00" (the status line names the server),
+    /// "Not bound. Binding open for 23 more hours.", "Binding is closed.".
+    /// </summary>
     public string BindingText => State switch
     {
         null => "",
-        { Binding: NodeBinding.Bound, Bound: { } bound } => $"Bound to {bound.Name} since {bound.BoundUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}",
-        { Binding: NodeBinding.Closed } => "Not bound. Binding is closed.",
+        { Binding: NodeBinding.Bound, Bound: { } bound } => $"Bound since {bound.BoundUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}",
+        { Binding: NodeBinding.Closed } => "Binding is closed.",
         var s => $"Not bound. Binding open for {Hours(s.BindingHoursLeft)}.",
     };
 
@@ -249,11 +251,18 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         }
     }
 
-    public string SiteText => State?.Bound?.SiteName is { Length: > 0 } site ? site : "Not bound yet";
+    /// <summary>"Site Building B" below the status line once the server named the site; empty before.</summary>
+    public string SiteText => State is { Binding: NodeBinding.Bound, Bound.SiteName: { Length: > 0 } site } ? "Site " + site : "";
 
+    public bool HasSite => SiteText.Length > 0;
+
+    /// <summary>The whole node ID (the tooltip of <see cref="NodeInfoText"/>).</summary>
     public string IdText => State?.NodeId ?? "";
 
-    public string VersionText => State?.Version ?? "";
+    /// <summary>"Node ID 1457a0b5… · Version 1.0.0", small and grey at the end of the Node status block.</summary>
+    public string NodeInfoText => State is not { } s
+        ? ""
+        : $"Node ID {(s.NodeId.Length > 8 ? s.NodeId[..8] + "…" : s.NodeId)} · Version {s.Version}";
 
     /// <summary>"3 short, 12 permanent".</summary>
     public string ConnectionsText => State is null ? "" : $"{State.ShortConnections} short, {State.PermanentConnections} permanent";
@@ -369,6 +378,9 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         {
             _serverEdited = false;
             Validation.Reset(nameof(ServerAddress));
+            // The save ran as an administrator: the answer carries the pairing code while the node is not bound.
+            if (response.PairingCode.Length > 0)
+                PairingCode = response.PairingCode;
         }
         else if (response.Error != SystemElevation.Cancelled)
         {

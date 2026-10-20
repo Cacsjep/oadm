@@ -13,13 +13,14 @@ namespace Oadm.SiteNode.App.Tests;
 /// <summary>The app's windows rendered offscreen with the real app and theme (screenshots to OADM_SCREENSHOT_DIR).</summary>
 public sealed class HeadlessTests
 {
-    public static TheoryData<string> States => ["open", "open-code", "server", "cannot-reach", "closed", "bound", "bound-offline", "identity", "no-service"];
+    public static TheoryData<string> States => ["open", "open-code", "saved-code", "server", "cannot-reach", "closed", "bound", "bound-offline", "identity", "no-service"];
 
     [Theory]
     [MemberData(nameof(States))]
     public async Task TheGeneralTabAndTheNodeStatusShowTheState(string state)
     {
-        var shown = await ShowAsync(StateOf(state), NodeTab.General, $"site-node-app-{state}.png", showCode: state == "open-code");
+        var shown = await ShowAsync(StateOf(state), NodeTab.General, $"site-node-app-{state}.png", showCode: state == "open-code",
+            saveAddress: state == "saved-code" ? "10.0.0.5" : null);
 
         // Save of the footer is the one accent button, in every state.
         Assert.Equal(["Save"], shown.Primary);
@@ -33,43 +34,53 @@ public sealed class HeadlessTests
                 Assert.Contains("Not bound. Binding open for 23 more hours.", shown.Texts);
                 Assert.Contains("Pairing code", shown.Texts);
                 Assert.Contains("Show pairing code", shown.Texts);
-                Assert.Contains("Status: Connected to 10.0.0.5:5081", shown.Texts);
+                Assert.Contains("Connected to 10.0.0.5:5081", shown.Texts);
                 break;
             case "open-code":
                 Assert.Contains("ABCD-EFGH", shown.Texts);
                 Assert.Contains("Type this code at Bind on the Sites page of OADM.", shown.Texts);
                 Assert.DoesNotContain("Show pairing code", shown.Texts);
                 break;
+            case "saved-code":
+                // Saving the address (as an administrator) brought the code right below it.
+                Assert.Contains("ABCD-EFGH", shown.Texts);
+                Assert.Contains("Type this code at Bind on the Sites page of OADM.", shown.Texts);
+                Assert.DoesNotContain("Show pairing code", shown.Texts);
+                Assert.Contains("Not bound. Binding open for 23 more hours.", shown.Texts);
+                break;
             case "server":
                 Assert.Contains("Server address", shown.Texts);
                 Assert.Contains(NodeAppViewModel.EnterServer + " " + NodeAppViewModel.PortHint, shown.Texts);
-                Assert.Contains("Status: No server address yet", shown.Texts);
+                Assert.Contains("No server address yet", shown.Texts);
                 Assert.DoesNotContain("Show pairing code", shown.Texts); // the address comes first
                 break;
             case "cannot-reach":
                 Assert.Contains("Cannot reach 10.0.0.5:5081", shown.Texts); // below the address field
-                Assert.Contains("Status: Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
+                Assert.Contains("Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
                 break;
             case "closed":
-                Assert.Contains("Not bound. Binding is closed.", shown.Texts);
+                Assert.Contains("Binding is closed.", shown.Texts);
                 Assert.Contains("Allow binding", shown.Texts);
                 Assert.DoesNotContain("Show pairing code", shown.Texts);
                 break;
             case "bound":
-                Assert.Contains("Status: Connected to OADM-SRV · Building B", shown.Texts);
-                Assert.Contains("Building B", shown.Texts);
+                Assert.Contains("Connected to OADM-SRV", shown.Texts);
+                Assert.Contains("Site Building B", shown.Texts);
+                Assert.Contains(shown.Texts, t => t.StartsWith("Bound since ", StringComparison.Ordinal));
+                Assert.Single(shown.Texts, t => t.Contains("Building B", StringComparison.Ordinal)); // each name once
+                Assert.Single(shown.Texts, t => t.Contains("OADM-SRV", StringComparison.Ordinal));
                 Assert.DoesNotContain("Show pairing code", shown.Texts);
                 Assert.DoesNotContain("Pairing code", shown.Texts);
                 break;
             case "bound-offline":
-                Assert.Contains("Status: Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
+                Assert.Contains("Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
                 break;
             case "identity":
                 Assert.Contains(shown.Texts, t => t.StartsWith("OADM-SRV presents a new identity", StringComparison.Ordinal));
                 Assert.Contains("Accept new server identity", shown.Texts);
                 break;
             case "no-service":
-                Assert.Contains("Status: Service not running", shown.Texts);
+                Assert.Contains("Service not running", shown.Texts);
                 Assert.Contains("Start the OADM Site Node service.", shown.Texts);
                 Assert.DoesNotContain("Networks", shown.Texts); // no tabs without the service
                 break;
@@ -79,8 +90,8 @@ public sealed class HeadlessTests
         {
             Assert.Contains("Networks", shown.Texts);
             Assert.Contains("Server address", shown.Texts);
-            Assert.Contains("Binding", shown.Texts);
-            Assert.Contains("Node ID", shown.Texts);
+            Assert.Contains("Node ID a1b2c3d4… · Version 3.7.0", shown.Texts); // small and grey in the Node status block
+            Assert.DoesNotContain("Node ID", shown.Texts); // no longer a row of General
             Assert.Contains("Reset", shown.Texts);
             Assert.DoesNotContain("Wait for the server", shown.Texts); // the node always connects to the server
             Assert.DoesNotContain("Connection log", shown.Texts); // the other tabs stay hidden
@@ -101,12 +112,12 @@ public sealed class HeadlessTests
         Assert.Contains("The server asks for 1 port.", shown.Texts);
         Assert.Contains("Review", shown.Texts);
         Assert.Contains("1", shown.Texts); // the count badge of the Ports tab
-        Assert.Contains("Status: Connected to 10.0.0.5:5081", shown.Texts);
+        Assert.Contains("Connected to 10.0.0.5:5081", shown.Texts);
         switch (tab)
         {
             case NodeTab.General:
                 Assert.Contains("Server address", shown.Texts);
-                Assert.Contains("a1b2c3d4e5f60718", shown.Texts);
+                Assert.Contains("Node ID a1b2c3d4… · Version 3.7.0", shown.Texts);
                 Assert.Contains("Reset", shown.Texts);
                 Assert.DoesNotContain("All cards", shown.Texts);
                 break;
@@ -168,6 +179,7 @@ public sealed class HeadlessTests
     private static NodeView? StateOf(string state) => state switch
     {
         "open" or "open-code" => FakeChannel.Sample(requests: false),
+        "saved-code" => FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "", requests: false),
         "server" => FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "", requests: false),
         "cannot-reach" => FakeChannel.Sample(connected: false, connectionText: "Cannot reach 10.0.0.5:5081", requests: false),
         "closed" => FakeChannel.Sample(NodeBinding.Closed, requests: false),
@@ -178,13 +190,19 @@ public sealed class HeadlessTests
     };
 
     /// <summary>The window as it opens (its own size) on <paramref name="tab"/>: the texts it shows and its accent buttons.</summary>
-    private static Task<(List<string> Texts, List<string> Primary)> ShowAsync(NodeView? state, NodeTab tab, string screenshot, bool showCode) =>
+    private static Task<(List<string> Texts, List<string> Primary)> ShowAsync(NodeView? state, NodeTab tab, string screenshot, bool showCode, string? saveAddress = null) =>
         HeadlessEntry.Session.Dispatch(async () =>
         {
             var channel = new FakeChannel { State = state };
             var vm = new NodeAppViewModel(channel, new FakeElevation(channel) { IsAdministrator = true }, new FakeDialogs());
             await vm.RefreshAsync();
             await vm.LoadLogAsync();
+            if (saveAddress is not null)
+            {
+                vm.ServerAddress = saveAddress;
+                await vm.SaveServerAsync();
+            }
+
             if (showCode)
                 await vm.ShowPairingCodeAsync();
             vm.Tab = tab;

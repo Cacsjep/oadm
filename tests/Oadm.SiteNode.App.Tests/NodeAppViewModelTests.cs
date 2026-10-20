@@ -28,7 +28,10 @@ public sealed class NodeAppViewModelTests
         Assert.Equal(NodeAppViewModel.PortHint, _vm.ServerHint);
         Assert.True(_vm.ShowPairing);
         Assert.True(_vm.IsConnected);
-        Assert.Equal("Not bound yet", _vm.SiteText);
+        Assert.Equal("", _vm.SiteText);
+        Assert.False(_vm.HasSite);
+        Assert.Equal("Node ID a1b2c3d4… · Version 3.7.0", _vm.NodeInfoText);
+        Assert.Equal("a1b2c3d4e5f60718", _vm.IdText);
         Assert.Equal(2, _vm.Cards.Count);
         Assert.Equal("Default router", _vm.Cards[1].Hint);
         Assert.True(_vm.Cards[0].Chosen);
@@ -50,8 +53,9 @@ public sealed class NodeAppViewModelTests
 
         await _vm.RefreshAsync();
 
-        Assert.StartsWith("Bound to OADM-SRV since ", _vm.BindingText, StringComparison.Ordinal);
-        Assert.Equal("Building B", _vm.SiteText);
+        Assert.StartsWith("Bound since ", _vm.BindingText, StringComparison.Ordinal);
+        Assert.Equal("Connected to OADM-SRV", _vm.NodeStatusText); // the server once, the site on its own line
+        Assert.Equal("Site Building B", _vm.SiteText);
         Assert.False(_vm.IsBindingOpen);
     }
 
@@ -130,6 +134,41 @@ public sealed class NodeAppViewModelTests
         var request = _channel.Requests.Last(r => r.Request.Command == AdminCommands.SetServer).Request;
         Assert.Equal("oadm.example.com:5082", request.Arg("address"));
         Assert.False(request.Args.ContainsKey("mode")); // the node always connects to the server
+    }
+
+    [Fact]
+    public async Task SavingTheAddressShowsThePairingCodeAtOnce()
+    {
+        _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
+        await _vm.RefreshAsync();
+        Assert.Null(_vm.PairingCode);
+
+        _vm.ServerAddress = "10.0.0.5";
+        await _vm.SaveServerAsync();
+
+        // The save ran elevated (one prompt) and its answer carried the code: no Show pairing code needed.
+        Assert.Equal(1, _elevation.Runs);
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+        Assert.True(_vm.ShowPairing);
+        Assert.False(_vm.CanShowPairingCode);
+        Assert.DoesNotContain(_channel.Requests, r => r.Request.Command == AdminCommands.PairingCode);
+
+        // The state everyone reads never carries the code; a refresh keeps the one shown.
+        await _vm.RefreshAsync();
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+    }
+
+    [Fact]
+    public async Task SavingTheAddressOfABoundNodeShowsNoCode()
+    {
+        _channel.State = FakeChannel.Sample(NodeBinding.Bound);
+        await _vm.RefreshAsync();
+
+        _vm.ServerAddress = "oadm.example.com";
+        await _vm.SaveServerAsync();
+
+        Assert.Null(_vm.PairingCode);
+        Assert.False(_vm.ShowPairing);
     }
 
     [Fact]
@@ -227,37 +266,37 @@ public sealed class NodeAppViewModelTests
     public async Task TheNodeStatusSaysWhetherTheNodeReachesTheServer()
     {
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Connected to 10.0.0.5:5081", _vm.NodeStatusText);
+        Assert.Equal("Connected to 10.0.0.5:5081", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusOk);
 
         _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
         await _vm.RefreshAsync();
-        Assert.Equal("Status: No server address yet", _vm.NodeStatusText);
+        Assert.Equal("No server address yet", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusWarning);
         Assert.Null(_vm.ConnectionProblem);
 
         _channel.State = FakeChannel.Sample(connected: false, connectionText: "");
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Not connected", _vm.NodeStatusText);
+        Assert.Equal("Not connected", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusWarning);
 
         _channel.State = FakeChannel.Sample(connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Not connected: Cannot reach 10.0.0.5:5081", _vm.NodeStatusText);
+        Assert.Equal("Not connected: Cannot reach 10.0.0.5:5081", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusError);
         Assert.Equal("Cannot reach 10.0.0.5:5081", _vm.ConnectionProblem);
 
         _channel.State = FakeChannel.Sample(NodeBinding.Bound);
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Connected to OADM-SRV · Building B", _vm.NodeStatusText);
+        Assert.Equal("Connected to OADM-SRV", _vm.NodeStatusText);
 
         _channel.State = FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Not connected: Cannot reach 10.0.0.5:5081", _vm.NodeStatusText);
+        Assert.Equal("Not connected: Cannot reach 10.0.0.5:5081", _vm.NodeStatusText);
 
         _channel.State = null;
         await _vm.RefreshAsync();
-        Assert.Equal("Status: Service not running", _vm.NodeStatusText);
+        Assert.Equal("Service not running", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusError);
     }
 
@@ -273,7 +312,7 @@ public sealed class NodeAppViewModelTests
 
         _channel.State = FakeChannel.Sample(NodeBinding.Closed);
         await _vm.RefreshAsync();
-        Assert.Equal("Not bound. Binding is closed.", _vm.BindingText);
+        Assert.Equal("Binding is closed.", _vm.BindingText);
         Assert.True(_vm.IsBindingClosed);
         Assert.False(_vm.CanShowPairingCode);
 

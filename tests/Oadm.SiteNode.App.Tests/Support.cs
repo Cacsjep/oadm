@@ -29,6 +29,8 @@ internal sealed class FakeChannel : INodeChannel
         return Task.FromResult(request.Command switch
         {
             AdminCommands.PairingCode => new AdminResponse { Ok = true, PairingCode = "ABCD-EFGH" },
+            // Like the service: the saved address, and the pairing code while the node is not bound.
+            AdminCommands.SetServer => SetServer(request.Arg("address")),
             AdminCommands.Log => new AdminResponse
             {
                 Ok = true,
@@ -36,6 +38,14 @@ internal sealed class FakeChannel : INodeChannel
             },
             _ => new AdminResponse { Ok = true, State = State },
         });
+    }
+
+    private AdminResponse SetServer(string address)
+    {
+        var before = State!;
+        State = Sample(before.Binding, serverAddress: address, connected: before.Connected, connectionText: before.ConnectionText,
+            newIdentity: before.NewServerIdentity, requests: before.Requested.Count > 0, allCards: before.AllCards);
+        return new AdminResponse { Ok = true, State = State, PairingCode = before.Binding == NodeBinding.Open ? "ABCD-EFGH" : "" };
     }
 
     /// <summary>
