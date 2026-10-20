@@ -38,6 +38,12 @@ public sealed class AdminClient(AdminEndpoint endpoint)
 
     public AdminEndpoint Endpoint { get; } = endpoint;
 
+    /// <summary>
+    /// Only the installed node's server is accepted (<see cref="AdminServerCheck"/>); a node with its own data folder may
+    /// also run as the current user. Tests set it.
+    /// </summary>
+    internal bool StrictServerCheck { get; init; } = endpoint.PipeName == AdminEndpoint.DefaultPipeName;
+
     /// <summary>The answer, or a failed answer with "The OADM Site Node service is not running." when it does not answer.</summary>
     public async Task<AdminResponse> SendAsync(AdminRequest request, CancellationToken ct)
     {
@@ -46,6 +52,10 @@ public sealed class AdminClient(AdminEndpoint endpoint)
         try
         {
             stream = await ConnectAsync(ct).ConfigureAwait(false);
+        }
+        catch (AdminServerNotTrustedException e)
+        {
+            return AdminResponse.Fail(e.Message);
         }
         catch (Exception e) when (e is IOException or SocketException or TimeoutException or UnauthorizedAccessException)
         {
@@ -76,6 +86,7 @@ public sealed class AdminClient(AdminEndpoint endpoint)
             try
             {
                 await pipe.ConnectAsync(2000, ct).ConfigureAwait(false);
+                AdminServerCheck.CheckPipe(pipe, StrictServerCheck); // before a single byte goes out
                 return pipe;
             }
             catch
@@ -85,6 +96,7 @@ public sealed class AdminClient(AdminEndpoint endpoint)
             }
         }
 
+        AdminServerCheck.CheckSocketFolder(Endpoint.SocketPath, StrictServerCheck);
         var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {

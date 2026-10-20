@@ -123,7 +123,8 @@ Two parts, one installer:
 
   It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state
   except the pairing code; showing the code and every change need administrator rights (UAC on Windows, `pkexec` on
-  Linux; the code is **Show pairing code**, so a local user without those rights cannot bind a server). Headless machines use `oadm-site-node
+  Linux; the code is **Show pairing code**, so a local user without those rights cannot bind a server). The app and the
+  command line send nothing to a channel another program serves (Windows: the pipe owner must be the node's account). Headless machines use `oadm-site-node
   status`, `pairing-code` (administrators), `server <address>`, `allow-binding`, `networks`, `ports`, `accept-server`,
   `reset`.
 - **Data** (`%ProgramData%\OADM Site Node`, `/var/lib/oadm-site-node`; service account only): `node.json` {id, server
