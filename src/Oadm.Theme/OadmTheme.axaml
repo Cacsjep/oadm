@@ -270,6 +270,12 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
+  <!-- The custom title bar of the client's main window, its plugin windows and the OADM Site Node app
+       (ExtendClientAreaToDecorationsHint; ElementRole TitleBar; content margin from Shell/TitleBarLayout) -->
+  <Style Selector="Border.titleBar">
+    <Setter Property="Height" Value="{StaticResource Oadm.TitleBarHeight}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+  </Style>
   <!-- Typography -->
   <Style Selector="TextBlock.appName">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeAppName}" />
@@ -355,7 +361,7 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <!-- A group heading inside a form after earlier groups (Settings: Polling, Discovery, Tasks, Server) -->
-  <Style Selector="TextBlock.sectionTitle.subsection">
+  <Style Selector="TextBlock.sectionTitle.subsection, TextBlock.cardTitle.subsection">
     <Setter Property="Margin" Value="0,8,0,0" />
   </Style>
   <!-- Longer running text (terms of use): more line spacing -->

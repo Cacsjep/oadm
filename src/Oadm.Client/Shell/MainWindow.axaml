@@ -6,6 +6,7 @@
         xmlns:c="using:Oadm.Client.Controls"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:shell="using:Oadm.Client.Shell"
+        xmlns:themeShell="using:Oadm.Theme.Shell"
         xmlns:dev="using:Oadm.Client.Devices"
         xmlns:log="using:Oadm.Client.Logging"
         xmlns:rules="using:Oadm.Client.EventRules"
@@ -62,9 +63,9 @@
     <!-- Title bar: app name left, the logged-in user and Log out right, next to the system window buttons
          (TitleBarLayout keeps clear of them: right on Windows and Linux, left on macOS). No connection indicator
          (see banner). -->
-    <Border Grid.Row="0" Height="{StaticResource Oadm.TitleBarHeight}" Background="{StaticResource Oadm.WindowBackgroundBrush}"
+    <Border Grid.Row="0" Classes="titleBar"
             chrome:WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid ColumnDefinitions="*,Auto" Margin="{x:Static shell:TitleBarLayout.ContentMargin}">
+      <Grid ColumnDefinitions="*,Auto" Margin="{x:Static themeShell:TitleBarLayout.ContentMargin}">
         <TextBlock Classes="appName" Text="{x:Static shell:MainWindowViewModel.AppName}" VerticalAlignment="Center" />
         <!-- "User": clicks reach these buttons instead of moving the window. -->
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
