@@ -20,10 +20,20 @@ public sealed class LogoutRequestedEventArgs(string? message) : EventArgs
 public sealed partial class UserSession : ObservableObject
 {
     private bool _logoutPending;
-    private HashSet<string> _permissions = new(StringComparer.Ordinal);
 
-    /// <summary>The server is older than roles: it sends no permissions.</summary>
-    private bool _legacy;
+    /// <summary>
+    /// What <see cref="Has"/> answers from: one immutable snapshot, replaced as a whole on the UI thread. Background loops
+    /// (ServerConnection's streams) read it while the session changes: they see the old or the new rights, never a set
+    /// half written.
+    /// </summary>
+    private sealed record Rights(bool LoggedIn, bool Admin, bool Legacy, System.Collections.Frozen.FrozenSet<string> Keys)
+    {
+        public static readonly Rights None = new(false, false, false, System.Collections.Frozen.FrozenSet<string>.Empty);
+
+        public bool Has(string permission) => Admin || Keys.Contains(permission) || (Legacy && LoggedIn);
+    }
+
+    private Rights _rights = Rights.None;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLoggedIn), nameof(RoleText))]
@@ -58,11 +68,15 @@ public sealed partial class UserSession : ObservableObject
     /// sends no permissions: then the Administrator has everything and others everything but the Administrator-only parts,
     /// like before roles.
     /// </summary>
-    public bool Has(string permission) => IsAdmin || _permissions.Contains(permission) || (_legacy && IsLoggedIn);
+    public bool Has(string permission) => Volatile.Read(ref _rights).Has(permission);
+
+    /// <summary>Counts the logins of this client: pages that keep state (Sites) start empty for a new one.</summary>
+    public int SignInCount { get; private set; }
 
     public void SignIn(UserInfo user, string serverAddress)
     {
         ArgumentNullException.ThrowIfNull(user);
+        SignInCount++;
         UserName = user.UserName;
         ServerAddress = serverAddress;
         _logoutPending = false;
@@ -81,23 +95,22 @@ public sealed partial class UserSession : ObservableObject
 
     public void SignOut()
     {
+        Volatile.Write(ref _rights, Rights.None);
         UserName = null;
         IsAdmin = false;
         RoleName = "";
-        _permissions = new(StringComparer.Ordinal);
-        _legacy = false;
     }
 
     private void Apply(UserInfo user)
     {
         bool admin = user.AllPermissions || user.Role == UserRole.Admin;
-        var permissions = new HashSet<string>(user.Permissions, StringComparer.Ordinal);
+        var permissions = System.Collections.Frozen.FrozenSet.ToFrozenSet(user.Permissions, StringComparer.Ordinal);
 
         // A server before roles sends neither a role id nor permissions.
         bool legacy = string.IsNullOrEmpty(user.RoleId);
-        bool changed = admin != IsAdmin || legacy != _legacy || !permissions.SetEquals(_permissions) || user.RoleName != RoleName;
-        _permissions = permissions;
-        _legacy = legacy;
+        Rights before = _rights;
+        bool changed = admin != IsAdmin || legacy != before.Legacy || !permissions.SetEquals(before.Keys) || user.RoleName != RoleName;
+        Volatile.Write(ref _rights, new Rights(LoggedIn: true, admin, legacy, permissions));
         RoleName = user.RoleName;
         IsAdmin = admin;
         if (changed)

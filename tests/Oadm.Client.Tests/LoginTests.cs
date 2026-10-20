@@ -29,6 +29,41 @@ namespace Oadm.Client.Tests;
 /// <summary>Login window, first administrator, server certificate trust, Users card and Audit tab.</summary>
 public sealed class LoginTests
 {
+    [Fact]
+    public async Task Permissions_read_from_another_thread_while_the_role_changes_never_see_a_set_half_written()
+    {
+        var session = new UserSession();
+        var both = new UserInfo { UserName = "op", Role = UserRole.Operator, RoleId = "r", Permissions = { "a", "b" } };
+        var none = new UserInfo { UserName = "op", Role = UserRole.Operator, RoleId = "r" };
+        session.SignIn(both, "server");
+
+        // ServerConnection's loops ask Has on the thread pool while the session stream changes the role on the UI thread.
+        using var stop = new CancellationTokenSource();
+        Task<long> reader = Task.Run(() =>
+        {
+            long reads = 0;
+            while (!stop.IsCancellationRequested)
+            {
+                _ = session.Has("a");
+                _ = session.Has("b");
+                reads++;
+            }
+
+            return reads;
+        });
+
+        for (int i = 0; i < 20_000; i++)
+        {
+            session.Update(i % 2 == 0 ? none : both);
+        }
+
+        await stop.CancelAsync();
+        Assert.True(await reader >= 0); // the reader never threw
+        Assert.True(session.Has("a") && session.Has("b"));
+        session.SignOut();
+        Assert.False(session.Has("a"));
+    }
+
     private const string Fingerprint = "3F:A2:9C:11:5B:0E:77:D4:C2:18:9A:6F:30:E5:B7:21:4C:88:0D:FA:62:93:AB:1E:57:C9:04:D6:2B:7F:E0:35";
 
     private sealed class Fixture
