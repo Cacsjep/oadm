@@ -359,7 +359,9 @@ public sealed class SiteDiscoveryTests
         var after = (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!;
         Assert.Equal((a.Id, "192.168.0.20"), (after.SiteId, after.Address));
 
-        // Its own site announces it at a new address: that move stays allowed.
+        // Its own site announces it at a new address: that move stays allowed. Site B no longer announces it: the browse
+        // ends a short real-time grace after the first find, so a second route could be missed on a busy machine.
+        b.Announced.Clear();
         network.AtSite(a.Id).Add("192.168.0.41", CameraA, "pass");
         a.Announced.Add(new SiteBrowseResult(CameraA, "Cam - " + CameraA, [IPAddress.Parse("192.168.0.41")], 80, "axis-a.local"));
         Assert.Equal(1, await relocation.RunOnceAsync(CancellationToken.None));
