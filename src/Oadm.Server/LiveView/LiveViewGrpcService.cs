@@ -219,16 +219,7 @@ public sealed class LiveViewGrpcService(
             throw GrpcGuard.NotFound("The devices were not found.");
         }
 
-        // Devices of an offline site are not changed (docs/sites.md, Site offline): one read of the computed statuses.
-        var wanted = known.ToHashSet();
-        var offline = (await devices.ListIdsWithStatusAsync(context.CancellationToken).ConfigureAwait(false))
-            .FirstOrDefault(d => d.Status == DeviceStatus.SiteOffline && wanted.Contains(d.Id));
-        if (offline.Id != Guid.Empty)
-        {
-            var row = await devices.GetAsync(offline.Id, context.CancellationToken).ConfigureAwait(false);
-            throw GrpcGuard.FailedPrecondition(Sdk.Sites.SiteTexts.SiteOffline(row?.SiteName) + ".");
-        }
-
+        // The port is stored only in OADM: devices of an offline site take it like every other device.
         await ports.SetRtspPortsAsync(known, port, managed, context.CancellationToken).ConfigureAwait(false);
         foreach (var id in known)
         {
