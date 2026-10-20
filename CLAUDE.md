@@ -850,10 +850,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   "OADM" whose letter spacing pulls together, "Open AXIS Device Management", the shared progress bar and the real loading step
   (`SplashViewModel`: Starting, Connecting to <server> (+ resuming a remembered login), Loading devices (main streams started,
   waits for the first device list, at most 15 s), Ready). `AppShell.StartupAsync` keeps it at least 2.7 s (logo and wordmark
-  complete), then opens the login window (nobody remembered; the login view model is already initialized) or the main
-  window behind it (the splash is topmost), waits for that window's first frame (at most 3 s, `FirstFrameAsync`; no blank
-  window in between) and only then fades the splash out (0.35 s); a login does the same, the login window stays until the
-  main window drew. Log out shows the login window directly, without the splash. Tests: `SplashTests`.
+  complete), then fades it out (0.35 s) and shows the login window (nobody remembered; the login view model is already
+  initialized) or the main window. Log out shows the login window directly, without the splash. Tests: `SplashTests`.
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
   top-left, the user and Log out top-right before the window buttons, background near-black `#141414`. Caption button hover
