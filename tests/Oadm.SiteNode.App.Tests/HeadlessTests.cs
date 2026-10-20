@@ -17,51 +17,56 @@ public sealed class HeadlessTests
 
     [Theory]
     [MemberData(nameof(States))]
-    public async Task TheHeaderShowsTheStateAndOneThingToDo(string state)
+    public async Task TheGeneralTabAndTheNodeStatusShowTheState(string state)
     {
-        var shown = await ShowAsync(StateOf(state), NodeTab.Status, $"site-node-app-{state}.png", showCode: state == "open-code");
+        var shown = await ShowAsync(StateOf(state), NodeTab.General, $"site-node-app-{state}.png", showCode: state == "open-code");
 
-        // The one accent button of the window, by state.
-        var expected = state switch
-        {
-            "server" or "cannot-reach" => "Connect",
-            "open" => "Show pairing code",
-            "closed" => "Allow binding",
-            "identity" => "Accept",
-            _ => null,
-        };
-        Assert.Equal(expected is null ? [] : [expected], shown.Primary);
+        // Save of the footer is the one accent button, in every state.
+        Assert.Equal(["Save"], shown.Primary);
+        Assert.Contains("Close", shown.Texts);
+        Assert.Contains("Node status", shown.Texts);
+        Assert.Contains("OADM Site Node", shown.Texts); // the title bar
 
         switch (state)
         {
             case "open":
-                Assert.Contains("Binding open for 23 more hours.", shown.Texts);
+                Assert.Contains("Not bound. Binding open for 23 more hours.", shown.Texts);
+                Assert.Contains("Show pairing code", shown.Texts);
+                Assert.Contains("Status: Connected to 10.0.0.5:5081", shown.Texts);
                 break;
             case "open-code":
                 Assert.Contains("ABCD-EFGH", shown.Texts);
                 Assert.Contains("Type this code at Bind on the Sites page of OADM.", shown.Texts);
+                Assert.DoesNotContain("Show pairing code", shown.Texts);
                 break;
             case "server":
-                Assert.Contains("Not connected. Enter the address of the OADM server.", shown.Texts);
-                Assert.DoesNotContain("Server", shown.Texts); // the Status tab leaves the form to the header
+                Assert.Contains("Server address", shown.Texts);
+                Assert.Contains("Status: Not connected", shown.Texts);
                 break;
             case "cannot-reach":
-                Assert.Contains("Cannot reach 10.0.0.5:5081", shown.Texts);
+                Assert.Contains("Cannot reach 10.0.0.5:5081", shown.Texts); // below the address field
+                Assert.Contains("Status: Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
                 break;
             case "closed":
                 Assert.Contains("Not bound. Binding is closed.", shown.Texts);
+                Assert.Contains("Allow binding", shown.Texts);
+                Assert.DoesNotContain("Show pairing code", shown.Texts);
                 break;
             case "bound":
-                Assert.Contains("Connected to OADM-SRV · Building B", shown.Texts);
+                Assert.Contains("Status: Connected to OADM-SRV · Building B", shown.Texts);
+                Assert.Contains("Building B", shown.Texts);
+                Assert.DoesNotContain("Show pairing code", shown.Texts);
                 break;
             case "bound-offline":
-                Assert.Contains("Not connected to OADM-SRV · Building B: Cannot reach 10.0.0.5:5081", shown.Texts);
+                Assert.Contains("Status: Not connected: Cannot reach 10.0.0.5:5081", shown.Texts);
                 break;
             case "identity":
                 Assert.Contains(shown.Texts, t => t.StartsWith("OADM-SRV presents a new identity", StringComparison.Ordinal));
+                Assert.Contains("Accept new server identity", shown.Texts);
                 break;
             case "no-service":
-                Assert.Contains(AdminTexts.ServiceNotRunning, shown.Texts);
+                Assert.Contains("Status: Service not running", shown.Texts);
+                Assert.Contains("Start the OADM Site Node service.", shown.Texts);
                 Assert.DoesNotContain("Networks", shown.Texts); // no tabs without the service
                 break;
         }
@@ -69,6 +74,9 @@ public sealed class HeadlessTests
         if (state != "no-service")
         {
             Assert.Contains("Networks", shown.Texts);
+            Assert.Contains("Server", shown.Texts);
+            Assert.Contains("Binding", shown.Texts);
+            Assert.Contains("This node", shown.Texts);
             Assert.Contains("Reset", shown.Texts);
             Assert.DoesNotContain("Connection log", shown.Texts); // the other tabs stay hidden
             Assert.DoesNotContain("Review", shown.Texts); // no requests in these states
@@ -76,7 +84,7 @@ public sealed class HeadlessTests
     }
 
     [Theory]
-    [InlineData(NodeTab.Status, "status")]
+    [InlineData(NodeTab.General, "general")]
     [InlineData(NodeTab.Networks, "networks")]
     [InlineData(NodeTab.Ports, "ports")]
     [InlineData(NodeTab.Activity, "activity")]
@@ -84,12 +92,14 @@ public sealed class HeadlessTests
     {
         var shown = await ShowAsync(FakeChannel.Sample(), tab, $"site-node-app-tab-{name}.png", showCode: true);
 
+        Assert.Equal(["Save"], shown.Primary);
         Assert.Contains("The server asks for 1 port.", shown.Texts);
         Assert.Contains("Review", shown.Texts);
         Assert.Contains("1", shown.Texts); // the count badge of the Ports tab
+        Assert.Contains("Status: Connected to 10.0.0.5:5081", shown.Texts);
         switch (tab)
         {
-            case NodeTab.Status:
+            case NodeTab.General:
                 Assert.Contains("Server address", shown.Texts);
                 Assert.Contains("a1b2c3d4e5f60718", shown.Texts);
                 Assert.Contains("Reset", shown.Texts);
@@ -114,7 +124,30 @@ public sealed class HeadlessTests
         }
     }
 
-    /// <summary>The node in each state the header knows (no requests, so only the state's own lines show).</summary>
+    [Fact]
+    public async Task CloseOfTheFooterClosesTheWindow()
+    {
+        var closed = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            var channel = new FakeChannel();
+            var vm = new NodeAppViewModel(channel, new FakeElevation(channel) { IsAdministrator = true }, new FakeDialogs());
+            await vm.RefreshAsync();
+            var window = new MainWindow();
+            window.Attach(vm);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var wasClosed = false;
+            window.Closed += (_, _) => wasClosed = true;
+            var close = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Button>().Single(b => b.Content as string == "Close");
+            close.Command!.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            return wasClosed;
+        }, CancellationToken.None);
+
+        Assert.True(closed);
+    }
+
+    /// <summary>The node in each state (no requests, so only the state's own lines show).</summary>
     private static NodeView? StateOf(string state) => state switch
     {
         "open" or "open-code" => FakeChannel.Sample(requests: false),
