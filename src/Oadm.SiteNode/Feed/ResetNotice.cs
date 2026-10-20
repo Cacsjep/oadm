@@ -48,7 +48,7 @@ public sealed class ResetNotice(TimeProvider time, TimeSpan waitLimit)
 
         try
         {
-            Requested?.Invoke();
+            NodeEvents.Raise(Requested);
             await announced.Task.WaitAsync(waitLimit, time, ct).ConfigureAwait(false);
             return true;
         }

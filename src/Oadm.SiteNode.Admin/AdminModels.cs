@@ -103,6 +103,9 @@ public sealed class NodeView
 
     /// <summary>Binding refused until then after 5 wrong codes.</summary>
     public DateTimeOffset? LockedUntil { get; init; }
+
+    /// <summary>Changes with every new pairing code and after a service restart (never the code itself).</summary>
+    public long PairingCodeGeneration { get; init; }
 }
 
 /// <summary>One request on the admin channel.</summary>

@@ -260,7 +260,7 @@ public sealed class Dialer(
             return false;
         }
 
-        CountsChanged?.Invoke();
+        NodeEvents.Raise(CountsChanged);
         return true;
     }
 
@@ -276,7 +276,7 @@ public sealed class Dialer(
             Interlocked.Decrement(ref _shortConnecting);
         }
 
-        CountsChanged?.Invoke();
+        NodeEvents.Raise(CountsChanged);
     }
 
     private void LeaveConnecting(bool permanent, bool opened)
@@ -290,7 +290,7 @@ public sealed class Dialer(
         {
             Interlocked.Decrement(ref _shortConnecting);
             Interlocked.Decrement(ref _shortOpen);
-            CountsChanged?.Invoke();
+            NodeEvents.Raise(CountsChanged);
         }
     }
 
@@ -300,7 +300,7 @@ public sealed class Dialer(
             Interlocked.Decrement(ref _permanentOpen);
         else
             Interlocked.Decrement(ref _shortOpen);
-        CountsChanged?.Invoke();
+        NodeEvents.Raise(CountsChanged);
     }
 
     private sealed class ScanPlace(Dialer owner) : IDisposable

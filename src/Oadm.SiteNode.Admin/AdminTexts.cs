@@ -4,6 +4,7 @@ namespace Oadm.SiteNode.Admin;
 public static class AdminTexts
 {
     public const string ServiceNotRunning = "The OADM Site Node service is not running.";
+    public const string NotTheService = "Another program answers in place of the OADM Site Node service. Nothing was sent.";
     public const string NeedsAdministrator = "Only an administrator of this computer can do this.";
     public const string BindingClosed = "Binding is closed on this site node. Click Allow binding in the OADM Site Node app.";
     public const string TooManyWrongCodes = "Too many wrong pairing codes. Wait 10 minutes and use the new code.";

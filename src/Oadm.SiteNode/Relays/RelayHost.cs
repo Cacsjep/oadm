@@ -71,7 +71,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         finally
         {
             _relays.TryRemove(id, out _);
-            Changed?.Invoke();
+            NodeEvents.Raise(Changed);
             session.Stop();
             await stop.CancelAsync().ConfigureAwait(false);
             outgoing.Writer.TryComplete();
@@ -82,8 +82,8 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
     // Starts and stops the listeners as the app allows the port and chooses networks; ends with the call.
     private async Task ManageAsync(long id, RelaySession session, CancellationToken ct)
     {
-        var changed = new SemaphoreSlim(0);
-        void OnChange() => changed.Release();
+        var changed = new Wakeup(); // never disposed: a late handler on another thread must not throw into the raiser
+        void OnChange() => changed.Set();
         store.Changed += OnChange;
         networks.CardsChanged += OnChange;
         try
@@ -126,7 +126,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
                 if (session.Report(state, message))
                 {
                     _relays[id] = new RelayView(session.Protocol, session.Port, session.Reason, StateName(state), message);
-                    Changed?.Invoke();
+                    NodeEvents.Raise(Changed);
                 }
 
                 var retry = state is RelayStateKind.RelayStatePortInUse or RelayStateKind.RelayStateNoPermission;
@@ -151,7 +151,6 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         {
             store.Changed -= OnChange;
             networks.CardsChanged -= OnChange;
-            changed.Dispose();
         }
     }
 

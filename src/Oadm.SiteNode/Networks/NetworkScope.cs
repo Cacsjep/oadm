@@ -34,7 +34,7 @@ public sealed class NetworkScope(NodeStore store, INetworkCards cards, bool allo
         }
 
         if (changed)
-            CardsChanged?.Invoke();
+            NodeEvents.Raise(CardsChanged);
         return changed;
     }
 

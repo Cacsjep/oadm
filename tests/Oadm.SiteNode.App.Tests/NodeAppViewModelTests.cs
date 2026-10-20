@@ -296,6 +296,7 @@ public sealed class NodeAppViewModelTests
 
         _channel.State = null;
         await _vm.RefreshAsync();
+        await _vm.RefreshAsync(); // one failed read keeps the last state
         Assert.Equal("Service not running", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusError);
     }
@@ -407,5 +408,93 @@ public sealed class NodeAppViewModelTests
         Assert.Null(SystemElevation.Decode("not base64!"));
         Assert.Equal("x", SystemElevation.Value(["--out", "x"], "--out"));
         Assert.Null(SystemElevation.Value(["--out"], "--out"));
+    }
+    [Fact]
+    public async Task ANewCodeOnTheNodeClearsTheCodeShown()
+    {
+        await _vm.RefreshAsync();
+        await _vm.ShowPairingCodeAsync();
+        await _vm.RefreshAsync();
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode); // the same code: kept
+
+        // Five wrong codes or a service restart: the node has another code now.
+        _channel.State = FakeChannel.Sample(codeGeneration: 2);
+        await _vm.RefreshAsync();
+
+        Assert.Null(_vm.PairingCode);
+        Assert.True(_vm.CanShowPairingCode);
+    }
+
+    [Fact]
+    public async Task OneFailedReadKeepsTheStateAndTheCode()
+    {
+        await _vm.RefreshAsync();
+        await _vm.ShowPairingCodeAsync();
+        var state = _channel.State;
+
+        _channel.State = null;
+        await _vm.RefreshAsync();
+        Assert.True(_vm.HasState); // no flash of "Service not running"
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+
+        await _vm.RefreshAsync();
+        Assert.False(_vm.HasState);
+        Assert.Equal("Service not running", _vm.NodeStatusText);
+
+        _channel.State = state; // the same run of the service answers again
+        await _vm.RefreshAsync();
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+    }
+
+    [Fact]
+    public async Task EveryChangeIsOffWhileTheAdministratorPromptIsOpen()
+    {
+        await _vm.RefreshAsync();
+        _elevation.Prompt = new TaskCompletionSource();
+        var port = _vm.ConnectPorts[0];
+        var request = _vm.RequestedPorts[0];
+        _vm.NewPort = "8080";
+
+        var showing = _vm.ShowPairingCodeAsync();
+
+        Assert.True(_vm.IsBusy);
+        Assert.False(_vm.CanChange);
+        Assert.False(_vm.CanSaveServer);
+        Assert.False(_vm.AllowBindingCommand.CanExecute(null));
+        Assert.False(_vm.AddPortCommand.CanExecute(null));
+        Assert.False(_vm.AddSubnetCommand.CanExecute(null));
+        Assert.False(_vm.RemovePortCommand.CanExecute(port));
+        Assert.False(_vm.AllowRequestCommand.CanExecute(request));
+        Assert.False(_vm.ResetCommand.CanExecute(null));
+        Assert.False(_vm.SaveServerCommand.CanExecute(null));
+
+        // A card or All cards ticked meanwhile sends nothing and goes back to what the service has.
+        _vm.Cards[1].Chosen = true;
+        _vm.AllCards = true;
+        Assert.False(_vm.Cards[1].Chosen);
+        Assert.False(_vm.AllCards);
+        Assert.Equal(1, _elevation.Runs);
+
+        _elevation.Prompt.SetResult();
+        await showing;
+        Assert.False(_vm.IsBusy);
+        Assert.True(_vm.AddPortCommand.CanExecute(null));
+        Assert.True(_vm.ResetCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task TenThousandLogEntriesArriveAsOneChange()
+    {
+        var entries = Enumerable.Range(0, 10_000)
+            .Select(i => new ConnectionLogEntry(new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero).AddSeconds(i), "OADM-SRV", $"192.168.0.{i % 250}:443", "Short", "Connected"))
+            .ToList();
+        _channel.Answer = r => r.Command == AdminCommands.Log ? new AdminResponse { Ok = true, Log = entries } : null!;
+        var changes = 0;
+        _vm.Log.CollectionChanged += (_, _) => changes++;
+
+        await _vm.LoadLogAsync();
+
+        Assert.Equal(10_000, _vm.Log.Count);
+        Assert.Equal(1, changes);
     }
 }

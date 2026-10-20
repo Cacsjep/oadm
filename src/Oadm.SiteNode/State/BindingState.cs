@@ -40,6 +40,7 @@ public sealed class BindingState
     private readonly Lock _lock = new();
     private readonly List<WrongCodeView> _wrongCodes = [];
     private string _code = Oadm.Sites.Binding.PairingCode.Create();
+    private long _codeGeneration = System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue); // random per run: a restarted service never repeats the last one
     private int _wrongCount;
     private DateTimeOffset? _lockedUntil;
     private long _lastTick;
@@ -74,6 +75,19 @@ public sealed class BindingState
         {
             lock (_lock)
                 return _code;
+        }
+    }
+
+    /// <summary>
+    /// Changes with every new pairing code (and differs after a service restart); never the code. The app forgets a code it
+    /// shows once this changes.
+    /// </summary>
+    public long PairingCodeGeneration
+    {
+        get
+        {
+            lock (_lock)
+                return _codeGeneration;
         }
     }
 
@@ -121,7 +135,7 @@ public sealed class BindingState
             return true;
         });
         if (before != Binding)
-            Changed?.Invoke();
+            NodeEvents.Raise(Changed);
     }
 
     /// <summary>Allow binding: another 24 hours and a new code (only while not bound).</summary>
@@ -151,7 +165,7 @@ public sealed class BindingState
             c.Requested.Clear();
         });
         NewCode(clearAttempts: true);
-        IdentityReset?.Invoke();
+        NodeEvents.Raise(IdentityReset);
     }
 
     /// <summary>True while a server with <paramref name="fingerprintHex"/> may pair: binding open, or its new identity accepted in the app.</summary>
@@ -320,7 +334,7 @@ public sealed class BindingState
             return true;
         });
         if (noted)
-            Changed?.Invoke();
+            NodeEvents.Raise(Changed);
         return noted;
     }
 
@@ -383,10 +397,11 @@ public sealed class BindingState
                 _wrongCount = 0;
                 _lockedUntil = _time.GetUtcNow() + LockTime;
                 _code = Sites.Binding.PairingCode.Create();
+                _codeGeneration++;
             }
         }
 
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
         return locked
             ? new NodeRefusalException(StatusCode.ResourceExhausted, AdminTexts.TooManyWrongCodes)
             : new NodeRefusalException(StatusCode.PermissionDenied, AdminTexts.WrongCode);
@@ -399,6 +414,7 @@ public sealed class BindingState
         lock (_lock)
         {
             _code = Sites.Binding.PairingCode.Create();
+            _codeGeneration++;
             if (clearAttempts)
             {
                 _wrongCount = 0;
@@ -406,7 +422,7 @@ public sealed class BindingState
             }
         }
 
-        Changed?.Invoke();
+        NodeEvents.Raise(Changed);
     }
 
     private static string Clean(string? text)

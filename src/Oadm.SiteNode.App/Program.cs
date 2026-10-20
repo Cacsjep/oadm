@@ -7,7 +7,7 @@ namespace Oadm.SiteNode.App;
 
 /// <summary>
 /// OADM Site Node app. --data-dir &lt;folder&gt; talks to a node with its own data folder (like the service's option).
-/// --admin-request &lt;request&gt; --out &lt;file&gt;: the elevated copy that sends one change (see <see cref="SystemElevation"/>).
+/// --admin-request &lt;request&gt; --out &lt;file or -&gt;: the elevated copy that sends one change (see <see cref="SystemElevation"/>).
 /// </summary>
 internal static class Program
 {
