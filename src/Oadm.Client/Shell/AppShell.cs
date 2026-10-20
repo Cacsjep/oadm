@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 
@@ -115,17 +116,24 @@ public sealed partial class AppShell(
         await minimum.ConfigureAwait(true);
         splash.Step("Ready", 100);
         await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(true);
-        await window.FadeOutAsync().ConfigureAwait(true);
-        if (login is not null)
-        {
-            ShowLogin(null, login);
-        }
-        else
-        {
-            ShowMain(started: true);
-        }
 
+        // The next window opens behind the splash (still showing "Ready", on top) and draws its first frame; only then the
+        // splash fades out over it. Before, the splash faded first and its empty window stood there while the main window
+        // was built (about a second).
+        window.Topmost = true;
+        Window next = login is not null ? ShowLogin(null, login) : ShowMain(started: true);
+        await FirstFrameAsync(next).ConfigureAwait(true);
+        await window.FadeOutAsync().ConfigureAwait(true);
         window.Close();
+        next.Activate();
+    }
+
+    /// <summary>Waits until <paramref name="window"/> drew its first frame (two frames after Show), at most 3 s.</summary>
+    private static async Task FirstFrameAsync(TopLevel window)
+    {
+        var drawn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.RequestAnimationFrame(_ => window.RequestAnimationFrame(_ => drawn.TrySetResult()));
+        await Task.WhenAny(drawn.Task, Task.Delay(TimeSpan.FromSeconds(3))).ConfigureAwait(true);
     }
 
     /// <summary>Starts the streams and waits for the first device list (at most <see cref="SplashViewModel.DevicesTimeout"/>).</summary>
@@ -145,15 +153,19 @@ public sealed partial class AppShell(
         }
     }
 
-    private void ShowLogin(string? notice, LoginViewModel? initialized = null)
+    private LoginWindow ShowLogin(string? notice, LoginViewModel? initialized = null)
     {
         LoginViewModel vm = initialized ?? loginFactory();
         vm.Notice = notice;
         var window = new LoginWindow { DataContext = vm };
-        vm.LoggedIn += (_, _) =>
+        vm.LoggedIn += async (_, _) =>
         {
-            ShowMain();
+            // The login window stays in front until the main window drew its first frame.
+            window.Topmost = true;
+            MainWindow next = ShowMain();
+            await FirstFrameAsync(next).ConfigureAwait(true);
             window.Close();
+            next.Activate();
         };
         if (_desktop is not null)
         {
@@ -161,9 +173,10 @@ public sealed partial class AppShell(
         }
 
         window.Show();
+        return window;
     }
 
-    private void ShowMain(bool started = false)
+    private MainWindow ShowMain(bool started = false)
     {
         var window = new MainWindow { DataContext = main };
         if (_desktop is not null)
@@ -176,6 +189,8 @@ public sealed partial class AppShell(
         {
             main.Start();
         }
+
+        return window;
     }
 
     private async Task LogoutAsync(string? message)
