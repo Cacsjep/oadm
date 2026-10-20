@@ -237,8 +237,8 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<FoundNode> FindSiteNodesAsync(int durationSeconds, string? address, CancellationToken ct) =>
         ReadAll(C.Sites.FindNodes(new FindNodesRequest { DurationSeconds = durationSeconds, Address = address ?? string.Empty }, cancellationToken: ct), ct);
 
-    public async Task<Site> BindSiteAsync(string nodeId, string name, string pairingCode, CancellationToken ct) =>
-        await C.Sites.BindSiteAsync(new BindSiteRequest { NodeId = nodeId, Name = name, PairingCode = pairingCode }, cancellationToken: ct);
+    public async Task<Site> BindSiteAsync(string nodeId, string nodeFingerprint, string name, string pairingCode, CancellationToken ct) =>
+        await C.Sites.BindSiteAsync(new BindSiteRequest { NodeId = nodeId, NodeFingerprint = nodeFingerprint, Name = name, PairingCode = pairingCode }, cancellationToken: ct);
 
     public async Task<Site> RenameSiteAsync(string id, string name, CancellationToken ct) =>
         await C.Sites.RenameSiteAsync(new RenameSiteRequest { Id = id, Name = name }, cancellationToken: ct);

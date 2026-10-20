@@ -168,7 +168,7 @@ public sealed partial class FakeOadmApi
         yield return new FoundNode { Finished = true };
     }
 
-    public Task<Site> BindSiteAsync(string nodeId, string name, string pairingCode, CancellationToken ct)
+    public Task<Site> BindSiteAsync(string nodeId, string nodeFingerprint, string name, string pairingCode, CancellationToken ct)
     {
         lock (_gate)
         {

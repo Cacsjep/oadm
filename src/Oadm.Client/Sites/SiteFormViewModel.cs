@@ -311,7 +311,7 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
         switch (Mode)
         {
             case SiteFormMode.Bind:
-                await _api.BindSiteAsync(_site!.NodeId, Name.Trim(), NormalizeCode(PairingCode)!, ct).ConfigureAwait(true);
+                await _api.BindSiteAsync(_site!.NodeId, _site.NodeFingerprint, Name.Trim(), NormalizeCode(PairingCode)!, ct).ConfigureAwait(true);
                 return true;
             case SiteFormMode.Rename:
                 await _api.RenameSiteAsync(_site!.Id, Name.Trim(), ct).ConfigureAwait(true);
