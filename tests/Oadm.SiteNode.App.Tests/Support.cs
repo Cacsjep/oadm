@@ -59,7 +59,8 @@ internal sealed class FakeChannel : INodeChannel
         string connectionText = "Connected to 10.0.0.5:5081",
         string newIdentity = "",
         bool requests = true,
-        bool allCards = false) => new()
+        bool allCards = false,
+        long codeGeneration = 1) => new()
     {
         NodeId = "a1b2c3d4e5f60718",
         Version = "3.7.0",
@@ -83,6 +84,7 @@ internal sealed class FakeChannel : INodeChannel
         Relays = [new RelayView(PortProtocol.Udp, 123, "NTP server", "Running", "")],
         ShortConnections = 3,
         PermanentConnections = 12,
+        PairingCodeGeneration = codeGeneration,
     };
 }
 
@@ -95,13 +97,18 @@ internal sealed class FakeElevation(FakeChannel channel) : IElevation
 
     public int Runs { get; private set; }
 
-    public Task<AdminResponse> RunAsync(AdminRequest request, CancellationToken ct)
+    /// <summary>Set: the prompt stays open until the test completes it.</summary>
+    public TaskCompletionSource? Prompt { get; set; }
+
+    public async Task<AdminResponse> RunAsync(AdminRequest request, CancellationToken ct)
     {
         Runs++;
+        if (Prompt is { } prompt)
+            await prompt.Task;
         if (Decline)
-            return Task.FromResult(AdminResponse.Fail(SystemElevation.Cancelled));
+            return AdminResponse.Fail(SystemElevation.Cancelled);
         channel.NextAsAdmin = true;
-        return channel.SendAsync(request, ct);
+        return await channel.SendAsync(request, ct);
     }
 }
 

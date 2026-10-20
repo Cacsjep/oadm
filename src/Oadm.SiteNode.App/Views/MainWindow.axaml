@@ -81,7 +81,7 @@
                    clears the cards. -->
               <Border Classes="ruleItem">
                 <StackPanel Spacing="10">
-                  <CheckBox Content="All cards" IsChecked="{Binding AllCards}" />
+                  <CheckBox Content="All cards" IsChecked="{Binding AllCards}" IsEnabled="{Binding CanChange}" />
                   <ItemsControl ItemsSource="{Binding Cards}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -90,7 +90,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:CardItem">
-                        <CheckBox IsChecked="{Binding Chosen}" VerticalContentAlignment="Top">
+                        <CheckBox IsChecked="{Binding Chosen}" VerticalContentAlignment="Top"
+                                  IsEnabled="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).CanChange}">
                           <StackPanel Spacing="2">
                             <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
                             <TextBlock Classes="secondary" Text="{Binding AddressesText}" TextWrapping="Wrap" />
