@@ -170,6 +170,7 @@ public static class NodeHost
         services.AddSingleton(sp => new RelayHost(sp.GetRequiredService<NodeStore>(), sp.GetRequiredService<PortPolicy>(),
             sp.GetRequiredService<NetworkScope>(), sp.GetRequiredService<ConnectionLog>(), options.Time));
         services.AddSingleton<ConnectionState>();
+        services.AddSingleton(_ => new ResetNotice(options.Time, options.ResetWaitLimit));
         services.AddSingleton<LinkRegistry>();
         services.AddSingleton<NodeStatusFeed>();
         services.AddSingleton<IAxisBrowser>(sp => options.Browser ?? new AxisBrowser(sp.GetRequiredService<NetworkScope>(), options.Time));

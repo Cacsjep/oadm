@@ -38,6 +38,7 @@ public sealed class SiteNodeGrpcService(
     OutboundConnector outbound,
     IAxisBrowser browser,
     RangeScanner rangeScanner,
+    ResetNotice resetNotice,
     NodeOptions options) : SiteNodeService.SiteNodeServiceBase
 {
     public const int ProtocolVersion = 1;
@@ -185,6 +186,8 @@ public sealed class SiteNodeGrpcService(
         binding.Changed += OnOther;
         relays.Changed += OnOther;
         networks.CardsChanged += OnOther;
+        resetNotice.Requested += OnChanged;
+        using var watching = resetNotice.Enter();
         try
         {
             var sentAt = options.Time.GetTimestamp();
@@ -192,6 +195,13 @@ public sealed class SiteNodeGrpcService(
             while (!ct.IsCancellationRequested)
             {
                 await changed.WaitAsync(ct).ConfigureAwait(false);
+                if (resetNotice.Pending)
+                {
+                    // Reset: the last message; the server marks the site not bound and ends this call.
+                    await responseStream.WriteAsync(new NodeStatus { State = NodeState.UnboundOpen, Reset = true, Version = options.Version }, ct).ConfigureAwait(false);
+                    await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, options.Time, ct).ConfigureAwait(false);
+                }
+
                 if (Interlocked.Exchange(ref other, 0) == 0)
                 {
                     // Only connection counts changed: at most once a second.
@@ -217,6 +227,7 @@ public sealed class SiteNodeGrpcService(
             binding.Changed -= OnOther;
             relays.Changed -= OnOther;
             networks.CardsChanged -= OnOther;
+            resetNotice.Requested -= OnChanged;
         }
     }
 

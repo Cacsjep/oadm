@@ -283,11 +283,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     // ---------- sessions ----------
 
-    /// <summary>A Watch answer of the node: allowed ports, counts, version.</summary>
+    /// <summary>A Watch answer of the node: allowed ports, counts, version; or the notice that the node was reset.</summary>
     internal void OnStatus(SiteSession session, NodeStatus status)
     {
         var now = Time.GetUtcNow();
-        bool changed;
+        var changed = false;
+        var reset = false;
         lock (_lock)
         {
             if (!_sites.TryGetValue(session.SiteId, out var entry) || entry.Session != session)
@@ -295,17 +296,23 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 return;
             }
 
-            entry.Status = status;
-            entry.Networks = SiteNetworks.From(status);
-            entry.LastAnswer = now;
-            entry.LastSeen = now;
-            entry.ConnectedSince ??= now;
-            foreach (var port in entry.Requested.Where(p => Allows(status, p)).ToList())
+            if (status.Reset)
             {
-                entry.Requested.Remove(port);
+                // Reset in the node app: the site is not bound any more (the node returns with a new identity).
+                entry.LastAnswer = now;
+                reset = !entry.Row.NotBound;
+                entry.Row.NotBound = true;
             }
+            else
+            {
+                changed = Apply(entry, status, now);
+            }
+        }
 
-            changed = Evaluate(entry, now);
+        if (reset)
+        {
+            Observe(MarkNotBoundAsync(session.SiteId), "mark the site not bound");
+            return;
         }
 
         if (changed)
@@ -314,6 +321,22 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         RaiseList();
+    }
+
+    // Under the lock.
+    private bool Apply(SiteEntry entry, NodeStatus status, DateTimeOffset now)
+    {
+        entry.Status = status;
+        entry.Networks = SiteNetworks.From(status);
+        entry.LastAnswer = now;
+        entry.LastSeen = now;
+        entry.ConnectedSince ??= now;
+        foreach (var port in entry.Requested.Where(p => Allows(status, p)).ToList())
+        {
+            entry.Requested.Remove(port);
+        }
+
+        return Evaluate(entry, now);
     }
 
     internal void OnHeartbeat(SiteSession session, HelloReply hello, TimeSpan roundTrip)
@@ -897,7 +920,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
         }
 
-        LogNotBound(NameOf(siteId) ?? siteId.ToString());
+        var name = NameOf(siteId) ?? siteId.ToString();
+        LogNotBound(name);
+        await _audit.WriteAsync("system", string.Empty, SiteAudit.NodeReset, name, null, CancellationToken.None).ConfigureAwait(false);
         if (session is not null)
         {
             await session.EndAsync().ConfigureAwait(false);
@@ -1012,6 +1037,7 @@ public static class SiteAudit
     public const string Renamed = "Renamed site";
     public const string Replaced = "Replaced site";
     public const string Removed = "Removed site";
+    public const string NodeReset = "Site node was reset";
     public const string Offline = "Site offline";
     public const string Online = "Site online";
 }

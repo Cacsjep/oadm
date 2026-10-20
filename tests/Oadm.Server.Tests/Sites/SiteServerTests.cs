@@ -219,6 +219,30 @@ public sealed class SiteServerTests
     }
 
     [Fact]
+    public async Task ResetInTheNodeAppTellsTheServerAndTheSiteIsNotBound()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var id = await server.BindAsync(node, "Building B");
+        var repository = server.Host.Get<DeviceRepository>();
+        var device = await repository.AddAsync(new Device { Serial = "B8A44F000001", Address = "192.168.0.20", SiteId = id, Status = SdkStatus.Ok }, CancellationToken.None);
+        // The server's Watch of the node is open once the node's networks arrived.
+        await Eventually.TrueAsync(() => server.Host.Get<ISiteNetwork>().Reaches(id, IPAddress.Parse("192.168.0.20")), "the node's networks from Watch");
+
+        var reply = await node.Get<Oadm.SiteNode.AdminChannel.AdminHandler>().HandleAsync(AdminRequest.Of(AdminCommands.Reset), isAdmin: true, CancellationToken.None);
+
+        Assert.True(reply.Ok);
+        // The node waited for the server: the site is not bound by the time Reset returns.
+        var site = Assert.Single((await server.ListAsync()).Sites, s => s.Id == id.ToString());
+        Assert.Equal(Proto.SiteState.NotBound, site.State);
+        Assert.Equal(SiteTexts.NotBound, site.Message);
+        Assert.Equal(SdkStatus.SiteOffline, (await repository.GetAsync(device.Id, CancellationToken.None))!.Status);
+        await Eventually.TrueAsync(async () => (await server.AuditActionsAsync()).Contains(SiteAudit.NodeReset), "the reset audited");
+        // The node comes back with its new identity and waits to be bound.
+        await server.WaitingAsync(node.NodeId);
+    }
+
+    [Fact]
     public async Task RenameReachesTheNode()
     {
         await using var server = await SiteServer.StartAsync();

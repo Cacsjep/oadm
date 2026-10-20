@@ -50,6 +50,9 @@ public sealed class NodeOptions
     /// <summary>A connection attempt to the server (TCP connect) ends after this time; the TLS handshake has its own.</summary>
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long Reset waits for the bound server to take the notice before it resets anyway (<see cref="Feed.ResetNotice"/>).</summary>
+    public TimeSpan ResetWaitLimit { get; set; } = Feed.ResetNotice.DefaultWaitLimit;
+
     /// <summary>The installed node's data folder: %ProgramData%\OADM Site Node, /var/lib/oadm-site-node.</summary>
     public static string DefaultDataDirectory()
     {

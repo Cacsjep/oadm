@@ -232,6 +232,10 @@ message NodeStatus {
   int32 short_connections = 10;
   int32 permanent_connections = 11;
   string version = 12;
+  // Reset in the node app (or `oadm-site-node reset`): the node's last message on this Watch, sent before it forgets the
+  // server and gets a new identity. The server marks the site not bound and ends the session; the node waits a few
+  // seconds for that, then resets anyway (a server it cannot reach keeps the site offline).
+  bool reset = 13;
 }
 
 // ---- Dial ----

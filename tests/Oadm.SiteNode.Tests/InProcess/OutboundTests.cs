@@ -218,6 +218,51 @@ public sealed class OutboundTests
     }
 
     [Fact]
+    public async Task ResetTellsTheBoundServerOnItsWatchAndWaitsUntilTheServerEndsIt()
+    {
+        await using var server = new TestServer();
+        // The node waits as long as the server needs here (3 s by default): the server ends the session below.
+        await using var node = await TestNode.StartAsync(c => c.ServerAddress = server.Address, o => o.ResetWaitLimit = TimeSpan.FromMinutes(5));
+        var link = await server.NextLinkAsync();
+        await link.BindAsync(node.Code, "Building B");
+        using var watch = link.Client.Watch(new WatchRequest());
+        Assert.True(await watch.ResponseStream.MoveNext());
+
+        var reset = node.Get<AdminChannel.AdminHandler>().HandleAsync(AdminRequest.Of(AdminCommands.Reset), isAdmin: true, CancellationToken.None);
+
+        NodeStatus last;
+        do
+        {
+            Assert.True(await watch.ResponseStream.MoveNext());
+            last = watch.ResponseStream.Current;
+        }
+        while (!last.Reset);
+        Assert.Equal(NodeState.UnboundOpen, last.State);
+        Assert.False(reset.IsCompleted); // the node waits for the server
+        Assert.Equal(NodeBinding.Bound, node.Get<BindingState>().Binding);
+
+        // The server ends the session: the node resets and connects again with a new identity.
+        var before = link.NodeFingerprintHex;
+        await link.DisposeAsync();
+        Assert.True((await reset).Ok);
+        await using var again = await server.NextWorkingLinkAsync();
+        Assert.NotEqual(before, again.NodeFingerprintHex);
+        Assert.Equal(NodeBinding.Open, node.Get<BindingState>().Binding);
+    }
+
+    [Fact]
+    public async Task ResetWithoutAWatchDoesNotWait()
+    {
+        await using var node = await TestNode.StartAsync(c => c.ServerAddress = "127.0.0.1:1"); // nothing listens there
+
+        var reset = node.Get<AdminChannel.AdminHandler>().HandleAsync(AdminRequest.Of(AdminCommands.Reset), isAdmin: true, CancellationToken.None);
+
+        Assert.True(reset.IsCompleted); // no server session: nothing to wait for
+        Assert.True((await reset).Ok);
+        Assert.Equal(NodeBinding.Open, node.Get<BindingState>().Binding);
+    }
+
+    [Fact]
     public async Task WatchSendsTheStatusAndEveryChange()
     {
         await using var server = new TestServer();

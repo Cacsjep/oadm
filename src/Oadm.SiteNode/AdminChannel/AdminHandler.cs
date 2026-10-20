@@ -21,15 +21,21 @@ public sealed class AdminHandler(
     NetworkScope networks,
     NodeStatusFeed feed,
     ConnectionLog log,
-    LinkRegistry links)
+    LinkRegistry links,
+    ResetNotice resetNotice)
 {
     public const int MaxExtraSubnets = 64;
 
-    /// <summary>A command of the app or the command line (what the admin channel calls).</summary>
-    public Task<AdminResponse> HandleAsync(AdminRequest request, bool isAdmin, CancellationToken ct)
+    /// <summary>
+    /// A command of the app or the command line (what the admin channel calls). Reset tells the bound server first, so
+    /// its site shows Not bound (at most <see cref="NodeOptions.ResetWaitLimit"/>; a server it cannot reach is not waited for).
+    /// </summary>
+    public async Task<AdminResponse> HandleAsync(AdminRequest request, bool isAdmin, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-        return Task.FromResult(Handle(request, isAdmin));
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Command == AdminCommands.Reset && isAdmin)
+            await resetNotice.AnnounceAsync(ct).ConfigureAwait(false);
+        return Handle(request, isAdmin);
     }
 
     public AdminResponse Handle(AdminRequest request, bool isAdmin)
