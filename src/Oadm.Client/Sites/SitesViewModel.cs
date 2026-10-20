@@ -17,8 +17,8 @@ using Oadm.Contracts.Sites;
 namespace Oadm.Client.Sites;
 
 /// <summary>
-/// One row of the Sites page: a bound site, or a node that waits to be bound (connected, or found by Search or Add
-/// manually). Rows are replaced as a whole by every list of the server.
+/// One row of the Sites page: a bound site, or a node that connected and waits to be bound. Rows are replaced as a whole
+/// by every list of the server.
 /// </summary>
 public sealed class SiteRowViewModel
 {
@@ -38,7 +38,7 @@ public sealed class SiteRowViewModel
         IsGreyed = site.State is SiteState.BoundElsewhere or SiteState.BindingClosed;
         Detail = site.Message.Length > 0 ? site.Message : SiteTexts.DefaultDetail(site.State);
         StateTip = Detail.Length > 0 ? StateText + ": " + Detail : StateText;
-        NodeAddressText = SiteTexts.Address(site.NodeAddress, site.NodePort);
+        NodeAddressText = site.NodeAddress;
         DeviceCountText = IsBound ? site.DeviceCount.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
         RoundTripText = site.RoundTripMs > 0 ? site.RoundTripMs.ToString("N0", CultureInfo.CurrentCulture) + " ms" : string.Empty;
         ConnectionsText = IsBound && site.State == SiteState.Online
@@ -56,7 +56,6 @@ public sealed class SiteRowViewModel
         CanReplace = mayChange && IsBound;
         CanRemove = mayChange && IsBound;
         RemoveTip = IsRemoved ? "Remove devices" : "Remove site";
-        CanChangeAddress = CanManage && site.Mode == SiteMode.Inbound;
         _search = string.Join(' ', site.Name, NodeAddressText, StateText, site.Version, site.NodeId);
     }
 
@@ -87,7 +86,7 @@ public sealed class SiteRowViewModel
 
     public bool IsInfo { get; }
 
-    /// <summary>A found node that cannot be bound (bound to another server, binding closed): shown dimmed with the reason.</summary>
+    /// <summary>A connected node that cannot be bound (bound to another server, binding closed): shown dimmed with the reason.</summary>
     public bool IsGreyed { get; }
 
     public double RowOpacity => IsGreyed ? 0.5 : 1;
@@ -120,7 +119,7 @@ public sealed class SiteRowViewModel
 
     public bool CanBind { get; }
 
-    /// <summary>Rename (and Change address for inbound sites): a bound site that is not removed.</summary>
+    /// <summary>Rename: a bound site that is not removed.</summary>
     public bool CanManage { get; }
 
     /// <summary>Replace with: a bound site, also a removed one with devices.</summary>
@@ -132,30 +131,23 @@ public sealed class SiteRowViewModel
     /// <summary>"Remove site", or "Remove devices" for a removed site.</summary>
     public string RemoveTip { get; }
 
-    public bool CanChangeAddress { get; }
-
     public bool Matches(string text) => _search.Contains(text, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
 /// Rail page "Sites" (Servers): the bound sites and the site nodes waiting to be bound, live through WatchSites while the
-/// page is shown. Reading needs "See sites"; Accept site nodes, Search, Add manually, Bind, Rename, Change address,
-/// Replace with and Remove site are Administrator only.
+/// page is shown. Reading needs "See sites"; Accept site nodes, Bind, Rename, Replace with and Remove site are
+/// Administrator only.
 /// </summary>
 public sealed partial class SitesViewModel : ObservableObject, IDisposable
 {
-    /// <summary>How long Search looks for nodes that wait for the server.</summary>
-    public const int SearchSeconds = 10;
-
     private readonly IOadmApi _api;
     private readonly IDialogService _dialogs;
     private readonly IUiDispatcher _ui;
     private readonly UserSession? _session;
-    private readonly Dictionary<string, Site> _found = new(StringComparer.Ordinal);
     private List<SiteRowViewModel> _all = [];
     private SiteList _list = new();
     private CancellationTokenSource? _active;
-    private CancellationTokenSource? _search;
 
     public SitesViewModel(IOadmApi api, IDialogService dialogs, IUiDispatcher ui, UserSession? session = null)
     {
@@ -191,10 +183,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     /// <summary>Until the first list arrived.</summary>
     [ObservableProperty] public partial bool IsLoading { get; private set; } = true;
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SearchNodesCommand))]
-    public partial bool IsSearching { get; private set; }
-
     [ObservableProperty] public partial bool IsChangingAccept { get; private set; }
 
     /// <summary>A refused action or a failed read, directly below the list.</summary>
@@ -215,7 +203,7 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Accept site nodes is off and there is nothing to list: the page shows what sites are and Accept site nodes instead
-    /// of the list (like Compliance while it is off). Sites whose node waits for the server keep the list visible.
+    /// of the list (like Compliance while it is off).
     /// </summary>
     public bool ShowOffState => !IsLoading && !_list.Accept && _all.Count == 0;
 
@@ -260,8 +248,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             active.Cancel();
             active.Dispose();
         }
-
-        _search?.Cancel();
     }
 
     public void Dispose()
@@ -280,15 +266,7 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         var acceptChanged = list.Accept != _list.Accept;
         _list = list;
         IsLoading = false;
-        foreach (var site in list.Sites.Where(s => s.Id.Length > 0 || s.NodeId.Length > 0))
-        {
-            _found.Remove(site.NodeId);
-        }
-
-        var rows = new List<SiteRowViewModel>(list.Sites.Count + _found.Count);
-        rows.AddRange(list.Sites.Select(s => new SiteRowViewModel(s, MayChange)));
-        rows.AddRange(_found.Values.Select(s => new SiteRowViewModel(s, MayChange)));
-        _all = rows;
+        _all = [.. list.Sites.Select(s => new SiteRowViewModel(s, MayChange))];
         if (acceptChanged)
         {
             OnPropertyChanged(nameof(Accept));
@@ -340,67 +318,13 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         ErrorText = null;
         if (!await _dialogs.ConfirmAsync(
             "Turn off site nodes",
-            "Turn off site nodes? Site nodes that connect to this server are disconnected and their devices show Site offline. Sites whose node waits for the server stay reachable.",
+            "Turn off site nodes? Site nodes are disconnected and their devices show Site offline.",
             "Turn off").ConfigureAwait(true))
         {
             return;
         }
 
         await SetAcceptAsync(false).ConfigureAwait(true);
-    }
-
-    private bool CanSearch => MayChange && !IsSearching;
-
-    /// <summary>Search: nodes that wait for the server on the server's network (inbound), for <see cref="SearchSeconds"/>.</summary>
-    [RelayCommand(CanExecute = nameof(CanSearch))]
-    private async Task SearchNodesAsync()
-    {
-        IsSearching = true;
-        _search = new CancellationTokenSource();
-        var found = 0;
-        try
-        {
-            await foreach (var node in _api.FindSiteNodesAsync(SearchSeconds, null, _search.Token).ConfigureAwait(true))
-            {
-                if (node.Node is { } site && AddFound(site))
-                {
-                    found++;
-                }
-            }
-
-            NoticeText = found switch
-            {
-                0 => "No site node waits for this server.",
-                1 => "1 site node found.",
-                _ => string.Create(CultureInfo.CurrentCulture, $"{found:N0} site nodes found."),
-            };
-            ErrorText = null;
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex) when (ex is RpcException or IOException or HttpRequestException)
-        {
-            ErrorText = "The search failed: " + Message(ex);
-        }
-        finally
-        {
-            _search.Dispose();
-            _search = null;
-            IsSearching = false;
-        }
-    }
-
-    /// <summary>Add manually: a node that waits for the server at an address.</summary>
-    [RelayCommand(CanExecute = nameof(MayChange))]
-    private async Task AddManuallyAsync()
-    {
-        var form = SiteFormViewModel.AddManually(_api);
-        if (await _dialogs.ShowSiteFormAsync(form).ConfigureAwait(true) && form.FoundNode is { } node)
-        {
-            AddFound(node);
-            NoticeText = null;
-        }
     }
 
     [RelayCommand]
@@ -414,7 +338,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         var form = SiteFormViewModel.Bind(_api, row.Site);
         if (await _dialogs.ShowSiteFormAsync(form).ConfigureAwait(true))
         {
-            _found.Remove(row.Site.NodeId);
             NoticeText = null;
             await ReloadAsync().ConfigureAwait(true);
         }
@@ -429,20 +352,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
         }
 
         if (await _dialogs.ShowSiteFormAsync(SiteFormViewModel.Rename(_api, row.Site)).ConfigureAwait(true))
-        {
-            await ReloadAsync().ConfigureAwait(true);
-        }
-    }
-
-    [RelayCommand]
-    private async Task ChangeAddressAsync(SiteRowViewModel? row)
-    {
-        if (row is not { CanChangeAddress: true })
-        {
-            return;
-        }
-
-        if (await _dialogs.ShowSiteFormAsync(SiteFormViewModel.ChangeAddress(_api, row.Site)).ConfigureAwait(true))
         {
             await ReloadAsync().ConfigureAwait(true);
         }
@@ -487,18 +396,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             ErrorText = reply.NodeAnswered ? null : SiteTexts.NodeDidNotAnswer;
             await ReloadAsync().ConfigureAwait(true);
         }
-    }
-
-    private bool AddFound(Site site)
-    {
-        if (site.NodeId.Length == 0 || _list.Sites.Any(s => s.NodeId == site.NodeId))
-        {
-            return false;
-        }
-
-        _found[site.NodeId] = site;
-        Apply(_list);
-        return true;
     }
 
     private async Task ReloadAsync()
@@ -598,8 +495,6 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(MayChange));
             OnPropertyChanged(nameof(ShowTurnOff));
             OnPropertyChanged(nameof(ShowAcceptButton));
-            AddManuallyCommand.NotifyCanExecuteChanged();
-            SearchNodesCommand.NotifyCanExecuteChanged();
             Apply(_list); // row actions follow the role
         }
     }

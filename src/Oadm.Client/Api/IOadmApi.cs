@@ -251,15 +251,10 @@ public interface IOadmApi
     /// <summary>Accept site nodes on or off; returns the list.</summary>
     Task<SiteList> SetSiteAcceptAsync(bool accept, CancellationToken ct) => throw new NotSupportedException();
 
-    /// <summary>Nodes that wait for the server: by search for <paramref name="durationSeconds"/>, or at one address.</summary>
-    IAsyncEnumerable<FoundNode> FindSiteNodesAsync(int durationSeconds, string? address, CancellationToken ct) => AsyncEnumerable.Empty<FoundNode>();
-
     /// <summary>Binds a waiting node, chosen by its id and the fingerprint of its key (a stranger may report the same id).</summary>
     Task<Site> BindSiteAsync(string nodeId, string nodeFingerprint, string name, string pairingCode, CancellationToken ct) => throw new NotSupportedException();
 
     Task<Site> RenameSiteAsync(string id, string name, CancellationToken ct) => throw new NotSupportedException();
-
-    Task<Site> ChangeSiteAddressAsync(string id, string address, int port, CancellationToken ct) => throw new NotSupportedException();
 
     Task<ReplaceSiteReply> ReplaceSiteAsync(string id, string newSiteId, CancellationToken ct) => throw new NotSupportedException();
 

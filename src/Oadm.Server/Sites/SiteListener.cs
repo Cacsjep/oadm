@@ -149,7 +149,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
             _handshakes.Release();
         }
 
-        _accepted(new NodeLink(tls, remote, openedByNode: true));
+        _accepted(new NodeLink(tls, remote));
     }
 
     public async ValueTask DisposeAsync()

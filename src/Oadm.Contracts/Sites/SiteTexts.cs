@@ -30,12 +30,9 @@ public static class SiteTexts
     public const string BoundElsewhere = "Bound to another OADM server.";
     public const string RemovedSite = "This site node is bound to this server, but its site was removed. Click Reset in the OADM Site Node app.";
     public const string TooOld = "Site node too old. Update it.";
-    public const string OtherNode = "Another site node answers at this address.";
-    public const string InboundOnly = "Only sites whose node waits for the server have an address to change.";
     public const string SiteGone = "The site no longer exists.";
     public const string NewSiteGone = "The new site no longer exists.";
     public const string ChooseAnotherSite = "Choose another site.";
-    public const string NodeNotWaiting = "The site node is not waiting any more.";
 
     /// <summary>A removed site whose devices were kept: the Sites page lists it until its devices are replaced or removed.</summary>
     public const string RemovedState = "Removed";
@@ -50,7 +47,7 @@ public static class SiteTexts
 
     public const string InvalidAnswer = "The site node sent an answer that is not valid.";
     public const string NotStored = "The site could not be stored. Bind it again.";
-    public const string NodeIdAmbiguous = "Several site nodes report this id. Search again and choose the node by its key.";
+    public const string NodeIdAmbiguous = "Several site nodes report this id. Click Bind on the row of the node you mean.";
 
     /// <summary>The node of a site accepted this server's new identity: Bind with its code binds the site again.</summary>
     public static string BindAgain(string site) => $"The site node of {site} accepted this server's new identity. Bind it with its pairing code.";
@@ -86,18 +83,6 @@ public static class SiteTexts
         SiteState.Removed => RemovedMessage,
         _ => string.Empty,
     };
-
-    /// <summary>"10.0.4.12:51234", "[fd00::5]:5081"; empty without an address.</summary>
-    public static string Address(string address, int port)
-    {
-        if (string.IsNullOrEmpty(address))
-        {
-            return string.Empty;
-        }
-
-        var host = address.Contains(':', StringComparison.Ordinal) && !address.StartsWith('[') ? "[" + address + "]" : address;
-        return port > 0 ? host + ":" + port.ToString(CultureInfo.InvariantCulture) : address;
-    }
 
     public static string Replaced(ReplaceSiteReply reply)
     {

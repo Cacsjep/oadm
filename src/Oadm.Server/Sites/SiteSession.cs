@@ -11,8 +11,7 @@ namespace Oadm.Server.Sites;
 /// <summary>
 /// The connections of one bound site's node (docs/sites.md, "Two connections per node"): the <b>control</b> link (Watch,
 /// the heartbeat, requests) and up to 8 <b>worker</b> links that carry every <c>Dial</c>, so a large transfer never
-/// delays the heartbeat. Outbound the node opens worker links when asked (<c>OpenConnections</c>); inbound the server
-/// opens them. The session ends when the control link ends or stops answering.
+/// delays the heartbeat. The node opens worker links when asked (<c>OpenConnections</c>). The session ends when the control link ends or stops answering.
 /// </summary>
 internal sealed partial class SiteSession : IAsyncDisposable
 {
@@ -21,19 +20,16 @@ internal sealed partial class SiteSession : IAsyncDisposable
     private readonly Lock _lock = new();
     private readonly List<Worker> _workers = [];
     private readonly CancellationTokenSource _life = new();
-    private readonly Func<CancellationToken, Task<NodeLink>>? _dialWorker;
     private TaskCompletionSource _workerAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task _run = Task.CompletedTask;
     private int _opening;
 
-    /// <param name="dialWorker">Inbound: opens a new worker link to the node; null = outbound (the node opens them).</param>
-    public SiteSession(SiteManager manager, Guid siteId, NodeLink control, SiteOptions options, Func<CancellationToken, Task<NodeLink>>? dialWorker)
+    public SiteSession(SiteManager manager, Guid siteId, NodeLink control, SiteOptions options)
     {
         _manager = manager;
         SiteId = siteId;
         Control = control;
         _options = options;
-        _dialWorker = dialWorker;
         Started = manager.Time.GetUtcNow();
     }
 
@@ -191,7 +187,7 @@ internal sealed partial class SiteSession : IAsyncDisposable
     };
 
     /// <summary>
-    /// The least busy worker; a new one when none is free (the node opens it outbound, the server inbound). The wait for
+    /// The least busy worker; a new one when none is free (the node opens it). The wait for
     /// a new one has its own limit (<see cref="SiteOptions.WorkerWait"/>, at most <paramref name="within"/>, so it ends
     /// before the caller's timeout): then the site is busy, never a device that does not answer.
     /// </summary>
@@ -237,7 +233,7 @@ internal sealed partial class SiteSession : IAsyncDisposable
         }
     }
 
-    // One opening at a time: outbound asks the node, inbound dials it.
+    // One opening at a time: the node is asked for one more worker link.
     private void OpenWorker()
     {
         if (Interlocked.Exchange(ref _opening, 1) == 1)
@@ -249,15 +245,8 @@ internal sealed partial class SiteSession : IAsyncDisposable
         {
             try
             {
-                if (_dialWorker is not null)
-                {
-                    AddWorker(await _dialWorker(_life.Token).ConfigureAwait(false));
-                }
-                else
-                {
-                    await Control.Client.OpenConnectionsAsync(new OpenConnectionsRequest { Count = 1 },
-                        deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: _life.Token).ConfigureAwait(false);
-                }
+                await Control.Client.OpenConnectionsAsync(new OpenConnectionsRequest { Count = 1 },
+                    deadline: DateTime.UtcNow + _options.CallTimeout, cancellationToken: _life.Token).ConfigureAwait(false);
             }
 #pragma warning disable CA1031 // A failed opening is tried again by the next dial.
             catch (Exception)

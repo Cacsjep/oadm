@@ -45,9 +45,6 @@ public sealed class SiteOptions
     /// <summary>How long a dial waits for a worker connection the node was asked to open.</summary>
     public TimeSpan WorkerWait { get; init; } = TimeSpan.FromSeconds(10);
 
-    /// <summary>The server reaches inbound nodes again after 1, 2, 4 ... up to this many seconds.</summary>
-    public TimeSpan MaxBackoff { get; init; } = TimeSpan.FromSeconds(60);
-
     /// <summary>The site port; null = the setting Sites.ListenUrl (default https://0.0.0.0:5081). Tests listen on 127.0.0.1:0.</summary>
     public string? ListenUrl { get; init; }
 

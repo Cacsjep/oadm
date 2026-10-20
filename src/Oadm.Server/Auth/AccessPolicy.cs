@@ -184,10 +184,8 @@ public static class AccessPolicy
         ["/oadm.v1.SiteService/ListSites"] = AccessRule.Needs(HostPermissions.SitesView),
         ["/oadm.v1.SiteService/WatchSites"] = AccessRule.Needs(HostPermissions.SitesView),
         ["/oadm.v1.SiteService/SetAccept"] = AccessRule.Admin,
-        ["/oadm.v1.SiteService/FindNodes"] = AccessRule.Admin,
         ["/oadm.v1.SiteService/BindSite"] = AccessRule.Admin,
         ["/oadm.v1.SiteService/RenameSite"] = AccessRule.Admin,
-        ["/oadm.v1.SiteService/ChangeSiteAddress"] = AccessRule.Admin,
         ["/oadm.v1.SiteService/ReplaceSite"] = AccessRule.Admin,
         ["/oadm.v1.SiteService/RemoveSite"] = AccessRule.Admin,
     };

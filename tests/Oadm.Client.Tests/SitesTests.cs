@@ -22,7 +22,8 @@ namespace Oadm.Client.Tests;
 
 /// <summary>
 /// The Sites page, its dialogs and the Site column of the device grid against the fake server. Set OADM_SCREENSHOT_DIR
-/// for sites-page.png, sites-bind-wrong-code.png and sites-devices-column.png.
+/// for sites-page.png, sites-page-empty-off.png, sites-page-empty-on.png, sites-bind-wrong-code.png and
+/// sites-devices-column.png.
 /// </summary>
 public sealed class SitesTests(ITestOutputHelper output) : IDisposable
 {
@@ -58,9 +59,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         var warehouse = page.Rows.Single(r => r.Name == "Warehouse");
         Assert.True(warehouse.IsError);
         Assert.Equal("3.6.9 · Update available", warehouse.VersionText);
-        Assert.True(warehouse.CanChangeAddress); // inbound
         Assert.Equal("Offline: " + SiteTexts.NodeNotAnswering, warehouse.StateTip); // the whole reason as the tooltip
-        Assert.False(building.CanChangeAddress);
         var waiting = page.Rows.Single(r => !r.IsBound);
         Assert.Equal("Waiting to be bound", waiting.StateText);
         Assert.True(waiting.CanBind);
@@ -231,7 +230,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
     });
 
     [Fact]
-    public Task Rename_replace_change_address_and_add_manually_go_to_the_server() => _ui.RunAsync(async () =>
+    public Task Rename_and_replace_go_to_the_server() => _ui.RunAsync(async () =>
     {
         var (api, _, page) = Create();
         page.Apply(await api.ListSitesAsync(CancellationToken.None));
@@ -245,16 +244,6 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         await rename.SubmitCommand.ExecuteAsync(null);
         Assert.Contains((await api.ListDevicesAsync(CancellationToken.None)), d => d.SiteName == "Warehouse North");
 
-        var address = SiteFormViewModel.ChangeAddress(api, warehouse);
-        Assert.Equal("10.20.0.5", address.Address);
-        address.PortText = "70000";
-        address.FieldLeft(nameof(address.PortText));
-        Assert.Equal("Enter a port from 1 to 65535.", address.ErrorOf(nameof(address.PortText)));
-        address.PortText = "";
-        address.Address = "10.20.0.6";
-        await address.SubmitCommand.ExecuteAsync(null);
-        Assert.Contains((await api.ListSitesAsync(CancellationToken.None)).Sites, s => s.NodeAddress == "10.20.0.6" && s.NodePort == 5081);
-
         var others = page.Rows.Where(r => r.IsBound && r.Site.Id != warehouse.Id).Select(r => r.Site).ToList();
         var replace = SiteFormViewModel.Replace(api, warehouse, others);
         Assert.False(replace.SubmitCommand.CanExecute(null)); // choose a site first
@@ -262,10 +251,6 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         await replace.SubmitCommand.ExecuteAsync(null);
         Assert.Equal("2 devices moved.", SiteTexts.Replaced(replace.ReplaceReply!));
 
-        var manual = SiteFormViewModel.AddManually(api);
-        manual.Address = "10.30.0.9";
-        await manual.SubmitCommand.ExecuteAsync(null);
-        Assert.Equal("10.30.0.9", manual.FoundNode!.NodeAddress);
         api.Dispose();
     });
 
@@ -276,9 +261,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         page.Apply(await api.ListSitesAsync(CancellationToken.None));
 
         Assert.False(page.MayChange);
-        Assert.All(page.Rows, r => Assert.False(r.CanBind || r.CanManage || r.CanChangeAddress));
-        Assert.False(page.AddManuallyCommand.CanExecute(null));
-        Assert.False(page.SearchNodesCommand.CanExecute(null));
+        Assert.All(page.Rows, r => Assert.False(r.CanBind || r.CanManage || r.CanReplace || r.CanRemove));
         Assert.Equal("Accepting site nodes", page.AcceptText);
         await page.SetAcceptAsync(false); // refused locally
         Assert.True((await api.ListSitesAsync(CancellationToken.None)).Accept);
@@ -297,7 +280,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
 
         for (var i = 0; i < 50; i++)
         {
-            list.Sites.Add(new Site { Name = "node-" + i, State = SiteState.Waiting, NodeId = "w" + i, NodeAddress = "10.9.0." + i, NodePort = 50000 + i });
+            list.Sites.Add(new Site { Name = "node-" + i, State = SiteState.Waiting, NodeId = "w" + i, NodeAddress = "10.9.0." + i });
         }
 
         var watch = Stopwatch.StartNew();
@@ -353,7 +336,23 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
             Assert.Contains("Response time", texts); // plain headers
             Assert.Contains("Waiting for approval", texts);
             Assert.Contains("Uploads and downloads", texts);
+            Assert.DoesNotContain("Change address", texts); // site nodes always connect to the server
             Capture(window, outDir, "sites-page.png");
+
+            // The empty page: off (what sites are, Accept site nodes) and on (what to type in the node app).
+            page.Deactivate();
+            page.Apply(new SiteList { Accept = false });
+            Pump();
+            texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
+            Assert.Contains("Site nodes are off", texts);
+            Assert.DoesNotContain(texts, t => t.Contains("waits for the server", StringComparison.Ordinal));
+            Capture(window, outDir, "sites-page-empty-off.png");
+            page.Apply(new SiteList { Accept = true, ListenAddress = "10.0.0.5:5081" });
+            Pump();
+            texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
+            Assert.Contains("Enter 10.0.0.5:5081 as the server address in the OADM Site Node app.", texts);
+            Assert.DoesNotContain("Search", window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Where(b => b.IsEffectivelyVisible).Select(b => b.Text));
+            Capture(window, outDir, "sites-page-empty-on.png");
             window.Close();
             page.Dispose();
 

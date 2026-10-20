@@ -23,10 +23,9 @@ public sealed partial class RoutingRulesTests
         "src/Oadm.Core/Settings/ServerSettings.cs",
         "src/Oadm.Contracts/Security/OadmChannel.cs",
         "src/Oadm.Server/Auth/ServerTlsCertificate.cs",
-        // The site transport: links to site nodes (the listener, the server's HTTP/2 client on a link, inbound nodes).
+        // The site transport: links site nodes open (the listener, the server's HTTP/2 client on a link).
         "src/Oadm.Server/Sites/NodeLink.cs",
         "src/Oadm.Server/Sites/SiteListener.cs",
-        "src/Oadm.Server/Sites/SiteManager.Links.cs",
         "src/Oadm.Client/DeviceWeb/DeviceWebRelay.cs",
         "plugins/Oadm.Plugins.DhcpServer/Serving/DhcpSockets.cs",
         "plugins/Oadm.Plugins.Notifications/SendHttpAction.cs",

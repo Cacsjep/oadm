@@ -17,15 +17,13 @@ public enum SiteFormMode
 {
     Bind,
     Rename,
-    ChangeAddress,
-    AddManually,
     Replace,
     Remove,
 }
 
 /// <summary>
 /// The single-operation dialogs of the Sites page (one window, <see cref="SiteFormWindow"/>): Bind (site name and pairing
-/// code), Rename, Change address, Add manually, Replace with and Remove site. Errors stand below the field they belong to.
+/// code), Rename, Replace with and Remove site. Errors stand below the field they belong to.
 /// </summary>
 public sealed partial class SiteFormViewModel : ValidatingViewModel
 {
@@ -51,12 +49,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
             Validation.Rule(nameof(PairingCode), () => NormalizeCode(PairingCode) is null ? SiteTexts.CodeFormat : null);
         }
 
-        if (mode is SiteFormMode.ChangeAddress or SiteFormMode.AddManually)
-        {
-            Validation.Rule(nameof(Address), () => AddressProblem(Address));
-            Validation.Rule(nameof(PortText), () => ParsePort(PortText, out _) ? null : "Enter a port from 1 to 65535.");
-        }
-
         if (mode == SiteFormMode.Replace)
         {
             Validation.Rule(nameof(NewSite), () => NewSite is null ? "Choose the site that replaces it." : null);
@@ -79,8 +71,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
 
     public bool ShowCode => Mode == SiteFormMode.Bind;
 
-    public bool ShowAddress => Mode is SiteFormMode.ChangeAddress or SiteFormMode.AddManually;
-
     public bool ShowReplace => Mode == SiteFormMode.Replace;
 
     public bool ShowKeepDevices => Mode == SiteFormMode.Remove && !IsRemovedSite;
@@ -101,15 +91,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
     [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
     public partial string PairingCode { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
-    public partial string Address { get; set; } = string.Empty;
-
-    /// <summary>Empty = 5081.</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
-    public partial string PortText { get; set; } = string.Empty;
-
     public IReadOnlyList<Site> OtherSites { get; private init; } = [];
 
     [ObservableProperty]
@@ -129,7 +110,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
     public string BusyText => Mode switch
     {
         SiteFormMode.Bind => "Binding the site node",
-        SiteFormMode.AddManually => "Looking for the site node",
         SiteFormMode.Replace => "Checking the devices through the new site",
         SiteFormMode.Remove => "Removing the site",
         _ => "Saving",
@@ -143,9 +123,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
     public bool HasFormError => !string.IsNullOrEmpty(FormErrorText);
 
     public string? SubmitBlockedReason => Validation.FirstError;
-
-    /// <summary>Add manually: the node that answered.</summary>
-    public Site? FoundNode { get; private set; }
 
     public ReplaceSiteReply? ReplaceReply { get; private set; }
 
@@ -174,25 +151,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
         form.Validation.Reset(nameof(Name));
         return form;
     }
-
-    public static SiteFormViewModel ChangeAddress(IOadmApi api, Site site)
-    {
-        ArgumentNullException.ThrowIfNull(site);
-        var form = new SiteFormViewModel(api, SiteFormMode.ChangeAddress, site, "Change address", "Save")
-        {
-            Intro = $"Where the server finds the site node of {site.Name}.",
-        };
-        form.Address = site.NodeAddress;
-        form.PortText = site.NodePort > 0 ? site.NodePort.ToString(CultureInfo.InvariantCulture) : string.Empty;
-        form.Validation.Reset(nameof(Address), nameof(PortText));
-        return form;
-    }
-
-    public static SiteFormViewModel AddManually(IOadmApi api) =>
-        new(api, SiteFormMode.AddManually, null, "Add site node manually", "Find")
-        {
-            Intro = "A site node set to wait for the server.",
-        };
 
     public static SiteFormViewModel Replace(IOadmApi api, Site site, IReadOnlyList<Site> others)
     {
@@ -239,38 +197,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
 
     public static string? NameProblem(string? name) => SiteTexts.NameProblem(name);
 
-    private static string? AddressProblem(string? address)
-    {
-        var trimmed = (address ?? "").Trim();
-        if (trimmed.Length == 0)
-        {
-            return "Enter the address of the site node.";
-        }
-
-        return trimmed.Length > 253 || trimmed.Any(c => char.IsWhiteSpace(c) || c is '/' or '\\' or '@')
-            ? "Enter an IP address or a host name."
-            : null;
-    }
-
-    /// <summary>Empty = 5081; otherwise a whole number from 1 to 65535.</summary>
-    public static bool ParsePort(string? text, out int port)
-    {
-        port = 5081;
-        var trimmed = (text ?? "").Trim();
-        if (trimmed.Length == 0)
-        {
-            return true;
-        }
-
-        if (int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out var value) && value is >= 1 and <= 65535)
-        {
-            port = value;
-            return true;
-        }
-
-        return false;
-    }
-
     private bool CanSubmit() => !IsBusy && Validation.IsValid;
 
     [RelayCommand(CanExecute = nameof(CanSubmit))]
@@ -316,28 +242,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
             case SiteFormMode.Rename:
                 await _api.RenameSiteAsync(_site!.Id, Name.Trim(), ct).ConfigureAwait(true);
                 return true;
-            case SiteFormMode.ChangeAddress:
-                ParsePort(PortText, out var port);
-                await _api.ChangeSiteAddressAsync(_site!.Id, Address.Trim(), port, ct).ConfigureAwait(true);
-                return true;
-            case SiteFormMode.AddManually:
-                ParsePort(PortText, out var nodePort);
-                var target = SiteTexts.Address(Address.Trim(), nodePort);
-                await foreach (var found in _api.FindSiteNodesAsync(0, target, ct).ConfigureAwait(true))
-                {
-                    if (found.Node is { } node)
-                    {
-                        FoundNode = node;
-                    }
-                }
-
-                if (FoundNode is null)
-                {
-                    Validation.SetServerError(nameof(Address), $"No OADM Site Node answered at {target}.");
-                    return false;
-                }
-
-                return true;
             case SiteFormMode.Replace:
                 ReplaceReply = await _api.ReplaceSiteAsync(_site!.Id, NewSite!.Id, ct).ConfigureAwait(true);
                 return true;
@@ -370,10 +274,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
             case SiteFormMode.Rename:
                 Validation.SetServerError(nameof(Name), detail);
                 break;
-            case SiteFormMode.ChangeAddress:
-            case SiteFormMode.AddManually:
-                Validation.SetServerError(nameof(Address), detail);
-                break;
             case SiteFormMode.Replace:
                 Validation.SetServerError(nameof(NewSite), detail);
                 break;
@@ -392,10 +292,6 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
                 break;
             case SiteFormMode.Rename:
                 Validation.SetServerError(nameof(Name), text);
-                break;
-            case SiteFormMode.ChangeAddress:
-            case SiteFormMode.AddManually:
-                Validation.SetServerError(nameof(Address), text);
                 break;
             default:
                 FormErrorText = text;

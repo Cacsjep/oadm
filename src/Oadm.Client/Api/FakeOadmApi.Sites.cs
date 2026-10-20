@@ -64,22 +64,22 @@ public sealed partial class FakeOadmApi
         var now = DateTime.UtcNow;
         _sites.Add(new Site
         {
-            Id = FakeSiteOnlineId.ToString(), Name = FakeSites[FakeSiteOnlineId], State = SiteState.Online, Mode = SiteMode.Outbound,
-            NodeId = "node-building-b", NodeAddress = "10.0.4.12", NodePort = 51234, Version = "3.7.0", RoundTripMs = 12,
+            Id = FakeSiteOnlineId.ToString(), Name = FakeSites[FakeSiteOnlineId], State = SiteState.Online,
+            NodeId = "node-building-b", NodeAddress = "10.0.4.12", Version = "3.7.0", RoundTripMs = 12,
             ShortConnections = 3, PermanentConnections = 1, PortsWaiting = 1, LastSeen = Timestamp.FromDateTime(now),
             Bound = Timestamp.FromDateTime(now.AddDays(-12)), NodeFingerprint = new string('A', 64),
         });
         _sites.Add(new Site
         {
-            Id = FakeSiteOfflineId.ToString(), Name = FakeSites[FakeSiteOfflineId], State = SiteState.Offline, Mode = SiteMode.Inbound,
-            NodeId = "node-warehouse", NodeAddress = "10.20.0.5", NodePort = 5081, Version = "3.6.9", UpdateAvailable = true,
+            Id = FakeSiteOfflineId.ToString(), Name = FakeSites[FakeSiteOfflineId], State = SiteState.Offline,
+            NodeId = "node-warehouse", NodeAddress = "10.20.0.5", Version = "3.6.9", UpdateAvailable = true,
             LastSeen = Timestamp.FromDateTime(now.AddHours(-3)), Bound = Timestamp.FromDateTime(now.AddDays(-40)),
             Message = SiteTexts.NodeNotAnswering, NodeFingerprint = new string('B', 64),
         });
         _waitingNodes.Add(new Site
         {
-            Name = "site-pc-3", State = SiteState.Waiting, Mode = SiteMode.Outbound, NodeId = FakeWaitingNodeId,
-            NodeAddress = "10.0.7.30", NodePort = 50210, Version = "3.7.0", LastSeen = Timestamp.FromDateTime(now),
+            Name = "site-pc-3", State = SiteState.Waiting, NodeId = FakeWaitingNodeId,
+            NodeAddress = "10.0.7.30", Version = "3.7.0", LastSeen = Timestamp.FromDateTime(now),
         });
     }
 
@@ -127,54 +127,13 @@ public sealed partial class FakeOadmApi
         }
     }
 
-    public async IAsyncEnumerable<FoundNode> FindSiteNodesAsync(int durationSeconds, string? address, [EnumeratorCancellation] CancellationToken ct)
-    {
-        await Task.Delay(TimeSpan.FromMilliseconds(50), ct).ConfigureAwait(false);
-        Site? found = null;
-        if (!string.IsNullOrWhiteSpace(address))
-        {
-            lock (_gate)
-            {
-                ThrowIfOffline();
-                var host = address.Trim();
-                var port = 5081;
-                var colon = host.LastIndexOf(':');
-                if (colon > 0 && !host.EndsWith(']') && int.TryParse(host[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture, out var typedPort))
-                {
-                    port = typedPort;
-                    host = host[..colon].Trim('[', ']');
-                }
-                found = _waitingNodes.Find(n => n.NodeAddress == host);
-                if (found is null)
-                {
-                    found = new Site
-                    {
-                        Name = "node-" + host.Replace('.', '-'), State = SiteState.Waiting, Mode = SiteMode.Inbound,
-                        NodeId = "node-" + Guid.NewGuid().ToString("N")[..8], NodeAddress = host, NodePort = port, Version = "3.7.0",
-                        LastSeen = Timestamp.FromDateTime(DateTime.UtcNow),
-                    };
-                    _waitingNodes.Add(found);
-                }
-
-                PublishSitesLocked();
-            }
-        }
-
-        if (found is not null)
-        {
-            yield return new FoundNode { Node = found.Clone() };
-        }
-
-        yield return new FoundNode { Finished = true };
-    }
-
     public Task<Site> BindSiteAsync(string nodeId, string nodeFingerprint, string name, string pairingCode, CancellationToken ct)
     {
         lock (_gate)
         {
             ThrowIfOffline();
             var node = _waitingNodes.Find(n => n.NodeId == nodeId)
-                ?? throw new RpcException(new Status(StatusCode.NotFound, SiteTexts.NodeNotWaiting));
+                ?? throw new RpcException(new Status(StatusCode.NotFound, SiteTexts.NodeGone));
             var trimmed = (name ?? "").Trim();
             if (SiteTexts.NameProblem(trimmed) is { } problem)
             {
@@ -238,24 +197,6 @@ public sealed partial class FakeOadmApi
         }
     }
 
-    public Task<Site> ChangeSiteAddressAsync(string id, string address, int port, CancellationToken ct)
-    {
-        lock (_gate)
-        {
-            ThrowIfOffline();
-            var site = FindSiteLocked(id);
-            if (site.Mode != SiteMode.Inbound)
-            {
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, SiteTexts.InboundOnly));
-            }
-
-            site.NodeAddress = address.Trim();
-            site.NodePort = port <= 0 ? 5081 : port;
-            PublishSitesLocked();
-            return Task.FromResult(site.Clone());
-        }
-    }
-
     public Task<ReplaceSiteReply> ReplaceSiteAsync(string id, string newSiteId, CancellationToken ct)
     {
         lock (_gate)
@@ -304,7 +245,6 @@ public sealed partial class FakeOadmApi
                 site.State = SiteState.Removed;
                 site.Message = SiteTexts.RemovedMessage;
                 site.NodeAddress = string.Empty;
-                site.NodePort = 0;
                 site.Version = string.Empty;
                 site.UpdateAvailable = false;
                 site.RoundTripMs = 0;
@@ -345,8 +285,11 @@ public sealed partial class FakeOadmApi
             list.Sites.Add(copy);
         }
 
-        // Nodes that connected wait only while the server accepts them; nodes the server found itself always.
-        list.Sites.Add(_waitingNodes.Where(n => _siteAccept || n.Mode == SiteMode.Inbound).Select(n => n.Clone()));
+        // Nodes that connected wait only while the server accepts them.
+        if (_siteAccept)
+        {
+            list.Sites.Add(_waitingNodes.Select(n => n.Clone()));
+        }
 
         return list;
     }
