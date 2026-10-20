@@ -1,12 +1,13 @@
-# Sites (planned)
+# Sites
 
-Status: design. First agreed 2026-10-15 as "Agents" (branch `feature/agents`, `docs/agents.md`); re-evaluated against
-main (v3.6.0-rc.1) and renamed on 2026-10-19; after a security review the same day the node connects out to the server,
-binding needs a pairing code and the node opens only allowed ports; an architecture, SDK and security review (also
-2026-10-19) added the rest of that day's decisions. Work stream 0 (contracts and spike) is built on `feature/sites`
-(2026-10-19): the pairing became SRP-6a and TLS 1.2 is allowed next to 1.3 (both decided that day, see Binding and
-Transport); a review of the built link the same day replaced SRP-6a with J-PAKE and added the limits on strangers (see
-Binding, Server listener and Security review). Defaults marked **(default)** were not asked and may change.
+Status: built on the branch `feature/sites` (2026-10-19 / 20), not on main until the maintainer accepts it; the manual
+test plan on hardware (node README) is still to do. First agreed 2026-10-15 as "Agents" (branch `feature/agents`,
+`docs/agents.md`); re-evaluated against main (v3.6.0-rc.1) and renamed on 2026-10-19; after a security review the same
+day the node connects out to the server, binding needs a pairing code and the node opens only allowed ports; an
+architecture, SDK and security review added the rest of that day's decisions. While building: TLS 1.2 is allowed next to
+1.3 (Windows Server 2019), and a review of the built code replaced the first SRP-6a pairing with J-PAKE, added the limits
+on strangers and moved the Windows node service to its own account (see Binding, Server listener, Security review).
+Defaults marked **(default)** were not asked and may change.
 
 ## Purpose
 

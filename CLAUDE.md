@@ -50,7 +50,7 @@ each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share
 its license sentence with the same copyright line.
 **Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device
 changes, not affiliated with Axis; text fixed by the user) are accepted on the **first start of the client** on each
-computer, before the splash and any connection (`Shell/TermsWindow` + `TermsViewModel`: the terms and the license below them, Quit / Accept, the X
+computer, before the splash and any connection (`Oadm.Theme.Shell.TermsWindow` + `TermsDialogViewModel`, shared with the site node app; the client's `Shell/TermsViewModel`: the terms and the license below them, Quit / Accept, the X
 quits; `ClientSettings.AcceptedTerms` = SHA-256 of the text, so changed terms ask again). The installers show no license
 page (decision 2026-10-13: silent and command-line installs skipped it, Debian packages never ask; every user runs the
 client). TERMS.md also stands at the top of the client's About page (embedded resource `Oadm.Client.TERMS.md`), in
@@ -1240,6 +1240,7 @@ and the saved per-client order cover other preferences):
 | Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than 30 days: plain text, warn chip <= 30 days, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
+| Site | (`feature/sites`) the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
 
 Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) for every device every **60 s** by
 default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
@@ -1637,7 +1638,7 @@ uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with 
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
-Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Tags, Site (`feature/sites`), Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
 Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
@@ -2388,7 +2389,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
   `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
   `compliance.view` ("See compliance", Operator and Viewer yes), `compliance.manage` ("Change compliance checks", Operator no),
-  `events.view`, `events.manage`, `events.clearLog`, `logs.server`), "<plugin id>:<key>" for core plugins (every page gets "show"
+  `events.view`, `events.manage`, `events.clearLog`, `logs.server`, on `feature/sites` `sites.view` ("See sites", Operator and
+  Viewer yes)), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
@@ -2814,14 +2816,14 @@ the server side:
   Network settings / Assign IP address lists only devices on the same route. The address link and Open web interface of a
   device at a site open it in Web View (`ICorePluginClientContext.OpenDeviceRequested`), disabled with "Turn on Web View to
   open devices at a site" while it is off. Texts `Oadm.Contracts.Sites.SiteDiscoveryTexts`.
+- Known residual risk (as on the server's own network, see "Automatic login on the add page"): a device at a site that
+  imitates the anonymous Axis answer, or a compromised site node pretending to be one, gets the credential list's
+  passwords tried on it; the user docs say so.
 - Not built yet: identity rotation over gRPC, the HTTP helper on `IStreamListener`.
 
 # Not built yet
 
-**Sites** (designed 2026-10-15 as "Agents", re-evaluated and renamed 2026-10-19, spec `docs/sites.md`; first refactor
-on branch `feature/agents`): an OADM Site Node (service + desktop app, MSI and .deb) in a network the server cannot reach;
-it connects out to the server (no inbound port at the site), is bound with a pairing code from its app, opens only allowed ports, and the server sends all device traffic through it, TLS end to end; status and events
-"Site offline"; plugins work unchanged unless they open their own sockets.
+Sites are built on the branch `feature/sites` (see "# Sites") and not on main until the maintainer accepts them.
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,
