@@ -871,16 +871,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     // ---------- the list ----------
 
-    /// <summary>The Sites page: bound sites by name, then the waiting nodes.</summary>
+    /// <summary>The Sites page: bound sites by name, then the waiting nodes. The device counts come from memory unless a device changed its site.</summary>
     public async Task<Proto.SiteList> SnapshotAsync(CancellationToken ct)
     {
-        Dictionary<Guid, int> counts;
-        await using (var db = await _db.CreateDbContextAsync(ct).ConfigureAwait(false))
-        {
-            counts = await db.Devices.AsNoTracking().Where(d => d.SiteId != null).GroupBy(d => d.SiteId!.Value)
-                .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct).ConfigureAwait(false);
-        }
-
+        var counts = await DeviceCountsAsync(ct).ConfigureAwait(false);
         var list = new Proto.SiteList { Accept = Accept, ListenAddress = ListenAddress() };
         lock (_lock)
         {
@@ -1051,6 +1045,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         await _stop.CancelAsync().ConfigureAwait(false);
+        StopWatchingDevices();
         if (_tick is not null)
         {
             await _tick.DisposeAsync().ConfigureAwait(false);

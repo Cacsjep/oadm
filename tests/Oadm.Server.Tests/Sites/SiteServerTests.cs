@@ -545,6 +545,43 @@ public sealed class SiteServerTests
     }
 
     [Fact]
+    public async Task TheDeviceCountsAreReadOnlyWhenADeviceChangesItsSite()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var id = await server.BindAsync(node);
+        var repository = server.Host.Get<DeviceRepository>();
+        await server.Manager.PageAsync(CancellationToken.None);
+        var reads = server.Manager.DeviceCountReads;
+
+        // Heartbeats, states and transfers push the page again: the counts come from memory.
+        for (var i = 0; i < 5; i++)
+        {
+            server.Manager.RaiseList();
+            await server.Manager.PageAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(reads, server.Manager.DeviceCountReads);
+
+        // A device joins the site: read once, then from memory again.
+        var device = await repository.AddAsync(new Device { Serial = "B8A44F000001", Address = "192.168.0.20", SiteId = id, Status = SdkStatus.Ok }, CancellationToken.None);
+        Assert.Equal(1, Count(await server.Manager.PageAsync(CancellationToken.None), id));
+        Assert.Equal(reads + 1, server.Manager.DeviceCountReads);
+
+        // A status change of the device keeps its site: nothing to read.
+        await repository.UpdateAsync(device.Id, d => d.Status = SdkStatus.Unreachable, CancellationToken.None);
+        Assert.Equal(1, Count(await server.Manager.PageAsync(CancellationToken.None), id));
+        Assert.Equal(reads + 1, server.Manager.DeviceCountReads);
+
+        // The device moves to the server's own network: read again.
+        await repository.UpdateAsync(device.Id, d => d.SiteId = null, CancellationToken.None);
+        Assert.Equal(0, Count(await server.Manager.PageAsync(CancellationToken.None), id));
+        Assert.Equal(reads + 2, server.Manager.DeviceCountReads);
+    }
+
+    private static int Count(Proto.SiteList list, Guid siteId) => list.Sites.Single(s => s.Id == siteId.ToString()).DeviceCount;
+
+    [Fact]
     public async Task OperatorsSeeTheSitesButChangeNothing()
     {
         await using var server = await SiteServer.StartAsync();
