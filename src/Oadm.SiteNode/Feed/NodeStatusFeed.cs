@@ -168,6 +168,8 @@ public sealed class NodeStatusFeed
             ShortConnections = _dialer.ShortConnections,
             PermanentConnections = _dialer.PermanentConnections,
             NewServerIdentity = config.NewServerIdentity,
+            NewServerFrom = config.NewServerFrom,
+            NewServerAccepted = config.NewServerAccepted,
             WrongCodes = _state.WrongCodes,
             LockedUntil = _state.LockedUntil,
         };

@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography.X509Certificates;
 
 using Oadm.Sites.Binding;
+using Oadm.Sites.Transport;
 
 namespace Oadm.SiteNode.Links;
 
@@ -15,6 +16,8 @@ public sealed class SiteLink
     private readonly Lock _lock = new();
     private NodePairing? _pairing;
     private string? _pairingCode;
+    private long _lastActivity;
+    private bool _served;
 
     public SiteLink(bool outbound, bool worker, string remote, X509Certificate2 serverCertificate, byte[] nodeFingerprint)
     {
@@ -23,6 +26,7 @@ public sealed class SiteLink
         Worker = worker;
         Remote = remote;
         RemoteHost = HostOf(remote);
+        RemoteKey = IPAddress.TryParse(RemoteHost, out var address) ? AddressRateLimiter.KeyOf(address) : RemoteHost;
         ServerCertificate = serverCertificate;
         ServerFingerprint = Oadm.Sites.Transport.SiteTls.Fingerprint(serverCertificate);
         ServerFingerprintHex = Convert.ToHexString(ServerFingerprint);
@@ -53,8 +57,18 @@ public sealed class SiteLink
     /// <summary>The node's own fingerprint on this link (the pairing proofs cover both).</summary>
     public byte[] NodeFingerprint { get; }
 
-    /// <summary>Set when a second server session with the bound identity connects: every call but Hello is refused with it.</summary>
-    public string? Refusal { get; set; }
+    /// <summary>The source for the attempt limits: the address, IPv6 by its /64 (<see cref="AddressRateLimiter.KeyOf"/>).</summary>
+    public string RemoteKey { get; }
+
+    /// <summary>The TimeProvider timestamp of the last call on this link (unbound links idle too long are closed).</summary>
+    public long LastActivity => Interlocked.Read(ref _lastActivity);
+
+    /// <summary>True once a call of the bound server was served on it (the outbound connector's backoff starts over then).</summary>
+    public bool Served => Volatile.Read(ref _served);
+
+    public void Touch(long timestamp) => Interlocked.Exchange(ref _lastActivity, timestamp);
+
+    public void MarkServed() => Volatile.Write(ref _served, true);
 
     /// <summary>Closes the connection (Reset, a lost session).</summary>
     public CancellationTokenSource Closing { get; } = new();

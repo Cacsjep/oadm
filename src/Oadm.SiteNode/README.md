@@ -8,7 +8,7 @@ credentials, no tasks, no plugins. Two programs:
 - `oadm-site-node-app` (`src/Oadm.SiteNode.App`): the window, Avalonia with the shared OADM theme (`src/Oadm.Theme`).
 
 Shared: `src/Oadm.SiteNode.Admin` (the local channel, texts, server address and subnet rules), `src/Oadm.Sites` (TLS
-of the link, `AcceptedStreamListener`, SRP pairing), `site_node.proto`.
+of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `HelloRules`), `site_node.proto`.
 
 ## How it works
 
@@ -21,19 +21,29 @@ of the link, `AcceptedStreamListener`, SRP pairing), `site_node.proto`.
 - **Links** (`Links/`): every TLS connection to a server is a `SiteLink`; Kestrel serves `SiteNodeService` on it through
   `AcceptedStreamListener` (no socket endpoint of its own). Mode Connect (default): `OutboundConnector` connects to the
   typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4 ... 60
-  s; unbound any server key (the pairing proves it), bound only the pinned key (another one is noted for **Accept**),
-  binding closed: no connection. `OpenConnections` adds worker links (at most 8). Mode Wait: `InboundListener` listens on
-  5081 and does TLS itself with the same options, so everything above the socket is one code path; `NodeAnnouncer`
+  s, started over only after a session that lasted 30 s or served the bound server (a server that accepts TLS and
+  closes at once is not tried every second); dual mode where the OS has IPv6, else IPv4. Unbound: any server key (the
+  pairing proves it); bound: only the pinned key, another one is noted with where it came from (a waiting one is not
+  replaced for an hour, never once accepted); **Accept** lets that identity pair with the code, it binds nothing by
+  itself; binding closed: no connection. `OpenConnections` adds worker links (at most 8). Mode Wait: `InboundListener` listens on
+  5081 (0.0.0.0 without IPv6) and does TLS itself with the same options, so everything above the socket is one code
+  path; 30 new connections a minute per address (IPv6 per /64) before TLS, at most 16 links of servers the node is not
+  bound to (4 per address), each closed after 2 minutes without a call; `NodeAnnouncer`
   answers mDNS `_oadm-site._tcp` (TXT id, version, state) on every card. Every handshake ends within
   `SiteTls.HandshakeTimeout`.
-- **Calls** (`Service/SiteNodeGrpcService`): Hello to anyone (the bound server's and the site's name only to that
-  server); PairStart and Bind while not bound; everything else only to the bound identity, one session at a time
-  (`LinkRegistry`: a second connection with that identity from another address is refused "Another OADM server with this
-  identity is connected from ..."). Refusals: FAILED_PRECONDITION with the text; a wrong code PERMISSION_DENIED; too many
+- **Calls** (`Service/SiteNodeGrpcService`): Hello to anyone; a bound node tells strangers its state, version and
+  protocol version only (the bound server also gets its name and the site's). PairStart and Bind while not bound (or for
+  an accepted new server identity), J-PAKE: PairStart answers with a fresh participant's rounds 1 and 2, Bind checks the
+  server's round 2 and proof; PairStart 10 a minute per address and 30 in all. Calls of servers the node is not bound to
+  may send at most 64 KB (`NodeHost.LinkLimits`). Everything else only to the bound identity, one session at a time, checked
+  on every call (`LinkRegistry.RefusalFor`: the session of the oldest link that bound or served; another address with that
+  identity is refused "Another OADM server with this identity is connected from ..."). Kestrel keeps idle links (no
+  keep-alive timeout: the HTTP/2 pings keep them). Refusals: FAILED_PRECONDITION with the text; a wrong code PERMISSION_DENIED; too many
   wrong codes RESOURCE_EXHAUSTED.
 - **States** (`State/BindingState`): binding open for 24 hours of run time (`BindingClock` ticks every minute and saves),
   then closed until Allow binding; the pairing code lives in memory (new at start, Allow binding, Reset, Unbind and after
-  5 wrong codes, which also refuse Bind for 10 minutes); Reset = new id, key and code, the server forgotten.
+  5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so parallel links get no more
+than 5 guesses); Reset = new id, key and code, the server forgotten.
 - **Dial** (`Devices/Dialer`): the port must be on Connect to, the address (after DNS on the node) on a reached card or
   extra subnet; short dials at most 1,024 open and 256 connecting, permanent ones at most 64 connecting; device socket
   errors come back as `DEVICE_*`, the node's problems as `SITE_*`. Every dial is a line of the connection log.

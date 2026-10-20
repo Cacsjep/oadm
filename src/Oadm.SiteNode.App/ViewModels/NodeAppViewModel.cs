@@ -273,9 +273,11 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     public bool HasNewIdentity => State?.NewServerIdentity.Length > 0;
 
-    public string NewIdentityText => HasNewIdentity
-        ? $"{State!.Bound?.Name} presents a new identity ({Fingerprint(State.NewServerIdentity)})."
-        : "";
+    public string NewIdentityText => !HasNewIdentity
+        ? ""
+        : State!.NewServerAccepted
+            ? $"Type the pairing code at Bind on the Sites page of the OADM server with the new identity ({Fingerprint(State.NewServerIdentity)})."
+            : $"{State.Bound?.Name}{(State.NewServerFrom.Length > 0 ? " at " + State.NewServerFrom : "")} presents a new identity ({Fingerprint(State.NewServerIdentity)}).";
 
     /// <summary>"2 wrong pairing codes, the last from 10.0.0.9 at 14:02." plus the lock.</summary>
     public string? WrongCodesText
@@ -406,7 +408,13 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     }
 
     [RelayCommand]
-    public Task AcceptServerAsync() => ChangeAsync(AdminRequest.Of(AdminCommands.AcceptServer));
+    public async Task AcceptServerAsync()
+    {
+        // Accepting lets the new server bind with the pairing code; the app shows the code.
+        var response = await ChangeAsync(AdminRequest.Of(AdminCommands.AcceptServer)).ConfigureAwait(true);
+        if (response.Ok && response.PairingCode.Length > 0)
+            PairingCode = response.PairingCode;
+    }
 
     [RelayCommand]
     public async Task AddSubnetAsync()
@@ -558,8 +566,9 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     {
         var before = State;
         State = view;
-        if (view.Binding != NodeBinding.Open || before?.NodeId != view.NodeId)
-            PairingCode = null; // a new code after Reset; none once bound or closed
+        var pairing = view.Binding == NodeBinding.Open || view is { NewServerAccepted: true, NewServerIdentity.Length: > 0 };
+        if (!pairing || before?.NodeId != view.NodeId)
+            PairingCode = null; // a new code after Reset; none once bound (unless a new server identity was accepted) or closed
         if (!_serverEdited)
         {
             ServerAddress = view.ServerAddress;

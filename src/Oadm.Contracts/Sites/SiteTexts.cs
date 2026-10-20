@@ -48,6 +48,13 @@ public static class SiteTexts
 
     public static string CopyOf(string site) => $"This site node is a copy of {site}. Click Reset on the copy.";
 
+    public const string InvalidAnswer = "The site node sent an answer that is not valid.";
+    public const string NotStored = "The site could not be stored. Bind it again.";
+    public const string NodeIdAmbiguous = "Several site nodes report this id. Search again and choose the node by its key.";
+
+    /// <summary>The node of a site accepted this server's new identity: Bind with its code binds the site again.</summary>
+    public static string BindAgain(string site) => $"The site node of {site} accepted this server's new identity. Bind it with its pairing code.";
+
     // ---------- the Sites page ----------
 
     public const string AcceptOffHint = "Turn on Accept site nodes, then enter this server's address in the OADM Site Node app.";

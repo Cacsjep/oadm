@@ -3,11 +3,13 @@ using System.Security.Cryptography.X509Certificates;
 
 using Grpc.Core;
 
+using Oadm.Contracts.SiteNode;
 using Oadm.SiteNode.Admin;
 using Oadm.SiteNode.Config;
 using Oadm.SiteNode.Identity;
 using Oadm.SiteNode.Links;
 using Oadm.Sites.Binding;
+using Oadm.Sites.Transport;
 
 namespace Oadm.SiteNode.State;
 
@@ -22,10 +24,19 @@ public sealed class BindingState
     public const int WrongCodesKept = 20;
     public static readonly TimeSpan LockTime = TimeSpan.FromMinutes(10);
 
+    /// <summary>PairStart attempts a minute from one address (IPv6 per /64) and from all addresses.</summary>
+    public const int PairAttemptsPerAddress = 10;
+    public const int PairAttemptsTotal = 30;
+
+    /// <summary>A new identity the app asks about is not replaced by another one for this long (and never once accepted).</summary>
+    public static readonly TimeSpan NewIdentityHold = TimeSpan.FromHours(1);
+
     private readonly NodeStore _store;
     private readonly NodeIdentity _identity;
     private readonly TimeProvider _time;
     private readonly string _hostName;
+    private readonly AddressRateLimiter _attempts;
+    private readonly Lock _checkLock = new();
     private readonly Lock _lock = new();
     private readonly List<WrongCodeView> _wrongCodes = [];
     private string _code = Oadm.Sites.Binding.PairingCode.Create();
@@ -42,6 +53,7 @@ public sealed class BindingState
         _identity = identity;
         _time = time;
         _hostName = hostName;
+        _attempts = new AddressRateLimiter(PairAttemptsPerAddress, PairAttemptsTotal, TimeSpan.FromMinutes(1), time);
         _lastTick = time.GetTimestamp();
     }
 
@@ -135,26 +147,28 @@ public sealed class BindingState
             c.BoundServers.Clear();
             c.BindingSecondsLeft = NodeConfig.BindingWindow.TotalSeconds;
             c.ServerAddresses = new ServerAddressList();
-            c.NewServerIdentity = "";
+            ClearNewIdentity(c);
             c.Requested.Clear();
         });
         NewCode(clearAttempts: true);
         IdentityReset?.Invoke();
     }
 
-    /// <summary>PairStart on <paramref name="link"/>: the salt and B of the current code.</summary>
-    public (byte[] Salt, byte[] B) StartPairing(SiteLink link)
-    {
-        ArgumentNullException.ThrowIfNull(link);
-        RefuseUnlessOpen(link);
-        var code = PairingCode;
-        var pairing = new NodePairing(code);
-        link.SetPairing(pairing, code);
-        return pairing.Start();
-    }
+    /// <summary>True while a server with <paramref name="fingerprintHex"/> may pair: binding open, or its new identity accepted in the app.</summary>
+    public bool IsPairingOpenFor(string fingerprintHex) =>
+        _store.Read(c => c.BoundServers.Count == 0
+            ? c.BindingSecondsLeft > 0
+            : c.NewServerAccepted && string.Equals(c.NewServerIdentity, fingerprintHex, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Bind on <paramref name="link"/>: the node's proof, or a refusal. A failed proof counts as a wrong code.</summary>
-    public byte[] Bind(SiteLink link, string siteName, string serverName, byte[] a, byte[] proof)
+    /// <summary>True while the app shows a pairing code: binding open, or a new server identity accepted.</summary>
+    public bool ShowsPairingCode => _store.Read(c => c.BoundServers.Count == 0 ? c.BindingSecondsLeft > 0 : c.NewServerAccepted && c.NewServerIdentity.Length > 0);
+
+    /// <summary>
+    /// PairStart on <paramref name="link"/>: a fresh J-PAKE participant for the current code; checks the server's round 1
+    /// and returns the node's round 1 and round 2. Refused while closed or locked and over the attempt limits (per address
+    /// and in all; a Bind needs a PairStart of its own link, so this limits Bind too).
+    /// </summary>
+    public (PakeRound1 Round1, PakeRound2 Round2) StartPairing(SiteLink link, PakeRound1? serverRound1)
     {
         ArgumentNullException.ThrowIfNull(link);
         RefuseUnlessOpen(link);
@@ -164,14 +178,49 @@ public sealed class BindingState
                 throw new NodeRefusalException(StatusCode.ResourceExhausted, AdminTexts.TooManyWrongCodes);
         }
 
+        if (!_attempts.TryAcquire(link.RemoteKey))
+            throw new NodeRefusalException(StatusCode.ResourceExhausted, AdminTexts.TooManyPairingAttempts);
+        var code = PairingCode;
+        var pairing = new NodePairing(code);
+        var rounds = pairing.Start(serverRound1) ?? throw new NodeRefusalException(StatusCode.InvalidArgument, AdminTexts.InvalidPairingValue);
+        link.SetPairing(pairing, code);
+        return rounds;
+    }
+
+    /// <summary>
+    /// Bind on <paramref name="link"/>: the node's proof, or a refusal. A failed proof counts as a wrong code. Proofs are
+    /// checked one at a time with the lock state checked under the same lock, so parallel links never get more than
+    /// <see cref="MaxWrongCodes"/> guesses before the lock.
+    /// </summary>
+    public byte[] Bind(SiteLink link, string siteName, string serverName, PakeRound2? serverRound2, byte[] proof)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        RefuseUnlessOpen(link);
         var (pairing, code) = link.TakePairing();
         if (pairing is null)
             throw new NodeRefusalException(AdminTexts.PairStartFirst);
-        var reply = string.Equals(code, PairingCode, StringComparison.Ordinal)
-            ? pairing.Finish(a ?? [], proof ?? [], link.NodeFingerprint, link.ServerFingerprint)
-            : null;
-        if (reply is null)
-            throw WrongCode(link.RemoteHost);
+
+        byte[] reply;
+        lock (_checkLock)
+        {
+            RefuseUnlessOpen(link); // again: another link may have bound meanwhile
+            lock (_lock)
+            {
+                if (IsLocked())
+                    throw new NodeRefusalException(StatusCode.ResourceExhausted, AdminTexts.TooManyWrongCodes);
+            }
+
+            // A code made new meanwhile (5 wrong codes, Allow binding) makes an attempt for the old one a wrong code.
+            var answer = string.Equals(code, PairingCode, StringComparison.Ordinal)
+                ? pairing.Finish(serverRound2, proof ?? [], link.NodeFingerprint, link.ServerFingerprint)
+                : null;
+            reply = answer ?? throw WrongCode(link.RemoteHost);
+            lock (_lock)
+            {
+                _wrongCount = 0;
+                _lockedUntil = null;
+            }
+        }
 
         _store.Update(c =>
         {
@@ -183,16 +232,10 @@ public sealed class BindingState
                 BoundUtc = _time.GetUtcNow(),
                 SiteName = Clean(siteName),
             });
-            c.NewServerIdentity = "";
+            ClearNewIdentity(c);
             c.BindingSecondsLeft = 0;
         });
-        lock (_lock)
-        {
-            _wrongCount = 0;
-            _lockedUntil = null;
-        }
-
-        Changed?.Invoke();
+        NewCode(clearAttempts: true);
         return reply;
     }
 
@@ -204,7 +247,7 @@ public sealed class BindingState
             c.BoundServers.Clear();
             c.BindingSecondsLeft = NodeConfig.BindingWindow.TotalSeconds;
             c.ServerAddresses = new ServerAddressList();
-            c.NewServerIdentity = "";
+            ClearNewIdentity(c);
         });
         NewCode(clearAttempts: true);
     }
@@ -241,33 +284,72 @@ public sealed class BindingState
             if (c.BoundServers.Count == 0)
                 return false;
             c.BoundServers[0].Fingerprint = fingerprint;
+            if (string.Equals(c.NewServerIdentity, fingerprint, StringComparison.OrdinalIgnoreCase))
+                ClearNewIdentity(c);
             return true;
         });
     }
 
-    /// <summary>The bound server (by its address) presented another identity: the app asks to accept it.</summary>
-    public void NoteNewServerIdentity(string fingerprintHex) =>
+    /// <summary>
+    /// A server at one of the bound server's addresses presented another identity: the app asks about it, naming where it
+    /// came from. A pending one is kept (never replaced silently): another identity takes its place only after
+    /// <see cref="NewIdentityHold"/> and never once accepted. Returns false when the identity was not noted.
+    /// </summary>
+    public bool NoteNewServerIdentity(string fingerprintHex, string from)
+    {
+        ArgumentNullException.ThrowIfNull(fingerprintHex);
+        var now = _time.GetUtcNow();
+        var noted = false;
         _store.TryUpdate(c =>
         {
-            if (c.BoundServers.Count == 0 || string.Equals(c.NewServerIdentity, fingerprintHex, StringComparison.Ordinal))
+            if (c.BoundServers.Count == 0 || string.Equals(c.BoundServers[0].Fingerprint, fingerprintHex, StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (string.Equals(c.NewServerIdentity, fingerprintHex, StringComparison.OrdinalIgnoreCase))
+            {
+                noted = true;
+                return false;
+            }
+
+            if (c.NewServerIdentity.Length > 0 && (c.NewServerAccepted || c.NewServerSince is not { } since || now - since < NewIdentityHold))
                 return false;
             c.NewServerIdentity = fingerprintHex;
+            c.NewServerFrom = Clean(from);
+            c.NewServerSince = now;
+            c.NewServerAccepted = false;
+            noted = true;
             return true;
         });
+        if (noted)
+            Changed?.Invoke();
+        return noted;
+    }
 
-    /// <summary>Accept (administrator): the new identity becomes the pinned one.</summary>
-    public void AcceptNewServerIdentity()
+    /// <summary>
+    /// Accept (administrator): the server with the new identity may now bind with the pairing code, as if binding were open
+    /// for it alone. Nothing changes until it proves the code, so a stranger that raised the request cannot take the node.
+    /// Returns the pairing code to show.
+    /// </summary>
+    public string AcceptNewServerIdentity()
     {
         var accepted = _store.TryUpdate(c =>
         {
             if (c.BoundServers.Count == 0 || string.IsNullOrEmpty(c.NewServerIdentity))
                 return false;
-            c.BoundServers[0].Fingerprint = c.NewServerIdentity;
-            c.NewServerIdentity = "";
+            c.NewServerAccepted = true;
             return true;
         });
         if (!accepted)
             throw new NodeRefusalException(AdminTexts.NoNewIdentity);
+        NewCode(clearAttempts: false);
+        return PairingCode;
+    }
+
+    private static void ClearNewIdentity(NodeConfig c)
+    {
+        c.NewServerIdentity = "";
+        c.NewServerFrom = "";
+        c.NewServerSince = null;
+        c.NewServerAccepted = false;
     }
 
     private static NodeBinding Of(NodeConfig c) =>
@@ -277,6 +359,8 @@ public sealed class BindingState
     {
         switch (Binding)
         {
+            case NodeBinding.Bound when IsPairingOpenFor(link.ServerFingerprintHex):
+                return; // the administrator accepted this server's new identity: it binds with the code
             case NodeBinding.Bound:
                 throw new NodeRefusalException(IsBoundTo(link.ServerFingerprintHex) ? AdminTexts.AlreadyBound : AdminTexts.BoundToAnotherServer);
             case NodeBinding.Closed:

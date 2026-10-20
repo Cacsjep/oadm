@@ -24,7 +24,10 @@
 
         <StackPanel Spacing="12" IsVisible="{Binding IsIdentityHeader}">
           <ui:StatusChip Text="{Binding HeadlineText}" IsWarning="True" MaxLines="3" />
-          <Button Classes="primary" Content="Accept" Command="{Binding AcceptServerCommand}" HorizontalAlignment="Left" />
+          <SelectableTextBlock Classes="pairingCode" Text="{Binding PairingCode}"
+                               IsVisible="{Binding PairingCode, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <Button Classes="primary" Content="Accept" Command="{Binding AcceptServerCommand}" HorizontalAlignment="Left"
+                  IsVisible="{Binding PairingCode, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
         </StackPanel>
 
         <StackPanel Spacing="8" IsVisible="{Binding IsOpenHeader}">

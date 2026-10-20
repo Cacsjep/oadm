@@ -26,7 +26,7 @@ public static class CommandLine
         oadm-site-node networks add|remove <network like 10.20.0.0/16>
         oadm-site-node ports                    allowed and requested ports
         oadm-site-node ports allow|remove|dismiss connect|listen tcp|udp <port>
-        oadm-site-node accept-server            accept the new identity of the bound server
+        oadm-site-node accept-server            let the server's new identity bind with the code
         oadm-site-node reset                    forget the server, new identity and code
         oadm-site-node log [count]              the newest connections
 
@@ -98,6 +98,7 @@ public static class CommandLine
         switch (verb)
         {
             case "pairing-code":
+            case "accept-server":
                 await output.WriteLineAsync(response.PairingCode).ConfigureAwait(false);
                 break;
             case "networks" when args.Length == 0:
@@ -191,7 +192,9 @@ public static class CommandLine
         if (view.ConnectionText.Length > 0)
             lines.Add(view.ConnectionText);
         if (view.NewServerIdentity.Length > 0)
-            lines.Add($"{view.Bound?.Name} presents a new identity ({view.NewServerIdentity}). Run accept-server to accept it.");
+            lines.Add(view.NewServerAccepted
+                ? $"Accepted the new identity {view.NewServerIdentity}: bind it with the pairing code (pairing-code)."
+                : $"{view.Bound?.Name}{(view.NewServerFrom.Length > 0 ? " at " + view.NewServerFrom : "")} presents a new identity ({view.NewServerIdentity}). Run accept-server, then bind it in OADM with the pairing code it shows.");
         if (view.LockedUntil is { } locked)
             lines.Add($"Too many wrong pairing codes: binding refused until {locked.ToLocalTime():HH:mm}.");
         lines.Add($"Connections: {view.ShortConnections} short, {view.PermanentConnections} permanent");

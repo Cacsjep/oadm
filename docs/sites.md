@@ -5,7 +5,8 @@ main (v3.6.0-rc.1) and renamed on 2026-10-19; after a security review the same d
 binding needs a pairing code and the node opens only allowed ports; an architecture, SDK and security review (also
 2026-10-19) added the rest of that day's decisions. Work stream 0 (contracts and spike) is built on `feature/sites`
 (2026-10-19): the pairing became SRP-6a and TLS 1.2 is allowed next to 1.3 (both decided that day, see Binding and
-Transport). Defaults marked **(default)** were not asked and may change.
+Transport); a review of the built link the same day replaced SRP-6a with J-PAKE and added the limits on strangers (see
+Binding, Server listener and Security review). Defaults marked **(default)** were not asked and may change.
 
 ## Purpose
 
@@ -32,7 +33,7 @@ Client ──► OADM server ◄──TLS 5081── OADM Site Node, site "Build
 administrator turns on "Accept site nodes"** on the Sites page (off by default: a server without sites opens no extra
 port). **Inbound** (the server connects to the node, which listens on 5081) stays an option in the node app ("Wait for the server") for sites the server must reach itself. One protocol for both (see Transport). |
 | Finding | Outbound (default): the node app takes the server's address; once it connects, the node shows on the Sites page as **Waiting to be bound**. Inbound: an unbound node announces itself over mDNS; the Sites page finds it with **Search** (mDNS) or **Add manually** (address). |
-| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other through SRP-6a (see Binding), so neither another server nor anything in between can bind, and nobody in between can test codes offline. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
+| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other through J-PAKE, a balanced PAKE (see Binding), so neither another server nor anything in between can bind, and nobody (not even an impostor node or server taking part) can test codes offline. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
 | Removing | From OADM (rare), with "Keep devices" or not. Locally with **Reset** in the node app when the server is gone. |
 | Reach | The node reaches the devices on the **network cards chosen in the node app** ("Reach devices on this network", or all cards). Default: every card except the one with the default router (the office side). Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
 | Ports (2026-10-19, security review) | The node uses **only allowed ports**, in two lists: **Connect to** (devices; TCP 80, 443 and 554 by default) and **Listen on** (relays; empty by default), so a port allowed for a camera never opens a listener at the site. Further ports (a plugin's ports, a camera on 8443, a per-device RTSP port, the NTP relay's UDP 123) are **requested by the server and allowed in the node app** ("Building B asks to connect to TCP 8443: camera 192.168.0.30. Allow"); nothing is allowed by itself. A dial to another port is a site error "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." |
@@ -138,17 +139,27 @@ The binding window counts the service's run time (saved every minute), not the w
    the server opens TLS to it.
 2. **Bind** (Administrator): dialog with the site name (default the node's host name) and **Pairing code** (the 8
    characters the node app shows; Crockford base32, no look-alikes, case and dashes ignored, 40 bits). Both sides have
-   seen each other's key fingerprint in the TLS handshake. **SRP-6a** (RFC 5054, 2048-bit group, SHA-256, BouncyCastle;
-   decision 2026-10-19: a plain HMAC of the code sent first would let someone in between test all 2^40 codes offline):
-   `PairStart` gets the salt of the node's current code and its public value B; `Bind` sends the server's public value A
-   and `HMAC-SHA256(K, "bind" | node fingerprint | server identity fingerprint)` with the session key K = SHA-256(S); the
-   node checks it and answers with the same over "bound" | both fingerprints, which the server checks. A server without
-   the code gets one online guess per attempt; anything in between with its own key fails both proofs even with the right
-   code. Then the node stores the server identity's fingerprint and the server the node's. Audited "Bound site".
-   (`Oadm.Sites.Binding`: `PairingCode`, `NodePairing`, `ServerPairing`.)
+   seen each other's key fingerprint in the TLS handshake. **J-PAKE** (a balanced password-authenticated key exchange,
+   NIST 3072-bit prime order group, SHA-256, BouncyCastle `JPakeParticipant`; decision 2026-10-19: a plain HMAC of the
+   code sent first would let someone in between test all 2^40 codes offline; SRP-6a, chosen first, is augmented: the node
+   holds the verifier, so an impostor node waiting to be bound, or anything in between replacing salt and B, received the
+   server's A and proof after the administrator typed the code and could test every code offline. In J-PAKE neither side
+   holds anything a guess can be checked against; each attempt is one online guess). `PairStart` carries the server's
+   round 1 and returns the node's round 1 and round 2 (the node makes a fresh participant for every PairStart); `Bind`
+   carries the server's round 2 and `HMAC-SHA256(K, "bind" | node fingerprint | server identity fingerprint)` with the
+   session key K = SHA-256("oadm-site-pairing" | keying material); the node checks it and answers with the same over
+   "bound" | both fingerprints, which the server checks. A failed proof is a wrong code. Anything in between with its own
+   key fails both proofs even with the right code. Then the node stores the server identity's fingerprint and the server
+   the node's. Audited "Bound site". (`Oadm.Sites.Binding`: `PairingCode`, `Pairing`, `NodePairing`, `ServerPairing`.)
+   Binds run one at a time on the server (name and count checks cannot both pass for two binds); a site that cannot be
+   stored after the node bound is undone with `Unbind`. Waiting nodes are kept by their key fingerprint, never by the id
+   a node reports (a stranger reusing a real node's id gets its own row), and Bind names the node by its fingerprint
+   (`BindSiteRequest.node_fingerprint`; the dialog shows its short form).
 3. **Wrong codes** (a failed proof at `Bind`): after 5 wrong codes the node makes a new code and refuses `Bind` for 10 minutes **(default)** ("Too
    many wrong pairing codes. Wait 10 minutes and use the new code."); the app shows the attempts and from where. The
-   server shows "The pairing code is wrong." below the field.
+   server shows "The pairing code is wrong." below the field. Proofs are checked one at a time with the lock checked in
+   the same step, so parallel links never get more than 5 guesses. `PairStart` is limited to 10 a minute per address
+   (IPv6 per /64) and 30 a minute in all **(default)**; a `Bind` needs a `PairStart` of its own link.
 4. From then on every connection is mutual TLS: the server presents its site identity, the node its own key; each side
    checks the pinned fingerprint.
 5. The server refuses to bind an id or a fingerprint it already knows: "This site node is a copy of Building B. Click
@@ -171,7 +182,16 @@ node connection (inbound sites stay reachable, the server dials them). The serve
 `Sites.ListenUrl` (default `https://0.0.0.0:5081`, its own Kestrel endpoint with the site identity certificate, never
 the clients' endpoint, TLS 1.3 or 1.2, see Transport). A node that is not bound may only `Hello`, `PairStart` and
 wait for `Bind`: at most 50 waiting nodes and 10 new connections a minute per source address **(default)**; a waiting node
-not bound within 24 hours is dropped. Bound nodes reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
+not bound within 24 hours is dropped. Before any TLS work the listener counts new connections per source address (IPv6
+per /64): 120 a minute **(default)**, wider than the 10 for unknown keys because bound nodes reconnect with a control and
+up to 8 worker links; at most 64 handshakes at once, at most 64 links whose Hello has not answered (5 s for it). Until a
+link carries a bound site's key the server reads at most 16 KB per answer (`NodeLink.Trust`). A Hello is checked before
+anything of it is stored, logged, audited or shown (`HelloRules`: node id 8..64 hex digits or a GUID, host name at most 253
+characters, names at most 64, version at most 32 printable ASCII, no control or format characters); one that breaks a rule
+is refused whole. The per-address tables drop entries by age and are bounded (`AddressRateLimiter`). Inbound nodes: the
+node accepts 30 new connections a minute per address before TLS, at most 16 links of servers it is not bound to (4 per
+address) and closes such a link after 2 minutes without a call; the server keeps an inbound waiting node listed and reaches
+it again at Bind. Bound nodes reconnect with backoff (1, 2, 4 ... 60 s). **Server addresses**: once bound, the server sends the
 node its DNS name and every address of its network cards (`Watch` of the control connection, again after every change);
 the node keeps them and tries the typed address first, then the others in order. A server that moved is found again as
 long as one of them still answers; otherwise change the address in each node app (`oadm-site-node server <address>`);
@@ -183,16 +203,26 @@ encrypted with the master key, purpose `oadm:site-identity`), not with its TLS c
 address keep their sites. It is in the backup (`oadm.db` + `master.key`), so a backup restored on a new server takes its
 sites along, like `Server.Id` (plugin licenses). `RotateIdentity(new fingerprint)`, signed with the old key, replaces it.
 If the key is lost (master key replaced: add it to the `Security.KeyReplaced` notice and the error log's list), the node
-app shows "SERVER presents a new identity (fingerprint). Accept" (administrator). A node serves **one server session at a
+app shows "SERVER at ADDRESS presents a new identity (fingerprint). Accept" (administrator), naming where it came from.
+**Accept does not bind it**: it lets that identity, and only it, pair like a server at an open node, and the app shows the
+pairing code; the new server binds with Bind and the code (the Sites page lists the node "accepted this server's new
+identity", Bind binds the existing site again: `HelloReply.new_identity_accepted`). Anyone at one of the server's
+addresses can raise the request, so it never binds without the code. A request waiting in the app is not replaced by
+another identity for an hour, and never once accepted (`BindingState.NewIdentityHold`). A node serves **one server session at a
 time**: a second connection with the same identity is refused ("Another OADM server with this identity is connected from
-10.0.0.5"), so a restored test copy of the server cannot drive the production nodes alongside the real one.
+10.0.0.5"), so a restored test copy of the server cannot drive the production nodes alongside the real one. The node
+checks it on every call against the binding of that moment (`LinkRegistry.RefusalFor`): the session is the one of the
+oldest open link of the bound identity that bound or served a call (outbound: every link the node opened; inbound: the
+links from one address); when that session ends, another may take over.
 
 **Security review (2026-10-19).** The node holds no passwords, but whoever binds it gets a pipe into the networks it
 reaches (factory-default cameras, default passwords, old firmware), and whoever controls the OADM server controls every
 site. So: the server opens its site port only after Accept site nodes; the node connects out (no inbound port at the site by
 default); TLS 1.3 (1.2 where the OS has no 1.3) with pinned keys on both sides; binding needs the pairing code from the node
-app (an administrator of the node's machine), open 24 hours of run time only; strangers learn nothing about who owns a
-node; the node opens only the networks and
+app (an administrator of the node's machine), open 24 hours of run time only, proved with J-PAKE so no side can test codes
+offline; strangers learn nothing about a bound node (its Hello to them carries the state, version and protocol version
+only: no id, host name, mode, features or owner); what strangers send is limited before TLS, before Hello and before
+binding (see Server listener and Binding); the node opens only the networks and
 ports allowed in its app (connect and listen apart), so a compromised server cannot use it as a general pivot; the node keeps a connection log of
 its own; every bind is audited; a bound node never accepts another server. Remaining: plain HTTP and RTSP cross the node
 readable (see Roles, audit and secrets); updates are manual (the Sites page shows "Update available").
@@ -230,9 +260,9 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   `relay.tcp`, `local-address`, ...). The server refuses a node below its minimum version ("Site node too old. Update
   it."); a missing feature turns off only that feature ("Update Building B to serve NTP").
 - Calls:
-  - `Hello` -> id, version, protocol version, features, state; the bound server's name only to that server (strangers
-    learn nothing about who owns the node).
-  - `PairStart` -> salt, B; `Bind(site name, A, proof)` -> the node's proof (see Binding); `Unbind`, `Rename`,
+  - `Hello` -> id, version, protocol version, features, state; the bound server's name only to that server. A bound node
+    answers anyone else with state, version and protocol version only.
+  - `PairStart(server round 1)` -> the node's rounds 1 and 2; `Bind(site name, server round 2, proof)` -> the node's proof (see Binding); `Unbind`, `Rename`,
     `RotateIdentity(new certificate, signed by the old key)`; `SetServerAddresses` (see Server listener);
     `OpenConnections(n)` (outbound worker connections).
   - `RequestPorts([{direction connect | listen, protocol, port, reason}])`: the server asks for ports (a plugin's `sitePorts` while it is on, a device

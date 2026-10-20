@@ -16,15 +16,20 @@ option csharp_namespace = "Oadm.Contracts.SiteNode";
 // (mutual TLS, pinned fingerprints) and one server session at a time. Calls a node refuses end with
 // FAILED_PRECONDITION and a plain text.
 service SiteNodeService {
-  // Anyone: id, version, features and state. The bound server's name only to that server.
+  // Anyone. An unbound node: id, version, protocol version, features, state, mode, host name. A bound node answers
+  // anyone but its server with state, version and protocol version only; the bound server also gets its own name and the
+  // site name.
   rpc Hello (HelloRequest) returns (HelloReply);
 
-  // Binding with the pairing code, an SRP-6a exchange (RFC 5054, 2048-bit group, SHA-256) with the code as the password,
-  // so nobody in between can test codes offline. PairStart gets the salt of the node's current code and its public value
-  // B; Bind sends the server's public value A, and both sides derive the session key K = SHA-256(S). Bind proves the server with HMAC-SHA256(K, "bind" | node fingerprint | server
-  // identity fingerprint) (the fingerprints of this TLS connection, so a relay in between fails), the reply proves the
-  // node over "bound" | both fingerprints. A failed proof counts as a wrong code. Refused while binding is closed, after 5
-  // wrong codes for 10 minutes (RESOURCE_EXHAUSTED), and by a node bound to another server.
+  // Binding with the pairing code, a J-PAKE exchange (balanced PAKE, NIST 3072-bit prime order group, SHA-256) with the
+  // code as the shared secret, so neither side nor anything in between can test codes offline: one guess per attempt.
+  // PairStart carries the server's round 1 and returns the node's round 1 and round 2 (a fresh participant per PairStart);
+  // Bind carries the server's round 2 and proves the server with HMAC-SHA256(K, "bind" | node fingerprint | server
+  // identity fingerprint), K = SHA-256("oadm-site-pairing" | keying material) (the fingerprints of this TLS connection,
+  // so a relay in between fails); the reply proves the node over "bound" | both fingerprints. A failed proof counts as a
+  // wrong code. Refused while binding is closed, after 5 wrong codes for 10 minutes (RESOURCE_EXHAUSTED), too many
+  // attempts from one address or in all (RESOURCE_EXHAUSTED), and by a node bound to another server (unless its
+  // administrator accepted this server's new identity in the node app).
   rpc PairStart (PairStartRequest) returns (PairStartReply);
   rpc Bind (BindRequest) returns (BindReply);
   // The bound server forgets the node: the node forgets the server and opens binding again (like Reset, same identity).
@@ -94,6 +99,10 @@ message HelloReply {
   // Outbound: which connection this is, so the server can tell the control connection from the worker connections it
   // asked for with OpenConnections. Inbound: UNSPECIFIED (the server opened the connection and knows).
   LinkRole link_role = 10;
+  // Only to a server whose new identity the node's administrator accepted: the node is bound to this server's former
+  // identity and binds again with the pairing code (state UNBOUND_OPEN for this server). Tells it apart from a copy of the
+  // node that is not bound.
+  bool new_identity_accepted = 11;
 }
 
 enum LinkRole {
@@ -102,18 +111,39 @@ enum LinkRole {
   LINK_ROLE_WORKER = 2;
 }
 
-message PairStartRequest {}
+// J-PAKE round 1 (BouncyCastle JPakeRound1Payload): g^x1, g^x2 and a Schnorr proof {g^v, r} of each exponent. Numbers
+// are unsigned big-endian, at most 385 bytes. participant_id is "oadm-server" or "oadm-site-node".
+message PakeRound1 {
+  string participant_id = 1;
+  bytes gx1 = 2;
+  bytes gx2 = 3;
+  repeated bytes proof_x1 = 4;    // exactly 2
+  repeated bytes proof_x2 = 5;    // exactly 2
+}
+
+// J-PAKE round 2 (JPakeRound2Payload): A = (g^(x1+x3+x4))^(x2*s) and a Schnorr proof of x2*s.
+message PakeRound2 {
+  string participant_id = 1;
+  bytes a = 2;
+  repeated bytes proof_x2s = 3;   // exactly 2
+}
+
+message PairStartRequest {
+  PakeRound1 server_round1 = 1;
+}
 
 message PairStartReply {
-  bytes salt = 1;                 // of the node's current code
-  bytes b = 2;                    // SRP public value B of the node
+  reserved 1, 2;                  // salt, b of the former SRP-6a exchange
+  PakeRound1 node_round1 = 3;
+  PakeRound2 node_round2 = 4;     // the node has the server's round 1 already
 }
 
 message BindRequest {
   string site_name = 1;
   string server_name = 2;
   bytes proof = 3;                // HMAC-SHA256(K, "bind" | node fingerprint | server identity fingerprint)
-  bytes a = 4;                    // SRP public value A of the server
+  reserved 4;                     // a of the former SRP-6a exchange
+  PakeRound2 server_round2 = 5;
 }
 
 message BindReply {

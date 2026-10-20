@@ -38,6 +38,7 @@ public sealed class SiteNodeGrpcService(
     IPinger pinger,
     IDeviceConnector connector,
     OutboundConnector outbound,
+    LinkRegistry links,
     IAxisBrowser browser,
     RangeScanner rangeScanner,
     NodeOptions options) : SiteNodeService.SiteNodeServiceBase
@@ -54,23 +55,33 @@ public sealed class SiteNodeGrpcService(
     {
         var link = LinkOf(context);
         var config = store.Snapshot();
+        var state = binding.Binding;
+        var isServer = state == NodeBinding.Bound && binding.IsBoundTo(link.ServerFingerprintHex) && links.RefusalFor(link) is null;
+        var pairing = state == NodeBinding.Bound && !isServer && binding.IsPairingOpenFor(link.ServerFingerprintHex);
         var reply = new HelloReply
         {
-            NodeId = config.Id,
             Version = options.Version,
             ProtocolVersion = ProtocolVersion,
-            State = binding.Binding switch
+            State = pairing ? NodeState.UnboundOpen : state switch
             {
                 NodeBinding.Bound => NodeState.Bound,
                 NodeBinding.Closed => NodeState.UnboundClosed,
                 _ => NodeState.UnboundOpen,
             },
-            Mode = config.Mode == NodeLinkMode.Wait ? NodeMode.Wait : NodeMode.Connect,
-            HostName = options.HostName,
-            LinkRole = !link.Outbound ? LinkRole.Unspecified : link.Worker ? LinkRole.Worker : LinkRole.Control,
         };
-        reply.Features.Add(Features);
-        if (link.Refusal is null && binding.IsBoundTo(link.ServerFingerprintHex) && binding.Bound is { } bound)
+
+        // Strangers learn nothing about a bound node beyond its state and version (who owns it, its id, its name, its mode).
+        if (state != NodeBinding.Bound || isServer || pairing)
+        {
+            reply.NodeId = config.Id;
+            reply.Mode = config.Mode == NodeLinkMode.Wait ? NodeMode.Wait : NodeMode.Connect;
+            reply.HostName = options.HostName;
+            reply.LinkRole = !link.Outbound ? LinkRole.Unspecified : link.Worker ? LinkRole.Worker : LinkRole.Control;
+            reply.Features.Add(Features);
+            reply.NewIdentityAccepted = pairing;
+        }
+
+        if (isServer && binding.Bound is { } bound)
         {
             reply.BoundServerName = bound.Name;
             reply.SiteName = bound.SiteName;
@@ -82,14 +93,16 @@ public sealed class SiteNodeGrpcService(
     public override Task<PairStartReply> PairStart(PairStartRequest request, ServerCallContext context) =>
         Run(() =>
         {
-            var (salt, b) = binding.StartPairing(LinkOf(context));
-            return new PairStartReply { Salt = ByteString.CopyFrom(salt), B = ByteString.CopyFrom(b) };
+            var (round1, round2) = binding.StartPairing(LinkOf(context), request.ServerRound1);
+            return new PairStartReply { NodeRound1 = round1, NodeRound2 = round2 };
         });
 
     public override Task<BindReply> Bind(BindRequest request, ServerCallContext context) =>
         Run(() =>
         {
-            var proof = binding.Bind(LinkOf(context), request.SiteName, request.ServerName, request.A.ToByteArray(), request.Proof.ToByteArray());
+            var link = LinkOf(context);
+            var proof = binding.Bind(link, request.SiteName, request.ServerName, request.ServerRound2, request.Proof.ToByteArray());
+            link.MarkServed(); // the session that bound is the node's one server session
             return new BindReply { Proof = ByteString.CopyFrom(proof) };
         });
 
@@ -351,16 +364,18 @@ public sealed class SiteNodeGrpcService(
         }
     }
 
-    // Everything but Hello and the binding calls: the bound server on a link that is not refused.
+    // Everything but Hello and the binding calls: the bound server, in its one active session (checked on every call
+    // against the binding of that moment, so a bind, a rotation or another session applies at once).
     private SiteLink RequireServer(ServerCallContext context)
     {
         var link = LinkOf(context);
-        if (link.Refusal is { } refusal)
-            throw new NodeRefusalException(refusal);
         if (binding.Binding != NodeBinding.Bound)
             throw new NodeRefusalException(binding.Binding == NodeBinding.Closed ? AdminTexts.BindingClosed : AdminTexts.NotBoundToCaller);
         if (!binding.IsBoundTo(link.ServerFingerprintHex))
             throw new NodeRefusalException(AdminTexts.BoundToAnotherServer);
+        if (links.RefusalFor(link) is { } refusal)
+            throw new NodeRefusalException(refusal);
+        link.MarkServed();
         return link;
     }
 

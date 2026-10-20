@@ -33,6 +33,9 @@ public sealed partial class OutboundConnector(
 {
     public const int MaxWorkers = 8;
 
+    /// <summary>A session that lasted this long starts the backoff over (1 s) when it ends.</summary>
+    public static readonly TimeSpan StableAfter = TimeSpan.FromSeconds(30);
+
     private readonly Lock _lock = new();
     private readonly SemaphoreSlim _wake = new(0);
     private readonly List<SiteLink> _workers = [];
@@ -86,6 +89,19 @@ public sealed partial class OutboundConnector(
         return targets;
     }
 
+    /// <summary>
+    /// The wait after a session ended and the backoff after that. The backoff starts over (1 s) only after a session that
+    /// worked: it lasted <see cref="StableAfter"/> or served a call of the bound server. A server that accepts TLS and closes
+    /// at once is tried less and less often (1, 2, 4 ... <paramref name="max"/>), like one that does not answer.
+    /// </summary>
+    public static (TimeSpan Wait, TimeSpan Next) AfterSession(TimeSpan backoff, TimeSpan lasted, bool served, TimeSpan max)
+    {
+        var wait = served || lasted >= StableAfter ? TimeSpan.FromSeconds(1) : backoff;
+        if (wait > max)
+            wait = max;
+        return (wait, TimeSpan.FromTicks(Math.Min(wait.Ticks * 2, max.Ticks)));
+    }
+
     /// <summary>The typed server address as host and port (<see cref="ServerAddress.Parse"/>).</summary>
     public static (string Host, int Port)? ParseAddress(string? text, int defaultPort) => ServerAddress.Parse(text, defaultPort);
 
@@ -133,12 +149,15 @@ public sealed partial class OutboundConnector(
                     continue;
                 }
 
-                backoff = TimeSpan.FromSeconds(1);
                 connection.Set(AdminTexts.Connected(Name(used)), true);
-                await ServeControlAsync(tls, used, key, stoppingToken).ConfigureAwait(false);
+                var started = options.Time.GetTimestamp();
+                var served = await ServeControlAsync(tls, used, key, stoppingToken).ConfigureAwait(false);
                 connection.Set(AdminTexts.CannotReach(Name(used)), false);
+
+                var (wait, next) = AfterSession(backoff, options.Time.GetElapsedTime(started), served, options.MaxBackoff);
+                backoff = next;
                 if (!stoppingToken.IsCancellationRequested)
-                    await WaitAsync(backoff, stoppingToken).ConfigureAwait(false);
+                    await WaitAsync(wait, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -153,8 +172,8 @@ public sealed partial class OutboundConnector(
     }
 
     // Serves the control link until it closes, or until something the link depends on changes (mode, address, binding,
-    // identity): then it and every worker close and the loop connects again.
-    private async Task ServeControlAsync(SslStream tls, (string Host, int Port) target, string key, CancellationToken stoppingToken)
+    // identity): then it and every worker close and the loop connects again. True when the bound server called on it.
+    private async Task<bool> ServeControlAsync(SslStream tls, (string Host, int Port) target, string key, CancellationToken stoppingToken)
     {
         var link = NewLink(tls, target, worker: false);
         using var control = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -201,6 +220,8 @@ public sealed partial class OutboundConnector(
             foreach (var worker in workers)
                 worker.Close();
         }
+
+        return link.Served;
     }
 
     private async Task OpenWorkerAsync((string Host, int Port) target, CancellationToken control, CancellationToken ct)
@@ -248,16 +269,20 @@ public sealed partial class OutboundConnector(
     {
         var bound = binding.Bound;
         string? presented = null;
-        var client = new TcpClient(AddressFamily.InterNetworkV6) { NoDelay = true };
-        client.Client.DualMode = true;
+        TcpClient? client = null;
+        string? remote = null;
         try
         {
+            // Dual mode where the OS has IPv6, IPv4 otherwise (TcpClient() picks; a fixed IPv6 socket throws without IPv6).
+            client = new TcpClient();
             using (var connect = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 connect.CancelAfter(options.ConnectTimeout);
                 await client.ConnectAsync(target.Host, target.Port, connect.Token).ConfigureAwait(false);
             }
 
+            client.NoDelay = true;
+            remote = client.Client.RemoteEndPoint?.ToString();
             var tls = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
             var accept = SiteTls.ClientOptions(identity.Certificate, fingerprint =>
             {
@@ -268,6 +293,8 @@ public sealed partial class OutboundConnector(
                 var hex = Convert.ToHexString(fingerprint);
                 if (string.Equals(hex, bound.Fingerprint, StringComparison.OrdinalIgnoreCase))
                     return true;
+                if (binding.IsPairingOpenFor(hex))
+                    return true; // a new identity the administrator accepted: it must prove the pairing code
                 presented = hex;
                 return false;
             });
@@ -286,12 +313,15 @@ public sealed partial class OutboundConnector(
         }
         catch (Exception e) when (e is SocketException or IOException or System.Security.Authentication.AuthenticationException || (e is OperationCanceledException && !ct.IsCancellationRequested))
         {
-            client.Dispose();
+            client?.Dispose();
             var name = Name(target);
             if (presented is not null)
             {
-                LogNewIdentity(logger, name, presented);
-                binding.NoteNewServerIdentity(presented);
+                var from = remote is { Length: > 0 } && remote != name ? $"{name} ({remote})" : name;
+                if (binding.NoteNewServerIdentity(presented, from))
+                    LogNewIdentity(logger, from, presented);
+                else
+                    LogOtherIdentity(logger, from, presented);
             }
             else
             {
@@ -302,7 +332,7 @@ public sealed partial class OutboundConnector(
         }
         catch
         {
-            client.Dispose();
+            client?.Dispose();
             throw;
         }
     }
@@ -349,4 +379,7 @@ public sealed partial class OutboundConnector(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The server at {Target} presents a new identity {Fingerprint}; accept it in the OADM Site Node app")]
     private static partial void LogNewIdentity(ILogger logger, string target, string fingerprint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The server at {Target} presents the identity {Fingerprint}; not shown in the app while another new identity waits there")]
+    private static partial void LogOtherIdentity(ILogger logger, string target, string fingerprint);
 }

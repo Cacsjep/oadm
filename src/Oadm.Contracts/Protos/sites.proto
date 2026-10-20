@@ -86,6 +86,9 @@ message BindSiteRequest {
   string node_id = 1;
   string name = 2;
   string pairing_code = 3;         // 8 characters, Crockford base32; case and dashes ignored
+  // Site.node_fingerprint of the waiting node: waiting nodes are kept by their key, never by the id they report. Empty
+  // (older clients): the one waiting node with node_id; refused when several report it.
+  string node_fingerprint = 4;
 }
 
 message RenameSiteRequest { string id = 1; string name = 2; }

@@ -4,6 +4,7 @@ using Grpc.Core;
 
 using Microsoft.Extensions.Time.Testing;
 
+using Oadm.Contracts.SiteNode;
 using Oadm.SiteNode.Admin;
 using Oadm.SiteNode.Config;
 using Oadm.SiteNode.Identity;
@@ -88,7 +89,7 @@ public sealed class BindingStateTests : IDisposable
         _state.Tick();
         var server = SiteTls.CreateIdentity("server");
 
-        var error = Assert.Throws<NodeRefusalException>(() => _state.StartPairing(Link(server)));
+        var error = Assert.Throws<NodeRefusalException>(() => _state.StartPairing(Link(server), new ServerPairing("ABCD1234", [1], [2]).Round1));
 
         Assert.Equal(StatusCode.FailedPrecondition, error.Code);
         Assert.Equal(AdminTexts.BindingClosed, error.Message);
@@ -111,7 +112,7 @@ public sealed class BindingStateTests : IDisposable
         _time.Advance(TimeSpan.FromDays(3));
         _state.Tick();
         Assert.Equal(NodeBinding.Bound, _state.Binding);
-        var other = Assert.Throws<NodeRefusalException>(() => _state.StartPairing(Link(SiteTls.CreateIdentity("other"))));
+        var other = Assert.Throws<NodeRefusalException>(() => _state.StartPairing(Link(SiteTls.CreateIdentity("other")), new ServerPairing("ABCD1234", [1], [2]).Round1));
         Assert.Equal(AdminTexts.BoundToAnotherServer, other.Message);
     }
 
@@ -150,10 +151,11 @@ public sealed class BindingStateTests : IDisposable
         var server = SiteTls.CreateIdentity("server");
         var relay = SiteTls.CreateIdentity("relay");
         var link = Link(relay);
-        var (salt, b) = _state.StartPairing(link);
-        var pairing = new ServerPairing(_state.PairingCode, salt, b, SiteTls.Fingerprint(SiteTls.CreateIdentity("relay-node-key")), SiteTls.Fingerprint(server));
+        var pairing = new ServerPairing(_state.PairingCode, SiteTls.Fingerprint(SiteTls.CreateIdentity("relay-node-key")), SiteTls.Fingerprint(server));
+        var (round1, round2) = _state.StartPairing(link, pairing.Round1);
+        var (serverRound2, proof) = pairing.Continue(round1, round2);
 
-        var error = Assert.Throws<NodeRefusalException>(() => _state.Bind(link, "Building B", "OADM-SRV", pairing.A, pairing.Proof));
+        var error = Assert.Throws<NodeRefusalException>(() => _state.Bind(link, "Building B", "OADM-SRV", serverRound2, proof));
 
         Assert.Equal(StatusCode.PermissionDenied, error.Code);
         Assert.Equal(NodeBinding.Open, _state.Binding);
@@ -163,7 +165,7 @@ public sealed class BindingStateTests : IDisposable
     public void BindWithoutPairStartIsRefusedAndAPairingIsUsedOnce()
     {
         var link = Link(SiteTls.CreateIdentity("server"));
-        Assert.Equal(AdminTexts.PairStartFirst, Assert.Throws<NodeRefusalException>(() => _state.Bind(link, "a", "b", [1], [1])).Message);
+        Assert.Equal(AdminTexts.PairStartFirst, Assert.Throws<NodeRefusalException>(() => _state.Bind(link, "a", "b", null, [1])).Message);
     }
 
     [Fact]
@@ -204,18 +206,131 @@ public sealed class BindingStateTests : IDisposable
     }
 
     [Fact]
-    public void ANewServerIdentityIsAcceptedOnlyByTheAdministrator()
+    public void ANewServerIdentityMustProveThePairingCodeAfterTheAdministratorAccepts()
+    {
+        var old = SiteTls.CreateIdentity("server");
+        Bind(Link(old), _state.PairingCode);
+        var replacement = SiteTls.CreateIdentity("server after a key loss");
+        var hex = SiteTls.FingerprintHex(replacement);
+        Assert.Throws<NodeRefusalException>(() => _state.AcceptNewServerIdentity());
+
+        Assert.True(_state.NoteNewServerIdentity(hex, "10.0.0.9:5081"));
+        Assert.Equal(hex, _store.Read(c => c.NewServerIdentity));
+        Assert.Equal("10.0.0.9:5081", _store.Read(c => c.NewServerFrom));
+        // Before Accept the new identity cannot even start a pairing.
+        Assert.Equal(AdminTexts.BoundToAnotherServer, Assert.Throws<NodeRefusalException>(() => Bind(Link(replacement), _state.PairingCode)).Message);
+
+        var code = _state.AcceptNewServerIdentity();
+
+        // Accepting changes nothing by itself: the old identity stays pinned until the new one proves the code.
+        Assert.Equal(code, _state.PairingCode);
+        Assert.Equal(SiteTls.FingerprintHex(old), _state.Bound!.Fingerprint);
+        Assert.True(_state.IsPairingOpenFor(hex));
+        Assert.Equal(StatusCode.PermissionDenied, Assert.Throws<NodeRefusalException>(() => Bind(Link(replacement), Other(code))).Code);
+        Assert.Equal(SiteTls.FingerprintHex(old), _state.Bound!.Fingerprint);
+
+        Bind(Link(replacement), code);
+        Assert.Equal(hex, _state.Bound!.Fingerprint);
+        Assert.Empty(_store.Read(c => c.NewServerIdentity));
+        Assert.False(_store.Read(c => c.NewServerAccepted));
+    }
+
+    [Fact]
+    public void AWaitingNewIdentityIsNotReplacedByAnotherOneSilently()
     {
         Bind(Link(SiteTls.CreateIdentity("server")), _state.PairingCode);
-        var replacement = SiteTls.FingerprintHex(SiteTls.CreateIdentity("server after a key loss"));
-        Assert.Throws<NodeRefusalException>(_state.AcceptNewServerIdentity);
+        var first = SiteTls.FingerprintHex(SiteTls.CreateIdentity("first"));
+        var second = SiteTls.FingerprintHex(SiteTls.CreateIdentity("second"));
 
-        _state.NoteNewServerIdentity(replacement);
-        Assert.Equal(replacement, _store.Read(c => c.NewServerIdentity));
+        Assert.True(_state.NoteNewServerIdentity(first, "10.0.0.9:5081"));
+        Assert.False(_state.NoteNewServerIdentity(second, "10.0.0.66:5081"));
+        Assert.Equal(first, _store.Read(c => c.NewServerIdentity));
+        Assert.Equal("10.0.0.9:5081", _store.Read(c => c.NewServerFrom));
+
+        // An accepted one never gives way.
         _state.AcceptNewServerIdentity();
+        _time.Advance(BindingState.NewIdentityHold);
+        Assert.False(_state.NoteNewServerIdentity(second, "10.0.0.66:5081"));
+        Assert.Equal(first, _store.Read(c => c.NewServerIdentity));
+    }
 
-        Assert.Equal(replacement, _state.Bound!.Fingerprint);
-        Assert.Empty(_store.Read(c => c.NewServerIdentity));
+    [Fact]
+    public void AnUnansweredNewIdentityGivesWayAfterAnHour()
+    {
+        Bind(Link(SiteTls.CreateIdentity("server")), _state.PairingCode);
+        var first = SiteTls.FingerprintHex(SiteTls.CreateIdentity("first"));
+        var second = SiteTls.FingerprintHex(SiteTls.CreateIdentity("second"));
+        _state.NoteNewServerIdentity(first, "10.0.0.9:5081");
+
+        _time.Advance(BindingState.NewIdentityHold);
+
+        Assert.True(_state.NoteNewServerIdentity(second, "10.0.0.66:5081"));
+        Assert.Equal(second, _store.Read(c => c.NewServerIdentity));
+    }
+
+    [Fact]
+    public async Task ParallelLinksNeverGetMoreThanFiveGuesses()
+    {
+        // 12 links with a started pairing each bind with wrong codes at once: proofs are checked one at a time, so the
+        // lock comes after exactly 5 and the rest are refused without a check.
+        var server = SiteTls.CreateIdentity("server");
+        var code = _state.PairingCode;
+        var attempts = new List<(SiteLink Link, PakeRound2 Round2, byte[] Proof)>();
+        for (var i = 0; i < 12; i++)
+        {
+            var link = new SiteLink(outbound: false, worker: false, $"10.0.{i}.5:51000", server, _identity.Fingerprint);
+            var pairing = new ServerPairing(Other(code), link.NodeFingerprint, link.ServerFingerprint);
+            var (round1, round2) = _state.StartPairing(link, pairing.Round1);
+            var (serverRound2, proof) = pairing.Continue(round1, round2);
+            attempts.Add((link, serverRound2, proof));
+        }
+
+        var results = await Task.WhenAll(attempts.Select(a => Task.Run(() =>
+            Assert.Throws<NodeRefusalException>(() => _state.Bind(a.Link, "Building B", "OADM-SRV", a.Round2, a.Proof)))));
+
+        Assert.Equal(4, results.Count(r => r.Code == StatusCode.PermissionDenied));
+        Assert.Equal(8, results.Count(r => r.Code == StatusCode.ResourceExhausted));
+        Assert.Equal(5, _state.WrongCodes.Count);
+    }
+
+    [Fact]
+    public void PairStartIsLimitedPerAddressAndInAll()
+    {
+        var server = SiteTls.CreateIdentity("server");
+        for (var i = 0; i < BindingState.PairAttemptsPerAddress; i++)
+            _state.StartPairing(Link(server), new ServerPairing(_state.PairingCode, [1], [2]).Round1);
+
+        var refused = Assert.Throws<NodeRefusalException>(() => _state.StartPairing(Link(server), new ServerPairing(_state.PairingCode, [1], [2]).Round1));
+        Assert.Equal(StatusCode.ResourceExhausted, refused.Code);
+        Assert.Equal(AdminTexts.TooManyPairingAttempts, refused.Message);
+
+        // One /64 counts as one address; other addresses still get in until the total.
+        var sameNet = new SiteLink(outbound: false, worker: false, "[2001:db8:1:2::5]:51000", server, _identity.Fingerprint);
+        var sameNetOther = new SiteLink(outbound: false, worker: false, "[2001:db8:1:2::77]:51000", server, _identity.Fingerprint);
+        for (var i = 0; i < BindingState.PairAttemptsPerAddress; i++)
+            _state.StartPairing(sameNet, new ServerPairing(_state.PairingCode, [1], [2]).Round1);
+        Assert.Throws<NodeRefusalException>(() => _state.StartPairing(sameNetOther, new ServerPairing(_state.PairingCode, [1], [2]).Round1));
+
+        for (var i = 0; i < BindingState.PairAttemptsTotal - 2 * BindingState.PairAttemptsPerAddress; i++)
+            _state.StartPairing(new SiteLink(outbound: false, worker: false, $"10.9.{i}.1:51000", server, _identity.Fingerprint), new ServerPairing(_state.PairingCode, [1], [2]).Round1);
+        Assert.Equal(StatusCode.ResourceExhausted, Assert.Throws<NodeRefusalException>(() =>
+            _state.StartPairing(new SiteLink(outbound: false, worker: false, "10.99.0.1:51000", server, _identity.Fingerprint), new ServerPairing(_state.PairingCode, [1], [2]).Round1)).Code);
+
+        // A minute later every address may try again.
+        _time.Advance(TimeSpan.FromMinutes(1));
+        _state.StartPairing(Link(server), new ServerPairing(_state.PairingCode, [1], [2]).Round1);
+    }
+
+    [Fact]
+    public void AnInvalidRoundOneIsRefusedWithoutCountingAsAWrongCode()
+    {
+        var round1 = new ServerPairing("ABCD1234", [1], [2]).Round1;
+        round1.Gx1 = Google.Protobuf.ByteString.CopyFrom([1]);
+
+        var error = Assert.Throws<NodeRefusalException>(() => _state.StartPairing(Link(SiteTls.CreateIdentity("server")), round1));
+
+        Assert.Equal(StatusCode.InvalidArgument, error.Code);
+        Assert.Empty(_state.WrongCodes);
     }
 
     [Fact]
@@ -241,9 +356,10 @@ public sealed class BindingStateTests : IDisposable
 
     private void Bind(SiteLink link, string code)
     {
-        var (salt, b) = _state.StartPairing(link);
-        var pairing = new ServerPairing(code, salt, b, link.NodeFingerprint, link.ServerFingerprint);
-        var reply = _state.Bind(link, "Building B", "OADM-SRV", pairing.A, pairing.Proof);
+        var pairing = new ServerPairing(code, link.NodeFingerprint, link.ServerFingerprint);
+        var (round1, round2) = _state.StartPairing(link, pairing.Round1);
+        var (serverRound2, proof) = pairing.Continue(round1, round2);
+        var reply = _state.Bind(link, "Building B", "OADM-SRV", serverRound2, proof);
         Assert.True(pairing.Check(reply));
     }
 

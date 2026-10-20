@@ -228,7 +228,7 @@ src/
   Oadm.Theme/          the OADM theme (colors of both appearances, icons, OadmTheme.axaml, OadmColors) and the shared
                        TermsWindow, used by the client and the OADM Site Node app
   Oadm.Sites/          the link between server and site node (feature/sites): Kestrel over a connection the node opened,
-                       TLS with pinned fingerprints, pairing code and SRP binding
+                       TLS with pinned fingerprints, pairing code and J-PAKE binding
   Oadm.SiteNode/       OADM Site Node service and command line (feature/sites; README with the manual test plan)
   Oadm.SiteNode.Admin/ the node's local channel, texts and parsing shared by service, command line and app
   Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
@@ -2761,8 +2761,12 @@ the server side:
 - `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
   30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
   starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),
-  `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; handshake timeout, 64
-  handshakes at once, 10 new unknown connections a minute per address, 50 waiting nodes, dropped after 24 h),
+  `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; 120 new connections a minute
+  per address before TLS (IPv6 per /64, `Oadm.Sites.Transport.AddressRateLimiter`), handshake timeout, 64 handshakes at
+  once, 64 links before Hello (5 s), 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`), Hello
+  checked by `HelloRules`, 10 new unknown connections a minute per address, 50 waiting nodes kept by key fingerprint,
+  dropped after 24 h; binding with J-PAKE (`Oadm.Sites.Binding`), binds one at a time, Unbind when the site cannot be
+  stored, a node that accepted a new server identity binds its site again with the code),
   `SiteSession` (control link with Watch and a 10 s Hello heartbeat and the round trip, up to 8 worker links for Dial,
   a new worker when every one carries 2,000 dials), `SiteIdentityStore` (`Sites.Identity`, purpose `oadm:site-identity`;
   dropped with a replaced master key and named in the notice), `SiteAdmin` (Remove with or without devices, Replace),

@@ -245,14 +245,15 @@ internal sealed class ServerLink : IAsyncDisposable
     /// <summary>The whole binding exchange with a typed code; the node's proof is checked.</summary>
     public async Task BindAsync(string code, string siteName = "Building B", string serverName = "OADM-SRV")
     {
-        var start = await Client.PairStartAsync(new PairStartRequest());
-        var pairing = new ServerPairing(PairingCode.Normalize(code) ?? code, start.Salt.ToByteArray(), start.B.ToByteArray(), NodeFingerprint, _serverFingerprint);
+        var pairing = new ServerPairing(PairingCode.Normalize(code) ?? code, NodeFingerprint, _serverFingerprint);
+        var start = await Client.PairStartAsync(new PairStartRequest { ServerRound1 = pairing.Round1 });
+        var (round2, proof) = pairing.Continue(start.NodeRound1, start.NodeRound2);
         var reply = await Client.BindAsync(new BindRequest
         {
             SiteName = siteName,
             ServerName = serverName,
-            A = ByteString.CopyFrom(pairing.A),
-            Proof = ByteString.CopyFrom(pairing.Proof),
+            ServerRound2 = round2,
+            Proof = ByteString.CopyFrom(proof),
         });
         if (!pairing.Check(reply.Proof.ToByteArray()))
             throw new InvalidOperationException("The node's proof does not match.");
