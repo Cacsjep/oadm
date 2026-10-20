@@ -106,8 +106,9 @@ single-file into `artifacts/publish/site-node/<rid>` and `artifacts/publish/site
 | License texts | `TERMS.md`, `LICENSE.txt`, `NOTICE.txt`, `THIRD-PARTY-NOTICES.txt` next to the exes | same in `/opt/oadm/site-node*` and `/usr/share/doc/<package>/` |
 | Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-site-node-app oadm-site-node`; data and user kept, also on purge |
 
-The server side: the OADM MSI's firewall rules cover TCP 5081 too ("OADM Server (site nodes, TCP 5081)", Domain and
-Private); nothing listens there until Accept site nodes is on. The .deb and .pkg of the server change no firewall.
+The server side: the OADM MSI opens only TCP 5080. The installed Windows service adds "OADM Server (Site nodes, TCP 5081)"
+(Domain and Private) itself while Accept site nodes is on and removes it when it is off. The .deb and .pkg of the server
+change no firewall.
 
 CI (`release.yml`): job `installers` builds the node packages next to the others on Windows and on both Linux runners,
 installs the .deb packages, checks the service (`oadm-site-node status` answers "Not bound") and removes them;

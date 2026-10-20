@@ -2,12 +2,15 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Testing;
 using Oadm.Server.Sites;
 using Oadm.SiteNode.Links;
 using Oadm.Sites.Transport;
+using Oadm.Tests.Shared;
 
 using Proto = Oadm.Contracts.V1;
 
@@ -123,6 +126,41 @@ public sealed class SiteListenerLimitTests
         // The newest node always gets a place; the list never grows past its size.
         await server.WaitingAsync(third.NodeId);
         Assert.Equal(2, Waiting(await server.ListAsync()));
+    }
+
+    [Fact]
+    public async Task TheSitePortsFirewallRuleIsOpenOnlyWhileSiteNodesAreAccepted()
+    {
+        var firewall = new RecordingFirewall();
+        await using (var server = await SiteServer.StartAsync(accept: false, configure: s => s.AddSingleton<IFirewallRules>(firewall)))
+        {
+            Assert.Empty(firewall.CallList); // the port the OS chooses is not known while nothing listens
+
+            await server.Client.SetAcceptAsync(new Proto.SetAcceptRequest { Accept = true });
+            var rule = $"OADM Server (Site nodes, TCP {server.Manager.ListenPort})";
+            Assert.Equal(["open " + rule], firewall.CallList);
+
+            await server.Client.SetAcceptAsync(new Proto.SetAcceptRequest { Accept = false });
+            Assert.Equal(["open " + rule, "close " + rule], firewall.CallList);
+
+            await server.Client.SetAcceptAsync(new Proto.SetAcceptRequest { Accept = true });
+            Assert.Equal($"open OADM Server (Site nodes, TCP {server.Manager.ListenPort})", firewall.CallList[^1]); // the OS chose another port
+        }
+
+        // The server stopped: the port is closed, so is its rule.
+        Assert.StartsWith("close OADM Server (Site nodes, TCP ", firewall.CallList[^1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AStartWithSiteNodesOffRemovesARuleLeftBehind()
+    {
+        var firewall = new RecordingFirewall();
+        // A fixed port: nothing listens there while site nodes are off, the rule is still known by its name.
+        await using var server = await SiteServer.StartAsync(accept: false, configure: s => s.AddSingleton<IFirewallRules>(firewall),
+            options: new SiteOptions { ListenUrl = "127.0.0.1:5081", WorkerWait = TimeSpan.FromSeconds(30) });
+
+        Assert.Equal(["close OADM Server (Site nodes, TCP 5081)"], firewall.CallList);
+        Assert.False(server.Manager.Accept);
     }
 
     private static int Waiting(Proto.SiteList list) => list.Sites.Count(s => s.Id.Length == 0);

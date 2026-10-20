@@ -205,7 +205,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Core.Auth.AuditLog>(),
             sp.GetRequiredService<Sites.SiteOptions>(),
             sp.GetRequiredService<Sites.SiteOptions>().Time ?? sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ILogger<Sites.SiteManager>>()));
+            sp.GetRequiredService<ILogger<Sites.SiteManager>>(),
+            sp.GetService<Sdk.Network.IFirewallRules>())); // the Windows service: the site port's rule while Accept site nodes is on
         services.RemoveAll<Core.Sites.ISiteStates>();
         services.AddSingleton<Core.Sites.ISiteStates>(sp => sp.GetRequiredService<Sites.SiteManager>());
         services.AddSingleton<Core.Sites.ISiteTransport>(sp => sp.GetRequiredService<Sites.SiteManager>());

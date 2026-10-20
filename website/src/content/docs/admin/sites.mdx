@@ -127,8 +127,8 @@ Linux).
 
 ## Good to know
 
-- **Server port**: the server accepts site nodes on TCP 5081, only while **Accept site nodes** is on. The Windows
-  installer of the server opens it for Domain and Private networks.
+- **Server port**: the server accepts site nodes on TCP 5081, only while **Accept site nodes** is on. On Windows the
+  server opens it for Domain and Private networks while it is on.
 - **Many live connections**: every lasting connection through a node (device events, live video, the web interface)
   uses one outgoing port of the node's computer. Windows has 16,384 of them by default, Linux about 28,000. For more,
   widen the range: on Windows `netsh int ipv4 set dynamicport tcp start=10000 num=55535`, on Linux the setting

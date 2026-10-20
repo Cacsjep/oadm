@@ -179,8 +179,8 @@ jobs:
           Query 'SELECT Name, DisplayName, StartType, Arguments FROM ServiceInstall'
           $fw = @(Query 'SELECT Name, Port, Protocol, Profile FROM Wix5FirewallException' | Sort-Object)
           $fw
-          if ($fw.Count -ne 2 -or $fw[0] -notmatch '^OADM Server \(gRPC, TCP 5080\) \| 5080 \| 6 \| \[OADM_FW_PROFILE\]$' -or
-              $fw[1] -notmatch '^OADM Server \(site nodes, TCP 5081\) \| 5081 \| 6 \| \[OADM_FW_PROFILE\]$') { throw 'the rules for TCP 5080 and 5081 expected' }
+          # TCP 5081 (site nodes) is the server's own rule while Accept site nodes is on, never the installer's.
+          if ($fw.Count -ne 1 -or $fw[0] -notmatch '^OADM Server \(gRPC, TCP 5080\) \| 5080 \| 6 \| \[OADM_FW_PROFILE\]$') { throw 'only the rule for TCP 5080 expected' }
           if ((Query "SELECT Value FROM Property WHERE Property='OADM_FW_PROFILE'") -ne '3') { throw 'firewall profile must be Domain + Private (3)' }
           $licenses = @(Query 'SELECT FileName FROM File') | Where-Object { $_ -match 'LICENSE\.txt|THIRD-PARTY-NOTICES\.txt|LGPL-2\.1\.txt' }
           if ($licenses.Count -ne 6) { throw "license texts in both folders expected, found $($licenses.Count)" }

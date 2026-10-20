@@ -7,6 +7,7 @@ using Oadm.Core.Auth;
 using Oadm.Core.Persistence;
 using Oadm.Core.Settings;
 using Oadm.Core.Sites;
+using Oadm.Sdk.Network;
 using Oadm.Sites.Transport;
 
 using Proto = Oadm.Contracts.V1;
@@ -35,6 +36,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private readonly CancellationToken _stopping; // _stop's token, read once: it stays usable after the source is disposed
     private readonly SemaphoreSlim _acceptLock = new(1, 1);
     private SiteListener? _listener;
+    private readonly IFirewallRules? _firewall; // the Windows service only: the site port's rule while Accept site nodes is on
+    private FirewallRuleKeeper? _firewallRule;
     private ITimer? _tick;
     private bool _accept;
     private string _serverName = Environment.MachineName;
@@ -46,8 +49,10 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         AuditLog audit,
         SiteOptions options,
         TimeProvider time,
-        ILogger<SiteManager> logger)
+        ILogger<SiteManager> logger,
+        IFirewallRules? firewall = null)
     {
+        _firewall = firewall;
         _db = db;
         _settings = settings;
         _identity = identity;
@@ -124,9 +129,21 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
         }
 
-        if (await _settings.GetAsync<bool>(SiteSettings.Accept, ct).ConfigureAwait(false))
+        await _acceptLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            await OpenListenerAsync(ct).ConfigureAwait(false);
+            var accept = await _settings.GetAsync<bool>(SiteSettings.Accept, ct).ConfigureAwait(false);
+            if (accept)
+            {
+                await OpenListenerAsync(ct).ConfigureAwait(false);
+            }
+
+            // The first sync always applies: a rule a crashed server left open is removed while site nodes are off.
+            await SyncFirewallAsync(accept, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _acceptLock.Release();
         }
 
         _tick = Time.CreateTimer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
@@ -800,6 +817,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             {
                 await CloseListenerAsync().ConfigureAwait(false);
             }
+
+            await SyncFirewallAsync(accept, CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -809,6 +828,45 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         RaiseList();
     }
 
+    /// <summary>
+    /// The site port's inbound rule "OADM Server (Site nodes, TCP 5081)" (Windows service only, like the NTP and DHCP
+    /// servers): open while Accept site nodes is on, removed when it is off or the server stops. Best effort: a refused
+    /// change is logged and tried again with the next one. Under <see cref="_acceptLock"/>.
+    /// </summary>
+    private async Task SyncFirewallAsync(bool open, CancellationToken ct)
+    {
+        if (_firewall is null)
+        {
+            return;
+        }
+
+        var port = SiteListener.Parse(await ListenUrlAsync(ct).ConfigureAwait(false)).Port;
+        if (port == 0)
+        {
+            port = _listener?.Port ?? _firewallRule?.Rule.Port ?? 0; // a port the OS chose (tests): known once it listened
+        }
+
+        if (port == 0)
+        {
+            return;
+        }
+
+        if (_firewallRule is not { } keeper || keeper.Rule.Port != port)
+        {
+            if (_firewallRule is { IsOpen: true } old)
+            {
+                await old.SyncAsync(false, ct).ConfigureAwait(false);
+            }
+
+            _firewallRule = keeper = new FirewallRuleKeeper(FirewallRule.ForService("Site nodes", FirewallProtocol.Tcp, port), _firewall, _logger);
+        }
+
+        await keeper.SyncAsync(open, ct).ConfigureAwait(false);
+    }
+
+    private async Task<string> ListenUrlAsync(CancellationToken ct) =>
+        _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
+
     private async Task OpenListenerAsync(CancellationToken ct)
     {
         if (_listener is not null)
@@ -816,7 +874,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             return;
         }
 
-        var url = _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
+        var url = await ListenUrlAsync(ct).ConfigureAwait(false);
         var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
             new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress);
         listener.Start();
@@ -1073,6 +1131,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         foreach (var node in waiting)
         {
             await node.Link.DisposeAsync().ConfigureAwait(false);
+        }
+
+        if (_firewallRule is { IsOpen: true } rule)
+        {
+            await _acceptLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            await rule.SyncAsync(false, CancellationToken.None).ConfigureAwait(false); // the port is closed: so is its rule
         }
 
         _acceptLock.Dispose();
