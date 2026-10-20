@@ -23,6 +23,45 @@ public sealed class SiteOfflineTests
     }
 
     [Fact]
+    public void TheStoreCountsTheDevicesAtASitePerChange()
+    {
+        var store = new DeviceStore();
+        string site = Guid.NewGuid().ToString();
+        Device Make(int i, bool atSite) => new() { Id = "d" + i, Serial = $"ACCC8E{i:X6}", Address = "10.0.0." + i, SiteId = atSite ? site : "" };
+        DeviceChanged Change(DeviceChanged.Types.Kind kind, Device device) => new() { Kind = kind, Device = device };
+
+        store.Reset([Make(1, true), Make(2, false), Make(3, true)]);
+        Assert.Equal(2, store.DevicesAtSite);
+
+        store.ApplyBatch([
+            Change(DeviceChanged.Types.Kind.Added, Make(4, true)),
+            Change(DeviceChanged.Types.Kind.Updated, Make(1, false)), // moved to the server's own network
+            Change(DeviceChanged.Types.Kind.Updated, Make(2, true)),
+            Change(DeviceChanged.Types.Kind.Removed, Make(3, true)),
+            Change(DeviceChanged.Types.Kind.Updated, Make(4, true)), // no change
+        ]);
+        Assert.Equal(2, store.DevicesAtSite); // 2 and 4
+        Assert.Equal(store.Devices.Count(d => d.IsAtSite), store.DevicesAtSite);
+
+        store.Reset([Make(2, false)]);
+        Assert.Equal(0, store.DevicesAtSite);
+    }
+
+    [Fact]
+    public void TheSiteListDecidesOverTheDevices()
+    {
+        var presence = new Oadm.Client.Sites.SitePresence();
+        presence.SetFromDevices(true);
+        Assert.True(presence.HasSites);
+        Assert.False(presence.DecidedByServer);
+        presence.Apply(new SiteList());
+        Assert.True(presence.DecidedByServer);
+        Assert.False(presence.HasSites);
+        presence.Clear();
+        Assert.True(presence.HasSites);
+    }
+
+    [Fact]
     public void TheDeviceRowCarriesTheStatusAndTheSite()
     {
         var site = Guid.NewGuid();

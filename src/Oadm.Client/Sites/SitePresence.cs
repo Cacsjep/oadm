@@ -18,6 +18,9 @@ public sealed partial class SitePresence : ObservableObject
     [ObservableProperty]
     public partial bool HasSites { get; private set; }
 
+    /// <summary>The site list of the server decides (a role with "See sites" while the stream runs); the devices do not.</summary>
+    public bool DecidedByServer => _fromServer is not null;
+
     /// <summary>A list of the server (WatchSites): the waiting nodes are not sites yet.</summary>
     public void Apply(SiteList list)
     {

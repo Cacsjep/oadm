@@ -71,6 +71,9 @@ public sealed class DeviceStore
 
     public DeviceRowViewModel? Find(string id) => _byId.GetValueOrDefault(id);
 
+    /// <summary>How many devices are reached through a site; kept per change (O(1)), never counted over every row.</summary>
+    public int DevicesAtSite { get; private set; }
+
     /// <summary>True once the first device list arrived; until then the Devices page says it is loading (30,000 devices: seconds).</summary>
     public bool IsLoaded { get; private set; }
 
@@ -133,13 +136,16 @@ public sealed class DeviceStore
             seen.Add(device.Id);
             if (_byId.TryGetValue(device.Id, out DeviceRowViewModel? row))
             {
+                bool wasAtSite = row.IsAtSite;
                 row.Apply(device);
+                DevicesAtSite += Delta(wasAtSite, row.IsAtSite);
             }
             else
             {
                 prepared.AttachStores(Tags, Compliance);
                 _byId[device.Id] = prepared;
                 added.Add(prepared);
+                DevicesAtSite += prepared.IsAtSite ? 1 : 0;
             }
         }
 
@@ -148,7 +154,10 @@ public sealed class DeviceStore
         {
             foreach (string id in _byId.Keys.Where(id => !seen.Contains(id)).ToList())
             {
-                _byId.Remove(id);
+                if (_byId.Remove(id, out DeviceRowViewModel? stale) && stale.IsAtSite)
+                {
+                    DevicesAtSite--;
+                }
             }
         }
 
@@ -192,6 +201,7 @@ public sealed class DeviceStore
             {
                 if (_byId.Remove(id, out DeviceRowViewModel? row))
                 {
+                    DevicesAtSite -= row.IsAtSite ? 1 : 0;
                     changedIds.Add(id);
                     if (!added.Remove(row))
                     {
@@ -201,9 +211,11 @@ public sealed class DeviceStore
             }
             else if (_byId.TryGetValue(id, out DeviceRowViewModel? row))
             {
+                bool wasAtSite = row.IsAtSite;
                 if (row.Apply(change.Device))
                 {
                     changedIds.Add(id);
+                    DevicesAtSite += Delta(wasAtSite, row.IsAtSite);
                 }
             }
             else
@@ -212,6 +224,7 @@ public sealed class DeviceStore
                 _byId[id] = row;
                 added.Add(row);
                 changedIds.Add(id);
+                DevicesAtSite += row.IsAtSite ? 1 : 0;
             }
         }
 
@@ -226,4 +239,6 @@ public sealed class DeviceStore
             Changed?.Invoke(this, new DeviceStoreChangedEventArgs(isReset: false, changedIds));
         }
     }
+
+    private static int Delta(bool before, bool after) => before == after ? 0 : after ? 1 : -1;
 }

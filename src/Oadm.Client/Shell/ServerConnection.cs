@@ -310,9 +310,21 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     {
         TimeSpan delay = MinDelay;
         var batcher = new ChangeBatcher<SiteList>(_ui, lists => _devices.Sites.Apply(lists[^1]));
-        void OnDevices(object? sender, DeviceStoreChangedEventArgs e) =>
-            _devices.Sites.SetFromDevices(_devices.Devices.Any(d => d.IsAtSite));
-        _ui.Post(() => _devices.Changed += OnDevices);
+        // O(1) per batch: the store counts the devices at a site; nothing to do while the server's list decides.
+        void FromDevices() => _devices.Sites.SetFromDevices(_devices.DevicesAtSite > 0);
+        void OnDevices(object? sender, DeviceStoreChangedEventArgs e)
+        {
+            if (!_devices.Sites.DecidedByServer)
+            {
+                FromDevices();
+            }
+        }
+
+        _ui.Post(() =>
+        {
+            _devices.Changed += OnDevices;
+            FromDevices();
+        });
         try
         {
             while (!ct.IsCancellationRequested)
@@ -337,7 +349,11 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                     }
                 }
 
-                _ui.Post(_devices.Sites.Clear);
+                _ui.Post(() =>
+                {
+                    _devices.Sites.Clear();
+                    FromDevices(); // the count kept while the server's list decided
+                });
                 try
                 {
                     await Task.Delay(delay, ct).ConfigureAwait(false);
