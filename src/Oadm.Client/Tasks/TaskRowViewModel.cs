@@ -12,7 +12,7 @@ namespace Oadm.Client.Tasks;
 /// <summary>One row of the Tasks grid.</summary>
 public sealed partial class TaskRowViewModel : ObservableObject
 {
-    private readonly DeviceStore _devices;
+    private DeviceStore? _devices;
 
     public TaskRowViewModel(TaskInfo task, DeviceStore devices)
     {
@@ -21,6 +21,21 @@ public sealed partial class TaskRowViewModel : ObservableObject
         Id = task.Id;
         _devices = devices;
         Update(task);
+    }
+
+    /// <summary>A row built off the UI thread (<see cref="TaskStore.Prepare"/>): no device label until <see cref="AttachDevices"/>.</summary>
+    internal TaskRowViewModel(TaskInfo task)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        Id = task.Id;
+        Update(task);
+    }
+
+    /// <summary>UI thread: gives a prepared row the device store and names its device.</summary>
+    internal void AttachDevices(DeviceStore devices)
+    {
+        _devices = devices;
+        ResolveDevices();
     }
 
     public string Id { get; }
@@ -130,6 +145,11 @@ public sealed partial class TaskRowViewModel : ObservableObject
     /// <summary>Re-reads the device address from the device store (the device was added, removed or changed).</summary>
     public void ResolveDevices()
     {
+        if (_devices is null)
+        {
+            return; // prepared off the UI thread, named when attached
+        }
+
         DeviceText = DeviceId.Length == 0 ? "" : TaskDeviceLabels.Label(DeviceId, _devices);
         DeviceTooltip = TaskDeviceLabels.Tooltip(DeviceResults.Count > 0 ? DeviceResults[0] : null, DeviceText);
     }

@@ -46,18 +46,35 @@ public sealed partial class TaskPluginCatalog(IOadmApi api, IUiDispatcher ui, IL
         try
         {
             RefreshCount++;
-            IReadOnlyList<TaskPluginInfo> plugins = await api.ListTaskPluginsAsync(ct).ConfigureAwait(false);
-            foreach (TaskPluginInfo plugin in plugins)
-            {
-                _ = SetOf(plugin); // built off the UI thread
-            }
 
+            // The call and the runnable sets (30,000 devices: a few hundred ms) run off the UI thread, also when the API
+            // answers synchronously (fake mode); only the swap goes to the UI thread. The task ends after the swap.
+            IReadOnlyList<TaskPluginInfo> plugins = await Task.Run(async () =>
+            {
+                IReadOnlyList<TaskPluginInfo> list = await api.ListTaskPluginsAsync(ct).ConfigureAwait(false);
+                foreach (TaskPluginInfo plugin in list)
+                {
+                    _ = SetOf(plugin);
+                }
+
+                return list;
+            }, ct).ConfigureAwait(false);
+
+            var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             ui.Post(() =>
             {
-                Plugins = plugins;
-                IsLoaded = true;
-                Changed?.Invoke(this, EventArgs.Empty);
+                try
+                {
+                    Plugins = plugins;
+                    IsLoaded = true;
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
+                finally
+                {
+                    applied.TrySetResult();
+                }
             });
+            await applied.Task.ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
