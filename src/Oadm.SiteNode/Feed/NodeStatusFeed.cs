@@ -170,6 +170,7 @@ public sealed class NodeStatusFeed
             NewServerAccepted = config.NewServerAccepted,
             WrongCodes = _state.WrongCodes,
             LockedUntil = _state.LockedUntil,
+            PairingCodeGeneration = _state.PairingCodeGeneration,
         };
     }
 

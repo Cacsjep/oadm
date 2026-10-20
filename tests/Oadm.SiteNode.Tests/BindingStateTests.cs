@@ -121,6 +121,7 @@ public sealed class BindingStateTests : IDisposable
     {
         var server = SiteTls.CreateIdentity("server");
         var first = _state.PairingCode;
+        var generation = _state.PairingCodeGeneration;
         for (var i = 0; i < 4; i++)
         {
             var wrong = Assert.Throws<NodeRefusalException>(() => Bind(Link(server), Other(first)));
@@ -131,6 +132,7 @@ public sealed class BindingStateTests : IDisposable
         var fifth = Assert.Throws<NodeRefusalException>(() => Bind(Link(server), Other(first)));
         Assert.Equal(StatusCode.ResourceExhausted, fifth.Code);
         Assert.NotEqual(first, _state.PairingCode);
+        Assert.NotEqual(generation, _state.PairingCodeGeneration); // the app forgets the code it shows
         Assert.Equal(5, _state.WrongCodes.Count);
         Assert.Equal(_time.GetUtcNow() + BindingState.LockTime, _state.LockedUntil);
 
