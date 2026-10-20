@@ -29,6 +29,7 @@ version and date, and the release workflow copies it into the GitHub release.
 
 - Plugins: the plugin SDK warns when a plugin opens its own network connections to devices; use the connections OADM
   offers instead.
+- The start splash shows the OADM mark slicing in, and the loading step.
 
 ## [3.6.0] - 2026-10-19
 
