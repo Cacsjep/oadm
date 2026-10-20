@@ -16,11 +16,18 @@ namespace Oadm.Server.Sites;
 /// <see cref="SiteSettings.IdentityPurpose"/>), so it travels with a backup (oadm.db + master.key). A key that cannot be
 /// read (master key replaced) is made new; the nodes then ask to accept the new identity in their app.
 /// </summary>
+/// <remarks>
+/// On Windows a loaded PKCS#12 key lives in a file of the key store until its certificate is disposed (an ephemeral key
+/// set cannot be used: SChannel refuses it for the server side of a handshake, checked on Windows 10 1809). .NET runs no
+/// finalizers at exit, so <see cref="Dispose"/> disposes every identity this store loaded or made (the current one and
+/// those replaced by <see cref="RotateAsync"/>): a server stop leaves no key file behind.
+/// </remarks>
 public sealed partial class SiteIdentityStore(ServerSettingsStore settings, CredentialProtector protector, ILogger<SiteIdentityStore> logger) : IDisposable
 {
     private readonly PluginSecretProtector _protector = new(protector);
     private readonly SemaphoreSlim _lock = new(1, 1);
     private X509Certificate2? _current;
+    private readonly List<X509Certificate2> _retired = [];
 
     /// <summary>The identity (after <see cref="LoadOrCreateAsync"/>).</summary>
     public X509Certificate2 Current => Volatile.Read(ref _current) ?? throw new InvalidOperationException("The site identity is not loaded.");
@@ -77,6 +84,7 @@ public sealed partial class SiteIdentityStore(ServerSettingsStore settings, Cred
         {
             var old = Current;
             var created = SiteTls.CreateIdentity(Name(serverName));
+            _retired.Add(old); // links may still use it; disposed with the store
             var der = created.RawData;
             using var oldKey = old.GetECDsaPrivateKey() ?? throw new InvalidOperationException("The site identity has no key.");
             var signature = oldKey.SignData(der, HashAlgorithmName.SHA256);
@@ -118,7 +126,17 @@ public sealed partial class SiteIdentityStore(ServerSettingsStore settings, Cred
         }
     }
 
-    public void Dispose() => _lock.Dispose();
+    public void Dispose()
+    {
+        foreach (var identity in _retired)
+        {
+            identity.Dispose();
+        }
+
+        _retired.Clear();
+        Interlocked.Exchange(ref _current, null)?.Dispose();
+        _lock.Dispose();
+    }
 
     private static string Name(string serverName) => "OADM " + (string.IsNullOrWhiteSpace(serverName) ? "server" : serverName.Trim());
 
