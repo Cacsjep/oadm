@@ -73,60 +73,57 @@ public sealed partial class AppShell(
 
     /// <summary>
     /// The real loading behind the splash: connect and resume a remembered login (real server), then start the streams and
-    /// wait for the first device list. <see cref="SplashSequence"/> plays the intro meanwhile and the exit afterwards, then
-    /// the login or main window opens.
+    /// wait for the first device list. The splash stays at least <see cref="SplashViewModel.MinimumDuration"/> (the logo
+    /// animation is complete). Then the next window opens behind the splash (topmost) and draws its first frame, and only
+    /// then the splash fades out over it: no blank window in between (the main window's first layout takes a moment).
     /// </summary>
     private async Task StartupAsync(SplashWindow window, SplashViewModel splash)
     {
+        var minimum = Task.Delay(SplashViewModel.MinimumDuration);
         LoginViewModel? login = null;
-        async Task LoadAsync()
+        try
         {
-            try
+            if (options.UseFake)
             {
-                if (options.UseFake)
+                session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
+            }
+            else
+            {
+                splash.Step("Connecting to " + api.ServerAddress, 25);
+                login = loginFactory();
+                var loggedIn = false;
+                void OnLoggedIn(object? sender, EventArgs e) => loggedIn = true;
+                login.LoggedIn += OnLoggedIn;
+                await login.InitializeAsync().ConfigureAwait(true); // resumes a remembered session
+                login.LoggedIn -= OnLoggedIn;
+                if (loggedIn)
                 {
-                    session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
-                }
-                else
-                {
-                    splash.Step("Connecting to " + api.ServerAddress);
-                    login = loginFactory();
-                    var loggedIn = false;
-                    void OnLoggedIn(object? sender, EventArgs e) => loggedIn = true;
-                    login.LoggedIn += OnLoggedIn;
-                    await login.InitializeAsync().ConfigureAwait(true); // resumes a remembered session
-                    login.LoggedIn -= OnLoggedIn;
-                    if (loggedIn)
-                    {
-                        login = null;
-                    }
-                }
-
-                if (login is null)
-                {
-                    splash.Step("Loading devices");
-                    await LoadDevicesAsync().ConfigureAwait(true);
+                    login = null;
                 }
             }
+
+            if (login is null)
+            {
+                splash.Step("Loading devices", 60);
+                await LoadDevicesAsync().ConfigureAwait(true);
+            }
+        }
 #pragma warning disable CA1031 // The splash must never keep the client from starting: the next window shows the problem.
-            catch (Exception ex)
+        catch (Exception ex)
 #pragma warning restore CA1031
-            {
-                LogStartupFailed(logger, ex.Message);
-            }
-        }
-
-        // The next window opens behind the splash (topmost) and draws its first frame before the exit plays over it.
-        Task ShowNextAsync()
         {
-            window.Topmost = true;
-            Window next = login is not null ? ShowLogin(null, login) : ShowMain(started: true);
-            return FirstFrameAsync(next);
+            LogStartupFailed(logger, ex.Message);
         }
 
-        await SplashSequence.RunAsync(window, splash, LoadAsync, ShowNextAsync, time ?? TimeProvider.System).ConfigureAwait(true);
+        await minimum.ConfigureAwait(true);
+        splash.Step("Ready", 100);
+        await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(true);
+        window.Topmost = true;
+        Window next = login is not null ? ShowLogin(null, login) : ShowMain(started: true);
+        await FirstFrameAsync(next).ConfigureAwait(true);
+        await window.FadeOutAsync().ConfigureAwait(true);
         window.Close();
-        _desktop?.MainWindow?.Activate(); // the splash was in front: the next window takes the focus
+        next.Activate(); // the splash was in front: the next window takes the focus
     }
 
     /// <summary>Starts the streams and waits for the first device list (at most <see cref="SplashViewModel.DevicesTimeout"/>).</summary>
