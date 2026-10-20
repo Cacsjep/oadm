@@ -83,7 +83,12 @@ public sealed partial class AppShell(
         {
             if (options.UseFake)
             {
-                session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
+                // Fake mode has no login: "admin" (the composition root signs in with the whole role; a second sign-in
+                // with less would change the permissions twice and make the pages reload while the splash animates).
+                if (!session.IsLoggedIn)
+                {
+                    session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
+                }
             }
             else
             {

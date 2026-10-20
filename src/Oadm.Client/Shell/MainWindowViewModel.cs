@@ -23,6 +23,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IOadmApi _api;
     private readonly ILiveVideoAccess? _liveVideo;
     private readonly IClientPluginRegistry _plugins;
+    private readonly IUiDispatcher? _ui;
+
+    /// <summary>Counts the syncs of the plugin pages: a sync that creates its pages one by one stops when a newer one started.</summary>
+    private int _pageSyncGeneration;
     private readonly TaskPluginCatalog _catalog;
     private readonly PluginPackageStore? _packages;
     private bool _loadingPackagesOnConnect;
@@ -56,9 +60,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         PluginsViewModel? pluginList = null,
         EventRules.EventRulesViewModel? eventRules = null,
         ILiveVideoAccess? liveVideo = null,
-        Compliance.ComplianceViewModel? compliance = null)
+        Compliance.ComplianceViewModel? compliance = null,
+        IUiDispatcher? ui = null)
     {
         _liveVideo = liveVideo;
+        _ui = ui;
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
         Connection = connection;
@@ -418,7 +424,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             IReadOnlyList<CorePluginInfo> corePlugins = await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true);
-            SyncCorePluginPages(corePlugins);
+            await SyncCorePluginPagesAsync(corePlugins).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -443,7 +449,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             await _catalog.RefreshAsync(CancellationToken.None).ConfigureAwait(true);
-            SyncCorePluginPages(await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true));
+            await SyncCorePluginPagesAsync(await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true)).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -507,7 +513,53 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>One navigation entry per core plugin with a page (<c>no_page</c> unset), below "Devices".</summary>
     internal void SyncCorePluginPages(IReadOnlyList<CorePluginInfo> corePlugins)
     {
-        corePlugins = [.. corePlugins.Where(p => !p.NoPage)];
+        _pageSyncGeneration++;
+        corePlugins = RemoveStalePluginPages(corePlugins);
+        foreach (CorePluginInfo plugin in corePlugins.Where(p => NavItems.All(n => n.Key != "plugin:" + p.Id)))
+        {
+            AddCorePluginPage(plugin);
+        }
+
+        OrderCorePluginPages();
+    }
+
+    /// <summary>
+    /// <see cref="SyncCorePluginPages"/> with one new page per UI job below the priority of rendering: a plugin creating
+    /// its view (XAML, the first run of its code) can take 100 ms, and this runs on connect while the start splash animates,
+    /// which then keeps its frames. A newer sync takes over (this one stops); every job checks the page again first.
+    /// </summary>
+    internal async Task SyncCorePluginPagesAsync(IReadOnlyList<CorePluginInfo> corePlugins)
+    {
+        if (_ui is null)
+        {
+            SyncCorePluginPages(corePlugins);
+            return;
+        }
+
+        int generation = ++_pageSyncGeneration;
+        corePlugins = RemoveStalePluginPages(corePlugins);
+        OrderCorePluginPages();
+        foreach (CorePluginInfo plugin in corePlugins)
+        {
+            await _ui.RunInBackgroundAsync(() =>
+            {
+                if (generation == _pageSyncGeneration && NavItems.All(n => n.Key != "plugin:" + plugin.Id))
+                {
+                    AddCorePluginPage(plugin);
+                    OrderCorePluginPages();
+                }
+            }).ConfigureAwait(true);
+            if (generation != _pageSyncGeneration)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>Removes the rail pages of plugins not in the list; returns the plugins with a page.</summary>
+    private List<CorePluginInfo> RemoveStalePluginPages(IReadOnlyList<CorePluginInfo> all)
+    {
+        List<CorePluginInfo> corePlugins = [.. all.Where(p => !p.NoPage)];
         foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel && !corePlugins.Any(p => "plugin:" + p.Id == n.Key)).ToList())
         {
             NavItems.Remove(stale);
@@ -522,45 +574,46 @@ public sealed partial class MainWindowViewModel : ObservableObject
             stalePage.Dispose();
         }
 
-        foreach (CorePluginInfo plugin in corePlugins.Where(p => NavItems.All(n => n.Key != "plugin:" + p.Id)))
-        {
-            object? view = null;
-            string? error = null;
-            CorePluginClientContext? context = null;
-            ICorePluginPage? page = _plugins.FindPage(plugin.Id);
-            if (page is not null)
-            {
-                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
-                try
-                {
-                    view = page.CreateView(context);
-                }
-                catch (Exception ex)
-                {
-                    context.Dispose();
-                    context = null;
-                    // The page shows the error instead of its view; the client keeps running (production hardening 4).
-                    LogPageFailed(_logger, ex, plugin.Id);
-                    error = ex.Message;
-                    _ = ReportPageFailureAsync(plugin.DisplayName, ex);
-                }
-            }
+        return corePlugins;
+    }
 
-            CorePluginGroup group = Enum.TryParse(plugin.Group, ignoreCase: true, out CorePluginGroup parsed) && Enum.IsDefined(parsed)
-                ? parsed
-                : CorePluginGroup.Extensions;
-            NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
-                string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
-                new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
-                    page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error, context))
+    /// <summary>Creates the page of one core plugin (its view, or the error) and adds it to the rail.</summary>
+    private void AddCorePluginPage(CorePluginInfo plugin)
+    {
+        object? view = null;
+        string? error = null;
+        CorePluginClientContext? context = null;
+        ICorePluginPage? page = _plugins.FindPage(plugin.Id);
+        if (page is not null)
+        {
+            context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
+            try
             {
-                GroupTitle = group.ToString(),
-                GroupOrder = (int)group,
-                OpenInWindow = OpenPluginWindow,
-            });
+                view = page.CreateView(context);
+            }
+            catch (Exception ex)
+            {
+                context.Dispose();
+                context = null;
+                // The page shows the error instead of its view; the client keeps running (production hardening 4).
+                LogPageFailed(_logger, ex, plugin.Id);
+                error = ex.Message;
+                _ = ReportPageFailureAsync(plugin.DisplayName, ex);
+            }
         }
 
-        OrderCorePluginPages();
+        CorePluginGroup group = Enum.TryParse(plugin.Group, ignoreCase: true, out CorePluginGroup parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : CorePluginGroup.Extensions;
+        NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
+            string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
+            new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
+                page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error, context))
+        {
+            GroupTitle = group.ToString(),
+            GroupOrder = (int)group,
+            OpenInWindow = OpenPluginWindow,
+        });
     }
 
     /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
