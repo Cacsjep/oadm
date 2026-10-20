@@ -883,7 +883,7 @@ tried in the same run. Unreachable attempts count neither as attempt nor as reje
 # Visual Style
 
 Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
-Dark by default, calm and spacious, no gradients inside the app.
+Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
 **Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
 colors live in `src/Oadm.Theme/Colors.Dark.axaml` and `Colors.Light.axaml` (same keys, `ThemeColorsTests`);
@@ -893,18 +893,17 @@ theme variant follows. The color values below are the dark ones. Video stays dar
 `Oadm.OverlayBrush` (dark or white translucent with the normal text), the autofocus dimming `Oadm.VideoDimBrush`. Headless
 tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 
-- Start splash (the intro of the support portal, `G:\oadm-portal\web\src\components\Splash.astro`): `Shell/SplashWindow`
-  (borderless, 420x420, centered, the window background) with `Controls/SplashMark` (the mark of seven hexagons from
-  `mark.svg`'s path data as Avalonia geometry, `Oadm.TextPrimaryBrush`, the lens `Oadm.BrandBrush`) and below it only the
-  loading step in grey (`SplashViewModel`: Starting, Connecting to <server> (+ resuming a remembered login), Loading devices
-  (main streams started, waits for the first device list, at most 15 s), Ready). The mark is cut into 7 bands that meet
-  exactly; each slides in from alternating sides (14 % of the width) out of opacity 0 and a blur of 12 (sharp at 60 %),
-  420 ms, 28 ms apart, cubic-bezier(0.22, 1, 0.36, 1); resting, the whole mark replaces the bands (no seams); the exit
-  slides them off the other way blurring (300 ms, reversed order, cubic-bezier(0.64, 0, 0.78, 0)), then the content fades
-  (280 ms). `Shell/SplashSequence` (TimeProvider): the intro plays while the client loads; the exit starts once the intro
-  is done, at least 0.65 s after the start and the loading is done; the login window (nobody remembered; its view model
-  is already initialized) or the main window shows only after the exit. Log out shows the login window directly, without
-  the splash. Tests: `SplashTests`.
+- Start splash (approved mockup `mockups/loading/index.html`): `Shell/SplashWindow` (borderless,
+  520x560, centered) with `Controls/SplashLogo` (the app icon built from seven hexagons: the outer six fly in one after another,
+  each drawn as an accent outline that fills; then the center hexagon, the lens ring and the lens opening like an iris; a soft
+  glow (`Oadm.SplashGlowBrush`) breathing behind it, one scan line sweep, one lens blink; complete after 2.3 s), the wordmark
+  "OADM" whose letter spacing pulls together, "Open AXIS Device Management", the shared progress bar and the real loading step
+  (`SplashViewModel`: Starting, Connecting to <server> (+ resuming a remembered login), Loading devices (main streams started,
+  waits for the first device list, at most 15 s), Ready). `AppShell.StartupAsync` keeps it at least 2.7 s (logo and wordmark
+  complete), then opens the login window (nobody remembered; the login view model is already initialized) or the main
+  window behind it (the splash is topmost), waits for that window's first frame (at most 3 s, `FirstFrameAsync`; no blank
+  window in between) and only then fades the splash out (0.35 s); a login does the same, the login window stays until the
+  main window drew. Log out shows the login window directly, without the splash. Tests: `SplashTests`.
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
   top-left, the user and Log out top-right before the window buttons, background near-black `#141414`. Caption button hover
@@ -977,7 +976,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
 - All colors in `src/Oadm.Theme/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `src/Oadm.Theme/OadmTheme.axaml`
   (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups, `TagChipList`, `TagColorPicker`); no
-  hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the
+  hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the
   Fluent palettes in `OadmTheme.axaml` (accent based, the same in both), fallbacks in code when a key cannot be found.
 
 # Main Window: Manage Devices
