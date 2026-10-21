@@ -59,7 +59,9 @@ public sealed class HeadlessTests
                 Assert.Contains("OADM-SRV", shown.Texts);
                 Assert.Contains("Building B", shown.Texts);
                 Assert.Contains("Site", shown.Texts);
-                Assert.Contains(shown.Texts, t => t.StartsWith("Bound since ", StringComparison.Ordinal));
+                Assert.Contains("Bound since", shown.Texts); // right of the server address
+                Assert.Contains(FakeChannel.BoundUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture), shown.Texts);
+                Assert.DoesNotContain(shown.Texts, t => t.StartsWith("Bound since ", StringComparison.Ordinal)); // not in the picture
                 Assert.DoesNotContain("Pairing code", shown.Texts);
                 break;
             case "bound-offline":

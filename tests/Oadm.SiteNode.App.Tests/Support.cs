@@ -42,6 +42,9 @@ internal sealed class FakeChannel : INodeChannel
         return new AdminResponse { Ok = true, State = State, PairingCode = before.Binding == NodeBinding.Open ? "ABCD-EFGH" : "" };
     }
 
+    /// <summary>When the bound samples were bound.</summary>
+    public static DateTimeOffset BoundUtc { get; } = new(2026, 10, 19, 8, 0, 0, TimeSpan.Zero);
+
     /// <summary>When the sample's pairing code is replaced: 8 minutes from <see cref="Now"/>.</summary>
     public static DateTimeOffset CodeValidUntil => Now + TimeSpan.FromMinutes(8);
 
@@ -68,7 +71,7 @@ internal sealed class FakeChannel : INodeChannel
         Binding = binding,
         ServerAddress = serverAddress,
         BindingHoursLeft = 22.6,
-        Bound = binding == NodeBinding.Bound ? new BoundServerView("OADM-SRV", "AB12", new DateTimeOffset(2026, 10, 19, 8, 0, 0, TimeSpan.Zero), "Building B") : null,
+        Bound = binding == NodeBinding.Bound ? new BoundServerView("OADM-SRV", "AB12", BoundUtc, "Building B") : null,
         ConnectionText = connectionText,
         Connected = connected,
         NewServerIdentity = newIdentity,

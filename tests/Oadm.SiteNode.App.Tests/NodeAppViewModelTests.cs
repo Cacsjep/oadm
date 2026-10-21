@@ -70,6 +70,9 @@ public sealed class NodeAppViewModelTests
         Assert.False(_vm.IsBindingOpen);
         Assert.Null(_vm.PairingCode);
         Assert.False(_vm.ShowPairing);
+        Assert.True(_vm.ShowBoundSince);
+        Assert.False(_vm.ShowBindingLine);
+        Assert.Equal(FakeChannel.BoundUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture), _vm.BoundSince);
     }
 
     [Fact]

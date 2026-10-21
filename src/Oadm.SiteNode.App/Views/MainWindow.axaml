@@ -65,7 +65,7 @@
                 </Panel>
                 <TextBlock Grid.Row="1" Text="{Binding NodeStatusText}" TextAlignment="Center" TextWrapping="Wrap" />
                 <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding BindingText}" TextAlignment="Center" TextWrapping="Wrap"
-                           Margin="0,4,0,0" IsVisible="{Binding HasState}" />
+                           Margin="0,4,0,0" IsVisible="{Binding ShowBindingLine}" />
                 <TextBlock Grid.Row="3" Classes="small secondary" Text="{Binding NodeInfoText}" ToolTip.Tip="{Binding IdText}"
                            HorizontalAlignment="Center" Margin="0,4,0,0" IsVisible="{Binding HasState}" />
               </Grid>
@@ -102,6 +102,13 @@
                 <TextBlock Classes="secondary" Text="Server address" />
                 <ui:FormField Classes="wide inline" Hint="{Binding ServerHint}" Error="{Binding ConnectionProblem}">
                   <TextBox Text="{Binding ServerAddress}" PlaceholderText="oadm.example.com or 10.0.0.5" />
+                </ui:FormField>
+              </StackPanel>
+              <!-- Bound: when, in place of the pairing code -->
+              <StackPanel Grid.Column="2" Spacing="6" IsVisible="{Binding ShowBoundSince}">
+                <TextBlock Classes="secondary" Text="Bound since" />
+                <ui:FormField Classes="wide inline">
+                  <TextBox Text="{Binding BoundSince, Mode=OneWay}" IsReadOnly="True" />
                 </ui:FormField>
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="6" IsVisible="{Binding ShowPairing}">

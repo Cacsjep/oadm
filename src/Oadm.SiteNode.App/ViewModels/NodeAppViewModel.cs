@@ -207,6 +207,15 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         var s => $"Not bound. Binding open for {Hours(s.BindingHoursLeft)}.",
     };
 
+    /// <summary>The binding line below the status in the picture: only while not bound (bound: Bound since in the Server card).</summary>
+    public bool ShowBindingLine => State is { Binding: not NodeBinding.Bound };
+
+    /// <summary>"2026-10-19 08:00": when the node was bound, right of the server address once bound.</summary>
+    public string BoundSince => State?.Bound is { } bound ? bound.BoundUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "";
+
+    /// <summary>Bound since in place of the pairing code: bound, and no new server identity is binding with the code.</summary>
+    public bool ShowBoundSince => IsBound && !ShowPairing;
+
     /// <summary>Binding is open, or a new server identity was accepted: the server binds with the pairing code.</summary>
     public bool IsPairing => IsBindingOpen || State is { NewServerAccepted: true, NewServerIdentity.Length: > 0 };
 
@@ -501,7 +510,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [
         nameof(NodeStatusText), nameof(NodeStatusKind), nameof(IsNodeStatusOk), nameof(IsNodeStatusWarning), nameof(IsNodeStatusError),
         nameof(Link), nameof(IsLinkConnected), nameof(IsLinkError), nameof(ServerLabel), nameof(NodeLabel), nameof(NodeRole),
-        nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
+        nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ShowBindingLine), nameof(BoundSince), nameof(ShowBoundSince), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
     ];
 
     private async Task<AdminResponse> ChangeAsync(AdminRequest request)
