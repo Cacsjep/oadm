@@ -56,6 +56,7 @@ internal static class AuthMapping
         var info = await ToProtoAsync(user, roles, ct).ConfigureAwait(false);
         var permissions = await roles.PermissionsOfAsync(user.RoleId, ct).ConfigureAwait(false);
         info.AllPermissions = permissions.IsAll;
+        info.StartPage = await roles.StartPageOfAsync(user.RoleId, ct).ConfigureAwait(false);
         info.Permissions.AddRange(permissions.Keys.Order(StringComparer.Ordinal));
         return info;
     }

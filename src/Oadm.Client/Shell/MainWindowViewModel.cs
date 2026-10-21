@@ -146,7 +146,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
-        Navigate(_devicesItem);
+        OpenItem(_devicesItem);
     }
 
     public ServerConnection Connection { get; }
@@ -259,7 +259,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         if (BottomNavItems.Contains(_usersItem))
         {
-            Navigate(_usersItem);
+            OpenItem(_usersItem);
         }
     }
 
@@ -290,8 +290,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Starts the server streams. Call after the window is shown (again after every login).</summary>
     public void Start()
     {
-        Navigate(_devicesItem);
+        OpenItem(_devicesItem);
+        _pendingStartPage = Session.StartPage is "" or HostPages.Devices ? null : Session.StartPage;
+        OpenStartPage();
         Connection.Start();
+    }
+
+    /// <summary>
+    /// The role's start page, from the login until the first connect loaded the plugin pages: opened as soon as its rail
+    /// entry exists. Null once it opened, the user opened a page, or the page is not there (no right, plugin off: Devices).
+    /// </summary>
+    private string? _pendingStartPage;
+
+    private void OpenStartPage()
+    {
+        if (_pendingStartPage is { } key && NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key) is { } item)
+        {
+            _pendingStartPage = null;
+            OpenItem(item);
+        }
     }
 
     /// <summary>Logout: stops the streams, closes the live view and the plugin windows.</summary>
@@ -347,8 +364,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void Logout() => Session.RequestLogout(null);
 
+    /// <summary>The user opens a page: a start page that is still loading no longer takes over.</summary>
     [RelayCommand]
     private void Navigate(NavItemViewModel? item)
+    {
+        _pendingStartPage = null;
+        OpenItem(item);
+    }
+
+    private void OpenItem(NavItemViewModel? item)
     {
         if (item is null)
         {
@@ -401,7 +425,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (lostCurrent)
         {
-            Navigate(_devicesItem);
+            OpenItem(_devicesItem);
         }
     }
 
@@ -430,6 +454,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             LogCorePluginsFailed(_logger, ex.Message);
         }
+
+        // Every page this connect brings is there now: a start page that did not come is not waited for.
+        OpenStartPage();
+        _pendingStartPage = null;
 
         try
         {
@@ -470,13 +498,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (wanted && !shown)
         {
             NavItems.Insert(Math.Min(NavItems.IndexOf(_devicesItem) + 1, NavItems.Count), _complianceItem);
+            OpenStartPage();
         }
         else if (!wanted && shown)
         {
             NavItems.Remove(_complianceItem);
             if (_complianceItem.IsSelected)
             {
-                Navigate(_devicesItem);
+                OpenItem(_devicesItem);
             }
         }
 
@@ -497,13 +526,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             NavItems.Insert(Math.Min(1, NavItems.Count), _eventRulesItem);
             OrderCorePluginPages();
+            OpenStartPage();
         }
         else if (!wanted && shown)
         {
             NavItems.Remove(_eventRulesItem);
             if (_eventRulesItem.IsSelected)
             {
-                Navigate(_devicesItem);
+                OpenItem(_devicesItem);
             }
 
             UpdateNavGroups();
@@ -521,6 +551,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         OrderCorePluginPages();
+        OpenStartPage();
     }
 
     /// <summary>
@@ -547,6 +578,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 {
                     AddCorePluginPage(plugin);
                     OrderCorePluginPages();
+                    OpenStartPage();
                 }
             }).ConfigureAwait(true);
             if (generation != _pageSyncGeneration)
@@ -567,7 +599,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ClosePluginWindowsRequested?.Invoke(this, stalePage.PluginId);
             if (stale.IsSelected)
             {
-                Navigate(_devicesItem);
+                OpenItem(_devicesItem);
             }
 
             // The removed page's view and view model must not stay reachable from the Devices page context.

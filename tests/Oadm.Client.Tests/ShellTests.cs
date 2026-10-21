@@ -42,6 +42,45 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
+    public void The_role_start_page_opens_after_the_login_and_a_plugin_page_once_it_arrives()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        var session = new UserSession();
+        session.SignIn(new UserInfo { UserName = "otto", Role = UserRole.Operator, StartPage = "logs" }, "https://localhost:5080");
+        MainWindowViewModel vm = CreateShell(f, connection, session);
+
+        vm.Start();
+        Assert.Equal("logs", vm.CurrentItem?.Key);
+        vm.Stop();
+
+        // A plugin page comes with the connect: it opens when its rail entry is there.
+        session.SignOut();
+        session.SignIn(new UserInfo { UserName = "otto", Role = UserRole.Operator, StartPage = "plugin:test.monitor" }, "https://localhost:5080");
+        vm.Start();
+        Assert.Equal("devices", vm.CurrentItem?.Key);
+        vm.SyncCorePluginPages([new CorePluginInfo { Id = "test.monitor", DisplayName = "Monitor", Group = "Monitoring" }]);
+        Assert.Equal("plugin:test.monitor", vm.CurrentItem?.Key);
+        vm.Stop();
+    }
+
+    [Fact]
+    public void A_page_the_user_opens_first_wins_over_a_start_page_that_is_still_loading()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        var session = new UserSession();
+        session.SignIn(new UserInfo { UserName = "otto", Role = UserRole.Operator, StartPage = "plugin:test.monitor" }, "https://localhost:5080");
+        MainWindowViewModel vm = CreateShell(f, connection, session);
+
+        vm.Start();
+        vm.NavigateCommand.Execute(vm.BottomNavItems.Single(n => n.Key == "settings"));
+        vm.SyncCorePluginPages([new CorePluginInfo { Id = "test.monitor", DisplayName = "Monitor", Group = "Monitoring" }]);
+        Assert.Equal("settings", vm.CurrentItem?.Key);
+        vm.Stop();
+    }
+
+    [Fact]
     public void Administrators_see_plugins_first_then_users_and_credentials_above_logs()
     {
         using var f = new DevicesFixture();

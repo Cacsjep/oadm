@@ -5,8 +5,8 @@
              x:Class="Oadm.Client.Settings.UsersPageView"
              x:DataType="settings:UsersViewModel">
   <!-- Navigation page Users (Admin only): the users card on top, the roles card (permission matrix) below with a
-       splitter, like the Devices page and its tasks. -->
-  <Grid RowDefinitions="Auto,*,Auto,*">
+       splitter, like the Devices page and its tasks. The users card takes the height it needs, the roles card the rest. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
     <c:PageTitleBar Grid.Row="0" Title="Users" Subtitle="Who can log in to this server and what each role may do." Margin="0,0,0,16" />
     <ScrollViewer Grid.Row="1">
       <settings:UsersCardView MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top" />

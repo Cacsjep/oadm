@@ -38,15 +38,17 @@ public sealed class PermissionSet
 }
 
 /// <summary>A role as listed: its permissions and how many users have it.</summary>
-public sealed record RoleRecord(Guid Id, string Name, string Description, RoleKind Kind, PermissionSet Permissions, int UserCount, long Version = 0);
+public sealed record RoleRecord(Guid Id, string Name, string Description, RoleKind Kind, PermissionSet Permissions, int UserCount, long Version = 0, string StartPage = "");
 
 /// <summary>A role to create (<see cref="Id"/> null) or to change in <see cref="RoleStore.SaveAsync"/>.</summary>
 /// <param name="Permissions">The granted keys; keys the catalog does not know are ignored (a role keeps its own unknown keys).</param>
 /// <param name="Version">The <see cref="RoleRecord.Version"/> the change was made on; a newer stored role refuses it (two administrators).</param>
-public sealed record RoleChange(Guid? Id, string Name, string Description, IReadOnlyCollection<string> Permissions, long Version = 0);
+/// <param name="StartPage">The page the client opens after a login (empty = Devices); null keeps it. The caller checks it is a page.</param>
+public sealed record RoleChange(Guid? Id, string Name, string Description, IReadOnlyCollection<string> Permissions, long Version = 0, string? StartPage = null);
 
 /// <summary>What a save changed, per role, for the audit log ("+Web View: Open devices -Restart").</summary>
-public sealed record RoleDiff(string RoleName, bool Created, IReadOnlyList<string> Added, IReadOnlyList<string> Removed, bool Renamed);
+/// <param name="StartPage">The new start page when it changed (empty = Devices), else null.</param>
+public sealed record RoleDiff(string RoleName, bool Created, IReadOnlyList<string> Added, IReadOnlyList<string> Removed, bool Renamed, string? StartPage = null);
 
 /// <summary>
 /// The roles (table Roles, Users page, Administrator only). The three built-in roles exist from the migration on:
@@ -59,6 +61,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
     public const int MaxNameLength = 64;
     public const int MaxDescriptionLength = 200;
     public const int MaxCustomRoles = 50;
+    public const int MaxStartPageLength = 200;
 
     private readonly SemaphoreSlim _write = new(1, 1);
     private volatile Snapshot? _snapshot;
@@ -106,6 +109,13 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
         return snapshot.Roles.TryGetValue(roleId, out var role) ? role.Name : string.Empty;
     }
 
+    /// <summary>The page the client opens after a login for users of a role; empty = Devices (also for an unknown role).</summary>
+    public async Task<string> StartPageOfAsync(Guid roleId, CancellationToken ct)
+    {
+        var snapshot = _snapshot ?? await LoadAsync(ct).ConfigureAwait(false);
+        return snapshot.Roles.TryGetValue(roleId, out var role) ? role.StartPage : string.Empty;
+    }
+
     public async Task<bool> ExistsAsync(Guid roleId, CancellationToken ct)
     {
         var snapshot = _snapshot ?? await LoadAsync(ct).ConfigureAwait(false);
@@ -119,7 +129,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         var counts = await db.Users.AsNoTracking().GroupBy(u => u.RoleId).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct).ConfigureAwait(false);
-        return [.. snapshot.Ordered.Select(r => new RoleRecord(r.Id, r.Name, r.Description, r.Kind, r.Permissions, counts.GetValueOrDefault(r.Id), r.Version))];
+        return [.. snapshot.Ordered.Select(r => new RoleRecord(r.Id, r.Name, r.Description, r.Kind, r.Permissions, counts.GetValueOrDefault(r.Id), r.Version, r.StartPage))];
     }
 
     /// <summary>
@@ -200,8 +210,8 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
     }
 
     /// <summary>
-    /// Creates and changes roles in one transaction (the matrix's Save). The Administrator role cannot change. Returns
-    /// what changed per role (empty when nothing did).
+    /// Creates and changes roles in one transaction (the matrix's Save). The Administrator role keeps its name and
+    /// permissions; only its start page can change. Returns what changed per role (empty when nothing did).
     /// </summary>
     public async Task<IReadOnlyList<RoleDiff>> SaveAsync(IReadOnlyList<RoleChange> changes, CancellationToken ct)
     {
@@ -219,6 +229,42 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
 
             foreach (var change in changes)
             {
+                var startPage = change.StartPage?.Trim();
+                if (startPage is { Length: > MaxStartPageLength })
+                {
+                    throw new AuthException(AuthError.InvalidArgument, "Choose a start page from the list.");
+                }
+
+                if (change.Id is { } adminId && BuiltInRoles.IsAdministrator(adminId))
+                {
+                    // The Administrator role: everything is fixed but the start page.
+                    var admin = byId.GetValueOrDefault(adminId)
+                        ?? throw new AuthException(AuthError.NotFound, "The role does not exist (any more).");
+                    if ((change.Name?.Trim() is { Length: > 0 } adminName && adminName != admin.Name)
+                        || (change.Description?.Trim() ?? string.Empty) != admin.Description
+                        || change.Permissions is { Count: > 0 })
+                    {
+                        throw new AuthException(AuthError.Precondition, "The Administrator role always has every permission and cannot change.");
+                    }
+
+                    if (change.Version != 0 && change.Version != VersionOf(admin))
+                    {
+                        throw new AuthException(AuthError.Precondition,
+                            $"Another administrator changed the role {admin.Name} meanwhile. Click Discard and make your changes again.");
+                    }
+
+                    if (startPage is null || startPage == admin.StartPage)
+                    {
+                        continue;
+                    }
+
+                    admin.StartPage = startPage;
+                    admin.ChangedUtc = now;
+                    diffs.Add(new RoleDiff(admin.Name, false, [], [], false, startPage));
+                    changedIds.Add(admin.Id);
+                    continue;
+                }
+
                 var name = ValidateName(change.Name);
                 var description = (change.Description ?? string.Empty).Trim();
                 if (description.Length > MaxDescriptionLength)
@@ -279,7 +325,8 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
                 var added = after.Except(before).Order(StringComparer.Ordinal).ToList();
                 var removed = before.Except(after).Order(StringComparer.Ordinal).ToList();
                 var renamed = !created && (role.Name != name || role.Description != description);
-                if (!created && added.Count == 0 && removed.Count == 0 && !renamed)
+                var newStart = startPage is not null && startPage != role.StartPage ? startPage : null;
+                if (!created && added.Count == 0 && removed.Count == 0 && !renamed && newStart is null)
                 {
                     continue;
                 }
@@ -289,8 +336,9 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
                 role.Description = description;
                 role.PermissionsJson = WriteKeys(after);
                 role.KnownJson = WriteKeys(ReadKeys(role.KnownJson).Concat(catalogKeys));
+                role.StartPage = newStart ?? role.StartPage;
                 role.ChangedUtc = now;
-                diffs.Add(new RoleDiff(name, created, added, removed, renamed));
+                diffs.Add(new RoleDiff(name, created, added, removed, renamed, created && role.StartPage.Length == 0 ? null : newStart));
                 changedIds.Add(role.Id);
             }
 
@@ -369,7 +417,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
 
     private static string WriteKeys(IEnumerable<string> keys) => JsonSerializer.Serialize(keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
 
-    private sealed record CachedRole(Guid Id, string Name, string Description, RoleKind Kind, DateTime CreatedUtc, PermissionSet Permissions, long Version);
+    private sealed record CachedRole(Guid Id, string Name, string Description, RoleKind Kind, DateTime CreatedUtc, PermissionSet Permissions, long Version, string StartPage);
 
     private sealed class Snapshot
     {
@@ -385,7 +433,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
 
         public static Snapshot From(IEnumerable<RoleEntity> roles) => new(roles.ToDictionary(r => r.Id, r => new CachedRole(
             r.Id, r.Name, r.Description, r.Kind, r.CreatedUtc,
-            r.Kind == RoleKind.Administrator ? PermissionSet.All : PermissionSet.Of(ReadKeys(r.PermissionsJson)), VersionOf(r))));
+            r.Kind == RoleKind.Administrator ? PermissionSet.All : PermissionSet.Of(ReadKeys(r.PermissionsJson)), VersionOf(r), r.StartPage ?? string.Empty)));
     }
 }
 

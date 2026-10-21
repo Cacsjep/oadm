@@ -84,6 +84,8 @@ message UserInfo {
   // Administrator role (every permission, also later ones; permissions is then empty).
   repeated string permissions = 9;
   bool all_permissions = 10;
+  // Only for the caller's own user: the role's start page (RoleInfo.start_page; empty = Devices).
+  string start_page = 11;
 }
 
 message UserList { repeated UserInfo users = 1; }

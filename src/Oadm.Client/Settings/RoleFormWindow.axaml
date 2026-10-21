@@ -9,17 +9,21 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
-  <!-- New role, copy or rename of the roles card: single operation. The role is a column of the matrix until Save. -->
+  <!-- New role, copy or edit of the roles card: single operation. The role is a column of the matrix until Save. The
+       Administrator role only changes its start page. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding EditorTitle}" />
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
         <ui:FormField Label="Name">
-          <TextBox x:Name="NameBox" Text="{Binding EditName}" MaxLength="64" />
+          <TextBox x:Name="NameBox" Text="{Binding EditName}" MaxLength="64" IsEnabled="{Binding IsNameEditable}" />
         </ui:FormField>
         <ui:FormField Label="Description" Hint="Optional">
-          <TextBox Text="{Binding EditDescription}" MaxLength="200" />
+          <TextBox Text="{Binding EditDescription}" MaxLength="200" IsEnabled="{Binding IsNameEditable}" />
+        </ui:FormField>
+        <ui:FormField Label="Start page" Hint="The page users of this role see first after they log in.">
+          <ComboBox x:Name="StartPageBox" ItemsSource="{Binding StartPageChoices}" SelectedItem="{Binding EditStartPage}" HorizontalAlignment="Stretch" />
         </ui:FormField>
         <ui:FormField Label="Start from" IsVisible="{Binding IsNewEditor}">
           <ComboBox x:Name="StartFromBox" ItemsSource="{Binding StartChoices}" SelectedItem="{Binding StartFrom}" HorizontalAlignment="Stretch" />

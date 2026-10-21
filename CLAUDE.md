@@ -302,7 +302,7 @@ Two processes, like ADM:
   administrator. `AuditService` (Admin): `List(limit, offset)` newest first + `total_count` (limit 0 = 10,000).
 - `RoleService` (`roles.proto`, Admin except `Mine`): `GetMatrix` (every `PermissionInfo` {key, name, description, group,
   icon_key, operator_default, viewer_default, full_device_control, available} in matrix order and every `RoleInfo` {id,
-  name, description, kind, permissions, user_count, version}), `SaveRoles(roles)` (create = empty id, change; one transaction;
+  name, description, kind, permissions, user_count, version, start_page}), `SaveRoles(roles)` (create = empty id, change; one transaction; `RoleChange.start_page` unset = keep, INVALID_ARGUMENT "Choose a start page from the list." for anything but a start page, the only change the Administrator role accepts;
   FAILED_PRECONDITION for the Administrator role and for a change whose `version` is older than the stored role (two
   administrators: "Another administrator changed the role X meanwhile. Click Discard and make your changes again.";
   version 0 = no check), INVALID_ARGUMENT names / over 50 roles), `DeleteRole(id)` (custom roles
@@ -2409,7 +2409,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (`events.view`) and its changes, tag administration, the rail's plugin pages and the task menu (reloaded from the
   server, which filters them). The server checks every call again.
 - **Users page** (Admin only, subtitle "Who can log in to this server and what each role may do."; `Settings/UsersPageView`
-  = the users card on top and the roles card below with a splitter): **+ User** above the list, then users with role
+  = the users card on top at the height it needs and the roles card filling the rest, with a splitter): **New user** (secondary button) above the list, then users with role
   (plain text), last login, state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
   and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
   Add user (user name, password, role), Edit user (the role; Administrator with a hint) and Change password (new +
@@ -2417,12 +2417,21 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   the fields. **Roles
   card** (`RolesCardView`, `RolesViewModel`): the permission matrix, rows = permissions in groups (Devices, Tasks, Event
   rules, then one group per plugin in rail order; collapsible, a three-state check box per role for the whole group),
-  columns = roles (built in code-behind; header with name, "3 users" and a menu Rename, Copy, Reset to default, Delete),
+  columns = roles (built in code-behind; header with name, "3 users", "Starts on Compliance" and a menu Edit, Copy, Reset to default, Delete; the Administrator role Edit and Copy),
   the name column frozen; the permission's explanation as the tooltip of its name, an amber warning icon right after
   the name for full device control (tooltip `RolesCardView.FullDeviceControlTip`), "Plugin is off" for rights of a
-  plugin that is off. Toolbar New role, Save, Discard, search; changes are collected and saved together after one
+  plugin that is off. Toolbar New role (secondary button), Save, Discard, search; changes are collected and saved together after one
   confirmation that lists them per role; a new role, a copy and a rename open the dialog `Settings/RoleFormWindow`
-  (Name, Description, Start from) and stay "Not saved" until Save.
+  (Name, Description, Start from, **Start page**) and stay "Not saved" until Save; Edit opens the same dialog (the
+  Administrator role: name and description locked, only the start page).
+- **Start page per role** (`RoleEntity.StartPage`, migration `RoleStartPage`, empty = Devices): the page users of the role
+  see first after a login: Devices, Compliance, Event rules, any core plugin page, Logs (the rail keys, `HostPages`,
+  "plugin:<id>"). The server takes only those (`RoleGrpcService.StartPageOf`, a plugin page also while the plugin is off)
+  and audits "start page Compliance"; `UserInfo.start_page = 11` brings it with Login / Me / WatchSession
+  (`UserSession.StartPage`). The client opens it after the login (`MainWindowViewModel.Start`): at once when its rail
+  entry exists, a plugin page as soon as the connect added it; a page the user opens first wins, and a page that does not
+  come (no right, plugin off) leaves Devices. Tests `RoleTests.ARoleStartsOnItsPage...`, client `RolesMatrixTests`,
+  `ShellNavigationTests`.
 
 ## Automatic login on the add page
 
