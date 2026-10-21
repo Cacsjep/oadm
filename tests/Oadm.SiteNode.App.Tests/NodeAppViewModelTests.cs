@@ -63,7 +63,9 @@ public sealed class NodeAppViewModelTests
         await _vm.RefreshAsync();
 
         Assert.StartsWith("Bound since ", _vm.BindingText, StringComparison.Ordinal);
-        Assert.Equal("Connected to OADM-SRV", _vm.NodeStatusText); // the server once, the site on its own line
+        Assert.Equal("Connected", _vm.NodeStatusText); // the picture names the server
+        Assert.Equal(("OADM-SRV", "Building B", "Site"), (_vm.ServerLabel, _vm.NodeLabel, _vm.NodeRole));
+        Assert.Equal(LinkKind.Connected, _vm.Link);
         Assert.Equal("Site Building B", _vm.SiteText);
         Assert.False(_vm.IsBindingOpen);
         Assert.Null(_vm.PairingCode);
@@ -292,29 +294,39 @@ public sealed class NodeAppViewModelTests
     public async Task TheNodeStatusSaysWhetherTheNodeReachesTheServer()
     {
         await _vm.RefreshAsync();
-        Assert.Equal("Connected to 10.0.0.5:5081", _vm.NodeStatusText);
+        Assert.Equal("Connected", _vm.NodeStatusText);
+        Assert.Equal(LinkKind.Connected, _vm.Link);
+        Assert.Equal(("10.0.0.5", "site-pc", "Site node"), (_vm.ServerLabel, _vm.NodeLabel, _vm.NodeRole));
         Assert.True(_vm.IsNodeStatusOk);
 
         _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
         await _vm.RefreshAsync();
         Assert.Equal("No server address yet", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusWarning);
+        Assert.Equal(LinkKind.Idle, _vm.Link);
+        Assert.Equal("Not set", _vm.ServerLabel);
         Assert.Null(_vm.ConnectionProblem);
 
         _channel.State = FakeChannel.Sample(connected: false, connectionText: "");
         await _vm.RefreshAsync();
         Assert.Equal("Not connected", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusWarning);
+        Assert.Equal(LinkKind.Idle, _vm.Link); // not bound, connecting
 
         _channel.State = FakeChannel.Sample(connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
         await _vm.RefreshAsync();
         Assert.Equal("Not connected: Cannot reach 10.0.0.5:5081", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusError);
         Assert.Equal("Cannot reach 10.0.0.5:5081", _vm.ConnectionProblem);
+        Assert.Equal(LinkKind.Error, _vm.Link);
 
         _channel.State = FakeChannel.Sample(NodeBinding.Bound);
         await _vm.RefreshAsync();
-        Assert.Equal("Connected to OADM-SRV", _vm.NodeStatusText);
+        Assert.Equal("Connected", _vm.NodeStatusText);
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "");
+        await _vm.RefreshAsync();
+        Assert.Equal(LinkKind.Error, _vm.Link); // a bound node that lost its connection
 
         _channel.State = FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "Cannot reach 10.0.0.5:5081");
         await _vm.RefreshAsync();
@@ -325,6 +337,7 @@ public sealed class NodeAppViewModelTests
         await _vm.RefreshAsync(); // one failed read keeps the last state
         Assert.Equal("Service not running", _vm.NodeStatusText);
         Assert.True(_vm.IsNodeStatusError);
+        Assert.Equal(LinkKind.Error, _vm.Link);
     }
 
     [Fact]

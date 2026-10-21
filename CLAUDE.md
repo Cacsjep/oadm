@@ -2773,8 +2773,10 @@ the inbound mode ("Wait for the server", the node's listener and mDNS announce, 
 manually / Change address on the Sites page, `FindNodes`, `ChangeSiteAddress`, `SiteMode`, the node firewall rule) is
 gone; the columns `Sites.Mode` / `Port` stay for the migrations, unused. The node reaches **all network cards by default**
 (`NodeConfig.AllCards`; chosen cards restrict it, no chosen card = all cards, `NetworkScope.ReachesAllCards`). Node app
-(`Oadm.SiteNode.App`, 800 x 900, one page, no tabs, decision 2026-10-21): cards Node status (connection, site, binding,
-requests, relays that do not run, node ID and version), Server (two columns, labels above: Server address left; while not bound
+(`Oadm.SiteNode.App`, 800 x 900, one page, no tabs, decision 2026-10-21): cards Node status (a picture: the OADM logo
+`Oadm.Theme.Controls.OadmMark` (the splash logo without animation, shared with `SplashLogo`) with the server's name, a line
+with the status below it (grey not linked yet, purple connected, red not connected / lost / error, `LinkKind`), a hexagon
+with the sites icon and the site or computer name; then binding, requests, relays that do not run, node ID and version), Server (two columns, labels above: Server address left; while not bound
 the **Pairing code** right, always shown with "Valid for N more minutes.", or Allow binding), Networks (Reach devices on = a
 select with check boxes: All cards, then each card with its addresses on a second line; extra networks only on the command
 line), Ports (one table: Direction,

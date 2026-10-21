@@ -24,7 +24,7 @@ public sealed class HeadlessTests
         // Save of the footer is the one accent button, in every state.
         Assert.Equal(["Save"], shown.Primary);
         Assert.Contains("Close", shown.Texts);
-        Assert.Contains("Node status", shown.Texts);
+        Assert.Contains("OADM server", shown.Texts); // the picture on top
         Assert.Contains("OADM Site Node", shown.Texts); // the title bar
         Assert.DoesNotContain("Connection log", shown.Texts); // no activity part
         Assert.DoesNotContain("Show pairing code", shown.Texts); // the code shows by itself
@@ -36,7 +36,9 @@ public sealed class HeadlessTests
                 Assert.Contains("Pairing code", shown.Texts);
                 Assert.Contains("ABCD-EFGH", shown.Texts);
                 Assert.Contains(NodeAppViewModel.TypeCode + " Valid for 8 more minutes.", shown.Texts);
-                Assert.Contains("Connected to 10.0.0.5:5081", shown.Texts);
+                Assert.Contains("Connected", shown.Texts);
+                Assert.Contains("10.0.0.5", shown.Texts); // below the logo
+                Assert.Contains("site-pc", shown.Texts); // below the node
                 break;
             case "server":
                 Assert.Contains(NodeAppViewModel.EnterServer + " " + NodeAppViewModel.PortHint, shown.Texts);
@@ -53,11 +55,11 @@ public sealed class HeadlessTests
                 Assert.DoesNotContain("ABCD-EFGH", shown.Texts);
                 break;
             case "bound":
-                Assert.Contains("Connected to OADM-SRV", shown.Texts);
-                Assert.Contains("Site Building B", shown.Texts);
+                Assert.Contains("Connected", shown.Texts);
+                Assert.Contains("OADM-SRV", shown.Texts);
+                Assert.Contains("Building B", shown.Texts);
+                Assert.Contains("Site", shown.Texts);
                 Assert.Contains(shown.Texts, t => t.StartsWith("Bound since ", StringComparison.Ordinal));
-                Assert.Single(shown.Texts, t => t.Contains("Building B", StringComparison.Ordinal)); // each name once
-                Assert.Single(shown.Texts, t => t.Contains("OADM-SRV", StringComparison.Ordinal));
                 Assert.DoesNotContain("Pairing code", shown.Texts);
                 break;
             case "bound-offline":

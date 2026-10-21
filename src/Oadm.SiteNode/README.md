@@ -123,9 +123,9 @@ behind each. Read-only towards the camera.
    24 more hours.".
 2. **Outbound through NAT**: server in the office network, node behind a NAT router. Turn on Accept site nodes on the
    Sites page, type the server's address in the app and Save (UAC / pkexec prompt): the pairing code shows below the
-   address with "Valid for N more minutes.", Node status says "Connected to ...". Close and open the app as a user
+   address with "Valid for N more minutes.", the picture shows a purple line with "Connected". Close and open the app as a user
    without administrator rights: the code shows without a prompt; after 10 minutes the app shows a new one.
-   Bind on the Sites page with the code; Node status shows "Connected to SERVER", "Site NAME", "Bound since ...". A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
+   Bind on the Sites page with the code; the picture shows the server name and the site name, "Bound since ..." below it. A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
    Five wrong codes: a new code, Bind refused for 10 minutes.
 3. **Another server**: point the bound node at a second OADM server; it refuses the connection (the pinned key) and the
    app shows the new identity with **Accept**; nothing binds without the pairing code.

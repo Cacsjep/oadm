@@ -89,9 +89,13 @@ Two parts, one installer:
   small screens (`WindowFit`), the custom title bar of the client (`Border.titleBar`,
   `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and close right, no
   maximize), then cards that scroll together:
-  - **Node status** (every state line, each name once): the status chip "Connected to SERVER" ("Not connected: Cannot
-    reach 10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then
-    "Start the OADM Site Node service." and no other card), "Site SITE" once bound, the binding line ("Bound since
+  - **Node status**: a picture on top: left the OADM logo with the server's name (its address before binding, "Not
+    set" without one) and "OADM server", right a hexagon with the sites icon with the site's name ("Site") or the
+    computer's name ("Site node"), between them a line: grey while not linked yet (no address, binding closed,
+    connecting), purple with a check while connected, red with a cross while not connected, after a lost connection of a
+    bound node or without the service; below the line the status ("Connected", "Not connected: Cannot reach
+    10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then
+    "Start the OADM Site Node service." and no other card). Then the binding line ("Bound since
     2026-10-20 07:44", "Not bound. Binding open for 23 more hours.", "Binding is closed."), "The server asks for N
     ports." while ports wait, a warning per relay that does not run ("NTP server, UDP 123: UDP 123 is used by another
     program."), and small and grey "Node ID 1457a0b5… · Version 1.0.0" (the whole ID as tooltip);

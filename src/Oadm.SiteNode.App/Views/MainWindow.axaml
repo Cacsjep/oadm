@@ -4,6 +4,7 @@
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.SiteNode.App.ViewModels"
         xmlns:themeShell="using:Oadm.Theme.Shell"
+        xmlns:tc="using:Oadm.Theme.Controls"
         x:Class="Oadm.SiteNode.App.Views.MainWindow"
         x:DataType="vm:NodeAppViewModel"
         Title="OADM Site Node"
@@ -41,14 +42,39 @@
 
     <ScrollViewer Grid.Row="1" Classes="tabPage" Margin="20,12,4,0">
       <StackPanel Spacing="16">
-        <!-- Node status: the connection, the site, the binding, problems, then the node's ID and version -->
+        <!-- Node status: the picture (OADM server, the line, the node or its site) with the status below the line, then the
+             binding, problems and the node's ID and version -->
         <Border Classes="card">
           <StackPanel Spacing="8">
-            <TextBlock Classes="cardTitle" Text="Node status" />
-            <ui:StatusChip Text="{Binding NodeStatusText}" IsOk="{Binding IsNodeStatusOk}" IsWarning="{Binding IsNodeStatusWarning}"
-                           IsError="{Binding IsNodeStatusError}" MaxLines="2" />
+            <Grid ColumnDefinitions="150,*,150" Margin="0,4,0,8">
+              <StackPanel Spacing="6">
+                <tc:OadmMark Width="72" Height="72" HorizontalAlignment="Center" />
+                <TextBlock Classes="siteLinkName" Text="{Binding ServerLabel}" ToolTip.Tip="{Binding ServerLabel}" />
+                <TextBlock Classes="siteLinkRole" Text="OADM server" />
+              </StackPanel>
+              <Grid Grid.Column="1" RowDefinitions="72,Auto">
+                <Panel Margin="8,0">
+                  <Border Classes="siteLink" Classes.connected="{Binding IsLinkConnected}" Classes.error="{Binding IsLinkError}" />
+                  <Border Classes="siteLinkBadge" Classes.connected="{Binding IsLinkConnected}" Classes.error="{Binding IsLinkError}"
+                          IsVisible="{Binding IsLinkConnected}">
+                    <ui:OadmIcon Data="{StaticResource Icon.check}" />
+                  </Border>
+                  <Border Classes="siteLinkBadge error" IsVisible="{Binding IsLinkError}">
+                    <ui:OadmIcon Data="{StaticResource Icon.close}" />
+                  </Border>
+                </Panel>
+                <TextBlock Grid.Row="1" Text="{Binding NodeStatusText}" TextAlignment="Center" TextWrapping="Wrap" />
+              </Grid>
+              <StackPanel Grid.Column="2" Spacing="6">
+                <Panel Width="72" Height="72" HorizontalAlignment="Center">
+                  <Path Classes="siteHexagon" Data="{x:Static tc:OadmMark.Hexagon}" />
+                  <ui:OadmIcon Classes="siteHexagonIcon" Data="{StaticResource Icon.server}" />
+                </Panel>
+                <TextBlock Classes="siteLinkName" Text="{Binding NodeLabel}" ToolTip.Tip="{Binding NodeLabel}" />
+                <TextBlock Classes="siteLinkRole" Text="{Binding NodeRole}" />
+              </StackPanel>
+            </Grid>
             <TextBlock Classes="secondary" Text="Start the OADM Site Node service." TextWrapping="Wrap" IsVisible="{Binding !HasState}" />
-            <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" IsVisible="{Binding HasSite}" />
             <TextBlock Text="{Binding BindingText}" TextWrapping="Wrap" IsVisible="{Binding HasState}" />
             <ui:StatusChip Text="{Binding RequestsText}" IsInfo="True" IsVisible="{Binding HasRequests}" />
             <ItemsControl ItemsSource="{Binding RelayProblems}" IsVisible="{Binding HasRelayProblems}">

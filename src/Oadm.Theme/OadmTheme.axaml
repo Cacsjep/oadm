@@ -1449,6 +1449,67 @@
     <Setter Property="MaxWidth" Value="240" />
     <Setter Property="Cursor" Value="Hand" />
   </Style>
+  <!-- The picture on top of the OADM Site Node app: the OADM logo (server) and a hexagon with the sites icon (node),
+       joined by a line: grey while not linked, purple while connected, red while not connected or after an error; a
+       round badge in its middle (check or cross) except while grey. -->
+  <Style Selector="Border.siteLink">
+    <Setter Property="Height" Value="3" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Border.siteLink.connected">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.siteLink.error">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge.connected">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge.connected ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge.error">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge.error ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge ui|OadmIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="StrokeThickness" Value="2.5" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Path.siteHexagon">
+    <Setter Property="Fill" Value="{StaticResource Oadm.LogoBrush}" />
+  </Style>
+  <Style Selector="ui|OadmIcon.siteHexagonIcon">
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="StrokeThickness" Value="2.5" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.BrandBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.siteLinkName">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.siteLinkRole">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
   <!-- The scrolling page of the OADM Site Node app: room for the scroll bar right of the content -->
   <Style Selector="ScrollViewer.tabPage">
     <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
