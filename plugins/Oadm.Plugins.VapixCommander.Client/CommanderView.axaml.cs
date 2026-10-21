@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 
+using Oadm.Sdk.Actions;
 using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.VapixCommander.Client;
@@ -78,6 +79,32 @@ public partial class CommanderView : UserControl, ICommanderFiles, ICommanderDia
         await using var writer = new StreamWriter(stream);
         await writer.WriteAsync(content).ConfigureAwait(true);
         return true;
+    }
+
+    public async Task<ActionFile?> OpenFileAsync()
+    {
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storage is null)
+        {
+            return null;
+        }
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose file", AllowMultiple = false }).ConfigureAwait(true);
+        if (files.Count == 0)
+        {
+            return null;
+        }
+
+        await using var stream = await files[0].OpenReadAsync().ConfigureAwait(true);
+        var buffer = new byte[CommandLimits.MaxFileBytes + 1];
+        var length = 0;
+        int read;
+        while (length < buffer.Length && (read = await stream.ReadAsync(buffer.AsMemory(length)).ConfigureAwait(true)) > 0)
+        {
+            length += read;
+        }
+
+        return new ActionFile(files[0].Name, buffer[..length]);
     }
 
     public async Task ShowBuilderAsync(RequestBuilderViewModel builder)

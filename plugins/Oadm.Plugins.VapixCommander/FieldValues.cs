@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
+using Oadm.Sdk.Actions;
+
 namespace Oadm.Plugins.VapixCommander;
 
 /// <summary><c>{{name}}</c> placeholders in a request.</summary>
@@ -69,13 +71,14 @@ public static partial class Placeholders
     }
 }
 
-/// <summary>A checked value of one field: string, long, double or bool (null when an optional field is empty).</summary>
+/// <summary>A checked value of one field: string, long, double, bool or <see cref="ActionFile"/> (null when an optional field is empty).</summary>
 public sealed record FieldValue(CommandField Field, object? Value)
 {
     /// <summary>Text for URL, header, form, text and XML positions. Booleans: field trueValue/falseValue, else yes/no for param.cgi, else true/false.</summary>
     public string Text(bool paramCgi) => Value switch
     {
         null => string.Empty,
+        ActionFile file => file.Name,
         bool b when b => Field.TrueValue ?? (paramCgi ? "yes" : "true"),
         bool => Field.FalseValue ?? (paramCgi ? "no" : "false"),
         long l => l.ToString(CultureInfo.InvariantCulture),
@@ -244,6 +247,9 @@ public static class FieldValues
                 return null;
             }
 
+            case FieldTypes.File:
+                return ConvertFile(raw, out value);
+
             default:
             {
                 // string and password
@@ -287,6 +293,45 @@ public static class FieldValues
                 return null;
             }
         }
+    }
+
+    /// <summary>
+    /// A file value {"name", "data"} (also as JSON text, the request builder's value): the name without folders, quotes or
+    /// control characters, at most <see cref="CommandLimits.MaxFileBytes"/>.
+    /// </summary>
+    private static string? ConvertFile(JsonElement raw, out object? value)
+    {
+        value = null;
+        if (raw.ValueKind == JsonValueKind.String)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(raw.GetString()!);
+                return ConvertFile(document.RootElement.Clone(), out value);
+            }
+            catch (JsonException)
+            {
+                return "must be a file.";
+            }
+        }
+
+        if (ActionFile.From(raw) is not { } file)
+        {
+            return "must be a file.";
+        }
+
+        if (file.Name.Length is 0 or > 255 || file.Name.Any(c => char.IsControl(c) || c is '/' or '\\' or '"'))
+        {
+            return "has a file name that cannot be sent.";
+        }
+
+        if (file.Data.Length > CommandLimits.MaxFileBytes)
+        {
+            return "is larger than 1 MB.";
+        }
+
+        value = file;
+        return null;
     }
 
     /// <summary>Plain text of a JSON scalar (strings unquoted, numbers as written, booleans lower case).</summary>

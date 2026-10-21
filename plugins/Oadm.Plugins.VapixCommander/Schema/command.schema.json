@@ -12,7 +12,7 @@
   },
   "$defs": {
     "category": {
-      "enum": ["Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O", "Events", "Storage", "Applications", "Maintenance", "Custom"]
+      "enum": ["Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O", "Siren and light", "Events", "Storage", "Applications", "Maintenance", "Custom"]
     },
     "placeholderName": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$" },
     "command": {
@@ -55,7 +55,7 @@
         "name": { "$ref": "#/$defs/placeholderName" },
         "label": { "type": "string" },
         "description": { "type": "string" },
-        "type": { "enum": ["string", "integer", "number", "boolean", "enum", "password"] },
+        "type": { "enum": ["string", "integer", "number", "boolean", "enum", "password", "file"] },
         "default": {},
         "required": { "type": "boolean" },
         "min": { "type": "number" },
@@ -84,10 +84,33 @@
         "path": { "type": "string", "pattern": "^/" },
         "query": { "type": "object", "additionalProperties": { "type": "string" } },
         "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-        "bodyType": { "enum": ["none", "json", "form", "text", "xml"] },
+        "bodyType": { "enum": ["none", "json", "form", "text", "xml", "multipart"] },
         "body": {},
         "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 }
+      },
+      "if": { "required": ["bodyType"], "properties": { "bodyType": { "const": "multipart" } } },
+      "then": {
+        "required": ["body"],
+        "properties": { "body": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "$ref": "#/$defs/multipartPart" } } }
       }
+    },
+    "multipartPart": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "json": {},
+        "text": { "type": "string" },
+        "file": { "type": "string", "pattern": "^\\{\\{[a-zA-Z][a-zA-Z0-9_]*\\}\\}$", "description": "Exactly one placeholder of a file field" },
+        "contentType": { "type": "string" },
+        "fileName": { "type": "string", "minLength": 1, "description": "Name sent for the file; default the chosen file's name" }
+      },
+      "oneOf": [
+        { "required": ["json"] },
+        { "required": ["text"] },
+        { "required": ["file"] }
+      ]
     },
     "response": {
       "type": "object",

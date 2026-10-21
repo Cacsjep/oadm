@@ -111,7 +111,8 @@
               <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label" />
               <ComboBox Grid.Column="2" ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding Type}" HorizontalAlignment="Stretch" />
               <Panel Grid.Column="3">
-                <TextBox Text="{Binding Value}" PlaceholderText="{Binding ValuePlaceholder}" IsVisible="{Binding !IsPassword}" />
+                <TextBox Text="{Binding Value}" PlaceholderText="{Binding ValuePlaceholder}" IsVisible="{Binding IsTextValue}" />
+                <ui:FileRow FileName="{Binding FileName}" IsSingleButton="True" Command="{Binding ChooseFileCommand}" IsVisible="{Binding IsFile}" />
                 <ui:PasswordBox Text="{Binding Value}" PlaceholderText="{Binding ValuePlaceholder}" IsVisible="{Binding IsPassword}" />
               </Panel>
               <Button Grid.Column="4" Classes="toolbar iconOnly" VerticalAlignment="Center" CommandParameter="{Binding}"

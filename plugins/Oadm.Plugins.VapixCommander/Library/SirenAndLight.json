@@ -1,0 +1,933 @@
+{
+  "formatVersion": 1,
+  "category": "Siren and light",
+  "commands": [
+    {
+      "id": "siren.capabilities.get",
+      "version": 1,
+      "name": "Get siren and light capabilities",
+      "category": "Siren and light",
+      "description": "Siren and light patterns with their intensities, speeds, colors and priorities, and whether health checks and maintenance mode are supported.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getCapabilities"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "PoE class",
+            "path": "data.capabilities.poeClass",
+            "optional": true
+          },
+          {
+            "label": "Health check",
+            "path": "data.capabilities.healthCheckSupport",
+            "optional": true
+          },
+          {
+            "label": "Maintenance mode",
+            "path": "data.capabilities.maintenanceModeSupport",
+            "optional": true
+          },
+          {
+            "label": "Siren patterns",
+            "path": "data.capabilities.siren.supportedPatterns",
+            "optional": true
+          },
+          {
+            "label": "Light patterns",
+            "path": "data.capabilities.light.supportedPatterns",
+            "optional": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.status.get",
+      "version": 1,
+      "name": "Get siren and light status",
+      "category": "Siren and light",
+      "description": "The siren and light operations running now, with pattern, priority and time left.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getStatus"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Siren",
+            "path": "data.siren",
+            "optional": true
+          },
+          {
+            "label": "Light",
+            "path": "data.light",
+            "optional": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.profiles.list",
+      "version": 1,
+      "name": "List siren and light profiles",
+      "category": "Siren and light",
+      "description": "The profiles stored on the device.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getProfiles"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Profiles",
+            "path": "data.profiles"
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.profile.start",
+      "version": 1,
+      "name": "Start siren and light profile",
+      "category": "Siren and light",
+      "description": "Starts a profile stored on the device.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "profile",
+          "label": "Profile",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,50}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "start",
+          "params": {
+            "profile": "{{profile}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Siren id",
+            "path": "data.sirenId",
+            "optional": true
+          },
+          {
+            "label": "Light id",
+            "path": "data.lightId",
+            "optional": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.siren.start",
+      "version": 1,
+      "name": "Start siren",
+      "category": "Siren and light",
+      "description": "Plays a siren pattern. The patterns are listed by Get siren and light capabilities.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "pattern",
+          "label": "Siren pattern",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,100}$"
+        },
+        {
+          "name": "intensity",
+          "label": "Intensity",
+          "type": "integer",
+          "default": 2,
+          "min": 1,
+          "max": 5
+        },
+        {
+          "name": "unit",
+          "label": "Duration in",
+          "type": "enum",
+          "default": "seconds",
+          "options": [
+            {
+              "value": "seconds",
+              "label": "Seconds"
+            },
+            {
+              "value": "repetitions",
+              "label": "Repetitions"
+            }
+          ]
+        },
+        {
+          "name": "duration",
+          "label": "Duration",
+          "description": "Seconds: 0 to 259200. Repetitions: 0 to 20.",
+          "type": "integer",
+          "default": 30,
+          "min": 0,
+          "max": 259200
+        },
+        {
+          "name": "priority",
+          "label": "Priority",
+          "description": "A higher priority runs over a lower one.",
+          "type": "integer",
+          "default": 3,
+          "min": 1,
+          "max": 10
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "start",
+          "params": {
+            "siren": {
+              "pattern": "{{pattern}}",
+              "intensity": "{{intensity}}",
+              "duration": {
+                "unit": "{{unit}}",
+                "value": "{{duration}}"
+              },
+              "priority": "{{priority}}"
+            }
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Siren id",
+            "path": "data.sirenId"
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.light.start",
+      "version": 1,
+      "name": "Start light",
+      "category": "Siren and light",
+      "description": "Shows a light pattern in one color. The patterns are listed by Get siren and light capabilities.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "pattern",
+          "label": "Light pattern",
+          "type": "string",
+          "default": "Steady",
+          "pattern": "^.{1,100}$"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "enum",
+          "default": "red",
+          "options": [
+            {
+              "value": "red",
+              "label": "Red"
+            },
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "amber",
+              "label": "Amber"
+            },
+            {
+              "value": "white",
+              "label": "White"
+            }
+          ]
+        },
+        {
+          "name": "intensity",
+          "label": "Intensity",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 5
+        },
+        {
+          "name": "speed",
+          "label": "Speed",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 4
+        },
+        {
+          "name": "unit",
+          "label": "Duration in",
+          "type": "enum",
+          "default": "seconds",
+          "options": [
+            {
+              "value": "seconds",
+              "label": "Seconds"
+            },
+            {
+              "value": "repetitions",
+              "label": "Repetitions"
+            }
+          ]
+        },
+        {
+          "name": "duration",
+          "label": "Duration",
+          "description": "Seconds: 0 to 259200. Repetitions: 0 to 20.",
+          "type": "integer",
+          "default": 30,
+          "min": 0,
+          "max": 259200
+        },
+        {
+          "name": "priority",
+          "label": "Priority",
+          "description": "A higher priority runs over a lower one.",
+          "type": "integer",
+          "default": 3,
+          "min": 1,
+          "max": 10
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "start",
+          "params": {
+            "light": {
+              "pattern": "{{pattern}}",
+              "speed": "{{speed}}",
+              "colors": [
+                "{{color}}"
+              ],
+              "intensity": "{{intensity}}",
+              "duration": {
+                "unit": "{{unit}}",
+                "value": "{{duration}}"
+              },
+              "priority": "{{priority}}"
+            }
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Light id",
+            "path": "data.lightId"
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.stop.all",
+      "version": 1,
+      "name": "Stop siren and light",
+      "category": "Siren and light",
+      "description": "Stops every siren and light operation, whoever started it.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "stop",
+          "params": {
+            "all": [
+              "siren",
+              "light"
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.profile.stop",
+      "version": 1,
+      "name": "Stop siren and light profile",
+      "category": "Siren and light",
+      "description": "Stops what a profile started.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "profile",
+          "label": "Profile",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,50}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "stop",
+          "params": {
+            "profile": "{{profile}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.profile.add",
+      "version": 1,
+      "name": "Add siren and light profile",
+      "category": "Siren and light",
+      "description": "Stores a profile that plays a siren pattern and shows a light pattern together. For other profiles use Upload siren and light profiles.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "name",
+          "label": "Profile name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,50}$"
+        },
+        {
+          "name": "sirenPattern",
+          "label": "Siren pattern",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,100}$"
+        },
+        {
+          "name": "sirenIntensity",
+          "label": "Siren intensity",
+          "type": "integer",
+          "default": 2,
+          "min": 1,
+          "max": 5
+        },
+        {
+          "name": "lightPattern",
+          "label": "Light pattern",
+          "type": "string",
+          "default": "Steady",
+          "pattern": "^.{1,100}$"
+        },
+        {
+          "name": "color",
+          "label": "Light color",
+          "type": "enum",
+          "default": "red",
+          "options": [
+            {
+              "value": "red",
+              "label": "Red"
+            },
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "amber",
+              "label": "Amber"
+            },
+            {
+              "value": "white",
+              "label": "White"
+            }
+          ]
+        },
+        {
+          "name": "lightIntensity",
+          "label": "Light intensity",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 5
+        },
+        {
+          "name": "duration",
+          "label": "Duration",
+          "type": "integer",
+          "default": 30,
+          "min": 0,
+          "max": 259200,
+          "unit": "s"
+        },
+        {
+          "name": "priority",
+          "label": "Priority",
+          "description": "A higher priority runs over a lower one.",
+          "type": "integer",
+          "default": 3,
+          "min": 1,
+          "max": 10
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "addProfile",
+          "params": {
+            "name": "{{name}}",
+            "siren": {
+              "pattern": "{{sirenPattern}}",
+              "intensity": "{{sirenIntensity}}",
+              "duration": {
+                "unit": "seconds",
+                "value": "{{duration}}"
+              },
+              "priority": "{{priority}}"
+            },
+            "light": {
+              "pattern": "{{lightPattern}}",
+              "colors": [
+                "{{color}}"
+              ],
+              "intensity": "{{lightIntensity}}",
+              "duration": {
+                "unit": "seconds",
+                "value": "{{duration}}"
+              },
+              "priority": "{{priority}}"
+            }
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.profile.remove",
+      "version": 1,
+      "name": "Remove siren and light profile",
+      "category": "Siren and light",
+      "description": "Removes a profile from the device.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "name",
+          "label": "Profile",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,50}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "removeProfile",
+          "params": {
+            "name": "{{name}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.profiles.upload",
+      "version": 1,
+      "name": "Upload siren and light profiles",
+      "category": "Siren and light",
+      "description": "Uploads a JSON file with a list of profiles, written like the profiles of List siren and light profiles.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "mode",
+          "label": "Profiles with the same name",
+          "type": "enum",
+          "default": "add",
+          "options": [
+            {
+              "value": "add",
+              "label": "Keep them (the upload fails)"
+            },
+            {
+              "value": "overwrite",
+              "label": "Replace them"
+            },
+            {
+              "value": "erase_and_add",
+              "label": "Remove every profile first"
+            }
+          ]
+        },
+        {
+          "name": "profiles",
+          "label": "Profile file",
+          "type": "file"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "multipart",
+        "body": [
+          {
+            "name": "request",
+            "contentType": "application/json",
+            "json": {
+              "apiVersion": "1.0",
+              "context": "oadm",
+              "method": "uploadProfiles",
+              "params": {
+                "uploadMode": "{{mode}}"
+              }
+            }
+          },
+          {
+            "name": "file",
+            "contentType": "application/json",
+            "fileName": "profiles",
+            "file": "{{profiles}}"
+          }
+        ],
+        "timeoutSeconds": 30,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.healthcheck.run",
+      "version": 1,
+      "name": "Run siren and light health check",
+      "category": "Siren and light",
+      "description": "Starts a health check of the siren and the light. Read the result with Get last siren and light health check.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "runHealthCheck"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.healthcheck.get",
+      "version": 1,
+      "name": "Get last siren and light health check",
+      "category": "Siren and light",
+      "description": "When the last health check ran and the problems it found.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getLastHealthCheck"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Checked",
+            "path": "data.timestamp",
+            "optional": true
+          },
+          {
+            "label": "Problems",
+            "path": "data.errors",
+            "optional": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "siren.maintenance.on",
+      "version": 1,
+      "name": "Turn on siren and light maintenance mode",
+      "category": "Siren and light",
+      "description": "Marks the device as in maintenance for a time. It stays on after a restart.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "duration",
+          "label": "Duration",
+          "type": "integer",
+          "default": 3600,
+          "min": 1,
+          "unit": "s"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setMaintenanceMode",
+          "params": {
+            "maintenanceMode": true,
+            "duration": "{{duration}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "siren.maintenance.off",
+      "version": 1,
+      "name": "Turn off siren and light maintenance mode",
+      "category": "Siren and light",
+      "description": "Ends the maintenance mode.",
+      "docs": "https://developer.axis.com/vapix/network-video/siren-and-light/",
+      "requires": [
+        {
+          "api": "siren-and-light",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/siren_and_light.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setMaintenanceMode",
+          "params": {
+            "maintenanceMode": false
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    }
+  ]
+}

@@ -63,7 +63,7 @@
       <Grid ColumnDefinitions="*,Auto" Margin="{x:Static shell:TitleBarLayout.ContentMargin}">
         <TextBlock Classes="appName" Text="{x:Static shell:MainWindowViewModel.AppName}" VerticalAlignment="Center" />
         <!-- "User": clicks reach these buttons instead of moving the window. -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,35,0"
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,0,0"
                     chrome:WindowDecorationProperties.ElementRole="User">
           <!-- Initial avatar + name: the account; a click shows what the user's role allows -->
           <Button x:Name="TitleUser" Classes="titleUser" Command="{Binding ShowMyRoleCommand}"

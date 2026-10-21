@@ -64,7 +64,7 @@ public sealed class CommandField
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Description { get; set; }
 
-    /// <summary>string, integer, number, boolean, enum, password (<see cref="FieldTypes"/>).</summary>
+    /// <summary>string, integer, number, boolean, enum, password, file (<see cref="FieldTypes"/>).</summary>
     public string Type { get; set; } = FieldTypes.String;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -99,6 +99,9 @@ public sealed class CommandField
 
     [JsonIgnore]
     public bool IsSecret => Type == FieldTypes.Password;
+
+    [JsonIgnore]
+    public bool IsFile => Type == FieldTypes.File;
 }
 
 public sealed class FieldOption
@@ -120,11 +123,11 @@ public sealed class CommandRequest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? Headers { get; set; }
 
-    /// <summary>none, json, form, text, xml (<see cref="BodyTypes"/>).</summary>
+    /// <summary>none, json, form, text, xml, multipart (<see cref="BodyTypes"/>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? BodyType { get; set; }
 
-    /// <summary>JSON value for json, object of strings for form, string for text/xml.</summary>
+    /// <summary>JSON value for json, object of strings for form, string for text/xml, array of parts for multipart (<see cref="MultipartParts"/>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonNode? Body { get; set; }
 
@@ -194,7 +197,10 @@ public static class FieldTypes
     public const string Enum = "enum";
     public const string Password = "password";
 
-    public static readonly IReadOnlyList<string> All = [String, Integer, Number, Boolean, Enum, Password];
+    /// <summary>A file the user chooses; the value is {"name", "data"} with the content in base64 (<see cref="Oadm.Sdk.Actions.ActionFile"/>).</summary>
+    public const string File = "file";
+
+    public static readonly IReadOnlyList<string> All = [String, Integer, Number, Boolean, Enum, Password, File];
 }
 #pragma warning restore CA1720
 
@@ -205,8 +211,26 @@ public static class BodyTypes
     public const string Form = "form";
     public const string Text = "text";
     public const string Xml = "xml";
+    public const string Multipart = "multipart";
 
-    public static readonly IReadOnlyList<string> All = [None, Json, Form, Text, Xml];
+    public static readonly IReadOnlyList<string> All = [None, Json, Form, Text, Xml, Multipart];
+}
+
+/// <summary>
+/// The parts of a multipart body (multipart/form-data): an array of objects, each with a <c>name</c> and exactly one of
+/// <c>json</c> (a JSON value, filled like a json body), <c>text</c> (a string with placeholders) or <c>file</c> (exactly
+/// "{{field}}" of a file field); optional <c>contentType</c>, and <c>fileName</c> for a file part (else the chosen file's name).
+/// </summary>
+public static class MultipartParts
+{
+    public const string Name = "name";
+    public const string Json = "json";
+    public const string Text = "text";
+    public const string File = "file";
+    public const string ContentType = "contentType";
+    public const string FileName = "fileName";
+
+    public const int MaxParts = 10;
 }
 
 public static class ResponseKinds
@@ -235,7 +259,7 @@ public static class CommandCategories
     public static readonly IReadOnlyList<string> All =
     [
         "Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O",
-        "Events", "Storage", "Applications", "Maintenance", Custom,
+        "Siren and light", "Events", "Storage", "Applications", "Maintenance", Custom,
     ];
 }
 
@@ -244,4 +268,7 @@ public static class CommandLimits
     public const int DefaultTimeoutSeconds = 15;
     public const int MaxTimeoutSeconds = 600;
     public const int FormatVersion = 1;
+
+    /// <summary>Largest file of a file field (1 MB): it travels with the command and is kept with a saved command.</summary>
+    public const int MaxFileBytes = 1024 * 1024;
 }

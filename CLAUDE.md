@@ -915,8 +915,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 - **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
   dialogs alike, is fitted to the screen it opens on (`Shell/WindowFit`, attached in `App`, applied once the window is placed: dialogs open next to
   their owner, also on another monitor, plugin windows on the monitor of the main window; a window larger than the
-  work area less 16 px per side shrinks to it, its minimum and maximum follow, then it is centered or moved back onto the
-  screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
+  work area shrinks to it (no margin: `WindowFit.Margin` = 0, a margin capped Maximize of the main window short of the
+  screen after a minimize and widened the title bar padding), its minimum and maximum follow, then it is centered or
+  moved back onto the screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
   button), input rows that must not leave the card wrap (`WrapPanel.inputRow`), grid columns keep readable minimum
   widths and the grid scrolls sideways. Check a new page with the layout survey (`LayoutSurveyTests`,
   `OADM_LAYOUT_SURVEY=1`, `OADM_LAYOUT_SURVEY_SIZE=1280x672`, screenshots and a list of controls that leave the window).
@@ -1823,10 +1824,12 @@ plugin `README.md`.
 ## VAPIX Commander (core plugin)
 
 `plugins/Oadm.Plugins.VapixCommander` (+ `.Client`), id `oadm.vapix-commander`, rail page **VAPIX Commander** (group
-Automation, icon `command`), on by default, switchable. Pick VAPIX commands from a library (161 bundled, `Library/*.json`)
+Automation, icon `command`), on by default, switchable. Pick VAPIX commands from a library (176 bundled, `Library/*.json`)
 or saved ones, fill their fields and roll them out to many devices, or send one to one device. Details: plugin
 `README.md`; command format: `Schema/command-format.md` + `command.schema.json` (the contract).
 
+- File fields (Siren and light **Upload siren and light profiles**): the file (at most 1 MB) travels inline with the
+  command as {"name", "data"} and only as a part of a `multipart` body, never in a URL, header or log.
 - Rules that must hold: every value is checked before anything is sent; requests stay on the device (paths through
   `CommandValidator.IsDevicePath`); payloads stay in memory, passwords are never logged (`***` in request lines and
   bodies), saved passwords are encrypted with the master key and never listed or exported; a rollout checks every

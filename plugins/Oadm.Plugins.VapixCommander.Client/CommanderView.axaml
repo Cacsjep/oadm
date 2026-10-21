@@ -173,6 +173,7 @@
                           <ui:PasswordBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" IsVisible="{Binding IsPassword}" />
                           <CheckBox IsChecked="{Binding BoolValue}" Content="Yes" IsVisible="{Binding IsBoolean}" />
                           <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}" HorizontalAlignment="Stretch" IsVisible="{Binding IsEnum}" />
+                          <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" Command="{Binding ChooseFileCommand}" IsVisible="{Binding IsFile}" />
                         </Panel>
                       </ui:FormField>
                     </DataTemplate>
