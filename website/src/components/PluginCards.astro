@@ -1,8 +1,9 @@
 ---
 // Landing page: one card per plugin with a picture of its page (from the headless tests), its name and one sentence.
 // A click opens a detail window with the large picture and a link to the plugin's docs page (without JavaScript the
-// card is that link). Order as in the navigation rail. `path` for a page outside tools/.
+// card is that link). The first rows show, the rest behind "Show all" (Reveal). Order as in the navigation rail. `path` for a page outside tools/.
 import { Image, getImage } from 'astro:assets';
+import Reveal from './Reveal.astro';
 import compliance from '../assets/screens/compliance-page.png';
 import ntp from '../assets/screens/ntp-server-page.png';
 import dhcp from '../assets/screens/dhcp-server-page.png';
@@ -46,6 +47,7 @@ const plugins = [
 const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: p.image, width: 1600, format: 'webp' })).src));
 ---
 
+<Reveal more={`Show all ${plugins.length} tools`} preview={22} fade={14}>
 <div class="plugin-cards not-content">
 	{plugins.map((p, i) => (
 		<a class="plugin-card" href={`${base}${p.path ?? `tools/${p.page}`}/`} data-large={large[i]}>
@@ -59,6 +61,7 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 		</a>
 	))}
 </div>
+</Reveal>
 
 <dialog class="plugin-detail not-content" aria-labelledby="plugin-detail-name">
 	<div class="plugin-detail-box">
