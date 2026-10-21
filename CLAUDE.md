@@ -2773,14 +2773,17 @@ the inbound mode ("Wait for the server", the node's listener and mDNS announce, 
 manually / Change address on the Sites page, `FindNodes`, `ChangeSiteAddress`, `SiteMode`, the node firewall rule) is
 gone; the columns `Sites.Mode` / `Port` stay for the migrations, unused. The node reaches **all network cards by default**
 (`NodeConfig.AllCards`; chosen cards restrict it, no chosen card = all cards, `NetworkScope.ReachesAllCards`). Node app
-(`Oadm.SiteNode.App`, 800 x 900, one page, no tabs, decision 2026-10-21): cards Node status (a picture: the OADM logo
+(`Oadm.SiteNode.App`, 800 x 900, fixed size, one page, no tabs, decision 2026-10-21): cards Node status (a picture: the OADM logo
 `Oadm.Theme.Controls.OadmMark` (the splash logo without animation, shared with `SplashLogo`) with the server's name, a line
 with the status below it (grey not linked yet, purple connected, red not connected / lost / error, `LinkKind`), a hexagon
-with the sites icon and the site or computer name; then binding, requests, relays that do not run, node ID and version), Server (two columns, labels above: Server address left; while not bound
-the **Pairing code** right, always shown with "Valid for N more minutes.", or Allow binding), Networks (Reach devices on = a
+with the sites icon and the site or computer name; the binding line and node ID with version centered below the status;
+then requests and relays that do not run), Server (two columns, labels above: Server address left; while not bound
+the **Pairing code** right in a read-only field like the address with a copy button, the hint "... Valid for N more
+minutes." below it, or Allow binding), Networks (Reach devices on = a
 select with check boxes: All cards, then each card with its addresses on a second line; extra networks only on the command
-line), Ports (one table: Direction,
-Protocol, Port, State; requests first with Allow / Dismiss, allowed ports with Remove; Add port below); footer
+line), Ports (**Add** right of the title opens
+the dialog `AddPortWindow` (Direction Out / In, Protocol, Port); one table: Direction (Out = the node connects to devices,
+In = it listens at the site), Protocol, Port, State; requests first with Allow / Dismiss, allowed ports with Remove); footer
 Reset left (red), Save and Close right. No connection log in the app (the node's log files and `oadm-site-node log`). The
 pairing code is part of the state every local user reads (decision 2026-10-21: a code lasts 10 minutes,
 `BindingState.CodeLifetime`; a pairing started with a code just replaced still binds for a minute).

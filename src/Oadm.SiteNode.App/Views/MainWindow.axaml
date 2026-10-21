@@ -8,7 +8,7 @@
         x:Class="Oadm.SiteNode.App.Views.MainWindow"
         x:DataType="vm:NodeAppViewModel"
         Title="OADM Site Node"
-        Width="800" Height="900" MinWidth="640" MinHeight="560"
+        Width="800" Height="900" CanResize="False"
         CanMaximize="False"
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
@@ -46,13 +46,13 @@
              binding, problems and the node's ID and version -->
         <Border Classes="card">
           <StackPanel Spacing="8">
-            <Grid ColumnDefinitions="150,*,150" Margin="0,4,0,8">
+            <Grid ColumnDefinitions="150,*,150" Margin="0,4,0,0">
               <StackPanel Spacing="6">
                 <tc:OadmMark Width="72" Height="72" HorizontalAlignment="Center" />
                 <TextBlock Classes="siteLinkName" Text="{Binding ServerLabel}" ToolTip.Tip="{Binding ServerLabel}" />
                 <TextBlock Classes="siteLinkRole" Text="OADM server" />
               </StackPanel>
-              <Grid Grid.Column="1" RowDefinitions="72,Auto">
+              <Grid Grid.Column="1" RowDefinitions="72,Auto,Auto,Auto">
                 <Panel Margin="8,0">
                   <Border Classes="siteLink" Classes.connected="{Binding IsLinkConnected}" Classes.error="{Binding IsLinkError}" />
                   <Border Classes="siteLinkBadge" Classes.connected="{Binding IsLinkConnected}" Classes.error="{Binding IsLinkError}"
@@ -64,6 +64,10 @@
                   </Border>
                 </Panel>
                 <TextBlock Grid.Row="1" Text="{Binding NodeStatusText}" TextAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding BindingText}" TextAlignment="Center" TextWrapping="Wrap"
+                           Margin="0,4,0,0" IsVisible="{Binding HasState}" />
+                <TextBlock Grid.Row="3" Classes="small secondary" Text="{Binding NodeInfoText}" ToolTip.Tip="{Binding IdText}"
+                           HorizontalAlignment="Center" Margin="0,4,0,0" IsVisible="{Binding HasState}" />
               </Grid>
               <StackPanel Grid.Column="2" Spacing="6">
                 <Panel Width="72" Height="72" HorizontalAlignment="Center">
@@ -75,7 +79,6 @@
               </StackPanel>
             </Grid>
             <TextBlock Classes="secondary" Text="Start the OADM Site Node service." TextWrapping="Wrap" IsVisible="{Binding !HasState}" />
-            <TextBlock Text="{Binding BindingText}" TextWrapping="Wrap" IsVisible="{Binding HasState}" />
             <ui:StatusChip Text="{Binding RequestsText}" IsInfo="True" IsVisible="{Binding HasRequests}" />
             <ItemsControl ItemsSource="{Binding RelayProblems}" IsVisible="{Binding HasRelayProblems}">
               <ItemsControl.ItemTemplate>
@@ -86,7 +89,6 @@
             </ItemsControl>
             <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap"
                        IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            <TextBlock Classes="small secondary" Text="{Binding NodeInfoText}" ToolTip.Tip="{Binding IdText}" IsVisible="{Binding HasState}" />
           </StackPanel>
         </Border>
 
@@ -105,10 +107,15 @@
               <StackPanel Grid.Column="2" Spacing="6" IsVisible="{Binding ShowPairing}">
                 <TextBlock Classes="secondary" Text="Pairing code" />
                 <StackPanel Spacing="6">
-                  <StackPanel Spacing="4" IsVisible="{Binding HasPairingCode}">
-                    <SelectableTextBlock Classes="pairingCode" Text="{Binding PairingCode}" />
-                    <TextBlock Classes="secondary" Text="{Binding PairingHint}" TextWrapping="Wrap" />
-                  </StackPanel>
+                  <!-- Like the address field: the code in a read-only field, the copy button right of it, the hint below -->
+                  <ui:FormField Classes="wide inline" Hint="{Binding PairingHint}" IsVisible="{Binding HasPairingCode}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                      <TextBox Classes="mono" Text="{Binding PairingCode, Mode=OneWay}" IsReadOnly="True" />
+                      <Button Grid.Column="1" Classes="toolbar iconOnly" ToolTip.Tip="Copy pairing code" Command="{Binding CopyPairingCodeCommand}">
+                        <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+                      </Button>
+                    </Grid>
+                  </ui:FormField>
                   <Button Classes="secondary" Content="Allow binding" Command="{Binding AllowBindingCommand}" HorizontalAlignment="Left"
                           IsVisible="{Binding IsBindingClosed}" ToolTip.Tip="Open binding for another 24 hours" />
                   <TextBlock Classes="warning" Text="{Binding WrongCodesText}" TextWrapping="Wrap"
@@ -136,10 +143,15 @@
           </StackPanel>
         </Border>
 
-        <!-- Ports: the server's requests first (Allow, Dismiss), then the allowed ports (Remove); add below the table -->
+        <!-- Ports: Add (a dialog) right of the title; the server's requests first (Allow, Dismiss), then the allowed ports (Remove) -->
         <Border Classes="card" IsVisible="{Binding HasState}">
           <StackPanel Spacing="12">
-            <TextBlock Classes="cardTitle" Text="Ports" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="cardTitle" Text="Ports" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="secondary" Command="{Binding AddPortCommand}">
+                <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add" />
+              </Button>
+            </Grid>
             <DataGrid ItemsSource="{Binding Ports}" IsReadOnly="True" CanUserReorderColumns="False" CanUserSortColumns="False"
                       HeadersVisibility="Column" MaxHeight="360">
               <DataGrid.Columns>
@@ -180,15 +192,6 @@
                 </DataGridTemplateColumn>
               </DataGrid.Columns>
             </DataGrid>
-            <TextBlock Classes="secondary" Text="Add port" Margin="0,0,0,-6" />
-            <ui:FormField Classes="wide inline">
-              <WrapPanel Classes="inputRow">
-                <ComboBox ItemsSource="{Binding PortUses}" SelectedItem="{Binding NewPortUse}" Width="130" />
-                <ComboBox ItemsSource="{Binding PortProtocols}" SelectedItem="{Binding NewPortProtocol}" Width="90" />
-                <TextBox Text="{Binding NewPort}" Width="100" PlaceholderText="8443" />
-                <Button Classes="secondary" Content="Add" Command="{Binding AddPortCommand}" />
-              </WrapPanel>
-            </ui:FormField>
           </StackPanel>
         </Border>
       </StackPanel>

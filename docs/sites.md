@@ -85,7 +85,7 @@ Two parts, one installer:
   `OadmTheme.axaml`, `Icons.axaml`, `OadmColors`) moves to a shared assembly the client and the app both use; the app
   takes the OS's dark or light setting (it has no client settings). It may use `Oadm.Sdk.Client` controls (`StatusChip`,
   `MessageWindow`, `PasswordBox`, `FormField`). First start: the terms of use like the client (`TermsWindow`, the
-  accepted SHA-256 in the app's own settings). One window, one page without tabs (decision 2026-10-21, after the tabbed layout of 2026-10-20): 800 x 900, fitted to
+  accepted SHA-256 in the app's own settings). One window, one page without tabs (decision 2026-10-21, after the tabbed layout of 2026-10-20): 800 x 900, not resizable, fitted to
   small screens (`WindowFit`), the custom title bar of the client (`Border.titleBar`,
   `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and close right, no
   maximize), then cards that scroll together:
@@ -95,24 +95,25 @@ Two parts, one installer:
     connecting), purple with a check while connected, red with a cross while not connected, after a lost connection of a
     bound node or without the service; below the line the status ("Connected", "Not connected: Cannot reach
     10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then
-    "Start the OADM Site Node service." and no other card). Then the binding line ("Bound since
+    "Start the OADM Site Node service." and no other card), centered below it the binding line and the node ID. Then the binding line ("Bound since
     2026-10-20 07:44", "Not bound. Binding open for 23 more hours.", "Binding is closed."), "The server asks for N
     ports." while ports wait, a warning per relay that does not run ("NTP server, UDP 123: UDP 123 is used by another
     program."), and small and grey "Node ID 1457a0b5… · Version 1.0.0" (the whole ID as tooltip);
   - **Server** (two columns, each label above its field): **Server address** (`oadm.example.com` or `10.0.0.5`; hint "Port 5081 unless you type another.", while
     no address is saved "Enter the address of the OADM server." first; the connection problem below the field); while
-    not bound (or a new server identity was accepted) **Pairing code** right of it: the code in large letters with
-    "Type this code at Bind on the Sites page of OADM. Valid for 8 more minutes." (always shown, no button: the code is
-    in the state and a new one comes every 10 minutes), or **Allow binding** while binding is closed (another 24 hours, a
+    not bound (or a new server identity was accepted) **Pairing code** right of it: the code in a read-only field like the address
+    with a copy button right of it and below it "Type this code at Bind on the Sites page of OADM. Valid for 8 more
+    minutes." (always shown: the code is in the state and a new one comes every 10 minutes), or **Allow binding** while binding is closed (another 24 hours, a
     new code), and the wrong codes; then a new identity of the server ("SERVER presents a new identity (fingerprint).",
     see Binding) with **Accept new server identity**;
   - **Networks**: **Reach devices on**, a select with check boxes: **All cards** (default), then each card with its
     addresses and "Default router" on a second line (ticking a card unticks All cards, ticking All cards clears the
     choice; unticking the last card is All cards again; the closed select names the ticked cards); extra networks (routed camera VLANs) only with
     `oadm-site-node networks add|remove`;
-  - **Ports**: one table (Direction, Protocol, Port, State): the ports the server asks for first, "Requested"
-    with **Allow** / **Dismiss**, then the allowed ports (**Connect to** TCP 80, 443, 554 by default; **Listen on** empty
-    by default) with remove; **Add port** below the table.
+  - **Ports**: **Add** right of the title (dialog Add port: Direction Out / In, Protocol, Port; a refusal below the
+    port field); one table (Direction, Protocol, Port, State; Out = the node connects to devices on the port, In = it
+    listens at the site): the ports the server asks for first, "Requested" with **Allow** / **Dismiss**, then the
+    allowed ports (Out TCP 80, 443, 554 by default; In empty by default) with remove.
 
   Footer: **Reset** left (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it again in OADM."; it
   tells the server first, Binding 7), **Save** (the one accent button: enabled while the address has unsaved changes) and

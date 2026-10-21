@@ -84,8 +84,14 @@ public sealed record PortItem(PortEntry Entry, bool IsRequested)
 
     public static PortItem Requested(PortEntry entry) => new(entry, true);
 
-    /// <summary>"Connect to" or "Listen on".</summary>
-    public string Direction => Entry.Use == PortUse.Listen ? "Listen on" : "Connect to";
+    /// <summary>The node connects to devices on the port.</summary>
+    public const string Out = "Out";
+
+    /// <summary>The node listens on the port at the site (a relay of the server, e.g. NTP).</summary>
+    public const string In = "In";
+
+    /// <summary>"Out" or "In".</summary>
+    public string Direction => Entry.Use == PortUse.Listen ? In : Out;
 
     public string Protocol => AdminTexts.Name(Entry.Protocol);
 

@@ -69,7 +69,7 @@ its address changes.
 
 <Steps>
 
-1. In the node app, read the **Pairing code** below the server address. A code is valid for 10 minutes; the app shows
+1. In the node app, read the **Pairing code** next to the server address (the copy button copies it). A code is valid for 10 minutes; the app shows
    the next one by itself.
 2. On the **Sites** page, click **Bind** on the node's row.
 3. Enter the **Site name** and the **Pairing code** and click **Bind**.
@@ -95,10 +95,10 @@ The node never connects to an address outside these networks.
 ## Ports
 
 The **Ports** table lists the ports the node may use. Ports the server asks for come first, marked **Requested**:
-**Allow** or **Dismiss** them. Add a port with **Add port** below the table.
+**Allow** or **Dismiss** them. **Add** right of the title adds a port.
 
-- **Connect to**: the device ports the node may connect to. TCP 80, 443 and 554 by default.
-- **Listen on**: ports the node opens at the site for the server, e.g. UDP 123 when the [NTP server](../../tools/ntp-server/)
+- **Out**: the device ports the node may connect to. TCP 80, 443 and 554 by default.
+- **In**: ports the node opens at the site for the server, e.g. UDP 123 when the [NTP server](../../tools/ntp-server/)
   serves the cameras there. Empty by default.
 
 When the server needs another port, e.g. a camera on TCP 8443, the app lists it with the reason. Click **Allow** or

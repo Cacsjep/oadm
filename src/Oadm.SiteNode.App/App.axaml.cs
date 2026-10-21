@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform;
@@ -123,9 +124,22 @@ public sealed class NodeTermsViewModel(AppSettingsStore store, AppSettings setti
     }
 }
 
-/// <summary>Confirmations in the shared message window.</summary>
+/// <summary>Confirmations in the shared message window, copies to the window's clipboard.</summary>
 public sealed class WindowDialogs(Window owner) : IAppDialogs
 {
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) =>
         Sdk.Client.Controls.MessageWindow.ConfirmAsync(owner, title, message, confirmText);
+
+    public async Task CopyAsync(string text)
+    {
+        if (owner.Clipboard is { } clipboard)
+            await clipboard.SetTextAsync(text).ConfigureAwait(true);
+    }
+
+    public Task ShowAddPortAsync(AddPortViewModel dialog)
+    {
+        var window = new AddPortWindow();
+        window.Attach(dialog);
+        return window.ShowDialog(owner);
+    }
 }

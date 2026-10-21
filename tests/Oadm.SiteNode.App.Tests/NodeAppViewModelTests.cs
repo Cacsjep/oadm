@@ -43,7 +43,7 @@ public sealed class NodeAppViewModelTests
         Assert.False(_vm.AllCards);
         Assert.Equal("Cameras", _vm.NetworksText);
         // The ports table: the request first, then connect before listen, by port.
-        Assert.Equal(["Connect to TCP 8443", "Connect to TCP 80", "Connect to TCP 443", "Connect to TCP 554", "Listen on UDP 123"],
+        Assert.Equal(["Out TCP 8443", "Out TCP 80", "Out TCP 443", "Out TCP 554", "In UDP 123"],
             _vm.Ports.Select(p => $"{p.Direction} {p.Protocol} {p.Port}"));
         Assert.True(_vm.Ports[0].IsRequested);
         Assert.Equal("camera 192.168.0.30", _vm.Ports[0].Reason);
@@ -159,6 +159,9 @@ public sealed class NodeAppViewModelTests
 
         _time.Advance(TimeSpan.FromMinutes(7) + TimeSpan.FromSeconds(30));
         Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 1 more minute.", _vm.PairingHint);
+
+        await _vm.CopyPairingCodeAsync();
+        Assert.Equal(["ABCD-EFGH"], _dialogs.Copied);
     }
 
     [Fact]
@@ -200,11 +203,17 @@ public sealed class NodeAppViewModelTests
         _elevation.IsAdministrator = true;
         _channel.Answer = r => r.Command == AdminCommands.AddPort ? AdminResponse.Fail("At most 64 ports.") : null!;
         await _vm.RefreshAsync();
+        AddPortViewModel? dialog = null;
+        _dialogs.AddPort = async d =>
+        {
+            dialog = d;
+            d.PortText = "8080";
+            await d.AddAsync();
+        };
 
-        _vm.NewPort = "8080";
         await _vm.AddPortAsync();
 
-        Assert.Equal("At most 64 ports.", _vm.ErrorOf(nameof(NodeAppViewModel.NewPort)));
+        Assert.Equal("At most 64 ports.", dialog!.ErrorOf(nameof(AddPortViewModel.PortText))); // in the dialog
         Assert.Null(_vm.ActionError);
     }
 
@@ -452,7 +461,6 @@ public sealed class NodeAppViewModelTests
         _elevation.Prompt = new TaskCompletionSource();
         var request = _vm.Ports[0];
         var port = _vm.Ports[1];
-        _vm.NewPort = "8080";
 
         var allowing = _vm.AllowRequestAsync(request);
 
@@ -479,5 +487,55 @@ public sealed class NodeAppViewModelTests
         Assert.False(_vm.IsBusy);
         Assert.True(_vm.AddPortCommand.CanExecute(null));
         Assert.True(_vm.ResetCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task AddOpensADialogThatSendsThePortAndClosesWhenItIsAdded()
+    {
+        _elevation.IsAdministrator = true;
+        await _vm.RefreshAsync();
+        var closed = new List<bool>();
+        _dialogs.AddPort = async d =>
+        {
+            d.CloseRequested += (_, added) => closed.Add(added);
+            Assert.Equal("Enter a port.", d.AddBlockedReason);
+            d.PortText = "70000";
+            d.FieldLeft(nameof(AddPortViewModel.PortText));
+            Assert.Equal(AddPortViewModel.PortProblem, d.AddBlockedReason);
+            d.PortText = "123";
+            d.Use = d.Uses[1];
+            d.Protocol = d.Protocols[1];
+            Assert.Null(d.AddBlockedReason);
+            await d.AddAsync();
+        };
+
+        await _vm.AddPortAsync();
+
+        var request = _channel.Requests[^1].Request;
+        Assert.Equal((AdminCommands.AddPort, "listen", "udp", "123"), (request.Command, request.Arg("use"), request.Arg("protocol"), request.Arg("port")));
+        Assert.Equal([true], closed);
+        Assert.Equal(["Out", "In"], new AddPortViewModel(_ => Task.FromResult(new AdminResponse())).Uses.Select(u => u.Text));
+    }
+
+    [Fact]
+    public async Task ADismissedPromptKeepsTheAddPortDialogOpenWithoutAnError()
+    {
+        _elevation.Decline = true;
+        await _vm.RefreshAsync();
+        AddPortViewModel? dialog = null;
+        var closed = false;
+        _dialogs.AddPort = async d =>
+        {
+            dialog = d;
+            d.CloseRequested += (_, _) => closed = true;
+            d.PortText = "8080";
+            await d.AddAsync();
+        };
+
+        await _vm.AddPortAsync();
+
+        Assert.False(closed);
+        Assert.Null(dialog!.ErrorOf(nameof(AddPortViewModel.PortText)));
+        Assert.True(dialog.IsIdle);
     }
 }

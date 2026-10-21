@@ -120,11 +120,24 @@ internal sealed class FakeDialogs : IAppDialogs
 
     public List<string> Asked { get; } = [];
 
+    public List<string> Copied { get; } = [];
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmText)
     {
         Asked.Add(message);
         return Task.FromResult(Answer);
     }
+
+    public Task CopyAsync(string text)
+    {
+        Copied.Add(text);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Set: what the test does in the open Add port dialog.</summary>
+    public Func<AddPortViewModel, Task>? AddPort { get; set; }
+
+    public Task ShowAddPortAsync(AddPortViewModel dialog) => AddPort?.Invoke(dialog) ?? Task.CompletedTask;
 }
 
 /// <summary>One headless app per test process: the real app class in the dark appearance.</summary>

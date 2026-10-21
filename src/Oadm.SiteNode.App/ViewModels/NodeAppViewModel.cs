@@ -10,10 +10,16 @@ using Oadm.SiteNode.App.Services;
 
 namespace Oadm.SiteNode.App.ViewModels;
 
-/// <summary>Confirmation popups of the window (ui:MessageWindow); a fake in tests.</summary>
+/// <summary>Confirmation popups of the window (ui:MessageWindow) and the clipboard; a fake in tests.</summary>
 public interface IAppDialogs
 {
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
+
+    /// <summary>Puts <paramref name="text"/> on the clipboard.</summary>
+    Task CopyAsync(string text);
+
+    /// <summary>Shows the Add port dialog until it closes.</summary>
+    Task ShowAddPortAsync(AddPortViewModel dialog);
 }
 
 /// <summary>The line between server and node in the picture on top: grey (not linked yet), purple (connected), red (not connected, lost, error).</summary>
@@ -78,14 +84,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
             ServerAddress.Trim().Length == 0 ? EnterServer
             : Admin.ServerAddress.Parse(ServerAddress, 5081) is null ? "Enter a name or IP address, like oadm.example.com or 10.0.0.5."
             : null);
-        Validation.Rule(nameof(NewPort), () => NewPort.Trim().Length > 0 && Port() is null ? "Enter a port from 1 to 65535." : null);
-        NewPortUse = PortUses[0];
-        NewPortProtocol = PortProtocols[0];
     }
-
-    public IReadOnlyList<Choice<PortUse>> PortUses { get; } = [new(PortUse.Connect, "Connect to"), new(PortUse.Listen, "Listen on")];
-
-    public IReadOnlyList<Choice<PortProtocol>> PortProtocols { get; } = [new(PortProtocol.Tcp, "TCP"), new(PortProtocol.Udp, "UDP")];
 
     public RangeObservableCollection<CardItem> Cards { get; } = [];
 
@@ -245,15 +244,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string ServerAddress { get; set; } = "";
 
-    [ObservableProperty]
-    public partial Choice<PortUse>? NewPortUse { get; set; }
-
-    [ObservableProperty]
-    public partial Choice<PortProtocol>? NewPortProtocol { get; set; }
-
-    [ObservableProperty]
-    public partial string NewPort { get; set; } = "";
-
     /// <summary>A change runs (often waiting for the administrator prompt): every change button and check box is off.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSaveServer), nameof(SaveServerBlockedReason), nameof(CanChange))]
@@ -354,14 +344,11 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>Save of the footer: the one accent button of the window.</summary>
     public bool CanSaveServer => SaveServerBlockedReason is null && !IsBusy;
 
-    public string? AddPortBlockedReason => ErrorOf(nameof(NewPort));
-
     protected override void OnValidationChanged()
     {
         base.OnValidationChanged();
         OnPropertyChanged(nameof(SaveServerBlockedReason));
         OnPropertyChanged(nameof(CanSaveServer));
-        OnPropertyChanged(nameof(AddPortBlockedReason));
     }
 
     /// <summary>Reads the state (and keeps the user's unsaved server address).</summary>
@@ -431,23 +418,18 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [RelayCommand(CanExecute = nameof(CanChange))]
     public Task AcceptServerAsync() => ChangeAsync(AdminRequest.Of(AdminCommands.AcceptServer));
 
+    /// <summary>Add of the Ports card: the Add port dialog; its refusals stay in the dialog.</summary>
     [RelayCommand(CanExecute = nameof(CanChange))]
-    public async Task AddPortAsync()
+    public Task AddPortAsync() => _dialogs.ShowAddPortAsync(new AddPortViewModel(SendPortAsync));
+
+    private async Task<AdminResponse> SendPortAsync(PortEntry port)
     {
-        Validation.ShowAll(nameof(NewPort));
-        if (Port() is not { } port)
-            return;
-        var response = await ChangeAsync(PortRequest(AdminCommands.AddPort, new PortEntry(NewPortUse?.Value ?? PortUse.Connect, NewPortProtocol?.Value ?? PortProtocol.Tcp, port))).ConfigureAwait(true);
-        if (response.Ok)
-        {
-            NewPort = "";
-            Validation.Reset(nameof(NewPort));
-        }
-        else if (response.Error != SystemElevation.Cancelled)
-        {
-            Validation.SetServerError(nameof(NewPort), response.Error);
-            ActionError = null;
-        }
+        var response = await SendAsAdministratorAsync(PortRequest(AdminCommands.AddPort, port)).ConfigureAwait(true);
+        if (response.State is not null)
+            Apply(response.State);
+        else if (response.Ok)
+            await RefreshAsync().ConfigureAwait(true);
+        return response;
     }
 
     [RelayCommand(CanExecute = nameof(CanChange))]
@@ -480,6 +462,10 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
             return;
         await ChangeAsync(AdminRequest.Of(AdminCommands.Reset)).ConfigureAwait(true);
     }
+
+    /// <summary>The copy button right of the pairing code.</summary>
+    [RelayCommand]
+    public Task CopyPairingCodeAsync() => PairingCode is { } code ? _dialogs.CopyAsync(code) : Task.CompletedTask;
 
     /// <summary>Closes the window (Close of the footer).</summary>
     public event EventHandler? CloseRequested;
@@ -598,9 +584,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
         await ChangeAsync(AdminRequest.Of(AdminCommands.SetCard, ("id", card.Id), ("reached", chosen ? "true" : "false"))).ConfigureAwait(true);
     }
-
-    private int? Port() =>
-        int.TryParse(NewPort.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var port) && port is > 0 and <= 65535 ? port : null;
 
     private static AdminRequest PortRequest(string command, PortEntry port) => AdminRequest.Of(command,
         ("use", port.Use == PortUse.Listen ? "listen" : "connect"),

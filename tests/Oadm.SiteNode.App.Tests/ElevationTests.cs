@@ -67,9 +67,8 @@ public sealed class ElevationTests
         await vm.RefreshAsync();
 
         elevation.Answer = AdminResponse.Fail(SystemElevation.NotMade);
-        vm.NewPort = "8080";
-        await vm.AddPortAsync();
-        Assert.Equal(SystemElevation.NotMade, vm.ErrorOf(nameof(NodeAppViewModel.NewPort)));
+        await vm.RemovePortAsync(vm.Ports[1]);
+        Assert.Equal(SystemElevation.NotMade, vm.ActionError);
 
         elevation.Answer = AdminResponse.Fail(SystemElevation.NoPkexec);
         await vm.AllowBindingAsync();

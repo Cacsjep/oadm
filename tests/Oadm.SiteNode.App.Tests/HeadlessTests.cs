@@ -86,7 +86,8 @@ public sealed class HeadlessTests
             Assert.Contains("Cameras", shown.Texts); // the select names the chosen card
             Assert.DoesNotContain("Extra networks", shown.Texts); // command line only
             Assert.Contains("Ports", shown.Texts);
-            Assert.Contains("Connect to", shown.Texts);
+            Assert.Contains("Out", shown.Texts);
+            Assert.Contains("Add", shown.Texts); // right of the Ports title
             Assert.Contains("Node ID a1b2c3d4… · Version 3.7.0", shown.Texts);
             Assert.Contains("Reset", shown.Texts);
         }
@@ -114,6 +115,31 @@ public sealed class HeadlessTests
         Assert.Contains("Office", shown.Texts);
         Assert.Contains("192.168.0.5/24", shown.Texts);
         Assert.Contains("10.0.0.7/24 · Default router", shown.Texts);
+    }
+
+    [Fact]
+    public async Task TheAddPortDialogAsksForDirectionProtocolAndPort()
+    {
+        var texts = await HeadlessEntry.Session.Dispatch(() =>
+        {
+            var window = new AddPortWindow();
+            window.Attach(new AddPortViewModel(_ => Task.FromResult(new AdminResponse { Ok = true })));
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            Save(window, "site-node-app-add-port.png");
+            var shown = window.GetVisualDescendantsTexts();
+            window.Close();
+            return shown;
+        }, CancellationToken.None);
+
+        Assert.Contains("Add port", texts);
+        Assert.Contains("Direction", texts);
+        Assert.Contains("Protocol", texts);
+        Assert.Contains("Port", texts);
+        Assert.Contains("Out", texts);
+        Assert.Contains("TCP", texts);
+        Assert.Contains("Cancel", texts);
+        Assert.Contains("Add", texts);
     }
 
     [Fact]
@@ -276,7 +302,7 @@ public sealed class HeadlessTests
 
 internal static class VisualTexts
 {
-    /// <summary>Every text the window shows (text blocks, selectable text, button and check box contents).</summary>
+    /// <summary>Every text the window shows (text blocks, selectable text, text fields, button and check box contents).</summary>
     public static List<string> GetVisualDescendantsTexts(this Window window)
     {
         var texts = new List<string>();
@@ -286,6 +312,9 @@ internal static class VisualTexts
             {
                 case TextBlock { Text: { Length: > 0 } text } when visual.IsEffectivelyVisible:
                     texts.Add(text);
+                    break;
+                case TextBox { Text: { Length: > 0 } value } when visual.IsEffectivelyVisible:
+                    texts.Add(value);
                     break;
                 case ContentControl { Content: string content } when visual.IsEffectivelyVisible:
                     texts.Add(content);
