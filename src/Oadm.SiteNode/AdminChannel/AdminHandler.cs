@@ -11,8 +11,8 @@ using Oadm.SiteNode.Feed;
 namespace Oadm.SiteNode.AdminChannel;
 
 /// <summary>
-/// The commands of the app and the command line (docs/sites.md, "App"). Every local user may read the state and the
-/// connection log; the pairing code and every change need an administrator of the machine.
+/// The commands of the app and the command line (docs/sites.md, "App"). Every local user may read the state, the pairing
+/// code (it lasts 10 minutes) and the connection log; every change needs an administrator of the machine.
 /// </summary>
 public sealed class AdminHandler(
     NodeStore store,

@@ -34,7 +34,7 @@ Client ──► OADM server ◄──TLS 5081── OADM Site Node, site "Build
 | Model (2026-10-19) | Kept: one server, nodes are pipes. The parked multi-server "nodes" draft (full OADM servers as relays, 2026-10-13) stays dropped. |
 | Direction (2026-10-19, security review; 2026-10-20) | **The node always connects to the server; the node never listens** (no inbound port at the site, nothing to scan there). The server listens for site nodes on its own port, TCP 5081 **(default)**, apart from the clients' 5080, **only after an administrator turns on "Accept site nodes"** on the Sites page (off by default: a server without sites opens no extra port). The inbound mode of 2026-10-19 (the node waiting on 5081, the server dialing it, mDNS announce, Search and Add manually on the Sites page) was removed on 2026-10-20: one direction, one code path. |
 | Finding | The node app takes the server's address; once the node connects, it shows on the Sites page as **Waiting to be bound**. |
-| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open; the administrator types it in OADM at **Bind**. The code proves both sides to each other through J-PAKE, a balanced PAKE (see Binding), so neither another server nor anything in between can bind, and nobody (not even an impostor node or server taking part) can test codes offline. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
+| Binding (2026-10-19, security review) | **Pairing code**: the node app shows an 8-character code while binding is open, a new one every 10 minutes; the administrator types it in OADM at **Bind**. The code proves both sides to each other through J-PAKE, a balanced PAKE (see Binding), so neither another server nor anything in between can bind, and nobody (not even an impostor node or server taking part) can test codes offline. Binding is open for 24 hours of run time **(default)** after install or Reset, then closed until **Allow binding** in the node app. A bound node refuses every other server. |
 | Removing | From OADM (rare), with "Keep devices" or not. Locally with **Reset** in the node app when the server is gone. |
 | Reach (2026-10-20) | The node reaches the devices on **all network cards (default)** or on the **cards chosen in the node app** (one choice: All cards, or ticked cards; ticking a card unticks All cards, ticking All cards clears the choice; no chosen card counts as all cards). Restrict to chosen cards when the machine also sits in an office network. Optional extra routed subnets (camera VLANs) in the app. The server cannot widen the reach. |
 | Ports (2026-10-19, security review) | The node uses **only allowed ports**, in two lists: **Connect to** (devices; TCP 80, 443 and 554 by default) and **Listen on** (relays; empty by default), so a port allowed for a camera never opens a listener at the site. Further ports (a plugin's ports, a camera on 8443, a per-device RTSP port, the NTP relay's UDP 123) are **requested by the server and allowed in the node app** ("Building B asks to connect to TCP 8443: camera 192.168.0.30. Allow"); nothing is allowed by itself. A dial to another port is a site error "Port 8443 is not allowed at Building B. Allow it in the OADM Site Node app." |
@@ -85,47 +85,43 @@ Two parts, one installer:
   `OadmTheme.axaml`, `Icons.axaml`, `OadmColors`) moves to a shared assembly the client and the app both use; the app
   takes the OS's dark or light setting (it has no client settings). It may use `Oadm.Sdk.Client` controls (`StatusChip`,
   `MessageWindow`, `PasswordBox`, `FormField`). First start: the terms of use like the client (`TermsWindow`, the
-  accepted SHA-256 in the app's own settings). One window laid out like a service control window (redesigned again 2026-10-20 after the
-  AXIS Device Manager Service Control, and simplified the same day): about 440 x 780, fitted to small screens
-  (`WindowFit`), the custom title bar of the client (`Border.titleBar`,
+  accepted SHA-256 in the app's own settings). One window, one page without tabs (decision 2026-10-21, after the tabbed layout of 2026-10-20): 800 x 900, fitted to
+  small screens (`WindowFit`), the custom title bar of the client (`Border.titleBar`,
   `Oadm.Theme.Shell.TitleBarLayout.ContentMarginWithoutMaximize`: the app name left, minimize and close right, no
-  maximize), **the tabs directly on the window background** (no card: the window is narrow; `ui:PageTab` without a close
-  command, `Count` badge), label / field rows (`ui:FormField`); below the tabs **Node status** (simplified 2026-10-20:
-  every state line lives here, each name once): the status chip "Connected to SERVER" ("Not connected: Cannot reach
-  10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then the
-  window says "Start the OADM Site Node service." and shows no tabs), "Site SITE" once bound, the binding line ("Bound
-  since 2026-10-20 07:44", "Not bound. Binding open for 23 more hours.", "Binding is closed."), small and grey "Node ID
-  1457a0b5… · Version 1.0.0" (the whole ID as tooltip) and, while ports wait, "The server asks for N ports." with
-  **Review** (opens Ports); the footer **Save** (the one accent
-  button: enabled while the address has unsaved changes) and **Close**, both on the right. No start / stop buttons. Tabs:
-  - **General**, top to bottom: **Server address** (`oadm.example.com` or `10.0.0.5`; hint "Port 5081 unless you type
-    another.", while no address is saved "Enter the address of the OADM server." first, so a new node shows what to do;
-    the connection problem below the field); then, once an address is saved and while not bound (or a new server
-    identity was accepted), **Pairing code**: the code in large letters with "Type this code at Bind on the Sites page of
-    OADM.", the wrong codes, and the button the state needs: **Show pairing code** or **Allow binding** (another 24
-    hours, a new code). **Save** of the address runs as an administrator already, so its answer carries the current code
-    while not bound and the app shows it right away (the code never enters the state everyone reads); Show pairing code
-    is for an app opened later. Then a new identity of the server ("SERVER presents a new identity (fingerprint).", see
-    Binding) with **Accept new server identity**, and **Reset** at the bottom (red, confirmed: "The node forgets SERVER
-    and gets a new identity. Bind it again in OADM."; it tells the server first, Binding 7). Binding, site, node ID and
-    version are in Node status. No mode switch: the node always connects to the server;
-  - **Networks**: **Reach devices on**: one choice, **All cards** (default) or chosen cards (a check list of the cards
-    with their addresses, "Default router" on the office side; ticking a card unticks All cards, ticking All cards clears
-    the choice; unticking the last card is All cards again), and **Extra networks** (routed camera VLANs: add, remove);
-  - **Ports** (the tab shows the number of requests): the ports the server asks for first, each with the list and why
-    ("Connect to TCP 8443: camera 192.168.0.30", "Listen on UDP 123: NTP server") and **Allow** / **Dismiss**, then two
-    lists, **Connect to** (TCP 80, 443, 554 by default) and **Listen on** (empty by default), each with remove and add;
-  - **Activity**: the connections now (short and permanent, see Limits), the relays open now ("NTP, UDP 123, for
-    SERVER") and their problems ("UDP 123 is used by another program"), and the **Connection log**: the last
-    connections through the node (time, server, target address and port, short or permanent, result), newest 10,000
-    **(default)**, also in a daily file kept 30 days and at most 1 GB together (`logs/`; the same line within a minute
-    once with "(N more)"); never contents.
+  maximize), then cards that scroll together:
+  - **Node status** (every state line, each name once): the status chip "Connected to SERVER" ("Not connected: Cannot
+    reach 10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then
+    "Start the OADM Site Node service." and no other card), "Site SITE" once bound, the binding line ("Bound since
+    2026-10-20 07:44", "Not bound. Binding open for 23 more hours.", "Binding is closed."), "The server asks for N
+    ports." while ports wait, a warning per relay that does not run ("NTP server, UDP 123: UDP 123 is used by another
+    program."), and small and grey "Node ID 1457a0b5… · Version 1.0.0" (the whole ID as tooltip);
+  - **Server** (two columns, each label above its field): **Server address** (`oadm.example.com` or `10.0.0.5`; hint "Port 5081 unless you type another.", while
+    no address is saved "Enter the address of the OADM server." first; the connection problem below the field); while
+    not bound (or a new server identity was accepted) **Pairing code** right of it: the code in large letters with
+    "Type this code at Bind on the Sites page of OADM. Valid for 8 more minutes." (always shown, no button: the code is
+    in the state and a new one comes every 10 minutes), or **Allow binding** while binding is closed (another 24 hours, a
+    new code), and the wrong codes; then a new identity of the server ("SERVER presents a new identity (fingerprint).",
+    see Binding) with **Accept new server identity**;
+  - **Networks**: **Reach devices on**, a select with check boxes: **All cards** (default), then each card with its
+    addresses and "Default router" on a second line (ticking a card unticks All cards, ticking All cards clears the
+    choice; unticking the last card is All cards again; the closed select names the ticked cards); extra networks (routed camera VLANs) only with
+    `oadm-site-node networks add|remove`;
+  - **Ports**: one table (Direction, Protocol, Port, State): the ports the server asks for first, "Requested"
+    with **Allow** / **Dismiss**, then the allowed ports (**Connect to** TCP 80, 443, 554 by default; **Listen on** empty
+    by default) with remove; **Add port** below the table.
 
-  It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state
-  except the pairing code; showing the code and every change need administrator rights (UAC on Windows, `pkexec` on
-  Linux; the code is **Show pairing code**, so a local user without those rights cannot bind a server). The app and the
+  Footer: **Reset** left (red, confirmed: "The node forgets SERVER and gets a new identity. Bind it again in OADM."; it
+  tells the server first, Binding 7), **Save** (the one accent button: enabled while the address has unsaved changes) and
+  **Close** right. No start / stop buttons, no mode switch (the node always connects to the server). The app has no
+  connection log: the node writes the last connections (time, server, target address and port, short or permanent,
+  result) to a daily file kept 30 days and at most 1 GB together (`logs/`; the same line within a minute once with "(N
+  more)"; newest 10,000 **(default)** in memory for `oadm-site-node log`); never contents.
+
+  It talks to the service over a local channel (Windows named pipe, Linux Unix socket): everyone may read the state,
+  the pairing code too (decision 2026-10-21: a code lasts 10 minutes and the node binds only to the server an
+  administrator saved); every change needs administrator rights (UAC on Windows, `pkexec` on Linux). The app and the
   command line send nothing to a channel another program serves (Windows: the pipe owner must be the node's account). Headless machines use `oadm-site-node
-  status`, `pairing-code` (administrators), `server <address>`, `allow-binding`, `networks`, `ports`, `accept-server`,
+  status`, `pairing-code`, `server <address>`, `allow-binding`, `networks`, `ports`, `accept-server`,
   `reset`.
 - **Data** (`%ProgramData%\OADM Site Node`, `/var/lib/oadm-site-node`; service account only): `node.json` {id, server
   address (with its port), all cards or the chosen cards, extra subnets, allowed ports (connect, listen), requested ports,

@@ -56,8 +56,7 @@ sudo apt install ./oadm-site-node_*.deb                             # service on
 
 1. In OADM, open **Sites** and turn on **Accept site nodes** (administrators).
 2. In the node app, enter the server's name or IP address under **Server address** and click **Save**. Port 5081
-   unless you enter another one. Windows asks for administrator rights, Linux for your password. The pairing code
-   appears below the address.
+   unless you enter another one. Windows asks for administrator rights, Linux for your password.
 3. Under **Node status** the app says **Connected to** the server. On the **Sites** page the node shows as **Waiting to
    be bound**.
 
@@ -70,8 +69,8 @@ its address changes.
 
 <Steps>
 
-1. In the node app, read the **Pairing code** below the server address. When you opened the app later, click **Show
-   pairing code** (administrator rights).
+1. In the node app, read the **Pairing code** below the server address. A code is valid for 10 minutes; the app shows
+   the next one by itself.
 2. On the **Sites** page, click **Bind** on the node's row.
 3. Enter the **Site name** and the **Pairing code** and click **Bind**.
 
@@ -87,13 +86,16 @@ range and Add manually also search through the node. The **Site** column of the 
 
 ## Networks
 
-On the **Networks** tab, **Reach devices on** says where the node looks for devices: **All cards** (default), or the
-cards you tick. Tick only the camera cards when the node's computer also sits in an office network. Under **Extra
-networks** add networks behind a router, e.g. a camera network `10.20.0.0/16`.
+Under **Networks**, **Reach devices on** says where the node looks for devices: **All cards** (default), or the cards
+you tick in the list. Tick only the camera cards when the node's computer also sits in an office network. Networks behind a router, e.g. a
+camera network `10.20.0.0/16`, are added on the command line: `oadm-site-node networks add 10.20.0.0/16`.
 
 The node never connects to an address outside these networks.
 
 ## Ports
+
+The **Ports** table lists the ports the node may use. Ports the server asks for come first, marked **Requested**:
+**Allow** or **Dismiss** them. Add a port with **Add port** below the table.
 
 - **Connect to**: the device ports the node may connect to. TCP 80, 443 and 554 by default.
 - **Listen on**: ports the node opens at the site for the server, e.g. UDP 123 when the [NTP server](../../tools/ntp-server/)
@@ -150,8 +152,7 @@ The site and its devices stay as they were. Accept alone binds nothing: only the
 
 ## Without a desktop
 
-On a computer without a desktop, use the command line. Changes and the pairing code need administrator rights (`sudo` on
-Linux).
+On a computer without a desktop, use the command line. Changes need administrator rights (`sudo` on Linux).
 
 | Command | Does |
 |---|---|
@@ -174,5 +175,5 @@ Linux).
   `net.ipv4.ip_local_port_range`.
 - **Encryption**: devices reached over HTTPS stay encrypted all the way. Devices on plain HTTP or plain RTSP can be read
   on the node's computer, like on the network itself.
-- **Connection log**: the app shows the last connections through the node. The node also keeps them in its data folder
-  for 30 days.
+- **Connection log**: the node keeps the last connections through it in its data folder for 30 days;
+  `oadm-site-node log` shows the newest.

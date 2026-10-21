@@ -144,6 +144,8 @@ public sealed class NodeStatusFeed
 
     public NodeView View()
     {
+        var (code, validUntil) = _state.CurrentCode(); // first: a code past its time is replaced before the generation is read
+        var shows = _state.ShowsPairingCode;
         var config = _store.Snapshot();
         var bound = config.BoundServers.FirstOrDefault();
         return new NodeView
@@ -171,6 +173,8 @@ public sealed class NodeStatusFeed
             WrongCodes = _state.WrongCodes,
             LockedUntil = _state.LockedUntil,
             PairingCodeGeneration = _state.PairingCodeGeneration,
+            PairingCode = shows ? Sites.Binding.PairingCode.Format(code) : "",
+            PairingCodeValidUntil = shows ? validUntil : null,
         };
     }
 

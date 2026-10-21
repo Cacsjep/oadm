@@ -16,16 +16,7 @@ public interface IAppDialogs
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
 }
 
-/// <summary>The tabs of the window.</summary>
-public enum NodeTab
-{
-    General,
-    Networks,
-    Ports,
-    Activity,
-}
-
-/// <summary>How the node status line below the tabs is colored.</summary>
+/// <summary>How the node status line is colored.</summary>
 public enum NodeStatusKind
 {
     Neutral,
@@ -35,9 +26,9 @@ public enum NodeStatusKind
 }
 
 /// <summary>
-/// The one window of the OADM Site Node app (docs/sites.md, "App"): server, binding and pairing code, site, networks,
-/// ports and requests, relays and connections, the connection log, Reset. Reads the service's state every 2 seconds;
-/// every change and the pairing code go through <see cref="IElevation"/> unless the app runs as an administrator.
+/// The one window of the OADM Site Node app (docs/sites.md, "App"): server and pairing code, networks, ports and
+/// requests, the node status, Reset. Reads the service's state every 2 seconds (the pairing code is part of it while the
+/// node is not bound); every change goes through <see cref="IElevation"/> unless the app runs as an administrator.
 /// </summary>
 public sealed partial class NodeAppViewModel : ValidatingViewModel
 {
@@ -48,6 +39,10 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     /// <summary>The hint of the address field once an address is saved.</summary>
     public const string PortHint = "Port 5081 unless you type another.";
+
+    /// <summary>The first sentence below the pairing code.</summary>
+    public const string TypeCode = "Type this code at Bind on the Sites page of OADM.";
+
     /// <summary>"The node forgets OADM-SRV and gets a new identity. Bind it again in OADM."</summary>
     public static string ResetMessage(string server) => $"The node forgets {server} and gets a new identity. Bind it again in OADM.";
 
@@ -60,8 +55,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private bool _serverEdited;
     private int _busy;
     private int _failedReads;
-    private string? _lastNodeId;
-    private long? _lastCodeGeneration;
 
     public NodeAppViewModel(INodeChannel channel, IElevation elevation, IAppDialogs dialogs, TimeProvider? time = null)
     {
@@ -72,11 +65,11 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         _elevation = elevation;
         _dialogs = dialogs;
         _time = time ?? TimeProvider.System;
+        AllCardsChoice = new AllCardsItem(() => AllCards, value => AllCards = value);
         Validation.Rule(nameof(ServerAddress), () =>
             ServerAddress.Trim().Length == 0 ? EnterServer
             : Admin.ServerAddress.Parse(ServerAddress, 5081) is null ? "Enter a name or IP address, like oadm.example.com or 10.0.0.5."
             : null);
-        Validation.Rule(nameof(NewSubnet), () => NewSubnet.Trim().Length > 0 && Subnet.Parse(NewSubnet) is null ? "Enter a network like 10.20.0.0/16." : null);
         Validation.Rule(nameof(NewPort), () => NewPort.Trim().Length > 0 && Port() is null ? "Enter a port from 1 to 65535." : null);
         NewPortUse = PortUses[0];
         NewPortProtocol = PortProtocols[0];
@@ -88,49 +81,48 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     public RangeObservableCollection<CardItem> Cards { get; } = [];
 
-    public RangeObservableCollection<SubnetItem> ExtraSubnets { get; } = [];
+    /// <summary>"All cards", the first entry of the network select.</summary>
+    public AllCardsItem AllCardsChoice { get; }
 
-    public RangeObservableCollection<PortItem> ConnectPorts { get; } = [];
+    /// <summary>The entries of the network select: All cards, then every card.</summary>
+    public RangeObservableCollection<object> NetworkChoices { get; } = [];
 
-    public RangeObservableCollection<PortItem> ListenPorts { get; } = [];
+    /// <summary>The ports table: the server's requests first, then the allowed ports (connect before listen, by port).</summary>
+    public RangeObservableCollection<PortItem> Ports { get; } = [];
 
-    public RangeObservableCollection<PortItem> RequestedPorts { get; } = [];
-
-    public RangeObservableCollection<RelayItem> Relays { get; } = [];
-
-    public RangeObservableCollection<LogRow> Log { get; } = [];
+    /// <summary>Relays the server opened that do not run ("UDP 123 is used by another program"): lines of the node status.</summary>
+    public RangeObservableCollection<RelayItem> RelayProblems { get; } = [];
 
     /// <summary>The last state read; null while the service does not answer.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasState), nameof(IsBound), nameof(IsBindingOpen), nameof(IsBindingClosed), nameof(BindingText),
-        nameof(SiteText), nameof(HasSite), nameof(IdText), nameof(NodeInfoText), nameof(ConnectionsText), nameof(HasNewIdentity), nameof(NewIdentityText),
-        nameof(WrongCodesText), nameof(IsConnected), nameof(ConnectionText), nameof(HasConnectionProblem), nameof(HasRequests),
-        nameof(HasRelays), nameof(AllCards), nameof(HasNoListenPorts), nameof(HasServerAddress), nameof(ServerHint))]
+        nameof(SiteText), nameof(HasSite), nameof(IdText), nameof(NodeInfoText), nameof(HasNewIdentity), nameof(NewIdentityText),
+        nameof(WrongCodesText), nameof(IsConnected), nameof(ConnectionText), nameof(HasConnectionProblem), nameof(AllCards),
+        nameof(NetworksText), nameof(HasServerAddress), nameof(ServerHint), nameof(PairingCode), nameof(PairingHint))]
     public partial NodeView? State { get; private set; }
 
     /// <summary>"The OADM Site Node service is not running."</summary>
     [ObservableProperty]
     public partial string? ServiceError { get; private set; }
 
-    [ObservableProperty]
-    public partial string? PairingCode { get; private set; }
+    /// <summary>"ABCD-EFGH" while the node is not bound (or a new server identity was accepted); null otherwise.</summary>
+    public string? PairingCode => State?.PairingCode is { Length: > 0 } code ? code : null;
 
-    /// <summary>The tab shown.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsGeneralTab), nameof(IsNetworksTab), nameof(IsPortsTab), nameof(IsActivityTab))]
-    public partial NodeTab Tab { get; set; }
-
-    public bool IsGeneralTab => Tab == NodeTab.General;
-
-    public bool IsNetworksTab => Tab == NodeTab.Networks;
-
-    public bool IsPortsTab => Tab == NodeTab.Ports;
-
-    public bool IsActivityTab => Tab == NodeTab.Activity;
+    /// <summary>"Type this code at Bind on the Sites page of OADM. Valid for 8 more minutes."</summary>
+    public string PairingHint
+    {
+        get
+        {
+            if (State?.PairingCodeValidUntil is not { } until)
+                return TypeCode;
+            var minutes = Math.Max(1, (int)Math.Ceiling((until - _time.GetUtcNow()).TotalMinutes));
+            return $"{TypeCode} Valid for {minutes} more {(minutes == 1 ? "minute" : "minutes")}.";
+        }
+    }
 
     /// <summary>
-    /// The status line of the Node status block below the tabs: "Connected to OADM-SRV", "Not connected: Cannot reach
-    /// 10.0.0.5:5081", "No server address yet", "Service not running". The site has a line of its own (<see cref="SiteText"/>).
+    /// The status line of the Node status block: "Connected to OADM-SRV", "Not connected: Cannot reach 10.0.0.5:5081",
+    /// "No server address yet", "Service not running". The site has a line of its own (<see cref="SiteText"/>).
     /// </summary>
     public string NodeStatusText => NodeStatus.Text;
 
@@ -172,17 +164,11 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         var s => $"Not bound. Binding open for {Hours(s.BindingHoursLeft)}.",
     };
 
-    /// <summary>Show pairing code: binding is open (or a new server identity was accepted) and no code is shown yet.</summary>
-    public bool CanShowPairingCode => PairingCode is not { Length: > 0 } && IsPairing;
-
     /// <summary>Binding is open, or a new server identity was accepted: the server binds with the pairing code.</summary>
     public bool IsPairing => IsBindingOpen || State is { NewServerAccepted: true, NewServerIdentity.Length: > 0 };
 
-    /// <summary>
-    /// The pairing code part of the General tab: once a server address is saved and the node is not bound (or a new server
-    /// identity was accepted). Before an address the field is the one thing to do.
-    /// </summary>
-    public bool ShowPairing => HasServerAddress && (IsPairing || IsBindingClosed);
+    /// <summary>The pairing code row below the server address: while the node is not bound (or a new server identity was accepted).</summary>
+    public bool ShowPairing => IsPairing || IsBindingClosed;
 
     public bool HasPairingCode => PairingCode is { Length: > 0 };
 
@@ -198,25 +184,22 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>The address field's hint: what to do first on a new node, else the port.</summary>
     public string ServerHint => State is not null && !HasServerAddress ? EnterServer + " " + PortHint : PortHint;
 
-    /// <summary>Requests of the server that wait (the count badge of the Ports tab).</summary>
-    public int RequestCount => RequestedPorts.Count;
+    /// <summary>Requests of the server that wait.</summary>
+    public int RequestCount { get; private set; }
 
     /// <summary>"The server asks for 2 ports."</summary>
     public string RequestsText => RequestCount == 1 ? "The server asks for 1 port." : $"The server asks for {RequestCount} ports.";
 
-    /// <summary>A refusal of a binding action (below the binding card's buttons).</summary>
+    /// <summary>A refusal of a binding action (below the pairing code).</summary>
     [ObservableProperty]
     public partial string? BindingError { get; private set; }
 
-    /// <summary>A refusal of another change (below the card it came from is not known: below the toolbar).</summary>
+    /// <summary>A refusal of another change (in the node status).</summary>
     [ObservableProperty]
     public partial string? ActionError { get; private set; }
 
     [ObservableProperty]
     public partial string ServerAddress { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string NewSubnet { get; set; } = "";
 
     [ObservableProperty]
     public partial Choice<PortUse>? NewPortUse { get; set; }
@@ -230,8 +213,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>A change runs (often waiting for the administrator prompt): every change button and check box is off.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSaveServer), nameof(SaveServerBlockedReason), nameof(CanChange))]
-    [NotifyCanExecuteChangedFor(nameof(SaveServerCommand), nameof(ShowPairingCodeCommand), nameof(AllowBindingCommand), nameof(AcceptServerCommand),
-        nameof(AddSubnetCommand), nameof(RemoveSubnetCommand), nameof(AddPortCommand), nameof(RemovePortCommand), nameof(AllowRequestCommand),
+    [NotifyCanExecuteChangedFor(nameof(SaveServerCommand), nameof(AllowBindingCommand), nameof(AcceptServerCommand),
+        nameof(AddPortCommand), nameof(RemovePortCommand), nameof(AllowRequestCommand),
         nameof(DismissRequestCommand), nameof(ResetCommand))]
     public partial bool IsBusy { get; private set; }
 
@@ -247,7 +230,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public bool IsBindingClosed => State?.Binding == NodeBinding.Closed;
 
     /// <summary>
-    /// All cards (the default) of the Networks tab's choice: ticking it clears the chosen cards; choosing a card unticks it.
+    /// All cards (the default) of the network select: ticking it clears the chosen cards; choosing a card unticks it.
     /// Unticking it without a chosen card changes nothing (no chosen card means all cards).
     /// </summary>
     public bool AllCards
@@ -256,11 +239,21 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         set
         {
             if (State is not null && value != State.AllCards && CanChange)
+            {
                 _ = ChangeAsync(AdminRequest.Of(AdminCommands.AllCards, ("on", value ? "true" : "false")));
+            }
             else
+            {
                 OnPropertyChanged();
+                AllCardsChoice.Refresh();
+            }
         }
     }
+
+    /// <summary>The network select's text: "All cards" or the chosen cards ("Cameras, Office").</summary>
+    public string NetworksText => State is { AllCards: false } s && string.Join(", ", s.Cards.Where(c => c.Reached).Select(c => c.Name)) is { Length: > 0 } names
+        ? names
+        : "All cards";
 
     /// <summary>"Site Building B" below the status line once the server named the site; empty before.</summary>
     public string SiteText => State is { Binding: NodeBinding.Bound, Bound.SiteName: { Length: > 0 } site } ? "Site " + site : "";
@@ -274,9 +267,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public string NodeInfoText => State is not { } s
         ? ""
         : $"Node ID {(s.NodeId.Length > 8 ? s.NodeId[..8] + "…" : s.NodeId)} · Version {s.Version}";
-
-    /// <summary>"3 short, 12 permanent".</summary>
-    public string ConnectionsText => State is null ? "" : $"{State.ShortConnections} short, {State.PermanentConnections} permanent";
 
     public bool HasNewIdentity => State?.NewServerIdentity.Length > 0;
 
@@ -307,11 +297,9 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     public bool HasConnectionProblem => State is not null && !State.Connected && State.ConnectionText.StartsWith("Cannot", StringComparison.Ordinal);
 
-    public bool HasRequests => RequestedPorts.Count > 0;
+    public bool HasRequests => RequestCount > 0;
 
-    public bool HasRelays => Relays.Count > 0;
-
-    public bool HasNoListenPorts => ListenPorts.Count == 0;
+    public bool HasRelayProblems => RelayProblems.Count > 0;
 
     /// <summary>The address field differs from the service's server address.</summary>
     public bool HasUnsavedChanges => State is { } s && !string.Equals(ServerAddress.Trim(), s.ServerAddress.Trim(), StringComparison.OrdinalIgnoreCase);
@@ -322,8 +310,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>Save of the footer: the one accent button of the window.</summary>
     public bool CanSaveServer => SaveServerBlockedReason is null && !IsBusy;
 
-    public string? AddSubnetBlockedReason => ErrorOf(nameof(NewSubnet));
-
     public string? AddPortBlockedReason => ErrorOf(nameof(NewPort));
 
     protected override void OnValidationChanged()
@@ -331,7 +317,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         base.OnValidationChanged();
         OnPropertyChanged(nameof(SaveServerBlockedReason));
         OnPropertyChanged(nameof(CanSaveServer));
-        OnPropertyChanged(nameof(AddSubnetBlockedReason));
         OnPropertyChanged(nameof(AddPortBlockedReason));
     }
 
@@ -342,7 +327,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         var response = await _channel.SendAsync(AdminRequest.Of(AdminCommands.State), CancellationToken.None).ConfigureAwait(true);
         if (!response.Ok || response.State is null)
         {
-            // One failed read is tolerated (the service was busy for a moment): the window keeps the last state and code.
+            // One failed read is tolerated (the service was busy for a moment): the window keeps the last state.
             if (++_failedReads < 2 && State is not null)
                 return;
             ServiceError = response.Error.Length > 0 ? response.Error : AdminTexts.ServiceNotRunning;
@@ -362,22 +347,12 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         try
         {
             await RefreshAsync().ConfigureAwait(true);
-            await LoadLogAsync().ConfigureAwait(true);
             while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(true))
                 await RefreshAsync().ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
         }
-    }
-
-    [RelayCommand]
-    public async Task LoadLogAsync()
-    {
-        var response = await _channel.SendAsync(AdminRequest.Of(AdminCommands.Log, ("count", "10000")), CancellationToken.None).ConfigureAwait(true);
-        if (!response.Ok)
-            return;
-        Log.ReplaceAll(response.Log.Select(LogRow.From));
     }
 
     [RelayCommand(CanExecute = nameof(CanChange))]
@@ -391,9 +366,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         {
             _serverEdited = false;
             Validation.Reset(nameof(ServerAddress));
-            // The save ran as an administrator: the answer carries the pairing code while the node is not bound.
-            if (response.PairingCode.Length > 0)
-                PairingCode = response.PairingCode;
         }
         else if (response.Error != SystemElevation.Cancelled)
         {
@@ -403,62 +375,17 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     }
 
     [RelayCommand(CanExecute = nameof(CanChange))]
-    public async Task ShowPairingCodeAsync()
-    {
-        BindingError = null;
-        var response = await SendAsAdministratorAsync(AdminRequest.Of(AdminCommands.PairingCode)).ConfigureAwait(true);
-        if (response.State is not null)
-            Apply(response.State); // the code belongs to this state: a later read with the same generation keeps it
-        if (response.Ok)
-            PairingCode = response.PairingCode;
-        else if (response.Error != SystemElevation.Cancelled)
-            BindingError = response.Error;
-    }
-
-    [RelayCommand(CanExecute = nameof(CanChange))]
     public async Task AllowBindingAsync()
     {
         BindingError = null;
-        PairingCode = null;
         var response = await ChangeAsync(AdminRequest.Of(AdminCommands.AllowBinding)).ConfigureAwait(true);
         if (!response.Ok && response.Error != SystemElevation.Cancelled)
             BindingError = response.Error;
     }
 
+    /// <summary>Lets the server with the new identity bind with the pairing code; the state then carries the code.</summary>
     [RelayCommand(CanExecute = nameof(CanChange))]
-    public async Task AcceptServerAsync()
-    {
-        // Accepting lets the new server bind with the pairing code; the app shows the code.
-        var response = await ChangeAsync(AdminRequest.Of(AdminCommands.AcceptServer)).ConfigureAwait(true);
-        if (response.Ok && response.PairingCode.Length > 0)
-            PairingCode = response.PairingCode;
-    }
-
-    [RelayCommand(CanExecute = nameof(CanChange))]
-    public async Task AddSubnetAsync()
-    {
-        Validation.ShowAll(nameof(NewSubnet));
-        if (NewSubnet.Trim().Length == 0 || !Validation.IsValidFor(nameof(NewSubnet)))
-            return;
-        var response = await ChangeAsync(AdminRequest.Of(AdminCommands.AddSubnet, ("subnet", NewSubnet.Trim()))).ConfigureAwait(true);
-        if (response.Ok)
-        {
-            NewSubnet = "";
-            Validation.Reset(nameof(NewSubnet));
-        }
-        else if (response.Error != SystemElevation.Cancelled)
-        {
-            Validation.SetServerError(nameof(NewSubnet), response.Error);
-            ActionError = null;
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanChange))]
-    public Task RemoveSubnetAsync(SubnetItem item)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        return ChangeAsync(AdminRequest.Of(AdminCommands.RemoveSubnet, ("subnet", item.Subnet)));
-    }
+    public Task AcceptServerAsync() => ChangeAsync(AdminRequest.Of(AdminCommands.AcceptServer));
 
     [RelayCommand(CanExecute = nameof(CanChange))]
     public async Task AddPortAsync()
@@ -500,28 +427,15 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         return ChangeAsync(PortRequest(AdminCommands.DismissRequest, item.Entry));
     }
 
+    /// <summary>Reset of the footer (left): the node forgets its server and gets a new identity.</summary>
     [RelayCommand(CanExecute = nameof(CanChange))]
     public async Task ResetAsync()
     {
         var server = State?.Bound?.Name is { Length: > 0 } name ? name : "the server";
         if (!await _dialogs.ConfirmAsync("Reset", ResetMessage(server), "Reset").ConfigureAwait(true))
             return;
-        PairingCode = null;
         await ChangeAsync(AdminRequest.Of(AdminCommands.Reset)).ConfigureAwait(true);
     }
-
-    [RelayCommand]
-    private void ShowGeneral() => Tab = NodeTab.General;
-
-    [RelayCommand]
-    private void ShowNetworks() => Tab = NodeTab.Networks;
-
-    /// <summary>The Ports tab (also "Review" of the request line below the card).</summary>
-    [RelayCommand]
-    private void ShowPorts() => Tab = NodeTab.Ports;
-
-    [RelayCommand]
-    private void ShowActivity() => Tab = NodeTab.Activity;
 
     /// <summary>Closes the window (Close of the footer).</summary>
     public event EventHandler? CloseRequested;
@@ -538,8 +452,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     partial void OnStateChanged(NodeView? value) => RaiseState();
 
     partial void OnServiceErrorChanged(string? value) => RaiseState();
-
-    partial void OnPairingCodeChanged(string? value) => RaiseState();
 
     private void RaiseSave()
     {
@@ -558,7 +470,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private static readonly string[] StateProperties =
     [
         nameof(NodeStatusText), nameof(NodeStatusKind), nameof(IsNodeStatusOk), nameof(IsNodeStatusWarning), nameof(IsNodeStatusError),
-        nameof(CanShowPairingCode), nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
+        nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
     ];
 
     private async Task<AdminResponse> ChangeAsync(AdminRequest request)
@@ -593,15 +505,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private void Apply(NodeView view)
     {
         State = view;
-        var pairing = view.Binding == NodeBinding.Open || view is { NewServerAccepted: true, NewServerIdentity.Length: > 0 };
-        // A new code (5 wrong codes, a service restart, Reset) or a new node: the code shown is no longer the node's.
-        // Compared with the last state read, so a failed read in between does not count as a change.
-        var codeChanged = (_lastCodeGeneration is { } generation && generation != view.PairingCodeGeneration)
-            || (_lastNodeId is { } id && id != view.NodeId);
-        _lastCodeGeneration = view.PairingCodeGeneration;
-        _lastNodeId = view.NodeId;
-        if (!pairing || codeChanged)
-            PairingCode = null; // none once bound (unless a new server identity was accepted) or closed
         if (!_serverEdited)
         {
             ServerAddress = view.ServerAddress;
@@ -613,6 +516,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         {
             _cardsKey = cardsKey;
             Cards.ReplaceAll(view.Cards.Select(card => new CardItem(card, view.AllCards, SetCardAsync)));
+            NetworkChoices.ReplaceAll([AllCardsChoice, .. Cards]);
         }
         else
         {
@@ -620,21 +524,21 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
                 item.Apply(card, view.AllCards);
         }
 
-        var listsKey = string.Join('|', view.ExtraSubnets) + "#" + string.Join('|', view.Allowed.Select(p => p.ToString()))
+        AllCardsChoice.Refresh();
+
+        var listsKey = string.Join('|', view.Allowed.Select(p => p.ToString()))
             + "#" + string.Join('|', view.Requested.Select(p => p.ToString())) + "#" + string.Join('|', view.Relays.Select(r => r.ToString()));
         if (listsKey == _listsKey)
             return;
         _listsKey = listsKey;
-        Replace(ExtraSubnets, view.ExtraSubnets.Select(s => new SubnetItem(s)));
-        Replace(ConnectPorts, view.Allowed.Where(p => p.Use == PortUse.Connect).OrderBy(p => p.Port).Select(PortItem.Allowed));
-        Replace(ListenPorts, view.Allowed.Where(p => p.Use == PortUse.Listen).OrderBy(p => p.Port).Select(PortItem.Allowed));
-        Replace(RequestedPorts, view.Requested.Select(PortItem.Requested));
-        Replace(Relays, view.Relays.Select(RelayItem.From));
-        OnPropertyChanged(nameof(HasRequests));
+        Ports.ReplaceAll(view.Requested.Select(PortItem.Requested)
+            .Concat(view.Allowed.OrderBy(p => p.Use == PortUse.Listen).ThenBy(p => p.Protocol).ThenBy(p => p.Port).Select(PortItem.Allowed)));
+        RelayProblems.ReplaceAll(view.Relays.Where(r => r.State != "Running").Select(RelayItem.From));
+        RequestCount = view.Requested.Count;
         OnPropertyChanged(nameof(RequestCount));
+        OnPropertyChanged(nameof(HasRequests));
         OnPropertyChanged(nameof(RequestsText));
-        OnPropertyChanged(nameof(HasRelays));
-        OnPropertyChanged(nameof(HasNoListenPorts));
+        OnPropertyChanged(nameof(HasRelayProblems));
     }
 
     private async Task SetCardAsync(CardItem card, bool chosen)
@@ -658,8 +562,6 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         ("protocol", port.Protocol == PortProtocol.Udp ? "udp" : "tcp"),
         ("port", port.Port.ToString(CultureInfo.InvariantCulture)),
         ("reason", port.Reason));
-
-    private static void Replace<T>(RangeObservableCollection<T> target, IEnumerable<T> items) => target.ReplaceAll(items);
 
     private static string Hours(double hours)
     {

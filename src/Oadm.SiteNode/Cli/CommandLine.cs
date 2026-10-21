@@ -6,7 +6,7 @@ namespace Oadm.SiteNode.Cli;
 
 /// <summary>
 /// The command line of the installed node (docs/sites.md, "App": headless machines): it talks to the running service over
-/// the local channel. Reading the state needs no rights; the pairing code and every change need an administrator
+/// the local channel. Reading the state and the pairing code needs no rights; every change needs an administrator
 /// (sudo / an elevated prompt).
 /// </summary>
 public static class CommandLine
@@ -16,7 +16,7 @@ public static class CommandLine
 
         oadm-site-node                          run the service (console)
         oadm-site-node status                   state, server, networks and ports
-        oadm-site-node pairing-code             the pairing code (administrators)
+        oadm-site-node pairing-code             the pairing code (a new one every 10 minutes)
         oadm-site-node server <address>         connect to the OADM server (oadm.example.com, 10.0.0.5:5081)
         oadm-site-node allow-binding            binding open for another 24 hours, a new code
         oadm-site-node networks                 network cards and extra networks

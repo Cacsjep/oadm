@@ -16,13 +16,21 @@ namespace Oadm.SiteNode.State;
 /// <summary>
 /// The node's states (docs/sites.md, "States" and "Binding"): unbound with binding open (24 hours of run time, counted by
 /// <see cref="Tick"/> and saved every minute), unbound with binding closed, bound to one server. The pairing code lives in
-/// memory only (a new one at every start, Allow binding, Reset, Unbind and after 5 wrong codes).
+/// memory only (a new one at every start, every <see cref="CodeLifetime"/>, Allow binding, Reset, Unbind and after 5 wrong
+/// codes). Every local user may read it while it is shown: it lasts minutes only and the node binds only to the server
+/// an administrator saved.
 /// </summary>
 public sealed class BindingState
 {
     public const int MaxWrongCodes = 5;
     public const int WrongCodesKept = 20;
     public static readonly TimeSpan LockTime = TimeSpan.FromMinutes(10);
+
+    /// <summary>A pairing code is replaced by a new one after this time.</summary>
+    public static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
+
+    /// <summary>A pairing that started with a code just replaced by time still binds with it for this long.</summary>
+    public static readonly TimeSpan ExpiredCodeGrace = TimeSpan.FromMinutes(1);
 
     /// <summary>PairStart attempts a minute from one address (IPv6 per /64) and from all addresses.</summary>
     public const int PairAttemptsPerAddress = 10;
@@ -44,6 +52,9 @@ public sealed class BindingState
     private int _wrongCount;
     private DateTimeOffset? _lockedUntil;
     private long _lastTick;
+    private long _codeStarted;
+    private string? _expiredCode;
+    private long _expiredAt;
 
     public BindingState(NodeStore store, NodeIdentity identity, TimeProvider time, string hostName)
     {
@@ -56,6 +67,7 @@ public sealed class BindingState
         _hostName = hostName;
         _attempts = new AddressRateLimiter(PairAttemptsPerAddress, PairAttemptsTotal, TimeSpan.FromMinutes(1), time);
         _lastTick = time.GetTimestamp();
+        _codeStarted = _lastTick;
     }
 
     /// <summary>Raised after every change of state, code or attempts (the store raises its own for node.json).</summary>
@@ -69,13 +81,32 @@ public sealed class BindingState
     public BoundServer? Bound => _store.Read(c => c.BoundServers.Count > 0 ? c.BoundServers[0] : null);
 
     /// <summary>The current pairing code (normalized, without the dash). Never sent to the server.</summary>
-    public string PairingCode
+    public string PairingCode => CurrentCode().Code;
+
+    /// <summary>The current pairing code and when it is replaced by a new one (a code past its time is replaced first).</summary>
+    public (string Code, DateTimeOffset ValidUntil) CurrentCode()
     {
-        get
+        var now = _time.GetTimestamp();
+        bool rotated;
+        (string, DateTimeOffset) current;
+        lock (_lock)
         {
-            lock (_lock)
-                return _code;
+            rotated = _time.GetElapsedTime(_codeStarted, now) >= CodeLifetime;
+            if (rotated)
+            {
+                _expiredCode = _code;
+                _expiredAt = now;
+                _code = Sites.Binding.PairingCode.Create();
+                _codeGeneration++;
+                _codeStarted = now;
+            }
+
+            current = (_code, _time.GetUtcNow() + CodeLifetime - _time.GetElapsedTime(_codeStarted, now));
         }
+
+        if (rotated)
+            NodeEvents.Raise(Changed);
+        return current;
     }
 
     /// <summary>
@@ -86,6 +117,7 @@ public sealed class BindingState
     {
         get
         {
+            CurrentCode();
             lock (_lock)
                 return _codeGeneration;
         }
@@ -224,8 +256,9 @@ public sealed class BindingState
                     throw new NodeRefusalException(StatusCode.ResourceExhausted, AdminTexts.TooManyWrongCodes);
             }
 
-            // A code made new meanwhile (5 wrong codes, Allow binding) makes an attempt for the old one a wrong code.
-            var answer = string.Equals(code, PairingCode, StringComparison.Ordinal)
+            // A code made new meanwhile (5 wrong codes, Allow binding) makes an attempt for the old one a wrong code; one
+            // replaced by time a moment ago still counts (the pairing started with it).
+            var answer = string.Equals(code, PairingCode, StringComparison.Ordinal) || IsJustExpired(code)
                 ? pairing.Finish(serverRound2, proof ?? [], link.NodeFingerprint, link.ServerFingerprint)
                 : null;
             reply = answer ?? throw WrongCode(link.RemoteHost);
@@ -396,8 +429,7 @@ public sealed class BindingState
             {
                 _wrongCount = 0;
                 _lockedUntil = _time.GetUtcNow() + LockTime;
-                _code = Sites.Binding.PairingCode.Create();
-                _codeGeneration++;
+                NewCodeLocked();
             }
         }
 
@@ -407,14 +439,20 @@ public sealed class BindingState
             : new NodeRefusalException(StatusCode.PermissionDenied, AdminTexts.WrongCode);
     }
 
+    private bool IsJustExpired(string? code)
+    {
+        lock (_lock)
+            return _expiredCode is { } expired && string.Equals(code, expired, StringComparison.Ordinal)
+                && _time.GetElapsedTime(_expiredAt) < ExpiredCodeGrace;
+    }
+
     private bool IsLocked() => _lockedUntil is { } until && _time.GetUtcNow() < until;
 
     private void NewCode(bool clearAttempts)
     {
         lock (_lock)
         {
-            _code = Sites.Binding.PairingCode.Create();
-            _codeGeneration++;
+            NewCodeLocked();
             if (clearAttempts)
             {
                 _wrongCount = 0;
@@ -423,6 +461,14 @@ public sealed class BindingState
         }
 
         NodeEvents.Raise(Changed);
+    }
+
+    private void NewCodeLocked()
+    {
+        _code = Sites.Binding.PairingCode.Create();
+        _codeGeneration++;
+        _codeStarted = _time.GetTimestamp();
+        _expiredCode = null;
     }
 
     private static string Clean(string? text)

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.SiteNode.Admin;
 using Oadm.SiteNode.App.Services;
 using Oadm.SiteNode.App.ViewModels;
@@ -9,16 +11,17 @@ public sealed class NodeAppViewModelTests
     private readonly FakeChannel _channel = new();
     private readonly FakeElevation _elevation;
     private readonly FakeDialogs _dialogs = new();
+    private readonly FakeTimeProvider _time = new(FakeChannel.Now);
     private readonly NodeAppViewModel _vm;
 
     public NodeAppViewModelTests()
     {
         _elevation = new FakeElevation(_channel);
-        _vm = new NodeAppViewModel(_channel, _elevation, _dialogs);
+        _vm = new NodeAppViewModel(_channel, _elevation, _dialogs, _time);
     }
 
     [Fact]
-    public async Task TheStateShowsBindingServerNetworksPortsAndConnections()
+    public async Task TheStateShowsBindingServerNetworksAndPorts()
     {
         await _vm.RefreshAsync();
 
@@ -34,16 +37,22 @@ public sealed class NodeAppViewModelTests
         Assert.Equal("a1b2c3d4e5f60718", _vm.IdText);
         Assert.Equal(2, _vm.Cards.Count);
         Assert.Equal("Default router", _vm.Cards[1].Hint);
+        Assert.Equal("10.0.0.7/24 · Default router", _vm.Cards[1].Details);
         Assert.True(_vm.Cards[0].Chosen);
         Assert.False(_vm.Cards[1].Chosen);
         Assert.False(_vm.AllCards);
-        Assert.Equal(["TCP 80", "TCP 443", "TCP 554"], _vm.ConnectPorts.Select(p => p.Text));
-        Assert.Equal("UDP 123", Assert.Single(_vm.ListenPorts).Text);
-        Assert.Equal("Connect to TCP 8443: camera 192.168.0.30", Assert.Single(_vm.RequestedPorts).Text);
-        Assert.Equal("NTP server, UDP 123", Assert.Single(_vm.Relays).Text);
-        Assert.Equal("3 short, 12 permanent", _vm.ConnectionsText);
+        Assert.Equal("Cameras", _vm.NetworksText);
+        // The ports table: the request first, then connect before listen, by port.
+        Assert.Equal(["Connect to TCP 8443", "Connect to TCP 80", "Connect to TCP 443", "Connect to TCP 554", "Listen on UDP 123"],
+            _vm.Ports.Select(p => $"{p.Direction} {p.Protocol} {p.Port}"));
+        Assert.True(_vm.Ports[0].IsRequested);
+        Assert.Equal("camera 192.168.0.30", _vm.Ports[0].Reason);
+        Assert.Equal("Requested", _vm.Ports[0].StateText);
+        Assert.Equal("Allowed", _vm.Ports[1].StateText);
+        Assert.Empty(_vm.RelayProblems); // the NTP relay runs
         Assert.Null(_vm.ServiceError);
-        Assert.Null(_vm.PairingCode); // never read without asking
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode); // part of the state, no prompt
+        Assert.Equal(0, _elevation.Runs);
     }
 
     [Fact]
@@ -57,6 +66,8 @@ public sealed class NodeAppViewModelTests
         Assert.Equal("Connected to OADM-SRV", _vm.NodeStatusText); // the server once, the site on its own line
         Assert.Equal("Site Building B", _vm.SiteText);
         Assert.False(_vm.IsBindingOpen);
+        Assert.Null(_vm.PairingCode);
+        Assert.False(_vm.ShowPairing);
     }
 
     [Fact]
@@ -71,19 +82,15 @@ public sealed class NodeAppViewModelTests
     }
 
     [Fact]
-    public async Task ThePairingCodeAndEveryChangeRunAsAdministrator()
+    public async Task EveryChangeRunsAsAdministrator()
     {
         await _vm.RefreshAsync();
 
-        await _vm.ShowPairingCodeAsync();
-        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
-        Assert.Equal(1, _elevation.Runs);
-        Assert.True(_channel.Requests[^1].AsAdmin);
-
         _vm.Cards[1].Chosen = true;
-        await Sdk.Testing.Eventually.TrueAsync(() => _elevation.Runs == 2, "the card change runs elevated");
-        var request = _channel.Requests[^1].Request;
-        Assert.Equal((AdminCommands.SetCard, "office", "true"), (request.Command, request.Arg("id"), request.Arg("reached")));
+        await Sdk.Testing.Eventually.TrueAsync(() => _elevation.Runs == 1, "the card change runs elevated");
+        var request = _channel.Requests[^1];
+        Assert.True(request.AsAdmin);
+        Assert.Equal((AdminCommands.SetCard, "office", "true"), (request.Request.Command, request.Request.Arg("id"), request.Request.Arg("reached")));
     }
 
     [Fact]
@@ -92,7 +99,7 @@ public sealed class NodeAppViewModelTests
         _elevation.IsAdministrator = true;
         await _vm.RefreshAsync();
 
-        await _vm.AllowRequestAsync(_vm.RequestedPorts[0]);
+        await _vm.AllowRequestAsync(_vm.Ports[0]);
 
         Assert.Equal(0, _elevation.Runs);
         var request = _channel.Requests[^1].Request;
@@ -105,10 +112,9 @@ public sealed class NodeAppViewModelTests
         _elevation.Decline = true;
         await _vm.RefreshAsync();
 
-        await _vm.ShowPairingCodeAsync();
         await _vm.AllowBindingAsync();
+        await _vm.RemovePortAsync(_vm.Ports[1]);
 
-        Assert.Null(_vm.PairingCode);
         Assert.Null(_vm.BindingError);
         Assert.Null(_vm.ActionError);
     }
@@ -137,25 +143,40 @@ public sealed class NodeAppViewModelTests
     }
 
     [Fact]
-    public async Task SavingTheAddressShowsThePairingCodeAtOnce()
+    public async Task ThePairingCodeShowsWithoutAPromptAndSaysHowLongItLasts()
     {
         _channel.State = FakeChannel.Sample(serverAddress: "", connected: false, connectionText: "");
         await _vm.RefreshAsync();
-        Assert.Null(_vm.PairingCode);
 
-        _vm.ServerAddress = "10.0.0.5";
-        await _vm.SaveServerAsync();
-
-        // The save ran elevated (one prompt) and its answer carried the code: no Show pairing code needed.
-        Assert.Equal(1, _elevation.Runs);
-        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+        // Right below the empty address field: no Show pairing code, no prompt.
         Assert.True(_vm.ShowPairing);
-        Assert.False(_vm.CanShowPairingCode);
+        Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+        Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 8 more minutes.", _vm.PairingHint);
+        Assert.Equal(0, _elevation.Runs);
         Assert.DoesNotContain(_channel.Requests, r => r.Request.Command == AdminCommands.PairingCode);
 
-        // The state everyone reads never carries the code; a refresh keeps the one shown.
+        _time.Advance(TimeSpan.FromMinutes(7) + TimeSpan.FromSeconds(30));
+        Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 1 more minute.", _vm.PairingHint);
+    }
+
+    [Fact]
+    public async Task TheCodeShownIsAlwaysTheNodes()
+    {
         await _vm.RefreshAsync();
         Assert.Equal("ABCD-EFGH", _vm.PairingCode);
+
+        // A new code (10 minutes, five wrong codes, a service restart): the next read shows it.
+        _channel.State = new NodeView
+        {
+            NodeId = "a1",
+            Binding = NodeBinding.Open,
+            PairingCode = "WXYZ-2345",
+            PairingCodeValidUntil = FakeChannel.Now + TimeSpan.FromMinutes(10),
+        };
+        await _vm.RefreshAsync();
+
+        Assert.Equal("WXYZ-2345", _vm.PairingCode);
+        Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 10 more minutes.", _vm.PairingHint);
     }
 
     [Fact]
@@ -175,13 +196,13 @@ public sealed class NodeAppViewModelTests
     public async Task AServerRefusalStandsBelowItsField()
     {
         _elevation.IsAdministrator = true;
-        _channel.Answer = r => r.Command == AdminCommands.AddSubnet ? AdminResponse.Fail("At most 64 extra networks.") : null!;
+        _channel.Answer = r => r.Command == AdminCommands.AddPort ? AdminResponse.Fail("At most 64 ports.") : null!;
         await _vm.RefreshAsync();
 
-        _vm.NewSubnet = "10.30.0.0/16";
-        await _vm.AddSubnetAsync();
+        _vm.NewPort = "8080";
+        await _vm.AddPortAsync();
 
-        Assert.Equal("At most 64 extra networks.", _vm.ErrorOf(nameof(NodeAppViewModel.NewSubnet)));
+        Assert.Equal("At most 64 ports.", _vm.ErrorOf(nameof(NodeAppViewModel.NewPort)));
         Assert.Null(_vm.ActionError);
     }
 
@@ -194,7 +215,6 @@ public sealed class NodeAppViewModelTests
 
         Assert.False(_vm.HasServerAddress);
         Assert.StartsWith(NodeAppViewModel.EnterServer, _vm.ServerHint, StringComparison.Ordinal);
-        Assert.False(_vm.ShowPairing); // the pairing code comes once the node has a server
         Assert.Null(_vm.ErrorOf(nameof(NodeAppViewModel.ServerAddress))); // nothing red on an untouched form
 
         _vm.FieldLeft(nameof(NodeAppViewModel.ServerAddress));
@@ -211,7 +231,11 @@ public sealed class NodeAppViewModelTests
         _channel.State = FakeChannel.Sample(allCards: true);
         await _vm.RefreshAsync();
 
+        // The select: All cards first, then every card.
+        Assert.Equal([_vm.AllCardsChoice, .. _vm.Cards], _vm.NetworkChoices);
         Assert.True(_vm.AllCards);
+        Assert.True(_vm.AllCardsChoice.Chosen);
+        Assert.Equal("All cards", _vm.NetworksText);
         Assert.All(_vm.Cards, c => Assert.False(c.Chosen)); // All cards: no card is ticked
 
         _vm.Cards[0].Chosen = true;
@@ -222,7 +246,9 @@ public sealed class NodeAppViewModelTests
         _channel.State = FakeChannel.Sample();
         await _vm.RefreshAsync();
         Assert.False(_vm.AllCards);
-        _vm.AllCards = true;
+        Assert.False(_vm.AllCardsChoice.Chosen);
+        Assert.Equal("Cameras", _vm.NetworksText);
+        _vm.AllCardsChoice.Chosen = true;
         await Sdk.Testing.Eventually.TrueAsync(() => _channel.Requests[^1].Request.Command == AdminCommands.AllCards, "All cards is ticked");
         Assert.Equal("true", _channel.Requests[^1].Request.Arg("on"));
     }
@@ -302,25 +328,23 @@ public sealed class NodeAppViewModelTests
     }
 
     [Fact]
-    public async Task TheBindingSectionOffersWhatTheStateNeeds()
+    public async Task ThePairingRowOffersWhatTheStateNeeds()
     {
         await _vm.RefreshAsync();
-        Assert.True(_vm.CanShowPairingCode);
-        Assert.False(_vm.CanAcceptServer);
-        await _vm.ShowPairingCodeAsync();
         Assert.True(_vm.HasPairingCode);
-        Assert.False(_vm.CanShowPairingCode);
+        Assert.False(_vm.CanAcceptServer);
 
         _channel.State = FakeChannel.Sample(NodeBinding.Closed);
         await _vm.RefreshAsync();
         Assert.Equal("Binding is closed.", _vm.BindingText);
         Assert.True(_vm.IsBindingClosed);
-        Assert.False(_vm.CanShowPairingCode);
+        Assert.True(_vm.ShowPairing); // with Allow binding
+        Assert.False(_vm.HasPairingCode);
 
         _channel.State = FakeChannel.Sample(NodeBinding.Bound, newIdentity: "0123456789ABCDEF0123456789ABCDEF");
         await _vm.RefreshAsync();
         Assert.True(_vm.CanAcceptServer);
-        Assert.False(_vm.CanShowPairingCode);
+        Assert.False(_vm.ShowPairing);
     }
 
     [Fact]
@@ -351,49 +375,26 @@ public sealed class NodeAppViewModelTests
     }
 
     [Fact]
-    public async Task TheServersRequestsCountOnThePortsTabAndReviewOpensIt()
+    public async Task TheServersRequestsAndRelayProblemsAreInTheStatus()
     {
         await _vm.RefreshAsync();
 
-        Assert.Equal(NodeTab.General, _vm.Tab);
         Assert.Equal(1, _vm.RequestCount);
+        Assert.True(_vm.HasRequests);
         Assert.Equal("The server asks for 1 port.", _vm.RequestsText);
-        _vm.ShowPortsCommand.Execute(null);
-        Assert.True(_vm.IsPortsTab);
-        Assert.False(_vm.IsGeneralTab);
+        Assert.False(_vm.HasRelayProblems);
 
-        _channel.State = FakeChannel.Sample(requests: false);
+        _channel.State = new NodeView
+        {
+            NodeId = "a1",
+            Binding = NodeBinding.Open,
+            Relays = [new RelayView(PortProtocol.Udp, 123, "NTP server", "Port in use", "UDP 123 is used by another program.")],
+        };
         await _vm.RefreshAsync();
         Assert.Equal(0, _vm.RequestCount);
         Assert.False(_vm.HasRequests);
-    }
-
-    [Fact]
-    public async Task TheConnectionLogIsReadOnRequest()
-    {
-        await _vm.LoadLogAsync();
-
-        var row = Assert.Single(_vm.Log);
-        Assert.Equal(("OADM-SRV", "192.168.0.20:443", "Short", "Connected"), (row.Server, row.Target, row.Kind, row.Result));
-        Assert.True(row.IsOk);
-    }
-
-    [Theory]
-    [InlineData("Connected", "ok")]
-    [InlineData("Accepted", "ok")]
-    [InlineData("Port not allowed", "warning")]
-    [InlineData("Outside the networks", "warning")]
-    [InlineData("Busy", "warning")]
-    [InlineData("12 answered", "info")]
-    [InlineData("Refused", "error")]
-    [InlineData("Timed out", "error")]
-    [InlineData("Unreachable", "error")]
-    public void TheLogResultIsAStatusWithItsColor(string result, string kind)
-    {
-        var row = new LogRow("2026-10-19 12:00:00", "OADM-SRV", "192.168.0.20:443", "Short", result);
-
-        Assert.Equal(kind, row.IsOk ? "ok" : row.IsWarning ? "warning" : row.IsInfo ? "info" : row.IsError ? "error" : "none");
-        Assert.Equal(1, new[] { row.IsOk, row.IsWarning, row.IsInfo, row.IsError }.Count(b => b));
+        var problem = Assert.Single(_vm.RelayProblems);
+        Assert.Equal(("NTP server, UDP 123", "UDP 123 is used by another program."), (problem.Text, problem.Message));
     }
 
     [Fact]
@@ -409,27 +410,11 @@ public sealed class NodeAppViewModelTests
         Assert.Equal("x", SystemElevation.Value(["--out", "x"], "--out"));
         Assert.Null(SystemElevation.Value(["--out"], "--out"));
     }
-    [Fact]
-    public async Task ANewCodeOnTheNodeClearsTheCodeShown()
-    {
-        await _vm.RefreshAsync();
-        await _vm.ShowPairingCodeAsync();
-        await _vm.RefreshAsync();
-        Assert.Equal("ABCD-EFGH", _vm.PairingCode); // the same code: kept
-
-        // Five wrong codes or a service restart: the node has another code now.
-        _channel.State = FakeChannel.Sample(codeGeneration: 2);
-        await _vm.RefreshAsync();
-
-        Assert.Null(_vm.PairingCode);
-        Assert.True(_vm.CanShowPairingCode);
-    }
 
     [Fact]
     public async Task OneFailedReadKeepsTheStateAndTheCode()
     {
         await _vm.RefreshAsync();
-        await _vm.ShowPairingCodeAsync();
         var state = _channel.State;
 
         _channel.State = null;
@@ -439,9 +424,10 @@ public sealed class NodeAppViewModelTests
 
         await _vm.RefreshAsync();
         Assert.False(_vm.HasState);
+        Assert.Null(_vm.PairingCode);
         Assert.Equal("Service not running", _vm.NodeStatusText);
 
-        _channel.State = state; // the same run of the service answers again
+        _channel.State = state;
         await _vm.RefreshAsync();
         Assert.Equal("ABCD-EFGH", _vm.PairingCode);
     }
@@ -451,18 +437,17 @@ public sealed class NodeAppViewModelTests
     {
         await _vm.RefreshAsync();
         _elevation.Prompt = new TaskCompletionSource();
-        var port = _vm.ConnectPorts[0];
-        var request = _vm.RequestedPorts[0];
+        var request = _vm.Ports[0];
+        var port = _vm.Ports[1];
         _vm.NewPort = "8080";
 
-        var showing = _vm.ShowPairingCodeAsync();
+        var allowing = _vm.AllowRequestAsync(request);
 
         Assert.True(_vm.IsBusy);
         Assert.False(_vm.CanChange);
         Assert.False(_vm.CanSaveServer);
         Assert.False(_vm.AllowBindingCommand.CanExecute(null));
         Assert.False(_vm.AddPortCommand.CanExecute(null));
-        Assert.False(_vm.AddSubnetCommand.CanExecute(null));
         Assert.False(_vm.RemovePortCommand.CanExecute(port));
         Assert.False(_vm.AllowRequestCommand.CanExecute(request));
         Assert.False(_vm.ResetCommand.CanExecute(null));
@@ -470,31 +455,16 @@ public sealed class NodeAppViewModelTests
 
         // A card or All cards ticked meanwhile sends nothing and goes back to what the service has.
         _vm.Cards[1].Chosen = true;
-        _vm.AllCards = true;
+        _vm.AllCardsChoice.Chosen = true;
         Assert.False(_vm.Cards[1].Chosen);
         Assert.False(_vm.AllCards);
+        Assert.False(_vm.AllCardsChoice.Chosen);
         Assert.Equal(1, _elevation.Runs);
 
         _elevation.Prompt.SetResult();
-        await showing;
+        await allowing;
         Assert.False(_vm.IsBusy);
         Assert.True(_vm.AddPortCommand.CanExecute(null));
         Assert.True(_vm.ResetCommand.CanExecute(null));
-    }
-
-    [Fact]
-    public async Task TenThousandLogEntriesArriveAsOneChange()
-    {
-        var entries = Enumerable.Range(0, 10_000)
-            .Select(i => new ConnectionLogEntry(new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero).AddSeconds(i), "OADM-SRV", $"192.168.0.{i % 250}:443", "Short", "Connected"))
-            .ToList();
-        _channel.Answer = r => r.Command == AdminCommands.Log ? new AdminResponse { Ok = true, Log = entries } : null!;
-        var changes = 0;
-        _vm.Log.CollectionChanged += (_, _) => changes++;
-
-        await _vm.LoadLogAsync();
-
-        Assert.Equal(10_000, _vm.Log.Count);
-        Assert.Equal(1, changes);
     }
 }

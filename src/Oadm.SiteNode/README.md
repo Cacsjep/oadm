@@ -44,8 +44,8 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   keep-alive timeout: the HTTP/2 pings keep them). Refusals: FAILED_PRECONDITION with the text; a wrong code PERMISSION_DENIED; too many
   wrong codes RESOURCE_EXHAUSTED.
 - **States** (`State/BindingState`): binding open for 24 hours of run time (`BindingClock` ticks every minute and saves),
-  then closed until Allow binding; the pairing code lives in memory (new at start, Allow binding, Reset, Unbind and after
-  5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so parallel links get no more
+  then closed until Allow binding; the pairing code lives in memory (new at start, every 10 minutes, Allow binding, Reset, Unbind
+  and after 5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so parallel links get no more
 than 5 guesses); Reset = new id, key and code, the server forgotten.
 - **Reach** (`Networks/NetworkScope`): all cards (default) or the chosen cards (no chosen card = all cards; a machine that
   also sits in an office network chooses the camera cards), and the extra networks (at least /8, IPv6 /16), never
@@ -68,7 +68,8 @@ than 5 guesses); Reset = new id, key and code, the server forgotten.
   RangeScan (open 443 / 80 on the reached part of a range, only ports on Connect to).
 - **Local channel** (`AdminChannel/`): named pipe `oadm-site-node` (Windows) or `/run/oadm-site-node/admin.sock` (Linux;
   the unit needs `RuntimeDirectory=oadm-site-node`, mode 0755); a node with its own data folder uses names derived from
-  it. Every local user reads the state and the connection log; the pairing code and every change need an administrator
+  it. Every local user reads the state (with the pairing code while not bound) and the connection log; every change needs
+  an administrator
   (Windows: SYSTEM or an elevated token of Administrators, never the service account; Linux: root or the service user).
   Before sending, the app and the command line check who serves the channel (`AdminServerCheck`): on Windows the pipe's
   owner must be SYSTEM, `NT SERVICE\OadmSiteNode` or Administrators (a node with its own data folder may also run as the
@@ -122,16 +123,17 @@ behind each. Read-only towards the camera.
    24 more hours.".
 2. **Outbound through NAT**: server in the office network, node behind a NAT router. Turn on Accept site nodes on the
    Sites page, type the server's address in the app and Save (UAC / pkexec prompt): the pairing code shows below the
-   address at once, Node status says "Connected to ...". Close and open the app: Show pairing code (another prompt).
+   address with "Valid for N more minutes.", Node status says "Connected to ...". Close and open the app as a user
+   without administrator rights: the code shows without a prompt; after 10 minutes the app shows a new one.
    Bind on the Sites page with the code; Node status shows "Connected to SERVER", "Site NAME", "Bound since ...". A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
    Five wrong codes: a new code, Bind refused for 10 minutes.
 3. **Another server**: point the bound node at a second OADM server; it refuses the connection (the pinned key) and the
    app shows the new identity with **Accept**; nothing binds without the pairing code.
 4. **Two network cards**: All cards (default) reaches both; choose only the camera card: a camera on the office network
-   is "outside the networks"; All cards again reaches it; an extra network (a routed camera VLAN) is reached.
+   is "outside the networks"; All cards again reaches it; an extra network (a routed camera VLAN, `oadm-site-node networks add`) is reached.
 5. **Ports**: add a camera on 8443: the server asks, the app lists "Connect to TCP 8443: camera ..."; Allow; the camera
-   is reached. Dismiss: the server asks again later. A port not allowed is never dialed (connection log: "Port not
-   allowed").
+   is reached. Dismiss: the server asks again later. A port not allowed is never dialed (`oadm-site-node log`: "Port
+   not allowed").
 6. **Pull the cable**: unplug the node's uplink: Site offline on the server after the waiting time; plug it in: online
    again after the stable time, the node reconnects with backoff (log), no device turns Unreachable.
 7. **mDNS and range scan**: Discovery and Network range on the add page find the camera behind the node.

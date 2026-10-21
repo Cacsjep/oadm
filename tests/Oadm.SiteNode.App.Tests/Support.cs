@@ -28,14 +28,8 @@ internal sealed class FakeChannel : INodeChannel
             return Task.FromResult(answer);
         return Task.FromResult(request.Command switch
         {
-            AdminCommands.PairingCode => new AdminResponse { Ok = true, PairingCode = "ABCD-EFGH" },
             // Like the service: the saved address, and the pairing code while the node is not bound.
             AdminCommands.SetServer => SetServer(request.Arg("address")),
-            AdminCommands.Log => new AdminResponse
-            {
-                Ok = true,
-                Log = [new ConnectionLogEntry(new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero), "OADM-SRV", "192.168.0.20:443", "Short", "Connected")],
-            },
             _ => new AdminResponse { Ok = true, State = State },
         });
     }
@@ -47,6 +41,12 @@ internal sealed class FakeChannel : INodeChannel
             newIdentity: before.NewServerIdentity, requests: before.Requested.Count > 0, allCards: before.AllCards);
         return new AdminResponse { Ok = true, State = State, PairingCode = before.Binding == NodeBinding.Open ? "ABCD-EFGH" : "" };
     }
+
+    /// <summary>When the sample's pairing code is replaced: 8 minutes from <see cref="Now"/>.</summary>
+    public static DateTimeOffset CodeValidUntil => Now + TimeSpan.FromMinutes(8);
+
+    /// <summary>The clock of the samples (tests that check the pairing hint pass a fake clock at this time).</summary>
+    public static DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>
     /// A node with two cards (the camera card chosen, unless <paramref name="allCards"/>), the default ports, an NTP relay and
@@ -85,6 +85,8 @@ internal sealed class FakeChannel : INodeChannel
         ShortConnections = 3,
         PermanentConnections = 12,
         PairingCodeGeneration = codeGeneration,
+        PairingCode = binding == NodeBinding.Open ? "ABCD-EFGH" : "",
+        PairingCodeValidUntil = binding == NodeBinding.Open ? CodeValidUntil : null,
     };
 }
 

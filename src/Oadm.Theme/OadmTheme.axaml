@@ -927,6 +927,29 @@
     <Setter Property="Opacity" Value="1" />
   </Style>
 
+  <!-- Select field with check boxes (ComboBox.multiSelect, OADM Site Node app networks): the closed box shows what is
+       ticked through PlaceholderText in the normal text color; each entry is a check box over the whole row, so a click
+       ticks it and the list stays open. -->
+  <Style Selector="ComboBox.multiSelect">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="PlaceholderForeground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="ComboBox.multiSelect /template/ TextBlock#PlaceholderTextBlock">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="ComboBox.multiSelect /template/ Popup#PART_Popup">
+    <Setter Property="Width" Value="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}" />
+  </Style>
+  <Style Selector="ComboBox.multiSelect ComboBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="ComboBox.multiSelect ComboBoxItem CheckBox">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+    <Setter Property="Margin" Value="12,6" />
+  </Style>
+
   <!-- The shared device picker (ui:DevicePickerWindow): a plain list on the card, rows aligned with the header,
        a line between rows like the grids -->
   <Style Selector="ListBox.devicePicker">
@@ -1426,7 +1449,7 @@
     <Setter Property="MaxWidth" Value="240" />
     <Setter Property="Cursor" Value="Hand" />
   </Style>
-  <!-- The scrolling content of a tab (OADM Site Node app): room for the scroll bar right of the content -->
+  <!-- The scrolling page of the OADM Site Node app: room for the scroll bar right of the content -->
   <Style Selector="ScrollViewer.tabPage">
     <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
     <Setter Property="Padding" Value="0,0,16,0" />

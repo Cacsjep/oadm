@@ -2773,9 +2773,15 @@ the inbound mode ("Wait for the server", the node's listener and mDNS announce, 
 manually / Change address on the Sites page, `FindNodes`, `ChangeSiteAddress`, `SiteMode`, the node firewall rule) is
 gone; the columns `Sites.Mode` / `Port` stay for the migrations, unused. The node reaches **all network cards by default**
 (`NodeConfig.AllCards`; chosen cards restrict it, no chosen card = all cards, `NetworkScope.ReachesAllCards`). Node app
-(`Oadm.SiteNode.App`): the tabs on the window background (no card); General = Server address (hint "Enter the address of
-the OADM server." while none is saved), then while not bound the pairing code, then Binding, Site, Node ID, Version and
-Reset; Networks = one choice All cards or ticked cards, plus Extra networks.
+(`Oadm.SiteNode.App`, 800 x 900, one page, no tabs, decision 2026-10-21): cards Node status (connection, site, binding,
+requests, relays that do not run, node ID and version), Server (two columns, labels above: Server address left; while not bound
+the **Pairing code** right, always shown with "Valid for N more minutes.", or Allow binding), Networks (Reach devices on = a
+select with check boxes: All cards, then each card with its addresses on a second line; extra networks only on the command
+line), Ports (one table: Direction,
+Protocol, Port, State; requests first with Allow / Dismiss, allowed ports with Remove; Add port below); footer
+Reset left (red), Save and Close right. No connection log in the app (the node's log files and `oadm-site-node log`). The
+pairing code is part of the state every local user reads (decision 2026-10-21: a code lasts 10 minutes,
+`BindingState.CodeLifetime`; a pairing started with a code just replaced still binds for a minute).
 - `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
   30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
   starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),

@@ -67,16 +67,16 @@ public sealed class ElevationTests
         await vm.RefreshAsync();
 
         elevation.Answer = AdminResponse.Fail(SystemElevation.NotMade);
-        vm.NewSubnet = "10.30.0.0/16";
-        await vm.AddSubnetAsync();
-        Assert.Equal(SystemElevation.NotMade, vm.ErrorOf(nameof(NodeAppViewModel.NewSubnet)));
+        vm.NewPort = "8080";
+        await vm.AddPortAsync();
+        Assert.Equal(SystemElevation.NotMade, vm.ErrorOf(nameof(NodeAppViewModel.NewPort)));
 
         elevation.Answer = AdminResponse.Fail(SystemElevation.NoPkexec);
         await vm.AllowBindingAsync();
         Assert.Equal(SystemElevation.NoPkexec, vm.BindingError);
 
         elevation.Answer = AdminResponse.Fail(SystemElevation.Cancelled);
-        await vm.ShowPairingCodeAsync();
+        await vm.AllowBindingAsync();
         Assert.Null(vm.BindingError);
     }
 

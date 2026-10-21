@@ -7,16 +7,31 @@
         x:Class="Oadm.SiteNode.App.Views.MainWindow"
         x:DataType="vm:NodeAppViewModel"
         Title="OADM Site Node"
-        Width="440" Height="780" MinWidth="400" MinHeight="520"
+        Width="800" Height="900" MinWidth="640" MinHeight="560"
         CanMaximize="False"
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <!-- docs/sites.md "App": the layout of a service control window. The custom title bar of the client (minimize and close),
-       the tabs General, Networks, Ports (count of the server's requests) and Activity on the window background (no card:
-       the window is narrow), below them the node status, then Save (the one accent button: the address has changes) and
-       Close. Changes run elevated (UAC / pkexec); errors stand below their field or button. -->
-  <Grid RowDefinitions="Auto,*,Auto,Auto">
+  <!-- docs/sites.md "App": one page, no tabs. The custom title bar of the client (minimize and close), then cards: Node
+       status, Server (address left, while not bound the pairing code right), Networks (a select with check boxes),
+       Ports (one table). Footer: Reset left (red), Save (the one accent button: the
+       address has changes) and Close right. Changes run elevated (UAC / pkexec); errors stand below their field. -->
+  <Window.DataTemplates>
+    <!-- The entries of the network select -->
+    <DataTemplate x:DataType="vm:AllCardsItem">
+      <CheckBox IsChecked="{Binding Chosen}" Content="{Binding Name}" />
+    </DataTemplate>
+    <DataTemplate x:DataType="vm:CardItem">
+      <CheckBox IsChecked="{Binding Chosen}">
+        <StackPanel Spacing="2">
+          <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+          <TextBlock Classes="secondary" Text="{Binding Details}" TextWrapping="Wrap" />
+        </StackPanel>
+      </CheckBox>
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Grid RowDefinitions="Auto,*,Auto">
     <!-- Title bar: the app name left, minimize and close right (TitleBarLayout keeps clear of them) -->
     <Border Grid.Row="0" Classes="titleBar" chrome:WindowDecorationProperties.ElementRole="TitleBar">
       <Grid Margin="{x:Static themeShell:TitleBarLayout.ContentMarginWithoutMaximize}">
@@ -24,239 +39,144 @@
       </Grid>
     </Border>
 
-    <Panel Grid.Row="1" Margin="20,8,20,0">
-      <TextBlock Classes="secondary" Text="Start the OADM Site Node service." TextWrapping="Wrap" IsVisible="{Binding !HasState}" />
+    <ScrollViewer Grid.Row="1" Classes="tabPage" Margin="20,12,4,0">
+      <StackPanel Spacing="16">
+        <!-- Node status: the connection, the site, the binding, problems, then the node's ID and version -->
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="cardTitle" Text="Node status" />
+            <ui:StatusChip Text="{Binding NodeStatusText}" IsOk="{Binding IsNodeStatusOk}" IsWarning="{Binding IsNodeStatusWarning}"
+                           IsError="{Binding IsNodeStatusError}" MaxLines="2" />
+            <TextBlock Classes="secondary" Text="Start the OADM Site Node service." TextWrapping="Wrap" IsVisible="{Binding !HasState}" />
+            <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" IsVisible="{Binding HasSite}" />
+            <TextBlock Text="{Binding BindingText}" TextWrapping="Wrap" IsVisible="{Binding HasState}" />
+            <ui:StatusChip Text="{Binding RequestsText}" IsInfo="True" IsVisible="{Binding HasRequests}" />
+            <ItemsControl ItemsSource="{Binding RelayProblems}" IsVisible="{Binding HasRelayProblems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RelayItem">
+                  <ui:StatusChip Text="{Binding Text}" Detail="{Binding Message}" IsWarning="True" Margin="0,0,0,6" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap"
+                       IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Classes="small secondary" Text="{Binding NodeInfoText}" ToolTip.Tip="{Binding IdText}" IsVisible="{Binding HasState}" />
+          </StackPanel>
+        </Border>
 
-      <Grid RowDefinitions="Auto,*" RowSpacing="16" IsVisible="{Binding HasState}">
-        <!-- Tabs -->
-        <StackPanel Orientation="Horizontal" Spacing="4">
-          <ui:PageTab Title="General" IsActive="{Binding IsGeneralTab}" ActivateCommand="{Binding ShowGeneralCommand}" />
-          <ui:PageTab Title="Networks" IsActive="{Binding IsNetworksTab}" ActivateCommand="{Binding ShowNetworksCommand}" />
-          <ui:PageTab Title="Ports" IsActive="{Binding IsPortsTab}" ActivateCommand="{Binding ShowPortsCommand}" Count="{Binding RequestCount}" />
-          <ui:PageTab Title="Activity" IsActive="{Binding IsActivityTab}" ActivateCommand="{Binding ShowActivityCommand}" />
-        </StackPanel>
-
-        <Panel Grid.Row="1">
-          <!-- General -->
-          <ScrollViewer Classes="tabPage" IsVisible="{Binding IsGeneralTab}">
-            <StackPanel Classes="compactForm" Spacing="12">
-              <!-- What to do first: the server's address (the hint says so while it is empty) -->
-              <ui:FormField Classes="wide" Label="Server address" Hint="{Binding ServerHint}" Error="{Binding ConnectionProblem}">
-                <TextBox Text="{Binding ServerAddress}" PlaceholderText="oadm.example.com or 10.0.0.5" />
-              </ui:FormField>
-
-              <!-- Then, while not bound: the pairing code for Bind on the Sites page -->
-              <ui:FormField Classes="wide" Label="Pairing code" IsVisible="{Binding ShowPairing}">
-                <StackPanel Spacing="8">
+        <!-- Server: the address, then (not bound) the pairing code in the same form -->
+        <Border Classes="card" IsVisible="{Binding HasState}">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="cardTitle" Text="Server" />
+            <!-- Two columns, each label above its field: the address left, the pairing code right (while not bound) -->
+            <Grid ColumnDefinitions="*,32,*">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="secondary" Text="Server address" />
+                <ui:FormField Classes="wide inline" Hint="{Binding ServerHint}" Error="{Binding ConnectionProblem}">
+                  <TextBox Text="{Binding ServerAddress}" PlaceholderText="oadm.example.com or 10.0.0.5" />
+                </ui:FormField>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="6" IsVisible="{Binding ShowPairing}">
+                <TextBlock Classes="secondary" Text="Pairing code" />
+                <StackPanel Spacing="6">
                   <StackPanel Spacing="4" IsVisible="{Binding HasPairingCode}">
                     <SelectableTextBlock Classes="pairingCode" Text="{Binding PairingCode}" />
-                    <TextBlock Classes="secondary" Text="Type this code at Bind on the Sites page of OADM." TextWrapping="Wrap" />
+                    <TextBlock Classes="secondary" Text="{Binding PairingHint}" TextWrapping="Wrap" />
                   </StackPanel>
-                  <Button Classes="secondary" Content="Show pairing code" Command="{Binding ShowPairingCodeCommand}" HorizontalAlignment="Left"
-                          IsVisible="{Binding CanShowPairingCode}" />
                   <Button Classes="secondary" Content="Allow binding" Command="{Binding AllowBindingCommand}" HorizontalAlignment="Left"
-                          IsVisible="{Binding IsBindingClosed}" />
+                          IsVisible="{Binding IsBindingClosed}" ToolTip.Tip="Open binding for another 24 hours" />
                   <TextBlock Classes="warning" Text="{Binding WrongCodesText}" TextWrapping="Wrap"
                              IsVisible="{Binding WrongCodesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Classes="error" Text="{Binding BindingError}" TextWrapping="Wrap"
+                             IsVisible="{Binding BindingError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
-              </ui:FormField>
-              <ui:StatusChip Text="{Binding NewIdentityText}" IsWarning="True" MaxLines="3" IsVisible="{Binding HasNewIdentity}" />
-              <Button Classes="secondary" Content="Accept new server identity" Command="{Binding AcceptServerCommand}" HorizontalAlignment="Left"
-                      IsVisible="{Binding CanAcceptServer}" />
-              <TextBlock Classes="error" Text="{Binding BindingError}" TextWrapping="Wrap"
-                         IsVisible="{Binding BindingError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-              <ui:FormField Classes="wide" Label="">
-                <Button Classes="danger" Content="Reset" Command="{Binding ResetCommand}" HorizontalAlignment="Left"
-                        ToolTip.Tip="Forget the server and get a new identity" />
-              </ui:FormField>
-            </StackPanel>
-          </ScrollViewer>
-
-          <!-- Networks -->
-          <ScrollViewer Classes="tabPage" IsVisible="{Binding IsNetworksTab}">
-            <StackPanel Classes="compactForm" Spacing="12">
-              <TextBlock Classes="cardTitle" Text="Reach devices on" />
-              <!-- One choice: All cards (default) or the ticked cards. Ticking a card unticks All cards; ticking All cards
-                   clears the cards. -->
-              <Border Classes="ruleItem">
-                <StackPanel Spacing="10">
-                  <CheckBox Content="All cards" IsChecked="{Binding AllCards}" IsEnabled="{Binding CanChange}" />
-                  <ItemsControl ItemsSource="{Binding Cards}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <StackPanel Spacing="10" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:CardItem">
-                        <CheckBox IsChecked="{Binding Chosen}" VerticalContentAlignment="Top"
-                                  IsEnabled="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).CanChange}">
-                          <StackPanel Spacing="2">
-                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
-                            <TextBlock Classes="secondary" Text="{Binding AddressesText}" TextWrapping="Wrap" />
-                            <TextBlock Classes="secondary" Text="{Binding Hint}" TextWrapping="Wrap"
-                                       IsVisible="{Binding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                          </StackPanel>
-                        </CheckBox>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </Border>
-
-              <TextBlock Classes="cardTitle subsection" Text="Extra networks" />
-              <ItemsControl ItemsSource="{Binding ExtraSubnets}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:SubnetItem">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding Subnet}" VerticalAlignment="Center" MinWidth="160" />
-                      <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Remove"
-                              Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).RemoveSubnetCommand}" CommandParameter="{Binding}">
-                        <ui:OadmIcon Data="{StaticResource Icon.remove}" />
-                      </Button>
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <ui:FormField Classes="wide" Label="Network">
-                <WrapPanel Classes="inputRow">
-                  <TextBox Text="{Binding NewSubnet}" Width="150" PlaceholderText="10.20.0.0/16" />
-                  <Button Classes="secondary" Content="Add" Command="{Binding AddSubnetCommand}" />
-                </WrapPanel>
-              </ui:FormField>
-            </StackPanel>
-          </ScrollViewer>
-
-          <!-- Ports -->
-          <ScrollViewer Classes="tabPage" IsVisible="{Binding IsPortsTab}">
-            <StackPanel Classes="compactForm" Spacing="12">
-              <StackPanel Spacing="12" IsVisible="{Binding HasRequests}">
-                <TextBlock Classes="cardTitle" Text="The server asks for" />
-                <ItemsControl ItemsSource="{Binding RequestedPorts}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:PortItem">
-                      <Border Classes="ruleItem" Margin="0,0,0,8">
-                        <StackPanel Spacing="8">
-                          <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
-                          <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Classes="secondary" Content="Allow"
-                                    Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).AllowRequestCommand}" CommandParameter="{Binding}" />
-                            <Button Classes="secondary" Content="Dismiss"
-                                    Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).DismissRequestCommand}" CommandParameter="{Binding}" />
-                          </StackPanel>
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
               </StackPanel>
-              <TextBlock Classes="cardTitle" Classes.subsection="{Binding HasRequests}" Text="Connect to" />
-              <ItemsControl ItemsSource="{Binding ConnectPorts}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:PortItem">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding Text}" VerticalAlignment="Center" MinWidth="100" />
-                      <TextBlock Classes="secondary" Text="{Binding Reason}" VerticalAlignment="Center" />
-                      <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Remove"
-                              Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).RemovePortCommand}" CommandParameter="{Binding}">
-                        <ui:OadmIcon Data="{StaticResource Icon.remove}" />
-                      </Button>
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBlock Classes="cardTitle subsection" Text="Listen on" />
-              <TextBlock Classes="secondary" Text="No ports." IsVisible="{Binding HasNoListenPorts}" />
-              <ItemsControl ItemsSource="{Binding ListenPorts}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:PortItem">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding Text}" VerticalAlignment="Center" MinWidth="100" />
-                      <TextBlock Classes="secondary" Text="{Binding Reason}" VerticalAlignment="Center" />
-                      <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Remove"
-                              Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).RemovePortCommand}" CommandParameter="{Binding}">
-                        <ui:OadmIcon Data="{StaticResource Icon.remove}" />
-                      </Button>
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBlock Classes="cardTitle subsection" Text="Add port" />
-              <WrapPanel Classes="inputRow">
-                <ComboBox ItemsSource="{Binding PortUses}" SelectedItem="{Binding NewPortUse}" Width="120" />
-                <ComboBox ItemsSource="{Binding PortProtocols}" SelectedItem="{Binding NewPortProtocol}" Width="80" />
-                <TextBox Text="{Binding NewPort}" Width="80" PlaceholderText="8443" />
-                <Button Classes="secondary" Content="Add" Command="{Binding AddPortCommand}" />
-              </WrapPanel>
-            </StackPanel>
-          </ScrollViewer>
+            </Grid>
+            <ui:StatusChip Text="{Binding NewIdentityText}" IsWarning="True" MaxLines="3" IsVisible="{Binding HasNewIdentity}" />
+            <Button Classes="secondary" Content="Accept new server identity" Command="{Binding AcceptServerCommand}" HorizontalAlignment="Left"
+                    IsVisible="{Binding CanAcceptServer}" />
+          </StackPanel>
+        </Border>
 
-          <!-- Activity -->
-          <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12" IsVisible="{Binding IsActivityTab}">
-            <StackPanel Classes="compactForm">
-              <ui:FormField Classes="wide" Label="Connections now">
-                <TextBlock Text="{Binding ConnectionsText}" />
-              </ui:FormField>
-            </StackPanel>
-            <StackPanel Grid.Row="1" Spacing="12" IsVisible="{Binding HasRelays}">
-              <TextBlock Classes="cardTitle" Text="Relays" />
-              <ItemsControl ItemsSource="{Binding Relays}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:RelayItem">
-                    <ui:StatusChip Text="{Binding Text}" Detail="{Binding Message}" IsOk="{Binding IsRunning}" IsWarning="{Binding !IsRunning}" Margin="0,0,0,6" />
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
-              <TextBlock Classes="cardTitle" Text="Connection log" VerticalAlignment="Center" />
-              <Button Classes="toolbar iconOnly" ToolTip.Tip="Refresh" Command="{Binding LoadLogCommand}">
-                <ui:OadmIcon Data="{StaticResource Icon.refresh}" />
-              </Button>
-            </StackPanel>
-            <DataGrid Grid.Row="3" ItemsSource="{Binding Log}" IsReadOnly="True" CanUserReorderColumns="False" MinHeight="160">
+        <!-- Networks: All cards or the ticked cards in one select (extra networks only on the command line) -->
+        <Border Classes="card" IsVisible="{Binding HasState}">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="cardTitle" Text="Networks" />
+            <TextBlock Classes="secondary" Text="Reach devices on" Margin="0,0,0,-6" />
+            <ui:FormField Classes="wide inline">
+              <ComboBox Classes="multiSelect" ItemsSource="{Binding NetworkChoices}" PlaceholderText="{Binding NetworksText}"
+                        IsEnabled="{Binding CanChange}" MaxDropDownHeight="360" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
+
+        <!-- Ports: the server's requests first (Allow, Dismiss), then the allowed ports (Remove); add below the table -->
+        <Border Classes="card" IsVisible="{Binding HasState}">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="cardTitle" Text="Ports" />
+            <DataGrid ItemsSource="{Binding Ports}" IsReadOnly="True" CanUserReorderColumns="False" CanUserSortColumns="False"
+                      HeadersVisibility="Column" MaxHeight="360">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="140" x:DataType="vm:LogRow" />
-                <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="130" x:DataType="vm:LogRow" />
-                <DataGridTemplateColumn Header="Result" Width="*" MinWidth="110" SortMemberPath="Result" x:DataType="vm:LogRow">
+                <DataGridTextColumn Header="Direction" Binding="{Binding Direction}" Width="110" x:DataType="vm:PortItem" />
+                <DataGridTextColumn Header="Protocol" Binding="{Binding Protocol}" Width="100" x:DataType="vm:PortItem" />
+                <DataGridTextColumn Binding="{Binding Port}" Width="80" CellStyleClasses="number" x:DataType="vm:PortItem">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Port" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTemplateColumn Header="State" Width="*" MinWidth="130" x:DataType="vm:PortItem">
                   <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate x:DataType="vm:LogRow">
-                      <ui:StatusChip Text="{Binding Result}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
-                                     IsInfo="{Binding IsInfo}" />
+                    <DataTemplate x:DataType="vm:PortItem">
+                      <Panel VerticalAlignment="Center">
+                        <ui:StatusChip Text="{Binding StateText}" IsInfo="True" IsVisible="{Binding IsRequested}" />
+                        <TextBlock Text="{Binding StateText}" IsVisible="{Binding IsAllowed}" />
+                      </Panel>
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="80" x:DataType="vm:LogRow" />
-                <DataGridTextColumn Header="Server" Binding="{Binding Server}" Width="100" x:DataType="vm:LogRow" />
+                <DataGridTemplateColumn Header="" Width="110" x:DataType="vm:PortItem">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:PortItem">
+                      <Panel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsRequested}">
+                          <Button Classes="link" Content="Allow"
+                                  Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).AllowRequestCommand}" CommandParameter="{Binding}" />
+                          <Button Classes="link" Content="Dismiss"
+                                  Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).DismissRequestCommand}" CommandParameter="{Binding}" />
+                        </StackPanel>
+                        <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Remove" IsVisible="{Binding IsAllowed}"
+                                Command="{Binding $parent[Window].((vm:NodeAppViewModel)DataContext).RemovePortCommand}" CommandParameter="{Binding}">
+                          <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                        </Button>
+                      </Panel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
               </DataGrid.Columns>
             </DataGrid>
-          </Grid>
-        </Panel>
-      </Grid>
-    </Panel>
-
-    <!-- Node status, outside the tabs: the connection, the site, the binding, then the node's ID and version -->
-    <StackPanel Grid.Row="2" Spacing="8" Margin="20,16,20,0">
-      <TextBlock Classes="cardTitle" Text="Node status" />
-      <ui:StatusChip Text="{Binding NodeStatusText}" IsOk="{Binding IsNodeStatusOk}" IsWarning="{Binding IsNodeStatusWarning}"
-                     IsError="{Binding IsNodeStatusError}" MaxLines="2" />
-      <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" IsVisible="{Binding HasSite}" />
-      <TextBlock Text="{Binding BindingText}" TextWrapping="Wrap" IsVisible="{Binding HasState}" />
-      <TextBlock Classes="small secondary" Text="{Binding NodeInfoText}" ToolTip.Tip="{Binding IdText}" IsVisible="{Binding HasState}" />
-      <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasRequests}">
-        <ui:StatusChip Text="{Binding RequestsText}" IsInfo="True" VerticalAlignment="Center" />
-        <Button Classes="link" Content="Review" Command="{Binding ShowPortsCommand}" VerticalAlignment="Center" />
+            <TextBlock Classes="secondary" Text="Add port" Margin="0,0,0,-6" />
+            <ui:FormField Classes="wide inline">
+              <WrapPanel Classes="inputRow">
+                <ComboBox ItemsSource="{Binding PortUses}" SelectedItem="{Binding NewPortUse}" Width="130" />
+                <ComboBox ItemsSource="{Binding PortProtocols}" SelectedItem="{Binding NewPortProtocol}" Width="90" />
+                <TextBox Text="{Binding NewPort}" Width="100" PlaceholderText="8443" />
+                <Button Classes="secondary" Content="Add" Command="{Binding AddPortCommand}" />
+              </WrapPanel>
+            </ui:FormField>
+          </StackPanel>
+        </Border>
       </StackPanel>
-      <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap"
-                 IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-    </StackPanel>
+    </ScrollViewer>
 
-    <!-- Footer: Save (the General form) and Close, on the right -->
-    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="16">
-      <Button Classes="primary" Content="Save" Command="{Binding SaveServerCommand}" IsEnabled="{Binding CanSaveServer}"
-              ToolTip.Tip="{Binding SaveServerBlockedReason}" ToolTip.ShowOnDisabled="True" />
-      <Button Classes="secondary" Content="Close" Command="{Binding CloseCommand}" />
-    </StackPanel>
+    <!-- Footer: Reset left (red, confirmed), Save and Close right -->
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="20,16">
+      <Button Classes="danger" Content="Reset" Command="{Binding ResetCommand}" IsVisible="{Binding HasState}"
+              ToolTip.Tip="Forget the server and get a new identity" />
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+        <Button Classes="primary" Content="Save" Command="{Binding SaveServerCommand}" IsEnabled="{Binding CanSaveServer}"
+                ToolTip.Tip="{Binding SaveServerBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        <Button Classes="secondary" Content="Close" Command="{Binding CloseCommand}" />
+      </StackPanel>
+    </Grid>
   </Grid>
 </Window>

@@ -7,11 +7,11 @@ using Oadm.SiteNode.Tests.Support;
 
 namespace Oadm.SiteNode.Tests;
 
-/// <summary>The app's and the command line's commands: reading is open, the code and every change need an administrator.</summary>
+/// <summary>The app's and the command line's commands: reading (the pairing code too) is open, every change needs an administrator.</summary>
 public sealed class AdminTests
 {
     [Fact]
-    public async Task EveryoneReadsTheStateButNeverTheCode()
+    public async Task EveryoneReadsTheStateAndTheCodeButOnlyAdministratorsChange()
     {
         await using var node = await TestNode.StartAsync();
         var handler = node.Get<AdminHandler>();
@@ -20,18 +20,19 @@ public sealed class AdminTests
         Assert.True(state.Ok);
         Assert.Equal(NodeBinding.Open, state.State!.Binding);
         Assert.Equal(24, state.State.BindingHoursLeft);
-        Assert.Empty(state.PairingCode);
+        // Not bound: the state carries the code and how long it lasts.
+        Assert.Equal(Sites.Binding.PairingCode.Format(node.Code), state.State.PairingCode);
+        Assert.NotNull(state.State.PairingCodeValidUntil);
         Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.Log), isAdmin: false).Ok);
+        var code = handler.Handle(AdminRequest.Of(AdminCommands.PairingCode), isAdmin: false);
+        Assert.Equal(Sites.Binding.PairingCode.Format(node.Code), code.PairingCode);
 
-        foreach (var command in new[] { AdminCommands.PairingCode, AdminCommands.Reset, AdminCommands.AllowBinding, AdminCommands.SetServer, AdminCommands.AddPort, AdminCommands.AcceptServer })
+        foreach (var command in new[] { AdminCommands.Reset, AdminCommands.AllowBinding, AdminCommands.SetServer, AdminCommands.AddPort, AdminCommands.AcceptServer })
         {
             var refused = handler.Handle(AdminRequest.Of(command), isAdmin: false);
             Assert.False(refused.Ok);
             Assert.Equal(AdminTexts.NeedsAdministrator, refused.Error);
         }
-
-        var code = handler.Handle(AdminRequest.Of(AdminCommands.PairingCode), isAdmin: true);
-        Assert.Equal(Sites.Binding.PairingCode.Format(node.Code), code.PairingCode);
     }
 
     [Fact]

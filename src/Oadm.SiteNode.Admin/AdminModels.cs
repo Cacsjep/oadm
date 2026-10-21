@@ -58,7 +58,10 @@ public sealed record WrongCodeView(DateTimeOffset Time, string From);
 /// <summary>One line of the connection log (never contents).</summary>
 public sealed record ConnectionLogEntry(DateTimeOffset Time, string Server, string Target, string Kind, string Result);
 
-/// <summary>The node's state as the app and the command line show it. Everyone may read it; it never holds the pairing code.</summary>
+/// <summary>
+/// The node's state as the app and the command line show it. Everyone may read it, the pairing code too while it is shown
+/// (not bound, or a new server identity accepted): a code lasts 10 minutes.
+/// </summary>
 public sealed class NodeView
 {
     public string NodeId { get; init; } = "";
@@ -106,6 +109,12 @@ public sealed class NodeView
 
     /// <summary>Changes with every new pairing code and after a service restart (never the code itself).</summary>
     public long PairingCodeGeneration { get; init; }
+
+    /// <summary>"ABCD-EFGH" while the node shows a pairing code (not bound, or a new server identity accepted); else empty.</summary>
+    public string PairingCode { get; init; } = "";
+
+    /// <summary>When <see cref="PairingCode"/> is replaced by a new one.</summary>
+    public DateTimeOffset? PairingCodeValidUntil { get; init; }
 }
 
 /// <summary>One request on the admin channel.</summary>
@@ -138,7 +147,7 @@ public sealed class AdminResponse
     public static AdminResponse Fail(string error) => new() { Ok = false, Error = error };
 }
 
-/// <summary>The commands of the admin channel. Only <see cref="State"/> and <see cref="Log"/> are open to every local user.</summary>
+/// <summary>The commands of the admin channel. <see cref="State"/>, <see cref="Log"/> and <see cref="PairingCode"/> are open to every local user.</summary>
 public static class AdminCommands
 {
     public const string State = "state";
@@ -158,7 +167,7 @@ public static class AdminCommands
     public const string Reset = "reset";
 
     /// <summary>True for the commands every local user may send.</summary>
-    public static bool IsOpen(string command) => command is State or Log;
+    public static bool IsOpen(string command) => command is State or Log or PairingCode;
 }
 
 /// <summary>JSON of the admin channel: one request line, one answer line.</summary>

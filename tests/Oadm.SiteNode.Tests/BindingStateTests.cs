@@ -147,6 +147,43 @@ public sealed class BindingStateTests : IDisposable
     }
 
     [Fact]
+    public void ACodeLastsTenMinutesAndAPairingStartedWithItStillBinds()
+    {
+        var first = _state.CurrentCode();
+        var generation = _state.PairingCodeGeneration;
+        Assert.Equal(_time.GetUtcNow() + BindingState.CodeLifetime, first.ValidUntil);
+
+        _time.Advance(BindingState.CodeLifetime - TimeSpan.FromSeconds(1));
+        Assert.Equal(first.Code, _state.PairingCode);
+
+        // A pairing starts with the code, then the code runs out: the pairing still binds with it.
+        var server = SiteTls.CreateIdentity("server");
+        var link = Link(server);
+        var pairing = new ServerPairing(first.Code, link.NodeFingerprint, link.ServerFingerprint);
+        var (round1, round2) = _state.StartPairing(link, pairing.Round1);
+        _time.Advance(TimeSpan.FromSeconds(1));
+        var second = _state.CurrentCode();
+        Assert.NotEqual(first.Code, second.Code);
+        Assert.NotEqual(generation, _state.PairingCodeGeneration);
+        Assert.Equal(_time.GetUtcNow() + BindingState.CodeLifetime, second.ValidUntil);
+        var (serverRound2, proof) = pairing.Continue(round1, round2);
+        _state.Bind(link, "Building B", "OADM-SRV", serverRound2, proof);
+        Assert.Equal(NodeBinding.Bound, _state.Binding);
+    }
+
+    [Fact]
+    public void AnExpiredCodeNoLongerBinds()
+    {
+        var first = _state.PairingCode;
+        _time.Advance(BindingState.CodeLifetime);
+
+        var wrong = Assert.Throws<NodeRefusalException>(() => Bind(Link(SiteTls.CreateIdentity("server")), first));
+
+        Assert.Equal(StatusCode.PermissionDenied, wrong.Code);
+        Assert.Equal(NodeBinding.Open, _state.Binding);
+    }
+
+    [Fact]
     public void ARelayInBetweenFailsEvenWithTheRightCode()
     {
         // The node sees the relay's key; the server proves its own: the proofs do not match.

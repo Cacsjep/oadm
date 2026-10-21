@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.SiteNode.Admin;
@@ -5,8 +7,8 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.App.ViewModels;
 
 /// <summary>
-/// A network card in the choice of the Networks tab: ticked when it is chosen (All cards off); a change goes to the
-/// service. While All cards is on no card is ticked.
+/// A network card in the network select: ticked when it is chosen (All cards off); a change goes to the service. While
+/// All cards is on no card is ticked.
 /// </summary>
 public sealed partial class CardItem : ObservableObject
 {
@@ -33,6 +35,9 @@ public sealed partial class CardItem : ObservableObject
     [ObservableProperty]
     public partial string Hint { get; private set; } = "";
 
+    /// <summary>The second line of the card in the select: "192.168.0.5/24 · Default router".</summary>
+    public string Details => Hint.Length > 0 ? $"{AddressesText} · {Hint}" : AddressesText;
+
     /// <summary>Chosen: the node reaches devices on this card (and the other chosen ones only).</summary>
     [ObservableProperty]
     public partial bool Chosen { get; set; }
@@ -45,6 +50,7 @@ public sealed partial class CardItem : ObservableObject
         Name = card.Name;
         AddressesText = card.Addresses.Count == 0 ? "No address" : string.Join(", ", card.Addresses);
         Hint = card.HasDefaultRouter ? "Default router" : "";
+        OnPropertyChanged(nameof(Details));
         Chosen = !allCards && card.Reached;
         _applying = false;
     }
@@ -56,57 +62,52 @@ public sealed partial class CardItem : ObservableObject
     }
 }
 
-/// <summary>An allowed port with Remove, or a requested one with Allow and Dismiss.</summary>
-public sealed record PortItem(PortEntry Entry, string Text, string Reason)
+/// <summary>"All cards", the first entry of the network select: bound to <see cref="NodeAppViewModel.AllCards"/>.</summary>
+public sealed class AllCardsItem(Func<bool> get, Action<bool> set) : ObservableObject
 {
-    public static PortItem Allowed(PortEntry entry)
+    public string Name { get; } = "All cards";
+
+    public bool Chosen
     {
-        ArgumentNullException.ThrowIfNull(entry);
-        return new PortItem(entry, entry.Name, entry.Reason);
+        get => get();
+        set => set(value);
     }
 
-    /// <summary>"Connect to TCP 8443: camera 192.168.0.30", "Listen on UDP 123: NTP server".</summary>
-    public static PortItem Requested(PortEntry entry)
-    {
-        ArgumentNullException.ThrowIfNull(entry);
-        var text = (entry.Use == PortUse.Listen ? "Listen on " : "Connect to ") + entry.Name;
-        return new PortItem(entry, entry.Reason.Length > 0 ? text + ": " + entry.Reason : text, entry.Reason);
-    }
+    /// <summary>The service's state changed: the check box shows it again.</summary>
+    public void Refresh() => OnPropertyChanged(nameof(Chosen));
 }
 
-/// <summary>An extra subnet with Remove.</summary>
-public sealed record SubnetItem(string Subnet);
+/// <summary>A row of the ports table: an allowed port with Remove, or a port the server asks for with Allow and Dismiss.</summary>
+public sealed record PortItem(PortEntry Entry, bool IsRequested)
+{
+    public static PortItem Allowed(PortEntry entry) => new(entry, false);
 
-/// <summary>A relay the server opened: "NTP server, UDP 123" and its state.</summary>
-public sealed record RelayItem(string Text, string State, string Message, bool IsRunning)
+    public static PortItem Requested(PortEntry entry) => new(entry, true);
+
+    /// <summary>"Connect to" or "Listen on".</summary>
+    public string Direction => Entry.Use == PortUse.Listen ? "Listen on" : "Connect to";
+
+    public string Protocol => AdminTexts.Name(Entry.Protocol);
+
+    public string Port => Entry.Port.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>What the port is for: "NTP server", "camera 192.168.0.30"; empty for the default ports.</summary>
+    public string Reason => Entry.Reason;
+
+    /// <summary>"Requested" (the server asks for it) or "Allowed".</summary>
+    public string StateText => IsRequested ? "Requested" : "Allowed";
+
+    public bool IsAllowed => !IsRequested;
+}
+
+/// <summary>A relay the server opened that does not run: "NTP server, UDP 123" and why.</summary>
+public sealed record RelayItem(string Text, string State, string Message)
 {
     public static RelayItem From(RelayView relay)
     {
         ArgumentNullException.ThrowIfNull(relay);
         var name = $"{AdminTexts.Name(relay.Protocol)} {relay.Port}";
-        return new RelayItem(relay.Reason.Length > 0 ? $"{relay.Reason}, {name}" : name, relay.State, relay.Message, relay.State == "Running");
-    }
-}
-
-/// <summary>A line of the connection log as the grid shows it (local time).</summary>
-public sealed record LogRow(string Time, string Server, string Target, string Kind, string Result)
-{
-    /// <summary>A connection that worked ("Connected", a relay's "Accepted").</summary>
-    public bool IsOk => Result is "Connected" or "Accepted";
-
-    /// <summary>Refused by the node's own rules ("Port not allowed", "Outside the networks", "Busy"): something to allow here.</summary>
-    public bool IsWarning => Result is "Port not allowed" or "Outside the networks" or "Busy";
-
-    /// <summary>A range scan's count ("12 answered"): information only.</summary>
-    public bool IsInfo => Result.EndsWith(" answered", StringComparison.Ordinal);
-
-    /// <summary>The device did not answer (refused, timed out, unreachable, reset, name not found).</summary>
-    public bool IsError => !IsOk && !IsWarning && !IsInfo;
-
-    public static LogRow From(ConnectionLogEntry entry)
-    {
-        ArgumentNullException.ThrowIfNull(entry);
-        return new LogRow(entry.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), entry.Server, entry.Target, entry.Kind, entry.Result);
+        return new RelayItem(relay.Reason.Length > 0 ? $"{relay.Reason}, {name}" : name, relay.State, relay.Message.Length > 0 ? relay.Message : relay.State);
     }
 }
 
