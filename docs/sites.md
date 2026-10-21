@@ -511,7 +511,7 @@ gRPC over HTTP/2 + TLS, `site_node.proto` (`SiteNodeService`, hosted by the node
   reason ("Offline: The site node does not answer.", the whole text as its tooltip). Row actions (Administrator): Rename,
   Replace with... (tooltip "Replace with another site"), **Remove site** (red, confirmed, Keep devices); a removed site
   with kept devices: Replace with... and **Remove devices**. Nodes that connected and wait appear in the same list as
-  "Waiting to be bound" rows with **Bind** (dialog: Site name, Pairing code; the name starts as the node's host name, "acs (2)" when a site has
+  "Waiting to be bound" rows with **Bind** (an accent button in the row, easy to see; dialog: Site name, Pairing code; the name starts as the node's host name, "acs (2)" when a site has
   it, or the site's own name when its node binds it again after accepting a new server identity). Replace with... lists
   only the other online sites (what the server accepts). A node with binding closed does not connect and one bound to
   another server fails TLS before Hello: neither appears. Errors below the list. Fake mode: two

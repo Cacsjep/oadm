@@ -89,7 +89,7 @@
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:SiteRowViewModel">
                   <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0">
-                    <Button Classes="link" Content="Bind" IsVisible="{Binding CanBind}" Margin="4,0"
+                    <Button Classes="primary" Content="Bind" IsVisible="{Binding CanBind}" Margin="4,0" VerticalAlignment="Center"
                             Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).BindCommand}" CommandParameter="{Binding}" />
                     <Button Classes="toolbar iconOnly" ToolTip.Tip="Rename" IsVisible="{Binding CanManage}"
                             Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).RenameCommand}" CommandParameter="{Binding}">
