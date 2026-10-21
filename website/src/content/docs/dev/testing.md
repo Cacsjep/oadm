@@ -38,7 +38,8 @@ Assert.Equal(
 
 The [task plugin tutorial](../tutorial-task/#7-the-tests) has the complete tests. For devices at a site the package
 has `FakeDeviceNetwork` (pings, open ports, names, OADM's address; `FakeTaskContext.Network`), `FakeSites` and
-`FakePluginNetwork` (`FakeCoreContext.FakeSites`, `FakeNetwork`) with in-memory UDP and TCP relays: see
+`FakePluginNetwork` (`FakeCoreContext.FakeSites`, `FakeNetwork`) with in-memory UDP and TCP relays (`IsReleased`
+after `ReleaseAsync`, `IsDisposed` after a dispose): see
 [Sites](../sites/#test-without-a-site-node). Test at least:
 
 - the happy path, step by step;

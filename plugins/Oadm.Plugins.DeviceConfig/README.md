@@ -312,7 +312,7 @@ Operator no, full device control; without it they are not offered). Create confi
 
 ## Compliance check "Matches configuration file"
 
-`Configure/ConfigMatchCheck` (type `oadm.device-config.matches-file`, group Configuration; see "Compliance" in `CLAUDE.md`): the
+`Configure/ConfigMatchCheck` (type `oadm.device-config.matches-file`, group Configuration; see `docs/spec/compliance.md`): the
 user adds a `.cfg` (Create configuration file or ADM, at most 1 MB) to the check; it is kept in the check's settings and
 parsed once per content. Per device and run: the file's parameters through `param.cgi action=list` (in chunks like the
 verify step), the action rules over SOAP (only when the file has rules; schedules compared by name, topics without the

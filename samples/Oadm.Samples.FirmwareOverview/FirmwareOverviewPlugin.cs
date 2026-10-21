@@ -88,7 +88,7 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin, IDisposable
     private static async Task<FirmwareRow> ReadAsync(ICorePluginContext ctx, IDeviceInfo device, CancellationToken ct)
     {
         var model = device.Model ?? "";
-        if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+        if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
         {
             return new FirmwareRow(device.Id, device.Address, model, null, refusal);
         }

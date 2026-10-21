@@ -55,7 +55,8 @@ the dialog and on the server.
 - Throw for a failure: the message goes into the event log. There is no retry. At most 16 runs go at once for all rules.
 - Devices that refuse the login are skipped before your action is called.
 - `ctx.Text(text)` fills the placeholders: `{rule}`, `{event}`, `{state}`, `{time}`, `{device}`, `{address}`, `{model}`,
-  `{serial}`, `{tags}`, ..., and every value of the event by its name (`{port}`). `ctx.Text(text,
+  `{serial}`, `{tags}`, `{site}` (the device's site, or the site of a "Site offline" event), ..., and every value of the
+  event by its name (`{port}`). `ctx.Text(text,
   PlaceholderEscape.Json)` (or `Xml`, `Url`) escapes each value for a body or a URL.
 - `Password` fields are stored encrypted and never sent back to a client. `ctx.Settings` are the plugin's settings.
 - An action without devices gets **Send test** in the rule dialog, with sample values.

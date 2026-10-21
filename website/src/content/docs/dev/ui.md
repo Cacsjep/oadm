@@ -33,14 +33,16 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:CodeView`, `ui:CodeEditor` | Read-only code (JSON, XML, param.cgi answers, colored) and an editable code field |
 | `ui:InfoIcon` | An explanation that shows on hover and click |
 | `ui:WizardSteps` | The step row of a wizard |
-| `ui:DeviceIcon`, `ui:DeviceTree`, `ui:PageTab` | A device's icon by category and status, devices grouped by tag, page tabs |
-| `ui:TileGrid` | A grid of tiles that fills the page (Live View): your tab implements `ITileGridSource`, its tiles `ITileGridItem`; the rules are an `Oadm.Sdk.Layout.TileLayout` (`TileRect`, `Place`, `Fit`, `Drag`) the server checks again |
+| `ui:DeviceIcon`, `ui:DeviceTree` | A device's icon by category and status, devices grouped by tag |
+| `ui:PageTab` | Every tab of a page with tabs: title, X, the active one underlined. `Count` above 0 shows a badge; without `CloseCommand` the tab is fixed (no X) |
+| `ui:TileGrid` | A grid of tiles that fills the page (Live View, Dashboards): your tab implements `ITileGridSource`, its tiles `ITileGridItem` (`FrameClass`: a theme class of the frame, `CopyCommand`: a copy icon left of the X); the rules are an `Oadm.Sdk.Layout.TileLayout` (`TileRect`, `Place`, `PlaceSized`, `Fit`, `Drag`) the server checks again |
 | `ui:ProgressRing` | A spinning ring in place while a list or card loads |
 | `ui:PageHeader` | `Subtitle` and `IsHidden` of the host page header, set on your page view |
 | `MessageWindow` | Every message and confirmation: `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` |
 | `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 30,000 devices; `ShowAsync` (ids), `ShowOneAsync` (one device), `ShowChoiceAsync` (All devices, tags, chosen devices) |
 | `PageDeviceChoice` | The device choice of a page that reads many devices: the purple "Selected devices" button, see [Core plugins](../core-plugins/) |
 | `ComboBox Classes="grouped"` + `GroupedChoice` | A select field with group headers |
+| `ComboBox Classes="multiSelect"` + `CheckChoice` / `CheckChoiceList` | A select field with check boxes (`ICheckChoice` items); `CheckChoiceList` offers "All" or chosen items: `<ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}" />` |
 
 For lists that a grid shows, use `RangeObservableCollection<T>` (`Oadm.Sdk.Client.Collections`): `ReplaceAll`,
 `AddRange` and `RemoveAll` raise one change for the whole batch.
@@ -129,7 +131,8 @@ and by key without `Icon.` in `IconKey` properties (`IconKey="refresh"`). Some k
 `add`, `remove`, `refresh`, `restart`, `search`, `settings`, `edit`, `copy`, `export`, `upload`, `download`, `file`,
 `folder`, `start`, `stop`, `check`, `close`, `info`, `key`, `lock`, `lockOpen`, `eye`, `eyeOff`, `shield`, `users`,
 `user`, `network`, `firmware`, `app`, `video`, `snapshot`, `clock`, `activity`, `toggle`, `zap`, `bell`, `flame`,
-`globe`, `grid`, `hardDrive`, `wrench`, `eraser`, `tag`, `plugin`, `clipboardCheck`, `gauge`, `circle`, `thermometer`, `lightbulb`.
+`globe`, `grid`, `hardDrive`, `wrench`, `eraser`, `tag`, `plugin`, `clipboardCheck`, `gauge`, `circle`, `thermometer`, `lightbulb`,
+`command`, `save`, `send`, `sliders`, `text`.
 
 The full list is in [plugins/README.md](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md#icons). A new
 icon goes into `src/Oadm.Theme/Icons.axaml` (a 24 x 24 Lucide stroke geometry).

@@ -16,6 +16,7 @@ loads the first, the client the second. Both come from the same folder.
 | Core plugin page | `ICorePluginPage` | `*.Client.dll` | A page in the navigation rail |
 | Toolbar plugin | `IToolbarPlugin` | `*.Client.dll` | A control in the Devices toolbar |
 | Action | `IActionPlugin` | `*.Server.dll` | A "Then" choice in the event rules |
+| Compliance check type | `IComplianceCheckType` | `*.Server.dll` | A kind of check on the **Compliance** page |
 
 One folder can hold several of them. The PKI plugin, for example, is one core plugin with a page that also contributes
 nine task plugins to the context menu.
@@ -34,6 +35,7 @@ flowchart TB
         CPl["ICorePlugin<br/>a service, the page's backend"]
         AP["IActionPlugin<br/>an event rule action"]
         EV["IEventSource<br/>events for the rules"]
+        CC["IComplianceCheckType<br/>a kind of compliance check"]
     end
     DLG -->|"payload"| TP
     PG -->|"InvokeAsync, events"| CPl
@@ -41,6 +43,7 @@ flowchart TB
     CPl -.->|"contributes"| TP
     CPl -.->|"contributes, declares"| AP
     CPl -.-> EV
+    CPl -.->|"contributes"| CC
 ```
 
 ## Start from a working plugin
@@ -78,7 +81,7 @@ Both parts use the project SDK `Oadm.Plugin.Sdk`. It names the assemblies after 
 build:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/1.2.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.0.0">
   <PropertyGroup>
     <OadmPluginId>acme.hello</OadmPluginId>
     <Version>1.0.0</Version>
@@ -102,6 +105,9 @@ other packages go into the plugin folder with your plugin.
 | `OadmDisplayName`, `OadmDescription` | `displayName`, `description` | The row on the **Plugins** page: the name and one short sentence |
 | `OadmEnabledByDefault` | `enabledByDefault` | `false`: off until an administrator turns it on. Use it for anything that runs in the background |
 | `OadmLicense...` | `license` | A plugin you sell: [Sell a plugin with a license](../licenses/) |
+| `OadmSiteSupport` | `siteSupport` | `full` (default): works with devices at a site; `none`: the host keeps it away from them, see [Sites](../sites/) |
+| `OadmSitePorts` | `sitePorts` | Ports your plugin listens on at sites: `udp:514:Syslog;tcp:8080:Reports` |
+| `OadmBannedApis` | (none) | `warning` (default): the banned-API analyzer warns (RS0030) when your code opens its own socket, HTTP handler or DNS lookup; `none` turns it off. Inside the OADM repository plugins build with `error`, see [Sites](../sites/) |
 
 A `plugin.json` of your own in the server project is used as it is instead. `alwaysOn` (it cannot be turned off) is
 reserved for the plugins of OADM.
@@ -134,6 +140,8 @@ These rules hold for the built-in plugins too. Pull requests that break them are
   connection last. Details in [Task plugins](../tasks/#device-safety).
 - **Trust.** Your plugin runs with the server's rights (Local System or root as a service) and reaches every managed
   device. Administrators are told to install only plugins they trust: keep yours small, open and free of surprises.
+- **Network.** Never open your own sockets: reach devices through the host (`IVapixClient`, `ctx.EventStreams`,
+  `ctx.Network` / `IDeviceNetwork`), so devices at a site work too. The build warns (RS0030). See [Sites](../sites/).
 - **Secrets.** Payloads live in memory only. Never log or store a password; store secrets only encrypted
   (`ctx.Secrets`).
 - **Steps and names.** Every device request and every wait is a named step. The task name says what the task does.

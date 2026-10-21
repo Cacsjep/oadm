@@ -42,6 +42,9 @@ plugin that throws on start is marked as failed; the others keep running.
 | `TrustAnchors` | CA certificates the server trusts when it rates device certificates (PKI) |
 | `AutoAdd` | Add a device the plugin saw on the network, through the add page's checks (DHCP server) |
 | `Firewall` | Open a UDP port in the Windows firewall while the service is on (NTP, DHCP) |
+| `Network` | `IPluginNetwork`: network checks on a device's route (`ForDevice(device)`, `ForSite(siteId)`) and listeners on the server's own network (`ListenUdpAsync`, `ListenTcpAsync`), see [Sites](../sites/) |
+| `Sites` | `ISites`: the bound sites and relays that listen at a site (`OpenUdpRelayAsync`, `OpenTcpRelayAsync`), see [Sites](../sites/) |
+| `License` | `IPluginLicense`: the package's license, live (`IsValid`, `Has(feature)`, `Limit(name)`, `Changed`), see [Licenses](../licenses/) |
 
 Every member after `Logger` may be null on an older host or where it does not apply. Check before you use it.
 
@@ -89,6 +92,8 @@ The page's context, `ICorePluginClientContext`:
 | `LiveVideo`, `DeviceWeb` | The host's live video and the device web interface, see below |
 | `IsPluginOn(packageId)` | Whether another plugin is turned on (null when the host cannot tell), e.g. to say what to turn on first |
 | `GetLocalSetting(key)`, `SetLocalSetting(key, value)` | Short texts the page keeps on this computer (at most 64 KB each), e.g. the last device choice |
+| `OpenDeviceRequested` | The host asks the page to open a device (the argument is its id); Web View opens devices at a site this way |
+| `LicenseOf(packageId)` | The package's license as the server checked it, e.g. to say "No license" on the page; null when the host cannot tell |
 
 ### Read, then watch
 
@@ -173,6 +178,7 @@ Recording Export passes recordings from the camera straight to the client this w
   handles fullscreen, quality and zoom and focus. Used by Live View.
 - `ctx.DeviceWeb.OpenAsync(deviceId, ct)` opens a device's web interface for an embedded browser through the server,
   logged in, without the password reaching the client. Used by Web View.
+- Tabs are `ui:PageTab`: `Count` above 0 shows a badge after the title; a tab without `CloseCommand` is fixed (no X).
 
 ## Toolbar buttons
 

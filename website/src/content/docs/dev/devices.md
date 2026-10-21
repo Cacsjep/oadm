@@ -14,10 +14,11 @@ sees each device as a read-only `IDeviceInfo` and talks to it through an `IVapix
 | `Serial` | The MAC address, upper case without separators (`B8A44F631339`) |
 | `Address`, `HostName` | The address OADM reaches it at (IP or DNS name) and its host name |
 | `Model`, `FirmwareVersion` | Product number (`P3265-V`) and AXIS OS version (`12.11.77`) |
-| `Status` | `Ok`, `Unreachable`, `CredentialsRequired`, `PasswordNotSet`, `CertificateChanged`, `Unknown` |
+| `Status` | `Ok`, `Unreachable`, `CredentialsRequired`, `PasswordNotSet`, `CertificateChanged`, `Unknown`, `SiteOffline` (its site node is not connected) |
 | `Category`, `HasVideo` | Camera, encoder, speaker, intercom, I/O module, ...; `HasVideo` for cameras, encoders and intercoms |
 | `Apis` | The VAPIX API list of the last full refresh, see [API checks](#api-checks) |
 | `Tags` | The tags the user gave the device ("Building A") |
+| `SiteId`, `SiteName` | The site OADM reaches the device through ("Building B"); null on the server's own network. Two sites may use the same addresses: key devices by `Id` |
 | `CredentialUserName` | The account OADM logs in with. Never remove or demote it. Never the password |
 | `DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` | Network facts from the last full refresh; null while unknown |
 | `CertNotAfterUtc`, `CertTrustName` | The HTTPS certificate's end date and its rating |
@@ -31,9 +32,9 @@ contacts the device.
 Before a plugin sends anything, it checks the status. OADM never sends requests to a device it cannot log in to:
 
 ```csharp
-if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
 {
-    // "Certificate changed. Remove the device and add it again ...", "Credentials required - ...", ...
+    // "Certificate changed ...", "Credentials required - ...", "Site offline: Building B", ...
     return refusal; // show it in the row or fail the task with it; send nothing
 }
 ```
@@ -69,7 +70,7 @@ public static async Task<IReadOnlyList<FirmwareRow>> ReadFirmwareAsync(ICorePlug
         async (device, token) =>
         {
             // Never send a request to a device OADM cannot log in to.
-            if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+            if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
             {
                 rows.Add(new FirmwareRow(device.Id, device.Address, null, refusal));
                 return;
@@ -199,6 +200,14 @@ Monitor.
 `GetVideoSourcesAsync` returns the channels (view areas, sensors, encoder inputs) with their resolutions. A page that
 shows live video uses the host's live video component (`ICorePluginClientContext.LiveVideo`), see
 [Core plugins and pages](../core-plugins/#live-video-and-web-interfaces).
+
+### Network checks: `IDeviceNetwork`
+
+Ping, a TCP probe, a DNS lookup or OADM's own address towards a device go through `IDeviceNetwork` on the device's route
+(through its site node, or on the server's own network): `ctx.Network` in a task or a task query,
+`ctx.Network.ForDevice(device)` in a core plugin. Its methods are `PingAsync`, `ProbeTcpAsync`, `ResolveAsync`,
+`LocalAddressTowardsAsync` and `Reaches`. Never open your own sockets, `Ping` or `Dns`: they reach only the server's
+network, and the build warns (RS0030). See [Sites](../sites/).
 
 ## Changing what OADM knows about a device
 

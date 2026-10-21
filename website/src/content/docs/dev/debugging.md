@@ -58,7 +58,7 @@ Look in the server log first. Every plugin folder writes one of these lines at s
 
 ```text
 Loaded plugin package acme.hello 1.0.0 from G:\odam\artifacts\plugins\acme.hello (1 plugin(s))
-Plugin problem in G:\odam\artifacts\plugins\acme.hello: Plugin acme.hello requires SDK 0.2.0, host has 0.1.0.
+Plugin problem in G:\odam\artifacts\plugins\acme.hello: Plugin acme.hello requires SDK 0.3.0, host has 0.2.0.
 ```
 
 | You see | Check |
@@ -68,6 +68,8 @@ Plugin problem in G:\odam\artifacts\plugins\acme.hello: Plugin acme.hello requir
 | "is already loaded from another folder" | The same id in two plugin folders: remove one |
 | Loaded, but no menu entry | The plugin is off on the **Plugins** page; your class needs to be public with a public parameterless constructor; `ShowInMenus` must be true; the user's role needs the task's permission |
 | The menu entry is grey | `CanRun` returned false: the tooltip shows your `NotSupportedReason` |
+| Grey with "Not available for devices at a site" | `plugin.json` says `"siteSupport": "none"` or has no `siteSupport` (built with an SDK before 0.2.0): set `OadmSiteSupport` to `full` and rebuild, see [Sites](../sites/) |
+| Build warning RS0030 | Your code opens its own socket, HTTP handler or DNS lookup: reach devices through the host (`IVapixClient`, `IDeviceNetwork`), see [Sites](../sites/) |
 | No rail entry for a page | The plugin is off, the role lacks "show", or `HasPage` is false |
 | "The page of this plugin is not installed on this client." | The client found no `ICorePluginPage` with your plugin id: check the client part's `PluginId` and that its `*.Client.dll` is in the folder |
 | "The task ... needs a client plugin ... that is not installed on this computer." | `RequiresDialog` is true but no `ITaskPluginDialog` with the same `PluginId` was loaded: look for "Could not load client plugin" in the client log |

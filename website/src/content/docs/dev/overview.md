@@ -14,7 +14,7 @@ flowchart TB
         direction LR
         UI["Devices page, plugin pages,<br/>task dialogs, toolbar"] --- CP["Plugin client parts<br/>*.Client.dll"]
     end
-    subgraph Server["Server: one service for the site"]
+    subgraph Server["Server: one service for the installation"]
         direction LR
         Core["Device table, polling, task engine,<br/>event rules, stored passwords"] --- SP["Plugin server parts<br/>*.Server.dll"]
     end
@@ -84,8 +84,9 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
    under your name, ready to build and run.
 4. [Build from source](../build/): OADM itself from a checkout.
 5. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
-   [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
-   [SDK versions](../compatibility/).
+   [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [Sites](../sites/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
+   [SDK versions](../compatibility/), [Sell a plugin with a license](../licenses/).
+6. [Build a plugin with AI](../ai-plugins/): write a plugin together with an AI coding assistant.
 
 Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). The
 rules and edge cases are in

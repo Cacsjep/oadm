@@ -52,6 +52,7 @@ sequenceDiagram
 | `MaxParallelDevices` | Lowers how many devices run at once (firmware uses 4); null = the server setting (16) |
 | `ShowInMenus` | False: not in menus; a core plugin starts it from its page |
 | `Permissions`, `RequiredPermissions(payload)` | Finer rights for choices of different risk, see [Permissions](#permissions) |
+| `SiteSupport` | Whether this task works for devices at a site; null = the package's `siteSupport`, see [Sites](../sites/) |
 
 ### Greyed entries say why
 
@@ -65,12 +66,14 @@ public bool CanRun(IDeviceInfo device) =>
     device.Status is DeviceStatus.Ok or DeviceStatus.Unknown && device.Apis.Supports("user-management", "1.0");
 
 public string? NotSupportedReason(IDeviceInfo device) =>
-    TaskSupportReasons.ForStatus(device.Status)                    // "The device does not answer", ...
+    TaskSupportReasons.ForStatus(device)                  // "The device does not answer", "Site offline: ...", ...
     ?? TaskSupportReasons.NeedsApi("the user management API", device);
 ```
 
 `NeedsApi` tells the user to refresh a device whose API list was not read yet. For a real version check,
 `TaskSupportReasons.NeedsFirmware("11.11", device)` says "Needs AXIS OS 11.11 or later (this device has 10.12.338)".
+`TaskSupportReasons.ForSiteSupport(support, device)` says "Not available for devices at a site" for a package with
+`siteSupport` `none`; the host already greys such tasks.
 
 ### Task names
 
@@ -190,7 +193,9 @@ These rules hold for every plugin that changes a device:
    `GetApiListAsync()` with `Require(...)` **before the first write**. A device that lacks the API fails with "Nothing
    was changed".
 2. **Validate before writing.** Check every input (addresses, masks, passwords, files) before the first request.
-   Use the device's own dry run or validation methods when the API has one.
+   Use the device's own dry run or validation methods when the API has one. Check a new address on the device's route
+   with `ctx.Network` (`IDeviceNetwork`: `Reaches`, then `PingAsync` and `ProbeTcpAsync` to see whether it is in use),
+   never with your own `Ping` or socket; see [Sites](../sites/#network-checks-towards-a-device).
 3. **No lock-out.** Never remove or demote `device.CredentialUserName`. Write the setting that could cut the
    connection (address, HTTPS, the account's password) last, and warn in the dialog when a change may make the device
    unreachable.

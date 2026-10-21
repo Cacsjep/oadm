@@ -1,9 +1,10 @@
 namespace Oadm.Sdk.Client;
 
 /// <summary>
-/// Opens the web interface of a managed device for an embedded browser. The host runs a relay on 127.0.0.1 (one origin
-/// per session); the server sends every request to the device with the stored login and the pinned certificate, so the
-/// page logs in by itself and passwords never reach the client. The server writes "Opened web interface" to the audit log.
+/// Opens the web interface of a managed device for an embedded browser. The host runs a relay per session on its own
+/// loopback address (127.1.x.y; macOS 127.0.0.1), so the devices' login cookies never mix between tabs. The server sends
+/// every request to the device with the stored login and the pinned certificate, so the page logs in by itself and
+/// passwords never reach the client. The server writes "Opened web interface" to the audit log.
 /// </summary>
 public interface IDeviceWebAccess
 {
@@ -18,7 +19,7 @@ public interface IDeviceWebSession : IDisposable
     /// <summary>The device this session shows.</summary>
     Guid DeviceId { get; }
 
-    /// <summary>The relay's origin, "http://127.0.0.1:51234/". Requests without the session cookie are refused.</summary>
+    /// <summary>The relay's origin, "http://127.1.0.5:51234/". Requests without the session cookie are refused.</summary>
     Uri Origin { get; }
 
     /// <summary>

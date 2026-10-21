@@ -3,7 +3,7 @@
 How to build a task plugin (server part, optional client dialog), a toolbar plugin, a core plugin with its own
 rail page and an event rule action. Contracts: `src/Oadm.Sdk` (server) and `src/Oadm.Sdk.Client` (client); every type
 and member is in the SDK reference of the website (https://oadm.app/api/, `manage build docs` locally). The spec and
-the device safety HARD RULE are in `CLAUDE.md` ("Plugin System").
+the device safety HARD RULE are in `docs/spec/plugins.md` ("Plugin system").
 
 ## Start a plugin
 
@@ -37,7 +37,8 @@ tests/
 Both projects copy their output to `artifacts/plugins/<plugin id>/` (MSBuild target `OadmDeployPlugin`, see
 `Oadm.Plugins.Restart.csproj`; the samples and the plugins of `manage new` use the plugin project SDK from source,
 `src/Oadm.Plugin.Sdk/targets` via their `Directory.Build.props`: plugin.json from `OadmPluginId`, `Version`,
-`OadmDisplayName`, `OadmDescription`, `OadmEnabledByDefault`, `OadmLicense*`). In a repository checkout the server (`PluginPaths.Development`) and the client
+`OadmDisplayName`, `OadmDescription`, `OadmEnabledByDefault`, `OadmLicense*`, `OadmSiteSupport` (`full` or `none`),
+`OadmSitePorts` (`udp:123:NTP server`), `OadmBannedApis`). In a repository checkout the server (`PluginPaths.Development`) and the client
 (`ClientPluginLoader.DefaultRoots`) scan `artifacts/plugins/*/`, so `dotnet build` of the plugin is enough to try it
 with `dotnet run` of server and client. Installed plugins live in `<datafolder>/plugins/<id>/` or in `plugins/<id>/`
 next to the published exe.
@@ -51,7 +52,7 @@ the host and are never copied into the plugin folder:
   <ExcludeAssets>runtime</ExcludeAssets>
 </ProjectReference>
 <!-- client part also: Oadm.Sdk.Client the same way, and -->
-<PackageReference Include="Avalonia" Version="12.0.4" ExcludeAssets="runtime" />
+<PackageReference Include="Avalonia" Version="12.1.4" ExcludeAssets="runtime" />
 <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
 ```
 
@@ -63,10 +64,12 @@ shared payload types; it then ships in the same folder.
 
 **Never open your own sockets to devices.** Reach devices only through `IVapixClient` (HTTP, HTTPS, WebSockets),
 `ICorePluginContext.EventStreams` (RTSP) and the host's network services (`IDeviceNetwork`), so devices at a site work
-without changes. The plugin project SDK shows a warning (RS0030, banned-API analyzer) for `Socket`, `TcpClient`,
-`UdpClient`, `Ping`, `Dns`, `HttpClientHandler`, `SocketsHttpHandler` and `ClientWebSocket.ConnectAsync`; your own servers
-(mail, HTTP endpoints of your company) are the exception: suppress it with a justification
-(`[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`).
+without changes. The plugin project SDK shows a warning (RS0030, banned-API analyzer,
+`src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`) for `Socket`, `TcpClient`, `UdpClient`, `Ping`, `Dns`,
+`HttpClientHandler`, `SocketsHttpHandler`, `ClientWebSocket.ConnectAsync`, `new HttpClient()` without a handler,
+`WebRequest` and `HttpWebRequest`. Inside this repository it is an error for `src/` and `plugins/`
+(`Directory.Build.props`); `OadmBannedApis=none` turns it off. Your own servers (mail, HTTP endpoints of your company)
+are the exception: suppress it with a justification (`[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`).
 
 **Devices at a site** (a network the server reaches through an OADM Site Node) work without changes when you follow the
 rule above. Declare it in the project (`OadmSiteSupport`, default `full`; a bundled plugin's own `plugin.json` says
@@ -114,7 +117,8 @@ and actions before any plugin call.
   when your check really is a version check (or you verified the API's first firmware); otherwise name the missing
   function. Details about this one device go last as " (this device ...)": the host drops them when it sums up several
   devices ("Needs AXIS OS 11.11 or later: 3 of 5 selected devices"). Helpers in `TaskSupportReasons`:
-  `ForStatus(status, requireOk)` (unreachable, no login, no password, certificate changed),
+  `ForStatus(device, requireOk)` (unreachable, no login, no password, certificate changed, site offline),
+  `ForSiteSupport(support, device)` ("Not available for devices at a site"),
   `NeedsFirmware("11.11", device)`, `NeedsApi("the network settings API", device)` (says "refresh the device" while
   the API list was not read yet). Null, empty or an exception = "Not supported on this device" (the host logs the
   exception once). Bundled: Restart (status); Users, Applications, Firmware, Date and time, Network settings, Assign IP
@@ -213,7 +217,9 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:DeviceIcon Category Status ShowStatusToolTip` | every device icon in a list: the category icon, amber or red by status, the status as tooltip |
   | `DevicePickerWindow.ShowOneAsync(...)` | the picker for one device (checking one unchecks the other); returns its id or null |
   | `PageDeviceChoice` | the device choice of a page that reads many devices (the purple "Selected devices" button), see "Choose devices first" |
-  | `ui:TileGrid Source` | a grid of tiles that fills the page (Live View), see "Shared lists and tabs" |
+  | `ui:TileGrid Source` | a grid of tiles that fills the page (Live View, Dashboards), see "Shared lists and tabs" |
+  | `ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}"` | a select field with check boxes (`ICheckChoice` items, `CheckChoice`; `CheckChoiceList` offers "All" or chosen items); the list stays open while the user ticks |
+  | `ui:PageTab Title IsActive ActivateCommand CloseCommand Count` | every tab of a page with tabs; without `CloseCommand` a fixed tab without an X; `Count` above 0 shows a badge |
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
   | `ui:CodeEditor Text Language PlaceholderText` | **every editable code field** (request bodies): a monospace text box (caret, selection, undo) with the text colored like `ui:CodeView` while typing; `Language` `Json`, `Xml`, `KeyValue` or `Plain`; the text stays exactly as typed |
 
@@ -289,6 +295,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.hardDrive`, `Icon.wrench`, `Icon.eraser`, `Icon.lockOpen`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
 `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.squareActivity`, `Icon.toggle`, `Icon.zap`, `Icon.workflow`, `Icon.undo`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`, `Icon.gauge`, `Icon.circle`, `Icon.thermometer`, `Icon.lightbulb`,
+`Icon.command`, `Icon.download`, `Icon.maximize`, `Icon.minimize`, `Icon.save`, `Icon.send`, `Icon.sliders`, `Icon.text`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -299,7 +306,7 @@ A plugin's `IconKey` (context menu, toolbar) is the key without `Icon.`, e.g. `r
 ## Toolbar plugins
 
 The Devices page toolbar is made of toolbar plugins. The built-in ones are compiled into the client and registered
-like plugin ones: **Add** (group `Add`, a menu with Discovery, Network range, Add manually, Import from file), Remove,
+like plugin ones: **Add** (group `Add`, a menu with Discovery, Network range, Add manually, Import from file, Import from ADM), Remove,
 Refresh and Export (`Manage`), one generic plugin with a button per task plugin that sets `ShowInToolbar` (`Tasks`),
 and AXIS OS - Release Notes (`Plugins`, last). Group by tag, Columns and the search box are host parts on the right.
 
@@ -310,6 +317,7 @@ public interface IToolbarPlugin            // Oadm.Sdk.Client
     int Order { get; }                     // ascending within the group
     ToolbarGroup Group { get; }            // Add, Manage, Tasks, Plugins (left to right)
     Control CreateControl(IToolbarContext ctx);   // any Avalonia control, created once on the UI thread
+    string? RequiredPermission => null;    // "devices.addRemove": hidden while the role lacks it; null = every user
 }
 
 public interface IToolbarContext           // UI thread only; events are raised on the UI thread
@@ -320,7 +328,11 @@ public interface IToolbarContext           // UI thread only; events are raised 
     bool CanRunTask(string pluginId);                     // CanRun for the whole selection
     string? CannotRunTaskReason(string pluginId);         // the reason as the context menu shows it; null = can run or nothing selected
     Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // dialog first when needed
-    Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / AddImport / ExportDevices / Devices / Logs / Settings
+    Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / AddImport / AddImportAdm /
+                                                          // ExportDevices / Devices / Compliance / Sites / EventRules / Logs / Settings /
+                                                          // Users / Credentials / Plugins / About
+    bool Has(string permission);                          // the user's role allows it ("devices.refresh")
+    event EventHandler? PermissionsChanged;               // the role or its permissions changed
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
     Task RefreshDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct); // full refresh now (server), read-only
     Task ShowMessageAsync(string title, string message);
@@ -348,7 +360,8 @@ public interface IToolbarContext           // UI thread only; events are raised 
   Sample: the System report (`plugins/Oadm.Plugins.SystemReport` + `.Client`, `SystemReportToolbarPlugin`): save
   dialog first, then a progress dialog. The platform parts sit behind a small interface (`ISystemReportUi`), so the
   flow is testable without windows.
-- The toolbar must stay on one line at the 1800 px minimum window width with the rail expanded.
+- The toolbar must stay on one line at a 1800 px window width with the rail expanded (the main window's minimum is
+  1200 px; entries that do not fit move into the More menu).
 
 ```csharp
 public sealed class SampleToolbarPlugin : IToolbarPlugin
@@ -418,7 +431,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   `Border.card`s. The context also offers the managed devices and the Devices page selection (`Devices`,
   `SelectedDevices`, `DevicesChanged`), `OwnerName`, `ConfirmAsync`, `ShowMessageAsync`, `OpenAsync(HostPages.Devices)`
   (or another plugin's page: `OpenAsync("plugin:" + id)`, while it is on), `IsPluginOn(packageId)` (whether a plugin is
-  turned on; null when the host cannot tell) and `Owner`.
+  turned on; null when the host cannot tell), `LicenseOf(packageId)`, `OpenDeviceRequested` (the host asks the page to
+  open a device; Web View opens devices at a site this way) and `Owner`.
 - **Several views at once**: the rail entry's context menu **Open in new window** shows another copy of the page in a
   window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in
   the view model of that view (never in static or shared fields of the page class), start server work when the view is
@@ -470,7 +484,7 @@ lacks.
 
 ### Samples
 
-Each plugin has a short entry in `CLAUDE.md` and its own `README.md` with the details (decisions, page and dialog, steps
+Each plugin has a short entry in `docs/spec/bundled-plugins.md` and its own `README.md` with the details (decisions, page and dialog, steps
 and task names, device API and verified behavior, settings, tests). A new plugin adds both.
 
 | Plugin | Id | Shows how to |
@@ -479,7 +493,7 @@ and task names, device API and verified behavior, settings, tests). A new plugin
 | VAPIX Commander (`Oadm.Plugins.VapixCommander`) | `oadm.vapix-commander` | a command library from data files, saved commands with encrypted secrets, a three-card page, rollouts as a hidden contributed task plugin with one named step per command |
 | NTP server (`Oadm.Plugins.NtpServer`) | `oadm.ntp-server` | a network service (UDP responder, background upstream loop), saved settings, a live request log on the page, a contributed task that configures devices |
 | DHCP server (`Oadm.Plugins.DhcpServer`) | `oadm.dhcp-server` | an injectable socket layer (`IDhcpSocketFactory`, in-memory network in the tests), a lease table in plugin settings, live lease changes with versions, a virtualized lease grid and a dialog; manual test plan in its `README.md` |
-| PKI (`Oadm.Plugins.Pki`) | `oadm.pki` | a CA key kept with `ctx.Secrets`, trust anchors for the server's certificate rating, OS tools behind `IProcessRunner` (a fake in the tests), a page with several cards and three dialogs. Contributes eight Security task plugins that share the CA through a `Func<PkiService?>`: keys created on the device, CSRs signed by the CA, `UpdateDeviceTlsAsync` to follow the new web server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog` whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`) |
+| PKI (`Oadm.Plugins.Pki`) | `oadm.pki` | a CA key kept with `ctx.Secrets`, trust anchors for the server's certificate rating, OS tools behind `IProcessRunner` (a fake in the tests), a page with several cards and three dialogs. Contributes nine Security task plugins that share the CA through a `Func<PkiService?>`: keys created on the device, CSRs signed by the CA, `UpdateDeviceTlsAsync` to follow the new web server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog` whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`) |
 | Metadata Monitor (`Oadm.Plugins.MetadataMonitor`) | `oadm.metadata-monitor` | a read-only live view of one camera's event stream: opened through `ctx.EventStreams`, XML parsed on the server, batched messages; the page keeps the newest 10,000 in a `RangeObservableCollection` (one change per batch), filters live and shows the selected message in `ui:CodeView`. Per-page streams end on Stop, on a page change and, for a closed client, when the page's keep-alives stop (a lease pattern for any per-page server resource) |
 | System report (`Oadm.Plugins.SystemReport`) | `oadm.system-report` | no page, a toolbar button; background jobs with status deltas by version, files in `ctx.DataDirectory`, streamed device downloads, a ZIP read in chunks |
 | Hardening scan (`Oadm.Plugins.HardeningScan`) | `oadm.hardening-scan` | spec in its `README.md`: a read-only scan job over thousands of devices with bounded parallelism, results as events and kept in a plugin setting, request code of other plugins compiled in as linked sources, grid columns built from a catalog (icon-only status cells bound to one byte per row, tooltips built when they open) |
@@ -487,7 +501,7 @@ and task names, device API and verified behavior, settings, tests). A new plugin
 ## Compliance check types
 
 User and developer guide: the website page Developers > Compliance checks (`website/src/content/docs/dev/compliance-checks.md`).
-The Compliance page (built into the server, "Compliance" in `CLAUDE.md`) runs checks on the
+The Compliance page (built into the server, `docs/spec/compliance.md`) runs checks on the
 devices the user chose. A plugin adds a kind of check with one class implementing `IComplianceCheckType`
 (`Oadm.Sdk.Compliance`): a public class with a parameterless constructor in its `*.Server.dll` (the loader registers it
 like an action), or one a core plugin returns from `IComplianceSource.ComplianceCheckTypes`. No client part: the check dialog
@@ -539,7 +553,7 @@ public sealed class ApplicationRunningCheck : IComplianceCheckType
 
 ## Event rule actions and events
 
-The event rules (built into the server, "Event rules" in `CLAUDE.md`) run actions
+The event rules (built into the server, `docs/spec/event-rules.md`) run actions
 when events happen. Both sides are plugins.
 
 ### Writing an action
@@ -659,7 +673,8 @@ reconnect with a backoff when it breaks.
 managed device for an embedded browser (`Avalonia.Controls.WebView`, shipped by the client host; reference it with
 `ExcludeAssets="runtime"`). `OpenAsync(deviceId, ct)` asks the server (refused statuses throw
 `DeviceWebRefusedException` with the shared text; the server writes "Opened web interface" to the audit log) and starts a
-relay on 127.0.0.1 with its own port: open `session.StartAddress(path)` in the browser once (it hands the browser a
+relay on its own loopback address (127.1.x.y; macOS 127.0.0.1), so the devices' login cookies never mix between tabs:
+open `session.StartAddress(path)` in the browser once (it hands the browser a
 session cookie, other programs get 403), later paths under `session.Origin`. Every request and WebSocket goes through
 the server (gRPC `DeviceWebService`), which adds the stored login and checks the pinned certificate. Dispose the session
 when the tab closes; the host stops every relay of a page when the page closes. Used by the Web View plugin.
@@ -688,8 +703,9 @@ request with `VapixRequestOptions.StreamResponse` and pass the response as owner
 ### Shared lists and tabs
 
 `ui:DeviceTree` with a `DeviceTreeModel` (devices grouped by tag, search, optional `Filter`, `DeviceInvoked`) and
-`ui:PageTab` (title, close, active) are the device tree and the tabs of Web View and Live View; a page with devices by
-tag or with tabs uses them. `ui:TileGrid` is the grid of tiles of Live View: the page's tab implements `ITileGridSource`
+`ui:PageTab` (title, close, active, `Count` badge; without `CloseCommand` a fixed tab) are the device tree and the tabs
+of Web View, Live View and Dashboards; a page with devices by tag or with tabs uses them. `ui:TileGrid` is the grid of
+tiles of Live View and Dashboards: the page's tab implements `ITileGridSource`
 (its tiles as `ITileGridItem`: `Rect` (a `TileRect` of cells), title, content or a message, the remove command, `IsSelected`
 (the tile whose settings the page shows, its frame marked), `FrameClass` (a theme class of its frame, e.g. `valueTile`: no video
 background), `CopyCommand` (a copy icon left of the X, shown while it can run; tooltip `ITileGridSource.CopyText`);
@@ -718,7 +734,7 @@ a timeout per device, rows by device id, changed and removed rows pushed in batc
 `Failure(ex)` is the usual text of a failed read) and `SweepRows<TRow, TVm>` on the page (view models by id, updated in
 place, search and new rows with one reset; `AddressSortKeys.Of`). Link them with
 `<Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />`. Refuse devices with
-`DeviceMessages.Refusal(status, refuseUnreachable: true)` before any request, and watch the page events with
+`DeviceMessages.Refusal(device, refuseUnreachable: true)` before any request (it also refuses a device whose site is offline), and watch the page events with
 `ctx.RunAsync(HandleEvent, retryDelay, ct)` (`PluginEventWatch`, reconnects after a drop). The disk list of the Edge storage
 API is `Oadm.Plugins.EdgeStorage.Disks` (`EdgeDisk`, `EdgeDisks.Parse`, `FirstProblem`); link
 `..\Oadm.Plugins.EdgeStorage\Disks\*.cs` instead of parsing `disks/list.cgi` again. The devices' own action rules,
@@ -748,7 +764,9 @@ recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`Soap
   `Oadm.Sdk.Client.Network.InterfaceSelection` is the select's view model (selection kept across refreshes; a
   configured interface that is gone stays as "(not available)"); bind the ComboBox to `Listen.Items` /
   `Listen.Selected`.
-- **Privileged ports**: make the port injectable (tests bind 0 on 127.0.0.1 or use an in-memory transport, never the
+- **Privileged ports**: listen through the host with `ctx.Network.ListenUdpAsync` / `ListenTcpAsync` (it binds the
+  port and opens the Windows firewall rule; at sites `ctx.Sites.OpenUdpRelayAsync` / `OpenTcpRelayAsync`), never your
+  own socket. Make the port injectable (tests use `Oadm.Sdk.Testing.FakePluginNetwork` or an in-memory relay, never the
   real port). Map bind errors per OS with `Oadm.Sdk.Network.PortBindErrors` (`Classify(SocketError, HostOs)`; texts
   `InUseText`, `PermissionText`, `FindUdpPortOwner`, `PermissionFix`): Windows has no privileged ports, so
   AccessDenied means another program holds the port; Linux needs root or `cap_net_bind_service`; macOS needs root for
@@ -767,7 +785,8 @@ recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`Soap
   the server receive time); `LostDocuments` counts documents dropped for packet loss or size (over 1 MB); dispose =
   TEARDOWN. Failures are `DeviceStreamException` with `Error` (Unreachable: retry with backoff; Unauthorized,
   NotSupported: permanent) and a user message ("Unauthorized - HTTP 401", "The device has no event stream",
-  "Unreachable - ..."). Check `IDeviceInfo.Status` first (CertificateChanged, CredentialsRequired, PasswordNotSet). The
+  "Unreachable - ..."). Refuse a device with `DeviceMessages.Refusal(device)` first (Certificate changed, Credentials
+  required, Password not set, Site offline). The
   host sends keep-alives and detects a silent connection.
 - **Bulk lists on pages**: `Oadm.Sdk.Client.Collections.RangeObservableCollection<T>` (`ReplaceAll`, `AddRange`,
   `InsertRange`, `RemoveAll`, `RemoveFirst`: one Reset instead of one event per item), the collection the host grids

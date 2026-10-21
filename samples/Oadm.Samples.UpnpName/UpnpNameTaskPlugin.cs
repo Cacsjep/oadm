@@ -26,7 +26,7 @@ public sealed class UpnpNameTaskPlugin : ITaskPlugin, ITaskPluginQuery
         device.Status is DeviceStatus.Ok or DeviceStatus.Unknown && device.Apis.Supports("param-cgi", "1.0");
 
     public string? NotSupportedReason(IDeviceInfo device) =>
-        TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the parameter API", device);
+        TaskSupportReasons.ForStatus(device) ?? TaskSupportReasons.NeedsApi("the parameter API", device);
 
     public string GetTaskName(string? payloadJson)
     {

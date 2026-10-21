@@ -6,6 +6,7 @@ description: Let OADM serve the time to your devices.
 import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/ntp-server-page.png';
+import sitesShot from '../../../assets/screens/ntp-server-sites.png';
 
 The OADM server can be the time server for your devices. This helps on sites without internet access or without
 another time server. Without an upstream server OADM serves its own computer's time. With an upstream server it
@@ -34,9 +35,11 @@ passes on that server's time.
 
 ## Devices at sites
 
-While OADM has [sites](../../admin/sites/), the page shows **Sites**: choose **All sites** (also sites added later) or the
+While OADM has [sites](../../sites/overview/), the page shows **Sites**: choose **All sites** (also sites added later) or the
 sites whose devices get the time from OADM. Each site's node asks to allow UDP 123 in the OADM Site Node app; the state of
 each site shows below the field. A site you no longer choose gets its port removed in the node app again.
+
+<Image src={sitesShot} alt="The Sites field of the NTP server page with All sites and the single sites" class="screen" />
 
 ## Point devices to OADM
 

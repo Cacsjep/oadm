@@ -90,8 +90,10 @@ there and one per line in the tooltip ("2 settings differ" then the differences)
 ### Rules
 
 - **Read only.** A check never changes a device. Use GETs and list calls.
-- **The host decides who is contacted.** Devices that are Unreachable, need credentials, have no password or a changed
-  certificate never reach `EvaluateAsync`; they show "Not checked" with the reason.
+- **The host decides who is contacted.** Devices that are Unreachable, need credentials, have no password, have a
+  changed certificate or whose site is offline never reach `EvaluateAsync`; they show "Not checked" with the reason.
+- **Sites.** `IComplianceCheckType.SiteSupport` (null = the package's `siteSupport`) says whether the type checks devices
+  at a site; with `none` they are Not checked ("Not available for devices at a site"). See [Sites](../sites/).
 - **Time.** 15 s per check and device (`ct` is cancelled); a timeout is "Timeout after 15 s".
 - **Shared reads.** `ctx.Reads.GetOrAddAsync(key, read, ct)` runs `read` once per device and run for every check that uses
   the key. Name the key after your plugin ("acme.parking:status"). The host's own plugins share `oadm.acap:list`

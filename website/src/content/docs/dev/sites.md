@@ -23,8 +23,12 @@ flowchart LR
 
 - **Never open your own sockets to devices.** Reach them through `IVapixClient` (HTTP, HTTPS, WebSockets),
   `ICorePluginContext.EventStreams` (RTSP) and `IDeviceNetwork` (below). The host routes all of them through the
-  device's site. The project SDK warns (RS0030) when your code uses `Socket`, `TcpClient`, `UdpClient`, `Ping`, `Dns`,
-  `HttpClientHandler`, `SocketsHttpHandler` or `ClientWebSocket.ConnectAsync`.
+  device's site. The project SDK warns (RS0030, banned-API analyzer) when your code uses `Socket`, `TcpClient`,
+  `UdpClient`, `Ping`, `Dns`, `HttpClientHandler`, `SocketsHttpHandler`, `ClientWebSocket.ConnectAsync`,
+  `new HttpClient()` without a handler, `WebRequest` or `HttpWebRequest`. The project property `OadmBannedApis` sets it:
+  `warning` (default) or `none`; the plugins inside the OADM repository build with `error`. For your own servers (mail,
+  an HTTP endpoint of your company) suppress it with a justification:
+  `[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`.
 - **Refuse what the host refuses.** A device whose site is offline has the status `SiteOffline`; use
   `DeviceMessages.Refusal(device)` or `TaskSupportReasons.ForStatus(device)`, which say "Site offline: Building B".
 - **Addresses repeat.** Two sites may both use 192.168.0.20. Key devices by their id, and an address together with
@@ -140,6 +144,7 @@ While the site link is down, the server is not there for the site's devices. Say
 | `FakePluginNetwork` | `IPluginNetwork`: the local route, each site's `FakeDeviceNetwork`, in-memory listeners in `Listeners` |
 | `InMemoryUdpRelay` | `Deliver(data, from)` is a device's datagram, `ReadSentAsync` what your plugin sent |
 | `InMemoryTcpRelay` | `Connect(from)` returns the device's end of a new connection |
+| `InMemoryRelay` (both) | `IsReleased`: the plugin called `ReleaseAsync` (it no longer serves there); `IsDisposed`: disposed or released, or the plugin stopped |
 
 `FakeCoreContext` brings `FakeSites` and `FakeNetwork`. The NTP server's tests (`tests/Oadm.Plugins.NtpServer.Tests/SiteServingTests.cs`)
 show a server that answers through relays, its rate limits per site and the relay states on its page.
@@ -159,3 +164,7 @@ site.IsOnline = false;
 ctx.FakeSites.Update();                                   // every relay takes its site's state
 Assert.Equal("Syslog at Building B: site offline", relay.StateText);
 ```
+
+## Reference
+
+Every member with its signature in the [SDK reference](../../api/): [`ISites`](../../api/sdk/sites/isites/), [`IRelay`](../../api/sdk/sites/irelay/), [`IDeviceNetwork`](../../api/sdk/sites/idevicenetwork/), [`IPluginNetwork`](../../api/sdk/sites/ipluginnetwork/), [`SiteTexts`](../../api/sdk/sites/sitetexts/).

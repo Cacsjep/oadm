@@ -44,6 +44,10 @@ You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). Everything el
   checkout: `dotnet new oadm-task` and the `oadm` command (website: Develop with the .NET SDK).
 - **SDK comments:** every public type and member of `Oadm.Sdk` and `Oadm.Sdk.Client` has a doc comment for plugin
   authors; the website's SDK reference is generated from them (`manage build docs`) and a test fails without one.
+- **No own sockets to devices:** `src/` and `plugins/` reach devices only through the host (`IVapixClient`, event
+  streams, `IDeviceNetwork`), so devices at a site work too. The banned APIs (`Socket`, `TcpClient`, `UdpClient`,
+  `Ping`, `Dns`, own HTTP handlers, `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`) are build errors there (RS0030); an
+  exception carries a `SuppressMessage` with a justification and is listed in `RoutingRulesTests.AllowedBannedApiUsers`.
 - **Cross-platform:** the code builds and runs on Windows, Linux and macOS (no Windows-only APIs).
 - **Secrets:** never log passwords, tokens or digest headers; never commit `dev-cameras.yaml`.
 

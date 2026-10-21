@@ -1,6 +1,6 @@
 # DHCP server (core plugin `oadm.dhcp-server`)
 
-Summary in `CLAUDE.md` "DHCP server". Own RFC 2131 / RFC 2132 implementation
+Summary in `docs/spec/bundled-plugins.md` "DHCP server". Own RFC 2131 / RFC 2132 implementation
 (no library), IPv4 only, one interface, starts disabled.
 
 ## Sites

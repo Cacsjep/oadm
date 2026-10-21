@@ -13,6 +13,8 @@ const apiSidebar = existsSync(apiSidebarFile) ? JSON.parse(readFileSync(apiSideb
 // addresses redirect here).
 export default defineConfig({
 	site: 'https://oadm.app',
+	// Pages that moved: the old addresses keep working.
+	redirects: { '/admin/sites': '/sites/overview/' },
 	// The developer tutorials show the sample plugins of samples/ (outside website/) as they are: allow reading them.
 	vite: { server: { fs: { allow: ['..'] } } },
 	integrations: [
@@ -112,6 +114,16 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Sites',
+					collapsed: true,
+					items: [
+						{ label: 'Overview', slug: 'sites/overview' },
+						{ label: 'Set up a site', slug: 'sites/setup' },
+						{ label: 'Sites page', slug: 'sites/sites-page' },
+						{ label: 'OADM Site Node app', slug: 'sites/node-app' },
+					],
+				},
+				{
 					label: 'Device tasks',
 					collapsed: true,
 					items: [
@@ -157,7 +169,6 @@ export default defineConfig({
 						{ label: 'Turn plugins on or off', slug: 'admin/plugins' },
 						{ label: 'Settings', slug: 'admin/settings' },
 						{ label: 'Ports, data and backup', slug: 'admin/ports-and-data' },
-						{ label: 'Sites', slug: 'admin/sites' },
 						{ label: 'Logs and troubleshooting', slug: 'admin/troubleshooting' },
 					],
 				},

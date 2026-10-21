@@ -62,7 +62,7 @@ Both parts use the project SDK `Oadm.Plugin.Sdk`. It sets the assembly names (`<
 for a project ending in `.Client`), references the SDK without copying it (OADM brings its own), and writes `plugin.json`:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/1.2.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.0.0">
   <PropertyGroup>
     <OadmPluginId>acme.door-bell</OadmPluginId>
     <Version>1.0.0</Version>
@@ -81,6 +81,7 @@ for a project ending in `.Client`), references the SDK without copying it (OADM 
 | `OadmLicensePublicKey`, `OadmLicenseFeatures`, `OadmLicenseTrialDays` | `license` | A plugin you sell, see [Sell a plugin with a license](../licenses/) |
 | `OadmSiteSupport` | `siteSupport` | `full` (default): works with devices at a site; `none`: not for them, see [Sites](../sites/) |
 | `OadmSitePorts` | `sitePorts` | Ports your plugin listens on at sites: `udp:514:Syslog;tcp:8080:Reports` |
+| `OadmBannedApis` | (none) | `warning` (default): the banned-API analyzer warns (RS0030) when your code opens its own socket, HTTP handler or DNS lookup; `none` turns it off. Inside the OADM repository plugins build with `error`, see [Sites](../sites/) |
 | (from the SDK) | `minSdkVersion` | The SDK version you build against, see [SDK versions](../compatibility/) |
 
 A `plugin.json` of your own in the server project is copied as it is instead.
@@ -161,14 +162,14 @@ exactly like the server. See [Testing](../testing/).
 
 | Command | What it does |
 |---|---|
-| `oadm dev start [--port 5090] [--from <folder or ZIP>]` | The development server; `--from` takes a portable OADM you built or downloaded yourself |
-| `oadm dev client [--port <port>]` | The client with this folder's plugins, against the development server |
+| `oadm dev start [--port 5090] [--from <folder or ZIP>] [--server-version <version>]` | The development server; `--from` takes a portable OADM you built or downloaded yourself, `--server-version` downloads the portable server of another release (default: the tool's version) |
+| `oadm dev client [--port <port>] [--from <folder or ZIP>] [--client-version <version>]` | The client with this folder's plugins, against the development server; `--from` and `--client-version` as for the server |
 | `oadm dev status`, `dev logs [--lines 50]`, `dev stop` | The development server's state, its log, stop it |
-| `oadm deploy --installed [--plugin <id>]` | Into the OADM installed on this computer |
+| `oadm deploy --installed [--plugin <id>] [--server-only] [--workspace <folder>]` | Into the OADM installed on this computer; `--server-only` skips the client, `--workspace` names the plugin's folder when you run it elsewhere |
 | `oadm deploy --to <folder>` | Copies the plugin folders into any OADM plugin folder |
-| `oadm debug --installed` | The installed server in your terminal with your build |
+| `oadm debug --installed [--workspace <folder>]` | The installed server in your terminal with your build |
 | `oadm folders` | The installed server's and client's folders |
-| `oadm pack [--out <folder>]` | The `.oadmplugin` file |
+| `oadm pack [--out <folder>] [--configuration Release]` | The `.oadmplugin` file, built in that configuration (default Release) |
 | `oadm license keys`, `license sign` | Keys and license keys for a plugin you sell |
 | `oadm doctor` | Checks .NET, ports, the installed OADM and this folder |
 | `oadm version` | The version of the `oadm` command |

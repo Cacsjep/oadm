@@ -1,8 +1,7 @@
 # Outputs (`oadm.outputs`)
 
 Bundled, always on, server only. Contributes the event rule action **Set output** (`SetOutputAction`): switches an output
-port of a device, for example the relay of a camera or an I/O module. Spec: "Event rules"
-in `CLAUDE.md`.
+port of a device, for example the relay of a camera or an I/O module. Spec: `docs/spec/event-rules.md`.
 
 | Mode | On / fired | Turns off |
 |---|---|---|

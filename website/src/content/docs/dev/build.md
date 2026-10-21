@@ -23,10 +23,12 @@ On the first `run dev`, confirm the fingerprint, then create the first administr
 | `manage run server` | Run the server in the foreground on `https://0.0.0.0:5080` |
 | `manage run client [--fake] [--server URL]` | Run the client |
 | `manage run dev` | Server in the background, then the client; closing the client stops the server |
-| `manage test [unit\|timing\|perf\|hardware\|all]` | Run tests |
+| `manage run node\|node-app` | The OADM Site Node on the console and its app, with their own data folder (`artifacts/dev-node`) |
+| `manage test [unit\|perf\|hardware\|all]` | Run tests |
 | `manage publish [all\|server\|client] [--rid RID]` | Self-contained apps in `artifacts/publish/` |
 | `manage package <windows\|linux\|macos>` | Installer in `artifacts/packages/` |
-| `manage new <task\|page\|action> --name NAME` | A new plugin from a tutorial, under your name, ready to build and run |
+| `manage package site-node [--rid RID]` | The OADM Site Node installers (Windows MSI, Linux .deb) |
+| `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from a tutorial, under your name, ready to build and run; `--id` defaults to `community.<name>` |
 | `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget` (SDK, test helpers, project SDK, templates, the `oadm` command) |
 | `manage build docs` | The SDK reference of this website, for the local docs server |
 | `manage license keys\|sign` | Key pair and license keys for a plugin you sell, see [Plugin licenses](../licenses/) |
