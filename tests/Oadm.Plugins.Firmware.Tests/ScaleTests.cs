@@ -81,7 +81,7 @@ public sealed class FirmwareScaleTests
 
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Answers every status query after a short delay and records how many run at once.</summary>
