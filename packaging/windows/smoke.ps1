@@ -95,8 +95,12 @@ if ($Mode -eq 'SiteNode') {
     $status = Invoke-Node @('status')
     if ($status -notmatch 'Not bound') { throw 'status must say Not bound' }
     if ($status -notmatch 'oadm\.example\.com') { throw 'SERVER was not set' }
-    (Get-Acl $data).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
-    if (-not (Test-Path "$data\node.json")) { throw 'node.json missing in the data folder' }
+    # The data folder is for SYSTEM and the node's account only: an administrator cannot read inside it (status above shows
+    # that the service wrote and read node.json), so the check is its permissions.
+    $acl = (Get-Acl $data).Access
+    $acl | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
+    $who = @($acl | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+    if (($who -join ',') -ne 'NT AUTHORITY\SYSTEM,NT SERVICE\OadmSiteNode') { throw "data folder for SYSTEM and the node's account only, not: $($who -join ', ')" }
 
     # Another server address is taken; the node never listens, so still no firewall rule.
     $null = Invoke-Node @('server', 'oadm2.example.com')
@@ -110,7 +114,7 @@ if ($Mode -eq 'SiteNode') {
     if (Get-Service OadmSiteNode -ErrorAction SilentlyContinue) { throw 'service still installed' }
     if (Test-Path $node) { throw 'node still installed' }
     if ((Get-NodeRule).Count -ne 0) { throw 'firewall rule left behind' }
-    if (-not (Test-Path "$data\node.json")) { throw 'data folder was removed' }
+    if (-not (Test-Path $data)) { throw 'data folder was removed' }
     Say 'site node: install, service, status, no firewall rule, uninstall ok'
     return
 }
