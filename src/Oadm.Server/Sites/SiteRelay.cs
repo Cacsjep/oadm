@@ -17,12 +17,16 @@ namespace Oadm.Server.Sites;
 /// A relay at a site (docs/sites.md, "Relay"): keeps one node <c>Relay</c> call open while the site is online and opens it
 /// again after the node reconnects. Its <see cref="State"/> follows the node's answers (running, waiting for approval in
 /// the node app, port in use, no permission) and the site (offline, node too old). The node asks its user for a port it
-/// has not allowed (Listen on, with the reason) when the call opens.
+/// has not allowed (Listen on, with the reason) when the call opens. <see cref="ReleaseAsync"/> tells the node that the plugin
+/// no longer serves there (the node gives the port back), then closes.
 /// </summary>
 internal abstract class SiteRelay : IRelay
 {
     /// <summary>Longest pause before the call is opened again after it ended while the site stayed online.</summary>
     public static readonly TimeSpan MaxRetry = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a release waits for the node to end the call before the relay closes anyway.</summary>
+    public static readonly TimeSpan ReleaseWait = TimeSpan.FromSeconds(5);
 
     private readonly SiteManager _manager;
     private readonly Guid _siteId;
@@ -36,6 +40,7 @@ internal abstract class SiteRelay : IRelay
     private RelayState _state = RelayState.SiteOffline;
     private string _siteName;
     private int _disposed;
+    private int _releasing;
 
     protected SiteRelay(SiteManager manager, string siteName, Guid siteId, SiteProtocol protocol, int port, string reason)
     {
@@ -161,9 +166,9 @@ internal abstract class SiteRelay : IRelay
                 OnCallEnded();
             }
 
-            if (ct.IsCancellationRequested)
+            if (ct.IsCancellationRequested || Volatile.Read(ref _releasing) == 1)
             {
-                break;
+                break; // disposed, or released: never opened again
             }
 
             // Ended while the site still counts as online: a short pause, longer each time it fails at once.
@@ -308,6 +313,47 @@ internal abstract class SiteRelay : IRelay
         IPEndPoint.TryParse(text, out var endpoint) ? endpoint : new IPEndPoint(IPAddress.Any, 0);
 
     protected bool IsDisposed => Volatile.Read(ref _disposed) == 1;
+
+    /// <summary>
+    /// The plugin no longer serves at this site: the node gets a release (it gives the port back) and ends the call, then
+    /// the relay closes. While the site is offline nothing reaches the node and its port stays allowed.
+    /// </summary>
+    public async ValueTask ReleaseAsync()
+    {
+        if (IsDisposed || Interlocked.Exchange(ref _releasing, 1) == 1)
+        {
+            return;
+        }
+
+        RelayCall? call;
+        lock (_lock)
+        {
+            call = _call;
+        }
+
+        if (call is not null)
+        {
+            using var timeout = new CancellationTokenSource(ReleaseWait, _manager.Time);
+            await _writing.WaitAsync(timeout.Token).ConfigureAwait(false);
+            try
+            {
+                await call.Requests.WriteAsync(new RelayMessage { Release = new RelayRelease() }, timeout.Token).ConfigureAwait(false);
+                await call.Requests.CompleteAsync().ConfigureAwait(false);
+                // The node ends the call once the port is back; an older node does not, the wait ends it.
+                await Task.WhenAny(_loop, Task.Delay(ReleaseWait, _manager.Time, timeout.Token)).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is RpcException or InvalidOperationException or ObjectDisposedException or OperationCanceledException or IOException)
+            {
+                // The link ended meanwhile: the node keeps the port.
+            }
+            finally
+            {
+                _writing.Release();
+            }
+        }
+
+        await DisposeAsync().ConfigureAwait(false);
+    }
 
     public async ValueTask DisposeAsync()
     {

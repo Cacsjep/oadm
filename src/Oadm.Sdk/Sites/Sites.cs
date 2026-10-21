@@ -119,6 +119,14 @@ public interface IRelay : IAsyncDisposable
 
     /// <summary>The state changed.</summary>
     event EventHandler? StateChanged;
+
+    /// <summary>
+    /// Closes the relay for good because the plugin no longer serves there (a setting changed): the site node gives the
+    /// port back (it drops the port it allowed from the plugin's request; a port its administrator added stays). Dispose
+    /// instead when the plugin only stops (the server shuts down, the plugin is turned off): the port stays allowed for the
+    /// next start. Default: dispose.
+    /// </summary>
+    ValueTask ReleaseAsync() => DisposeAsync();
 }
 
 /// <summary>One datagram and who sent it.</summary>

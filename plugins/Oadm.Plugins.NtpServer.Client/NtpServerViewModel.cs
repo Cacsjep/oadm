@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.NtpServer.Serving;
 using Oadm.Plugins.NtpServer.Upstream;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Network;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
@@ -60,6 +61,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _ctx.DevicesChanged += (_, _) => OnDevicesChanged();
+        SiteChoices.Changed += (_, _) => OnPropertyChanged(nameof(ServeAtSites));
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayManage));
@@ -83,9 +85,20 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     /// <summary>With "Serve at sites": the relay of every site ("NTP at Building B: running").</summary>
     public ObservableCollection<SiteServing> SiteRows { get; } = [];
 
-    /// <summary>"Serve at sites": the site nodes pass the time requests of their devices to this server.</summary>
-    [ObservableProperty]
-    public partial bool ServeAtSites { get; set; }
+    /// <summary>
+    /// "Serve at sites": a select with check boxes, All sites or the chosen sites, nothing ticked = not at sites. The site
+    /// nodes of the served sites pass the time requests of their devices to this server.
+    /// </summary>
+    public CheckChoiceList SiteChoices { get; } = new(AllSitesText, NotAtSitesText);
+
+    /// <summary>"All sites", the first entry of the site select.</summary>
+    public const string AllSitesText = "All sites";
+
+    /// <summary>The site select while nothing is ticked.</summary>
+    public const string NotAtSitesText = "Not at sites";
+
+    /// <summary>Some site is served (All sites or a chosen one): the relay states show below the select.</summary>
+    public bool ServeAtSites => SiteChoices.AnyChosen;
 
     /// <summary>The server has sites (or serves at sites): the page shows "Serve at sites".</summary>
     [ObservableProperty]
@@ -242,7 +255,8 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         UpstreamResult = null;
         try
         {
-            var request = new SaveRequest(IsEnabled, SelectedInterface?.Id ?? NtpServerPluginInfo.AllInterfaces, string.IsNullOrWhiteSpace(Upstream) ? null : Upstream.Trim(), ServeAtSites);
+            var request = new SaveRequest(IsEnabled, SelectedInterface?.Id ?? NtpServerPluginInfo.AllInterfaces, string.IsNullOrWhiteSpace(Upstream) ? null : Upstream.Trim(),
+                ServeAtSites, [.. SiteChoices.ChosenValues.OfType<Guid>()]);
             var json = await _ctx.InvokeAsync(NtpServerMethods.Save, NtpJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
             var reply = NtpJson.Deserialize<SaveReply>(json);
             if (!reply.Saved)
@@ -345,10 +359,36 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     {
         _formLoaded = true;
         IsEnabled = config.Enabled;
-        ServeAtSites = config.ServeAtSites;
+        _formSites = config;
+        ApplySiteChoices(_sites);
         Upstream = config.Upstream ?? string.Empty;
         UpstreamResult = null;
         Listen.Select(config.InterfaceId);
+    }
+
+    private NtpConfig? _formSites;
+    private IReadOnlyList<SiteChoice> _sites = [];
+    private string _siteChoicesKey = "";
+
+    // The site list (names, sites bound or removed) and the saved choice: the ticks follow the saved configuration after a
+    // load or save, else the user's unsaved ticks stay.
+    private void ApplySiteChoices(IReadOnlyList<SiteChoice> sites)
+    {
+        _sites = sites;
+        var key = string.Join('|', sites.Select(s => $"{s.Id}={s.Name}"));
+        if (_formSites is null && key == _siteChoicesKey)
+        {
+            return;
+        }
+
+        _siteChoicesKey = key;
+        var all = _formSites is { } saved ? saved.ServeAtSites && saved.ServeSites.Count == 0 : SiteChoices.All.Chosen;
+        IEnumerable<object?> chosen = _formSites is { } config
+            ? config.ServeSites.Cast<object?>()
+            : SiteChoices.Items.Where(i => i.Chosen).Select(i => i.Value);
+        _formSites = null;
+        SiteChoices.Set(sites.Select(s => new CheckChoice(s.Id, s.Name)), all, [.. chosen]);
+        OnPropertyChanged(nameof(ServeAtSites));
     }
 
     private void ApplyInterfaces(IReadOnlyList<InterfaceOption> options, NtpConfig config) =>
@@ -359,6 +399,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         SetStatus(state.Status.Kind, state.Status.Text, state.Status.Detail);
         UpstreamInfoText = state.Upstream is { } up && state.Config.Enabled ? DescribeUpstream(up, state.Stratum) : null;
         HasSites = state.HasSites || state.Config.ServeAtSites;
+        ApplySiteChoices(state.SiteChoices);
         if (!SiteRows.SequenceEqual(state.Sites))
         {
             SiteRows.Clear();

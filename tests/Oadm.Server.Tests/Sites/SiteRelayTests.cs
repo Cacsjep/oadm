@@ -60,6 +60,32 @@ public sealed class SiteRelayTests
     }
 
     [Fact]
+    public async Task AReleasedRelayGivesThePortBackAndADisposedOneKeepsIt()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await RelayNode.StartAsync(server.Address);
+        var id = await BindAsync(server, node);
+        var port = FreeUdpPort();
+        bool Allowed() => node.Get<NodeStore>().Snapshot().Allowed.Exists(p => p.Protocol == PortProtocol.Udp && p.Port == port);
+
+        // Allowed from the server's request, then the plugin only stops: the port stays for its next start.
+        var relay = server.Manager.OpenUdp(id, port, "NTP");
+        await Eventually.TrueAsync(() => relay.State == RelayState.WaitingForApproval, "waiting for approval in the node app");
+        node.Get<PortPolicy>().Allow(new PortEntry(PortUse.Listen, PortProtocol.Udp, port, "NTP"));
+        await Eventually.TrueAsync(() => relay.State == RelayState.Running, "the relay running");
+        await relay.DisposeAsync();
+        await Eventually.TrueAsync(() => node.Get<RelayHost>().Relays.Count == 0, "the node stops listening");
+        Assert.True(Allowed());
+
+        // The plugin no longer serves there: the node gives the port back.
+        var again = server.Manager.OpenUdp(id, port, "NTP");
+        await Eventually.TrueAsync(() => again.State == RelayState.Running, "the relay running again without asking");
+        await again.ReleaseAsync();
+        await Eventually.TrueAsync(() => !Allowed(), "the port is given back");
+        await Eventually.TrueAsync(() => node.Get<RelayHost>().Relays.Count == 0, "the node stops listening");
+    }
+
+    [Fact]
     public async Task ATcpRelayHandsEveryConnectionToTheServerAsAStream()
     {
         await using var server = await SiteServer.StartAsync();

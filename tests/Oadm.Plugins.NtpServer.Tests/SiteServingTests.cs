@@ -112,7 +112,33 @@ public sealed class SiteServingTests : IAsyncLifetime
 
         await SaveAsync(serveAtSites: false);
         Assert.True(first.IsDisposed);
+        Assert.True(first.IsReleased); // turned off: the node gives the port back
         Assert.Empty(_service.GetState(full: false).Sites);
+    }
+
+    [Fact]
+    public async Task Only_the_chosen_sites_are_served_and_a_site_no_longer_chosen_gets_its_port_back()
+    {
+        var buildingC = _sites.Add("Building C");
+        buildingC.AllowedPorts.Add((SiteProtocol.Udp, 123));
+        await _service.SaveAsync(new SaveRequest(true, "lo-id", null, ServeAtSites: true, ServeSites: [buildingC.Id]), CancellationToken.None);
+
+        Assert.DoesNotContain(_sites.Relays, r => r.SiteId == _buildingB.Id);
+        var relayC = OpenRelayOf(buildingC);
+        Assert.Equal([buildingC.Id], _service.GetState(full: false).Config.ServeSites);
+        Assert.Equal(["Building B", "Building C"], _service.GetState(full: false).SiteChoices.Select(s => s.Name));
+        // A device at a site that is not chosen gets the reason.
+        Assert.False(_service.GetState(full: false).Config.Serves(_buildingB.Id));
+
+        await _service.SaveAsync(new SaveRequest(true, "lo-id", null, ServeAtSites: true, ServeSites: [_buildingB.Id]), CancellationToken.None);
+        Assert.True(relayC.IsReleased);
+        OpenRelayOf(_buildingB);
+
+        // Empty = every site, also one bound later.
+        await _service.SaveAsync(new SaveRequest(true, "lo-id", null, ServeAtSites: true, ServeSites: []), CancellationToken.None);
+        OpenRelayOf(buildingC);
+        var buildingD = _sites.Add("Building D");
+        await Eventually.TrueAsync(() => _sites.Relays.Any(r => r.SiteId == buildingD.Id), "a relay for the new site");
     }
 
     [Fact]
@@ -128,6 +154,7 @@ public sealed class SiteServingTests : IAsyncLifetime
         var again = OpenRelayOf(_buildingB);
         await _service.DisposeAsync();
         Assert.True(again.IsDisposed);
+        Assert.False(again.IsReleased); // a stop keeps the port allowed at the site for the next start
         _service = await StartAsync(Options.Test());
     }
 

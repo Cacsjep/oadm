@@ -2647,7 +2647,11 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,
   `Border.wizardLine`), `GroupedChoice` with `ComboBox.grouped` (every grouped select field: grey group headers that cannot be chosen, the
-  choices indented below them, like the event list of a device). Before
+  choices indented below them, like the event list of a device), `ICheckChoice` / `CheckChoice` / `CheckChoiceList` with
+  `ComboBox.multiSelect` (every select field with check boxes: the closed box names what is ticked through
+  `PlaceholderText`, each entry a check box with an optional grey second line, a click keeps the list open;
+  `CheckChoiceList` = "All ..." or chosen items, nothing ticked = none; the NTP server's sites, the OADM Site Node app's
+  networks). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
@@ -2833,8 +2837,11 @@ pairing code is part of the state every local user reads (decision 2026-10-21: a
   override) is enforced by the host: tasks greyed "Not available for devices at a site", runs and queries refused,
   compliance Not checked, VAPIX clients and event streams of core plugins (`SiteSupportGuard`) and actions refuse site
   devices. The plugin project SDK writes `siteSupport` (`OadmSiteSupport`, default full) and `sitePorts` (`OadmSitePorts`
-  "udp:123:NTP server"); bundled: DHCP none, NTP full + UDP 123, the others full. NTP "Serve at sites" (one relay per site,
-  limits per site and client); DHCP page "The DHCP server works only on this server's own network."; Assign IP address
+  "udp:123:NTP server"); bundled: DHCP none, NTP full + UDP 123, the others full. NTP "Serve at sites" (a select with check boxes:
+  All sites, chosen sites or none, `NtpConfig.ServeSites`; one relay per served site, limits per site and client; a site no
+  longer served gets its relay released (`IRelay.ReleaseAsync`, proto `RelayMessage.release = 4`): its node drops the
+  request and the allowed port it allowed from the server's request (`PortEntry.ByServer`), a port the node's administrator
+  added stays; a lost link, a server stop or the plugin turned off only dispose and keep the port); DHCP page "The DHCP server works only on this server's own network."; Assign IP address
   refuses addresses outside the site's networks (`IDeviceNetwork.Reaches`). The Plugins page has a Sites column
   (`PluginPackageInfo.site_support = 12`, `site_ports = 13`). `Oadm.Sdk.Testing`: `FakeDeviceNetwork`, `FakeSites`,
   `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. SDK 0.2.0. Developer page `dev/sites.md`.

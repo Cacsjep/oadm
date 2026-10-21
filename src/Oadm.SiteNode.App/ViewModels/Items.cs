@@ -2,6 +2,7 @@ using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.SiteNode.Admin;
 
 namespace Oadm.SiteNode.App.ViewModels;
@@ -10,7 +11,7 @@ namespace Oadm.SiteNode.App.ViewModels;
 /// A network card in the network select: ticked when it is chosen (All cards off); a change goes to the service. While
 /// All cards is on no card is ticked.
 /// </summary>
-public sealed partial class CardItem : ObservableObject
+public sealed partial class CardItem : ObservableObject, ICheckChoice
 {
     private readonly Func<CardItem, bool, Task> _changed;
     private bool _applying;
@@ -36,7 +37,7 @@ public sealed partial class CardItem : ObservableObject
     public partial string Hint { get; private set; } = "";
 
     /// <summary>The second line of the card in the select: "192.168.0.5/24 · Default router".</summary>
-    public string Details => Hint.Length > 0 ? $"{AddressesText} · {Hint}" : AddressesText;
+    public string Detail => Hint.Length > 0 ? $"{AddressesText} · {Hint}" : AddressesText;
 
     /// <summary>Chosen: the node reaches devices on this card (and the other chosen ones only).</summary>
     [ObservableProperty]
@@ -50,7 +51,7 @@ public sealed partial class CardItem : ObservableObject
         Name = card.Name;
         AddressesText = card.Addresses.Count == 0 ? "No address" : string.Join(", ", card.Addresses);
         Hint = card.HasDefaultRouter ? "Default router" : "";
-        OnPropertyChanged(nameof(Details));
+        OnPropertyChanged(nameof(Detail));
         Chosen = !allCards && card.Reached;
         _applying = false;
     }
@@ -63,9 +64,11 @@ public sealed partial class CardItem : ObservableObject
 }
 
 /// <summary>"All cards", the first entry of the network select: bound to <see cref="NodeAppViewModel.AllCards"/>.</summary>
-public sealed class AllCardsItem(Func<bool> get, Action<bool> set) : ObservableObject
+public sealed class AllCardsItem(Func<bool> get, Action<bool> set) : ObservableObject, ICheckChoice
 {
     public string Name { get; } = "All cards";
+
+    public string Detail { get; } = "";
 
     public bool Chosen
     {

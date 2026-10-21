@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Core.Plugins;
 using Oadm.Plugins.NtpServer.Client;
@@ -27,6 +28,41 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     public async Task DisposeAsync() => await _plugin.DisposeAsync();
+
+    [Fact]
+    public void Serve_at_sites_is_a_select_of_all_sites_chosen_sites_or_none()
+    {
+        var b = Guid.NewGuid();
+        var w = Guid.NewGuid();
+        using var vm = new NtpServerViewModel(_ctx);
+        vm.HandleEvent(new PluginEvent(NtpServerMethods.StateTopic, NtpJson.Serialize(new NtpState
+        {
+            Config = new NtpConfig { Enabled = true, ServeAtSites = true, ServeSites = [w] },
+            HasSites = true,
+            SiteChoices = [new SiteChoice(b, "Building B"), new SiteChoice(w, "Warehouse")],
+        })));
+
+        // Before the form is loaded the ticks follow what the user does; the saved choice comes with the form.
+        var lists = vm.SiteChoices;
+        Assert.Equal(["All sites", "Building B", "Warehouse"], lists.Entries.Select(e => e.Name));
+        lists.Items[1].Chosen = true;
+        Assert.Equal("Warehouse", lists.Summary);
+        Assert.True(vm.ServeAtSites);
+        lists.Items[0].Chosen = true;
+        Assert.Equal("Building B, Warehouse", lists.Summary);
+        Assert.Equal([b, w], lists.ChosenValues.OfType<Guid>());
+
+        lists.All.Chosen = true; // clears the chosen sites
+        Assert.Equal(NtpServerViewModel.AllSitesText, lists.Summary);
+        Assert.All(lists.Items, i => Assert.False(i.Chosen));
+        Assert.Empty(lists.ChosenValues);
+
+        lists.Items[0].Chosen = true; // unticks All sites
+        Assert.False(lists.All.Chosen);
+        lists.Items[0].Chosen = false;
+        Assert.Equal(NtpServerViewModel.NotAtSitesText, lists.Summary);
+        Assert.False(vm.ServeAtSites);
+    }
 
     [Fact]
     public async Task Activate_reads_state_and_interfaces_and_fills_the_form()
@@ -285,8 +321,9 @@ public sealed class HeadlessPageTests
             Pump();
             Capture(window, outDir, "ntp-server-page-upstream-warning.png");
 
-            // Serve at sites: the box and the state of each site's relay below it.
-            vm.ServeAtSites = true;
+            // Serve at sites: the select (All sites) and the state of each site's relay below it.
+            var buildingB = Guid.NewGuid();
+            var warehouse = Guid.NewGuid();
             vm.HandleEvent(new PluginEvent(NtpServerMethods.StateTopic, NtpJson.Serialize(new NtpState
             {
                 Config = new NtpConfig { Enabled = true, InterfaceId = "lo-id", ServeAtSites = true },
@@ -294,12 +331,19 @@ public sealed class HeadlessPageTests
                 HasSites = true,
                 Sites =
                 [
-                    new SiteServing(Guid.NewGuid(), "NTP at Building B: running", true),
-                    new SiteServing(Guid.NewGuid(), "NTP at Warehouse: waiting for approval in the OADM Site Node app", false),
+                    new SiteServing(buildingB, "NTP at Building B: running", true),
+                    new SiteServing(warehouse, "NTP at Warehouse: waiting for approval in the OADM Site Node app", false),
                 ],
+                SiteChoices = [new SiteChoice(buildingB, "Building B"), new SiteChoice(warehouse, "Warehouse")],
             })));
+            vm.SiteChoices.All.Chosen = true;
             Pump();
             Capture(window, outDir, "ntp-server-page-sites.png");
+            var select = window.GetVisualDescendants().OfType<ComboBox>().Single(c => c.Classes.Contains("multiSelect"));
+            select.IsDropDownOpen = true;
+            Pump();
+            Capture(window, outDir, "ntp-server-page-sites-open.png");
+            select.IsDropDownOpen = false;
 
             vm.IsSaving = true; // Save with an upstream: the check runs, the page stays usable
             Pump();

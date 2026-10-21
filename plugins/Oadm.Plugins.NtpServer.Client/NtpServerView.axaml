@@ -37,8 +37,9 @@
       <!-- Sites: only while the server has sites (or serves at them); the state of each site's relay below the box -->
       <ui:FormField Label="Sites" InputWidth="460" IsVisible="{Binding HasSites}">
         <StackPanel Spacing="6">
-          <CheckBox Content="Serve at sites" IsChecked="{Binding ServeAtSites}" IsEnabled="{Binding MayManage}"
-                    ToolTip.Tip="Devices at sites get the time through their site node." />
+          <ComboBox Classes="multiSelect" ItemsSource="{Binding SiteChoices.Entries}" PlaceholderText="{Binding SiteChoices.Summary}"
+                    IsEnabled="{Binding MayManage}" MaxDropDownHeight="360"
+                    ToolTip.Tip="Devices at the chosen sites get the time through their site node." />
           <ItemsControl ItemsSource="{Binding SiteRows}" IsVisible="{Binding ServeAtSites}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="ntp:SiteServing">

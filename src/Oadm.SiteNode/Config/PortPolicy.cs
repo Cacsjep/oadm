@@ -46,10 +46,17 @@ public sealed class PortPolicy(NodeStore store)
             var request = c.Requested.Find(port.SameAs);
             c.Requested.RemoveAll(port.SameAs);
             if (!c.Allowed.Exists(port.SameAs))
-                c.Allowed.Add(port with { Reason = request?.Reason ?? Reason(port.Reason) });
+                c.Allowed.Add(port with { Reason = request?.Reason ?? Reason(port.Reason), ByServer = request is not null });
             return true;
         });
     }
+
+    /// <summary>
+    /// The server gives the port back (a released relay): its request goes away, and the allowed port too when it was
+    /// allowed from a request of the server. Returns true when something changed.
+    /// </summary>
+    public bool Release(PortEntry port) =>
+        store.TryUpdate(c => (c.Requested.RemoveAll(port.SameAs) + c.Allowed.RemoveAll(p => p.ByServer && p.SameAs(port))) > 0);
 
     /// <summary>Removes the port from its list (and a request for it).</summary>
     public bool Remove(PortEntry port) =>

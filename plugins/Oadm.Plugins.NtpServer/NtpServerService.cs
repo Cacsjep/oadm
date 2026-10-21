@@ -171,6 +171,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
             Port = Endpoints.Count > 0 ? Endpoints[0].Port : _options.Port,
             HasSites = _sites is { List.Count: > 0 },
             Sites = SiteStates(),
+            SiteChoices = _sites is null ? [] : [.. _sites.List.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Select(s => new SiteChoice(s.Id, s.Name))],
         };
     }
 
@@ -237,7 +238,8 @@ public sealed partial class NtpServerService : IAsyncDisposable
             upstreamText = host.ToString();
         }
 
-        var config = new NtpConfig { Enabled = request.Enabled, InterfaceId = interfaceId, InterfaceName = interfaceName, Upstream = upstreamText, ServeAtSites = request.ServeAtSites };
+        var config = new NtpConfig { Enabled = request.Enabled, InterfaceId = interfaceId, InterfaceName = interfaceName, Upstream = upstreamText, ServeAtSites = request.ServeAtSites,
+            ServeSites = request.ServeAtSites ? [.. (request.ServeSites ?? []).Distinct()] : [] };
         if (_settings is not null)
         {
             await _settings.SetAsync(ConfigKey, NtpJson.Serialize(config), ct).ConfigureAwait(false);
@@ -306,7 +308,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
 
         if (server is null)
         {
-            return (null, NtpStatusTexts.NotServingAtSites);
+            return (null, _config.Serves(siteId) ? NtpStatusTexts.NotServingAtSites : NtpStatusTexts.NotServingAtSite);
         }
 
         if (server.Relay.State != RelayState.Running)
@@ -533,13 +535,14 @@ public sealed partial class NtpServerService : IAsyncDisposable
     }
 
     /// <summary>
-    /// "Serve at sites": one relay per bound site while the server is enabled and serves at sites; relays of removed sites
-    /// close, new sites get one. Callers hold the gate.
+    /// "Serve at sites": one relay per served site (all, or the chosen ones) while the server is enabled; a site no longer
+    /// served (turned off, not chosen, removed) gets its relay released, so its node gives the port back; new sites get one.
+    /// Callers hold the gate.
     /// </summary>
     private async Task SyncSitesAsync(CancellationToken ct)
     {
-        var wanted = _sites is not null && _config is { Enabled: true, ServeAtSites: true }
-            ? _sites.List.ToDictionary(s => s.Id)
+        var wanted = _sites is not null && _config.Enabled
+            ? _sites.List.Where(s => _config.Serves(s.Id)).ToDictionary(s => s.Id)
             : [];
         List<SiteServer> remove;
         lock (_siteLock)
@@ -558,7 +561,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
 
         foreach (var server in remove)
         {
-            await server.DisposeAsync().ConfigureAwait(false);
+            await server.ReleaseAsync().ConfigureAwait(false);
         }
 
         foreach (var site in wanted.Values)

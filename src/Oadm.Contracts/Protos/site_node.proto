@@ -301,11 +301,17 @@ message RelayPacket {
   bool closed = 6;                // TCP: the connection is gone (either side)
 }
 
+// The plugin no longer serves at this site (its setting changed, not a lost link or a stop): the node gives the port
+// back. It removes the port's request and the allowed port when it was allowed from a request of the server; a port
+// the node's administrator added stays. Then the relay ends.
+message RelayRelease {}
+
 message RelayMessage {
   oneof kind {
     RelayOpen open = 1;           // client, first message only
     RelayInfo state = 2;          // server: the relay's state, first message and after every change
     RelayPacket packet = 3;       // both ways: a datagram from or reply to a sender, TCP data
+    RelayRelease release = 4;     // client, last message: give the port back (older nodes ignore it and keep the port)
   }
 }
 

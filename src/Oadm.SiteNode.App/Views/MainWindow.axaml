@@ -17,21 +17,6 @@
        status, Server (address left, while not bound the pairing code right), Networks (a select with check boxes),
        Ports (one table). Footer: Reset left (red), Save (the one accent button: the
        address has changes) and Close right. Changes run elevated (UAC / pkexec); errors stand below their field. -->
-  <Window.DataTemplates>
-    <!-- The entries of the network select -->
-    <DataTemplate x:DataType="vm:AllCardsItem">
-      <CheckBox IsChecked="{Binding Chosen}" Content="{Binding Name}" />
-    </DataTemplate>
-    <DataTemplate x:DataType="vm:CardItem">
-      <CheckBox IsChecked="{Binding Chosen}">
-        <StackPanel Spacing="2">
-          <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
-          <TextBlock Classes="secondary" Text="{Binding Details}" TextWrapping="Wrap" />
-        </StackPanel>
-      </CheckBox>
-    </DataTemplate>
-  </Window.DataTemplates>
-
   <Grid RowDefinitions="Auto,*,Auto">
     <!-- Title bar: the app name left, minimize and close right (TitleBarLayout keeps clear of them) -->
     <Border Grid.Row="0" Classes="titleBar" chrome:WindowDecorationProperties.ElementRole="TitleBar">

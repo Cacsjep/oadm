@@ -19,6 +19,9 @@ public static class NtpStatusTexts
     /// <summary>"Use OADM as NTP server" on a device at a site while the NTP server does not serve there.</summary>
     public const string NotServingAtSites = "The OADM NTP server does not serve at sites. Turn on Serve at sites on the NTP server page. Nothing was changed.";
 
+    /// <summary>The server serves at other sites, not at the device's.</summary>
+    public const string NotServingAtSite = "The OADM NTP server does not serve at this site. Choose it under Serve at sites on the NTP server page. Nothing was changed.";
+
     /// <summary>"Running on 10.0.0.17:123", "Running on [fd00::17]:123", "Running on all interfaces, port 123".</summary>
     public static ServiceStatus Running(IReadOnlyList<IPEndPoint> endpoints, bool allInterfaces)
     {

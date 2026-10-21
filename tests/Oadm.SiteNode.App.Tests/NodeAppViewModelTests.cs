@@ -37,7 +37,7 @@ public sealed class NodeAppViewModelTests
         Assert.Equal("a1b2c3d4e5f60718", _vm.IdText);
         Assert.Equal(2, _vm.Cards.Count);
         Assert.Equal("Default router", _vm.Cards[1].Hint);
-        Assert.Equal("10.0.0.7/24 · Default router", _vm.Cards[1].Details);
+        Assert.Equal("10.0.0.7/24 · Default router", _vm.Cards[1].Detail);
         Assert.True(_vm.Cards[0].Chosen);
         Assert.False(_vm.Cards[1].Chosen);
         Assert.False(_vm.AllCards);

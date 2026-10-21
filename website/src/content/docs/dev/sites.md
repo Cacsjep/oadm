@@ -108,9 +108,11 @@ async Task ServeAsync(IUdpRelay endpoint, CancellationToken ct)
 - **State.** Every relay and listener has a `State` (`Running`, `WaitingForApproval`, `PortInUse`, `NoPermission`,
   `SiteOffline`, `NotSupported`), a `StateText` for your page ("Syslog at Building B: waiting for approval in the OADM
   Site Node app") and `StateChanged`.
-- **Lifetime.** A relay reopens by itself after the node reconnects. Open relays when your feature turns on, dispose them
-  when it turns off; the host closes every relay and listener of a plugin that stops or is turned off. Follow
-  `ISites.SitesChanged` to open relays for new sites and dispose those of removed ones.
+- **Lifetime.** A relay reopens by itself after the node reconnects. Open relays when your feature turns on. When the
+  user turns it off for a site, call `ReleaseAsync`: the node gives the port back (it removes the port it allowed from your
+  request; a port its administrator added stays). Dispose only when your plugin stops; the host disposes every relay and
+  listener of a plugin that stops or is turned off, and the port stays allowed for the next start. Follow
+  `ISites.SitesChanged` to open relays for new sites and release those of removed ones.
 - **Limits.** Keep rate limits per (site, client address): two sites may have the same addresses. The NTP server keeps
   one limiter per site.
 

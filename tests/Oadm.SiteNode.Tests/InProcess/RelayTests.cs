@@ -108,6 +108,72 @@ public sealed class RelayTests
     }
 
     [Fact]
+    public async Task AReleaseGivesBackThePortTheServerAskedForButNeverOneTheAdministratorAdded()
+    {
+        var asked = Ports.FreeUdp();
+        var added = Ports.FreeUdp();
+        await using var bound = await BoundNodeAsync(c => c.Allowed.Add(new PortEntry(PortUse.Listen, PortProtocol.Udp, added, "syslog")));
+        var store = bound.Node.Get<NodeStore>();
+
+        // The server asks for a port; the administrator allows it: it is marked as the server's.
+        using (var relay = bound.Link.Client.Relay())
+        {
+            await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Udp, Port = asked, Reason = "NTP server" } });
+            Assert.Equal(RelayStateKind.RelayStateWaitingForApproval, (await NextAsync(relay)).State.State);
+            bound.Node.Get<PortPolicy>().Allow(Assert.Single(store.Read(c => c.Requested.ToList())));
+            Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+            Assert.True(store.Read(c => c.Allowed.Single(p => p.Port == asked).ByServer));
+
+            await relay.RequestStream.WriteAsync(new RelayMessage { Release = new RelayRelease() });
+            await relay.RequestStream.CompleteAsync();
+            await Eventually.TrueAsync(() => bound.Node.Get<Relays.RelayHost>().Relays.Count == 0, "the released relay ends");
+        }
+
+        Assert.DoesNotContain(store.Read(c => c.Allowed.ToList()), p => p.Port == asked);
+
+        // A port the administrator added stays, released or not.
+        using (var relay = bound.Link.Client.Relay())
+        {
+            await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Udp, Port = added, Reason = "syslog" } });
+            Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+            await relay.RequestStream.WriteAsync(new RelayMessage { Release = new RelayRelease() });
+            await relay.RequestStream.CompleteAsync();
+            await Eventually.TrueAsync(() => bound.Node.Get<Relays.RelayHost>().Relays.Count == 0, "the released relay ends");
+        }
+
+        Assert.Contains(store.Read(c => c.Allowed.ToList()), p => p.Port == added && !p.ByServer);
+    }
+
+    [Fact]
+    public async Task AReleaseWhileWaitingDropsTheRequestAndAnEndedCallKeepsTheAllowedPort()
+    {
+        var port = Ports.FreeUdp();
+        await using var bound = await BoundNodeAsync(_ => { });
+        var store = bound.Node.Get<NodeStore>();
+        using (var relay = bound.Link.Client.Relay())
+        {
+            await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Udp, Port = port, Reason = "NTP server" } });
+            Assert.Equal(RelayStateKind.RelayStateWaitingForApproval, (await NextAsync(relay)).State.State);
+            await relay.RequestStream.WriteAsync(new RelayMessage { Release = new RelayRelease() });
+            await relay.RequestStream.CompleteAsync();
+            await Eventually.TrueAsync(() => store.Read(c => c.Requested.Count) == 0, "the request goes away");
+        }
+
+        // Allowed from a request, then the call only ends (a lost link, a server stop): the port stays.
+        using (var relay = bound.Link.Client.Relay())
+        {
+            await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Udp, Port = port, Reason = "NTP server" } });
+            Assert.Equal(RelayStateKind.RelayStateWaitingForApproval, (await NextAsync(relay)).State.State);
+            bound.Node.Get<PortPolicy>().Allow(Assert.Single(store.Read(c => c.Requested.ToList())));
+            Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+            await relay.RequestStream.CompleteAsync();
+        }
+
+        await Eventually.TrueAsync(() => bound.Node.Get<Relays.RelayHost>().Relays.Count == 0, "the relay ends with the call");
+        Assert.Contains(store.Read(c => c.Allowed.ToList()), p => p.Port == port && p.ByServer);
+    }
+
+    [Fact]
     public async Task APortAnotherProgramHoldsIsReported()
     {
         using var other = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp) { ExclusiveAddressUse = true };

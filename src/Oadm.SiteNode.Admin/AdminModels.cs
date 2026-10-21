@@ -35,6 +35,12 @@ public enum PortProtocol
 /// <summary>One allowed or requested port.</summary>
 public sealed record PortEntry(PortUse Use, PortProtocol Protocol, int Port, string Reason = "")
 {
+    /// <summary>
+    /// Allowed from a request of the server (Allow in the app): the server may give it back (a relay released), which
+    /// removes it. A port the administrator added is never removed by the server.
+    /// </summary>
+    public bool ByServer { get; init; }
+
     /// <summary>True for the same use, protocol and port (the reason does not count).</summary>
     public bool SameAs(PortEntry other) => other is not null && other.Use == Use && other.Protocol == Protocol && other.Port == Port;
 

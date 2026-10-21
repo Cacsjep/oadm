@@ -155,6 +155,12 @@ public sealed class PluginNetworkScope : IPluginNetwork, IAsyncDisposable
             scope.Untrack(this);
             await Inner.DisposeAsync().ConfigureAwait(false);
         }
+
+        public async ValueTask ReleaseAsync()
+        {
+            scope.Untrack(this);
+            await Inner.ReleaseAsync().ConfigureAwait(false);
+        }
     }
 
     private sealed class TrackedUdp(PluginNetworkScope scope, IUdpRelay inner) : Tracked<IUdpRelay>(scope, inner), IUdpRelay

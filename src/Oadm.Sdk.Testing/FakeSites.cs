@@ -284,6 +284,9 @@ public abstract class InMemoryRelay : IRelay
     /// <summary>The plugin disposed it (or its plugin stopped).</summary>
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
+    /// <summary>The plugin released it (<see cref="IRelay.ReleaseAsync"/>): it no longer serves there.</summary>
+    public bool IsReleased { get; private set; }
+
     /// <inheritdoc />
     public event EventHandler? StateChanged;
 
@@ -297,6 +300,13 @@ public abstract class InMemoryRelay : IRelay
 
         _state = state;
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <inheritdoc />
+    public ValueTask ReleaseAsync()
+    {
+        IsReleased = true;
+        return DisposeAsync();
     }
 
     /// <inheritdoc />

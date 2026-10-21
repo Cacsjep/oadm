@@ -919,11 +919,23 @@
     <Setter Property="Opacity" Value="1" />
   </Style>
 
-  <!-- Select field with check boxes (ComboBox.multiSelect, OADM Site Node app networks): the closed box shows what is
-       ticked through PlaceholderText in the normal text color; each entry is a check box over the whole row, so a click
-       ticks it and the list stays open. -->
+  <!-- Select field with check boxes (ComboBox.multiSelect with ui:ICheckChoice items: the OADM Site Node app's networks,
+       the NTP server's sites): the closed box shows what is ticked through PlaceholderText in the normal text color; each
+       entry is a check box over the whole row with an optional grey second line, so a click ticks it and the list stays
+       open. -->
   <Style Selector="ComboBox.multiSelect">
     <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="ItemTemplate">
+      <DataTemplate x:DataType="ui:ICheckChoice">
+        <CheckBox IsChecked="{Binding Chosen}">
+          <StackPanel Spacing="2">
+            <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+            <TextBlock Classes="secondary" Text="{Binding Detail}" TextWrapping="Wrap"
+                       IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </CheckBox>
+      </DataTemplate>
+    </Setter>
     <Setter Property="PlaceholderForeground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
   </Style>
   <Style Selector="ComboBox.multiSelect /template/ TextBlock#PlaceholderTextBlock">

@@ -22,7 +22,9 @@ namespace Oadm.SiteNode.Relays;
 /// the node may not use is reported and tried again every 30 seconds and after every change in the app or of the cards
 /// (a card that gets a new address binds again). Only senders inside the reached networks are relayed and answered; a UDP
 /// sender is forgotten 2 minutes after its last datagram (<see cref="UdpSenders"/>); a TCP relay holds at most
-/// <see cref="MaxTcpConnections"/> connections.
+/// <see cref="MaxTcpConnections"/> connections. A release from the server (the plugin no longer serves at this site) ends the
+/// relay and gives the port back (<see cref="PortPolicy.Release"/>) unless another relay still uses it; a lost link or a
+/// stop never does.
 /// </summary>
 public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope networks, ConnectionLog log, TimeProvider time)
 {
@@ -60,7 +62,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var session = new RelaySession(protocol, open.Port, open.Reason ?? "", outgoing.Writer, log, server, networks, time);
         var writer = WriteLoopAsync(outgoing.Reader, responses, stop.Token);
-        var reader = ReadLoopAsync(requests, session, stop.Token);
+        var reader = ReadLoopAsync(requests, session, stop, stop.Token);
         try
         {
             await ManageAsync(id, session, stop.Token).ConfigureAwait(false);
@@ -71,6 +73,9 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         finally
         {
             _relays.TryRemove(id, out _);
+            var entry = new PortEntry(PortUse.Listen, session.Protocol, session.Port);
+            if (session.Released && !_relays.Values.Any(r => r.Protocol == session.Protocol && r.Port == session.Port))
+                ports.Release(entry);
             NodeEvents.Raise(Changed);
             session.Stop();
             await stop.CancelAsync().ConfigureAwait(false);
@@ -154,12 +159,20 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         }
     }
 
-    private static async Task ReadLoopAsync(IAsyncStreamReader<RelayMessage> requests, RelaySession session, CancellationToken ct)
+    private static async Task ReadLoopAsync(IAsyncStreamReader<RelayMessage> requests, RelaySession session, CancellationTokenSource stop, CancellationToken ct)
     {
         while (await requests.MoveNext(ct).ConfigureAwait(false))
         {
-            if (requests.Current.KindCase == RelayMessage.KindOneofCase.Packet)
-                await session.FromServerAsync(requests.Current.Packet, ct).ConfigureAwait(false);
+            switch (requests.Current.KindCase)
+            {
+                case RelayMessage.KindOneofCase.Packet:
+                    await session.FromServerAsync(requests.Current.Packet, ct).ConfigureAwait(false);
+                    break;
+                case RelayMessage.KindOneofCase.Release:
+                    session.Released = true;
+                    await stop.CancelAsync().ConfigureAwait(false); // the relay ends now; the port goes back in RunAsync
+                    return;
+            }
         }
     }
 
@@ -198,6 +211,14 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         private readonly UdpSenders _senders = new(time);
         private List<Socket> _sockets = [];
         private CancellationTokenSource? _running;
+        private volatile bool _released;
+
+        /// <summary>The server released the relay: the port goes back when it ends.</summary>
+        public bool Released
+        {
+            get => _released;
+            set => _released = value;
+        }
         private TaskCompletionSource _failed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private long _nextConnection;
         private RelayStateKind _reported;

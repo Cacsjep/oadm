@@ -129,10 +129,23 @@ public sealed partial class SiteServer : IAsyncDisposable
         _log.Add(receivedUtc, client, Math.Abs(offset) > MaxShownOffsetMilliseconds ? double.NaN : offset, RequestResult.Answered, this);
     }
 
-    public async ValueTask DisposeAsync()
+    /// <summary>The server no longer serves at this site: the relay is released, so the node gives the port back.</summary>
+    public ValueTask ReleaseAsync() => CloseAsync(release: true);
+
+    public ValueTask DisposeAsync() => CloseAsync(release: false);
+
+    private async ValueTask CloseAsync(bool release)
     {
         await _stop.CancelAsync().ConfigureAwait(false);
-        await Relay.DisposeAsync().ConfigureAwait(false);
+        if (release)
+        {
+            await Relay.ReleaseAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            await Relay.DisposeAsync().ConfigureAwait(false);
+        }
+
         try
         {
             await _loop.ConfigureAwait(false);
