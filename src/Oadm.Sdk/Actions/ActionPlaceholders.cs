@@ -61,6 +61,7 @@ public static partial class ActionPlaceholders
         new("category", DeviceGroup, "Camera, Speaker, I/O module ..."),
         new("tags", DeviceGroup, "Tags, Building A; PTZ"),
         new("status", DeviceGroup, "OK, Unreachable ..."),
+        new("site", DeviceGroup, "Site, empty on this server's own network"),
         new("webUrl", DeviceGroup, "Link to the device web interface"),
     ];
 

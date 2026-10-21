@@ -74,6 +74,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private int _subscriptionCount;
     private readonly HashSet<string> _knownTypes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, DeviceRef> _devices = [];
+
+    // Devices whose status events were set from a real status (not Site offline) at least once.
+    private readonly HashSet<Guid> _statusKnown = [];
     private readonly Dictionary<Guid, Runtime> _rules = [];
     // Pending state writes; the last change of a (rule, subject) wins. Dropped only after a successful write.
     private readonly Dictionary<(Guid Rule, Guid Subject), (bool Add, DateTime Since)> _stateOps = [];
@@ -963,6 +966,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     {
         if (change.Kind == DeviceChangeKind.Removed || change.Device is null)
         {
+            _statusKnown.Remove(change.DeviceId);
             if (!_devices.Remove(change.DeviceId))
             {
                 return;
@@ -1010,9 +1014,31 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 continue;
             }
 
-            SetBuiltIn(BuiltInEvents.Unreachable, id, device.Status == DeviceStatus.Unreachable);
-            SetBuiltIn(BuiltInEvents.CredentialsRequired, id, device.Status == DeviceStatus.CredentialsRequired);
-            SetBuiltIn(BuiltInEvents.CertificateChanged, id, device.Status == DeviceStatus.CertificateChanged);
+            // Site offline says nothing about the device: its status events keep their state until the site is back, so an
+            // offline site never fires "Device unreachable" and never turns the others off. A device first seen while its
+            // site is offline or starting (after a server start) starts from its stored, last real status: no edges.
+            var status = device.Status;
+            if (status == DeviceStatus.SiteOffline && !_statusKnown.Contains(id) && device.StoredStatus is { } stored)
+            {
+                status = stored;
+            }
+
+            if (device.SiteRemoved)
+            {
+                // The site was removed (devices kept until replaced or removed): it never comes back, so nothing stays on.
+                _statusKnown.Add(id);
+                SetBuiltIn(BuiltInEvents.Unreachable, id, false);
+                SetBuiltIn(BuiltInEvents.CredentialsRequired, id, false);
+                SetBuiltIn(BuiltInEvents.CertificateChanged, id, false);
+            }
+            else if (status != DeviceStatus.SiteOffline)
+            {
+                _statusKnown.Add(id);
+                SetBuiltIn(BuiltInEvents.Unreachable, id, status == DeviceStatus.Unreachable);
+                SetBuiltIn(BuiltInEvents.CredentialsRequired, id, status == DeviceStatus.CredentialsRequired);
+                SetBuiltIn(BuiltInEvents.CertificateChanged, id, status == DeviceStatus.CertificateChanged);
+            }
+
             var notAfter = device.CertNotAfterUtc;
             SetBuiltIn(BuiltInEvents.CertificateExpired, id, notAfter is { } end && end <= now);
             SetBuiltIn(BuiltInEvents.CertificateExpiresSoon, id, notAfter is { } soon && soon > now && soon - now <= TimeSpan.FromDays(BuiltInEvents.ExpiresSoonDays));
@@ -1345,11 +1371,21 @@ public sealed partial class RuleEngine : IAsyncDisposable
 /// <summary>What the engine knows of a managed device.</summary>
 public sealed record DeviceRef(string Address, string? Model, string Serial, DeviceStatus Status, DateTime? CertNotAfterUtc, HashSet<string> Tags)
 {
+    /// <summary>The stored status while <see cref="Status"/> is the computed Site offline.</summary>
+    public DeviceStatus? StoredStatus { get; init; }
+
+    /// <summary>The device's site was removed with Keep devices: its status events are off.</summary>
+    public bool SiteRemoved { get; init; }
+
     public static DeviceRef From(Device device)
     {
         ArgumentNullException.ThrowIfNull(device);
         return new DeviceRef(device.Address, device.Model, device.Serial, device.Status, device.CertNotAfterUtc,
-            new HashSet<string>(device.Tags, StringComparer.OrdinalIgnoreCase));
+            new HashSet<string>(device.Tags, StringComparer.OrdinalIgnoreCase))
+        {
+            StoredStatus = device.StoredStatus,
+            SiteRemoved = device.SiteRemoved,
+        };
     }
 
     /// <summary>"10.0.0.48 (P3265-V)".</summary>

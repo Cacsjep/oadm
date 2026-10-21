@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
+using Oadm.Core.Sites;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Vapix;
@@ -18,22 +19,25 @@ public interface IVapixConnector
     VapixClient Connect(VapixConnectionOptions options);
 }
 
-/// <summary>Real network connector: <see cref="VapixClient.Create"/>, with the server's extra trust anchors.</summary>
-public sealed class VapixConnector(TrustAnchorRegistry? trustAnchors = null) : IVapixConnector
+/// <summary>
+/// Real network connector: <see cref="VapixClient.Create"/>, with the server's extra trust anchors, connecting on each
+/// device's route through <paramref name="router"/> (default: the server's own network only).
+/// </summary>
+public sealed class VapixConnector(TrustAnchorRegistry? trustAnchors = null, DeviceRouter? router = null) : IVapixConnector
 {
     public VapixClient Connect(VapixConnectionOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return VapixClient.Create(options.TrustAnchors is null && trustAnchors is not null ? options with { TrustAnchors = trustAnchors } : options);
+        return VapixClient.Create(options.TrustAnchors is null && trustAnchors is not null ? options with { TrustAnchors = trustAnchors } : options, router);
     }
 }
 
 /// <summary>
 /// Builds authenticated <see cref="VapixClient"/>s for managed devices from the device row
 /// (address, scheme, pinned certificate fingerprint) and the <see cref="CredentialStore"/>.
-/// Clients are cached per device and reused while address, scheme, pin and credentials are
-/// unchanged; a change creates a new client and disposes the old one. Removing a device disposes
-/// its client. Devices without stored credentials get an anonymous client.
+/// Clients are cached per device and reused while route, address, scheme, pin and credentials are
+/// unchanged; a change creates a new client and disposes the old one. Removing a device, or a change of its route or
+/// address, disposes its client. Devices without stored credentials get an anonymous client.
 /// </summary>
 public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposable
 {
@@ -85,8 +89,11 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
     {
         ArgumentNullException.ThrowIfNull(device);
         var credentials = await _credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
-        var scheme = device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps;
-        var key = CacheKey(device.Address, scheme, device.CertFingerprintSha256, credentials);
+        var options = DeviceConnections.For(
+            device,
+            credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
+            RequestTimeout);
+        var key = CacheKey(options.Route, options.Address, options.Scheme, options.PinnedCertificateFingerprint, credentials);
 
         VapixClient? stale = null;
         VapixClient client;
@@ -98,16 +105,9 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
                 return entry.Client;
             }
 
-            client = _connector.Connect(new VapixConnectionOptions
-            {
-                Address = device.Address,
-                Scheme = scheme,
-                Credentials = credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
-                PinnedCertificateFingerprint = device.CertFingerprintSha256,
-                Timeout = RequestTimeout,
-            });
+            client = _connector.Connect(options);
             stale = entry?.Client;
-            _cache[device.Id] = new Entry(key, client);
+            _cache[device.Id] = new Entry(key, options.Route, options.Address, client);
         }
 
         stale?.Dispose();
@@ -122,7 +122,29 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
     public Task<VapixClient> CreateForAddressAsync(Device device, string address, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return CreateUncachedAsync(device, address, device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps, device.CertFingerprintSha256, ct);
+        return CreateUncachedAsync(device, address, DeviceConnections.SchemeOf(device), device.CertFingerprintSha256, ct);
+    }
+
+    /// <summary>
+    /// A new, uncached client for the device at another address on another route (same credentials, scheme and pinned
+    /// certificate): a device found through another site is verified there before its record moves. The caller disposes it.
+    /// </summary>
+    public async Task<VapixClient> CreateForAddressAsync(Device device, string address, DeviceRoute route, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var credentials = await _credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
+        var client = _connector.Connect(DeviceConnections.For(
+            device,
+            credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
+            RequestTimeout) with
+        {
+            Address = address.Trim(),
+            Route = route,
+        });
+        LogClientCreated(device.Id, client.BaseAddress, credentials is not null);
+        return client;
     }
 
     /// <summary>
@@ -136,13 +158,14 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var credentials = await _credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
-        var client = _connector.Connect(new VapixConnectionOptions
+        var client = _connector.Connect(DeviceConnections.For(
+            device,
+            credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
+            RequestTimeout) with
         {
             Address = address.Trim(),
             Scheme = scheme,
-            Credentials = credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
             PinnedCertificateFingerprint = pinnedFingerprint,
-            Timeout = RequestTimeout,
         });
         LogClientCreated(device.Id, client.BaseAddress, credentials is not null);
         return client;
@@ -158,14 +181,7 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         ArgumentException.ThrowIfNullOrEmpty(userName);
         ArgumentNullException.ThrowIfNull(password);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var client = _connector.Connect(new VapixConnectionOptions
-        {
-            Address = device.Address,
-            Scheme = device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps,
-            Credentials = new NetworkCredential(userName, password),
-            PinnedCertificateFingerprint = device.CertFingerprintSha256,
-            Timeout = RequestTimeout,
-        });
+        var client = _connector.Connect(DeviceConnections.For(device, new NetworkCredential(userName, password), RequestTimeout));
         LogClientCreated(device.Id, client.BaseAddress, true);
         return client;
     }
@@ -203,20 +219,30 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         if (change.Kind == DeviceChangeKind.Removed)
         {
             Invalidate(change.DeviceId);
+            return;
+        }
+
+        // A device that moved (another route or address) drops its client at once: its kept connections lead to the
+        // old place.
+        if (change.Device is { } device && _cache.TryGetValue(change.DeviceId, out var entry)
+            && (entry.Route != DeviceConnections.RouteOf(device) || !string.Equals(entry.Address, device.Address, StringComparison.Ordinal))
+            && _cache.TryRemove(KeyValuePair.Create(change.DeviceId, entry)))
+        {
+            entry.Client.Dispose();
         }
     }
 
     /// <summary>Cache key; the password is only kept as a hash so it does not linger in another string.</summary>
-    private static string CacheKey(string address, string scheme, string? pin, DeviceCredentials? credentials)
+    private static string CacheKey(DeviceRoute route, string address, string scheme, string? pin, DeviceCredentials? credentials)
     {
         var secret = credentials is null
             ? "-"
             : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credentials.UserName + "\n" + credentials.Password)));
-        return string.Join('|', scheme, address, pin ?? "-", secret);
+        return string.Join('|', route.ToString(), scheme, address, pin ?? "-", secret);
     }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "VAPIX client for device {DeviceId} at {BaseAddress} (credentials: {HasCredentials})")]
     private partial void LogClientCreated(Guid deviceId, Uri baseAddress, bool hasCredentials);
 
-    private sealed record Entry(string Key, VapixClient Client);
+    private sealed record Entry(string Key, DeviceRoute Route, string Address, VapixClient Client);
 }

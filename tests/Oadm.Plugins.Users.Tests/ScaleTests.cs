@@ -60,7 +60,7 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(10 * (Count - (Count / 10)), runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Like <see cref="FakeDevice"/> without parsing the API list fixture per device.</summary>

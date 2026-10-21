@@ -225,6 +225,27 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<RuleList> WatchRulesAsync(CancellationToken ct) =>
         ReadAll(C.Events.WatchRules(new Empty(), cancellationToken: ct), ct);
 
+    public async Task<SiteList> ListSitesAsync(CancellationToken ct) =>
+        await C.Sites.ListSitesAsync(new Empty(), cancellationToken: ct);
+
+    public IAsyncEnumerable<SiteList> WatchSitesAsync(CancellationToken ct) =>
+        ReadAll(C.Sites.WatchSites(new Empty(), cancellationToken: ct), ct);
+
+    public async Task<SiteList> SetSiteAcceptAsync(bool accept, CancellationToken ct) =>
+        await C.Sites.SetAcceptAsync(new SetAcceptRequest { Accept = accept }, cancellationToken: ct);
+
+    public async Task<Site> BindSiteAsync(string nodeId, string nodeFingerprint, string name, string pairingCode, CancellationToken ct) =>
+        await C.Sites.BindSiteAsync(new BindSiteRequest { NodeId = nodeId, NodeFingerprint = nodeFingerprint, Name = name, PairingCode = pairingCode }, cancellationToken: ct);
+
+    public async Task<Site> RenameSiteAsync(string id, string name, CancellationToken ct) =>
+        await C.Sites.RenameSiteAsync(new RenameSiteRequest { Id = id, Name = name }, cancellationToken: ct);
+
+    public async Task<ReplaceSiteReply> ReplaceSiteAsync(string id, string newSiteId, CancellationToken ct) =>
+        await C.Sites.ReplaceSiteAsync(new ReplaceSiteRequest { Id = id, NewSiteId = newSiteId }, cancellationToken: ct);
+
+    public async Task<RemoveSiteReply> RemoveSiteAsync(string id, bool keepDevices, CancellationToken ct) =>
+        await C.Sites.RemoveSiteAsync(new RemoveSiteRequest { Id = id, KeepDevices = keepDevices }, cancellationToken: ct);
+
     public async Task<ComplianceCatalog> GetComplianceCatalogAsync(CancellationToken ct) =>
         await C.Compliance.GetCatalogAsync(new Empty(), cancellationToken: ct);
 
@@ -343,6 +364,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         (await C.Discovery.ProbeAddressAsync(
             new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "", ExpectedSerial = expectedSerial, ImportLine = true },
             cancellationToken: ct)).SessionId;
+
+    public async Task<DiscoverySession> ProbeLineAsync(ProbeAddressRequest request, CancellationToken ct) =>
+        await C.Discovery.ProbeAddressAsync(request, cancellationToken: ct);
 
     public IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct) =>
         ReadAll(C.Discovery.WatchDiscovered(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct), ct);
@@ -649,5 +673,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public EventService.EventServiceClient Events { get; } = new(channel);
         public ComplianceService.ComplianceServiceClient Compliance { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
+        public SiteService.SiteServiceClient Sites { get; } = new(channel);
     }
 }

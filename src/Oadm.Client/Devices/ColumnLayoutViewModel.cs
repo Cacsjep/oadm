@@ -46,6 +46,7 @@ public sealed class ColumnLayoutViewModel
         ("firmware", "Firmware"),
         ("soc", "SoC"),
         ("tags", "Tags"),
+        ("site", "Site"),
         ("dhcp", "DHCP"),
         ("https", "HTTPS"),
         ("certExpires", "Certificate expires"),

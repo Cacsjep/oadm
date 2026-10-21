@@ -168,6 +168,7 @@ public sealed partial class FakeOadmApi
             DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
             DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
             DeviceStatus.Unreachable => "Unreachable - the device did not answer the last status check",
+            DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
             _ => null,
         };
         var checks = new JsonArray();

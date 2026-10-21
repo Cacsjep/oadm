@@ -137,7 +137,7 @@ public sealed partial class DeviceFirstPasswordService
             async (id, token) =>
             {
                 string? policy = null;
-                if (rows.TryGetValue(id, out var device) && device.Status != DeviceStatus.CertificateChanged)
+                if (rows.TryGetValue(id, out var device) && device.Status is not (DeviceStatus.CertificateChanged or DeviceStatus.SiteOffline))
                 {
                     foreach (var (scheme, pin) in Schemes(device))
                     {
@@ -178,12 +178,10 @@ public sealed partial class DeviceFirstPasswordService
             ? [(Uri.UriSchemeHttps, device.CertFingerprintSha256)]
             : [(Uri.UriSchemeHttps, null), (Uri.UriSchemeHttp, null)];
 
-    private VapixClient Anonymous(Device device, string scheme, string? pin) => _connector.Connect(new VapixConnectionOptions
+    private VapixClient Anonymous(Device device, string scheme, string? pin) => _connector.Connect(Sites.DeviceConnections.For(device, timeout: Timeout) with
     {
-        Address = device.Address,
         Scheme = scheme,
         PinnedCertificateFingerprint = pin,
-        Timeout = Timeout,
     });
 
     private async Task<DeviceFirstPasswordResult> SetOneAsync(Device device, string password, CancellationToken ct)
@@ -191,6 +189,11 @@ public sealed partial class DeviceFirstPasswordService
         if (device.Status == DeviceStatus.CertificateChanged)
         {
             return new DeviceFirstPasswordResult(device.Id, false, DeviceLoginService.CertificateChangedMessage);
+        }
+
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return new DeviceFirstPasswordResult(device.Id, false, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName)); // no request
         }
 
         var now = Interlocked.Increment(ref _inFlight);

@@ -34,8 +34,30 @@ public static class TaskSupportReasons
         DeviceStatus.CredentialsRequired => "OADM cannot log in to the device: use Log in",
         DeviceStatus.PasswordNotSet => "The device has no password yet: use Set password",
         DeviceStatus.CertificateChanged => "The device's certificate changed since it was added",
+        DeviceStatus.SiteOffline => Sites.SiteTexts.SiteOffline(null),
         _ => Default,
     };
+
+    /// <summary>
+    /// Why <paramref name="device"/> cannot run a task because of its status, or null when it may:
+    /// <see cref="ForStatus(DeviceStatus, bool)"/> with the site's name for <see cref="DeviceStatus.SiteOffline"/>
+    /// ("Site offline: Building B").
+    /// </summary>
+    public static string? ForStatus(IDeviceInfo device, bool requireOk = false)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Sites.SiteTexts.SiteOffline(device.SiteName) : ForStatus(device.Status, requireOk);
+    }
+
+    /// <summary>
+    /// Why a task of a package that does not work at sites (<see cref="Sites.SiteSupport.None"/>) cannot run on
+    /// <paramref name="device"/>: "Not available for devices at a site" for a device at a site, else null.
+    /// </summary>
+    public static string? ForSiteSupport(Sites.SiteSupport support, IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return support == Sites.SiteSupport.None && device.SiteId is not null ? Sites.SiteTexts.NotAvailableAtSite : null;
+    }
 
     /// <summary>"Needs AXIS OS 11.11 or later (this device has 10.12.338)"; without a known firmware version only the first part.</summary>
     public static string NeedsFirmware(string minimumVersion, IDeviceInfo device)

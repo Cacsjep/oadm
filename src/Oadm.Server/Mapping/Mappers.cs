@@ -42,6 +42,8 @@ public static class Mappers
             CertTrust = ToProto(device.CertTrust),
             CertSubject = device.CertSubject ?? string.Empty,
             CertIssuer = device.CertIssuer ?? string.Empty,
+            SiteId = device.SiteId?.ToString() ?? string.Empty,
+            SiteName = device.SiteName ?? string.Empty,
         };
 
         if (device.CertNotAfterUtc is { } notAfter)
@@ -122,6 +124,7 @@ public static class Mappers
         SdkDeviceStatus.CredentialsRequired => Proto.DeviceStatus.CredentialsRequired,
         SdkDeviceStatus.PasswordNotSet => Proto.DeviceStatus.PasswordNotSet,
         SdkDeviceStatus.CertificateChanged => Proto.DeviceStatus.CertificateChanged,
+        SdkDeviceStatus.SiteOffline => Proto.DeviceStatus.SiteOffline,
         _ => Proto.DeviceStatus.Unknown,
     };
 
@@ -477,7 +480,21 @@ public static class Mappers
             ProductType = device.ProductType ?? string.Empty,
             Category = ToProto(DeviceCategoryMapper.Map(device.ProductType)),
             DnsName = device.DnsName ?? string.Empty,
+            SiteId = device.Route.SiteId?.ToString() ?? string.Empty,
         };
+    }
+
+    /// <summary>The site names of a discovered device's route and of the other routes it answered through (empty = the server's own network).</summary>
+    public static void AddRoutes(Proto.DiscoveredDevice message, DiscoveredDevice device, Func<Guid, string?> siteName)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(siteName);
+        message.SiteName = device.Route.SiteId is { } site ? siteName(site) ?? string.Empty : string.Empty;
+        foreach (var route in device.OtherRoutes.Items)
+        {
+            message.OtherSites.Add(route.SiteId is { } other ? siteName(other) ?? string.Empty : string.Empty);
+        }
     }
 
     public static Proto.CredentialEntry ToProto(Core.Security.CredentialListItem item)

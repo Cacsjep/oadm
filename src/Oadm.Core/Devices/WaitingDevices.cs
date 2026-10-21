@@ -17,7 +17,7 @@ public sealed class WaitingDevice
     /// <summary>The address as the file has it (IP or host name, optional scheme and port); the device address on add.</summary>
     public string Address { get; set; } = string.Empty;
 
-    /// <summary><see cref="WaitingDeviceStore.Normalize"/> of <see cref="Address"/>: one entry per address.</summary>
+    /// <summary><see cref="WaitingDeviceStore.Normalize(string?, Guid?)"/> of <see cref="Address"/> and <see cref="SiteId"/>: one entry per (site, address).</summary>
     public string NormalizedAddress { get; set; } = string.Empty;
 
     /// <summary>The MAC address an export of AXIS Device Manager names: another device at the address gets no password.</summary>
@@ -51,14 +51,27 @@ public sealed class WaitingDevice
     /// <summary>The device answered but rejected every login: not tried again by itself (no repeated wrong passwords).</summary>
     public bool LoginFailed { get; set; }
 
+    /// <summary>
+    /// The address answers through several sites with different devices that OADM does not manage: which one is meant is
+    /// not known, so it is not tried again by itself (Try now, or keep it again with a Site column).
+    /// </summary>
+    public bool Held { get; set; }
+
     /// <summary>Tries since the entry was kept (again).</summary>
     public int Tries { get; set; }
+
+    /// <summary>
+    /// Only tried through this site (the import's Site column); null = everywhere. The route is part of
+    /// <see cref="NormalizedAddress"/> once sites are in use, so (site, address) stays unique.
+    /// </summary>
+    public Guid? SiteId { get; set; }
 
     public override string ToString() => $"WaitingDevice {Id} ({Address})";
 }
 
 /// <summary>A line to keep waiting; the password stays in server memory until it is stored encrypted.</summary>
-public sealed record WaitingLine(string Address, string? ExpectedSerial, string? UserName, string? Password, IReadOnlyList<string> Tags)
+/// <param name="SiteId">The import's Site column: only tried through this site; null = everywhere.</param>
+public sealed record WaitingLine(string Address, string? ExpectedSerial, string? UserName, string? Password, IReadOnlyList<string> Tags, Guid? SiteId = null)
 {
     public override string ToString() => $"WaitingLine {{ Address = {Address}, UserName = {UserName}, Password = *** }}";
 }
@@ -76,7 +89,9 @@ public sealed record WaitingDeviceItem(
     string LastResult,
     bool LoginFailed,
     int Tries,
-    bool HasLogin);
+    bool HasLogin,
+    Guid? SiteId = null,
+    bool Held = false);
 
 /// <summary>
 /// A waiting device with its login decrypted, for one try. Server memory only; <see cref="ToString"/> redacts it.
@@ -91,16 +106,20 @@ public sealed record WaitingTry(
     IReadOnlyList<string> Tags,
     string Source,
     string AddedBy,
-    DateTime Kept)
+    DateTime Kept,
+    Guid? SiteId = null)
 {
     public override string ToString() => $"WaitingTry {{ Id = {Id}, Address = {Address}, Login = {(Login is null ? "none" : "***")} }}";
 }
 
 /// <summary>The outcome of one try, written back in a batch (only onto the entry as the try read it).</summary>
-public sealed record WaitingResult(Guid Id, DateTime Kept, string Result, bool LoginFailed);
+public sealed record WaitingResult(Guid Id, DateTime Kept, string Result, bool LoginFailed, bool Held = false);
 
-/// <summary>An entry's address and MAC address, to find the ones OADM manages by now.</summary>
+/// <summary>An entry's (site, address) key and MAC address, to find the ones OADM manages by now.</summary>
 public sealed record WaitingKey(Guid Id, string NormalizedAddress, string? ExpectedSerial);
+
+/// <summary>A managed device as the waiting list compares it: its MAC address, address and route.</summary>
+public sealed record ManagedAddress(string Serial, string Address, Guid? SiteId);
 
 /// <summary>What <see cref="WaitingDeviceStore.AddAsync"/> stored.</summary>
 public sealed record WaitingAddResult(int Added, int Updated, int Total);
@@ -137,8 +156,16 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
     public event EventHandler? Changed;
 
     /// <summary>
+    /// The key of an entry: <see cref="Normalize(string?)"/> of the address, and for an entry of one site "@" and the site's
+    /// id after it (CLAUDE.md "# Sites", "Overlapping networks": two sites may both have 192.168.0.20). One entry per key; the
+    /// address part keeps the address order of the list. Also compared with managed devices (address and route).
+    /// </summary>
+    public static string Normalize(string? address, Guid? siteId) =>
+        siteId is { } site ? Normalize(address) + "@" + site.ToString("N").ToUpperInvariant() : Normalize(address);
+
+    /// <summary>
     /// The address as a device record stores it, upper case: no scheme ("https://cam:8443" = "cam:8443"), no trailing "/",
-    /// an IPv6 address without a port without brackets. One entry per such address; also compared with managed devices.
+    /// an IPv6 address without a port without brackets.
     /// </summary>
     public static string Normalize(string? address)
     {
@@ -169,7 +196,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         var now = time.GetUtcNow().UtcDateTime;
         var distinct = lines
             .Where(l => !string.IsNullOrWhiteSpace(l.Address) && l.Address.Trim().Length <= MaxAddressLength)
-            .GroupBy(l => Normalize(l.Address), StringComparer.Ordinal)
+            .GroupBy(l => Normalize(l.Address, l.SiteId), StringComparer.Ordinal)
             .Select(g => g.Last())
             .ToList();
         source = Cut(source.Trim(), MaxSourceLength);
@@ -179,7 +206,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
-            var keys = distinct.Select(l => Normalize(l.Address)).ToHashSet(StringComparer.Ordinal);
+            var keys = distinct.Select(l => Normalize(l.Address, l.SiteId)).ToHashSet(StringComparer.Ordinal);
             var existing = new Dictionary<string, WaitingDevice>(StringComparer.Ordinal);
             foreach (var chunk in keys.Chunk(500))
             {
@@ -190,7 +217,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
             }
 
             var count = await db.WaitingDevices.CountAsync(ct).ConfigureAwait(false);
-            var added = distinct.Count(l => !existing.ContainsKey(Normalize(l.Address)));
+            var added = distinct.Count(l => !existing.ContainsKey(Normalize(l.Address, l.SiteId)));
             if (count + added > MaxEntries)
             {
                 throw new WaitingListFullException(FullText);
@@ -198,10 +225,10 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
 
             foreach (var line in distinct)
             {
-                var key = Normalize(line.Address);
+                var key = Normalize(line.Address, line.SiteId);
                 if (!existing.TryGetValue(key, out var row))
                 {
-                    row = new WaitingDevice { Id = Guid.NewGuid(), NormalizedAddress = key };
+                    row = new WaitingDevice { Id = Guid.NewGuid(), NormalizedAddress = key, SiteId = line.SiteId };
                     db.WaitingDevices.Add(row);
                 }
 
@@ -215,6 +242,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
                 row.Source = source;
                 row.AddedBy = Cut(addedBy, 64);
                 row.LoginFailed = false;
+                row.Held = false;
                 row.Tries = 0;
                 row.LastResult = string.Empty;
                 row.LastTryUtc = null;
@@ -265,7 +293,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         var take = limit <= 0 ? MaxEntries : limit;
         var rows = await query.OrderBy(w => w.NormalizedAddress).Take(take).ToListAsync(ct).ConfigureAwait(false);
         var items = rows.Select(r => new WaitingDeviceItem(r.Id, r.Address, r.ExpectedSerial, r.Tags, r.Source, r.AddedBy, r.CreatedUtc,
-            r.LastTryUtc, r.LastResult, r.LoginFailed, r.Tries, r.EncryptedPassword is not null)).ToList();
+            r.LastTryUtc, r.LastResult, r.LoginFailed, r.Tries, r.EncryptedPassword is not null, r.SiteId, r.Held)).ToList();
         return new WaitingPage(items, total, rows.Count == take ? rows[^1].NormalizedAddress : null);
     }
 
@@ -296,11 +324,12 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         }
         else
         {
-            rows = await (includeLoginFailed ? query : query.Where(w => !w.LoginFailed)).ToListAsync(ct).ConfigureAwait(false);
+            // A scheduled round leaves the failed logins and the held entries alone; Try now for all takes them too.
+            rows = await (includeLoginFailed ? query : query.Where(w => !w.LoginFailed && !w.Held)).ToListAsync(ct).ConfigureAwait(false);
         }
 
         return rows.OrderBy(r => r.LastTryUtc ?? DateTime.MinValue).ThenBy(r => r.CreatedUtc)
-            .Select(r => new WaitingTry(r.Id, r.Address, r.ExpectedSerial, Decrypt(r), r.Tags, r.Source, r.AddedBy, r.CreatedUtc)).ToList();
+            .Select(r => new WaitingTry(r.Id, r.Address, r.ExpectedSerial, Decrypt(r), r.Tags, r.Source, r.AddedBy, r.CreatedUtc, r.SiteId)).ToList();
     }
 
     /// <summary>Whether the entry still exists as a try read it (not removed, not kept again since).</summary>
@@ -342,6 +371,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
                     row.LastTryUtc = now;
                     row.LastResult = Cut(result.Result, MaxResultLength);
                     row.LoginFailed = result.LoginFailed;
+                    row.Held = result.Held;
                     row.Tries++;
                 }
             }
@@ -391,9 +421,95 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         return removed;
     }
 
+    /// <summary>The entries kept for <paramref name="siteId"/> are removed (the site was removed). Returns how many.</summary>
+    public async Task<int> RemoveForSiteAsync(Guid siteId, CancellationToken ct)
+    {
+        int removed;
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            removed = await db.WaitingDevices.Where(w => w.SiteId == siteId).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _write.Release();
+        }
+
+        if (removed > 0)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return removed;
+    }
+
     /// <summary>
-    /// Removes the entries whose device OADM manages by now (added another way): the same address (<see cref="Normalize"/>
-    /// of the device's address) or the expected MAC address. Every entry, also those whose login failed. Returns the ids.
+    /// The entries kept for <paramref name="from"/> wait for <paramref name="to"/> instead (Replace with): their key moves to
+    /// the new site; an address the new site already keeps stays as the new site has it. One transaction. Returns how many moved.
+    /// </summary>
+    public async Task<int> MoveSiteAsync(Guid from, Guid to, CancellationToken ct)
+    {
+        int moved = 0;
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            var rows = await db.WaitingDevices.Where(w => w.SiteId == from).ToListAsync(ct).ConfigureAwait(false);
+            var keys = rows.Select(r => Normalize(r.Address, to)).ToList();
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var chunk in keys.Chunk(500))
+            {
+                taken.UnionWith(await db.WaitingDevices.Where(w => chunk.Contains(w.NormalizedAddress)).Select(w => w.NormalizedAddress).ToListAsync(ct).ConfigureAwait(false));
+            }
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (!taken.Add(keys[i]))
+                {
+                    db.WaitingDevices.Remove(rows[i]);
+                    continue;
+                }
+
+                rows[i].SiteId = to;
+                rows[i].NormalizedAddress = keys[i];
+                moved++;
+            }
+
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            await transaction.CommitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _write.Release();
+        }
+
+        if (moved > 0)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return moved;
+    }
+
+    /// <summary>
+    /// Removes the entries whose device OADM manages by now (added another way): the same (route, address) or the
+    /// expected MAC address. An entry of a site compares with the devices of that site, an entry for everywhere with the
+    /// devices on the server's own network (a device at a site with the same address may be another one: such an entry
+    /// leaves when its try finds its device managed). Every entry, also those whose login failed. Returns the ids.
+    /// </summary>
+    public Task<IReadOnlyCollection<Guid>> RemoveManagedAsync(IReadOnlyCollection<ManagedAddress> managed, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(managed);
+        return RemoveManagedAsync(
+            managed.Select(d => Normalize(d.Address, d.SiteId)).ToHashSet(StringComparer.Ordinal),
+            managed.Select(d => DeviceSerial.Normalize(d.Serial)).ToHashSet(StringComparer.Ordinal), ct);
+    }
+
+    /// <summary>
+    /// Removes the entries whose key (<see cref="Normalize(string?, Guid?)"/>) is in <paramref name="managedAddresses"/> or
+    /// whose expected MAC address is in <paramref name="managedSerials"/>. Returns the ids.
     /// </summary>
     public async Task<IReadOnlyCollection<Guid>> RemoveManagedAsync(IReadOnlySet<string> managedAddresses, IReadOnlySet<string> managedSerials, CancellationToken ct)
     {

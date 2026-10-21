@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared by the OADM server and the OADM Site Node: the link between them (CLAUDE.md "# Sites"). No EF Core, no plugins. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- J-PAKE of the pairing code (MIT). -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Oadm.Contracts\Oadm.Contracts.csproj" />
+  </ItemGroup>
+</Project>

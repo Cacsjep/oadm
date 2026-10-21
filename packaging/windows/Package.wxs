@@ -6,8 +6,9 @@
   - Feature Server: Program Files\OADM\Server: Oadm.Server.exe + plugins\, Windows service "OADM Server" (OadmServer),
     automatic start, LocalSystem (NTP UDP 123 and DHCP UDP 67 need it), data folder %ProgramData%\OADM passed as the
     Oadm:DataDir argument. The single-file host extracts its native libraries to %ProgramData%\OADM\runtime (service
-    environment) instead of C:\Windows\Temp, which every user can write to. One firewall rule: TCP 5080 (gRPC) for
-    Oadm.Server.exe, profiles Domain and Private; the NTP and DHCP plugins add their UDP rule themselves while enabled.
+    environment) instead of C:\Windows\Temp, which every user can write to. One firewall rule for Oadm.Server.exe,
+    profiles Domain and Private: TCP 5080 (gRPC, clients). The server adds the others itself while they are needed: TCP
+    5081 while Accept site nodes is on, the NTP and DHCP plugins their UDP rule while enabled.
     %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
     master key, logs survive uninstall and upgrades).
   - Feature Client (always): Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".

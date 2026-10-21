@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.SiteNode.App.ViewModels"
+        x:Class="Oadm.SiteNode.App.Views.AddPortWindow"
+        x:DataType="vm:AddPortViewModel"
+        Title="Add port"
+        Width="420" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Add of the Ports card: single operation. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Add port" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form compactForm">
+        <ui:FormField Label="Direction">
+          <ComboBox ItemsSource="{Binding Uses}" SelectedItem="{Binding Use}" IsEnabled="{Binding IsIdle}" />
+        </ui:FormField>
+        <ui:FormField Label="Protocol">
+          <ComboBox ItemsSource="{Binding Protocols}" SelectedItem="{Binding Protocol}" IsEnabled="{Binding IsIdle}" />
+        </ui:FormField>
+        <ui:FormField Label="Port">
+          <TextBox x:Name="PortBox" Text="{Binding PortText}" PlaceholderText="8443" IsEnabled="{Binding IsIdle}" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" IsDefault="True" Content="Add" Command="{Binding AddCommand}"
+              IsEnabled="{Binding AddBlockedReason, Converter={x:Static ObjectConverters.IsNull}}"
+              ToolTip.Tip="{Binding AddBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -118,6 +118,19 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
     SdkStatus IDeviceInfo.Status => DeviceStatusInfo.ToSdk(ContractStatus);
 
+    /// <summary>The site the device is reached through; null on the server's own network.</summary>
+    public Guid? SiteId { get; private set; }
+
+    /// <summary>The device is at a site: its web interface opens in Web View (the user's computer usually cannot reach it).</summary>
+    [ObservableProperty] public partial bool IsAtSite { get; private set; }
+
+    Guid? IDeviceInfo.SiteId => SiteId;
+
+    /// <summary>The name of the site (Site column, search, export); null on the server's own network.</summary>
+    [ObservableProperty] public partial string? SiteName { get; private set; }
+
+    string? IDeviceInfo.SiteName => SiteName;
+
     Oadm.Sdk.Devices.DeviceCategory IDeviceInfo.Category => DeviceCategoryInfo.ToSdk(Category);
 
     bool? IDeviceInfo.DhcpEnabled => _dhcpEnabled;
@@ -152,6 +165,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         _httpsEnabled = device.HasHttpsEnabled ? device.HttpsEnabled : null;
         _dot1xEnabled = device.HasDot1XEnabled ? device.Dot1XEnabled : null;
         ContractStatus = device.Status;
+        SiteId = Guid.TryParse(device.SiteId, out var siteId) ? siteId : null;
+        IsAtSite = SiteId is not null;
+        SiteName = string.IsNullOrEmpty(device.SiteName) ? null : device.SiteName;
         StatusText = DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
         HasCredentials = device.HasCredentials;
@@ -214,7 +230,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc)
-            || Contains(StatusText) || Tags.Any(Contains);
+            || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

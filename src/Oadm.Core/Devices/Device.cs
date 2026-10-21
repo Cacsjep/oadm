@@ -98,6 +98,24 @@ public sealed class Device : IDeviceInfo
     /// <inheritdoc />
     IReadOnlyList<string> IDeviceInfo.Tags => Tags;
 
+    /// <summary>The site the device is reached through; null = the server's own network. Changes only with its address (a move).</summary>
+    public Guid? SiteId { get; set; }
+
+    /// <summary>The name of <see cref="SiteId"/>; not a column, filled by reads like <see cref="CredentialUserName"/>.</summary>
+    public string? SiteName { get; set; }
+
+    /// <summary>
+    /// The stored (last real) status while <see cref="Status"/> shows the computed Site offline; null otherwise. Not a
+    /// column: filled by <see cref="Sites.SiteDeviceStatus.Apply"/>, so the event rules start from the last real status.
+    /// </summary>
+    public DeviceStatus? StoredStatus { get; set; }
+
+    /// <summary>
+    /// The device's site was removed with Keep devices (not a column, filled by <see cref="Sites.SiteDeviceStatus.Apply"/>):
+    /// it shows Site offline with "&lt;site&gt; (removed)" and its status events are off.
+    /// </summary>
+    public bool SiteRemoved { get; set; }
+
     /// <summary>Detached deep copy, safe to hand to other threads.</summary>
     public Device Clone()
     {

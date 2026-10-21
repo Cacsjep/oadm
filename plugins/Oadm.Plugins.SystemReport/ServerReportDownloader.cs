@@ -65,8 +65,17 @@ public static partial class ServerReportRequests
         DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
         DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>The text of a status that makes a request pointless for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
+    public static string? StatusError(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : StatusError(device.Status);
+    }
+
 
     /// <summary>True when a failed <see cref="ModeZipWithImage"/> is worth a second try with <see cref="ModeZip"/>.</summary>
     public static bool TryPlainReport(HttpStatusCode status) =>
@@ -231,7 +240,7 @@ public sealed class ServerReportDownloader
         ArgumentNullException.ThrowIfNull(device);
         ArgumentException.ThrowIfNullOrEmpty(path);
         var modes = ServerReportRequests.ModesFor(device);
-        if (ServerReportRequests.StatusError(device.Status) is { } refused)
+        if (ServerReportRequests.StatusError(device) is { } refused)
         {
             return new DownloadResult(0, modes[0], refused);
         }

@@ -45,6 +45,8 @@ public sealed partial class PluginRowViewModel : ObservableObject
         OffByDefault = !info.EnabledByDefault;
         AlwaysOn = info.AlwaysOn;
         License = PluginPackageStore.ToInfo(info.License);
+        SiteText = SiteTextOf(info);
+        SitePortsText = string.Join(", ", info.SitePorts.Select(p => $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Port}"));
         _applying = true;
         IsEnabled = info.Enabled;
         _applying = false;
@@ -65,6 +67,22 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     /// <summary>Core functionality listed only for its license: the check box stays on.</summary>
     public bool AlwaysOn { get; }
+
+    /// <summary>"Works at sites", "Only this server's network"; empty from a server without sites.</summary>
+    public string SiteText { get; }
+
+    /// <summary>The ports it listens on at sites: "UDP 123"; empty for none.</summary>
+    public string SitePortsText { get; }
+
+    public bool HasSitePorts => SitePortsText.Length > 0;
+
+    /// <summary>The texts of the Sites column (plugin.json siteSupport).</summary>
+    internal static string SiteTextOf(PluginPackageInfo info) => info.SiteSupport switch
+    {
+        "full" => "Works at sites",
+        "none" => "Only this server's network",
+        _ => string.Empty,
+    };
 
     /// <summary>The license as the server checked it; NotRequired for a free plugin.</summary>
     public PluginLicenseInfo License { get; }
@@ -164,7 +182,8 @@ public sealed partial class PluginsViewModel : ObservableObject
     private readonly IClipboardService? _clipboard;
     private readonly ILogger<PluginsViewModel> _logger;
 
-    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null)
+    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null,
+        Devices.DeviceStore? devices = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger;
@@ -172,6 +191,11 @@ public sealed partial class PluginsViewModel : ObservableObject
         _dialogs = dialogs;
         _clipboard = clipboard;
         store.Changed += (_, _) => Rebuild();
+        if (devices is not null)
+        {
+            HasSites = devices.Sites.HasSites;
+            devices.Sites.PropertyChanged += (_, _) => HasSites = devices.Sites.HasSites;
+        }
         if (session is not null)
         {
             session.PropertyChanged += (_, e) =>
@@ -191,6 +215,10 @@ public sealed partial class PluginsViewModel : ObservableObject
     }
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
+
+    /// <summary>The server has sites: the page shows the Sites column (what works at a site), like the device grid's Site column.</summary>
+    [ObservableProperty]
+    public partial bool HasSites { get; private set; }
 
     /// <summary>At least one plugin is sold with a license: the page shows the License column.</summary>
     public bool HasLicensedPlugins => Plugins.Any(p => p.NeedsLicense);

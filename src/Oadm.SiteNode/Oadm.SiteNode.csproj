@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- OADM Site Node service (CLAUDE.md "# Sites", "Site node program"): headless, Windows service "OADM Site Node" or systemd
+       unit oadm-site-node, runs without root. The same exe is the command line ("oadm-site-node status"). No plugins:
+       published self-contained single-file like the host apps (Native AOT is allowed by the spec but not used yet: gRPC
+       on Kestrel and System.Text.Json reflection would need source generators first). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>oadm-site-node</AssemblyName>
+    <RootNamespace>Oadm.SiteNode</RootNamespace>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Oadm.Sites\Oadm.Sites.csproj" />
+    <ProjectReference Include="..\Oadm.Contracts\Oadm.Contracts.csproj" />
+    <ProjectReference Include="..\Oadm.SiteNode.Admin\Oadm.SiteNode.Admin.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.SiteNode.Tests" />
+  </ItemGroup>
+</Project>

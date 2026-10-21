@@ -166,8 +166,17 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
         DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
+        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>The refusal text for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
+    internal static string? RefusalFor(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : RefusalFor(device.Status);
+    }
+
 
     /// <summary>The ports of a getPorts answer, in port order. Throws <see cref="InvalidOperationException"/> with the device's error.</summary>
     internal static IReadOnlyList<IoPort> ParsePorts(string json)
@@ -216,7 +225,7 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
             return new StartReply(null, DeviceMessages.Removed);
         }
 
-        if (RefusalFor(device.Status) is { } refusal)
+        if (RefusalFor(device) is { } refusal)
         {
             return new StartReply(null, refusal);
         }

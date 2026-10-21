@@ -75,7 +75,7 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
     /// rules, Logs and every core plugin page, on or off (a page the user cannot open opens Devices). Anything else is
     /// refused.
     /// </summary>
-    private static readonly HashSet<string> HostStartPages = new(StringComparer.Ordinal) { "compliance", "eventRules", "logs" };
+    private static readonly HashSet<string> HostStartPages = new(StringComparer.Ordinal) { "compliance", "sites", "eventRules", "logs" };
 
     private string StartPageOf(string? value)
     {
@@ -100,6 +100,7 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
     {
         "" => "Devices",
         "compliance" => "Compliance",
+        "sites" => "Sites",
         "eventRules" => "Event rules",
         "logs" => "Logs",
         _ => registry.AllCorePlugins.FirstOrDefault(p => "plugin:" + p.Id == page)?.Plugin.DisplayName ?? page,

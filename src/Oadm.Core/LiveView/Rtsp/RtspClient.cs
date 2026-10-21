@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 namespace Oadm.Core.LiveView.Rtsp;
@@ -105,29 +106,36 @@ public sealed class RtspClient : IAsyncDisposable
     /// <summary>Session timeout from the SETUP response (default 60 s).</summary>
     public TimeSpan SessionTimeout { get; private set; } = TimeSpan.FromSeconds(60);
 
-    public static async Task<RtspClient> ConnectAsync(string host, int port, NetworkCredential? credentials, TimeSpan timeout, CancellationToken ct, TimeProvider? time = null)
+    /// <summary>
+    /// Opens the RTSP connection to <paramref name="host"/>:<paramref name="port"/> (the device's RTSP port, 554 or the one
+    /// set for a port forward) on <paramref name="route"/> through <paramref name="router"/> (default: the server's own
+    /// network). A device that does not answer is <see cref="LiveViewError.Unreachable"/>; a site that cannot carry the
+    /// connection throws its <see cref="SiteException"/> unchanged. Through a site the connect timeout gets the route's
+    /// round trips on top.
+    /// </summary>
+    public static async Task<RtspClient> ConnectAsync(string host, int port, NetworkCredential? credentials, TimeSpan timeout, CancellationToken ct, TimeProvider? time = null,
+        DeviceRoute route = default, DeviceRouter? router = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
-        var tcp = new TcpClient { NoDelay = true, ReceiveBufferSize = 512 * 1024 };
+        router ??= DeviceRouter.Local;
+        var limit = router.Timeout(route, timeout);
+        Stream stream;
         try
         {
             using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            connectTimeout.CancelAfter(timeout);
-            await tcp.ConnectAsync(host, port, connectTimeout.Token).ConfigureAwait(false);
+            connectTimeout.CancelAfter(limit);
+            stream = await router.ConnectAsync(route, host, port, SiteDialKind.Permanent, limit, connectTimeout.Token, ReceiveBufferBytes).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is SocketException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
         {
-            tcp.Dispose();
             throw new LiveViewException(LiveViewError.Unreachable, $"RTSP port {port} on {host} is not reachable.", ex);
         }
-        catch
-        {
-            tcp.Dispose();
-            throw;
-        }
 
-        return new RtspClient(tcp.GetStream(), credentials, tcp, time);
+        return new RtspClient(stream, credentials, stream, time);
     }
+
+    /// <summary>Receive buffer of the RTSP socket on the server's own network (video bursts at keyframes).</summary>
+    private const int ReceiveBufferBytes = 512 * 1024;
 
     /// <summary>Sends a request and reads its response; answers a 401 once with Digest credentials.</summary>
     public async Task<RtspResponse> SendAsync(string method, Uri url, IEnumerable<KeyValuePair<string, string>>? headers, CancellationToken ct)

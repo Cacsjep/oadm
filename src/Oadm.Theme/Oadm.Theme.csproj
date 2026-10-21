@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The OADM look shared by the client and the OADM Site Node app: colors of both appearances, icons, brushes and
+       styles (OadmTheme.axaml). Views reference these keys only (CLAUDE.md "Visual Style"). -->
+  <PropertyGroup>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj" />
+  </ItemGroup>
+</Project>

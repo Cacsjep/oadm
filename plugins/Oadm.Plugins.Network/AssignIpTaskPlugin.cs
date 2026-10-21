@@ -20,21 +20,20 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
     private static readonly StepKind[] Sections = [StepKind.Dns, StepKind.Ipv4];
 
     private readonly NetworkTaskRunner _runner;
-    private readonly IAddressProbe _probe;
+    private readonly IAddressProbe? _probe;
 
     public AssignIpTaskPlugin()
-        : this(ReachabilityOptions.Default, TimeProvider.System, NetworkAddressProbe.Instance)
+        : this(ReachabilityOptions.Default, TimeProvider.System, null)
     {
     }
 
     /// <param name="options">Timing of the reachability checks.</param>
     /// <param name="timeProvider">Clock for the waits.</param>
-    /// <param name="probe">Is an address taken (ping, TCP 80/443)? Tests pass a fake: no network in unit tests.</param>
-    public AssignIpTaskPlugin(ReachabilityOptions options, TimeProvider timeProvider, IAddressProbe probe)
+    /// <param name="probe">Is an address taken (ping, TCP 80/443)? Null = on the device's route (the context's network); tests pass a fake.</param>
+    public AssignIpTaskPlugin(ReachabilityOptions options, TimeProvider timeProvider, IAddressProbe? probe)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(probe);
         _probe = probe;
         _runner = new NetworkTaskRunner(options, timeProvider, probe);
     }
@@ -62,7 +61,7 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the network settings API", device);
+        return TaskSupportReasons.ForStatus(device) ?? TaskSupportReasons.NeedsApi("the network settings API", device);
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)

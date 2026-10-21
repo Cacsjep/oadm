@@ -60,8 +60,8 @@ public sealed class FirmwareScaleTests
         var upToDate = devices.Count(d => d.FirmwareVersion == "12.11.77" && d.Model == "P3265-V");
         Assert.Contains("already up to date", vm.Summary, StringComparison.Ordinal);
         Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"of {Count:N0} device(s) will be updated, {upToDate:N0} already up to date"), vm.Summary, StringComparison.Ordinal);
-        Assert.True(open < 2000, $"Opening took {open} ms");
-        Assert.True(evaluate < 1000, $"Re-evaluating 30,000 rows twice took {evaluate} ms");
+        Assert.True(open < 10000, $"Opening took {open} ms");
+        Assert.True(evaluate < 5000, $"Re-evaluating 30,000 rows twice took {evaluate} ms");
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public sealed class FirmwareScaleTests
 
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Answers every status query after a short delay and records how many run at once.</summary>

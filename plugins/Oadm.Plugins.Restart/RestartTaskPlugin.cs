@@ -75,7 +75,7 @@ public sealed class RestartTaskPlugin : ITaskPlugin
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status);
+        return TaskSupportReasons.ForStatus(device);
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)

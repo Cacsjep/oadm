@@ -99,6 +99,7 @@ public sealed partial class FakeOadmApi
                 DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
                 DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
                 DeviceStatus.Unreachable => "Timeout after 3 s",
+                DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
                 _ => null,
             };
             IReadOnlyList<LiveViewSource> sources = error is null ? await ListLiveViewSourcesAsync(device.Id, ct).ConfigureAwait(false) : [];
@@ -136,6 +137,7 @@ public sealed partial class FakeOadmApi
                     DeviceStatus.CredentialsRequired => "CredentialsRequired",
                     DeviceStatus.PasswordNotSet => "PasswordNotSet",
                     DeviceStatus.CertificateChanged => "CertificateChanged",
+                    DeviceStatus.SiteOffline => "SiteOffline",
                     _ => "Unknown",
                 },
                 ["certNotAfterUtc"] = device.CertNotAfter?.ToDateTime(),

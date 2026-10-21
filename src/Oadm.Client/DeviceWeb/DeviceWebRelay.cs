@@ -23,6 +23,7 @@ namespace Oadm.Client.DeviceWeb;
 /// DeviceWebService.Exchange call; the server adds the device login. Only the browser that opened
 /// <see cref="StartAddress"/> gets the session cookie; other programs on this computer get 403.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The client's loopback relay for its embedded browser; the device traffic goes through the server.")]
 public sealed partial class DeviceWebRelay : IDeviceWebSession
 {
     /// <summary>Path that hands out the session cookie (with the token), then redirects to the page.</summary>

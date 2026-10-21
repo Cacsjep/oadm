@@ -48,6 +48,7 @@ public static class HostPermissions
     public const string EventsManage = HostPermissionKeys.EventsManage;
     public const string EventsClearLog = HostPermissionKeys.EventsClearLog;
     public const string LogsServer = HostPermissionKeys.LogsServer;
+    public const string SitesView = HostPermissionKeys.SitesView;
 
     /// <summary>The host rows of the matrix, in order.</summary>
     public static IReadOnlyList<PermissionEntry> All { get; } =
@@ -61,6 +62,7 @@ public static class HostPermissions
         Host(DevicesExport, "Export the device list", "Save the device list as a CSV file.", DevicesGroup, 0, true, false),
         Host(TagsAssign, "Tag devices", "Give devices tags and create new tags.", DevicesGroup, 0, true, false),
         Host(TagsManage, "Rename and delete tags", "Rename, recolor and delete tags on every device.", DevicesGroup, 0, false, false),
+        Host(SitesView, "See sites", "See the Sites page: the networks OADM reaches through a site node.", DevicesGroup, 0, true, true),
         Host(TasksCancel, "Cancel tasks", "Cancel running and waiting tasks of every user.", TasksGroup, 1, true, false),
         Host(TasksDelete, "Delete tasks", "Delete single tasks from the task list.", TasksGroup, 1, true, false),
         Host(TasksDeleteAll, "Delete all tasks", "Delete the whole task list.", TasksGroup, 1, false, false),

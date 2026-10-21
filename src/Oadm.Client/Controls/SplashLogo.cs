@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Text;
-
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
@@ -43,28 +40,7 @@ public sealed class SplashLogo : Panel
     }
 
     /// <summary>The hexagon outline with slightly rounded corners, vertex at the top, inside a 2R x 2R box.</summary>
-    public static string HexPathData(double r)
-    {
-        var points = new (double X, double Y)[6];
-        for (var i = 0; i < 6; i++)
-        {
-            var a = Math.PI / 180 * (60 * i - 90);
-            points[i] = (r + r * Math.Cos(a), r + r * Math.Sin(a));
-        }
-
-        const double k = 0.14;
-        var d = new StringBuilder();
-        for (var i = 0; i < 6; i++)
-        {
-            var p = points[i];
-            var n = points[(i + 1) % 6];
-            var prev = points[(i + 5) % 6];
-            d.Append(i == 0 ? 'M' : 'L').Append(F(p.X + (prev.X - p.X) * k)).Append(',').Append(F(p.Y + (prev.Y - p.Y) * k))
-             .Append(" Q").Append(F(p.X)).Append(',').Append(F(p.Y)).Append(' ').Append(F(p.X + (n.X - p.X) * k)).Append(',').Append(F(p.Y + (n.Y - p.Y) * k)).Append(' ');
-        }
-
-        return d.Append('Z').ToString();
-    }
+    public static string HexPathData(double r) => Oadm.Theme.Controls.OadmMark.HexPathData(r);
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -237,5 +213,4 @@ public sealed class SplashLogo : Panel
     private static IBrush? Brush(string key) =>
         Application.Current is { } app && app.TryGetResource(key, app.ActualThemeVariant, out var value) ? value as IBrush : null;
 
-    private static string F(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 }

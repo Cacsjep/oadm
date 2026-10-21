@@ -43,7 +43,7 @@ public sealed partial class AppShell(
         }
 
         // The terms first: nothing connects before they are accepted; Quit (or the X) ends the client.
-        var terms = new TermsWindow();
+        var terms = new Oadm.Theme.Shell.TermsWindow();
         terms.Attach(new TermsViewModel(settings));
         terms.Completed += (_, accepted) =>
         {

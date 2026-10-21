@@ -4,6 +4,40 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [4.0.0-rc.1] - 2026-10-21
+
+### Added
+
+- **Sites**: OADM manages devices in networks the server cannot reach, through an **OADM Site Node** at each site. The
+  node is a small service with an app for Windows and Linux (x64 and ARM64): `OADM-SiteNode-<version>-win-x64.msi`
+  (`SERVER=<address>` for silent installs) and the packages `oadm-site-node` and `oadm-site-node-app`. It always connects
+  out to the server (TCP 5081) and never listens, so no port has to be opened at the site.
+- Sites: turn on **Accept site nodes** on the new **Sites** page, enter the server's address in the node app and bind the
+  node with **Bind** and the pairing code the app shows (a new code every 10 minutes). The Sites page lists every site
+  with its state, devices, response time and version; rename, replace and remove sites there.
+- Sites: Discovery, Network range, Add manually, Import from file (column **Site**), Import from ADM and the waiting list
+  find devices through every site. The device list has a **Site** column; devices that move between sites follow; devices
+  at a site open in Web View.
+- Sites: devices of an offline site show **Site offline**. OADM does not poll them, and tasks, plugin pages, Log in, Set
+  password, the RTSP port, live view and Web View refuse them; compliance says Not checked. New events "Site offline"
+  per site and "Any site offline", and the placeholder {site}.
+- Sites: the node app shows the link to the server at a glance (purple: ready to bind, green: connected), the pairing
+  code with a copy button, the network cards the node reaches and its ports in one table.
+- NTP server: serves the devices at all sites or at the sites you choose (**Sites**); a site you no longer choose gets
+  its port removed in the node app again.
+- Plugins page: which plugins work at sites and the ports they need. Assign IP address refuses addresses outside a site's
+  networks.
+- Roles: a **start page** per role, the page its users see first after a login (Devices, Compliance, Sites, Event rules,
+  a plugin page or Logs); the Administrator role has one too.
+
+### Changed
+
+- Plugin SDK 0.2.0: network checks routed like the device, relays at sites, site support and test fakes. Plugins built
+  with the 4.0 packages need OADM 4.0 or later; plugins built for 0.1.0 still load.
+- Plugins: the plugin SDK warns when a plugin opens its own network connections to devices; use the connections OADM
+  offers instead.
+- The server opens TCP 5081 for site nodes in the Windows firewall only while **Accept site nodes** is on.
+
 ## [3.6.2] - 2026-10-21
 
 ### Added

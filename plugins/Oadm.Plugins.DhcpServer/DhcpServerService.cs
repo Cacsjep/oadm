@@ -46,11 +46,12 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     private string? _publishedState;
 
     /// <param name="firewall">Host firewall (Windows service only): UDP rule for the server port while enabled.</param>
+    /// <param name="network">The server's own network (the address-in-use probe when <see cref="DhcpServerOptions.Probe"/> is null).</param>
     /// <param name="autoAdd">
     /// The server's automatic add (<see cref="ICorePluginContext.AutoAdd"/>): leases of Axis devices are handed to it, so
     /// managed devices are followed to their new address and, with <see cref="DhcpConfig.AutoAddAxisDevices"/>, new ones added.
     /// </param>
-    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null, Sdk.Devices.IDeviceAutoAdd? autoAdd = null)
+    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null, Sdk.Devices.IDeviceAutoAdd? autoAdd = null, Sdk.Sites.IDeviceNetwork? network = null)
     {
         _options = options ?? new DhcpServerOptions();
         _settings = settings;
@@ -59,7 +60,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         _limiter = new KeyedRateLimiter<ulong>(_options.RateLimits.PerMac, _options.Time);
         _firewallRule = new FirewallRuleKeeper(Sdk.Network.FirewallRule.ForService("DHCP", FirewallProtocol.Udp, _options.ServerPort), firewall, _logger);
         _check = new OtherServerCheck(_options.Sockets, _options.ServerPort, _options.ClientPort, _logger) { Wait = _options.OtherServerWait };
-        _engine = new DhcpEngine(_store, _options.Probe, _options.Engine with { ClientPort = _options.ClientPort }, _options.Time, _logger)
+        _engine = new DhcpEngine(_store, _options.Probe ?? Network.NetworkAddressProbe.For(network), _options.Engine with { ClientPort = _options.ClientPort }, _options.Time, _logger)
         {
             IgnoreMac = _check.IsProbeMac,
         };

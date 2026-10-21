@@ -87,8 +87,8 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
         vm.SearchText = "";
         byte[] csv = WaitingDevicesViewModel.WriteCsv(vm.Rows);
         string text = Encoding.UTF8.GetString(csv);
-        Assert.StartsWith("﻿Address,Tags,MAC address,Last try,Result\r\n", text, StringComparison.Ordinal);
-        Assert.Contains("10.99.0.0,Building A,,,Not tried yet", text, StringComparison.Ordinal);
+        Assert.StartsWith("﻿Address,Tags,Site,MAC address,Last try,Result\r\n", text, StringComparison.Ordinal);
+        Assert.Contains("10.99.0.0,Building A,,,,Not tried yet", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Secret-", text, StringComparison.Ordinal);
         Discovery.DeviceImportFile reread = Discovery.DeviceImportFile.Parse("waiting.csv", csv, false);
         Assert.Equal(5, reread.Lines.Count); // the export imports again

@@ -93,6 +93,7 @@ More per system: [`packaging/README.md`](packaging/README.md).
 | Port | Used by |
 |---|---|
 | TCP 5080 | Client to server (encrypted, login required) |
+| TCP 5081 | OADM Site Node to server (encrypted, bound nodes only; open only while **Accept site nodes** is on) |
 | UDP 123 | NTP server (only when enabled) |
 | UDP 67 | DHCP server (only when enabled) |
 
@@ -173,6 +174,8 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 | `manage test [unit\|perf\|timing\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 30,000 devices and 50,000 tasks (`Category=Perf`, a few minutes), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |
+| `manage package site-node [--rid RID] [--version V]` | The OADM Site Node installer (MSI, .deb) in `artifacts/packages/` |
+| `manage run node` / `manage run node-app` | The OADM Site Node on the console and its app, on `artifacts/dev-node` |
 | `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget/`, see [Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/) |
 | `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from the matching developer tutorial (`samples/`), renamed, in `plugins/` and `tests/` and added to `Oadm.sln`: it builds, its tests pass and it runs |
 | `manage license keys\|sign` | Key pair and license keys for a commercial plugin |
@@ -302,6 +305,9 @@ OADM is developed together with Claude, and the repository is set up for it:
 | `src/Oadm.Core` | Domain, VAPIX client, discovery, tasks, persistence |
 | `src/Oadm.Server` | Server host |
 | `src/Oadm.Client` | Avalonia client |
+| `src/Oadm.Theme` | The OADM theme, shared by the client and the OADM Site Node app |
+| `src/Oadm.Sites` | The link between server and site node |
+| `src/Oadm.SiteNode*` | OADM Site Node: service and command line, its local channel, its app |
 | `plugins/` | Bundled plugins (task and core plugins), see [`plugins/README.md`](plugins/README.md) |
 | `samples/` | The plugins of the developer tutorials, with their tests |
 | `templates/` | `dotnet new` templates for plugins (NuGet package) |

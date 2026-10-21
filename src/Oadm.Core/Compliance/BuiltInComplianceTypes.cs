@@ -112,7 +112,12 @@ public static class BuiltInComplianceTypes
         public override string? Description => "The device answers OADM.";
 
         protected override ComplianceResult Evaluate(IDeviceInfo device, ComplianceInvocation invocation, DateTimeOffset now) =>
-            device.Status == DeviceStatus.Unreachable ? ComplianceResult.Failed("Unreachable") : ComplianceResult.Passed();
+            device.Status switch
+            {
+                DeviceStatus.Unreachable => ComplianceResult.Failed("Unreachable"),
+                DeviceStatus.SiteOffline => new ComplianceResult(ComplianceOutcome.NotChecked, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName)),
+                _ => ComplianceResult.Passed(),
+            };
     }
 
     private sealed class LoginWorksType : CachedType
@@ -131,6 +136,7 @@ public static class BuiltInComplianceTypes
             DeviceStatus.PasswordNotSet => ComplianceResult.Failed("Password not set"),
             DeviceStatus.CertificateChanged => ComplianceResult.Failed("Certificate changed"),
             DeviceStatus.Unreachable => new ComplianceResult(ComplianceOutcome.NotChecked, "Unreachable"),
+            DeviceStatus.SiteOffline => new ComplianceResult(ComplianceOutcome.NotChecked, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName)),
             _ => ComplianceResult.Passed(),
         };
     }

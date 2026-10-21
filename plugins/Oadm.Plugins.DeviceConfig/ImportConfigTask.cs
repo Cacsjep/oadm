@@ -108,7 +108,7 @@ public sealed class ImportConfigTask : ITaskPlugin
         IReadOnlySet<string> available;
         using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
-            if (TaskSupportReasons.ForStatus(device.Status) is { } refused)
+            if (TaskSupportReasons.ForStatus(device) is { } refused)
             {
                 throw new ConfigDeviceException(refused + ". Nothing was changed.");
             }

@@ -130,7 +130,7 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
         Dictionary<string, ParamDefinition> definitions;
         using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
-            if (TaskSupportReasons.ForStatus(device.Status) is { } refused)
+            if (TaskSupportReasons.ForStatus(device) is { } refused)
             {
                 throw new ConfigDeviceException(refused + ". Nothing was changed.");
             }
@@ -587,7 +587,7 @@ public static class ConfigureSupport
     public static string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status, requireOk: true)
+        return TaskSupportReasons.ForStatus(device, requireOk: true)
             ?? (CanRun(device) ? null : "The device has no parameter API");
     }
 }

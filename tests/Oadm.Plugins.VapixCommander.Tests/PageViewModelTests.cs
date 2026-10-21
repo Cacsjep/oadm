@@ -249,7 +249,7 @@ public sealed class PageViewModelTests
     public async Task Thousands_of_devices_are_chosen_and_checked_for_compatibility_fast()
     {
         var (sync, all, devicesSelection, byTag, compatibility) = await ChooseAndCheckTheMostDevicesAsync();
-        var limit = TimeSpan.FromMilliseconds(200);
+        var limit = TimeSpan.FromMilliseconds(1000); // about 10x the measured times (budget rule of the Perf tests)
         Assert.True(sync < limit * 2, $"device sync {sync.TotalMilliseconds} ms");
         Assert.True(all < limit, $"all devices {all.TotalMilliseconds} ms");
         Assert.True(byTag < limit, $"by tag {byTag.TotalMilliseconds} ms");

@@ -17,4 +17,21 @@
     <RepositoryUrl>https://github.com/Cacsjep/oadm</RepositoryUrl>
     <Copyright>Copyright 2026 The OADM contributors</Copyright>
   </PropertyGroup>
+
+  <!-- Device connections only through the route (CLAUDE.md "# Sites", Banned APIs): src/ and plugins/ may not open sockets, ask
+       DNS or build HTTP handlers themselves; the few justified exceptions carry a SuppressMessage. tools/, tests/ and
+       samples/ stay outside (samples get the same list as warnings from the plugin project SDK). -->
+  <!-- The OADM Site Node is the network endpoint at a site (it dials the devices for the server, CLAUDE.md "# Sites"): its own
+       sockets are the route, so its projects are outside the list. -->
+  <PropertyGroup Condition="'$(OadmBannedApis)' == '' and $(MSBuildProjectName.StartsWith('Oadm.SiteNode'))">
+    <OadmBannedApis>none</OadmBannedApis>
+  </PropertyGroup>
+  <PropertyGroup>
+    <_OadmProjectDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</_OadmProjectDirectory>
+    <OadmBannedApis Condition="'$(OadmBannedApis)' == '' and ($(_OadmProjectDirectory.StartsWith('$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'src'))')) or $(_OadmProjectDirectory.StartsWith('$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'plugins'))')))">error</OadmBannedApis>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(OadmBannedApis)' == 'error'">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt" Visible="false" />
+  </ItemGroup>
 </Project>

@@ -53,6 +53,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly IDeviceAutoAdd? _autoAdd;
     private readonly Func<string, Sdk.Events.IEventPublisher>? _eventPublishers;
     private readonly Func<string, Sdk.Events.IEventSubscriptions>? _eventSubscriptions;
+    private readonly Func<Sites.PluginNetworkScope>? _networks;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -74,7 +75,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         string? pluginDataRoot = null,
         IDeviceAutoAdd? autoAdd = null,
         Func<string, Sdk.Events.IEventPublisher>? eventPublishers = null,
-        Func<string, Sdk.Events.IEventSubscriptions>? eventSubscriptions = null)
+        Func<string, Sdk.Events.IEventSubscriptions>? eventSubscriptions = null,
+        Func<Sites.PluginNetworkScope>? networks = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -94,6 +96,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _autoAdd = autoAdd;
         _eventPublishers = eventPublishers;
         _eventSubscriptions = eventSubscriptions;
+        _networks = networks;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -131,9 +134,12 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 entry.Error = null;
                 entry.Subscriptions?.Dispose();
                 entry.Subscriptions = _eventSubscriptions is null ? null : new PluginEventSubscriptions(_eventSubscriptions(registered.Id));
+                await DisposeNetworkAsync(entry).ConfigureAwait(false);
+                entry.Network = _networks?.Invoke();
+                var siteSupport = registered.Origin.SiteSupport;
                 var context = new CorePluginContext(
                     _devices,
-                    _vapix,
+                    SiteSupportGuard.Guard(_vapix, _devices, siteSupport),
                     _tasks,
                     _settings.GetSettings(registered.Id),
                     _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id),
@@ -141,13 +147,18 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _secrets,
                     Events.For(registered.Id),
                     _trustAnchors?.For(registered.Id),
-                    _eventStreams,
+                    SiteSupportGuard.Guard(_eventStreams, _devices, siteSupport),
                     _firewall,
                     _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
                     _autoAdd,
                     registered.Plugin is Sdk.Events.IEventSource ? _eventPublishers?.Invoke(registered.Id) : null,
                     entry.Subscriptions,
-                    _registry.Licenses?.LicenseOf(registered.Origin.PackageId));
+                    _registry.Licenses?.LicenseOf(registered.Origin.PackageId))
+                {
+                    // Not for devices at a site: no route into a site and no relays (CLAUDE.md "# Sites", Declaration).
+                    Network = SiteSupportGuard.Guard(entry.Network, siteSupport),
+                    Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
+                };
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -160,6 +171,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 {
                     entry.State = CorePluginState.Stopped;
                     entry.Subscriptions?.Dispose();
+                    await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     throw;
                 }
 #pragma warning disable CA1031 // One faulty core plugin must not stop the others or the host.
@@ -169,6 +181,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     entry.State = CorePluginState.Faulted;
                     entry.Error = ex.Message;
                     entry.Subscriptions?.Dispose();
+                    await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     LogStartFailed(ex, registered.Id);
                 }
             }
@@ -238,6 +251,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         {
             await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
             entry.Subscriptions?.Dispose(); // a stopped plugin receives no more events
+            await DisposeNetworkAsync(entry).ConfigureAwait(false); // its listeners and relays close
             entry.State = CorePluginState.Stopped;
             _trustAnchors?.Remove(id); // a stopped plugin's CAs are no longer vouched for
             LogStopped(id);
@@ -249,7 +263,18 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             entry.State = CorePluginState.Faulted;
             entry.Error = ex.Message;
             entry.Subscriptions?.Dispose();
+            await DisposeNetworkAsync(entry).ConfigureAwait(false);
             LogStopFailed(ex, id);
+        }
+    }
+
+    /// <summary>Closes the listeners and relays a plugin run left open.</summary>
+    private static async Task DisposeNetworkAsync(Entry entry)
+    {
+        if (entry.Network is { } network)
+        {
+            entry.Network = null;
+            await network.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -424,6 +449,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         /// <summary>The event subscriptions of the current run; ended when the plugin stops or fails.</summary>
         public PluginEventSubscriptions? Subscriptions;
+
+        /// <summary>The network of the current run (listeners, relays); closed when the plugin stops or fails.</summary>
+        public Sites.PluginNetworkScope? Network;
     }
 }
 
@@ -484,6 +512,10 @@ internal sealed class CorePluginContext(
     public Sdk.Events.IEventPublisher? EventPublisher { get; } = eventPublisher;
 
     public Sdk.Events.IEventSubscriptions? EventSubscriptions { get; } = eventSubscriptions;
+
+    public Sdk.Sites.IPluginNetwork? Network { get; init; }
+
+    public Sdk.Sites.ISites? Sites { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

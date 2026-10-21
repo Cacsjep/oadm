@@ -117,6 +117,38 @@ internal sealed class RunningTask : IDisposable
         }
     }
 
+    /// <summary>
+    /// While a request of the device waits for its site's link: "Upload firmware - Waiting for the site link"; after the
+    /// wait the running step again. Returns false when the device is not running.
+    /// </summary>
+    public bool SetSiteLinkWait(Guid deviceId, TaskStepInfo? running, bool waiting)
+    {
+        if (!waiting && running is not null)
+        {
+            return SetStepMessage(deviceId, running);
+        }
+
+        lock (_sync)
+        {
+            var slot = _devices[deviceId];
+            if (slot.State != TaskState.Running)
+            {
+                return false;
+            }
+
+            if (waiting)
+            {
+                slot.Message = running is null ? Sites.SiteLinkWait.Text : $"{running.Name} - {Sites.SiteLinkWait.Text}";
+            }
+            else if (slot.Message == Sites.SiteLinkWait.Text)
+            {
+                slot.Message = null;
+            }
+
+            return true;
+        }
+    }
+
     /// <summary>The last warning of the device, the final message of a "Done with warnings" device.</summary>
     public string? LastWarning(Guid deviceId)
     {

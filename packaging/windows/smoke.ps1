@@ -1,11 +1,13 @@
 # Installs the MSI, checks it and removes it again (release workflow, job "smoke windows").
-#   -Mode ServerAndClient  default install: service, gRPC answer, data folder, firewall rule, decoder, uninstall
+#   -Mode ServerAndClient  default install: service, gRPC answer, data folder, firewall rules, decoder, uninstall
 #   -Mode ClientOnly       ADDLOCAL=Client: no service, no server, no firewall rule, decoder, uninstall
+#   -Mode SiteNode         the OADM Site Node MSI with SERVER=<address>: service as NT SERVICE\OadmSiteNode, "status" answers
+#                          unbound with that server, no firewall rule (the node only connects out), uninstall
 # Every line starts with the time, and while a program runs a line every 20 s shows free memory and the busiest
 # processes. A runner that stops answering leaves no log file behind, but the live log keeps what was printed.
 param(
     [Parameter(Mandatory)] [string] $Msi,
-    [ValidateSet('ServerAndClient', 'ClientOnly')] [string] $Mode = 'ServerAndClient'
+    [ValidateSet('ServerAndClient', 'ClientOnly', 'SiteNode')] [string] $Mode = 'ServerAndClient'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,6 +64,57 @@ function Test-Decoder {
 
 Show-Machine
 
+if ($Mode -eq 'SiteNode') {
+    $node = 'C:\Program Files\OADM Site Node\oadm-site-node.exe'
+    $data = 'C:\ProgramData\OADM Site Node'
+    # The command line of the node: its output and exit code (the local channel answers within seconds).
+    function Invoke-Node([string[]] $arguments) {
+        Say "oadm-site-node $($arguments -join ' ')"
+        $out = & $node @arguments 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        Write-Host $out
+        if ($code -ne 0) { Get-ChildItem "$data\logs" -Filter *.log -ErrorAction SilentlyContinue | Get-Content -Tail 40 | Write-Host; throw "oadm-site-node $($arguments -join ' ') failed: $code" }
+        $out
+    }
+    function Get-NodeRule { @(Get-NetFirewallRule -DisplayName 'OADM Site Node*' -ErrorAction SilentlyContinue) }
+
+    $p = Invoke-Limited msiexec.exe "/i `"$Msi`" SERVER=oadm.example.com /qn /norestart /l*v install-node.log" install-node.log
+    if ($p.ExitCode -ne 0) { Get-Content install-node.log -Tail 80 | Write-Host; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
+    $svc = Get-CimInstance Win32_Service -Filter "Name='OadmSiteNode'"
+    Say "service: $($svc.State) $($svc.StartMode) $($svc.StartName)"
+    if ($svc.State -ne 'Running') { throw 'service OadmSiteNode not running' }
+    if ($svc.StartName -ne 'NT SERVICE\OadmSiteNode') { throw "service account NT SERVICE\OadmSiteNode expected, not $($svc.StartName)" }
+    foreach ($f in 'TERMS.md', 'LICENSE.txt', 'NOTICE.txt', 'THIRD-PARTY-NOTICES.txt', 'oadm-site-node-app.exe') {
+        if (-not (Test-Path "C:\Program Files\OADM Site Node\$f")) { throw "$f missing" }
+    }
+    if (Test-Path 'C:\Program Files\OADM Site Node\LGPL-2.1.txt') { throw 'the node has no LGPL part' }
+    if (-not (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\OADM Site Node.lnk")) { throw 'Start menu shortcut missing' }
+    if ((Get-NodeRule).Count -ne 0) { throw 'the node MSI must not add a firewall rule' }
+
+    # SERVER=<address> reached the node; it is not bound (and cannot connect: the name does not exist).
+    $status = Invoke-Node @('status')
+    if ($status -notmatch 'Not bound') { throw 'status must say Not bound' }
+    if ($status -notmatch 'oadm\.example\.com') { throw 'SERVER was not set' }
+    (Get-Acl $data).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
+    if (-not (Test-Path "$data\node.json")) { throw 'node.json missing in the data folder' }
+
+    # Another server address is taken; the node never listens, so still no firewall rule.
+    $null = Invoke-Node @('server', 'oadm2.example.com')
+    if ((Invoke-Node @('status')) -notmatch 'oadm2\.example\.com') { throw 'the new server address was not set' }
+    if ((Get-NodeRule).Count -ne 0) { throw 'the node must not add a firewall rule' }
+
+    Say 'stop the service'
+    Stop-Service OadmSiteNode -ErrorAction SilentlyContinue
+    (Get-Service OadmSiteNode).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+    Uninstall uninstall-node.log
+    if (Get-Service OadmSiteNode -ErrorAction SilentlyContinue) { throw 'service still installed' }
+    if (Test-Path $node) { throw 'node still installed' }
+    if ((Get-NodeRule).Count -ne 0) { throw 'firewall rule left behind' }
+    if (-not (Test-Path "$data\node.json")) { throw 'data folder was removed' }
+    Say 'site node: install, service, status, no firewall rule, uninstall ok'
+    return
+}
+
 if ($Mode -eq 'ClientOnly') {
     $p = Invoke-Limited msiexec.exe "/i `"$Msi`" ADDLOCAL=Client /qn /norestart /l*v install-client.log" install-client.log
     if ($p.ExitCode -ne 0) { Get-Content install-client.log -Tail 80 | Write-Host; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
@@ -114,11 +167,14 @@ foreach ($app in 'Server', 'Client') {
     }
 }
 (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
-# Only TCP 5080 for Domain and Private; the NTP and DHCP plugins add their UDP rules only while enabled.
-$rules = @(Get-NetFirewallRule -DisplayName 'OADM Server*')
+# TCP 5080 (clients) for Domain and Private; the server adds TCP 5081 only while Accept site nodes is on (off by default),
+# the NTP and DHCP plugins their UDP rules only while enabled.
+$rules = @(Get-NetFirewallRule -DisplayName 'OADM Server*' | Sort-Object DisplayName)
 $rules | Format-Table DisplayName, Enabled, Direction, Profile -AutoSize | Out-String | Write-Host
-if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne 'OADM Server (gRPC, TCP 5080)') { throw 'only the gRPC firewall rule expected' }
-if (($rules[0].Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw "profile Domain, Private expected, not $($rules[0].Profile)" }
+if (($rules.DisplayName -join ',') -ne 'OADM Server (gRPC, TCP 5080)') { throw 'only the rule for TCP 5080 expected' }
+foreach ($rule in $rules) {
+    if (($rule.Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw "profile Domain, Private expected, not $($rule.Profile)" }
+}
 # The server checked its folders at start (service mode) and did not refuse them.
 if (Select-String -Path C:\ProgramData\OADM\logs\*.log -Pattern 'could not be fixed' -Quiet) { throw 'folder check failed' }
 Show-ServerLog 30

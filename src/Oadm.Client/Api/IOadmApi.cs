@@ -137,6 +137,13 @@ public interface IOadmApi
     /// address than <paramref name="expectedSerial"/> gets no password at all, not even from the credential list.
     /// </summary>
     Task<string> ProbeAddressAsync(string address, string? userName, string? password, string expectedSerial, CancellationToken ct);
+
+    /// <summary>
+    /// A line of an imported file with everything it names (login, expected MAC address, the Site column): returns the
+    /// session and, with a site, the id of the site it probes through (kept with the line on the waiting list). An unknown
+    /// site or one that is offline is refused (INVALID_ARGUMENT, the text for the row).
+    /// </summary>
+    Task<DiscoverySession> ProbeLineAsync(ProbeAddressRequest request, CancellationToken ct);
     IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct);
     Task StopDiscoveryAsync(string sessionId, CancellationToken ct);
 
@@ -234,6 +241,24 @@ public interface IOadmApi
 
     /// <summary>Admin: removes the license of a plugin. Returns the whole list.</summary>
     Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct);
+
+    // SiteService (reading needs "See sites"; everything else is Administrator only)
+    Task<SiteList> ListSitesAsync(CancellationToken ct) => Task.FromResult(new SiteList());
+
+    /// <summary>The sites and waiting nodes on subscribe and after every change.</summary>
+    IAsyncEnumerable<SiteList> WatchSitesAsync(CancellationToken ct) => AsyncEnumerable.Empty<SiteList>();
+
+    /// <summary>Accept site nodes on or off; returns the list.</summary>
+    Task<SiteList> SetSiteAcceptAsync(bool accept, CancellationToken ct) => throw new NotSupportedException();
+
+    /// <summary>Binds a waiting node, chosen by its id and the fingerprint of its key (a stranger may report the same id).</summary>
+    Task<Site> BindSiteAsync(string nodeId, string nodeFingerprint, string name, string pairingCode, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<Site> RenameSiteAsync(string id, string name, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<ReplaceSiteReply> ReplaceSiteAsync(string id, string newSiteId, CancellationToken ct) => throw new NotSupportedException();
+
+    Task<RemoveSiteReply> RemoveSiteAsync(string id, bool keepDevices, CancellationToken ct) => throw new NotSupportedException();
 
     // ComplianceService (reading needs "See compliance", changing "Change compliance checks")
     Task<ComplianceCatalog> GetComplianceCatalogAsync(CancellationToken ct) => Task.FromResult(new ComplianceCatalog());

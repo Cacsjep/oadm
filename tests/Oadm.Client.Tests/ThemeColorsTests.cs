@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Settings;
 using Oadm.Client.Shell;
-using Oadm.Client.Themes;
+using Oadm.Theme;
 
 namespace Oadm.Client.Tests;
 
@@ -24,16 +24,34 @@ public sealed partial class ThemeColorsTests
         Assert.Empty(light.Except(dark));
     }
 
-    [Fact]
-    public void Every_color_the_theme_uses_is_defined()
+    /// <summary>The style files that use the colors: the shared theme, the client's own theme and the Site Node app.</summary>
+    private static readonly string[][] ThemeFiles =
+    [
+        ["src", "Oadm.Theme", "OadmTheme.axaml"],
+        ["src", "Oadm.Client", "Themes", "OadmTheme.axaml"],
+        ["src", "Oadm.SiteNode.App", "App.axaml"],
+    ];
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Every_color_a_theme_file_uses_is_defined(int file)
     {
-        string theme = File.ReadAllText(Path.Combine(ThemesFolder(), "OadmTheme.axaml"));
+        string theme = File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path(ThemeFiles[file]));
         var used = ColorReference().Matches(theme).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
         var defined = ColorKeys("Dark");
 
-        Assert.NotEmpty(used);
         Assert.Empty(used.Except(defined));
         Assert.DoesNotContain("<Color x:Key=", theme, StringComparison.Ordinal); // colors live only in the appearance files
+    }
+
+    [Fact]
+    public void Color_references_are_found_static_and_dynamic()
+    {
+        Assert.NotEmpty(ColorReference().Matches(File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path(ThemeFiles[0]))));
+        Assert.Equal("Oadm.AccentColor", ColorReference().Match("{DynamicResource Oadm.AccentColor}").Groups[1].Value);
+        Assert.Equal("Oadm.Code.Key2Color", ColorReference().Match("{StaticResource Oadm.Code.Key2Color}").Groups[1].Value);
     }
 
     [Fact]
@@ -99,8 +117,8 @@ public sealed partial class ThemeColorsTests
             .Select(e => (string)e.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))!)
             .ToHashSet(StringComparer.Ordinal);
 
-    [GeneratedRegex(@"\{StaticResource (Oadm\.[A-Za-z.]+Color)\}")]
+    [GeneratedRegex(@"\{(?:StaticResource|DynamicResource) (Oadm\.[A-Za-z0-9.]+Color)\}")]
     private static partial Regex ColorReference();
 
-    private static string ThemesFolder() => Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Client", "Themes");
+    private static string ThemesFolder() => Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Theme");
 }

@@ -59,7 +59,7 @@ public sealed class LiveViewGrpcService(
     public override async Task<Proto.OpticsState> SetOptics(Proto.SetOpticsRequest request, ServerCallContext context)
     {
         var device = await RequireDeviceAsync(request.DeviceId, context.CancellationToken).ConfigureAwait(false);
-        if (TaskSupportReasons.ForStatus(device.Status) is { } refused)
+        if (TaskSupportReasons.ForStatus(device) is { } refused)
         {
             throw GrpcGuard.FailedPrecondition(refused + ".");
         }
@@ -145,7 +145,7 @@ public sealed class LiveViewGrpcService(
     public override async Task<Proto.Empty> MovePtz(Proto.MovePtzRequest request, ServerCallContext context)
     {
         var device = await RequireDeviceAsync(request.DeviceId, context.CancellationToken).ConfigureAwait(false);
-        if (TaskSupportReasons.ForStatus(device.Status) is { } refused)
+        if (TaskSupportReasons.ForStatus(device) is { } refused)
         {
             throw GrpcGuard.FailedPrecondition(refused + ".");
         }
@@ -219,6 +219,7 @@ public sealed class LiveViewGrpcService(
             throw GrpcGuard.NotFound("The devices were not found.");
         }
 
+        // The port is stored only in OADM: devices of an offline site take it like every other device.
         await ports.SetRtspPortsAsync(known, port, managed, context.CancellationToken).ConfigureAwait(false);
         foreach (var id in known)
         {
@@ -274,8 +275,12 @@ public sealed class LiveViewGrpcService(
     public override async Task<Proto.LiveViewSources> ListSources(Proto.LiveViewSourcesRequest request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.DeviceId, "device id");
-        _ = await devices.GetAsync(id, context.CancellationToken).ConfigureAwait(false)
+        var device = await devices.GetAsync(id, context.CancellationToken).ConfigureAwait(false)
             ?? throw GrpcGuard.NotFound($"Device {id} not found.");
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            throw GrpcGuard.FailedPrecondition(Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
+        }
         LiveViewCapabilities capabilities;
         try
         {
@@ -318,6 +323,11 @@ public sealed class LiveViewGrpcService(
         if (device.Status == DeviceStatus.CertificateChanged)
         {
             throw GrpcGuard.FailedPrecondition(DeviceMessages.CertificateChanged);
+        }
+
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            throw GrpcGuard.FailedPrecondition(Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
         }
 
         var codecs = request.AcceptedCodecs.Select(FromProto).OfType<VideoCodecKind>().ToList();

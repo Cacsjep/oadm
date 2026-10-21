@@ -8,6 +8,8 @@ $HelpFile = Join-Path $RepoRoot 'scripts/manage-help.txt'
 $Solution = Join-Path $RepoRoot 'Oadm.sln'
 $ServerProject = Join-Path $RepoRoot 'src/Oadm.Server/Oadm.Server.csproj'
 $ClientProject = Join-Path $RepoRoot 'src/Oadm.Client/Oadm.Client.csproj'
+$SiteNodeProject = Join-Path $RepoRoot 'src/Oadm.SiteNode/Oadm.SiteNode.csproj'
+$SiteNodeAppProject = Join-Path $RepoRoot 'src/Oadm.SiteNode.App/Oadm.SiteNode.App.csproj'
 $script:Configuration = if ($env:CONFIGURATION) { $env:CONFIGURATION } else { 'Debug' }
 $script:Dotnet = $null
 
@@ -152,8 +154,8 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             if ($script:Target -cnotin 'all', 'server', 'client', 'plugins', 'docs') { Exit-Usage build "unknown target '$($script:Target)' for build" }
         }
         'run' {
-            if (-not $script:Target) { Exit-Usage run 'missing target for run (server, client or dev)' }
-            if ($script:Target -cnotin 'server', 'client', 'dev') { Exit-Usage run "unknown target '$($script:Target)' for run" }
+            if (-not $script:Target) { Exit-Usage run 'missing target for run (server, client, dev, node or node-app)' }
+            if ($script:Target -cnotin 'server', 'client', 'dev', 'node', 'node-app') { Exit-Usage run "unknown target '$($script:Target)' for run" }
         }
         'test' {
             if (-not $script:Target) { $script:Target = 'unit' }
@@ -164,8 +166,8 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             if ($script:Target -cnotin 'all', 'server', 'client') { Exit-Usage publish "unknown target '$($script:Target)' for publish" }
         }
         'package' {
-            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux, macos or nuget)' }
-            if ($script:Target -cnotin 'windows', 'linux', 'macos', 'nuget') { Exit-Usage package "unknown target '$($script:Target)' for package" }
+            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux, macos, site-node or nuget)' }
+            if ($script:Target -cnotin 'windows', 'linux', 'macos', 'site-node', 'nuget') { Exit-Usage package "unknown target '$($script:Target)' for package" }
         }
         'new' {
             if (-not $script:Target) { Exit-Usage new 'missing target for new (task, page or action)' }
@@ -254,6 +256,27 @@ function Get-AppDll([string]$Name) {
         exit 1
     }
     return $dll
+}
+
+# Built app host (the program itself, not "dotnet exec"): bin/<configuration>/<tfm>/<name>[.exe]. The site node app starts
+# an elevated copy of itself for a change, so it must run as its own program.
+function Get-AppHost([string]$Project, [string]$Name) {
+    $bin = Join-Path $RepoRoot "src/$Project/bin/$($script:Configuration)"
+    $file = if ($IsWindows -or $env:OS -eq 'Windows_NT') { "$Name.exe" } else { $Name }
+    $exe = Get-ChildItem -LiteralPath $bin -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName $file } |
+        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $exe) {
+        [Console]::Error.WriteLine("error: $file not found under src/$Project/bin/$($script:Configuration)")
+        exit 1
+    }
+    return $exe
+}
+
+# Data folder of the development site node (never the installed node's): --data, else artifacts/dev-node.
+function Get-NodeDataDir {
+    if ($script:OptData) { return Get-AbsoluteDir $script:OptData }
+    return Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/dev-node')
 }
 
 # Arguments for the server from --port and --data.
@@ -370,6 +393,16 @@ function Invoke-Run {
             & $script:Dotnet exec (Get-AppDll 'Oadm.Client') @clientArgs @appArgs
             exit $LASTEXITCODE
         }
+        'node' {
+            Build-Project $SiteNodeProject
+            & (Get-AppHost 'Oadm.SiteNode' 'oadm-site-node') '--data-dir' (Get-NodeDataDir) @appArgs
+            exit $LASTEXITCODE
+        }
+        'node-app' {
+            Build-Project $SiteNodeAppProject
+            & (Get-AppHost 'Oadm.SiteNode.App' 'oadm-site-node-app') '--data-dir' (Get-NodeDataDir) @appArgs
+            exit $LASTEXITCODE
+        }
         'dev' {
             if ($script:OptNoPluginBuild) { Build-Project $ServerProject; Build-Project $ClientProject; Build-PluginsUnlessSkipped }
             else { Build-Project $Solution }
@@ -482,8 +515,42 @@ function Invoke-PackageNuget {
     Write-Host "packages written to $out"
 }
 
+# The OADM Site Node (CLAUDE.md "# Sites", "Packaging"): service and app published self-contained single-file into
+# artifacts/publish/site-node/<rid> and artifacts/publish/site-node-app/<rid> with their notices (no LGPL part), then
+# OADM-SiteNode-<version>-win-x64.msi (Windows) or oadm-site-node_<version>_<arch>.deb and
+# oadm-site-node-app_<version>_<arch>.deb (Linux) in artifacts/packages.
+function Invoke-PackageSiteNode {
+    Initialize-Dotnet
+    $isWin = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
+    $os = if ($isWin) { 'win' } elseif ($IsLinux) { 'linux' } else { 'other' }
+    $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
+    $script:Rid = if ($script:OptRid) { $script:OptRid } else { "$os-$arch" }
+    if ($script:Rid -cnotin 'win-x64', 'linux-x64', 'linux-arm64') { Exit-Usage package '--rid for package site-node is win-x64, linux-x64 or linux-arm64' }
+    if ($script:Rid.StartsWith('win-') -and -not $isWin) { Exit-Environment "package site-node --rid $($script:Rid) needs Windows (WiX Toolset builds the MSI)" }
+    if ($script:Rid.StartsWith('linux-') -and -not (Test-Command 'dpkg-deb')) { Exit-Environment "package site-node --rid $($script:Rid) needs dpkg-deb (Debian, Ubuntu or a container, see packaging/README.md)" }
+
+    $node = Join-Path $RepoRoot "artifacts/publish/site-node/$($script:Rid)"
+    $app = Join-Path $RepoRoot "artifacts/publish/site-node-app/$($script:Rid)"
+    Publish-App $SiteNodeProject $node
+    Publish-App $SiteNodeAppProject $app
+    Remove-Item -LiteralPath (Join-Path $node 'web.config') -Force -ErrorAction SilentlyContinue # IIS hosting file of the web SDK
+    Invoke-Dotnet @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.Notices/Oadm.Notices.csproj'), '-c', 'Release', '--',
+        '--repo', $RepoRoot, '--rid', $script:Rid, '--version', (Get-Version), '--product', 'site-node',
+        '--app', (Split-Path -Parent $SiteNodeProject), '--out', $node, '--app', (Split-Path -Parent $SiteNodeAppProject), '--out', $app)
+    $out = Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/packages')
+    if ($script:Rid.StartsWith('win-')) {
+        Invoke-Dotnet @('build', (Join-Path $RepoRoot 'packaging/windows/site-node/Oadm.SiteNode.Installer.wixproj'), '-c', 'Release', '--no-incremental',
+            "-p:OadmVersion=$(Get-Version)", "-p:OadmNodeDir=$node", "-p:OadmAppDir=$app", "-p:OadmPackageDir=$out")
+    } else {
+        & bash (Join-Path $RepoRoot 'packaging/linux/build-site-node-deb.sh') $script:Rid (Get-Version) $node $app $out
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    Write-Host "site node packages written to $out"
+}
+
 function Invoke-Package {
     if ($script:Target -eq 'nuget') { Invoke-PackageNuget; return }
+    if ($script:Target -eq 'site-node') { Invoke-PackageSiteNode; return }
     $prefix = @{ windows = 'win'; linux = 'linux'; macos = 'osx' }[$script:Target]
     $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
     $script:Rid = if ($script:OptRid) { $script:OptRid } else { "$prefix-$arch" }

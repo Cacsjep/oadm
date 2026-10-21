@@ -61,6 +61,31 @@ shared payload types; it then ships in the same folder.
 
 ## Server side
 
+**Never open your own sockets to devices.** Reach devices only through `IVapixClient` (HTTP, HTTPS, WebSockets),
+`ICorePluginContext.EventStreams` (RTSP) and the host's network services (`IDeviceNetwork`), so devices at a site work
+without changes. The plugin project SDK shows a warning (RS0030, banned-API analyzer) for `Socket`, `TcpClient`,
+`UdpClient`, `Ping`, `Dns`, `HttpClientHandler`, `SocketsHttpHandler` and `ClientWebSocket.ConnectAsync`; your own servers
+(mail, HTTP endpoints of your company) are the exception: suppress it with a justification
+(`[SuppressMessage("ApiDesign", "RS0030", Justification = "...")]`).
+
+**Devices at a site** (a network the server reaches through an OADM Site Node) work without changes when you follow the
+rule above. Declare it in the project (`OadmSiteSupport`, default `full`; a bundled plugin's own `plugin.json` says
+`"siteSupport"`): a package with `none`, or a `plugin.json` without it, is kept away from devices at a site by the host
+(tasks greyed "Not available for devices at a site", compliance types Not checked, its pages' VAPIX clients and event
+streams and its actions refuse them). `ITaskPlugin.SiteSupport` / `IComplianceCheckType.SiteSupport` override it for one
+item. Network checks towards a device (ping, a TCP probe, DNS, OADM's address towards it) go through
+`ITaskExecutionContext.Network` / `ITaskQueryContext.Network` / `ICorePluginContext.Network.ForDevice(device)`
+(`IDeviceNetwork`), never `Ping` or `Dns`. A plugin that offers a server to devices (NTP, syslog) listens on the server's
+own network with `ICorePluginContext.Network.ListenUdpAsync` / `ListenTcpAsync` and at every site with
+`ICorePluginContext.Sites.OpenUdpRelayAsync` / `OpenTcpRelayAsync` (same interfaces, so the server is written once; list
+the ports in `OadmSitePorts`). The host closes them when the plugin stops. Developer guide: website Developers > Sites
+(`website/src/content/docs/dev/sites.md`).
+
+**Refuse devices with `DeviceMessages.Refusal(device)`** (the `IDeviceInfo` overload) or
+`TaskSupportReasons.ForStatus(device)`, never with a switch on `DeviceStatus` alone: a device whose site is offline
+(`DeviceStatus.SiteOffline`) is refused with "Site offline: <site>". The host refuses such devices for task runs, queries
+and actions before any plugin call.
+
 - **Name and group.** `DisplayName` is the context menu and toolbar name: at most
   `TaskPluginNames.MaxDisplayNameLength` (32) characters, **no trailing "..."**, also for tasks that open a dialog. The
   host never appends dots and strips them; the server loader shortens longer names with "…" and logs a warning.
@@ -192,7 +217,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
   | `ui:CodeEditor Text Language PlaceholderText` | **every editable code field** (request bodies): a monospace text box (caret, selection, undo) with the text colored like `ui:CodeView` while typing; `Language` `Json`, `Xml`, `KeyValue` or `Plain`; the text stays exactly as typed |
 
-- Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
+- Styles and classes from the host theme (`src/Oadm.Theme/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary`,
   `Button.secondary`, `Button.toolbar`, `Button.danger` (red: delete or remove; `Button.toolbar.danger` and
   `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
@@ -269,7 +294,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
 
 A plugin's `IconKey` (context menu, toolbar) is the key without `Icon.`, e.g. `restart`. A new icon goes into
-`src/Oadm.Client/Themes/Icons.axaml` (24x24 Lucide stroke geometry) and into this list.
+`src/Oadm.Theme/Icons.axaml` (24x24 Lucide stroke geometry) and into this list.
 
 ## Toolbar plugins
 

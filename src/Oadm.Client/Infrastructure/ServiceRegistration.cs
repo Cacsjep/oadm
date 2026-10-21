@@ -34,10 +34,10 @@ public static class ServiceRegistration
             services.AddSingleton<IClientSettingsStore>(_ =>
             {
                 var store = new InMemoryClientSettingsStore();
-                store.Current.Appearance = Themes.OadmColors.Current; // the appearance the client started with
+                store.Current.Appearance = Oadm.Theme.OadmColors.Current; // the appearance the client started with
                 return store;
             });
-            services.AddSingleton<IOadmApi>(_ => new FakeOadmApi());
+            services.AddSingleton<IOadmApi>(_ => new FakeOadmApi(simulationTime: options.FakeSimulationTime));
             services.AddSingleton<IServerTrust, NoServerTrust>();
         }
         else
@@ -92,6 +92,7 @@ public static class ServiceRegistration
         services.AddSingleton<AboutViewModel>();
         services.AddSingleton<PluginsViewModel>();
         services.AddSingleton<EventRules.EventRulesViewModel>();
+        services.AddSingleton<Sites.SitesViewModel>();
         services.AddSingleton<Compliance.ComplianceViewModel>();
         services.AddSingleton<Backup.BackupViewModel>();
         services.AddSingleton<SettingsViewModel>();
@@ -120,6 +121,7 @@ public static class ServiceRegistration
         {
             // The credential list is Administrator only (the server checks it too).
             CanSaveToCredentialList = sp.GetService<UserSession>()?.IsAdmin ?? true,
+            HasSites = sp.GetService<Oadm.Client.Devices.DeviceStore>()?.Sites.HasSites ?? false,
             Dialogs = sp.GetService<Oadm.Client.Dialogs.IDialogService>(),
         });
 

@@ -33,6 +33,12 @@ public interface ITaskQueryContext
     /// Null when the host does not offer it.
     /// </summary>
     IDeviceRepository? Devices => null;
+
+    /// <summary>
+    /// Network checks towards the queried device, routed like it (through its site or on the server's own network), e.g.
+    /// whether a new address is in use. Null on hosts without it.
+    /// </summary>
+    Sites.IDeviceNetwork? Network => null;
 }
 
 /// <summary>

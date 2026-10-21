@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Sites"
+        xmlns:v1="using:Oadm.Contracts.V1"
+        x:Class="Oadm.Client.Sites.SiteFormWindow"
+        x:DataType="vm:SiteFormViewModel"
+        Title="{Binding Title}"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Bind, Rename, Replace with and Remove site of the Sites page: single operation.
+       Errors and the server's refusals below the fields. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" IsVisible="{Binding HasIntro}" />
+
+        <ui:FormField Label="Site name" IsVisible="{Binding ShowName}">
+          <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" IsEnabled="{Binding IsIdle}" />
+        </ui:FormField>
+        <ui:FormField Label="Pairing code" IsVisible="{Binding ShowCode}">
+          <TextBox x:Name="CodeBox" Text="{Binding PairingCode}" MaxLength="12" PlaceholderText="ABCD-EFGH" IsEnabled="{Binding IsIdle}" />
+        </ui:FormField>
+
+        <ui:FormField Label="Replace with" IsVisible="{Binding ShowReplace}">
+          <ComboBox ItemsSource="{Binding OtherSites}" SelectedItem="{Binding NewSite}" HorizontalAlignment="Stretch" IsEnabled="{Binding IsIdle}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="v1:Site">
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FormField>
+
+        <CheckBox IsVisible="{Binding ShowKeepDevices}" IsChecked="{Binding KeepDevices}" IsEnabled="{Binding IsIdle}"
+                  Content="Keep devices (they show Site offline until you move them)" />
+
+        <ui:ProgressRow IsActive="{Binding IsBusy}" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
+        <TextBlock Classes="error" Text="{Binding FormErrorText}" IsVisible="{Binding HasFormError}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Panel>
+        <Button Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}" IsVisible="{Binding IsPrimary}"
+                ToolTip.Tip="{Binding SubmitBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        <Button Classes="danger" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}" IsVisible="{Binding IsDestructive}" />
+      </Panel>
+    </ui:DialogFooter>
+  </Grid>
+</Window>

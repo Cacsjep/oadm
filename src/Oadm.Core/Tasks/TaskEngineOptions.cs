@@ -25,6 +25,9 @@ public sealed class TaskEngineOptions
     /// <summary>Log entries kept per task; later entries are dropped (the last kept one says so). Default 1000.</summary>
     public int MaxLogEntriesPerTask { get; set; } = 1000;
 
+    /// <summary>The routes of the devices for <c>ITaskExecutionContext.Network</c>; null = the server's own network only.</summary>
+    public Sites.DeviceNetworks? Networks { get; set; }
+
     /// <summary>Minimum time between two persisted progress messages of one device. Default 1 s.</summary>
     public TimeSpan ProgressPersistInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

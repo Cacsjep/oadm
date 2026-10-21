@@ -84,6 +84,9 @@ public sealed class FakeTaskContext : ITaskExecutionContext
     /// <inheritdoc />
     public IPluginLicense? License { get; init; }
 
+    /// <summary>The device's route (<see cref="Sites.IDeviceNetwork"/>): the server's own network unless a test sets a site's.</summary>
+    public Sites.IDeviceNetwork? Network { get; init; } = new FakeDeviceNetwork();
+
     /// <inheritdoc />
     public void PlanSteps(params string[] names) => Steps.Plan(names);
 
@@ -195,6 +198,18 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
 
     /// <inheritdoc />
     public IPluginLicense? License { get; init; }
+
+    /// <summary>The bound sites and their relays (<see cref="FakeSites"/>); empty until a test adds a site.</summary>
+    public FakeSites FakeSites { get; } = new();
+
+    /// <summary>The routes and in-memory listeners of the plugin (<see cref="FakePluginNetwork"/>).</summary>
+    public FakePluginNetwork FakeNetwork => field ??= new FakePluginNetwork(FakeSites);
+
+    /// <inheritdoc />
+    public Sites.IPluginNetwork? Network => FakeNetwork;
+
+    /// <inheritdoc />
+    public Sites.ISites? Sites => FakeSites;
 
     /// <inheritdoc />
     public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. DeviceList]);

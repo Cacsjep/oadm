@@ -15,7 +15,7 @@ public interface IDeviceInfo
     string? Model { get; }
     /// <summary>The AXIS OS version ("12.11.77"); null until the device was read.</summary>
     string? FirmwareVersion { get; }
-    /// <summary>The status from the last poll (every 60 s by default). Check it before sending anything: see <see cref="DeviceMessages.Refusal"/>.</summary>
+    /// <summary>The status from the last poll (every 60 s by default). Check it before sending anything: see <see cref="DeviceMessages.Refusal(IDeviceInfo, bool)"/>.</summary>
     DeviceStatus Status { get; }
 
     /// <summary>Kind of Axis device, mapped from basicdeviceinfo ProdType. Unknown until read.</summary>
@@ -57,6 +57,15 @@ public interface IDeviceInfo
     /// set by the user in the Devices page (Tags dialog); colors are not part of the SDK. Filled on server and client.
     /// </summary>
     IReadOnlyList<string> Tags => [];
+
+    /// <summary>
+    /// The site the device is reached through (a remote network with an OADM Site Node); null = the server's own network.
+    /// Plugins may refine <c>CanRun</c> with it. Filled on server and client.
+    /// </summary>
+    Guid? SiteId => null;
+
+    /// <summary>The name of <see cref="SiteId"/> ("Building B"); null on the server's own network.</summary>
+    string? SiteName => null;
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>
@@ -107,6 +116,11 @@ public enum DeviceStatus
     PasswordNotSet = 4,
     /// <summary>The device presents another HTTPS certificate than the one OADM pinned. Nothing is sent to it.</summary>
     CertificateChanged = 5,
+    /// <summary>
+    /// The site node the device is reached through is offline or not bound. Never stored: when the site is back the device
+    /// shows its last real status again. Nothing is sent to it (<see cref="DeviceMessages.Refusal(IDeviceInfo, bool)"/>).
+    /// </summary>
+    SiteOffline = 6,
 }
 
 /// <summary>The managed devices, read-only (<see cref="Plugins.ICorePluginContext.Devices"/>).</summary>

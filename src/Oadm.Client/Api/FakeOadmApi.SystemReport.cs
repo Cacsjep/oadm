@@ -77,6 +77,7 @@ public sealed partial class FakeOadmApi
                     DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
                     DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
                     DeviceStatus.Unreachable => "Unreachable - No route to host",
+                    DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
                     _ => null,
                 };
                 job.Devices.Add((id, device?.Address ?? string.Empty, device?.Serial ?? string.Empty, device?.Model ?? string.Empty, error));

@@ -56,7 +56,7 @@ public sealed class ExportConfigTask : ITaskPlugin, ITaskPluginQuery
             throw new ArgumentException($"Unknown query '{method}'.", nameof(method));
         }
 
-        if (TaskSupportReasons.ForStatus(device.Status) is { } refused)
+        if (TaskSupportReasons.ForStatus(device) is { } refused)
         {
             return new ExportReply { Error = refused }.ToJson();
         }
@@ -84,7 +84,7 @@ public static class DeviceConfigSupport
     public static string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status, requireOk: true)
+        return TaskSupportReasons.ForStatus(device, requireOk: true)
             ?? TaskSupportReasons.NeedsFirmware(DeviceConfigIds.MinFirmwareText, device);
     }
 }

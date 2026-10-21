@@ -79,6 +79,8 @@ for a project ending in `.Client`), references the SDK without copying it (OADM 
 | `OadmDisplayName`, `OadmDescription` | `displayName`, `description` | The row on the **Plugins** page |
 | `OadmEnabledByDefault` | `enabledByDefault` | `false`: off until an administrator turns it on |
 | `OadmLicensePublicKey`, `OadmLicenseFeatures`, `OadmLicenseTrialDays` | `license` | A plugin you sell, see [Sell a plugin with a license](../licenses/) |
+| `OadmSiteSupport` | `siteSupport` | `full` (default): works with devices at a site; `none`: not for them, see [Sites](../sites/) |
+| `OadmSitePorts` | `sitePorts` | Ports your plugin listens on at sites: `udp:514:Syslog;tcp:8080:Reports` |
 | (from the SDK) | `minSdkVersion` | The SDK version you build against, see [SDK versions](../compatibility/) |
 
 A `plugin.json` of your own in the server project is copied as it is instead.

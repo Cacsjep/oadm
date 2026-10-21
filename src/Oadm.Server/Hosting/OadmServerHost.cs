@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
@@ -138,6 +139,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
         app.MapGrpcService<Backup.BackupGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
+        app.MapGrpcService<Sites.SiteGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -192,13 +194,39 @@ public static partial class OadmServerHost
             }
         }
 
+        // Sites (CLAUDE.md "# Sites"): the site identity, the site listener (Accept site nodes) and the node sessions. The manager
+        // is the real ISiteStates and ISiteTransport; without sites everything connects on the server's own network.
+        services.AddSingleton(new Sites.SiteOptions());
+        services.AddSingleton<Sites.SiteIdentityStore>();
+        services.AddSingleton(sp => new Sites.SiteManager(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<ServerSettingsStore>(),
+            sp.GetRequiredService<Sites.SiteIdentityStore>(),
+            sp.GetRequiredService<Core.Auth.AuditLog>(),
+            sp.GetRequiredService<Sites.SiteOptions>(),
+            sp.GetRequiredService<Sites.SiteOptions>().Time ?? sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Sites.SiteManager>>(),
+            sp.GetService<Sdk.Network.IFirewallRules>())); // the Windows service: the site port's rule while Accept site nodes is on
+        services.RemoveAll<Core.Sites.ISiteStates>();
+        services.AddSingleton<Core.Sites.ISiteStates>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Core.Sites.ISiteTransport>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Core.Sites.ISiteRelays>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        services.AddSingleton<Core.Sites.ISiteNetwork>(sp => sp.GetRequiredService<Sites.SiteManager>());
+        // The network checks of plugins (IDeviceNetwork) on every route: the server's own network or a site's node.
+        services.AddSingleton(sp => new Core.Sites.DeviceNetworks(sp.GetService<Core.Sites.ISiteNetwork>(), sp.GetService<Core.Sites.ISiteStates>()));
+        services.AddSingleton<Sites.SiteAdmin>();
+
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
         services.AddSingleton<TrustAnchorRegistry>();
-        services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>()));
+        // Routing (CLAUDE.md "# Sites"): every device connection opens on its route; without a site transport only the server's
+        // own network exists and everything connects as before.
+        services.AddSingleton(sp => new Core.Sites.DeviceRouter(sp.GetService<Core.Sites.ISiteTransport>(), sp.GetService<Core.Sites.ISiteStates>()));
+        services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>(), sp.GetService<Core.Sites.ISiteNetwork>()));
+        services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>(), sp.GetRequiredService<Core.Sites.DeviceRouter>()));
         services.AddSingleton<VapixClientFactory>();
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
-        services.AddSingleton(_ => new VapixProbe(TimeSpan.FromSeconds(3)));
+        services.AddSingleton(sp => new VapixProbe(TimeSpan.FromSeconds(3), router: sp.GetRequiredService<Core.Sites.DeviceRouter>()));
 
         // Uploads (task dialogs: firmware, ACAP packages)
         services.AddSingleton(sp => new Core.Uploads.UploadStore(
@@ -246,7 +274,11 @@ public static partial class OadmServerHost
         services.AddSingleton(sp =>
         {
             var parallelism = sp.GetRequiredService<TaskParallelismSetting>();
-            return new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => parallelism.Current };
+            return new TaskEngineOptions
+            {
+                MaxParallelTasksPerPluginSource = () => parallelism.Current,
+                Networks = sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+            };
         });
         services.AddSingleton(sp =>
         {
@@ -274,7 +306,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>())
+        {
+            Networks = sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+        });
         services.AddSingleton<Sdk.Tasks.ITaskRunner>(sp => sp.GetRequiredService<TaskEngine>());
         services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton<PluginActivation>();
@@ -294,7 +329,12 @@ public static partial class OadmServerHost
             pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory,
             autoAdd: sp.GetRequiredService<Sdk.Devices.IDeviceAutoAdd>(),
             eventPublishers: id => sp.GetRequiredService<RuleEngine>().PublisherFor(id),
-            eventSubscriptions: id => sp.GetRequiredService<RuleEngine>().SubscriptionsFor(id)));
+            eventSubscriptions: id => sp.GetRequiredService<RuleEngine>().SubscriptionsFor(id),
+            networks: () => new Core.Sites.PluginNetworkScope(
+                sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+                sp.GetService<Core.Sites.ISiteRelays>(),
+                sp.GetService<Sdk.Network.IFirewallRules>(),
+                sp.GetRequiredService<TimeProvider>())));
 
         // Compliance checks (host and plugin types); their events go to the event rules.
         services.AddSingleton<Core.Compliance.ComplianceCatalog>();
@@ -313,6 +353,21 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILogger<Core.Compliance.ComplianceEngine>>(),
             () => sp.GetRequiredService<RuleEngine>().PublisherFor(Core.Compliance.ComplianceEngine.EventSourceId)));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<Core.Compliance.ComplianceEngine>());
+        // Sites: "Site offline: <site>" and "Any site offline" for the event rules; devices of a site published when it
+        // goes offline or online (computed status, nothing written).
+        services.AddSingleton(sp => new SiteEventSource(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<Core.Sites.ISiteStates>(),
+            () => sp.GetRequiredService<RuleEngine>().PublisherFor(SiteEventSource.EventSourceId),
+            sp.GetRequiredService<ILogger<SiteEventSource>>()));
+        services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<SiteEventSource>());
+        services.AddSingleton(sp => new Core.Sites.SiteStatusPublisher(
+            sp.GetRequiredService<Core.Sites.ISiteStates>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<IDeviceChangeFeed>(),
+            ids => sp.GetRequiredService<DevicePollingService>().QueueRefresh(ids),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Core.Sites.SiteStatusPublisher>>()));
         services.AddSingleton(sp => new Core.Compliance.ComplianceService(
             sp.GetRequiredService<Core.Compliance.ComplianceStore>(),
             sp.GetRequiredService<Core.Compliance.ComplianceEngine>(),
@@ -361,17 +416,18 @@ public static partial class OadmServerHost
 
         // Discovery
         services.AddSingleton<IMdnsBrowser, MdnsBrowser>();
-        services.AddSingleton<VapixDeviceProbe>(sp => new VapixDeviceProbe(logger: sp.GetService<ILogger<VapixDeviceProbe>>()));
+        services.AddSingleton<VapixDeviceProbe>(sp => new VapixDeviceProbe(logger: sp.GetService<ILogger<VapixDeviceProbe>>(), router: sp.GetRequiredService<Core.Sites.DeviceRouter>()));
         services.AddSingleton<IDeviceProbe>(sp => sp.GetRequiredService<VapixDeviceProbe>());
         services.AddSingleton<RangeScanner>();
-        services.AddSingleton<IDnsNameLookup>(SystemDnsNameLookup.Instance);
+        services.AddSingleton<IDnsNameLookup>(sp => new SystemDnsNameLookup(sp.GetRequiredService<Core.Sites.RoutedDns>()));
         services.AddSingleton(sp => new CoreDiscoveryService(
             sp.GetRequiredService<IMdnsBrowser>(),
             sp.GetRequiredService<RangeScanner>(),
             sp.GetRequiredService<IDeviceProbe>(),
             sp.GetService<ILogger<CoreDiscoveryService>>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IDnsNameLookup>()));
+            sp.GetRequiredService<IDnsNameLookup>(),
+            sp.GetService<Core.Sites.ISiteNetwork>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
         services.AddSingleton<DiscoveryAuthenticator>();
         // Adding devices: the add page's Commit and the automatic add of core plugins (DHCP server) share DeviceAdder.
@@ -459,6 +515,12 @@ public static partial class OadmServerHost
         sp.GetRequiredService<Backup.BackupManager>().RemovePartialFiles();
         await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
 
+        // 2d. Sites: the identity and the bound sites, each "starting" until its node settles (before the event rules and
+        // the polling read site states); the site listener opens when Accept site nodes is on.
+        await sp.GetRequiredService<Sites.SiteManager>().LoadRemovedAsync(ct).ConfigureAwait(false); // removed sites with kept devices
+        sp.GetRequiredService<Sites.SiteManager>().WatchDevices(sp.GetRequiredService<IDeviceChangeFeed>()); // the page's device counts
+        await sp.GetRequiredService<Sites.SiteManager>().StartAsync(ct).ConfigureAwait(false);
+
         // 3. Tasks left running by a previous process (the parallel task limit is loaded first).
         await sp.GetRequiredService<TaskParallelismSetting>().LoadAsync(ct).ConfigureAwait(false);
         var engine = sp.GetRequiredService<TaskEngine>();
@@ -475,10 +537,15 @@ public static partial class OadmServerHost
         // waits for its source's first full report before a rule that uses it runs anything.
         var compliance = sp.GetRequiredService<Core.Compliance.ComplianceEngine>();
         await compliance.LoadAsync(ct).ConfigureAwait(false);
+        var siteEvents = sp.GetRequiredService<SiteEventSource>();
+        await siteEvents.LoadAsync(ct).ConfigureAwait(false);
         var rules = sp.GetRequiredService<RuleEngine>();
         await rules.StartAsync(ct).ConfigureAwait(false);
         registry.EnabledChanged += (_, _) => rules.SourcesChanged();
         compliance.EventTypesChanged += (_, _) => rules.SourcesChanged();
+        siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
+        siteEvents.Start();
+        sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().Start();
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
         // 4c. Compliance checks after the core plugins: the plugins' check types read devices through them.
         await compliance.StartAsync(ct).ConfigureAwait(false);
@@ -517,6 +584,8 @@ public static partial class OadmServerHost
         var sp = app.Services;
         await app.StopAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Compliance.ComplianceEngine>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);
@@ -524,6 +593,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<LiveViewHub>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<Sites.SiteManager>().DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>Start, wait for Ctrl+C / SIGTERM, stop.</summary>

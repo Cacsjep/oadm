@@ -39,6 +39,7 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly DeviceRepository _devices;
     private readonly VapixClientFactory _clients;
     private readonly ServerSettingsStore _settings;
+    private readonly Sites.ISiteStates? _sites;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly Channel<Guid> _refreshQueue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = false });
@@ -56,7 +57,8 @@ public sealed partial class DevicePollingService : IDisposable
         VapixClientFactory clients,
         ServerSettingsStore settings,
         TimeProvider? timeProvider = null,
-        ILogger<DevicePollingService>? logger = null)
+        ILogger<DevicePollingService>? logger = null,
+        Sites.ISiteStates? sites = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(clients);
@@ -64,6 +66,7 @@ public sealed partial class DevicePollingService : IDisposable
         _devices = devices;
         _clients = clients;
         _settings = settings;
+        _sites = sites;
         _time = timeProvider ?? TimeProvider.System;
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         _startedAt = _time.GetUtcNow();
@@ -171,13 +174,18 @@ public sealed partial class DevicePollingService : IDisposable
         await Parallel.ForEachAsync(PacedAsync(ids, start, spreadOver, ct), options, async (id, token) =>
         {
             var device = await _devices.GetAsync(id, token).ConfigureAwait(false);
-            if (device is null)
+            if (device is null || device.Status == DeviceStatus.SiteOffline)
             {
-                return;
+                return; // the site is offline: not contacted, the stored status stays
+            }
+
+            var observation = await ObserveAsync(device, full: false, token).ConfigureAwait(false);
+            if (observation.SiteProblem)
+            {
+                return; // the site could not carry the poll: not a device result, not part of the round
             }
 
             Interlocked.Increment(ref polled);
-            var observation = await ObserveAsync(device, full: false, token).ConfigureAwait(false);
             if (observation.Status != DeviceStatus.Unreachable)
             {
                 await ApplyAsync(device, observation, full: false, token).ConfigureAwait(false);
@@ -422,6 +430,11 @@ public sealed partial class DevicePollingService : IDisposable
 
     private async Task<Device?> UpdateDeviceAsync(Device device, bool full, CancellationToken ct)
     {
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return device; // not contacted; a full refresh follows when the site is back after a longer time
+        }
+
         if (full)
         {
             // Stamped at the start so the scheduler does not queue a refresh that is already running.
@@ -429,7 +442,7 @@ public sealed partial class DevicePollingService : IDisposable
         }
 
         var observation = await ObserveAsync(device, full, ct).ConfigureAwait(false);
-        return await ApplyAsync(device, observation, full, ct).ConfigureAwait(false);
+        return observation.SiteProblem ? device : await ApplyAsync(device, observation, full, ct).ConfigureAwait(false);
     }
 
     private async Task<Device?> ApplyAsync(Device device, Observation observation, bool full, CancellationToken ct)
@@ -478,6 +491,11 @@ public sealed partial class DevicePollingService : IDisposable
         {
             client = await _clients.GetClientAsync(device, ct).ConfigureAwait(false);
         }
+        catch (Exception ex) when (Sites.SiteErrors.Find(ex) is not null)
+        {
+            observation.SiteProblem = true;
+            return observation;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // Undecryptable credentials or an invalid address: we cannot talk to the device.
@@ -506,9 +524,26 @@ public sealed partial class DevicePollingService : IDisposable
             }
             observation.LastSeen = _time.GetUtcNow().UtcDateTime;
         }
+        catch (Exception ex) when (Sites.SiteErrors.Find(ex) is { } site)
+        {
+            // A site error (offline, busy, port not allowed) is never a device error: the status stays.
+            LogSiteProblem(device.Id, site.Message);
+            observation.SiteProblem = true;
+            return observation;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             observation.Status = DeviceStatusClassifier.FromException(ex);
+            if (observation.Status is DeviceStatus.Unreachable && device.SiteId is { } siteId && _sites is not null
+                && !await _sites.LinkAnswersAsync(siteId, ct).ConfigureAwait(false))
+            {
+                // No answer through a site whose node does not answer either (the link dropped, the session ended): a site
+                // problem, never "Unreachable" for every device of the site before it counts as offline.
+                LogSiteProblem(device.Id, "the site node does not answer: " + ex.Message);
+                observation.SiteProblem = true;
+                return observation;
+            }
+
             if (observation.Status is DeviceStatus.CredentialsRequired)
             {
                 observation.LastSeen = _time.GetUtcNow().UtcDateTime;
@@ -717,6 +752,9 @@ public sealed partial class DevicePollingService : IDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Devices answer again ({Answering} of {Polled})")]
     private partial void LogDevicesAnswerAgain(int answering, int polled);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId} not polled: {Problem}")]
+    private partial void LogSiteProblem(Guid deviceId, string problem);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} is back online (was {Previous}), queuing a full refresh")]
     private partial void LogBackOnline(Guid deviceId, DeviceStatus previous);
 
@@ -724,6 +762,9 @@ public sealed partial class DevicePollingService : IDisposable
     private sealed class Observation
     {
         public DeviceStatus Status { get; set; } = DeviceStatus.Unknown;
+
+        /// <summary>The site could not carry the request: nothing is applied, the device keeps its status.</summary>
+        public bool SiteProblem { get; set; }
 
         public string? Model { get; set; }
 

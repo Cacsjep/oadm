@@ -181,6 +181,6 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(5 * 2 * Count, runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 }

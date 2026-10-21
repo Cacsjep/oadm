@@ -30,8 +30,12 @@ public interface IDiscoveryBackend
     /// <param name="importLine">A line of an imported file: the first contact waits only the range scan's time (Scan.TimeoutMs),
     /// so addresses that do not answer cost little. "Add manually" keeps the longer time for slow links.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <exception cref="ArgumentException">Unusable address or unresolvable host name (message for the user).</exception>
-    Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct);
+    /// <param name="siteId">The import's Site column: only through this site; null = the server's own network and every
+    /// online site that reaches the address (a host name: every online site, each resolves it itself).</param>
+    /// <param name="expectedSerial">A line of an ADM export: only the route where this device answers counts.</param>
+    /// <exception cref="ArgumentException">Unusable address, a host name no route resolves, or the chosen site cannot
+    /// probe (offline: the message for the user).</exception>
+    Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct, Guid? siteId = null, string? expectedSerial = null);
 
     /// <summary>
     /// Replays the devices known in the session, then streams changes and range-scan progress.

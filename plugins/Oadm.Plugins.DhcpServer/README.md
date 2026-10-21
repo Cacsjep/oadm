@@ -3,6 +3,14 @@
 Summary in `CLAUDE.md` "DHCP server". Own RFC 2131 / RFC 2132 implementation
 (no library), IPv4 only, one interface, starts disabled.
 
+## Sites
+
+`siteSupport: none` (plugin.json): DHCP is broadcast and a relay cannot carry it. The server works only on this server's
+own network; the page says "The DHCP server works only on this server's own network." while devices are at a site. The
+address-in-use probe before an offer runs on the server's own network (`ICorePluginContext.Network.ForSite(null)`,
+`NetworkAddressProbe`), never with sockets of the plugin. A lease to a managed device's MAC address moves that device to
+the server's own network (`IDeviceAutoAdd.FollowAsync`).
+
 ## How it works
 
 - Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd, autoAddAxisDevices) restored

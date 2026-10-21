@@ -297,6 +297,22 @@ public sealed class PluginTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task A_camera_of_an_offline_site_is_not_contacted()
+    {
+        var (plugin, devices, cameras, _, _) = Create();
+        await using var _ = plugin;
+        var offline = new FakeDevice { Address = "192.168.0.20", Status = DeviceStatus.SiteOffline };
+        devices.Items.Add(offline);
+
+        await plugin.InvokeAsync(EdgeStorageMethods.Read, null, CancellationToken.None);
+        await plugin.Sweep!.Current;
+        var state = EdgeStorageJson.Deserialize<StorageState>(await plugin.InvokeAsync(EdgeStorageMethods.GetState, null, CancellationToken.None));
+
+        Assert.Equal("Site offline", Assert.Single(state.Rows).Text);
+        Assert.False(cameras.Cameras.ContainsKey(offline.Id));
+    }
+
+    [Fact]
     public async Task Each_method_needs_its_right_and_starts_one_task_per_camera()
     {
         var (plugin, _, _, runner, _) = Create();

@@ -66,7 +66,7 @@ public sealed class RolesMatrixTests
         vm.EditRoleCommand.Execute(admin);
         Assert.Equal("Edit Administrator", vm.EditorTitle);
         Assert.False(vm.IsNameEditable);
-        Assert.Equal(["Devices", "Compliance", "Event rules"], vm.StartPageChoices.Take(3).Select(c => c.Title));
+        Assert.Equal(["Devices", "Compliance", "Sites", "Event rules"], vm.StartPageChoices.Take(4).Select(c => c.Title));
         Assert.Equal("Logs", vm.StartPageChoices[^1].Title);
         vm.EditStartPage = vm.StartPageChoices.Single(c => c.Key == "compliance");
         vm.ApplyEditorCommand.Execute(null);

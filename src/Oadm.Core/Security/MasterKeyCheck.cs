@@ -18,7 +18,8 @@ namespace Oadm.Core.Security;
 /// <param name="ReplacedUtc">When the key was replaced.</param>
 /// <param name="Devices">Devices whose stored credentials were removed (now CredentialsRequired).</param>
 /// <param name="CredentialListEntries">Credential list entries removed.</param>
-public sealed record KeyReplacedNotice(string Id, DateTime ReplacedUtc, int Devices, int CredentialListEntries)
+/// <param name="Sites">Sites whose node must accept the server's new site identity (the old one could not be read).</param>
+public sealed record KeyReplacedNotice(string Id, DateTime ReplacedUtc, int Devices, int CredentialListEntries, int Sites = 0)
 {
     /// <summary>"The server's key was replaced: 3 devices need their credentials again" (+ list entries).</summary>
     public string Message
@@ -27,10 +28,19 @@ public sealed record KeyReplacedNotice(string Id, DateTime ReplacedUtc, int Devi
         {
             var text = string.Create(CultureInfo.InvariantCulture,
                 $"The server's key was replaced: {Devices} {(Devices == 1 ? "device needs its" : "devices need their")} credentials again");
-            return CredentialListEntries == 0
-                ? text + "."
-                : text + string.Create(CultureInfo.InvariantCulture,
-                    $", {CredentialListEntries} {(CredentialListEntries == 1 ? "credential list entry was" : "credential list entries were")} removed.");
+            if (CredentialListEntries > 0)
+            {
+                text += string.Create(CultureInfo.InvariantCulture,
+                    $", {CredentialListEntries} {(CredentialListEntries == 1 ? "credential list entry was" : "credential list entries were")} removed");
+            }
+
+            if (Sites > 0)
+            {
+                text += string.Create(CultureInfo.InvariantCulture,
+                    $", {Sites} {(Sites == 1 ? "site needs" : "sites need")} the new identity accepted in the OADM Site Node app");
+            }
+
+            return text + ".";
         }
     }
 }
@@ -125,7 +135,15 @@ public static partial class MasterKeyCheck
                 await db.CredentialListEntries.Where(e => unreadableEntries.Contains(e.Id)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
             }
 
-            var notice = new KeyReplacedNotice(Guid.NewGuid().ToString("N"), time.GetUtcNow().UtcDateTime, unreadableCredentials.Count, unreadableEntries.Count);
+            // The site identity key cannot be read either: a new one is made at start, each node asks to accept it.
+            var sites = 0;
+            if (await db.Settings.AnyAsync(r => r.Key == Oadm.Core.Sites.SiteSettings.Identity, ct).ConfigureAwait(false))
+            {
+                await db.Settings.Where(r => r.Key == Oadm.Core.Sites.SiteSettings.Identity).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                sites = await db.Sites.CountAsync(ct).ConfigureAwait(false);
+            }
+
+            var notice = new KeyReplacedNotice(Guid.NewGuid().ToString("N"), time.GetUtcNow().UtcDateTime, unreadableCredentials.Count, unreadableEntries.Count, sites);
             await SettingRows.WriteAsync(db, KeyCheckSetting, JsonSerializer.Serialize(protector.ComputeKeyCheck()), ct).ConfigureAwait(false);
             await SettingRows.WriteAsync(db, KeyReplacedSetting, JsonSerializer.Serialize(notice, Json), ct).ConfigureAwait(false);
             await tx.CommitAsync(ct).ConfigureAwait(false);
@@ -186,6 +204,6 @@ public static partial class MasterKeyCheck
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "The server's master key was replaced ({Reason}). A new key is in use: {Devices} device credential(s) and {Entries} credential list entr(y/ies) could not be read and were removed; those devices need their credentials again. Plugin secrets encrypted with the old key (saved command passwords, CA keys) cannot be read either. The previous key file, if any, was kept as master.key.replaced-<time>.")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "The server's master key was replaced ({Reason}). A new key is in use: {Devices} device credential(s) and {Entries} credential list entr(y/ies) could not be read and were removed; those devices need their credentials again. Plugin secrets encrypted with the old key (saved command passwords, CA keys) cannot be read either; the site identity is new, so every site node asks to accept it. The previous key file, if any, was kept as master.key.replaced-<time>.")]
     private static partial void LogKeyReplaced(ILogger logger, string reason, int devices, int entries);
 }

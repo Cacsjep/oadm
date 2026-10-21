@@ -50,7 +50,7 @@ each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share
 its license sentence with the same copyright line.
 **Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device
 changes, not affiliated with Axis; text fixed by the user) are accepted on the **first start of the client** on each
-computer, before the splash and any connection (`Shell/TermsWindow` + `TermsViewModel`: the terms and the license below them, Quit / Accept, the X
+computer, before the splash and any connection (`Oadm.Theme.Shell.TermsWindow` + `TermsDialogViewModel`, shared with the site node app; the client's `Shell/TermsViewModel`: the terms and the license below them, Quit / Accept, the X
 quits; `ClientSettings.AcceptedTerms` = SHA-256 of the text, so changed terms ask again). The installers show no license
 page (decision 2026-10-13: silent and command-line installs skipped it, Debian packages never ask; every user runs the
 client). TERMS.md also stands at the top of the client's About page (embedded resource `Oadm.Client.TERMS.md`), in
@@ -78,7 +78,7 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
-  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, one firewall rule TCP 5080 for `Oadm.Server.exe`, profiles
+  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rule for `Oadm.Server.exe` TCP 5080 (TCP 5081 for site nodes is the server's own rule while Accept site nodes is on, see "# Sites"), profiles
   Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
   allowed). Features `Client` (always) and `Server` (service, firewall rule, data folder); own UI `WixUI_Oadm`
   (welcome, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
@@ -96,6 +96,18 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
   0.0.3..1.0.0 is removed on upgrade through `Breaks: oadm`). Both take over the files of the former single package `oadm`
   (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
   LGPL-2.1.txt}`. Pre-release versions are written `1.2.0~rc.1`. No .rpm.
+- **OADM Site Node** (`manage package site-node [--rid win-x64|linux-x64|linux-arm64]
+  [--version]`, details in `packaging/README.md`): `OADM-SiteNode-<version>-win-x64.msi` (WiX 6,
+  `packaging/windows/site-node/`; `Program Files\OADM Site Node` on the system PATH, service "OADM Site Node"
+  `OadmSiteNode` automatic, its own virtual account `NT SERVICE\OadmSiteNode`, restart on failure (also after a stop with
+  an error: a part of the node that fails ends it with exit code 1), data folder `%ProgramData%\OADM Site Node` for SYSTEM
+  and the service SID only and kept, Start menu shortcut, no firewall rule, silent `SERVER=<address>`; the main project no longer
+  picks up .wxs files by itself), `oadm-site-node_<version>_<arch>.deb` (service + `/usr/bin/oadm-site-node`, user
+  `oadm-site-node`, `CAP_NET_BIND_SERVICE`, `RuntimeDirectory`, `NoNewPrivileges`, `/var/lib/oadm-site-node` 0700) and
+  `oadm-site-node-app_<version>_<arch>.deb` (Depends oadm-site-node of the same version, Recommends pkexec, icon
+  `oadm-site-node.png`); amd64 and arm64; notices `tools/Oadm.Notices --product site-node` (no LGPL part); no macOS
+  package, no portable ZIP. The node only connects out (it never listens): no firewall rule on either system. CI: job
+  `installers` builds, installs, checks and removes the node .deb packages, `smoke.ps1 -Mode SiteNode` the node MSI.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS
   only): `/Applications/OADM.app` (Info.plist, icns, license texts and plugins in `Contents/Resources`), server in
   `/Library/Application Support/OADM/server`, LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application
@@ -213,6 +225,13 @@ src/
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
+  Oadm.Theme/          the OADM theme (colors of both appearances, icons, OadmTheme.axaml, OadmColors) and the shared
+                       TermsWindow, used by the client and the OADM Site Node app
+  Oadm.Sites/          the link between server and site node: Kestrel over a connection the node opened,
+                       TLS with pinned fingerprints, pairing code and J-PAKE binding
+  Oadm.SiteNode/       OADM Site Node service and command line (README with the manual test plan)
+  Oadm.SiteNode.Admin/ the node's local channel, texts and parsing shared by service, command line and app
+  Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
 plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Restart/   first Task plugin (server only)
   Oadm.Plugins.Firmware(.Client)/         Upgrade firmware
@@ -260,7 +279,7 @@ samples/               the plugins of the developer tutorials: Oadm.Samples.Upnp
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
 packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
-docs/                  specs of features not built yet (sites.md); built features live in this file
+docs/                  specs of features not built yet (none at the moment); built features live in this file
 ```
 
 # Architecture
@@ -504,7 +523,18 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `Setting`: Key, ValueJson.
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
-(factory default), `CertificateChanged`, `Unknown`.
+(factory default), `CertificateChanged`, `Unknown`, and `SiteOffline` (computed, never stored:
+the site node of `Device.SiteId` is not online in `ISiteStates`; `DeviceRepository` reads and `DeviceChangeFeed` show it,
+writes keep the stored status; `Oadm.Core.Sites.SiteDeviceStatus`, `NoSiteStates` without sites; `SiteStatusPublisher`
+publishes a site's devices in one batch when it goes offline or online (a device with a newer change published meanwhile keeps it: `IDeviceChangeFeed.PublishUnlessNewer`) and queues a full refresh after more than 5
+minutes offline). Every status switch refuses it before any request with "Site offline: <site>"
+(`DeviceMessages.Refusal(IDeviceInfo)`, `TaskSupportReasons.ForStatus(IDeviceInfo)`); a `SiteException` never changes a
+status, fails a poll, counts towards the outage share or fails a compliance check (Not checked). Event rules:
+`SiteEventSource` (group Sites): "Site offline: <site>" per site ({site}, {address}) and "Any site offline" ({count},
+{site}); device status events keep their state while the site is offline. `{site}` in `ActionPlaceholders.Fixed`; an empty
+fixed placeholder takes the event's value of the same name. Client: "Site offline", amber icon; fake mode sites Building B
+(online) and Warehouse (offline). Tests: `tests/Oadm.Core.Tests/Sites/*` (+ Perf `SiteOfflineScaleTests`),
+`tests/Oadm.Server.Tests/SiteOfflineServerTests`, `tests/Oadm.Client.Tests/SiteOfflineTests`.
 
 Device category enum (`Oadm.Sdk.Devices.DeviceCategory`, also used by Core): `Camera`,
 `Encoder`, `Speaker`, `Audio`, `Intercom`, `Radar`, `IoModule`, `DoorController`, `Other`,
@@ -618,6 +648,25 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
     on port 554 -> live view (see "Live view")
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
+- **Routing** (see "# Sites"): every device connection opens through
+  `Oadm.Core.Sites.DeviceRouter` on the device's `DeviceRoute` (`Device.SiteId`, `DiscoveredDevice.Route`): the server's
+  own network = a normal socket connect, a site = a new `ISiteTransport.OpenStreamAsync` stream per connection.
+  `VapixClient` runs on `SocketsHttpHandler` (router connect callback, pinning via `CertificatePinning.ValidateSslCallback`;
+  WebSockets through the same handler); `VapixDeviceProbe` keeps one handler per route (a pool keyed by host and port only
+  would share a connection between two sites with the same IP) and reads the route from `DeviceRouter.RouteOption`;
+  `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. `DeviceConnections.For(device |
+  discovered)` is the only place that builds `VapixConnectionOptions` (test `RoutingRulesTests`). The factory's cache key
+  holds the route; a change of route or address drops the cached client. Through a site: at most 2 connections per
+  device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; never Basic over plain HTTP; a `SiteException`
+  passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial. Names resolve on the route
+  (`RoutedDns`; through a site in stream 5). With no site everything connects as before.
+- **Banned APIs**: `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`
+  (Socket, TcpClient, UdpClient, Ping, Dns, HttpClientHandler, SocketsHttpHandler, ClientWebSocket.ConnectAsync): errors in
+  src/ and plugins/ (`OadmBannedApis=error`), warnings RS0030 in every plugin built with Oadm.Plugin.Sdk
+  (`OadmBannedApis=warning`, `none` turns it off; version `OadmBannedApiAnalyzersVersion` in Oadm.Plugin.Versions.props);
+  tools/ and tests/ outside. Exceptions carry a SuppressMessage with a justification and are listed in
+  `RoutingRulesTests.AllowedBannedApiUsers` (`AddressProbe`, `NtpServerService`, `UseOadmNtpServerTask` until they use
+  `IDeviceNetwork`).
 
 # Add Devices Page (fast add, no wizard)
 
@@ -840,8 +889,8 @@ Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
 Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
 **Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
-colors live in `Themes/Colors.Dark.axaml` and `Themes/Colors.Light.axaml` (same keys, `ThemeColorsTests`);
-`Themes/OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
+colors live in `src/Oadm.Theme/Colors.Dark.axaml` and `Colors.Light.axaml` (same keys, `ThemeColorsTests`);
+`Oadm.Theme.OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
 before the styles load (`JsonClientSettingsStore.ReadAppearance`, `AppOptions.Appearance` overrides it), and the Fluent
 theme variant follows. The color values below are the dark ones. Video stays dark in both: plates over the picture use
 `Oadm.OverlayBrush` (dark or white translucent with the normal text), the autofocus dimming `Oadm.VideoDimBrush`. Headless
@@ -887,7 +936,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
   `plugin`, `users`, `key`, `logs`, `settings`, `info`), then the expand toggle. The logged-in user (an initial avatar and
   the name, `Button.titleUser`, opens "Your role") and Log out (icon-only `ui:ToolbarButton`) sit at the right of the title
-  bar, next to the system window buttons (`Shell/TitleBarLayout` keeps clear of them: right on Windows and Linux, left on
+  bar, next to the system window buttons (`Oadm.Theme.Shell.TitleBarLayout` keeps clear of them: `ContentMargin`, or `ContentMarginWithoutMaximize` for the OADM Site Node app; title bars use the theme style `Border.titleBar`: right on Windows and Linux, left on
   macOS, where the app name moves past them; Avalonia reports only the title bar height, not where the buttons are). Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
@@ -913,7 +962,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.
 - **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
-  dialogs alike, is fitted to the screen it opens on (`Shell/WindowFit`, attached in `App`, applied once the window is placed: dialogs open next to
+  dialogs alike, is fitted to the screen it opens on (`Oadm.Theme.Shell.WindowFit`, also used by the site node app, attached in `App`, applied once the window is placed: dialogs open next to
   their owner, also on another monitor, plugin windows on the monitor of the main window; a window larger than the
   work area shrinks to it (no margin: `WindowFit.Margin` = 0, a margin capped Maximize of the main window short of the
   screen after a minimize and widened the title bar padding), its minimum and maximum follow, then it is centered or
@@ -932,7 +981,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   changes the value (`Infrastructure/WheelScroll`, attached in `App`, so plugin views too; test `WheelScrollTests`).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
-- All colors in `Themes/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `Themes/OadmTheme.axaml`; no
+- All colors in `src/Oadm.Theme/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `src/Oadm.Theme/OadmTheme.axaml`
+  (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups, `TagChipList`, `TagColorPicker`); no
   hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the
   Fluent palettes in `OadmTheme.axaml` (accent based, the same in both), fallbacks in code when a key cannot be found.
 
@@ -1199,6 +1249,7 @@ and the saved per-client order cover other preferences):
 | Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than 30 days: plain text, warn chip <= 30 days, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
+| Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
 
 Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) for every device every **60 s** by
 default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
@@ -1596,7 +1647,7 @@ uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with 
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
-Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Tags, Site, Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
 Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
@@ -2349,7 +2400,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
   `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
   `compliance.view` ("See compliance", Operator and Viewer yes), `compliance.manage` ("Change compliance checks", Operator no),
-  `events.view`, `events.manage`, `events.clearLog`, `logs.server`), "<plugin id>:<key>" for core plugins (every page gets "show"
+  `events.view`, `events.manage`, `events.clearLog`, `logs.server`, `sites.view` ("See sites", Operator and
+  Viewer yes)), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
@@ -2425,7 +2477,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (Name, Description, Start from, **Start page**) and stay "Not saved" until Save; Edit opens the same dialog (the
   Administrator role: name and description locked, only the start page).
 - **Start page per role** (`RoleEntity.StartPage`, migration `RoleStartPage`, empty = Devices): the page users of the role
-  see first after a login: Devices, Compliance, Event rules, any core plugin page, Logs (the rail keys, `HostPages`,
+  see first after a login: Devices, Compliance, Sites, Event rules, any core plugin page, Logs (the rail keys, `HostPages`,
   "plugin:<id>"). The server takes only those (`RoleGrpcService.StartPageOf`, a plugin page also while the plugin is off)
   and audits "start page Compliance"; `UserInfo.start_page = 11` brings it with Login / Me / WatchSession
   (`UserSession.StartPage`). The client opens it after the login (`MainWindowViewModel.Start`): at once when its rail
@@ -2607,7 +2659,11 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,
   `Border.wizardLine`), `GroupedChoice` with `ComboBox.grouped` (every grouped select field: grey group headers that cannot be chosen, the
-  choices indented below them, like the event list of a device). Before
+  choices indented below them, like the event list of a device), `ICheckChoice` / `CheckChoice` / `CheckChoiceList` with
+  `ComboBox.multiSelect` (every select field with check boxes: the closed box names what is ticked through
+  `PlaceholderText`, each entry a check box with an optional grey second line, a click keeps the list open;
+  `CheckChoiceList` = "All ..." or chosen items, nothing ticked = none; the NTP server's sites, the OADM Site Node app's
+  networks). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
@@ -2705,7 +2761,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   Numeric columns (days, offsets, scores, durations) are right-aligned: `CellStyleClasses="number"` plus a header
   `TextBlock.numberHeader`. Empty lists say in one line what to do first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
-  style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
+  style per element type in `src/Oadm.Theme/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
   item or a greyed toggle unless the spec says so. When a mismatch is found, fix the shared
   style or control, not the single view.
@@ -2724,12 +2780,108 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - This file is the single source of truth for the spec. When a decision changes, change it
   here in the same PR.
 
-# Not built yet
+# Sites
 
-**Sites** (designed 2026-10-15 as "Agents", re-evaluated and renamed 2026-10-19, spec `docs/sites.md`; first refactor
-on branch `feature/agents`): an OADM Site Node (service + desktop app, MSI and .deb) in a network the server cannot reach;
-it connects out to the server (no inbound port at the site), is bound with a pairing code from its app, opens only allowed ports, and the server sends all device traffic through it, TLS end to end; status and events
-"Site offline"; plugins work unchanged unless they open their own sockets.
+Released with 4.0.0 (decisions 2026-10-17 to 2026-10-21): the contracts and the link (`Oadm.Sites`), routing
+(see "Device Communication"), Site offline (see "Data Model"), the node program (`Oadm.SiteNode*`) and its installers, and
+the server side. **Outbound only** (decision 2026-10-20): the site node always connects to the server and never listens;
+the inbound mode ("Wait for the server", the node's listener and mDNS announce, the server dialing nodes, Search / Add
+manually / Change address on the Sites page, `FindNodes`, `ChangeSiteAddress`, `SiteMode`, the node firewall rule) is
+gone; the columns `Sites.Mode` / `Port` stay for the migrations, unused. The node reaches **all network cards by default**
+(`NodeConfig.AllCards`; chosen cards restrict it, no chosen card = all cards, `NetworkScope.ReachesAllCards`). Node app
+(`Oadm.SiteNode.App`, 800 x 900, fixed size, one page, no tabs, decision 2026-10-21): cards Node status (a picture: the OADM logo
+`Oadm.Theme.Controls.OadmMark` (the splash logo without animation, shared with `SplashLogo`) with the server's name, a line
+with the status below it (grey not linked yet, purple "Ready to bind" (connected, not bound), green connected and bound, red not connected /
+lost / error, `LinkKind`), a hexagon
+with the sites icon and the site or computer name; the binding line and node ID with version centered below the status;
+then requests and relays that do not run), Server (two columns, labels above: Server address left; while not bound
+the **Pairing code** right in a read-only field like the address with a copy button, the hint "... Valid for N more
+minutes." below it, or Allow binding), Networks (Reach devices on = a
+select with check boxes: All cards, then each card with its addresses on a second line; extra networks only on the command
+line), Ports (**Add** right of the title opens
+the dialog `AddPortWindow` (Direction Out / In, Protocol, Port); one table: Direction (Out = the node connects to devices,
+In = it listens at the site), Protocol, Port, State; requests first with Allow / Dismiss, allowed ports with Remove); footer
+Reset left (red), Save and Close right. No connection log in the app (the node's log files and `oadm-site-node log`). The
+pairing code is part of the state every local user reads while the node is not bound (decision 2026-10-21: a code lasts
+10 minutes, `BindingState.CodeLifetime`; the app counts the last minute in seconds, `oadm-site-node pairing-code` prints
+"Valid until"; a pairing started with a code still binds for a minute after the code's scheduled end; reading it with the
+command line is logged); a bound node that accepted a new server identity gives its code to administrators only (Show
+pairing code in the app). Add port in the app never marks a port as the server's (`PortPolicy.Allow(fromRequest: false)`).
+- `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
+  30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
+  starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),
+  `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; Windows service: the rule
+  "OADM Server (Site nodes, TCP 5081)" through `FirewallRuleKeeper` while it is on, the first sync at start always
+  applies, removed when off or stopped; 120 new connections a minute per address before TLS (IPv6 per /64,
+  `Oadm.Sites.Transport.AddressRateLimiter`: full = the oldest address makes room), handshake timeout, 64 handshakes at
+  once and 8 per address, closing waits for every handshake, 64 links of unknown keys before Hello (5 s; a bound site's
+  key is not capped), 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`), Hello checked by
+  `HelloRules`, 10 new unknown connections a minute per address, 50 waiting nodes kept by key fingerprint, 3 per address,
+  full = the one waiting longest makes room, dropped after 24 h; binding with J-PAKE (`Oadm.Sites.Binding`), binds one at
+  a time, the node's Bind runs to its end whatever the caller does, Unbind when the site cannot be stored or Bind's answer
+  was lost, a node that accepted a new server identity binds its site again with the code; links become sessions or
+  waiting nodes only while Accept is on and the server runs, Remove takes the site and its session in one step, a session
+  whose site is gone ends; the waiting times run on `TimeProvider.GetTimestamp`, never the wall clock; the tick ends the
+  session of a node silent for 30 s; online / offline audits are written after the lock; the Sites page reads the device
+  counts only after the device feed shows a device that changed its site),
+  `SiteSession` (control link with Watch and a 10 s Hello heartbeat and the round trip, up to 8 worker links for Dial,
+  a new worker when every one carries 2,000 dials), `SiteIdentityStore` (`Sites.Identity`, purpose `oadm:site-identity`;
+  dropped with a replaced master key and named in the notice), `SiteAdmin` (Remove with or without devices, Replace),
+  `SiteGrpcService`. At most 2 large transfers per site (streamed bodies over 1 MB or of unknown size, streamed answers
+  except the Web View relay's (`VapixClient.RelayedOption`); a task waits as long as it takes, its device timeout starts
+  after the wait and the tasks pane says "<step> - Waiting for the site link" (`SiteLinkWait`); anyone else waits inside
+  the request's timeout, then "Site ... is busy"; a dropped streamed answer frees its slot when collected). A dial gets the
+  site's verdict before the caller's timeout (node timeout less a margin, worker wait and node answer as Busy); a dial whose
+  link or session ends is an `IOException` around "Site offline: ..." (`DialStream`), a cancelled one an
+  `OperationCanceledException`; a poll that gets no answer while the node does not answer a Hello either
+  (`ISiteStates.LinkAnswersAsync`) is a site problem. One control link attaches per site at a time; a port request follows
+  the caller's token and is asked again when it did not arrive and after every reconnect.
+- Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
+  Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Replaced site,
+  Removed site, Site offline / online, Site node was reset (system). Backup: "Sites: N restored".
+- Client: rail page **Sites** (right below Compliance, else Devices, no group; `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
+  `SiteFormWindow` for Bind / Rename / Replace / Remove; Bind starts with the node's host name, "acs (2)" when a site has
+  it, or the site's own name when its node binds it again; Replace with lists only other online sites), device column **Site**
+  (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.
+- Plugins at sites (stream 6): `IDeviceNetwork` (`Oadm.Core.Sites.DeviceNetworks`: `LocalDeviceNetwork` on the server's
+  own network, `SiteDeviceNetwork` over `ISiteNetwork`) in `ITaskExecutionContext` / `ITaskQueryContext.Network` and
+  `ICorePluginContext.Network` (`PluginNetworkScope`: listeners bound by the host with the Windows firewall rule, a port in
+  use retried every 30 s). `ICorePluginContext.Sites` = relays over the node's Relay call on worker links (`SiteRelay`,
+  states with `SiteTexts.RelayStateText`, reopened after a reconnect); the host disposes a plugin's listeners and relays
+  when it stops or is turned off. `siteSupport` (manifest; missing = none; `ITaskPlugin` / `IComplianceCheckType.SiteSupport`
+  override) is enforced by the host: tasks greyed "Not available for devices at a site", runs and queries refused,
+  compliance Not checked, VAPIX clients and event streams of core plugins (`SiteSupportGuard`) and actions refuse site
+  devices. The plugin project SDK writes `siteSupport` (`OadmSiteSupport`, default full) and `sitePorts` (`OadmSitePorts`
+  "udp:123:NTP server"); bundled: DHCP none, NTP full + UDP 123, the others full. NTP "Serve at sites" (a select with check boxes:
+  All sites, chosen sites or none, `NtpConfig.ServeSites`; one relay per served site, limits per site and client; a site no
+  longer served gets its relay released (`IRelay.ReleaseAsync`, proto `RelayMessage.release = 4`): its node drops the
+  request and the allowed port it allowed from the server's request (`PortEntry.ByServer`), a port the node's administrator
+  added stays; a lost link, a server stop or the plugin turned off only dispose and keep the port); DHCP page "The DHCP server works only on this server's own network."; Assign IP address
+  refuses addresses outside the site's networks (`IDeviceNetwork.Reaches`). The Plugins page has a Sites column
+  (`PluginPackageInfo.site_support = 12`, `site_ports = 13`). `Oadm.Sdk.Testing`: `FakeDeviceNetwork`, `FakeSites`,
+  `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. SDK 0.2.0. Developer page `dev/sites.md`.
+- Discovery at sites (stream 5): every add mode asks the server's own network and every online site (`ISiteNetwork`
+  over the control link, `SiteManager.Network`; `Reaches` from the node's Watch). Results carry their route
+  (`DiscoveredDevice.site_id = 21`, `site_name = 22`, `other_sites = 23`, `problem = 24`); the same MAC address through
+  several routes is one row through the site, the others in the Site tooltip; different devices at one address through
+  different routes are separate rows. Commit stores `Device.SiteId`. Import from file reads a Site column (by name); a line
+  without a site that reaches different devices lists all, unchecked, with "Answers through Building A and Building B.";
+  an ADM line only uses the route where its MAC answers. The waiting list is per (site, address)
+  (`WaitingDeviceStore.Normalize(address, siteId)`, `WaitingDevice.site_name = 15`, column Site). Moves: Unreachable
+  devices and devices of a site offline for more than an hour are looked for through every route and moved with route and
+  address together (audited "Device moved", "from Building B 192.168.0.20 to This server 10.0.0.20"); a device answering
+  on its route never moves, names never move, a DHCP lease moves to the server's network; to another route only a device
+  with a pinned HTTPS certificate, verified against that pin there (over HTTP a node could answer the login itself: such a
+  device moves only within its route, `DeviceAddressChangeResult.NotPinned`, logged once). The address conflict check of
+  Network settings / Assign IP address lists only devices on the same route. The address link and Open web interface of a
+  device at a site open it in Web View (`ICorePluginClientContext.OpenDeviceRequested`), disabled with "Turn on Web View to
+  open devices at a site" while it is off. Texts `Oadm.Contracts.Sites.SiteDiscoveryTexts`.
+- Known residual risk (as on the server's own network, see "Automatic login on the add page"): a device at a site that
+  imitates the anonymous Axis answer, or a compromised site node pretending to be one, gets the credential list's
+  passwords tried on it; the user docs say so.
+- Not built yet: identity rotation over gRPC, the HTTP helper on `IStreamListener`.
+
+# Not built yet
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,

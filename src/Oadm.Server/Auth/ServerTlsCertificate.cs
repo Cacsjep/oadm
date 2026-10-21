@@ -29,6 +29,7 @@ namespace Oadm.Server.Auth;
 /// another key file behind. Linux and macOS keep the encrypted PKCS#8 key in the file and load it in memory.
 /// </para>
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The server's own host name for its certificate.")]
 public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProtector protector, ServerSettingsStore settings, TimeProvider time, ILogger<ServerTlsCertificate> logger) : IDisposable
 {
     public const string FileName = "server-tls.json";

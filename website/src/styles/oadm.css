@@ -654,6 +654,19 @@ header .social-icons::after {
 	text-decoration: underline;
 }
 
+/* The site node buttons sit below the OADM ones (only while the latest release has them). */
+.downloads .site-node-downloads {
+	display: contents;
+}
+
+.downloads .site-node-downloads[hidden] {
+	display: none;
+}
+
+.downloads .site-node-label {
+	margin-top: 15px;
+}
+
 /* Below the downloads: forum, newsletter, YouTube and docs as one quiet row of grey links, no boxes. */
 .downloads .dl-links {
 	display: flex;

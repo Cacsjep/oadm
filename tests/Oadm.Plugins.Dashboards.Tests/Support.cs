@@ -27,7 +27,7 @@ public sealed class HeadlessTestApp : Application
     {
         // OADM_TEST_APPEARANCE=Light renders the screenshots in the light appearance (colors and theme variant).
         var light = Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE") == "Light";
-        Oadm.Client.Themes.OadmColors.Current = light ? Oadm.Client.Themes.Appearance.Light : Oadm.Client.Themes.Appearance.Dark;
+        Oadm.Theme.OadmColors.Current = light ? Oadm.Theme.Appearance.Light : Oadm.Theme.Appearance.Dark;
         RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
         Styles.Add(new StyleInclude(new Uri("avares://Oadm.Plugins.Dashboards.Tests/")) { Source = new Uri("avares://Oadm.Client/Themes/OadmTheme.axaml") });
     }
@@ -126,6 +126,8 @@ internal sealed record TestDevice(string Address, string? Model, params string[]
     public IReadOnlyList<DeviceApi> Apis => [];
 
     public IReadOnlyList<string> Tags => TagNames;
+
+    public Guid? SiteId { get; init; }
 }
 
 /// <summary>The server's event feed: the types it knows and the events, handed to the handler at once.</summary>
@@ -203,6 +205,7 @@ internal sealed class PluginHost : IDisposable
     {
         Feed.TypeList.AddRange(Types.All());
         var ctx = Substitute.For<ICorePluginContext>();
+        Context = ctx;
         ctx.Settings.Returns(Settings);
         ctx.Events.Returns(Events);
         ctx.Logger.Returns(NullLogger.Instance);
@@ -214,6 +217,9 @@ internal sealed class PluginHost : IDisposable
     public FakeTimeProvider Time { get; } = new(DateTimeOffset.Parse("2026-10-16T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
 
     public DashboardsPlugin Plugin { get; }
+
+    /// <summary>The plugin's context (a substitute): tests set what <c>Devices</c> answers.</summary>
+    public ICorePluginContext Context { get; }
 
     public FakeEventSubscriptions Feed { get; } = new();
 

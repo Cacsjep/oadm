@@ -13,6 +13,7 @@ namespace Oadm.Plugins.NtpServer.Serving;
 /// answered from <see cref="TimeSourceState"/> as it is right now (never waiting for anything), after the rate limiter.
 /// The loop reuses one receive buffer, one answer buffer and one <see cref="SocketAddress"/>: no allocation per packet.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The NTP server's own UDP sockets on the server's network (sites get relays).")]
 public sealed partial class NtpUdpServer : IAsyncDisposable
 {
     /// <summary>Offsets beyond this are shown as unknown (clients that randomize the transmit timestamp, e.g. chrony).</summary>
@@ -54,6 +55,9 @@ public sealed partial class NtpUdpServer : IAsyncDisposable
         _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
     }
+
+    /// <summary>The operating system has IPv6: "All interfaces" listens on [::] too.</summary>
+    public static bool SupportsIPv6 => Socket.OSSupportsIPv6;
 
     /// <summary>The bound endpoints (with the real port when 0 was requested).</summary>
     public IReadOnlyList<IPEndPoint> LocalEndpoints { get; private set; } = [];

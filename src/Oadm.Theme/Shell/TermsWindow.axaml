@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:shell="using:Oadm.Theme.Shell"
+        x:Class="Oadm.Theme.Shell.TermsWindow"
+        x:DataType="shell:TermsDialogViewModel"
+        Title="{Binding Title}"
+        Width="620" Height="600" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="BorderOnly">
+  <!-- The terms of use on the first start (client and OADM Site Node app): the text scrolls, Quit or Accept. The X quits like Quit. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16">
+          <TextBlock Classes="prose" TextWrapping="Wrap" Text="{Binding Text}" />
+          <TextBlock Classes="prose" TextWrapping="Wrap" Text="{Binding License}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="Quit" CancelCommand="{Binding QuitCommand}">
+      <Button Classes="primary" Content="Accept" Command="{Binding AcceptCommand}" IsDefault="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

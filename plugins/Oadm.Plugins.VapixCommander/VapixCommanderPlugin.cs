@@ -256,6 +256,11 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             return new TryCommandReply { Error = DeviceMessages.CertificateChanged };
         }
 
+        if (device.Status == DeviceStatus.SiteOffline)
+        {
+            return new TryCommandReply { Error = DeviceMessages.Refusal(device) }; // nothing is sent
+        }
+
         var cached = Compatibility.Check(command, device.Apis, device.HasVideo);
         if (cached.State is CompatibilityState.MissingApi or CompatibilityState.VersionTooOld or CompatibilityState.NoVideo)
         {

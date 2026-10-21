@@ -120,6 +120,13 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Site" Width="130" SortMemberPath="SiteName" IsVisible="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                  <TextBlock Classes="cellText" Text="{Binding SiteName}" ToolTip.Tip="{Binding SiteTip}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTextColumn Header="MAC address" Width="150" Binding="{Binding Serial}" x:DataType="disc:DiscoveredRowViewModel" />
             <DataGridTextColumn Header="Model" Width="160" Binding="{Binding Model}" x:DataType="disc:DiscoveredRowViewModel" />
             <DataGridTemplateColumn Header="Login" Width="*" SortMemberPath="ChipText">

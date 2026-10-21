@@ -25,6 +25,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private const string CredentialsType = "oadm.device.credentials-required";
     private const string CertificateType = "oadm.device.certificate-changed";
 
+    /// <summary>OADM's site events ("Site offline: Building B", server scope): the type id ends with the site id.</summary>
+    private const string SiteOfflinePrefix = "oadm.site.offline.";
+
     /// <summary>A device trigger's second event ("&lt;trigger&gt;: connection lost") is its id with this suffix.</summary>
     private const string LostSuffix = ".lost";
 
@@ -38,6 +41,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private readonly HashSet<ValueKey> _watched = [];
     private readonly HashSet<ValueKey> _dirty = [];
     private readonly Dictionary<Guid, Dictionary<string, string>> _deviceProblems = [];
+    private readonly Dictionary<Guid, string> _offlineSites = [];
+    private Dictionary<Guid, Guid> _deviceSites = [];
     private Dictionary<string, SubscribedEventType>? _types;
     private ICorePluginContext? _ctx;
     private IEventSubscriptions? _subscriptions;
@@ -134,6 +139,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             _watched.Clear();
             _dirty.Clear();
             _deviceProblems.Clear();
+            _offlineSites.Clear();
+            _deviceSites = [];
             _types = null;
         }
 
@@ -306,6 +313,11 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     {
         var newField = published.Data.Keys.Any(k => !_values.HasField(published.TypeId, k));
         var key = _values.Apply(published);
+        if (published.DeviceId is null && SiteOf(published.TypeId) is { } site)
+        {
+            OnSiteEvent(site, published);
+        }
+
         lock (_gate)
         {
             if (_watched.Contains(key))
@@ -351,6 +363,71 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         CertificateType => DeviceMessages.StatusText(DeviceStatus.CertificateChanged),
         _ => null,
     };
+
+    private static Guid? SiteOf(string typeId) =>
+        typeId.StartsWith(SiteOfflinePrefix, StringComparison.Ordinal) && Guid.TryParseExact(typeId[SiteOfflinePrefix.Length..], "N", out var site)
+            ? site
+            : null;
+
+    /// <summary>A site went offline or online: the values of its devices may be old (or are fresh again).</summary>
+    private void OnSiteEvent(Guid site, PublishedEvent published)
+    {
+        bool load;
+        lock (_gate)
+        {
+            if (published.Kind == PublishedEventKind.Off)
+            {
+                _offlineSites.Remove(site);
+            }
+            else
+            {
+                _offlineSites[site] = published.Data.GetValueOrDefault("site") ?? string.Empty;
+            }
+
+            load = _offlineSites.Count > 0;
+            _dirty.UnionWith(_watched);
+        }
+
+        if (load)
+        {
+            _ = LoadDeviceSitesAsync();
+        }
+    }
+
+    /// <summary>Which device is at which site (read while a site is offline; the plugin never talks to a device).</summary>
+    private async Task LoadDeviceSitesAsync()
+    {
+        var ctx = _ctx;
+        if (ctx is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var devices = await ctx.Devices.ListAsync(CancellationToken.None).ConfigureAwait(false);
+            var map = new Dictionary<Guid, Guid>();
+            foreach (var device in devices)
+            {
+                if (device.SiteId is { } site)
+                {
+                    map[device.Id] = site;
+                }
+            }
+
+            lock (_gate)
+            {
+                _deviceSites = map;
+                _dirty.UnionWith(_watched);
+            }
+        }
+#pragma warning disable CA1031 // Only a hint on old values; the next site event reads again.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            ctx.Logger.LogSitesUnreadable(ex);
+        }
+    }
 
     private void SetProblem(Guid device, string typeId, string? text)
     {
@@ -431,6 +508,11 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         if (key.DeviceId is not { } device || type.SourceId == BuiltInSource)
         {
             return null; // OADM's own status events are never old: they are the status
+        }
+
+        if (_deviceSites.TryGetValue(device, out var site) && _offlineSites.TryGetValue(site, out var siteName))
+        {
+            return Oadm.Sdk.Sites.SiteTexts.SiteOffline(siteName);
         }
 
         if (!key.TypeId.EndsWith(LostSuffix, StringComparison.Ordinal) && _values.IsOn(new ValueKey(key.TypeId + LostSuffix, device)))
@@ -683,6 +765,9 @@ internal static partial class DashboardsLog
 {
     [LoggerMessage(Level = LogLevel.Error, Message = "The saved dashboards could not be read; the list starts empty")]
     public static partial void LogUnreadableDashboards(this ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The devices of the sites could not be read")]
+    public static partial void LogSitesUnreadable(this ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Dashboard values could not be sent to the pages")]
     public static partial void LogPushFailed(this ILogger logger, Exception ex);

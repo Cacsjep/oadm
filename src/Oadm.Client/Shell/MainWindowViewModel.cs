@@ -38,6 +38,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly NavItemViewModel? _pluginsItem;
     private readonly NavItemViewModel? _eventRulesItem;
     private readonly NavItemViewModel? _complianceItem;
+    private readonly NavItemViewModel? _sitesItem;
     private readonly NavItemViewModel _logsItem;
     private readonly NavItemViewModel _settingsItem;
     private readonly NavItemViewModel _aboutItem;
@@ -61,6 +62,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         EventRules.EventRulesViewModel? eventRules = null,
         ILiveVideoAccess? liveVideo = null,
         Compliance.ComplianceViewModel? compliance = null,
+        Sites.SitesViewModel? sites = null,
         IUiDispatcher? ui = null)
     {
         _liveVideo = liveVideo;
@@ -122,6 +124,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
             SyncEventRulesItem();
         }
 
+        if (sites is not null)
+        {
+            // Built-in page right below Compliance (no group), shown while the role may see sites.
+            _sitesItem = new NavItemViewModel(HostPages.Sites, "Sites", "server", sites);
+            SyncSitesItem();
+        }
+
         // A role change (session stream): the toolbar, the rail and the task menu follow what the role allows now.
         Devices.Toolbar.ApplyPermissions(session.Has);
         session.PermissionsChanged += (_, _) =>
@@ -129,6 +138,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             Devices.Toolbar.ApplyPermissions(session.Has);
             SyncEventRulesItem();
             SyncComplianceItem();
+            SyncSitesItem();
             if (session.IsLoggedIn)
             {
                 _ = ReloadPluginsAsync();
@@ -146,6 +156,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
+        devices.OpenInWebViewRequested += (_, deviceId) => OpenInWebView(deviceId);
         OpenItem(_devicesItem);
     }
 
@@ -540,6 +551,35 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>The Sites entry (right below Compliance, else Devices) shows while the role may see sites; a hidden page that was open falls back to Devices.</summary>
+    private void SyncSitesItem()
+    {
+        if (_sitesItem is null)
+        {
+            return;
+        }
+
+        bool wanted = Session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.SitesView);
+        bool shown = NavItems.Contains(_sitesItem);
+        if (wanted && !shown)
+        {
+            var above = _complianceItem is not null && NavItems.Contains(_complianceItem) ? _complianceItem : _devicesItem;
+            NavItems.Insert(Math.Min(NavItems.IndexOf(above) + 1, NavItems.Count), _sitesItem);
+            UpdateNavGroups();
+            OpenStartPage();
+        }
+        else if (!wanted && shown)
+        {
+            NavItems.Remove(_sitesItem);
+            if (_sitesItem.IsSelected)
+            {
+                OpenItem(_devicesItem);
+            }
+
+            UpdateNavGroups();
+        }
+    }
+
     /// <summary>One navigation entry per core plugin with a page (<c>no_page</c> unset), below "Devices".</summary>
     internal void SyncCorePluginPages(IReadOnlyList<CorePluginInfo> corePlugins)
     {
@@ -551,6 +591,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         OrderCorePluginPages();
+        SyncWebViewAccess();
         OpenStartPage();
     }
 
@@ -570,6 +611,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         int generation = ++_pageSyncGeneration;
         corePlugins = RemoveStalePluginPages(corePlugins);
         OrderCorePluginPages();
+        SyncWebViewAccess();
         foreach (CorePluginInfo plugin in corePlugins)
         {
             await _ui.RunInBackgroundAsync(() =>
@@ -578,6 +620,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 {
                     AddCorePluginPage(plugin);
                     OrderCorePluginPages();
+                    SyncWebViewAccess();
                     OpenStartPage();
                 }
             }).ConfigureAwait(true);
@@ -646,6 +689,41 @@ public sealed partial class MainWindowViewModel : ObservableObject
             GroupOrder = (int)group,
             OpenInWindow = OpenPluginWindow,
         });
+    }
+
+    /// <summary>The permission to open devices in Web View.</summary>
+    internal const string WebViewOpenPermission = "oadm.web-view:open";
+
+    /// <summary>
+    /// Devices at a site open in Web View while its page is in the rail and the role may open devices; otherwise the reason
+    /// comes from the package list: off ("Turn on Web View ...") or on but not for this role.
+    /// </summary>
+    private void SyncWebViewAccess()
+    {
+        bool page = NavItems.Any(n => n.Key == WebViewPageKey);
+        bool mayOpen = Session.Has(WebViewOpenPermission);
+        bool? on = PluginOn(WebViewPackageId);
+        Devices.WebViewAccess = page && mayOpen ? SiteWebAccess.Available
+            : on == true || (on is null && page) ? SiteWebAccess.NotAllowed
+            : SiteWebAccess.Off;
+    }
+
+    /// <summary>The Web View plugin package.</summary>
+    internal const string WebViewPackageId = "oadm.web-view";
+
+    /// <summary>The rail key of the Web View page (plugin oadm.web-view).</summary>
+    internal const string WebViewPageKey = "plugin:oadm.web-view";
+
+    /// <summary>A device at a site: its web interface opens in the Web View page (CLAUDE.md "# Sites", Client).</summary>
+    private void OpenInWebView(string deviceId)
+    {
+        if (NavItems.FirstOrDefault(n => n.Key == WebViewPageKey) is not { Page: CorePluginPageViewModel page } item)
+        {
+            return;
+        }
+
+        Navigate(item);
+        page.PluginContext?.RequestOpenDevice(deviceId);
     }
 
     /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
@@ -750,6 +828,17 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly Func<string, bool?>? _pluginOn;
 
     public bool? IsPluginOn(string packageId) => _pluginOn?.Invoke(packageId);
+
+    public event EventHandler<string>? OpenDeviceRequested;
+
+    /// <summary>The host asks the page to open a device (Web View: a device at a site, from the Devices page).</summary>
+    internal void RequestOpenDevice(string deviceId)
+    {
+        if (!_disposed)
+        {
+            OpenDeviceRequested?.Invoke(this, deviceId);
+        }
+    }
 
     private readonly Func<string, Oadm.Sdk.Licensing.PluginLicenseInfo?>? _licenseOf;
 

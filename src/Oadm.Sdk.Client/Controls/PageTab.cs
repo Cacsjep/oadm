@@ -12,6 +12,8 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>
 /// One tab of a page with tabs (Web View devices, Live View views): the title and a close button, the active one
 /// underlined in the accent color (theme <c>Border.browserTab</c>). A press runs <see cref="ActivateCommand"/>.
+/// Without a <see cref="CloseCommand"/> the tab has no close button (fixed tabs of a window, theme class <c>fixed</c>);
+/// <see cref="Count"/> above 0 shows a count badge after the title (e.g. requests that wait).
 /// </summary>
 public sealed class PageTab : Border
 {
@@ -27,6 +29,9 @@ public sealed class PageTab : Border
     public static readonly StyledProperty<ICommand?> CloseCommandProperty =
         AvaloniaProperty.Register<PageTab, ICommand?>(nameof(CloseCommand));
 
+    public static readonly StyledProperty<int> CountProperty =
+        AvaloniaProperty.Register<PageTab, int>(nameof(Count));
+
     private readonly OadmIcon _closeIcon = new() { Width = 12, Height = 12 };
 
     public PageTab()
@@ -39,8 +44,16 @@ public sealed class PageTab : Border
         close.Classes.Add("iconOnly");
         ToolTip.SetTip(close, "Close tab");
         close.Bind(Button.CommandProperty, this.GetObservable(CloseCommandProperty));
-        Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center, Children = { title, close } };
+        _close = close;
+        _badge = new Border { Child = _count, IsVisible = false, Margin = new Thickness(4, 0, 0, 0) };
+        _badge.Classes.Add("badge");
+        Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center, Children = { title, _badge, close } };
+        UpdateClose();
     }
+
+    private readonly Button _close;
+    private readonly Border _badge;
+    private readonly TextBlock _count = new();
 
     protected override Type StyleKeyOverride => typeof(Border);
 
@@ -65,7 +78,14 @@ public sealed class PageTab : Border
         set => SetValue(ActivateCommandProperty, value);
     }
 
-    /// <summary>Runs when the user clicks the X (or the middle button on the tab).</summary>
+    /// <summary>The number in the badge after the title; 0 or less hides the badge.</summary>
+    public int Count
+    {
+        get => GetValue(CountProperty);
+        set => SetValue(CountProperty, value);
+    }
+
+    /// <summary>Runs when the user clicks the X (or the middle button on the tab); null = a fixed tab without an X.</summary>
     public ICommand? CloseCommand
     {
         get => GetValue(CloseCommandProperty);
@@ -88,6 +108,21 @@ public sealed class PageTab : Border
         {
             Classes.Set("active", IsActive);
         }
+        else if (change.Property == CloseCommandProperty)
+        {
+            UpdateClose();
+        }
+        else if (change.Property == CountProperty)
+        {
+            _badge.IsVisible = Count > 0;
+            _count.Text = Count.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        }
+    }
+
+    private void UpdateClose()
+    {
+        _close.IsVisible = CloseCommand is not null;
+        Classes.Set("fixed", CloseCommand is null);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

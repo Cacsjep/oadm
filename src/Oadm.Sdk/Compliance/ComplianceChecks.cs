@@ -151,6 +151,12 @@ public interface IComplianceCheckType : IPlugin
     /// <summary>Group of the type select ("Devices", "Applications", "Configuration", "Storage"). Default "General".</summary>
     string Group => "General";
 
+    /// <summary>
+    /// Whether this type checks devices at a site; null (the default) = the package's <c>siteSupport</c> in plugin.json.
+    /// A type with <see cref="Sites.SiteSupport.None"/> is Not checked for devices at a site.
+    /// </summary>
+    Sites.SiteSupport? SiteSupport => null;
+
     /// <summary>One short sentence for the type select.</summary>
     string? Description => null;
 

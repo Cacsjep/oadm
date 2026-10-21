@@ -1,0 +1,35 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <!--
+    OADM Site Node MSI (WiX Toolset 6, restored from NuGet; not part of Oadm.sln; CLAUDE.md "# Sites" "Packaging"). Built by
+    "manage package site-node" on Windows, which publishes the service and the app first and passes:
+      OadmVersion     1.2.0 or 1.2.0-rc.1 (the MSI ProductVersion is the numeric part)
+      OadmNodeDir     published service folder (oadm-site-node.exe, license texts)
+      OadmAppDir      published app folder (oadm-site-node-app.exe, license texts)
+      OadmPackageDir  output folder (artifacts/packages)
+    x64 only. WiX 7 is not used: it requires accepting the Open Source Maintenance Fee EULA.
+  -->
+  <PropertyGroup>
+    <OadmVersion Condition="'$(OadmVersion)' == ''">0.1.0-dev</OadmVersion>
+    <OadmMsiVersion>$([System.Text.RegularExpressions.Regex]::Match('$(OadmVersion)', '^[0-9]+\.[0-9]+\.[0-9]+').Value)</OadmMsiVersion>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <OutputType>Package</OutputType>
+    <OutputName>OADM-SiteNode-$(OadmVersion)-win-x64</OutputName>
+    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
+    <OutputPath Condition="'$(OadmPackageDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(OadmPackageDir)'))</OutputPath>
+    <DefineConstants>ProductVersion=$(OadmMsiVersion);NodeDir=$(OadmNodeDir);AppDir=$(OadmAppDir);IconsDir=$(MSBuildThisFileDirectory)..\..\icons;UiDir=$(MSBuildThisFileDirectory)..</DefineConstants>
+    <!-- Same version reinstall (development builds) is allowed on purpose. -->
+    <SuppressIces>ICE61</SuppressIces>
+    <SuppressPdbOutput>true</SuppressPdbOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+  <Target Name="OadmCheckInputs" BeforeTargets="Build">
+    <Error Condition="'$(OadmMsiVersion)' == ''" Text="OadmVersion '$(OadmVersion)' does not start with major.minor.patch." />
+    <Error Condition="!Exists('$(OadmNodeDir)\oadm-site-node.exe')" Text="oadm-site-node.exe not found in OadmNodeDir '$(OadmNodeDir)'. Run manage package site-node." />
+    <Error Condition="!Exists('$(OadmAppDir)\oadm-site-node-app.exe')" Text="oadm-site-node-app.exe not found in OadmAppDir '$(OadmAppDir)'. Run manage package site-node." />
+  </Target>
+</Project>

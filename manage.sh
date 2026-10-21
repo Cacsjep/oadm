@@ -9,6 +9,8 @@ HELP_FILE="$REPO_ROOT/scripts/manage-help.txt"
 SOLUTION="$REPO_ROOT/Oadm.sln"
 SERVER_PROJECT="$REPO_ROOT/src/Oadm.Server/Oadm.Server.csproj"
 CLIENT_PROJECT="$REPO_ROOT/src/Oadm.Client/Oadm.Client.csproj"
+SITE_NODE_PROJECT="$REPO_ROOT/src/Oadm.SiteNode/Oadm.SiteNode.csproj"
+SITE_NODE_APP_PROJECT="$REPO_ROOT/src/Oadm.SiteNode.App/Oadm.SiteNode.App.csproj"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
@@ -148,12 +150,12 @@ parse_args() {
 
   case "$verb" in
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
-    run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client or dev)"
-             case "$TARGET" in server|client|dev) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
+    run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
+             case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
-    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos or nuget)"
-             case "$TARGET" in windows|linux|macos|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
+    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node or nuget)"
+             case "$TARGET" in windows|linux|macos|site-node|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
     new)     [ -n "$TARGET" ] || usage_error new "missing target for new (task, page or action)"
              case "$TARGET" in task|page|action) ;; *) usage_error new "unknown target '$TARGET' for new" ;; esac ;;
     clean|info)
@@ -245,6 +247,22 @@ app_dll() {
   done
   echo "error: $1.dll not found under src/$1/bin/$CONFIGURATION" >&2
   exit 1
+}
+
+# Built app host (the program itself, not "dotnet exec"): bin/<configuration>/<tfm>/<name>. The site node app starts an
+# elevated copy of itself for a change, so it must run as its own program.
+app_host() {
+  local exe
+  for exe in "$REPO_ROOT/src/$1/bin/$CONFIGURATION"/*/"$2" "$REPO_ROOT/src/$1/bin/$CONFIGURATION"/*/"$2.exe"; do
+    [ -f "$exe" ] && { echo "$exe"; return 0; }
+  done
+  echo "error: $2 not found under src/$1/bin/$CONFIGURATION" >&2
+  exit 1
+}
+
+# Data folder of the development site node (never the installed node's): --data, else artifacts/dev-node.
+node_data_dir() {
+  if [ -n "$OPT_DATA" ]; then abs_dir "$OPT_DATA"; else abs_dir "$REPO_ROOT/artifacts/dev-node"; fi
 }
 
 # Arguments for the server from --port and --data.
@@ -352,6 +370,14 @@ cmd_run() {
       if [ -n "$OPT_DATA" ]; then client_args+=(--data "$(abs_dir "$OPT_DATA")"); fi
       exec "$DOTNET" exec "$(app_dll Oadm.Client)" ${client_args[@]+"${client_args[@]}"} ${app_args[@]+"${app_args[@]}"}
       ;;
+    node)
+      build_project "$SITE_NODE_PROJECT"
+      exec "$(app_host Oadm.SiteNode oadm-site-node)" --data-dir "$(node_data_dir)" ${app_args[@]+"${app_args[@]}"}
+      ;;
+    node-app)
+      build_project "$SITE_NODE_APP_PROJECT"
+      exec "$(app_host Oadm.SiteNode.App oadm-site-node-app)" --data-dir "$(node_data_dir)" ${app_args[@]+"${app_args[@]}"}
+      ;;
     dev)
       if [ "$OPT_NO_PLUGIN_BUILD" -eq 1 ]; then
         build_project "$SERVER_PROJECT"; build_project "$CLIENT_PROJECT"; build_plugins_unless_skipped
@@ -451,11 +477,48 @@ package_nuget() {
   echo "packages written to $out"
 }
 
+# The OADM Site Node (CLAUDE.md "# Sites", "Packaging"): service and app published self-contained single-file into
+# artifacts/publish/site-node/<rid> and artifacts/publish/site-node-app/<rid> with their notices (no LGPL part), then
+# OADM-SiteNode-<version>-win-x64.msi (Windows) or oadm-site-node_<version>_<arch>.deb and
+# oadm-site-node-app_<version>_<arch>.deb (Linux) in artifacts/packages.
+package_site_node() {
+  local os arch out node app
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) os=win ;; Linux*) os=linux ;; *) os=other ;; esac
+  case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
+  RID="${OPT_RID:-$os-$arch}"
+  case "$RID" in win-x64|linux-x64|linux-arm64) ;; *) usage_error package "--rid for package site-node is win-x64, linux-x64 or linux-arm64" ;; esac
+  case "$RID" in
+    win-*) [ "$os" = win ] || { echo "error: package site-node --rid $RID needs Windows (WiX Toolset builds the MSI)" >&2; exit 1; } ;;
+    linux-*)
+      command -v dpkg-deb >/dev/null 2>&1 \
+        || { echo "error: package site-node --rid $RID needs dpkg-deb (Debian, Ubuntu or a container, see packaging/README.md)" >&2; exit 1; } ;;
+  esac
+
+  node="$REPO_ROOT/artifacts/publish/site-node/$RID"
+  app="$REPO_ROOT/artifacts/publish/site-node-app/$RID"
+  publish_app "$SITE_NODE_PROJECT" "$node"
+  publish_app "$SITE_NODE_APP_PROJECT" "$app"
+  rm -f "$node/web.config" # IIS hosting file of the web SDK
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release -- --repo "$REPO_ROOT" --rid "$RID" \
+    --version "$(app_version)" --product site-node --app "$(dirname "$SITE_NODE_PROJECT")" --out "$node" \
+    --app "$(dirname "$SITE_NODE_APP_PROJECT")" --out "$app" || exit 1
+  out="$(abs_dir "$REPO_ROOT/artifacts/packages")"
+  case "$RID" in
+    win-*)
+      "$DOTNET" build "$(cygpath -w "$REPO_ROOT/packaging/windows/site-node/Oadm.SiteNode.Installer.wixproj")" -c Release --no-incremental \
+        "-p:OadmVersion=$(app_version)" "-p:OadmNodeDir=$(cygpath -w "$node")" "-p:OadmAppDir=$(cygpath -w "$app")" \
+        "-p:OadmPackageDir=$(cygpath -w "$out")" ;;
+    linux-*) bash "$REPO_ROOT/packaging/linux/build-site-node-deb.sh" "$RID" "$(app_version)" "$node" "$app" "$out" ;;
+  esac
+  echo "site node packages written to $out"
+}
+
 # Installer for one platform in artifacts/packages; publishes server and client for the RID first.
 cmd_package() {
   local prefix arch out server client
   require_dotnet
   if [ "$TARGET" = nuget ]; then package_nuget; return; fi
+  if [ "$TARGET" = site-node ]; then package_site_node; return; fi
   case "$TARGET" in windows) prefix=win ;; linux) prefix=linux ;; macos) prefix=osx ;; esac
   case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
   RID="${OPT_RID:-$prefix-$arch}"

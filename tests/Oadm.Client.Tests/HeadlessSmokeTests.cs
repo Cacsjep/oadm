@@ -40,10 +40,18 @@ public static class HeadlessSession
     private static readonly Lazy<HeadlessUnitTestSession> Session = new(() =>
     {
         // OADM_TEST_APPEARANCE=Light renders every headless test (and its screenshots) in the light appearance.
-        Oadm.Client.Themes.Appearance? appearance =
+        Oadm.Theme.Appearance? appearance =
             string.Equals(Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE"), "Light", StringComparison.OrdinalIgnoreCase)
-                ? Oadm.Client.Themes.Appearance.Light : null;
-        App.Options = new AppOptions { UseFake = true, DataFolder = Folder, Appearance = appearance };
+                ? Oadm.Theme.Appearance.Light : null;
+        // The fake server's task simulation runs on a clock that never moves: the sample tasks (a firmware upload in its
+        // "Upload firmware" step, running restarts) stay as seeded however long a busy machine takes to get there.
+        App.Options = new AppOptions
+        {
+            UseFake = true,
+            DataFolder = Folder,
+            Appearance = appearance,
+            FakeSimulationTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(),
+        };
         return HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
     });
 
@@ -70,7 +78,7 @@ public sealed class HeadlessSmokeTests
             var window = new MainWindow { DataContext = vm, Width = 1800, Height = 900 };
             window.Show();
             vm.Start();
-            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Devices.Tasks.Tasks.Count > 0);
+            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 15 && vm.Devices.Tasks.Tasks.Count > 0);
             Capture(window, outDir, "client-fake-headless.png");
 
             // The logged-in user and Log out sit in the title bar, not in the rail.
@@ -144,6 +152,10 @@ public sealed class HeadlessSmokeTests
             panel.CloseCommand.Execute(null);
             Assert.False(panel.IsOpen);
             await PumpUntilAsync(() => true);
+
+            // The built-in pages without a group: Devices, Compliance, then Sites (decision 2026-10-20: not in a group).
+            Assert.Equal(["devices", "compliance", "sites"], vm.NavItems.Take(3).Select(n => n.Key).ToArray());
+            Assert.All(vm.NavItems.Take(3), n => Assert.Null(n.GroupTitle));
 
             // Fake mode is the administrator: every host page is in the bottom group of the rail.
             Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
@@ -338,7 +350,7 @@ public sealed class HeadlessSmokeTests
             return vm.Devices.FilteredDevices.Count;
         }, CancellationToken.None);
 
-        Assert.Equal(12, deviceCount);
+        Assert.Equal(15, deviceCount);
         try
         {
             Directory.Delete(dataFolder, recursive: true);

@@ -50,4 +50,10 @@ public sealed record FakeDevice : IDeviceInfo
 
     /// <inheritdoc />
     public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>The device's site; null = the server's own network.</summary>
+    public Guid? SiteId { get; init; }
+
+    /// <summary>The name of <see cref="SiteId"/>.</summary>
+    public string? SiteName { get; init; }
 }

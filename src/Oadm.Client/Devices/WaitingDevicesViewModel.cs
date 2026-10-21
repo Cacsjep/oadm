@@ -87,6 +87,9 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
 
     public string MacAddress => Device.ExpectedSerial;
 
+    /// <summary>The site the entry is tried through (the import's Site column); empty = everywhere.</summary>
+    public string SiteName => Device.SiteName;
+
     public string TagsText => string.Join("; ", Device.Tags);
 
     public string SourceText => Device.Source;
@@ -104,19 +107,26 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
     /// <summary>The server tries it now (or soon, after Try now): the chip spins like the add page's "Checking...".</summary>
     public bool IsChecking => Device.Checking;
 
-    /// <summary>What the last try found; a failed login waits for Try now.</summary>
+    /// <summary>What the last try found; a failed login and an address that answers through several sites wait for Try now.</summary>
     public string ResultText => Device.Checking ? "Checking..."
         : Device.LoginFailed
-        ? "Login failed: " + Device.LastResult + " Waits for Try now."
+        ? "Login failed: " + Device.LastResult + " " + WaitsForTryNow
+        : Device.Held
+        ? Device.LastResult + " " + WaitsForTryNow
         : Device.LastResult.Length > 0 ? Device.LastResult : "Not tried yet";
 
-    public bool IsLoginFailed => Device.LoginFailed && !Device.Checking;
+    /// <summary>A failed login or an address answering through several sites: not tried again by itself (warning chip).</summary>
+    public bool IsLoginFailed => (Device.LoginFailed || Device.Held) && !Device.Checking;
+
+    /// <summary>The end of a result OADM does not try again by itself.</summary>
+    public const string WaitsForTryNow = "Waits for Try now.";
 
     public bool Matches(string? search) =>
         string.IsNullOrWhiteSpace(search)
         || Address.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
         || MacAddress.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
         || TagsText.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
+        || SiteName.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
         || SourceText.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase);
 }
 
@@ -135,16 +145,20 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
     private readonly List<WaitingRowViewModel> _all = [];
     private CancellationTokenSource? _loading;
 
-    public WaitingDevicesViewModel(IOadmApi api, IDialogService dialogs, WaitingDevicesState state)
+    public WaitingDevicesViewModel(IOadmApi api, IDialogService dialogs, WaitingDevicesState state, bool hasSites = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         _api = api;
         _dialogs = dialogs;
         State = state;
+        ShowSiteColumn = hasSites;
         Selected.CollectionChanged += (_, _) => OnSelectionChanged();
     }
 
     public WaitingDevicesState State { get; }
+
+    /// <summary>The Site column: shown while the server has sites (CLAUDE.md "# Sites", Client: one rule for every Site column).</summary>
+    public bool ShowSiteColumn { get; }
 
     public RangeObservableCollection<WaitingRowViewModel> Rows { get; } = [];
 
@@ -310,15 +324,15 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
         }
     }
 
-    /// <summary>The import's format (Address, Tags; MAC address and the last result for reading). Never a password.</summary>
+    /// <summary>The import's format (Address, Tags, Site; MAC address and the last result for reading). Never a password.</summary>
     public static byte[] WriteCsv(IEnumerable<WaitingRowViewModel> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
         var sb = new StringBuilder();
-        Csv.AppendRecord(sb, ["Address", "Tags", "MAC address", "Last try", "Result"]);
+        Csv.AppendRecord(sb, ["Address", "Tags", "Site", "MAC address", "Last try", "Result"]);
         foreach (WaitingRowViewModel row in rows)
         {
-            Csv.AppendRecord(sb, [row.Address, row.TagsText, row.MacAddress, row.Device.LastTry is null ? "" : row.LastTryText, row.ResultText]);
+            Csv.AppendRecord(sb, [row.Address, row.TagsText, row.SiteName, row.MacAddress, row.Device.LastTry is null ? "" : row.LastTryText, row.ResultText]);
         }
 
         string text = sb.ToString();

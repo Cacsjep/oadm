@@ -41,6 +41,9 @@ public sealed partial class TaskPluginQueries
     /// <summary>Upper bound for one query, including the VAPIX calls. Default 30 s.</summary>
     public TimeSpan Timeout { get; init; } = DefaultTimeout;
 
+    /// <summary>The routes of the devices for <c>ITaskQueryContext.Network</c>; null = the server's own network only.</summary>
+    public Sites.DeviceNetworks? Networks { get; init; }
+
     public async Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(method))
@@ -70,9 +73,20 @@ public sealed partial class TaskPluginQueries
                 throw new TaskQueryException(TaskQueryError.FailedPrecondition, DeviceMessages.CertificateChanged);
             }
 
+            if (device.Status == DeviceStatus.SiteOffline)
+            {
+                throw new TaskQueryException(TaskQueryError.FailedPrecondition, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
+            }
+
+            if (registration.SiteRefusal(device) is { } site)
+            {
+                throw new TaskQueryException(TaskQueryError.FailedPrecondition, site);
+            }
+
             var vapix = await _vapix.CreateAsync(deviceId, token).ConfigureAwait(false);
             var logger = _loggerFactory.CreateLogger("Oadm.Plugins." + registration.Id);
-            return await query.QueryAsync(new QueryContext(vapix, logger, _devices), device, method, payloadJson, token).ConfigureAwait(false);
+            var network = (Networks ?? Sites.DeviceNetworks.Local).For(device);
+            return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network), device, method, payloadJson, token).ConfigureAwait(false);
         }
         catch (TaskQueryException)
         {
@@ -114,13 +128,15 @@ public sealed partial class TaskPluginQueries
     [LoggerMessage(Level = LogLevel.Warning, Message = "Query {Method} of task plugin {PluginId} failed for device {DeviceId}")]
     private partial void LogQueryFailed(Exception ex, string pluginId, string method, Guid deviceId);
 
-    private sealed class QueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices) : ITaskQueryContext
+    private sealed class QueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices, Sdk.Sites.IDeviceNetwork network) : ITaskQueryContext
     {
         public IVapixClient Vapix { get; } = vapix;
 
         public ILogger Logger { get; } = logger;
 
         public IDeviceRepository? Devices { get; } = devices;
+
+        public Sdk.Sites.IDeviceNetwork? Network { get; } = network;
     }
 }
 

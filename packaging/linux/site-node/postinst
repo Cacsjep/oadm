@@ -1,0 +1,46 @@
+#!/bin/sh
+# oadm-site-node postinst: the system user oadm-site-node and its data folder, then enable and (re)start
+# oadm-site-node.service like dh_installsystemd. Works without systemd (containers): the unit is enabled for a later boot.
+set -e
+
+UNIT=oadm-site-node.service
+USER_NAME=oadm-site-node
+DATA=/var/lib/oadm-site-node
+
+if [ "$1" = configure ]; then
+    if ! getent passwd "$USER_NAME" >/dev/null; then
+        useradd --system --user-group --home-dir "$DATA" --no-create-home --shell /usr/sbin/nologin \
+            --comment "OADM Site Node" "$USER_NAME"
+    fi
+    mkdir -p "$DATA"
+    chown "$USER_NAME:$USER_NAME" "$DATA"
+    chmod 0700 "$DATA"
+fi
+
+if [ "$1" = configure ] || [ "$1" = abort-upgrade ] || [ "$1" = abort-deconfigure ] || [ "$1" = abort-remove ]; then
+    if command -v deb-systemd-helper >/dev/null 2>&1; then
+        # Removes only a mask created by deb-systemd-helper on package removal.
+        deb-systemd-helper unmask "$UNIT" >/dev/null || true
+        # was-enabled is true on a first installation, false when the admin disabled the unit.
+        if deb-systemd-helper --quiet was-enabled "$UNIT"; then
+            deb-systemd-helper enable "$UNIT" >/dev/null || true
+        else
+            deb-systemd-helper update-state "$UNIT" >/dev/null || true
+        fi
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        if [ -n "$2" ]; then action=restart; else action=start; fi
+        if command -v deb-systemd-invoke >/dev/null 2>&1; then
+            deb-systemd-invoke "$action" "$UNIT" >/dev/null || true
+        else
+            systemctl "$action" "$UNIT" >/dev/null || true
+        fi
+    else
+        echo "oadm-site-node: systemd is not running; start the node with:"
+        echo "  sudo -u $USER_NAME OADM_SITE_NODE_DATA_DIR=$DATA /opt/oadm/site-node/oadm-site-node"
+    fi
+fi
+
+exit 0

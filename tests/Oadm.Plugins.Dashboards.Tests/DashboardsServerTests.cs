@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Diagnostics;
 using System.Text.Json;
 
+using NSubstitute;
+
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
 
@@ -192,6 +194,24 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Equal("21", host.Plugin.Snapshot(new ValueKey(Types.Temperature, devices[2])).Data["temperature"]);
         Assert.Empty(host.Plugin.Snapshot(new ValueKey(Types.Temperature, devices[3])).Data);
         Assert.Equal("20", host.Plugin.Snapshot(new ValueKey(Types.Temperature, devices[4])).Data["temperature"]);
+    }
+
+    [Fact]
+    public async Task A_value_of_a_device_at_an_offline_site_says_so()
+    {
+        using var host = new PluginHost();
+        var site = Guid.NewGuid();
+        var device = new TestDevice("192.168.0.20", "P3265-V") { SiteId = site };
+        host.Context.Devices.ListAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo>>([device]));
+        var key = new ValueKey(Types.Temperature, device.Id);
+        host.Feed.Publish(Types.Temperature, device.Id, PublishedEventKind.Fired, ("temperature", "41.5"));
+        var siteType = "oadm.site.offline." + site.ToString("N");
+
+        host.Feed.Publish(siteType, null, PublishedEventKind.On, ("site", "Building B"), ("address", "10.1.0.5"));
+        // The devices of the sites are read in the background.
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => host.Plugin.Snapshot(key).Stale == "Site offline: Building B", "the value says Site offline");
+        host.Feed.Publish(siteType, null, PublishedEventKind.Off);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => host.Plugin.Snapshot(key).Stale is null, "the value is fresh again");
     }
 
     [Fact]

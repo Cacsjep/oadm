@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.LiveView.Rtp;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
 
@@ -23,6 +24,12 @@ public sealed record RtspMetadataOptions
     public NetworkCredential? Credentials { get; init; }
 
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The way to the device (CLAUDE.md "# Sites"); the connection opens through <see cref="Router"/>.</summary>
+    public DeviceRoute Route { get; init; }
+
+    /// <summary>Opens the connection on <see cref="Route"/>; default the server's own network only.</summary>
+    public DeviceRouter? Router { get; init; }
 
     /// <summary>Keep-alive interval; null = half the session timeout, at most 10 s.</summary>
     public TimeSpan? KeepAliveInterval { get; init; }
@@ -93,7 +100,7 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
         RtspClient client;
         try
         {
-            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time).ConfigureAwait(false);
+            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time, options.Route, options.Router).ConfigureAwait(false);
         }
         catch (LiveViewException ex)
         {

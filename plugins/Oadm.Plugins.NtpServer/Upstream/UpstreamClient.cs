@@ -130,6 +130,7 @@ public sealed record UpstreamSample(
 /// transmit timestamp as originate (stray, late and spoofed packets are ignored), then it is sanity checked. A fresh
 /// socket per query, so an answer that arrives after the timeout can never be taken for a later query.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The upstream time servers the user chose, not devices.")]
 public static class UpstreamClient
 {
     public static async Task<UpstreamSample> QueryAsync(IPEndPoint server, TimeSpan timeout, TimeProvider time, CancellationToken ct)

@@ -12,6 +12,7 @@ namespace Oadm.Plugins.NtpServer.Tasks;
 /// Contributed task "Use OADM as NTP server": points the device's NTP client at the OADM server address on the interface
 /// the device reaches (static server list = that one address). Steps: Check compatibility, Read NTP settings, Set NTP
 /// server &lt;addr&gt;, Verify NTP settings. The VAPIX requests are the Date and time plugin's (TimePlanner / TimeClient).
+/// A device at a site gets the site node's address (with "Serve at sites"); its host name resolves on its route.
 /// </summary>
 public sealed class UseOadmNtpServerTask : ITaskPlugin
 {
@@ -72,10 +73,10 @@ public sealed class UseOadmNtpServerTask : ITaskPlugin
         }
         else
         {
-            var deviceAddress = await ResolveDeviceAddressAsync(device.Address, ct).ConfigureAwait(false);
+            var deviceAddress = await ResolveDeviceAddressAsync(device.Address, ctx.Network, ct).ConfigureAwait(false);
             (server, problem) = deviceAddress is null
-                ? (null, $"The address {device.Address} cannot be resolved on the server. Nothing was changed.")
-                : service.ServerAddressFor(deviceAddress);
+                ? (null, $"The address {device.Address} cannot be resolved{(device.SiteId is null ? " on the server" : " at the site")}. Nothing was changed.")
+                : await service.ServerAddressForAsync(device, deviceAddress, ctx.Network, ct).ConfigureAwait(false);
         }
 
         var setStep = server is null ? StepSetPrefix : $"{StepSetPrefix} {server}";
@@ -161,8 +162,11 @@ public sealed class UseOadmNtpServerTask : ITaskPlugin
         : settings.NtpServers.Count == 0 ? "No NTP server"
         : "NTP servers " + string.Join(", ", settings.NtpServers);
 
-    /// <summary>The device's IP from its OADM address ("10.0.0.48", "camera.example.com:8443", "[fd00::1]:443").</summary>
-    internal static async Task<IPAddress?> ResolveDeviceAddressAsync(string address, CancellationToken ct)
+    /// <summary>
+    /// The device's IP from its OADM address ("10.0.0.48", "camera.example.com:8443", "[fd00::1]:443"); a host name
+    /// resolves on the device's route (<paramref name="network"/>: its site's node, or the server's own network).
+    /// </summary>
+    internal static async Task<IPAddress?> ResolveDeviceAddressAsync(string address, Sdk.Sites.IDeviceNetwork? network, CancellationToken ct)
     {
         if (IPAddress.TryParse(address, out var ip))
         {
@@ -181,14 +185,12 @@ public sealed class UseOadmNtpServerTask : ITaskPlugin
             return ip;
         }
 
-        try
-        {
-            var addresses = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
-            return addresses.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
-        }
-        catch (System.Net.Sockets.SocketException)
+        if (network is null)
         {
             return null;
         }
+
+        var addresses = await network.ResolveAsync(host, ct).ConfigureAwait(false);
+        return addresses.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? (addresses.Count > 0 ? addresses[0] : null);
     }
 }

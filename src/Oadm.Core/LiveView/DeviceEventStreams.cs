@@ -9,6 +9,7 @@ using Oadm.Core.Devices;
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
+using Oadm.Core.Sites;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Core.LiveView;
@@ -23,7 +24,8 @@ public sealed class DeviceEventStreams(
     DeviceRepository devices,
     CredentialStore credentials,
     ILoggerFactory? loggerFactory = null,
-    ServerSettingsStore? settings = null) : IDeviceEventStreams, IDisposable
+    ServerSettingsStore? settings = null,
+    DeviceRouter? router = null) : IDeviceEventStreams, IDisposable
 {
     public const string RtspPortsKey = "Devices.RtspPorts";
 
@@ -33,10 +35,20 @@ public sealed class DeviceEventStreams(
     /// <summary>RTSP port of the devices without a stored port (tests use a loopback server).</summary>
     public int RtspPort { get; init; } = RtspClient.DefaultPort;
 
-    public async Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct)
+    public Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct) => OpenAsync(deviceId, refuseSiteDevices: false, ct);
+
+    /// <summary>
+    /// <see cref="OpenAsync(Guid, CancellationToken)"/>; with <paramref name="refuseSiteDevices"/> a device at a site is
+    /// refused ("Not available for devices at a site") right after the one read of its row, before any connection.
+    /// </summary>
+    internal async Task<IDeviceEventSource> OpenAsync(Guid deviceId, bool refuseSiteDevices, CancellationToken ct)
     {
         var device = await devices.GetAsync(deviceId, ct).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Device {deviceId} not found.");
+        if (refuseSiteDevices && device.SiteId is not null)
+        {
+            throw new Sdk.Vapix.DeviceNotCompatibleException(Sdk.Sites.SiteTexts.NotAvailableAtSite);
+        }
         var stored = await credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
         var port = await GetRtspPortAsync(deviceId, ct).ConfigureAwait(false) ?? RtspPort;
         return await RtspMetadataSource.OpenAsync(
@@ -45,6 +57,8 @@ public sealed class DeviceEventStreams(
                 Address = device.Address,
                 Port = port,
                 Credentials = stored is null ? null : new NetworkCredential(stored.UserName, stored.Password),
+                Route = DeviceConnections.RouteOf(device),
+                Router = router,
             },
             ct,
             _loggerFactory.CreateLogger<RtspMetadataSource>()).ConfigureAwait(false);

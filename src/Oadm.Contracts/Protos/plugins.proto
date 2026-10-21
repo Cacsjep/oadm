@@ -49,6 +49,15 @@ message PluginPackageInfo {
   string description = 9;
   string group = 10;   // rail group of its core plugin ("Servers", "Monitoring"); "Extensions" without one
   PluginLicenseState license = 11;   // unset or status NOT_REQUIRED: a free plugin
+  string site_support = 12;          // "full", "none" (plugin.json siteSupport; a manifest without it is "none"); empty from older servers
+  repeated PluginSitePort site_ports = 13;   // plugin.json sitePorts: the ports it listens on at sites
+}
+
+// A port a plugin listens on at sites (relays), as plugin.json declares it.
+message PluginSitePort {
+  string protocol = 1;   // "udp", "tcp"
+  int32 port = 2;
+  string reason = 3;     // "NTP server"
 }
 
 // The license of a commercial plugin as the server checked it (Oadm.Sdk.Licensing.PluginLicenseInfo).

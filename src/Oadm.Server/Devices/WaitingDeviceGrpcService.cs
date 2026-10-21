@@ -22,7 +22,8 @@ public sealed class WaitingDeviceGrpcService(
     WaitingDeviceStore store,
     WaitingDeviceRunner runner,
     AuditLog audit,
-    IHostApplicationLifetime lifetime) : Proto.WaitingDeviceService.WaitingDeviceServiceBase
+    IHostApplicationLifetime lifetime,
+    Core.Sites.ISiteStates? sites = null) : Proto.WaitingDeviceService.WaitingDeviceServiceBase
 {
     public const int MaxUserNameLength = 64;
     public const int MaxPasswordLength = 256;
@@ -119,6 +120,12 @@ public sealed class WaitingDeviceGrpcService(
     /// <summary>Checks one line like the import does; a tag that cannot be used is left out.</summary>
     internal static WaitingLine Check(Proto.WaitingLine line)
     {
+        Guid? siteId = null;
+        if (!string.IsNullOrWhiteSpace(line.SiteId))
+        {
+            siteId = Guid.TryParse(line.SiteId, out var site) ? site : throw GrpcGuard.InvalidArgument("The site of a line is not a site id.");
+        }
+
         var address = line.Address.Trim();
         if (address.Length is 0 or > WaitingDeviceStore.MaxAddressLength)
         {
@@ -141,7 +148,7 @@ public sealed class WaitingDeviceGrpcService(
 
         var tags = TagNames.Canonical(line.Tags.Select(t => t.Trim()).Where(t => TagNames.Problem(t) is null)).Take(TagNames.MaxTagsPerDevice).ToList();
         return new WaitingLine(address, serial.Length == 0 ? null : serial, user.Length == 0 ? null : user,
-            line.Password.Length == 0 ? null : line.Password, tags);
+            line.Password.Length == 0 ? null : line.Password, tags, siteId);
     }
 
     private async Task<Proto.WaitingSummary> SummaryAsync(CancellationToken ct)
@@ -175,9 +182,12 @@ public sealed class WaitingDeviceGrpcService(
             Created = Timestamp.FromDateTime(DateTime.SpecifyKind(item.CreatedUtc, DateTimeKind.Utc)),
             LastResult = item.LastResult,
             LoginFailed = item.LoginFailed,
+            Held = item.Held,
             Tries = item.Tries,
             HasLogin = item.HasLogin,
             Checking = runner.IsChecking(item.Id),
+            SiteId = item.SiteId?.ToString() ?? string.Empty,
+            SiteName = item.SiteId is { } site ? sites?.NameOf(site) ?? string.Empty : string.Empty,
         };
         proto.Tags.AddRange(item.Tags);
         if (item.LastTryUtc is { } last)

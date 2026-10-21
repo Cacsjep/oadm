@@ -64,7 +64,7 @@ public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the Time API", device);
+        return TaskSupportReasons.ForStatus(device) ?? TaskSupportReasons.NeedsApi("the Time API", device);
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)

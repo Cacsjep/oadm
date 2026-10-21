@@ -20,8 +20,19 @@ public static class DeviceMessages
         DeviceStatus.CredentialsRequired => "Credentials required",
         DeviceStatus.PasswordNotSet => "Password not set",
         DeviceStatus.CertificateChanged => "Certificate changed",
+        DeviceStatus.SiteOffline => Sites.SiteTexts.SiteOffline(null),
         _ => "Unknown",
     };
+
+    /// <summary>
+    /// The status name of the device grid for one device: like <see cref="StatusText(DeviceStatus)"/>, with the site's name
+    /// for <see cref="DeviceStatus.SiteOffline"/> ("Site offline: Building B").
+    /// </summary>
+    public static string StatusText(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Sites.SiteTexts.SiteOffline(device.SiteName) : StatusText(device.Status);
+    }
 
     /// <summary>
     /// The device presents another certificate than the one OADM pinned. OADM has no accept action: removing the device
@@ -75,18 +86,32 @@ public static class DeviceMessages
     public const string NotAnswering = "Unreachable - the device does not answer";
 
     /// <summary>
-    /// Why a device is not contacted, or null when it may be: a changed certificate, rejected credentials or no password yet
-    /// (nothing is sent to such a device), and with <paramref name="refuseUnreachable"/> a device the polling marked
-    /// Unreachable (a read that only waits for its timeout).
+    /// Why a device is not contacted, or null when it may be: a changed certificate, rejected credentials, no password yet
+    /// or an offline site (nothing is sent to such a device), and with <paramref name="refuseUnreachable"/> a device the
+    /// polling marked Unreachable (a read that only waits for its timeout). Prefer <see cref="Refusal(IDeviceInfo, bool)"/>,
+    /// which names the offline site.
     /// </summary>
     public static string? Refusal(DeviceStatus status, bool refuseUnreachable = false) => status switch
     {
         DeviceStatus.CertificateChanged => CertificateChanged,
         DeviceStatus.CredentialsRequired => CredentialsRequired,
         DeviceStatus.PasswordNotSet => PasswordNotSet,
+        DeviceStatus.SiteOffline => Sites.SiteTexts.SiteOffline(null),
         DeviceStatus.Unreachable when refuseUnreachable => NotAnswering,
         _ => null,
     };
+
+    /// <summary>
+    /// Why <paramref name="device"/> is not contacted, or null when it may be: <see cref="Refusal(DeviceStatus, bool)"/>
+    /// with the site's name for <see cref="DeviceStatus.SiteOffline"/> ("Site offline: Building B").
+    /// </summary>
+    public static string? Refusal(IDeviceInfo device, bool refuseUnreachable = false)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline
+            ? Sites.SiteTexts.SiteOffline(device.SiteName)
+            : Refusal(device.Status, refuseUnreachable);
+    }
 
     /// <summary>"Unreachable - Connection refused" (a trailing period of the detail is removed).</summary>
     public static string Unreachable(string detail)

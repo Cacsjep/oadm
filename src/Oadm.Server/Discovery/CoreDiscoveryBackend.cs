@@ -4,6 +4,7 @@ using System.Net.Sockets;
 
 using Oadm.Core.Discovery;
 using Oadm.Core.Settings;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 using CoreDiscoveryService = Oadm.Core.Discovery.DiscoveryService;
@@ -12,8 +13,17 @@ using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Discovery;
 
 /// <summary><see cref="IDiscoveryBackend"/> over the Core discovery (mDNS browser, range scanner, sessions).</summary>
-public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerSettingsStore settings, VapixProbe probe) : IDiscoveryBackend
+/// <remarks>
+/// Every mode asks everywhere by itself (CLAUDE.md "# Sites", "Discovery, everywhere by itself"): the Core discovery runs
+/// zero-conf and range scans on the server's own network and every online site; an address of "Add manually", an imported
+/// line and a waiting device go to the server's own network and each online site that reaches the address, a host name to
+/// all of them (each resolves it itself).
+/// </remarks>
+public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerSettingsStore settings, VapixProbe probe, RoutedDns? dns = null,
+    ISiteNetwork? sites = null, ISiteStates? states = null) : IDiscoveryBackend
 {
+    private readonly RoutedDns _dns = dns ?? RoutedDns.Local;
+
     /// <summary>How long a host name of "Add manually" may take to resolve.</summary>
     public static readonly TimeSpan ResolveTimeout = TimeSpan.FromSeconds(5);
 
@@ -44,15 +54,14 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         return discovery.StartRangeScan(range!, options);
     }
 
-    public async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct)
+    public async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct, Guid? siteId = null, string? expectedSerial = null)
     {
         if (!EnteredAddress.TryParse(input, out var entered, out var error))
         {
             throw new ArgumentException(error);
         }
 
-        var ip = await ResolveAsync(entered!.Host, ct).ConfigureAwait(false);
-        string[]? schemes = entered.Scheme is null ? null : [entered.Scheme];
+        string[]? schemes = entered!.Scheme is null ? null : [entered.Scheme];
         TimeSpan? timeout = null;
         if (importLine)
         {
@@ -60,11 +69,45 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
             timeout = TimeSpan.FromMilliseconds(current.ScanTimeoutMs);
         }
 
-        return discovery.StartAddressProbe(entered.DeviceAddress, async token =>
+        // Where to probe: the chosen site only, else the server's own network and every online site that reaches the
+        // address (a name: every online site, each resolves it on its own DNS).
+        var literal = IPAddress.TryParse(entered.Host, out var typed) ? typed : null;
+        List<DeviceRoute> routes;
+        if (siteId is { } site)
         {
-            var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes, timeout).ConfigureAwait(false);
-            return result is null ? null : ToDiscovery(result, ip);
-        });
+            if (sites is null || !sites.OnlineSites().Contains(site))
+            {
+                // The line's site is offline: nothing answers there now ("Site offline: Building B"); the line can wait.
+                var offline = SiteException.For(site, states?.NameOf(site) ?? site.ToString(), SiteProblem.Offline);
+                return discovery.StartAddressProbe(entered.DeviceAddress, [new RouteProbe(DeviceRoute.ViaSite(site), _ => throw offline)], expectedSerial);
+            }
+
+            routes = [DeviceRoute.ViaSite(site)];
+        }
+        else
+        {
+            routes = [DeviceRoute.Local];
+            if (sites is not null)
+            {
+                routes.AddRange(sites.OnlineSites().Where(s => literal is null || sites.Reaches(s, literal)).Select(DeviceRoute.ViaSite));
+            }
+        }
+
+        // Names resolve on each route before the session starts: a name no route knows is the line's problem as before.
+        var resolved = await Task.WhenAll(routes.Select(async route => (Route: route, Address: literal ?? await TryResolveAsync(route, entered.Host, ct).ConfigureAwait(false))))
+            .ConfigureAwait(false);
+        var usable = resolved.Where(r => r.Address is not null).ToList();
+        if (usable.Count == 0)
+        {
+            throw new ArgumentException($"The host name '{entered.Host}' could not be resolved.");
+        }
+
+        var probes = usable.Select(r => new RouteProbe(r.Route, async token =>
+        {
+            var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes, timeout, r.Route).ConfigureAwait(false);
+            return result is null ? null : ToDiscovery(result, r.Address!);
+        })).ToList();
+        return discovery.StartAddressProbe(entered.DeviceAddress, probes, expectedSerial);
     }
 
     public IAsyncEnumerable<DiscoveryEvent> WatchAsync(string sessionId, CancellationToken ct) =>
@@ -104,25 +147,19 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         !result.AuthenticationRequired,
         result.ProductType);
 
-    private static async Task<IPAddress> ResolveAsync(string host, CancellationToken ct)
+    /// <summary>The first address of <paramref name="host"/> on <paramref name="route"/> (IPv4 first); null when that route does not know it.</summary>
+    private async Task<IPAddress?> TryResolveAsync(DeviceRoute route, string host, CancellationToken ct)
     {
-        if (IPAddress.TryParse(host, out var ip))
-        {
-            return ip;
-        }
-
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(ResolveTimeout);
         try
         {
-            var addresses = await Dns.GetHostAddressesAsync(host, timeout.Token).ConfigureAwait(false);
-            return addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
-                ?? addresses.FirstOrDefault()
-                ?? throw new ArgumentException($"The host name '{host}' has no address.");
+            var addresses = await _dns.ResolveAsync(route, host, timeout.Token).ConfigureAwait(false);
+            return addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
         }
-        catch (Exception ex) when (ex is SocketException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex) when (ex is SocketException or SiteException or ArgumentException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
         {
-            throw new ArgumentException($"The host name '{host}' could not be resolved.", ex);
+            return null;
         }
     }
 

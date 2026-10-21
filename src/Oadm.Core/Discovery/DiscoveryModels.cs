@@ -86,6 +86,59 @@ public sealed record DiscoveredDevice(
 {
     /// <summary>The address to connect to: the entered one (may carry a port or host name), else the IP.</summary>
     public string ConnectAddress => EnteredAddress ?? Address.ToString();
+
+    /// <summary>Where the device answered: the server's own network (default) or a site. Every connection to it uses this route.</summary>
+    public Sites.DeviceRoute Route { get; init; }
+
+    /// <summary>
+    /// The other routes the same device (MAC address) answered through in the session (CLAUDE.md "# Sites", "Discovery,
+    /// everywhere by itself"): the row shows <see cref="Route"/>, its tooltip names these.
+    /// </summary>
+    public DeviceRoutes OtherRoutes { get; init; } = DeviceRoutes.Empty;
+}
+
+/// <summary>A set of routes with value equality (a discovered device's other routes), in a stable order.</summary>
+public sealed class DeviceRoutes : IEquatable<DeviceRoutes>
+{
+    private readonly Sites.DeviceRoute[] _routes;
+
+    private DeviceRoutes(Sites.DeviceRoute[] routes)
+    {
+        _routes = routes;
+    }
+
+    public static DeviceRoutes Empty { get; } = new([]);
+
+    public IReadOnlyList<Sites.DeviceRoute> Items => _routes;
+
+    public int Count => _routes.Length;
+
+    public bool Contains(Sites.DeviceRoute route) => Array.IndexOf(_routes, route) >= 0;
+
+    /// <summary>This set with <paramref name="route"/> (the server's own network first, then the sites by id).</summary>
+    public DeviceRoutes With(Sites.DeviceRoute route) =>
+        Contains(route) ? this : new([.. _routes.Append(route).OrderBy(r => r.SiteId ?? Guid.Empty)]);
+
+    /// <summary>This set without <paramref name="route"/>.</summary>
+    public DeviceRoutes Without(Sites.DeviceRoute route) =>
+        Contains(route) ? new([.. _routes.Where(r => r != route)]) : this;
+
+    public bool Equals(DeviceRoutes? other) => other is not null && _routes.AsSpan().SequenceEqual(other._routes);
+
+    public override bool Equals(object? obj) => Equals(obj as DeviceRoutes);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var route in _routes)
+        {
+            hash.Add(route);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    public override string ToString() => string.Join(", ", _routes);
 }
 
 /// <summary>Kind of discovery session.</summary>
@@ -108,4 +161,17 @@ public sealed record DiscoverySession(string Id, DiscoverySessionKind Kind);
 /// <param name="Device">New or changed device, null for pure progress events.</param>
 /// <param name="ProgressPercent">Range scan progress 0-100; 0 for zero-conf sessions.</param>
 /// <param name="Finished">True on the final event of a range scan session.</param>
-public sealed record DiscoveryEvent(DiscoveredDevice? Device, int ProgressPercent, bool Finished);
+public sealed record DiscoveryEvent(DiscoveredDevice? Device, int ProgressPercent, bool Finished)
+{
+    /// <summary>
+    /// The final event of an address probe that found nothing: why, when a site said so ("Port 8443 is not allowed at
+    /// Building B. Allow it in the OADM Site Node app."); null = nothing answered.
+    /// </summary>
+    public string? Problem { get; init; }
+}
+
+/// <summary>One route of an address probe: where it probes and how (the caller resolves names and knows ports and schemes).</summary>
+/// <param name="Route">The server's own network or a site.</param>
+/// <param name="Probe">The anonymous probe on that route; null result = nothing answered. A <see cref="Sites.SiteException"/>
+/// is the site's problem (offline, port not allowed), never "no device".</param>
+public sealed record RouteProbe(Sites.DeviceRoute Route, Func<CancellationToken, Task<DeviceProbeResult?>> Probe);

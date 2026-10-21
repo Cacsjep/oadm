@@ -52,6 +52,7 @@ public sealed partial class FakeOadmApi
                 DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
                 DeviceStatus.CertificateChanged => "Certificate changed. Remove the device and add it again to trust the new certificate.",
                 DeviceStatus.Unreachable => "Unreachable - the device does not answer",
+                DeviceStatus.SiteOffline => FakeSiteOfflineText(d),
                 _ => null,
             };
             if (refusal is not null)

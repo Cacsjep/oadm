@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.LiveView.Rtp;
+using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 
 namespace Oadm.Core.LiveView.Rtsp;
@@ -38,6 +39,12 @@ public sealed record RtspSourceOptions
     public int Camera { get; init; } = 1;
 
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The way to the device (CLAUDE.md "# Sites"); the connection opens through <see cref="Router"/>.</summary>
+    public DeviceRoute Route { get; init; }
+
+    /// <summary>Opens the connection on <see cref="Route"/>; default the server's own network only.</summary>
+    public DeviceRouter? Router { get; init; }
 
     /// <summary>Longest gap between packets before the stream counts as dead.</summary>
     public TimeSpan DataTimeout { get; init; } = TimeSpan.FromSeconds(10);
@@ -96,7 +103,7 @@ public sealed partial class RtspVideoSource : ILiveVideoSource
         logger ??= NullLogger.Instance;
         var url = BuildUrl(options);
         var connectHost = VapixClient.BuildBaseAddress(Uri.UriSchemeHttp, options.Address).DnsSafeHost;
-        var client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct).ConfigureAwait(false);
+        var client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, route: options.Route, router: options.Router).ConfigureAwait(false);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);

@@ -47,13 +47,13 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status) is null;
+        return TaskSupportReasons.ForStatus(device) is null;
     }
 
     public string? NotSupportedReason(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return TaskSupportReasons.ForStatus(device.Status);
+        return TaskSupportReasons.ForStatus(device);
     }
 
     public string GetTaskName(string? payloadJson)

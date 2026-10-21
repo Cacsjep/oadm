@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The OADM Site Node app (CLAUDE.md "# Sites", "App"): the node's window next to the headless service. It talks to the
+       service over the local channel only; changes run through an elevated copy of itself (UAC / pkexec). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>oadm-site-node-app</AssemblyName>
+    <RootNamespace>Oadm.SiteNode.App</RootNamespace>
+    <ApplicationIcon>..\..\packaging\icons\oadm.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\packaging\icons\oadm-256.png" Link="Assets\oadm-256.png" />
+    <AvaloniaResource Include="..\..\packaging\icons\oadm.ico" Link="Assets\oadm.ico" />
+    <EmbeddedResource Include="..\..\TERMS.md" LogicalName="Oadm.SiteNode.App.TERMS.md" Link="TERMS.md" />
+    <EmbeddedResource Include="..\..\LICENSE" LogicalName="Oadm.SiteNode.App.LICENSE" Link="LICENSE" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Oadm.Theme\Oadm.Theme.csproj" />
+    <ProjectReference Include="..\Oadm.SiteNode.Admin\Oadm.SiteNode.Admin.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.SiteNode.App.Tests" />
+  </ItemGroup>
+</Project>

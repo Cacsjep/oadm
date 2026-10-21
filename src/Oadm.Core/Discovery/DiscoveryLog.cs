@@ -39,4 +39,7 @@ internal static partial class DiscoveryLog
 
     [LoggerMessage(EventId = 4022, Level = LogLevel.Warning, Message = "Discovery session {SessionId} failed")]
     public static partial void SessionFailed(ILogger logger, Exception exception, string sessionId);
+
+    [LoggerMessage(EventId = 4023, Level = LogLevel.Information, Message = "Discovery session {SessionId}: a site was skipped: {Reason}")]
+    public static partial void SiteSkipped(ILogger logger, string sessionId, string reason);
 }

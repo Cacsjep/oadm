@@ -53,7 +53,21 @@ public sealed record NtpConfig
 
     /// <summary>Optional upstream host name or address (host[:port]); null or empty = server clock only.</summary>
     public string? Upstream { get; init; }
+
+    /// <summary>"Serve at sites": the site nodes relay UDP 123 to this server while it is enabled.</summary>
+    public bool ServeAtSites { get; init; }
+
+    /// <summary>With <see cref="ServeAtSites"/>: the sites served; empty = every site (also sites bound later).</summary>
+    public IReadOnlyList<Guid> ServeSites { get; init; } = [];
+
+    /// <summary>True when the server serves at <paramref name="siteId"/> (enabled aside).</summary>
+    public bool Serves(Guid siteId) => ServeAtSites && (ServeSites.Count == 0 || ServeSites.Contains(siteId));
 }
+
+/// <summary>A bound site the page can choose.</summary>
+/// <param name="Id">The site.</param>
+/// <param name="Name">Its name.</param>
+public sealed record SiteChoice(Guid Id, string Name);
 
 /// <summary>One answered or limited request.</summary>
 /// <param name="Seq">Increasing number (newest = largest).</param>
@@ -61,7 +75,9 @@ public sealed record NtpConfig
 /// <param name="Client">Client IP address.</param>
 /// <param name="OffsetMilliseconds">Client clock minus server clock (from the client's transmit timestamp), null when unknown.</param>
 /// <param name="Result">"Answered" or "Rate limited".</param>
-public sealed record RequestEntry(long Seq, DateTime TimeUtc, string Client, double? OffsetMilliseconds, string Result)
+/// <param name="SiteId">The site the request came through; null on the server's own network.</param>
+/// <param name="Site">The name of that site.</param>
+public sealed record RequestEntry(long Seq, DateTime TimeUtc, string Client, double? OffsetMilliseconds, string Result, Guid? SiteId = null, string? Site = null)
 {
     public const string Answered = "Answered";
     public const string RateLimited = "Rate limited";
@@ -94,9 +110,29 @@ public sealed record NtpState
     public int Stratum { get; init; }
 
     public int Port { get; init; }
+
+    /// <summary>The server has sites (bound site nodes): the page offers "Serve at sites".</summary>
+    public bool HasSites { get; init; }
+
+    /// <summary>With "Serve at sites": the relay of every site, by site name.</summary>
+    public IReadOnlyList<SiteServing> Sites { get; init; } = [];
+
+    /// <summary>Every bound site, by name: the choices of "Serve at sites".</summary>
+    public IReadOnlyList<SiteChoice> SiteChoices { get; init; } = [];
 }
 
-public sealed record SaveRequest(bool Enabled, string? InterfaceId, string? Upstream);
+/// <summary>The NTP relay of one site.</summary>
+/// <param name="SiteId">The site.</param>
+/// <param name="Text">"NTP at Building B: running", "NTP at Building B: waiting for approval in the OADM Site Node app".</param>
+/// <param name="Running">The site's devices reach the NTP server now.</param>
+public sealed record SiteServing(Guid SiteId, string Text, bool Running);
+
+/// <param name="Enabled">Serve the time.</param>
+/// <param name="InterfaceId">The interface on this server.</param>
+/// <param name="Upstream">The optional upstream server.</param>
+/// <param name="ServeAtSites">Serve the devices at sites too, through their site nodes.</param>
+/// <param name="ServeSites">With <paramref name="ServeAtSites"/>: the sites; null or empty = every site.</param>
+public sealed record SaveRequest(bool Enabled, string? InterfaceId, string? Upstream, bool ServeAtSites = false, IReadOnlyList<Guid>? ServeSites = null);
 
 /// <param name="Saved">False when the upstream did not validate (nothing changed).</param>
 /// <param name="UpstreamError">Shown under the upstream field.</param>

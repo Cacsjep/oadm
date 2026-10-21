@@ -79,6 +79,9 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
     /// </summary>
     internal static string? RefusalFor(DeviceStatus status) => DeviceMessages.Refusal(status, refuseUnreachable: true);
 
+    /// <summary>Why <paramref name="device"/> is not contacted ("Site offline: Building B" while its site is offline).</summary>
+    internal static string? RefusalFor(IDeviceInfo device) => DeviceMessages.Refusal(device, refuseUnreachable: true);
+
     /// <summary>A short user text for a failed session.</summary>
     internal static string Describe(Exception ex, TimeSpan timeout) => ex switch
     {
@@ -126,7 +129,7 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                     continue;
                 }
 
-                var refusal = RefusalFor(device.Status)
+                var refusal = RefusalFor(device)
                     ?? (device.Apis.Count > 0 && !device.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion) ? DeviceTriggersPluginInfo.NotSupportedReason : null);
                 if (refusal is not null)
                 {

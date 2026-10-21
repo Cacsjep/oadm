@@ -26,6 +26,12 @@ public enum WaitingOutcomeKind
     /// <summary>The device answered but rejected every login: waits for Try now (no repeated wrong passwords).</summary>
     LoginFailed,
 
+    /// <summary>
+    /// The address answers through several sites with different devices OADM does not manage: which one is meant is not
+    /// known, so it waits for Try now (or for the line kept again with a Site column).
+    /// </summary>
+    Held,
+
     /// <summary>The entry was removed or kept again while it was tried: nothing is added or written back.</summary>
     Changed,
 }
@@ -43,7 +49,9 @@ public sealed record WaitingOutcome(WaitingOutcomeKind Kind, string Message);
 /// login limit) and is stored by <see cref="DeviceAdder"/> like an add from the page: with the login that worked, or as
 /// Password not set for a factory-default device, and only while its entry is still the one the round read (a removed
 /// entry is never added). Added devices get the line's tags, a first full refresh and the audit entry "Device added
-/// automatically". Entries whose device OADM manages by now are removed before each round.
+/// automatically". Entries whose device OADM manages by now are removed before each round. Entries of a site that is not
+/// online are left alone (not tried, nothing written: they keep their last result) until it is back; entries of a site
+/// that no longer exists are removed.
 /// </summary>
 public sealed partial class WaitingDeviceRunner(
     WaitingDeviceStore store,
@@ -56,7 +64,8 @@ public sealed partial class WaitingDeviceRunner(
     DevicePollingService polling,
     AuditLog audit,
     TimeProvider time,
-    ILogger<WaitingDeviceRunner> logger) : BackgroundService
+    ILogger<WaitingDeviceRunner> logger,
+    Core.Sites.ISiteStates? sites = null) : BackgroundService
 {
     /// <summary>Waiting devices tried at the same time (the logins are limited by the authenticator as well).</summary>
     public const int Parallelism = 32;
@@ -211,15 +220,16 @@ public sealed partial class WaitingDeviceRunner(
             {
                 // Devices added another way meanwhile leave the list without a try (read only while something waits;
                 // every entry, also failed logins, by address as a device stores it or by the expected MAC address).
+                // Per route (CLAUDE.md "# Sites", "Overlapping networks"): an entry of a site compares with that site's devices.
                 var managed = await devices.ListAddressesAsync(ct).ConfigureAwait(false);
-                var gone = await store.RemoveManagedAsync(
-                    managed.Select(d => WaitingDeviceStore.Normalize(d.Address)).ToHashSet(StringComparer.Ordinal),
-                    managed.Select(d => d.Serial).ToHashSet(StringComparer.Ordinal), ct).ConfigureAwait(false);
+                var gone = await store.RemoveManagedAsync(managed, ct).ConfigureAwait(false);
                 if (gone.Count > 0)
                 {
                     var removed = gone.ToHashSet();
                     entries = [.. entries.Where(e => !removed.Contains(e.Id))];
                 }
+
+                entries = await LeaveOfflineSitesAsync(entries, ct).ConfigureAwait(false);
             }
 
             foreach (var entry in entries)
@@ -285,7 +295,8 @@ public sealed partial class WaitingDeviceRunner(
                     case WaitingOutcomeKind.Changed:
                         break; // removed or kept again meanwhile: nothing to write
                     default:
-                        results.Enqueue(new WaitingResult(entry.Id, entry.Kept, outcome.Message, outcome.Kind == WaitingOutcomeKind.LoginFailed));
+                        results.Enqueue(new WaitingResult(entry.Id, entry.Kept, outcome.Message,
+                            outcome.Kind == WaitingOutcomeKind.LoginFailed, outcome.Kind == WaitingOutcomeKind.Held));
                         break;
                 }
 
@@ -314,6 +325,40 @@ public sealed partial class WaitingDeviceRunner(
         }
     }
 
+    /// <summary>
+    /// The entries a round tries: those of a site that is not online stay as they are (no try, no "Checking", no result
+    /// written: an offline site is no news about the device); those of a site that no longer exists are removed.
+    /// </summary>
+    private async Task<IReadOnlyList<WaitingTry>> LeaveOfflineSitesAsync(IReadOnlyList<WaitingTry> entries, CancellationToken ct)
+    {
+        if (sites is null || entries.All(e => e.SiteId is null))
+        {
+            return entries;
+        }
+
+        var keep = new List<WaitingTry>(entries.Count);
+        var orphans = new List<Guid>();
+        foreach (var entry in entries)
+        {
+            if (entry.SiteId is not { } site || sites.IsOnline(site))
+            {
+                keep.Add(entry);
+            }
+            else if (sites.NameOf(site) is null && !sites.IsStarting(site))
+            {
+                orphans.Add(entry.Id); // the site was removed (or a removed site's tombstone): nothing will reach it
+            }
+        }
+
+        if (orphans.Count > 0)
+        {
+            await store.RemoveAsync(orphans, all: false, ct).ConfigureAwait(false);
+            LogSiteGone(orphans.Count);
+        }
+
+        return keep;
+    }
+
     /// <summary>One try of one waiting device. Never throws (one entry's failure must not end the round for the others).</summary>
     public async Task<WaitingOutcome> TryOneAsync(WaitingTry entry, CancellationToken ct)
     {
@@ -321,8 +366,9 @@ public sealed partial class WaitingDeviceRunner(
         string session;
         try
         {
-            // The normal first contact: the import's short one is for the page's speed; a retry has time.
-            session = (await discovery.StartAddressProbeAsync(entry.Address, importLine: false, ct).ConfigureAwait(false)).Id;
+            // The normal first contact: the import's short one is for the page's speed; a retry has time. Through the entry's
+            // site only, else the server's own network and every online site that reaches the address.
+            session = (await discovery.StartAddressProbeAsync(entry.Address, importLine: false, ct, entry.SiteId, entry.ExpectedSerial).ConfigureAwait(false)).Id;
         }
         catch (ArgumentException ex)
         {
@@ -346,27 +392,51 @@ public sealed partial class WaitingDeviceRunner(
                 authenticator.AddSessionCredential(session, login.UserName, login.Password);
             }
 
-            DiscoveredDevice? found = null;
+            // Every device the address answers with, per MAC address (several routes may answer with different devices).
+            var answers = new Dictionary<string, DiscoveredDevice>(StringComparer.OrdinalIgnoreCase);
+            string? problem = null;
             await foreach (var e in discovery.WatchAsync(session, ct).ConfigureAwait(false))
             {
-                if (e.Device is not { } device)
+                if (e.Device is { } device)
                 {
-                    continue;
+                    answers[device.Serial] = device;
                 }
-
-                found = device;
-                if (await devices.FindBySerialAsync(device.Serial, ct).ConfigureAwait(false) is not null)
+                else if (e.Finished)
                 {
-                    return new WaitingOutcome(WaitingOutcomeKind.AlreadyManaged, $"{device.Serial} is managed already.");
+                    problem = e.Problem;
                 }
-
-                authenticator.Ensure(session, device, alreadyManaged: false);
             }
 
-            if (found is null)
+            if (answers.Count == 0)
             {
-                return new WaitingOutcome(WaitingOutcomeKind.StillWaiting, $"No Axis device answered at {entry.Address}.");
+                return new WaitingOutcome(WaitingOutcomeKind.StillWaiting, problem ?? $"No Axis device answered at {entry.Address}.");
             }
+
+            var notManaged = new List<DiscoveredDevice>();
+            foreach (var device in answers.Values)
+            {
+                if (await devices.FindBySerialAsync(device.Serial, ct).ConfigureAwait(false) is null)
+                {
+                    notManaged.Add(device);
+                }
+            }
+
+            if (notManaged.Count == 0)
+            {
+                return new WaitingOutcome(WaitingOutcomeKind.AlreadyManaged, $"{string.Join(", ", answers.Keys)} is managed already.");
+            }
+
+            if (notManaged.Count > 1)
+            {
+                // Different devices OADM does not manage at this address through several sites: which one is meant is not
+                // known. Tried again only with Try now (never every round), or kept again with a Site column.
+                return new WaitingOutcome(WaitingOutcomeKind.Held, AnswersThrough(notManaged));
+            }
+
+            // Exactly one device it does not manage yet (the others answering are managed): that one is meant.
+
+            var found = notManaged[0];
+            authenticator.Ensure(session, found, alreadyManaged: false);
 
             await authenticator.WhenIdleAsync(session, ct).ConfigureAwait(false);
             var auth = authenticator.Get(session, found.Serial);
@@ -438,12 +508,21 @@ public sealed partial class WaitingDeviceRunner(
         {
             SdkDeviceStatus.PasswordNotSet => "Added; the device has no password yet (factory default).",
             SdkDeviceStatus.Ok or SdkDeviceStatus.Unknown => "Added and logged in as " + (credentials?.UserName ?? "-") + ".",
+            SdkDeviceStatus.SiteOffline => "Added; " + Sdk.Sites.SiteTexts.SiteOffline(null) + ".",
             _ => "Added; the login no longer works on it.",
         };
         LogAdded(found.Serial, found.ConnectAddress, entry.Source);
         await audit.WriteAsync("system", string.Empty, AuditActions.DeviceAddedAutomatically, $"{found.ConnectAddress} ({found.Serial})",
             $"{entry.Source} (waiting list, kept by {entry.AddedBy}): {message}", ct).ConfigureAwait(false);
         return new WaitingOutcome(WaitingOutcomeKind.Added, message);
+    }
+
+    /// <summary>"Answers through Building A and Building B." (the server's own network is "this server").</summary>
+    internal string AnswersThrough(IEnumerable<DiscoveredDevice> found)
+    {
+        var names = found.Select(d => d.Route.SiteId is { } site ? sites?.NameOf(site) ?? site.ToString() : Contracts.Sites.SiteDiscoveryTexts.ThisServer)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+        return Contracts.Sites.SiteDiscoveryTexts.AnswersThrough(names);
     }
 
     /// <summary>Devices.WaitingRetryMinutes; the default when the setting cannot be read (a failure here never ends the loop,
@@ -499,6 +578,9 @@ public sealed partial class WaitingDeviceRunner(
         _wake.Dispose();
         base.Dispose();
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Waiting list: {Count} entries of removed sites removed")]
+    private partial void LogSiteGone(int count);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Waiting list: {Tried} devices tried, {Added} added")]
     private partial void LogRound(int tried, int added);

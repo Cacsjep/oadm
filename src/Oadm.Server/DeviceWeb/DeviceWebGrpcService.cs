@@ -71,7 +71,7 @@ public sealed partial class DeviceWebGrpcService(
         var id = GrpcGuard.ParseId(request.DeviceId, "device id");
         var ct = context.CancellationToken;
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
-        if (Refusal(device.Status) is { } refusal)
+        if (Refusal(device) is { } refusal)
         {
             return new Proto.OpenDeviceWebReply { Ok = false, Message = refusal };
         }
@@ -113,8 +113,16 @@ public sealed partial class DeviceWebGrpcService(
         DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
         DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
+        DeviceStatus.SiteOffline => Sdk.Sites.SiteTexts.SiteOffline(null),
         _ => null,
     };
+
+    /// <summary>Why the web interface of <paramref name="device"/> cannot be opened ("Site offline: Building B"); null when it can.</summary>
+    public static string? Refusal(Sdk.Devices.IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Status == DeviceStatus.SiteOffline ? Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : Refusal(device.Status);
+    }
 
     public override async Task Exchange(IAsyncStreamReader<Proto.DeviceWebFrame> requestStream, IServerStreamWriter<Proto.DeviceWebFrame> responseStream, ServerCallContext context)
     {
@@ -137,7 +145,7 @@ public sealed partial class DeviceWebGrpcService(
         RequirePluginOn();
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
         // Refused statuses are not contacted: a rejected login would be sent again with every request of the page.
-        if (Refusal(device.Status) is { } refusal)
+        if (Refusal(device) is { } refusal)
         {
             throw GrpcGuard.FailedPrecondition(refusal);
         }
@@ -172,6 +180,9 @@ public sealed partial class DeviceWebGrpcService(
             var request = new HttpRequestMessage(new HttpMethod(head.Method), new Uri(head.PathAndQuery, UriKind.Relative));
             request.Options.Set(VapixRequestOptions.Timeout, RequestTimeout);
             request.Options.Set(VapixRequestOptions.StreamResponse, true);
+            // A page, an MJPEG stream or a long poll never holds a large-transfer slot of a site; an upload through the web
+            // interface (a large body) still takes one.
+            request.Options.Set(VapixClient.RelayedOption, true);
             if (body is not null)
             {
                 body.Position = 0;
@@ -632,6 +643,8 @@ public sealed partial class DeviceWebGrpcService(
     /// <summary>The shared device texts for a request that did not reach the device.</summary>
     internal static string ErrorText(Exception ex) => ex switch
     {
+        // A site that could not carry the request says so ("Site offline: Building B"), never "Unreachable".
+        _ when Core.Sites.SiteErrors.Find(ex) is { } site => site.Message,
         CertificateChangedException => DeviceMessages.CertificateChanged,
         VapixAuthenticationException => DeviceMessages.Unauthorized,
         TaskCanceledException { InnerException: TimeoutException } => DeviceMessages.TimedOut,

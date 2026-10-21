@@ -1,0 +1,94 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// Sites: remote networks the server reaches through an OADM Site Node (CLAUDE.md "# Sites"). The Sites page lists the bound
+// sites and the nodes waiting to be bound. Reading needs "See sites" (sites.view); everything that changes a site is
+// Administrator only.
+service SiteService {
+  rpc ListSites (Empty) returns (SiteList);
+  // The list on subscribe and after every change (state, counts, round trip), at most every second.
+  rpc WatchSites (Empty) returns (stream SiteList);
+  // Administrator: turns the site listener on or off (setting Sites.Accept) without a restart. Off closes every node
+  // connection. Site nodes always connect to the server; the server never connects to a node.
+  rpc SetAccept (SetAcceptRequest) returns (SiteList);
+  // Administrator. INVALID_ARGUMENT for a bad name or a wrong pairing code ("The pairing code is wrong."), ALREADY_EXISTS
+  // for a node id or key the server knows ("This site node is a copy of X. Click Reset on the copy."),
+  // FAILED_PRECONDITION while binding is closed on the node, RESOURCE_EXHAUSTED over 100 sites or after 5 wrong codes.
+  rpc BindSite (BindSiteRequest) returns (Site);
+  rpc RenameSite (RenameSiteRequest) returns (Site);
+  // Moves every device of a site to another bound site after checking each one there. Reply: the devices that stayed.
+  rpc ReplaceSite (ReplaceSiteRequest) returns (ReplaceSiteReply);
+  rpc RemoveSite (RemoveSiteRequest) returns (RemoveSiteReply);
+}
+
+enum SiteState {
+  SITE_STATE_UNSPECIFIED = 0;
+  SITE_STATE_ONLINE = 1;
+  SITE_STATE_OFFLINE = 2;
+  SITE_STATE_NOT_BOUND = 3;        // the node was reset or forgot the server
+  SITE_STATE_WAITING = 4;          // a node that connected and waits to be bound (not a site yet)
+  SITE_STATE_BOUND_ELSEWHERE = 5;  // a connected node bound to another server (greyed)
+  SITE_STATE_BINDING_CLOSED = 6;   // a connected node with binding closed (greyed)
+  SITE_STATE_REMOVED = 7;          // removed with Keep devices: listed while it still has devices (Replace with, Remove devices)
+}
+
+message Site {
+  string id = 1;                   // Guid; for a waiting node empty (use node_id)
+  string name = 2;
+  SiteState state = 3;
+  reserved 4, 7;                   // mode and node_port: site nodes always connect to the server
+  string node_id = 5;
+  string node_address = 6;         // where the node last connected from
+  string version = 8;
+  bool update_available = 9;
+  int32 device_count = 10;
+  int32 round_trip_ms = 11;        // 0 = not measured
+  int32 short_connections = 12;
+  int32 permanent_connections = 13;
+  int32 ports_waiting = 14;        // ports asked for and not allowed in the node app yet
+  int32 large_transfers = 15;
+  google.protobuf.Timestamp last_seen = 16;
+  google.protobuf.Timestamp bound = 17;
+  string message = 18;             // plain text of the state ("Site node too old. Update it.")
+  string node_fingerprint = 19;    // hex SHA-256 of the node's key
+}
+
+message SiteList {
+  repeated Site sites = 1;         // bound sites by name, then waiting nodes
+  bool accept = 2;                 // Accept site nodes
+  string listen_address = 3;       // what to type in the node app ("10.0.0.5:5081")
+}
+
+message SetAcceptRequest { bool accept = 1; }
+
+message BindSiteRequest {
+  string node_id = 1;
+  string name = 2;
+  string pairing_code = 3;         // 8 characters, Crockford base32; case and dashes ignored
+  // Site.node_fingerprint of the waiting node: waiting nodes are kept by their key, never by the id they report. Empty
+  // (older clients): the one waiting node with node_id; refused when several report it.
+  string node_fingerprint = 4;
+}
+
+message RenameSiteRequest { string id = 1; string name = 2; }
+
+message ReplaceSiteRequest { string id = 1; string new_site_id = 2; }
+
+message ReplaceSiteReply {
+  int32 moved = 1;
+  repeated string stayed_device_ids = 2;   // did not answer through the new site
+}
+
+message RemoveSiteRequest {
+  string id = 1;
+  bool keep_devices = 2;           // keep them as Site offline; else removed with credentials and tags. A removed site
+                                   // (SITE_STATE_REMOVED) takes only keep_devices = false: its devices are removed.
+}
+
+message RemoveSiteReply {
+  bool node_answered = 1;          // false: "The site node did not answer. Reset it in the OADM Site Node app."
+  int32 devices_removed = 2;
+}

@@ -15,6 +15,7 @@ namespace Oadm.Plugins.Notifications;
 /// with "Allow untrusted certificates". "Wait for an answer" reads what the other side sends back and, with "Answer must
 /// contain", fails when that text does not come. Runs once per rule edge, no device.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The user's own servers on the server's network, not devices.")]
 public sealed class SendTcpAction : IActionPlugin
 {
     public const string ActionId = "oadm.notifications.tcp";

@@ -16,6 +16,12 @@ public partial class WaitingDevicesWindow : Window
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
+        // A grid column is not in the tree: no binding to the view model.
+        foreach (DataGridColumn column in WaitingGrid.Columns.Where(c => Equals(c.Header, "Site")))
+        {
+            column.IsVisible = viewModel.ShowSiteColumn;
+        }
+
         viewModel.CloseRequested += (_, _) => Close();
         EventHandler roundEnded = (_, _) => viewModel.OnRoundEnded();
         EventHandler roundStarted = (_, _) => viewModel.OnRoundStarted();

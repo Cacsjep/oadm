@@ -117,9 +117,22 @@
               <DataGridTemplateColumn Tag="address" Header="Address" Width="120*" MinWidth="110" SortMemberPath="Row.DisplayAddress">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
-                    <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.Tip="Open the web interface of the device"
+                    <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.ShowOnDisabled="True"
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).OpenWebUiCommand}"
                             CommandParameter="{Binding Row}">
+                      <!-- A device at a site opens in Web View; without Web View (off, or not for this role) its link is off with the reason. -->
+                      <Button.IsEnabled>
+                        <MultiBinding Converter="{x:Static dev:SiteWebViewTexts.LinkEnabled}">
+                          <Binding Path="Row.IsAtSite" />
+                          <Binding Path="$parent[UserControl].((dev:DevicesViewModel)DataContext).IsWebViewOn" />
+                        </MultiBinding>
+                      </Button.IsEnabled>
+                      <ToolTip.Tip>
+                        <MultiBinding Converter="{x:Static dev:SiteWebViewTexts.LinkTip}">
+                          <Binding Path="Row.IsAtSite" />
+                          <Binding Path="$parent[UserControl].((dev:DevicesViewModel)DataContext).SiteWebInterfaceTip" />
+                        </MultiBinding>
+                      </ToolTip.Tip>
                       <TextBlock Text="{Binding Row.DisplayAddress}" />
                     </Button>
                   </DataTemplate>
@@ -150,6 +163,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="site" Header="Site" Width="120*" MinWidth="90" Binding="{Binding Row.SiteName}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="76" Binding="{Binding Row.DhcpText}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="86" Binding="{Binding Row.HttpsText}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="certExpires" Width="156*" MinWidth="140" SortMemberPath="Row.CertExpiresSortKey" CellStyleClasses="number">

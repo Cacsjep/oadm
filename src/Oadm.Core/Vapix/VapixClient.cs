@@ -1,7 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
+using Oadm.Core.Sites;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Vapix;
@@ -33,6 +35,12 @@ public sealed record VapixConnectionOptions
     /// Axis check (see "Security and access" in CLAUDE.md); everything else keeps Basic HTTPS only.
     /// </summary>
     public bool AllowBasicOverHttp { get; init; }
+
+    /// <summary>
+    /// The way to the device: the server's own network (default) or a site (CLAUDE.md "# Sites"). Built only by
+    /// <see cref="DeviceConnections"/>, so every connection to a device carries its route.
+    /// </summary>
+    public DeviceRoute Route { get; init; }
 }
 
 /// <summary>
@@ -45,6 +53,7 @@ public sealed record VapixConnectionOptions
 /// Digest only for http:// and Basic or Digest for https://, so Basic never travels in clear text,
 /// except for the add page's login to a verified Axis device (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).
 /// </remarks>
+[SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The routed VAPIX client: its SocketsHttpHandler opens every connection through DeviceRouter, ClientWebSocket.ConnectAsync goes through that handler.")]
 public sealed partial class VapixClient : IVapixClient, IDisposable
 {
     /// <summary>Parameters read by <see cref="GetNetworkInfoAsync"/>.</summary>
@@ -71,6 +80,21 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     private readonly HttpClient _http;
     private readonly TimeSpan _timeout;
 
+    // Through a site: the status reads on a connection pool of their own (DeviceRouter.SiteStatusConnectionsPerDevice).
+    private HttpClient? _statusHttp;
+
+    // Through a site: the Web View relay on a pool of its own (DeviceRouter.SiteRelayConnectionsPerDevice), made on first use.
+    private Lazy<HttpClient>? _relayHttp;
+
+    /// <summary>
+    /// A request whose answer is passed on to a page as it arrives (the Web View relay): its answer never takes a large
+    /// transfer slot of a site (a page, an MJPEG stream or a long poll would hold it), a large request body still does.
+    /// </summary>
+    public static readonly HttpRequestOptionsKey<bool> RelayedOption = new("Oadm.Relayed");
+
+    /// <summary>A status read (basicdeviceinfo): through a site it goes on the status pool of the device.</summary>
+    private static readonly HttpRequestOptionsKey<bool> StatusReadOption = new("Oadm.StatusRead");
+
     /// <summary>Creates a client over a custom handler (tests, or a handler built by <see cref="CreateHandler"/>).</summary>
     public VapixClient(Uri baseAddress, HttpMessageHandler handler, CertificatePinning? pinning = null, TimeSpan? timeout = null, bool disposeHandler = true)
     {
@@ -80,19 +104,27 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         Pinning = pinning;
         _timeout = timeout ?? TimeSpan.FromSeconds(15);
 
-        // The timeout is applied per request in SendAsync so plugins can extend it (VapixRequestOptions.Timeout).
-        _http = new HttpClient(handler, disposeHandler)
-        {
-            BaseAddress = baseAddress,
-            Timeout = System.Threading.Timeout.InfiniteTimeSpan,
-            MaxResponseContentBufferSize = MaxResponseBytes,
-        };
+        _http = NewHttpClient(handler, disposeHandler);
     }
+
+    // The timeout is applied per request in SendAsync so plugins can extend it (VapixRequestOptions.Timeout).
+    private HttpClient NewHttpClient(HttpMessageHandler handler, bool disposeHandler) => new(handler, disposeHandler)
+    {
+        BaseAddress = BaseAddress,
+        Timeout = System.Threading.Timeout.InfiniteTimeSpan,
+        MaxResponseContentBufferSize = MaxResponseBytes,
+    };
 
     /// <summary>Default per-request timeout; one request can override it with <see cref="VapixRequestOptions.Timeout"/>.</summary>
     public TimeSpan Timeout => _timeout;
 
     public Uri BaseAddress { get; }
+
+    /// <summary>The way to the device; every timeout through a site gets the route's extra (<see cref="DeviceRouter.ExtraTimeout"/>).</summary>
+    public DeviceRoute Route { get; init; }
+
+    /// <summary>The route handler that adds the round trips of <see cref="Route"/> to timeouts.</summary>
+    public DeviceRouter Router { get; init; } = DeviceRouter.Local;
 
     /// <summary>The login of the handler, for the one place the handler cannot answer: WebSocket upgrades (relay).</summary>
     internal NetworkCredential? Credentials { get; init; }
@@ -110,41 +142,63 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     /// </summary>
     public CertificateInfo? ObservedCertificate => Pinning?.ObservedCertificate;
 
-    /// <summary>Creates a client with a real <see cref="HttpClientHandler"/> for the given options.</summary>
-    public static VapixClient Create(VapixConnectionOptions options)
+    /// <summary>
+    /// Creates a client with a real <see cref="SocketsHttpHandler"/> for the given options: its connections open on
+    /// <see cref="VapixConnectionOptions.Route"/> through <paramref name="router"/> (default: the server's own network only).
+    /// </summary>
+    public static VapixClient Create(VapixConnectionOptions options, DeviceRouter? router = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        router ??= DeviceRouter.Local;
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
         var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
-        var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp);
-        return new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials };
+        var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
+        var client = new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials, Route = options.Route, Router = router };
+        if (!options.Route.IsLocal)
+        {
+            // The status reads get a pool of their own (CLAUDE.md "# Sites": polls never wait behind an upload or a page).
+            var status = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
+            status.MaxConnectionsPerServer = DeviceRouter.SiteStatusConnectionsPerDevice;
+            client._statusHttp = client.NewHttpClient(status, disposeHandler: true);
+            client._relayHttp = new Lazy<HttpClient>(() =>
+            {
+                var relay = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
+                relay.MaxConnectionsPerServer = DeviceRouter.SiteRelayConnectionsPerDevice;
+                return client.NewHttpClient(relay, disposeHandler: true);
+            });
+        }
+
+        return client;
     }
 
     /// <summary>
-    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>), Basic or
-    /// Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the handler
-    /// answers the strongest challenge the device offers (Digest before Basic).
+    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>, never through a
+    /// site), Basic or Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the
+    /// handler answers the strongest challenge the device offers (Digest before Basic). Every connection opens on
+    /// <paramref name="route"/> through <paramref name="router"/>; TLS, pinning and the login stay here, end to end.
     /// </summary>
-    public static HttpClientHandler CreateHandler(Uri baseAddress, NetworkCredential? credentials, CertificatePinning pinning, bool allowBasicOverHttp = false)
+    public static SocketsHttpHandler CreateHandler(Uri baseAddress, NetworkCredential? credentials, CertificatePinning pinning, bool allowBasicOverHttp = false,
+        DeviceRoute route = default, DeviceRouter? router = null, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(baseAddress);
         ArgumentNullException.ThrowIfNull(pinning);
 
-        var handler = new HttpClientHandler
+        var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
             UseCookies = false,
             UseProxy = false,
             PreAuthenticate = true,
-            ServerCertificateCustomValidationCallback = pinning.ValidateCallback,
+            SslOptions = { RemoteCertificateValidationCallback = pinning.ValidateSslCallback },
         };
+        (router ?? DeviceRouter.Local).Configure(handler, route, timeout ?? DeviceConnections.DefaultTimeout);
 
         if (credentials is not null)
         {
             var cache = new CredentialCache();
             var prefix = new Uri(baseAddress.GetLeftPart(UriPartial.Authority) + "/");
             cache.Add(prefix, "Digest", credentials);
-            if (baseAddress.Scheme == Uri.UriSchemeHttps || allowBasicOverHttp)
+            if (baseAddress.Scheme == Uri.UriSchemeHttps || (allowBasicOverHttp && route.IsLocal))
             {
                 cache.Add(prefix, "Basic", credentials);
             }
@@ -214,20 +268,24 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
     }
 
-    public async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)
-    {
-        var json = await PostJsonAsync(BasicDeviceInfoPath, """{"apiVersion":"1.0","method":"getAllProperties"}""", ct).ConfigureAwait(false);
-        return VapixParsers.ParseBasicDeviceInfo(json);
-    }
+    /// <summary>basicdeviceinfo getAllProperties (a status read: through a site on the device's status pool).</summary>
+    public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) => GetBasicDeviceInfoAsync(null, ct);
 
     /// <summary>basicdeviceinfo getAllProperties with its own timeout (the status poll: a device that needs longer counts as not answering).</summary>
-    public async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan timeout, CancellationToken ct)
+    public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan timeout, CancellationToken ct) => GetBasicDeviceInfoAsync((TimeSpan?)timeout, ct);
+
+    private async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan? timeout, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, BasicDeviceInfoPath)
         {
             Content = new StringContent("""{"apiVersion":"1.0","method":"getAllProperties"}""", Encoding.UTF8, JsonMediaType),
         };
-        request.Options.Set(VapixRequestOptions.Timeout, timeout);
+        if (timeout is { } limit)
+        {
+            request.Options.Set(VapixRequestOptions.Timeout, limit);
+        }
+
+        request.Options.Set(StatusReadOption, true);
         return VapixParsers.ParseBasicDeviceInfo(await SendForStringAsync(request, ct).ConfigureAwait(false));
     }
 
@@ -357,22 +415,51 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         EnsureSameDevice(request.RequestUri);
-        var timeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
+        var deviceTimeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
+        request.Options.Set(DeviceRouter.ConnectTimeoutOption, deviceTimeout);
+        var streamed = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream;
+        var relayed = request.Options.TryGetValue(RelayedOption, out var relay) && relay;
+        var http = relayed && _relayHttp is not null ? _relayHttp.Value
+            : _statusHttp is not null && request.Options.TryGetValue(StatusReadOption, out var status) && status ? _statusHttp
+            : _http;
+
+        // Through a site at most a few large transfers run at once (CLAUDE.md "# Sites"). A task waits as long as it takes and
+        // says "Waiting for the site link"; its device timeout starts after the wait. Anyone else waits inside the request's
+        // timeout, and a wait that uses it up is "Site ... is busy", never a device timeout. A streamed answer keeps its slot
+        // until the caller disposes the response (or drops it: the slot is freed when it is collected).
+        var large = !Route.IsLocal && ((streamed && !relayed) || IsLargeBody(request.Content));
+        var timeout = Router.Timeout(Route, deviceTimeout);
+        var bounded = timeout != System.Threading.Timeout.InfiniteTimeSpan;
+        var task = large ? SiteLinkWait.Current : null;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (timeout != System.Threading.Timeout.InfiniteTimeSpan)
+        if (bounded && task is null)
         {
             timeoutCts.CancelAfter(timeout);
         }
 
+        IDisposable? slot = null;
         try
         {
+            if (large)
+            {
+                slot = await Router.EnterLargeTransferAsync(Route, ct, task is null ? timeoutCts.Token : CancellationToken.None).ConfigureAwait(false);
+                if (bounded && task is not null)
+                {
+                    timeoutCts.CancelAfter(timeout);
+                }
+            }
+
             // Streamed answers (VapixRequestOptions.StreamResponse) are not buffered, so MaxResponseBytes does not apply:
             // the caller reads the body itself and enforces its own limit.
-            var completion = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream
-                ? HttpCompletionOption.ResponseHeadersRead
-                : HttpCompletionOption.ResponseContentRead;
-            var response = await _http.SendAsync(request, completion, timeoutCts.Token).ConfigureAwait(false);
+            var completion = streamed ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead;
+            var response = await http.SendAsync(request, completion, timeoutCts.Token).ConfigureAwait(false);
             NormalizeCharset(response.Content);
+            if (slot is not null && streamed)
+            {
+                response.Content = new SlotContent(response.Content, new SlotLease(slot));
+                slot = null;
+            }
+
             return response;
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
@@ -381,6 +468,12 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
                 string.Create(System.Globalization.CultureInfo.InvariantCulture, $"The device did not answer within {timeout.TotalSeconds:0} seconds."),
                 new TimeoutException(ex.Message, ex));
         }
+        catch (HttpRequestException ex) when (SiteFailure(ex) is { } site)
+        {
+            // The site could not carry the connection: a site error, never a device error (CLAUDE.md "# Sites").
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
+            throw;
+        }
         catch (HttpRequestException ex) when (IsTooLarge(ex))
         {
             throw new VapixResponseTooLargeException(ex);
@@ -388,6 +481,89 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         catch (HttpRequestException ex) when (Pinning?.MismatchFingerprint is { } actual)
         {
             throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
+        }
+        finally
+        {
+            slot?.Dispose();
+        }
+    }
+
+    /// <summary>Request bodies above this size (or of unknown size) are large transfers through a site.</summary>
+    public const long LargeBodyBytes = 1024 * 1024;
+
+    private static bool IsLargeBody(HttpContent? content) =>
+        content is not null && (content.Headers.ContentLength is not { } length || length > LargeBodyBytes);
+
+    /// <summary>A streamed answer that frees its site slot when the response is disposed.</summary>
+    private sealed class SlotContent : HttpContent
+    {
+        private readonly HttpContent _inner;
+        private IDisposable? _slot;
+
+        public SlotContent(HttpContent inner, IDisposable slot)
+        {
+            _inner = inner;
+            _slot = slot;
+            foreach (var header in inner.Headers)
+            {
+                Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => _inner.CopyToAsync(stream);
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
+            _inner.CopyToAsync(stream, cancellationToken);
+
+        protected override Task<Stream> CreateContentReadStreamAsync() => _inner.ReadAsStreamAsync();
+
+        protected override Task<Stream> CreateContentReadStreamAsync(CancellationToken cancellationToken) => _inner.ReadAsStreamAsync(cancellationToken);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = _inner.Headers.ContentLength ?? 0;
+            return _inner.Headers.ContentLength is not null;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+                Interlocked.Exchange(ref _slot, null)?.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>
+    /// A site slot held by a streamed answer: freed when the response is disposed, or when a caller dropped the response
+    /// without disposing it and it is collected (a slot never stays taken for good).
+    /// </summary>
+    internal sealed class SlotLease(IDisposable slot) : IDisposable
+    {
+        private IDisposable? _slot = slot;
+
+        ~SlotLease() => Release();
+
+        public void Dispose()
+        {
+            Release();
+            GC.SuppressFinalize(this);
+        }
+
+        private void Release()
+        {
+            try
+            {
+                Interlocked.Exchange(ref _slot, null)?.Dispose();
+            }
+#pragma warning disable CA1031 // A finalizer never throws; the slot itself is a semaphore release.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
         }
     }
 
@@ -438,7 +614,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         socket.Options.KeepAliveTimeout = keepAlive;
         socket.Options.CollectHttpResponseDetails = true; // a refused upgrade (401, 403) is told apart from a broken connection
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(_timeout);
+        timeoutCts.CancelAfter(Router.Timeout(Route, _timeout));
         try
         {
             await socket.ConnectAsync(builder.Uri, _http, timeoutCts.Token).ConfigureAwait(false);
@@ -448,6 +624,11 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         {
             var upgradeStatus = socket.HttpStatusCode;
             socket.Dispose();
+            if (SiteFailure(ex) is { } site)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
+            }
+
             if (ex is OperationCanceledException && !ct.IsCancellationRequested)
             {
                 throw new TaskCanceledException(
@@ -542,10 +723,10 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(_timeout);
+        timeoutCts.CancelAfter(Router.Timeout(Route, _timeout));
         try
         {
-            await socket.ConnectAsync(uri, _http, timeoutCts.Token).ConfigureAwait(false);
+            await socket.ConnectAsync(uri, _relayHttp?.Value ?? _http, timeoutCts.Token).ConfigureAwait(false);
             return (socket, []);
         }
         catch (Exception ex)
@@ -554,6 +735,11 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             var challenges = socket.HttpResponseHeaders is { } responseHeaders
                 && responseHeaders.TryGetValue("WWW-Authenticate", out var values) ? values.ToList() : [];
             socket.Dispose();
+            if (SiteFailure(ex) is { } site)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
+            }
+
             if (Pinning?.MismatchFingerprint is { } actual)
             {
                 throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
@@ -673,6 +859,25 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     public void Dispose()
     {
         _http.Dispose();
+        _statusHttp?.Dispose();
+        if (_relayHttp is { IsValueCreated: true } relay)
+        {
+            relay.Value.Dispose();
+        }
+    }
+
+    /// <summary>The <see cref="SiteException"/> a connect through a site failed with (HttpClient and ClientWebSocket wrap it), else null.</summary>
+    internal static SiteException? SiteFailure(Exception? ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is SiteException site)
+            {
+                return site;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

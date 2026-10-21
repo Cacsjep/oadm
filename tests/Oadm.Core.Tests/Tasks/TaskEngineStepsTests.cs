@@ -327,6 +327,31 @@ public sealed class TaskEngineStepsTests : IAsyncLifetime
         Assert.Equal(TaskState.Done, record.State);
     }
 
+    [Fact]
+    public async Task ARequestWaitingForTheSiteLinkShowsInTheTask()
+    {
+        var device = _devices.Add();
+        var waiting = new SemaphoreSlim(0);
+        var done = new SemaphoreSlim(0);
+        Register("t.site", async (ctx, _, ct) =>
+        {
+            using var step = ctx.BeginStep("Upload firmware");
+            var report = Core.Sites.SiteLinkWait.Current!; // what the VAPIX client calls while it waits for a slot of the site
+            report(true);
+            await waiting.WaitAsync(Timeout, ct);
+            report(false);
+            await done.WaitAsync(Timeout, ct);
+        });
+
+        var id = Assert.Single(await Engine.RunAsync("t.site", [device], null, "tester", CancellationToken.None));
+        await WaitUntilAsync(async () => (await Engine.GetAsync(id, CancellationToken.None))!.Devices[0].Message == "Upload firmware - Waiting for the site link");
+        waiting.Release();
+        await WaitUntilAsync(async () => (await Engine.GetAsync(id, CancellationToken.None))!.Devices[0].Message == "Upload firmware");
+        done.Release();
+        await Engine.WaitForCompletionAsync(id, CancellationToken.None).WaitAsync(Timeout);
+        Assert.Null(Core.Sites.SiteLinkWait.Current); // only inside the task's flow
+    }
+
     private async Task<TaskRecord> RunAsync(string pluginId, Guid device)
     {
         var id = Assert.Single(await Engine.RunAsync(pluginId, [device], null, "tester", CancellationToken.None));

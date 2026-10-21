@@ -180,6 +180,14 @@ public static class AccessPolicy
         ["/oadm.v1.BackupService/Delete"] = AccessRule.Admin,
         ["/oadm.v1.BackupService/Inspect"] = AccessRule.Admin,
         ["/oadm.v1.BackupService/Restore"] = AccessRule.Admin,
+        // Sites: the page needs "See sites"; everything that changes a site is Administrator only, never grantable.
+        ["/oadm.v1.SiteService/ListSites"] = AccessRule.Needs(HostPermissions.SitesView),
+        ["/oadm.v1.SiteService/WatchSites"] = AccessRule.Needs(HostPermissions.SitesView),
+        ["/oadm.v1.SiteService/SetAccept"] = AccessRule.Admin,
+        ["/oadm.v1.SiteService/BindSite"] = AccessRule.Admin,
+        ["/oadm.v1.SiteService/RenameSite"] = AccessRule.Admin,
+        ["/oadm.v1.SiteService/ReplaceSite"] = AccessRule.Admin,
+        ["/oadm.v1.SiteService/RemoveSite"] = AccessRule.Admin,
     };
 
     /// <summary>The listed methods (a test checks them against the contracts, both ways).</summary>

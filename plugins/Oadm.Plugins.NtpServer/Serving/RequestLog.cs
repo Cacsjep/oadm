@@ -36,12 +36,12 @@ public sealed class RequestLog(int capacity = NtpServerPluginInfo.MaxRequests)
     /// <param name="client">Client key (<see cref="ClientAddress"/>).</param>
     /// <param name="offsetMilliseconds">Client minus server clock, NaN when unknown.</param>
     /// <param name="result">Answered or rate limited.</param>
-    public void Add(DateTime timeUtc, UInt128 client, double offsetMilliseconds, RequestResult result)
+    public void Add(DateTime timeUtc, UInt128 client, double offsetMilliseconds, RequestResult result, SiteServer? site = null)
     {
         lock (_sync)
         {
             _seq++;
-            _slots[(int)(_seq % _slots.Length)] = new Slot(_seq, timeUtc, client, offsetMilliseconds, result);
+            _slots[(int)(_seq % _slots.Length)] = new Slot(_seq, timeUtc, client, offsetMilliseconds, result, site);
         }
     }
 
@@ -78,7 +78,9 @@ public sealed class RequestLog(int capacity = NtpServerPluginInfo.MaxRequests)
                 slot.TimeUtc,
                 ClientAddress.ToIPAddress(slot.Client).ToString(),
                 double.IsNaN(slot.OffsetMilliseconds) ? null : Math.Round(slot.OffsetMilliseconds, 1),
-                slot.Result == RequestResult.Answered ? RequestEntry.Answered : RequestEntry.RateLimited));
+                slot.Result == RequestResult.Answered ? RequestEntry.Answered : RequestEntry.RateLimited,
+                slot.Site?.SiteId,
+                slot.Site?.Name));
         }
 
         return result;
@@ -104,5 +106,5 @@ public sealed class RequestLog(int capacity = NtpServerPluginInfo.MaxRequests)
             : sign + Math.Round(abs, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture) + " ms";
     }
 
-    private readonly record struct Slot(long Seq, DateTime TimeUtc, UInt128 Client, double OffsetMilliseconds, RequestResult Result);
+    private readonly record struct Slot(long Seq, DateTime TimeUtc, UInt128 Client, double OffsetMilliseconds, RequestResult Result, SiteServer? Site);
 }

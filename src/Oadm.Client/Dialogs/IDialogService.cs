@@ -44,6 +44,9 @@ public interface IDialogService
     /// <summary>The compliance check dialog; true when saved.</summary>
     Task<bool> ShowComplianceCheckAsync(Oadm.Client.Compliance.ComplianceCheckEditorViewModel editor) => Task.FromResult(false);
 
+    /// <summary>A dialog of the Sites page (Bind, Rename, Replace with, Remove site); true when done.</summary>
+    Task<bool> ShowSiteFormAsync(Oadm.Client.Sites.SiteFormViewModel form) => Task.FromResult(false);
+
     /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
     Avalonia.Controls.Window? Owner { get; }
 

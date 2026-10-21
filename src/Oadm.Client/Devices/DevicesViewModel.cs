@@ -141,6 +141,9 @@ public sealed partial class DevicesViewModel : ObservableObject
         HasCompliance = store.Compliance.IsActive;
         store.Compliance.ChecksChanged += (_, _) => HasCompliance = store.Compliance.IsActive;
         OnHasComplianceChanged(HasCompliance);
+        HasSites = store.Sites.HasSites;
+        store.Sites.PropertyChanged += (_, _) => HasSites = store.Sites.HasSites;
+        OnHasSitesChanged(HasSites);
         if (columns.Find(ColumnLayoutViewModel.ComplianceKey) is { } complianceColumn)
         {
             complianceColumn.PropertyChanged += (_, e) =>
@@ -224,6 +227,25 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
     }
 
+    /// <summary>The key of the Site column.</summary>
+    public const string SiteColumnKey = "site";
+
+    /// <summary>Why the chooser greys the Site column out.</summary>
+    public const string NoSitesText = "Bind a site first (Sites page)";
+
+    /// <summary>The server has sites: the Site column shows (CLAUDE.md "# Sites", Client: one rule for every Site column).</summary>
+    [ObservableProperty]
+    public partial bool HasSites { get; private set; }
+
+    partial void OnHasSitesChanged(bool value)
+    {
+        if (Columns.Find(SiteColumnKey) is { } option)
+        {
+            option.IsAvailable = value;
+            option.UnavailableReason = value ? null : NoSitesText;
+        }
+    }
+
     /// <summary>The role may see compliance, the server has it and it is on (the columns can show).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowComplianceToggle))]
@@ -255,7 +277,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private async Task OpenWaitingAsync()
     {
-        var waiting = new WaitingDevicesViewModel(_api, _dialogs, _store.Waiting);
+        var waiting = new WaitingDevicesViewModel(_api, _dialogs, _store.Waiting, HasSites);
         await _dialogs.ShowWaitingDevicesAsync(waiting).ConfigureAwait(true);
     }
 
@@ -409,12 +431,39 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
     }
 
+    /// <summary>Whether devices at a site open in Web View: it is on and the role may open devices.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SiteWebInterfaceTip), nameof(IsWebViewOn))]
+    public partial SiteWebAccess WebViewAccess { get; set; }
+
+    /// <summary>Devices at a site open in Web View (it is on and the role may open devices).</summary>
+    public bool IsWebViewOn => WebViewAccess == SiteWebAccess.Available;
+
+    /// <summary>The tooltip of the address link of a device at a site.</summary>
+    public string SiteWebInterfaceTip => SiteWebViewTexts.Tip(WebViewAccess);
+
+    /// <summary>A device at a site asks for its web interface: the shell opens it in Web View.</summary>
+    public event EventHandler<string>? OpenInWebViewRequested;
+
+    partial void OnWebViewAccessChanged(SiteWebAccess value) => RebuildContextMenu();
+
     [RelayCommand]
     private async Task OpenWebUiAsync(DeviceRowViewModel? device)
     {
         device ??= SelectedDevices.FirstOrDefault();
         if (device is null)
         {
+            return;
+        }
+
+        if (device.IsAtSite)
+        {
+            // The user's computer usually cannot reach the site: Web View goes through the server and the node.
+            if (IsWebViewOn)
+            {
+                OpenInWebViewRequested?.Invoke(this, device.Id);
+            }
+
             return;
         }
 
@@ -663,12 +712,14 @@ public sealed partial class DevicesViewModel : ObservableObject
         // Every entry follows the role's permissions (the server checks each call again).
         if (Can(HostPermissionKeys.DevicesWebInterface))
         {
+            bool atSite = count == 1 && SelectedDevices[0].IsAtSite;
             ContextMenuEntries.Add(new MenuEntryViewModel
             {
                 Header = "Open web interface",
                 IconKey = "externalLink",
                 Command = OpenWebUiCommand,
-                IsEnabled = count == 1,
+                IsEnabled = count == 1 && (!atSite || IsWebViewOn),
+                ToolTip = atSite ? SiteWebInterfaceTip : null,
             });
         }
 

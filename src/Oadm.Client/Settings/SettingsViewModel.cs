@@ -62,12 +62,12 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             _ => status.Problem ?? LiveView.GpuDecodingTexts.Generic,
         };
 
-    private Themes.Appearance _appearance;
+    private Oadm.Theme.Appearance _appearance;
 
-    public IReadOnlyList<Themes.Appearance> Appearances { get; } = [Themes.Appearance.Dark, Themes.Appearance.Light];
+    public IReadOnlyList<Oadm.Theme.Appearance> Appearances { get; } = [Oadm.Theme.Appearance.Dark, Oadm.Theme.Appearance.Light];
 
     /// <summary>"Appearance" (this computer, saved at once); the theme loads its colors at the start, so it applies after a restart.</summary>
-    public Themes.Appearance Appearance
+    public Oadm.Theme.Appearance Appearance
     {
         get => _appearance;
         set
@@ -88,7 +88,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     }
 
     /// <summary>Below the select while the chosen appearance is not the running one.</summary>
-    public string? AppearanceHint => _appearance == Themes.OadmColors.Current ? null : AppearanceRestartHint;
+    public string? AppearanceHint => _appearance == Oadm.Theme.OadmColors.Current ? null : AppearanceRestartHint;
 
     public const string AppearanceRestartHint = "Takes effect after the client restarts";
 
@@ -124,7 +124,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         _gpu = gpu;
         _ui = ui;
         _gpuDecoding = clientSettings?.Current.GpuDecoding ?? true;
-        _appearance = clientSettings?.Current.Appearance ?? Themes.OadmColors.Current;
+        _appearance = clientSettings?.Current.Appearance ?? Oadm.Theme.OadmColors.Current;
         if (gpu is not null)
         {
             gpu.Changed += (_, _) =>

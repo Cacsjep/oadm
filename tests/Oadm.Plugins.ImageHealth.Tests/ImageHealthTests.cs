@@ -166,6 +166,19 @@ public sealed class MonitorTests
     }
 
     [Fact]
+    public async Task A_camera_of_an_offline_site_is_not_asked()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var camera = new TestDevice("192.168.0.20", "P3265-V", DeviceStatus.SiteOffline);
+        rig.Devices.Items.Add(camera);
+
+        await CheckAsync(rig);
+
+        Assert.Equal("Site offline", rig.Plugin.Monitor!.Snapshot(true).Rows.Single().Text);
+        Assert.Equal(0, rig.Vapix.Requests);
+    }
+
+    [Fact]
     public void The_defaults_are_the_user_decisions()
     {
         var options = new ImageHealthOptions();

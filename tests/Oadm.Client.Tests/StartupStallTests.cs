@@ -23,8 +23,14 @@ namespace Oadm.Client.Tests;
 /// </summary>
 public sealed class StartupStallTests(ITestOutputHelper output)
 {
-    /// <summary>The sample devices of the fake server.</summary>
-    internal const int FakeSampleDevices = 12;
+    /// <summary>The sample devices of the fake server (counted, so a new sample device needs no change here).</summary>
+    internal static readonly int FakeSampleDevices = CountSampleDevices();
+
+    private static int CountSampleDevices()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        return api.ListDevicesAsync(CancellationToken.None).GetAwaiter().GetResult().Count;
+    }
 
     [Fact]
     public async Task The_start_loads_3000_devices_and_their_tasks_behind_the_splash_and_opens_the_main_window()

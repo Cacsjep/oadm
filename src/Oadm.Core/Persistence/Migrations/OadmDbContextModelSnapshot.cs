@@ -349,6 +349,9 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Soc")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
@@ -376,6 +379,8 @@ namespace Oadm.Core.Persistence.Migrations
 
                     b.HasIndex("Serial")
                         .IsUnique();
+
+                    b.HasIndex("SiteId");
 
                     b.ToTable("Devices", (string)null);
                 });
@@ -436,6 +441,9 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Held")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("LastResult")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -450,6 +458,9 @@ namespace Oadm.Core.Persistence.Migrations
                     b.Property<string>("NormalizedAddress")
                         .IsRequired()
                         .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SiteId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Source")
@@ -783,6 +794,88 @@ namespace Oadm.Core.Persistence.Migrations
                     b.HasKey("Key");
 
                     b.ToTable("Settings", (string)null);
+                });
+
+            modelBuilder.Entity("Oadm.Core.Sites.RemovedSite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RemovedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RemovedSites", (string)null);
+                });
+
+            modelBuilder.Entity("Oadm.Core.Sites.Site", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("BoundUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeKeyFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotBound")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Port")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Version")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NodeId")
+                        .IsUnique();
+
+                    b.HasIndex("NodeKeyFingerprint")
+                        .IsUnique();
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("Sites", (string)null);
                 });
 
             modelBuilder.Entity("Oadm.Core.Auth.AuthTokenEntity", b =>

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OADM Site Node for Windows (CLAUDE.md "# Sites", "Packaging"): per-machine MSI, x64, one folder Program Files\OADM Site Node
+  with the service and the app.
+  - Service "OADM Site Node" (OadmSiteNode), automatic start, its own virtual account NT SERVICE\OadmSiteNode (the node
+    runs without administrator rights; it only connects out and never listens; no other service shares the account), restart on failure, also when it stops with an error. Its data folder
+    %ProgramData%\OADM Site Node (identity, settings, logs) is created for SYSTEM and the service only (the service SID
+    S-1-5-80-4118054575-3786589468-426418864-2630448348-754858313 = SHA-1 of "OADMSITENODE", `sc showsid OadmSiteNode`) and
+    kept on uninstall. The single-file exe extracts native files below it (runtime), never to a shared temp folder.
+  - No firewall rule: the node only connects out.
+  - Start menu shortcut "OADM Site Node" to the app; the folder is on the system PATH for "oadm-site-node status".
+  - A silent install takes SERVER=<address> (oadm.example.com, 10.0.0.5, 10.0.0.5:5081): after the service started,
+    "oadm-site-node server <address>" sets it, waiting up to 60 s for the service (an address the node refuses fails the
+    install).
+  - LICENSE.txt, NOTICE.txt, TERMS.md and THIRD-PARTY-NOTICES.txt lie next to the exes (no LGPL part, no LGPL-2.1.txt).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="OADM Site Node"
+           Manufacturer="OADM contributors"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="{975D0BB8-17D5-4A66-967B-37F6C7487949}"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="OADM Site Node - reach devices in a network the OADM server cannot reach" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of the OADM Site Node is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="OadmIcon.ico" SourceFile="$(var.IconsDir)\oadm.ico" />
+    <Property Id="ARPPRODUCTICON" Value="OadmIcon.ico" />
+    <Property Id="ARPCOMMENTS" Value="OADM Site Node. The data folder %ProgramData%\OADM Site Node is kept on uninstall." />
+    <!-- msiexec /i OADM-SiteNode-<version>-win-x64.msi SERVER=oadm.example.com /qn -->
+    <Property Id="SERVER" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="OADM Site Node" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="OADM Site Node" />
+    </StandardDirectory>
+
+    <!-- The service: the exe with the service, everything else of its folder harvested (license texts). -->
+    <ComponentGroup Id="Node" Directory="INSTALLFOLDER">
+      <Component Id="NodeExe">
+        <File Id="NodeExe" Source="$(var.NodeDir)\oadm-site-node.exe" KeyPath="yes" />
+        <ServiceInstall Id="OadmSiteNode"
+                        Name="OadmSiteNode"
+                        DisplayName="OADM Site Node"
+                        Description="OADM Site Node: lets an OADM server reach the devices of this network."
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Account="NT SERVICE\OadmSiteNode"
+                        Vital="yes">
+          <!-- A stop with a non-zero exit code (a part of the node failed) counts as a failure: the SCM restarts it. -->
+          <ServiceConfig FailureActionsWhen="failedToStopOrReturnedError" OnInstall="yes" OnReinstall="yes" />
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="10"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="OadmSiteNode" Name="OadmSiteNode" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        <!-- Service environment (read by the SCM when the service starts). -->
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OadmSiteNode" Name="Environment" Type="multiString">
+          <MultiStringValue Value="DOTNET_BUNDLE_EXTRACT_BASE_DIR=[CommonAppDataFolder]OADM Site Node\runtime" />
+        </RegistryValue>
+        <!-- "oadm-site-node status" in any command prompt. -->
+        <Environment Id="NodePath" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+      </Component>
+      <Files Include="$(var.NodeDir)\**">
+        <Exclude Files="$(var.NodeDir)\oadm-site-node.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- The app: its exe with the Start menu shortcut (its license texts are the same files as the service's). -->
+    <ComponentGroup Id="App" Directory="INSTALLFOLDER">
+      <Component Id="AppExe">
+        <File Id="AppExe" Source="$(var.AppDir)\oadm-site-node-app.exe" KeyPath="yes">
+          <Shortcut Id="AppStartMenu" Directory="ProgramMenuFolder" Name="OADM Site Node"
+                    Description="OADM Site Node" WorkingDirectory="INSTALLFOLDER"
+                    Icon="OadmIcon.ico" Advertise="yes" />
+        </File>
+      </Component>
+    </ComponentGroup>
+
+    <!-- Data folder: SYSTEM and the service's virtual account only (identity key, settings, logs); kept on uninstall. The
+         ACE names the service SID (no account lookup: the service does not exist yet when the folder is created); an
+         upgrade from a LocalService version replaces the folder's ACL and its files inherit it. -->
+    <Component Id="DataFolder" Directory="DataFolder" Guid="{D2DA2A39-2749-4877-A2A7-6BA4A3C6D5CB}" Permanent="yes" KeyPath="yes">
+      <CreateFolder>
+        <PermissionEx Sddl="O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;S-1-5-80-4118054575-3786589468-426418864-2630448348-754858313)" />
+      </CreateFolder>
+    </Component>
+
+    <Feature Id="SiteNode" Title="OADM Site Node" Level="1" AllowAbsent="no" AllowAdvertise="no">
+      <ComponentGroupRef Id="Node" />
+      <ComponentGroupRef Id="App" />
+      <ComponentRef Id="DataFolder" />
+    </Feature>
+
+    <!-- SERVER=<address>: set the server once the service runs (deferred, as SYSTEM, which the node counts as an
+         administrator). The command line waits up to 60 s for the service's local channel. -->
+    <SetProperty Id="OadmSetServer" Value="&quot;[#NodeExe]&quot; server &quot;[SERVER]&quot; --timeout 60"
+                 Before="OadmSetServer" Sequence="execute" Condition="SERVER AND NOT (REMOVE~=&quot;ALL&quot;)" />
+    <CustomAction Id="OadmSetServer" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="deferred" Return="check" Impersonate="no" />
+
+    <InstallExecuteSequence>
+      <Custom Action="OadmSetServer" After="StartServices" Condition="SERVER AND NOT (REMOVE~=&quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+
+    <!-- Setup wizard: welcome, ready, progress, finish with "Launch OADM Site Node" (the app asks for the terms of use and
+         the server). No install folder choice (the service runs the exe; Program Files is admin-only) and no license
+         page, like the OADM MSI. A silent install (msiexec /qn, CI) skips all dialogs. -->
+    <UIRef Id="WixUI_OadmSiteNode" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.UiDir)\Banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.UiDir)\Dialog.bmp" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch OADM Site Node" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#AppExe]" />
+    <CustomAction Id="LaunchApp" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixShellExec" Impersonate="yes" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApp"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+  </Package>
+
+  <Fragment>
+    <UI Id="WixUI_OadmSiteNode">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="!(loc.Advanced_Font_FaceName)" Size="!(loc.Advanced_Font_Normal_Size)" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="!(loc.Advanced_Font_FaceName)" Size="!(loc.Advanced_Font_Bigger_Size)" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="!(loc.Advanced_Font_FaceName)" Size="!(loc.Advanced_Font_Title_Size)" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="1" Condition="NOT Installed OR PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH" />
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+    </UI>
+
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
+</Wix>

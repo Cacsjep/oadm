@@ -7,14 +7,18 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Plugins.NtpServer.Serving;
 using Oadm.Plugins.NtpServer.Status;
 using Oadm.Plugins.NtpServer.Upstream;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Sites;
 
 namespace Oadm.Plugins.NtpServer;
 
 /// <summary>
 /// The running NTP server: settings, UDP responder, upstream monitor, request log, status line and the live events for
 /// the page. Serving never waits for the upstream or for this class: the responder reads <see cref="CurrentSource"/>.
+/// With "Serve at sites" every bound site gets a UDP relay of the NTP port (<see cref="ISites"/>), answered by a
+/// <see cref="SiteServer"/> from the same time source.
 /// </summary>
 public sealed partial class NtpServerService : IAsyncDisposable
 {
@@ -37,10 +41,19 @@ public sealed partial class NtpServerService : IAsyncDisposable
     private long _lastBindAttempt;
     private long _publishedSeq;
     private string? _publishedState;
+    private readonly IPluginNetwork? _network;
+    private readonly ISites? _sites;
+    private readonly Dictionary<Guid, SiteServer> _siteServers = [];
+    private readonly Lock _siteLock = new();
 
     /// <param name="firewall">Host firewall (Windows service only): UDP rule for the port while enabled.</param>
-    public NtpServerService(NtpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null)
+    /// <param name="network">The host's network: the server's address towards a device on its route.</param>
+    /// <param name="sites">The bound sites and their relays ("Serve at sites"); null on a server without sites.</param>
+    public NtpServerService(NtpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null,
+        IPluginNetwork? network = null, ISites? sites = null)
     {
+        _network = network;
+        _sites = sites;
         _options = options ?? new NtpServerOptions();
         _settings = settings;
         _events = events;
@@ -87,6 +100,11 @@ public sealed partial class NtpServerService : IAsyncDisposable
         }
 
         await ApplyAsync(config, null, ct).ConfigureAwait(false);
+        if (_sites is not null)
+        {
+            _sites.SitesChanged += OnSitesChanged;
+        }
+
         _background = Task.Run(() => BackgroundAsync(_cts.Token), CancellationToken.None);
     }
 
@@ -117,6 +135,12 @@ public sealed partial class NtpServerService : IAsyncDisposable
             _gate.Release();
         }
 
+        if (_sites is not null)
+        {
+            _sites.SitesChanged -= OnSitesChanged;
+        }
+
+        await StopSitesAsync().ConfigureAwait(false);
         _cts.Dispose();
         _gate.Dispose();
     }
@@ -145,7 +169,31 @@ public sealed partial class NtpServerService : IAsyncDisposable
             Upstream = upstream?.ToInfo(),
             Stratum = CurrentSource.Stratum,
             Port = Endpoints.Count > 0 ? Endpoints[0].Port : _options.Port,
+            HasSites = _sites is { List.Count: > 0 },
+            Sites = SiteStates(),
+            SiteChoices = _sites is null ? [] : [.. _sites.List.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Select(s => new SiteChoice(s.Id, s.Name))],
         };
+    }
+
+    /// <summary>The relay of every site served now, by site name.</summary>
+    public IReadOnlyList<SiteServing> SiteStates()
+    {
+        lock (_siteLock)
+        {
+            return [.. _siteServers.Values.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Select(s => s.Serving)];
+        }
+    }
+
+    /// <summary>The site servers now (tests).</summary>
+    public IReadOnlyList<SiteServer> SiteServers
+    {
+        get
+        {
+            lock (_siteLock)
+            {
+                return [.. _siteServers.Values];
+            }
+        }
     }
 
     /// <summary>
@@ -190,7 +238,8 @@ public sealed partial class NtpServerService : IAsyncDisposable
             upstreamText = host.ToString();
         }
 
-        var config = new NtpConfig { Enabled = request.Enabled, InterfaceId = interfaceId, InterfaceName = interfaceName, Upstream = upstreamText };
+        var config = new NtpConfig { Enabled = request.Enabled, InterfaceId = interfaceId, InterfaceName = interfaceName, Upstream = upstreamText, ServeAtSites = request.ServeAtSites,
+            ServeSites = request.ServeAtSites ? [.. (request.ServeSites ?? []).Distinct()] : [] };
         if (_settings is not null)
         {
             await _settings.SetAsync(ConfigKey, NtpJson.Serialize(config), ct).ConfigureAwait(false);
@@ -201,13 +250,24 @@ public sealed partial class NtpServerService : IAsyncDisposable
     }
 
     /// <summary>
-    /// The address a device should use as NTP server: the selected interface's address of the device's address family, or
-    /// with "All interfaces" the local address the server routes to the device with. Null + reason when not possible.
+    /// The address a device should use as NTP server. On the server's own network: the selected interface's address of
+    /// the device's address family, or with "All interfaces" the local address the server routes to the device with. At a
+    /// site (with "Serve at sites"): the site node's address in the device's network. Null + reason when not possible.
     /// </summary>
-    public (IPAddress? Address, string? Error) ServerAddressFor(IPAddress device)
+    /// <param name="deviceInfo">The device (its site).</param>
+    /// <param name="device">The device's IP address.</param>
+    /// <param name="network">The device's route (the task's <see cref="ITaskExecutionContext.Network"/>).</param>
+    /// <param name="ct">Cancels the lookup.</param>
+    public async Task<(IPAddress? Address, string? Error)> ServerAddressForAsync(IDeviceInfo deviceInfo, IPAddress device, IDeviceNetwork? network, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(deviceInfo);
         ArgumentNullException.ThrowIfNull(device);
-        if (!_config.Enabled || _server is null)
+        if (_config.Enabled && deviceInfo.SiteId is { } siteId)
+        {
+            return await SiteAddressForAsync(siteId, device, network, ct).ConfigureAwait(false);
+        }
+
+        if (!_config.Enabled || _server is not { } running)
         {
             return (null, "The OADM NTP server is not running. Enable it on the NTP server page. Nothing was changed.");
         }
@@ -215,26 +275,56 @@ public sealed partial class NtpServerService : IAsyncDisposable
         var family = device.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : device.AddressFamily;
         if (!IsAll(_config.InterfaceId))
         {
-            var bound = _server.LocalEndpoints.Select(e => e.Address).ToList();
+            var bound = running.LocalEndpoints.Select(e => e.Address).ToList();
             var match = bound.FirstOrDefault(a => a.AddressFamily == family);
             return match is null
                 ? (null, $"The NTP server listens on {_config.InterfaceName} without an {(family == AddressFamily.InterNetwork ? "IPv4" : "IPv6")} address for this device. Nothing was changed.")
                 : (match, null);
         }
 
-        try
+        if (network is null)
         {
-            using var probe = new Socket(family, SocketType.Dgram, ProtocolType.Udp);
-            probe.Connect(new IPEndPoint(device.IsIPv4MappedToIPv6 ? device.MapToIPv4() : device, 123)); // no packet is sent
-            var local = ((IPEndPoint)probe.LocalEndPoint!).Address;
-            return local.Equals(IPAddress.Any) || local.Equals(IPAddress.IPv6Any)
-                ? (null, "The server has no route to the device. Nothing was changed.")
-                : (local, null);
+            return (null, "This OADM server cannot find its address towards the device. Nothing was changed.");
         }
-        catch (SocketException ex)
+
+        var local = await network.LocalAddressTowardsAsync((device.IsIPv4MappedToIPv6 ? device.MapToIPv4() : device).ToString(), ct).ConfigureAwait(false);
+        return local is null
+            ? (null, "The server has no route to the device. Nothing was changed.")
+            : (local, null);
+    }
+
+    private async Task<(IPAddress? Address, string? Error)> SiteAddressForAsync(Guid siteId, IPAddress device, IDeviceNetwork? network, CancellationToken ct)
+    {
+        if (!_config.ServeAtSites)
         {
-            return (null, $"The server has no route to the device ({ex.SocketErrorCode}). Nothing was changed.");
+            return (null, NtpStatusTexts.NotServingAtSites);
         }
+
+        SiteServer? server;
+        lock (_siteLock)
+        {
+            server = _siteServers.GetValueOrDefault(siteId);
+        }
+
+        if (server is null)
+        {
+            return (null, _config.Serves(siteId) ? NtpStatusTexts.NotServingAtSites : NtpStatusTexts.NotServingAtSite);
+        }
+
+        if (server.Relay.State != RelayState.Running)
+        {
+            return (null, server.Relay.StateText + ". Nothing was changed.");
+        }
+
+        if (network is null)
+        {
+            return (null, "This OADM server cannot find the site node's address. Nothing was changed.");
+        }
+
+        var local = await network.LocalAddressTowardsAsync((device.IsIPv4MappedToIPv6 ? device.MapToIPv4() : device).ToString(), ct).ConfigureAwait(false);
+        return local is null
+            ? (null, $"The site node of {server.Name} has no address in the device's network. Nothing was changed.")
+            : (local, null);
     }
 
     /// <summary>The address in the task name: the selected interface's IPv4 address, null for "All interfaces".</summary>
@@ -273,6 +363,8 @@ public sealed partial class NtpServerService : IAsyncDisposable
 
                 await TryBindAsync(ct).ConfigureAwait(false);
             }
+
+            await SyncSitesAsync(ct).ConfigureAwait(false);
         }
         finally
         {
@@ -318,7 +410,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
         if (IsAll(config.InterfaceId))
         {
             var all = new List<IPEndPoint> { new(IPAddress.Any, _options.Port) };
-            if (Socket.OSSupportsIPv6)
+            if (NtpUdpServer.SupportsIPv6)
             {
                 all.Add(new IPEndPoint(IPAddress.IPv6Any, _options.Port));
             }
@@ -442,6 +534,101 @@ public sealed partial class NtpServerService : IAsyncDisposable
         _events?.Publish(NtpServerMethods.StateTopic, json);
     }
 
+    /// <summary>
+    /// "Serve at sites": one relay per served site (all, or the chosen ones) while the server is enabled; a site no longer
+    /// served (turned off, not chosen, removed) gets its relay released, so its node gives the port back; new sites get one.
+    /// Callers hold the gate.
+    /// </summary>
+    private async Task SyncSitesAsync(CancellationToken ct)
+    {
+        var wanted = _sites is not null && _config.Enabled
+            ? _sites.List.Where(s => _config.Serves(s.Id)).ToDictionary(s => s.Id)
+            : [];
+        List<SiteServer> remove;
+        lock (_siteLock)
+        {
+            remove = [.. _siteServers.Values.Where(s => !wanted.ContainsKey(s.SiteId))];
+            foreach (var server in remove)
+            {
+                _siteServers.Remove(server.SiteId);
+            }
+
+            foreach (var server in _siteServers.Values)
+            {
+                server.Name = wanted[server.SiteId].Name;
+            }
+        }
+
+        // Together: each release may wait up to a few seconds for its node.
+        await Task.WhenAll(remove.Select(server => server.ReleaseAsync().AsTask())).ConfigureAwait(false);
+
+        foreach (var site in wanted.Values)
+        {
+            bool known;
+            lock (_siteLock)
+            {
+                known = _siteServers.ContainsKey(site.Id);
+            }
+
+            if (known)
+            {
+                continue;
+            }
+
+            try
+            {
+                var relay = await _sites!.OpenUdpRelayAsync(site.Id, _options.SitePort, NtpStatusTexts.RelayReason, ct).ConfigureAwait(false);
+                var server = new SiteServer(site.Id, site.Name, relay, () => CurrentSource, _options.RateLimit, _log, _options.Time, _logger);
+                server.Start();
+                lock (_siteLock)
+                {
+                    _siteServers[site.Id] = server;
+                }
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ObjectDisposedException)
+            {
+                LogSiteFailed(site.Name, ex.Message); // removed meanwhile, or the plugin stops
+            }
+        }
+    }
+
+    private async Task StopSitesAsync()
+    {
+        List<SiteServer> servers;
+        lock (_siteLock)
+        {
+            servers = [.. _siteServers.Values];
+            _siteServers.Clear();
+        }
+
+        foreach (var server in servers)
+        {
+            await server.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private void OnSitesChanged(object? sender, EventArgs e) => _ = Task.Run(async () =>
+    {
+        try
+        {
+            await _gate.WaitAsync(_cts.Token).ConfigureAwait(false);
+            try
+            {
+                await SyncSitesAsync(_cts.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+
+            PublishState(force: false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // stopping
+        }
+    });
+
     private async Task StopServerAsync()
     {
         if (_server is { } server)
@@ -471,6 +658,9 @@ public sealed partial class NtpServerService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "NTP server cannot listen on {Interface}: {Error}")]
     private partial void LogBindFailed(string @interface, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "NTP server cannot serve at site {Site}: {Error}")]
+    private partial void LogSiteFailed(string site, string error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stored NTP server settings ignored: {Error}")]
     private partial void LogBadConfig(string error);

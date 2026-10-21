@@ -46,13 +46,14 @@ public sealed partial class FakeOadmApi
             return result.ToJsonString();
         }
 
-        if (device.Status is DeviceStatus.CredentialsRequired or DeviceStatus.PasswordNotSet or DeviceStatus.CertificateChanged or DeviceStatus.Unreachable)
+        if (device.Status is DeviceStatus.CredentialsRequired or DeviceStatus.PasswordNotSet or DeviceStatus.CertificateChanged or DeviceStatus.Unreachable or DeviceStatus.SiteOffline)
         {
             result["problem"] = device.Status switch
             {
                 DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
                 DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
                 DeviceStatus.CertificateChanged => "Certificate changed. Remove the device and add it again to trust the new certificate.",
+                DeviceStatus.SiteOffline => FakeSiteOfflineText(device),
                 _ => "Unreachable - the device does not answer",
             };
             return result.ToJsonString();

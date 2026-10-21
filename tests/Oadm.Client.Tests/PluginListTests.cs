@@ -83,6 +83,23 @@ public sealed class PluginListTests
     }
 
     [Fact]
+    public async Task Each_plugin_says_whether_it_works_at_sites_and_which_ports_it_listens_on()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+        var vm = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+        await store.LoadAsync(CancellationToken.None);
+
+        var ntp = vm.Plugins.Single(p => p.Id == "oadm.ntp-server");
+        Assert.Equal(("Works at sites", "UDP 123", true), (ntp.SiteText, ntp.SitePortsText, ntp.HasSitePorts));
+        var dhcp = vm.Plugins.Single(p => p.Id == "oadm.dhcp-server");
+        Assert.Equal(("Only this server's network", false), (dhcp.SiteText, dhcp.HasSitePorts));
+
+        // An older server sends nothing: the column stays empty.
+        Assert.Equal(string.Empty, PluginRowViewModel.SiteTextOf(new Contracts.V1.PluginPackageInfo()));
+    }
+
+    [Fact]
     public async Task A_refused_change_is_undone_and_explained()
     {
         using var api = new FakeOadmApi(TimeSpan.Zero);
@@ -108,10 +125,12 @@ public sealed class PluginListTests
         {
             var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
             var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
-            var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+            var devices = new Oadm.Client.Devices.DeviceStore();
+            devices.Sites.Apply(await api.ListSitesAsync(CancellationToken.None)); // fake mode has sites: the Sites column shows
+            var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance, devices: devices);
             await store.LoadAsync(CancellationToken.None);
 
-            var window = new Window { Width = 1100, Height = 760, Content = new PluginsPageView { DataContext = plugins } };
+            var window = new Window { Width = 1500, Height = 760, Content = new PluginsPageView { DataContext = plugins } };
             window.Show();
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
@@ -124,6 +143,9 @@ public sealed class PluginListTests
             Assert.DoesNotContain("PKI", texts);
             Assert.Contains("Servers", texts); // group headers like the navigation rail
             Assert.Contains("Monitoring", texts);
+            Assert.Contains("Sites", texts); // the column next to License
+            Assert.Contains("Only this server's network", texts);
+            Assert.Contains("UDP 123", texts);
 
             WriteableBitmap? frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
@@ -171,6 +193,8 @@ public sealed class PluginListTests
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains(FakeOadmApi.FakeServerId, texts);
             Assert.Contains("Trial", texts);
+            // No sites known to this page: the Sites column stays hidden, like every Site column.
+            Assert.DoesNotContain("Works at sites", window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? ""));
 
             // The dialog: a license for another server is refused below the field, the right one is stored.
             var license = new PluginLicenseViewModel(store, row.Id, row.Name);

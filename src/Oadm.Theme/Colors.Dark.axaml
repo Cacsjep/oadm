@@ -1,0 +1,95 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    OADM colors, dark appearance (the default). The keys must match the other appearance's file (ThemeColorsTests);
+    loaded by OadmColors (OadmColors.cs), brushes and styles are in OadmTheme.axaml.
+  -->
+  <Color x:Key="Oadm.WindowBackgroundColor">#141414</Color>
+  <Color x:Key="Oadm.CardBackgroundColor">#181818</Color>
+  <Color x:Key="Oadm.SurfaceRaisedColor">#2A2A2A</Color>
+  <Color x:Key="Oadm.SurfaceHoverColor">#252525</Color>
+  <!-- Navigation rail: hover and the selected entry, quieter than the raised surfaces of buttons and menus -->
+  <Color x:Key="Oadm.NavHoverColor">#181818</Color>
+  <Color x:Key="Oadm.NavSelectedColor">#1C1C1C</Color>
+  <Color x:Key="Oadm.InputBackgroundColor">#232323</Color>
+  <Color x:Key="Oadm.BorderColor">#262626</Color>
+  <Color x:Key="Oadm.InputBorderColor">#383838</Color>
+  <Color x:Key="Oadm.AccentColor">#6C5CE7</Color>
+  <Color x:Key="Oadm.AccentHoverColor">#7D6EF0</Color>
+  <Color x:Key="Oadm.AccentPressedColor">#5B4BD6</Color>
+  <Color x:Key="Oadm.AccentMutedColor">#3A3480</Color>
+  <!-- A disabled primary keeps its role: the accent at about 35 % on the card -->
+  <Color x:Key="Oadm.AccentDisabledColor">#596C5CE7</Color>
+  <Color x:Key="Oadm.TextOnAccentDisabledColor">#99FFFFFF</Color>
+  <!-- Danger buttons (delete, remove): red fill with white text -->
+  <Color x:Key="Oadm.DangerColor">#C73B34</Color>
+  <Color x:Key="Oadm.DangerHoverColor">#D9463F</Color>
+  <Color x:Key="Oadm.DangerPressedColor">#AE322C</Color>
+  <Color x:Key="Oadm.DangerDisabledColor">#59C73B34</Color>
+  <!-- Buttons placed on a raised surface (inline editors) need a lighter fill to read as buttons -->
+  <Color x:Key="Oadm.ButtonOnRaisedColor">#383838</Color>
+  <Color x:Key="Oadm.ButtonOnRaisedHoverColor">#444444</Color>
+  <!-- The purple of the app icon (lens of the splash logo) -->
+  <Color x:Key="Oadm.BrandColor">#5B2D8E</Color>
+  <Color x:Key="Oadm.SelectionColor">#526C5CE7</Color>
+  <Color x:Key="Oadm.SelectionHoverColor">#666C5CE7</Color>
+  <Color x:Key="Oadm.GridRowHoverColor">#222222</Color>
+  <Color x:Key="Oadm.GridHeaderHoverColor">#202020</Color>
+  <Color x:Key="Oadm.CaptionHoverColor">#2B2B2B</Color>
+  <Color x:Key="Oadm.CaptionPressedColor">#383838</Color>
+  <Color x:Key="Oadm.SplitterGripColor">#2E2E2E</Color>
+  <Color x:Key="Oadm.TealColor">#7FC8D0</Color>
+  <Color x:Key="Oadm.TextPrimaryColor">#F2F2F2</Color>
+  <Color x:Key="Oadm.TextSecondaryColor">#9A9A9A</Color>
+  <Color x:Key="Oadm.TextDisabledColor">#5E5E5E</Color>
+  <Color x:Key="Oadm.TextOnAccentColor">#FFFFFF</Color>
+  <Color x:Key="Oadm.IconColor">#CFCFCF</Color>
+  <Color x:Key="Oadm.StatusOkColor">#3FB27F</Color>
+  <Color x:Key="Oadm.StatusWarningColor">#E0A43A</Color>
+  <Color x:Key="Oadm.StatusErrorColor">#E5534B</Color>
+  <Color x:Key="Oadm.StatusNeutralColor">#8A8A8A</Color>
+  <Color x:Key="Oadm.StatusInfoColor">#5AA9E6</Color>
+  <Color x:Key="Oadm.StatusOkBackgroundColor">#263FB27F</Color>
+  <Color x:Key="Oadm.StatusWarningBackgroundColor">#26E0A43A</Color>
+  <Color x:Key="Oadm.StatusErrorBackgroundColor">#26E5534B</Color>
+  <Color x:Key="Oadm.StatusNeutralBackgroundColor">#268A8A8A</Color>
+  <Color x:Key="Oadm.StatusAccentBackgroundColor">#336C5CE7</Color>
+  <!-- Status chip fills: solid, slightly darker than the status colors so white text stays readable -->
+  <Color x:Key="Oadm.ChipOkColor">#2B8A5E</Color>
+  <Color x:Key="Oadm.ChipWarningColor">#A86F0E</Color>
+  <Color x:Key="Oadm.ChipErrorColor">#C73B34</Color>
+  <Color x:Key="Oadm.ChipAccentColor">#6253DB</Color>
+  <Color x:Key="Oadm.ChipNeutralColor">#5F5F5F</Color>
+  <Color x:Key="Oadm.ChipTextColor">#FFFFFF</Color>
+  <Color x:Key="Oadm.OverlayColor">#99000000</Color>
+  <Color x:Key="Oadm.VideoBackgroundColor">#0C0C0C</Color>
+  <!-- Code highlighting (ui:CodeView): readable on the input background #232323 -->
+  <Color x:Key="Oadm.Code.KeyColor">#7FC8D0</Color>
+  <Color x:Key="Oadm.Code.StringColor">#E2B88E</Color>
+  <Color x:Key="Oadm.Code.NumberColor">#B5D99C</Color>
+  <Color x:Key="Oadm.Code.LiteralColor">#B4A9F7</Color>
+  <Color x:Key="Oadm.Code.PunctuationColor">#8C8C8C</Color>
+  <Color x:Key="Oadm.Code.TagColor">#8DB6F2</Color>
+  <Color x:Key="Oadm.Code.AttributeColor">#7FC8D0</Color>
+  <Color x:Key="Oadm.Code.CommentColor">#7E957F</Color>
+  <Color x:Key="Oadm.Code.ErrorColor">#F0776F</Color>
+  <!-- Tag palette (device tags): readable as text on the dark cards and the chip background -->
+  <Color x:Key="Oadm.Tag.BlueColor">#6FA8F5</Color>
+  <Color x:Key="Oadm.Tag.GreenColor">#5CC98B</Color>
+  <Color x:Key="Oadm.Tag.TealColor">#5FC6CF</Color>
+  <Color x:Key="Oadm.Tag.AmberColor">#E8B84A</Color>
+  <Color x:Key="Oadm.Tag.OrangeColor">#F2914E</Color>
+  <Color x:Key="Oadm.Tag.RedColor">#F07171</Color>
+  <Color x:Key="Oadm.Tag.PinkColor">#EE7DC2</Color>
+  <Color x:Key="Oadm.Tag.VioletColor">#A898FA</Color>
+  <Color x:Key="Oadm.Tag.NeutralColor">#9A9A9A</Color>
+  <Color x:Key="Oadm.Tag.ChipBackgroundColor">#262626</Color>
+  <!-- Menus, context menus and flyouts -->
+  <Color x:Key="Oadm.MenuBackgroundColor">#2A2A2A</Color>
+  <!-- Covers a whole camera picture while it is edited (Live View), lighter than the plates so the picture shows -->
+  <Color x:Key="Oadm.VideoCoverColor">#99000000</Color>
+  <!-- Dims the picture around the autofocus area: dark in both appearances -->
+  <Color x:Key="Oadm.VideoDimColor">#99000000</Color>
+  <!-- The hexagons of the start splash logo -->
+  <Color x:Key="Oadm.LogoColor">#F2F2F2</Color>
+</ResourceDictionary>

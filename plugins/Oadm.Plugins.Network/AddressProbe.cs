@@ -1,6 +1,4 @@
-using System.Net;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
+using Oadm.Sdk.Sites;
 
 namespace Oadm.Plugins.Network;
 
@@ -26,13 +24,13 @@ public interface IAddressProbe
 }
 
 /// <summary>
-/// The server-side probe: ICMP echo (<see cref="Ping"/>, <see cref="PingAttempts"/> tries with
-/// <see cref="PingTimeout"/> each; cross-platform, on Linux .NET falls back to the ping utility without root) plus a
-/// plain TCP connect to port 80 and 443, closed right away. Nothing else is sent to whatever answers.
+/// The probe on the device's route (<see cref="IDeviceNetwork"/>: the server's own network, or the site node of a device
+/// at a site): a ping (<see cref="PingAttempts"/> tries with <see cref="PingTimeout"/> each) plus a TCP connect to port 80
+/// and 443, closed right away. Nothing else is sent to whatever answers.
 /// </summary>
-public sealed class NetworkAddressProbe : IAddressProbe
+public sealed class NetworkAddressProbe(IDeviceNetwork network) : IAddressProbe
 {
-    public static NetworkAddressProbe Instance { get; } = new();
+    public const string NoNetworkText = "This OADM server cannot check addresses. Nothing was changed.";
 
     public TimeSpan PingTimeout { get; init; } = TimeSpan.FromSeconds(1);
 
@@ -43,66 +41,36 @@ public sealed class NetworkAddressProbe : IAddressProbe
 
     public IReadOnlyList<int> Ports { get; init; } = [80, 443];
 
+    /// <summary>The probe on <paramref name="network"/> (the context's route); a host without it refuses.</summary>
+    public static IAddressProbe For(IDeviceNetwork? network) =>
+        network is null ? throw new InvalidOperationException(NoNetworkText) : new NetworkAddressProbe(network);
+
     public async Task<AddressProbeResult> ProbeAsync(string address, CancellationToken ct)
     {
-        var ip = IPAddress.Parse(address.Trim().Trim('[', ']'));
-        var ping = PingAsync(ip, ct);
-        var tcp = AnswersTcpAsync(ip, ct);
+        var target = address.Trim().Trim('[', ']');
+        var ping = PingAsync(target, ct);
+        var tcp = AnswersTcpAsync(target, ct);
         await Task.WhenAll(ping, tcp).ConfigureAwait(false);
         return new AddressProbeResult(await ping.ConfigureAwait(false), await tcp.ConfigureAwait(false));
     }
 
-    private async Task<bool> PingAsync(IPAddress ip, CancellationToken ct)
+    private async Task<bool> PingAsync(string address, CancellationToken ct)
     {
-        using var ping = new Ping();
         for (var attempt = 0; attempt < PingAttempts; attempt++)
         {
             ct.ThrowIfCancellationRequested();
-            try
+            if (await network.PingAsync(address, PingTimeout, ct).ConfigureAwait(false))
             {
-                var reply = await ping.SendPingAsync(ip, PingTimeout, buffer: null, options: null, ct).ConfigureAwait(false);
-                if (reply.Status == IPStatus.Success)
-                {
-                    return true;
-                }
-            }
-            catch (PingException)
-            {
-                // No route, ping not available: counts as "no answer"; the TCP probe still runs.
+                return true;
             }
         }
 
         return false;
     }
 
-    private async Task<bool> AnswersTcpAsync(IPAddress ip, CancellationToken ct)
+    private async Task<bool> AnswersTcpAsync(string address, CancellationToken ct)
     {
-        var results = await Task.WhenAll(Ports.Select(port => ConnectAsync(ip, port, ct))).ConfigureAwait(false);
+        var results = await Task.WhenAll(Ports.Select(port => network.ProbeTcpAsync(address, port, ConnectTimeout, ct))).ConfigureAwait(false);
         return results.Any(r => r);
-    }
-
-    /// <summary>True when a TCP connection is accepted or actively refused (a host sent a reset: the address is taken).</summary>
-    internal async Task<bool> ConnectAsync(IPAddress ip, int port, CancellationToken ct)
-    {
-        using var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(ConnectTimeout);
-        try
-        {
-            await socket.ConnectAsync(ip, port, timeout.Token).ConfigureAwait(false);
-            return true;
-        }
-        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
-        {
-            return true;
-        }
-        catch (SocketException)
-        {
-            return false;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return false;
-        }
     }
 }

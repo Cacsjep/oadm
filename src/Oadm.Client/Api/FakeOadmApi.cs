@@ -33,6 +33,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     private readonly Broadcast<TaskChanged> _taskEvents = new();
     private readonly List<TaskPluginInfo> _pluginTemplates;
     private readonly TimeSpan _tick;
+    private readonly TimeProvider _simulationTime;
     private readonly CancellationTokenSource _cts = new();
     private ServerSettings _settings = new()
     {
@@ -55,9 +56,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     /// <param name="tick">Simulation step. Tests pass a few milliseconds.</param>
     /// <param name="seedSampleData">False starts with an empty device and task table.</param>
-    public FakeOadmApi(TimeSpan? tick = null, bool seedSampleData = true)
+    /// <param name="simulationTime">
+    /// Clock of the task simulation (running tasks move on every tick); null = the system clock. Headless tests pass a
+    /// fake clock, so the sample tasks stay where they were seeded however long the test takes.
+    /// </param>
+    public FakeOadmApi(TimeSpan? tick = null, bool seedSampleData = true, TimeProvider? simulationTime = null)
     {
         _tick = tick ?? TimeSpan.FromMilliseconds(250);
+        _simulationTime = simulationTime ?? TimeProvider.System;
         _pluginTemplates =
         [
             new TaskPluginInfo { Id = RestartPluginId, DisplayName = "Restart", IconKey = "restart", ShowInToolbar = true, Group = "Maintenance" },
@@ -202,7 +208,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             ThrowIfOffline();
             foreach (Device device in _devices.Where(d => deviceIds.Contains(d.Id)))
             {
-                if (device.Status != DeviceStatus.Unreachable)
+                if (device.Status is not (DeviceStatus.Unreachable or DeviceStatus.SiteOffline))
                 {
                     device.LastSeen = Timestamp.FromDateTime(DateTime.UtcNow);
                 }
@@ -262,6 +268,10 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 else if (device.Status == DeviceStatus.Unreachable)
                 {
                     result.Message = "Unreachable - No route to host";
+                }
+                else if (device.Status == DeviceStatus.SiteOffline)
+                {
+                    result.Message = FakeSiteOfflineText(device);
                 }
                 else if (!IsAcceptedPassword(password))
                 {
@@ -494,7 +504,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 yield return new DiscoveredDevice { ProgressPercent = percent };
             }
 
-            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = reached };
+            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = reached, Problem = candidates.Count == 0 ? session.Problem ?? "" : "" };
             foreach ((_, DiscoveredDevice auth) in candidates.Where(c => session.Found.ContainsKey(c.Auth.DiscoveredId)))
             {
                 await Task.Delay(_tick, ct);
@@ -686,6 +696,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 Device device = CreateDevice(found.Serial, address, found.Model, "12.11.77", status);
                 device.HostName = found.DnsName;
                 device.UseHostName = !IPAddress.TryParse(address.Split(':')[0], out _);
+                device.SiteId = found.SiteId; // added through the site it answered through
+                device.SiteName = found.SiteName;
                 device.HasCredentials = credentials is not null || initial.Length > 0 || found.AuthState == AuthState.Authenticated;
                 _devices.Add(device);
                 reply.DeviceIds.Add(device.Id);
@@ -745,7 +757,9 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 {
                     var group = new NotRunnableGroup
                     {
-                        Reason = Oadm.Sdk.Plugins.TaskSupportReasons.ForStatus((Oadm.Sdk.Devices.DeviceStatus)(int)byStatus.Key, requireOk: true)
+                        Reason = byStatus.Key == DeviceStatus.SiteOffline
+                            ? FakeSiteOfflineText(byStatus.First())
+                            : Oadm.Sdk.Plugins.TaskSupportReasons.ForStatus((Oadm.Sdk.Devices.DeviceStatus)(int)byStatus.Key, requireOk: true)
                             ?? Oadm.Sdk.Plugins.TaskSupportReasons.Default,
                         Count = byStatus.Count(),
                     };
@@ -1127,7 +1141,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     private async Task SimulationLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(_tick);
+        using var timer = new PeriodicTimer(_tick, _simulationTime);
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
@@ -1333,6 +1347,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         list.Add(Discovered("B8A44F99CC01", "10.0.0.91", "AXIS P3268-LV", DeviceStatus.PasswordNotSet, AuthState.PasswordNotSet, policy: "complex"));
         list.Add(Discovered("ACCC8E2B3C4D", "10.0.0.95", "", DeviceStatus.Unreachable, AuthState.Unreachable,
             detail: "The device did not answer on HTTPS or HTTP."));
+        AddSiteSamples(list, session);
 
         switch (session.Kind)
         {
@@ -1347,6 +1362,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 {
                     list[i].Source = DiscoverySource.RangeScan;
                     list[i].Address = FromUInt(from + (uint)((i * 7 + 3) % span));
+                    list[i].OtherSites.Clear();
                 }
 
                 break;
@@ -1383,6 +1399,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 known.HostName = IPAddress.TryParse(host.Split(':')[0], out _) ? "" : host;
                 list.Clear();
                 list.Add(known);
+                ManualAtSites(list, session, host);
                 break;
             }
         }
@@ -1529,6 +1546,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         q1656.Scheme = "http";
         ClearCertificate(q1656);
         _devices.Add(q1656);
+        AddSiteSampleDevices();
         _devices[2].Dot1XEnabled = true;
         _devices[9].Dot1XEnabled = true;
 
@@ -1870,6 +1888,12 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
         /// <summary>Credentials of an imported line (address probe only), tried first.</summary>
         public (string UserName, string Password)? Credentials { get; set; }
+
+        /// <summary>The import's Site column: probed through this site only.</summary>
+        public Guid? Site { get; set; }
+
+        /// <summary>Why nothing answered (the line's site is offline); null = nothing answered.</summary>
+        public string? Problem { get; set; }
     }
 
     private sealed class Broadcast<T>
