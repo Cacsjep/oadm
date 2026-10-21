@@ -4,7 +4,7 @@ namespace Oadm.Core.Sites;
 
 /// <summary>
 /// The way to a device: through a site, or on the server's own network (<see cref="Local"/>). Everything that opens a
-/// connection to a device takes one (docs/sites.md, Server: Routing).
+/// connection to a device takes one (CLAUDE.md "# Sites", Server: Routing).
 /// </summary>
 /// <param name="SiteId">The site; null = the server's own network.</param>
 public readonly record struct DeviceRoute(Guid? SiteId)
@@ -70,12 +70,12 @@ public interface ISiteStates
     /// <summary>
     /// Asks the site's node now whether it answers (a short request on its control link, shared by everyone asking at the
     /// same time). False when the node is not connected or does not answer: a device that did not answer through the
-    /// site is then a site problem, never a device error (docs/sites.md). Never throws but for <paramref name="ct"/>.
+    /// site is then a site problem, never a device error (CLAUDE.md "# Sites"). Never throws but for <paramref name="ct"/>.
     /// </summary>
     ValueTask<bool> LinkAnswersAsync(Guid siteId, CancellationToken ct) => ValueTask.FromResult(IsOnline(siteId));
 
     /// <summary>
-    /// True for a site removed with Keep devices (docs/sites.md, Binding 6): its devices stay Site offline until they are
+    /// True for a site removed with Keep devices (CLAUDE.md "# Sites", Binding 6): its devices stay Site offline until they are
     /// replaced or removed, but their status events go off (the site is never coming back).
     /// </summary>
     bool IsRemoved(Guid siteId) => false;
@@ -94,7 +94,7 @@ public sealed class SiteStatesChangedEventArgs(IReadOnlyCollection<Guid> siteIds
 }
 
 /// <summary>
-/// The large transfers of a site (docs/sites.md, Transport: Large transfers): at most a few streamed request bodies or
+/// The large transfers of a site (CLAUDE.md "# Sites", Transport: Large transfers): at most a few streamed request bodies or
 /// answers at once per site, so a slow site link keeps room for polls, live view and the heartbeat. Implemented by the
 /// site transport; the route handler asks it for requests that stream.
 /// </summary>
@@ -149,7 +149,7 @@ public sealed class SiteException : Exception
 
     public SiteProblem Problem { get; }
 
-    /// <summary>The standard texts (docs/sites.md); <paramref name="siteName"/> as the user named the site.</summary>
+    /// <summary>The standard texts (CLAUDE.md "# Sites"); <paramref name="siteName"/> as the user named the site.</summary>
     public static SiteException For(Guid siteId, string siteName, SiteProblem problem, int port = 0) =>
         new(siteId, problem, problem switch
         {

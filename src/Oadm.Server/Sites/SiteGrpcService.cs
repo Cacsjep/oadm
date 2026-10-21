@@ -48,7 +48,11 @@ public sealed class SiteGrpcService(SiteManager sites, SiteAdmin admin, AuditLog
 
     public override async Task<Proto.SiteList> SetAccept(Proto.SetAcceptRequest request, ServerCallContext context)
     {
-        await sites.SetAcceptAsync(request.Accept, context.CancellationToken).ConfigureAwait(false);
+        await Run(async () =>
+        {
+            await sites.SetAcceptAsync(request.Accept, context.CancellationToken).ConfigureAwait(false);
+            return true;
+        }).ConfigureAwait(false);
         await audit.WriteAsync(request.Accept ? SiteAudit.AcceptOn : SiteAudit.AcceptOff, "Sites", null, CancellationToken.None).ConfigureAwait(false);
         return await sites.PageAsync(context.CancellationToken).ConfigureAwait(false);
     }

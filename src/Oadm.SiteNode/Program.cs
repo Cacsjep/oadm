@@ -1,7 +1,7 @@
 using Oadm.SiteNode;
 using Oadm.SiteNode.Cli;
 
-// OADM Site Node (docs/sites.md). Without a verb (or "run") the service runs; with a verb it is the command line of the
+// OADM Site Node (CLAUDE.md "# Sites"). Without a verb (or "run") the service runs; with a verb it is the command line of the
 // installed service: status, pairing-code, server <address>, allow-binding, networks, ports, accept-server, reset.
 // --data-dir <folder> (or env OADM_SITE_NODE_DATA_DIR) uses another data folder.
 var (verb, rest, dataDirectory) = CommandLine.Split(args);

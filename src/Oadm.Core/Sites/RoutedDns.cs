@@ -4,7 +4,7 @@ using System.Net;
 namespace Oadm.Core.Sites;
 
 /// <summary>
-/// Names resolve on the device's route (docs/sites.md, Server: Routing): the server's DNS for its own network, the site
+/// Names resolve on the device's route (CLAUDE.md "# Sites", Server: Routing): the server's DNS for its own network, the site
 /// node's DNS for a site. The only place the server asks DNS about devices (typed host names of the add page, "Use DNS
 /// names instead of IP addresses").
 /// </summary>

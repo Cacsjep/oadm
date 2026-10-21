@@ -16,7 +16,7 @@ using Oadm.SiteNode.Networks;
 namespace Oadm.SiteNode.Relays;
 
 /// <summary>
-/// <c>Relay</c> (docs/sites.md, "Relay"): a UDP or TCP listener on the reached cards for as long as the call lives; every
+/// <c>Relay</c> (CLAUDE.md "# Sites", "Relay"): a UDP or TCP listener on the reached cards for as long as the call lives; every
 /// datagram or connection goes to the server and the answers go back to the sender. The port must be on Listen on: a port
 /// that is not is requested (with the reason) and the relay waits for approval in the app. A port another program holds or
 /// the node may not use is reported and tried again every 30 seconds and after every change in the app or of the cards
@@ -73,14 +73,22 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         finally
         {
             _relays.TryRemove(id, out _);
-            var entry = new PortEntry(PortUse.Listen, session.Protocol, session.Port);
-            if (session.Released && !_relays.Values.Any(r => r.Protocol == session.Protocol && r.Port == session.Port))
-                ports.Release(entry);
             NodeEvents.Raise(Changed);
             session.Stop();
             await stop.CancelAsync().ConfigureAwait(false);
             outgoing.Writer.TryComplete();
             await Task.WhenAll(Quiet(writer), Quiet(reader)).ConfigureAwait(false);
+            if (session.Released && !_relays.Values.Any(r => r.Protocol == session.Protocol && r.Port == session.Port))
+            {
+                try
+                {
+                    ports.Release(new PortEntry(PortUse.Listen, session.Protocol, session.Port));
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // node.json could not be written: the port stays allowed, the administrator can remove it in the app.
+                }
+            }
         }
     }
 

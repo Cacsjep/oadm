@@ -13,7 +13,7 @@ using Oadm.Client.Infrastructure;
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// One rule for every Site column (docs/sites.md, Client): shown while the server has sites, hidden otherwise; Discovery
+/// One rule for every Site column (CLAUDE.md "# Sites", Client): shown while the server has sites, hidden otherwise; Discovery
 /// names the sites; devices at a site open in Web View with the right reason when they cannot.
 /// </summary>
 public sealed class SiteColumnRulesTests

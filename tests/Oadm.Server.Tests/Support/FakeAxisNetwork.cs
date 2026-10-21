@@ -239,7 +239,7 @@ internal sealed class FakeAxisDevice
 
 /// <summary>
 /// A set of fake devices by address, plus the HTTP plumbing that routes requests to them. Devices at sites live in a
-/// network of their own per site (<see cref="AtSite"/>): two sites may both have 192.168.0.20 (docs/sites.md, "Overlapping
+/// network of their own per site (<see cref="AtSite"/>): two sites may both have 192.168.0.20 (CLAUDE.md "# Sites", "Overlapping
 /// networks"); connections, probes and DNS names go to the network of their route.
 /// </summary>
 internal sealed class FakeAxisNetwork

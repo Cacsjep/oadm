@@ -14,7 +14,7 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Perf;
 
 /// <summary>
-/// Site offline at scale (docs/sites.md, Perf): a site with 3,000 devices going offline and online is one batch each and
+/// Site offline at scale (CLAUDE.md "# Sites", Perf): a site with 3,000 devices going offline and online is one batch each and
 /// writes nothing; the computed status of 30,000 devices costs O(1) per device on every read.
 /// </summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]

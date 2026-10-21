@@ -8,7 +8,7 @@ using Oadm.Sites.Transport;
 
 namespace Oadm.Sites.Tests;
 
-/// <summary>The attempt limits per address and what a Hello may carry (docs/sites.md, Security review).</summary>
+/// <summary>The attempt limits per address and what a Hello may carry (CLAUDE.md "# Sites", Security review).</summary>
 public sealed class LimitsTests
 {
     [Fact]

@@ -206,7 +206,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     };
 
     /// <summary>
-    /// The server has sites (docs/sites.md, Client: one rule for every Site column): the Site column shows from the start
+    /// The server has sites (CLAUDE.md "# Sites", Client: one rule for every Site column): the Site column shows from the start
     /// and Discovery says it looks at the sites too.
     /// </summary>
     public bool HasSites
@@ -608,7 +608,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     }
 
     /// <summary>
-    /// A (site, address) as the waiting list keeps it (docs/sites.md: "Already waiting" compares the site too): the site's
+    /// A (site, address) as the waiting list keeps it (CLAUDE.md "# Sites": "Already waiting" compares the site too): the site's
     /// name upper case (empty = everywhere) and <see cref="WaitingKey(string)"/> of the address.
     /// </summary>
     internal static string WaitingKey(string? site, string address) => (site ?? "").Trim().ToUpperInvariant() + "|" + WaitingKey(address);
@@ -1193,7 +1193,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     /// <summary>
     /// A row an address probe found. Different devices at the same address through several sites are all listed, none
-    /// checked by itself, each with "Answers through Building A and Building B." (docs/sites.md, "Import from file").
+    /// checked by itself, each with "Answers through Building A and Building B." (CLAUDE.md "# Sites", "Import from file").
     /// </summary>
     private void TrackProbeRow(string sessionId, DiscoveredRowViewModel row)
     {

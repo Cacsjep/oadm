@@ -16,7 +16,14 @@ public partial class AddPortWindow : Window
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
-        viewModel.CloseRequested += (_, added) => Close(added);
+        var closing = false;
+        viewModel.CloseRequested += (_, added) =>
+        {
+            closing = true;
+            Close(added);
+        };
+        // The X while the administrator prompt is open: the dialog stays until the answer is in.
+        Closing += (_, e) => e.Cancel = !closing && !viewModel.IsIdle;
     }
 
     protected override void OnOpened(EventArgs e)

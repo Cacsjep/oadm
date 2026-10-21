@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  OADM Site Node for Windows (docs/sites.md, "Packaging"): per-machine MSI, x64, one folder Program Files\OADM Site Node
+  OADM Site Node for Windows (CLAUDE.md "# Sites", "Packaging"): per-machine MSI, x64, one folder Program Files\OADM Site Node
   with the service and the app.
   - Service "OADM Site Node" (OadmSiteNode), automatic start, its own virtual account NT SERVICE\OadmSiteNode (the node
     runs without administrator rights; it only connects out and never listens; no other service shares the account), restart on failure, also when it stops with an error. Its data folder

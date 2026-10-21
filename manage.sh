@@ -477,7 +477,7 @@ package_nuget() {
   echo "packages written to $out"
 }
 
-# The OADM Site Node (docs/sites.md, "Packaging"): service and app published self-contained single-file into
+# The OADM Site Node (CLAUDE.md "# Sites", "Packaging"): service and app published self-contained single-file into
 # artifacts/publish/site-node/<rid> and artifacts/publish/site-node-app/<rid> with their notices (no LGPL part), then
 # OADM-SiteNode-<version>-win-x64.msi (Windows) or oadm-site-node_<version>_<arch>.deb and
 # oadm-site-node-app_<version>_<arch>.deb (Linux) in artifacts/packages.

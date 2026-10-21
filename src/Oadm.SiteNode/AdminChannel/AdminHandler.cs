@@ -11,7 +11,7 @@ using Oadm.SiteNode.Feed;
 namespace Oadm.SiteNode.AdminChannel;
 
 /// <summary>
-/// The commands of the app and the command line (docs/sites.md, "App"). Every local user may read the state, the pairing
+/// The commands of the app and the command line (CLAUDE.md "# Sites", "App"). Every local user may read the state, the pairing
 /// code (it lasts 10 minutes) and the connection log; every change needs an administrator of the machine.
 /// </summary>
 public sealed class AdminHandler(
@@ -53,9 +53,18 @@ public sealed class AdminHandler(
                     var count = int.TryParse(request.Arg("count"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : ConnectionLog.DefaultCapacity;
                     return new AdminResponse { Ok = true, Log = log.Newest(count) };
                 case AdminCommands.PairingCode:
-                    return binding.ShowsPairingCode
-                        ? new AdminResponse { Ok = true, PairingCode = Sites.Binding.PairingCode.Format(binding.PairingCode), State = feed.View() }
-                        : AdminResponse.Fail(binding.Binding == NodeBinding.Bound ? AdminTexts.AlreadyBound : "Binding is closed. Click Allow binding.");
+                    if (!binding.ShowsPairingCode)
+                        return AdminResponse.Fail(binding.Binding == NodeBinding.Bound ? AdminTexts.AlreadyBound : AdminTexts.BindingClosedAllow);
+                    if (!binding.ShowsPairingCodeToEveryone && !isAdmin)
+                        return AdminResponse.Fail(AdminTexts.NeedsAdministrator);
+                    var (current, validUntil, _) = binding.CurrentCode();
+                    return new AdminResponse
+                    {
+                        Ok = true,
+                        PairingCode = Sites.Binding.PairingCode.Format(current),
+                        PairingCodeValidUntil = validUntil,
+                        State = feed.View(),
+                    };
                 case AdminCommands.SetServer:
                     return SetServer(request);
                 case AdminCommands.AllowBinding:
@@ -111,7 +120,8 @@ public sealed class AdminHandler(
                 case AdminCommands.AllowRequest:
                     if (Port(request) is not { } allow)
                         return AdminResponse.Fail("Enter a port from 1 to 65535.");
-                    ports.Allow(allow);
+                    // Only Allow of a request marks the port as the server's (a release removes it); Add port never does.
+                    ports.Allow(allow, fromRequest: request.Command == AdminCommands.AllowRequest);
                     return Ok();
                 case AdminCommands.RemovePort:
                     if (Port(request) is not { } remove)

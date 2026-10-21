@@ -1,6 +1,6 @@
 # OADM Site Node
 
-The node of a site (`docs/sites.md`): OADM's foot in a network the server cannot reach. A pipe: no database, no
+The node of a site (`CLAUDE.md "# Sites"`): OADM's foot in a network the server cannot reach. A pipe: no database, no
 credentials, no tasks, no plugins. Two programs:
 
 - `oadm-site-node` (this project): the headless service (Windows service "OADM Site Node" `OadmSiteNode` under its own

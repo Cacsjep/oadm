@@ -26,7 +26,7 @@ using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// Discovery and devices at sites through the server with fake sites (docs/sites.md, "Discovery, everywhere by itself",
+/// Discovery and devices at sites through the server with fake sites (CLAUDE.md "# Sites", "Discovery, everywhere by itself",
 /// "Overlapping networks", "Moving devices"): two sites both have 192.168.0.20 with different cameras.
 /// </summary>
 public sealed class SiteDiscoveryTests

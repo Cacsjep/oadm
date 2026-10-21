@@ -1,3 +1,5 @@
+using System.Net.Sockets;
+
 using Google.Protobuf.WellKnownTypes;
 
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +17,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// The server side of the sites (docs/sites.md, Server): the bound sites and their node sessions, the nodes waiting to be
+/// The server side of the sites (CLAUDE.md "# Sites", Server): the bound sites and their node sessions, the nodes waiting to be
 /// bound, the site listener (Accept site nodes), and the one way the server opens a connection through a node
 /// (<see cref="ISiteTransport"/>). Online and offline live in memory only, with the waiting times of
 /// <see cref="SiteOptions"/>: offline after 30 s without an answer, online again after 60 s stable, and after a server
@@ -39,6 +41,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private readonly IFirewallRules? _firewall; // the Windows service only: the site port's rule while Accept site nodes is on
     private FirewallRuleKeeper? _firewallRule;
     private ITimer? _tick;
+
+    /// <summary>How often a listener whose port another program holds is tried again.</summary>
+    public static readonly TimeSpan ListenRetry = TimeSpan.FromSeconds(30);
+
+    private long _listenRetry; // when to try the listener again (timestamp), 0 = no retry
+    private int _listenPort;
     private bool _accept;
     private string _serverName = Environment.MachineName;
 
@@ -135,7 +143,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             var accept = await _settings.GetAsync<bool>(SiteSettings.Accept, ct).ConfigureAwait(false);
             if (accept)
             {
-                await OpenListenerAsync(ct).ConfigureAwait(false);
+                // A port another program holds never stops the server: it is logged and tried again every 30 s.
+                await TryOpenListenerAsync(ct).ConfigureAwait(false);
             }
 
             // The first sync always applies: a rule a crashed server left open is removed while site nodes are off.
@@ -657,6 +666,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private void Tick()
     {
         var now = Time.GetTimestamp();
+        if (Volatile.Read(ref _listenRetry) is var retry and not 0 && now >= retry)
+        {
+            Volatile.Write(ref _listenRetry, now + (long)(ListenRetry.TotalSeconds * Time.TimestampFrequency));
+            Observe(RetryListenerAsync(), "open the site port");
+        }
+
         var changed = new List<Guid>();
         var expired = new List<WaitingNode>();
         var seen = new List<(Guid Id, DateTime At)>();
@@ -808,15 +823,25 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         await _acceptLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await _settings.SetAsync(SiteSettings.Accept, accept, ct).ConfigureAwait(false);
             if (accept)
             {
-                await OpenListenerAsync(ct).ConfigureAwait(false);
+                // The port first: a port another program holds refuses the change and nothing is stored.
+                try
+                {
+                    await OpenListenerAsync(ct).ConfigureAwait(false);
+                }
+                catch (SocketException)
+                {
+                    throw new SiteRefusedException(Grpc.Core.StatusCode.FailedPrecondition, SiteTexts.ListenPortInUse(_listenPort));
+                }
             }
             else
             {
+                Volatile.Write(ref _listenRetry, 0);
                 await CloseListenerAsync().ConfigureAwait(false);
             }
+
+            await _settings.SetAsync(SiteSettings.Accept, accept, ct).ConfigureAwait(false);
 
             await SyncFirewallAsync(accept, CancellationToken.None).ConfigureAwait(false);
         }
@@ -867,6 +892,50 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     private async Task<string> ListenUrlAsync(CancellationToken ct) =>
         _options.ListenUrl ?? await _settings.GetAsync<string>(SiteSettings.ListenUrl, ct).ConfigureAwait(false) ?? SiteSettings.DefaultListenUrl;
 
+    /// <summary>
+    /// Opens the listener at start; a port another program holds is logged and tried again by <see cref="Tick"/> every
+    /// <see cref="ListenRetry"/> (the server runs on, site nodes cannot connect meanwhile). Under <see cref="_acceptLock"/>.
+    /// </summary>
+    private async Task TryOpenListenerAsync(CancellationToken ct)
+    {
+        try
+        {
+            await OpenListenerAsync(ct).ConfigureAwait(false);
+            Volatile.Write(ref _listenRetry, 0);
+        }
+        catch (SocketException e)
+        {
+            LogListenFailed(_listenPort, e.Message);
+            Volatile.Write(ref _listenRetry, Time.GetTimestamp() + (long)(ListenRetry.TotalSeconds * Time.TimestampFrequency));
+        }
+    }
+
+    /// <summary>The tick's retry of a listener whose port was in use (Accept site nodes on).</summary>
+    private async Task RetryListenerAsync()
+    {
+        if (!await _acceptLock.WaitAsync(0).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Volatile.Read(ref _listenRetry) != 0 && _listener is null)
+            {
+                await TryOpenListenerAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _acceptLock.Release();
+        }
+
+        if (_listener is not null)
+        {
+            RaiseList();
+        }
+    }
+
     private async Task OpenListenerAsync(CancellationToken ct)
     {
         if (_listener is not null)
@@ -875,9 +944,19 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
 
         var url = await ListenUrlAsync(ct).ConfigureAwait(false);
+        _listenPort = SiteListener.Parse(url).Port;
         var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
             new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress);
-        listener.Start();
+        try
+        {
+            listener.Start();
+        }
+        catch
+        {
+            await listener.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
         _listener = listener;
         lock (_lock)
         {
@@ -1202,7 +1281,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 }
 
-/// <summary>Audit actions of the sites (docs/sites.md, Roles, audit and secrets).</summary>
+/// <summary>Audit actions of the sites (CLAUDE.md "# Sites", Roles, audit and secrets).</summary>
 public static class SiteAudit
 {
     public const string AcceptOn = "Turned on site nodes";

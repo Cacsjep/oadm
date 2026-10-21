@@ -157,7 +157,7 @@ On a computer without a desktop, use the command line. Changes need administrato
 | Command | Does |
 |---|---|
 | `oadm-site-node status` | State, server, connections |
-| `oadm-site-node pairing-code` | The pairing code |
+| `oadm-site-node pairing-code` | The pairing code and until when it is valid |
 | `oadm-site-node server oadm.example.com` | Connect to this server; shows the pairing code while not bound |
 | `oadm-site-node allow-binding` | Binding open for another 24 hours, a new code |
 | `oadm-site-node networks` | Network cards and extra networks; `card <name> on\|off`, `all on`, `add`, `remove` change them |
@@ -167,6 +167,9 @@ On a computer without a desktop, use the command line. Changes need administrato
 
 ## Good to know
 
+- **Trust the site node like a device**: OADM tries the passwords of the credential list on devices it finds at a site,
+  after the same Axis check as on its own network. A device that imitates an Axis device, or a site node someone took
+  over, could see those passwords. Bind only nodes on computers you control, and keep the credential list short.
 - **Server port**: the server accepts site nodes on TCP 5081, only while **Accept site nodes** is on. On Windows the
   server opens it for Domain and Private networks while it is on.
 - **Many live connections**: every lasting connection through a node (device events, live video, the web interface)

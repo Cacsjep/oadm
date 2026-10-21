@@ -21,7 +21,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.Sites.Tests;
 
 /// <summary>
-/// The spike of docs/sites.md (Transport, "Risk, spike first"): the node opens TCP + TLS to the server, then serves
+/// The spike of CLAUDE.md "# Sites" (Transport, "Risk, spike first"): the node opens TCP + TLS to the server, then serves
 /// HTTP/2 (Kestrel) on that connection while the server is the gRPC client on the socket it accepted.
 /// </summary>
 public sealed class ReversedConnectionTests

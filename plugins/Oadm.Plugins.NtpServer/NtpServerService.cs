@@ -559,10 +559,8 @@ public sealed partial class NtpServerService : IAsyncDisposable
             }
         }
 
-        foreach (var server in remove)
-        {
-            await server.ReleaseAsync().ConfigureAwait(false);
-        }
+        // Together: each release may wait up to a few seconds for its node.
+        await Task.WhenAll(remove.Select(server => server.ReleaseAsync().AsTask())).ConfigureAwait(false);
 
         foreach (var site in wanted.Values)
         {

@@ -262,7 +262,7 @@ public sealed partial class SiteManager
 }
 
 /// <summary>
-/// The networks a site's node reaches, from its Watch (docs/sites.md "Reach"): the addresses of the reached cards (or
+/// The networks a site's node reaches, from its Watch (CLAUDE.md "# Sites" "Reach"): the addresses of the reached cards (or
 /// every card with "All cards") with their prefixes, and the extra subnets. <see cref="Contains"/> is O(networks).
 /// </summary>
 public sealed class SiteNetworks

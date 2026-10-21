@@ -5,7 +5,7 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.Cli;
 
 /// <summary>
-/// The command line of the installed node (docs/sites.md, "App": headless machines): it talks to the running service over
+/// The command line of the installed node (CLAUDE.md "# Sites", "App": headless machines): it talks to the running service over
 /// the local channel. Reading the state and the pairing code needs no rights; every change needs an administrator
 /// (sudo / an elevated prompt).
 /// </summary>
@@ -87,6 +87,8 @@ public static class CommandLine
             case "pairing-code":
             case "accept-server":
                 await output.WriteLineAsync(response.PairingCode).ConfigureAwait(false);
+                if (response.PairingCodeValidUntil is { } until)
+                    await output.WriteLineAsync($"Valid until {until.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)} (a new code every 10 minutes).").ConfigureAwait(false);
                 break;
             case "networks" when args.Length == 0:
                 await output.WriteLineAsync(Networks(response.State!)).ConfigureAwait(false);

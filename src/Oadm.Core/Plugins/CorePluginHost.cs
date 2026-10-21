@@ -155,7 +155,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     entry.Subscriptions,
                     _registry.Licenses?.LicenseOf(registered.Origin.PackageId))
                 {
-                    // Not for devices at a site: no route into a site and no relays (docs/sites.md, Declaration).
+                    // Not for devices at a site: no route into a site and no relays (CLAUDE.md "# Sites", Declaration).
                     Network = SiteSupportGuard.Guard(entry.Network, siteSupport),
                     Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
                 };

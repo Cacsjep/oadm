@@ -23,7 +23,7 @@ public static class AddressCheck
         QueryAsync(ctx, null, payloadJson, probe, ct);
 
     /// <summary>
-    /// The query for <paramref name="device"/>'s dialog: the managed devices listed are those on its route only (docs/sites.md,
+    /// The query for <paramref name="device"/>'s dialog: the managed devices listed are those on its route only (CLAUDE.md "# Sites",
     /// "Overlapping networks": 192.168.0.20 at another site is another network and no conflict). Null = every device.
     /// </summary>
     /// <param name="probe">The probe; null = on the route of the query's device (<see cref="ITaskQueryContext.Network"/>).</param>

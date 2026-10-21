@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Http.Features;
 namespace Oadm.Sites.Transport;
 
 /// <summary>
-/// The Kestrel endpoint of connections the host opened itself (docs/sites.md, Transport): in outbound mode the node opens
+/// The Kestrel endpoint of connections the host opened itself (CLAUDE.md "# Sites", Transport): in outbound mode the node opens
 /// TCP + TLS to the server and then serves HTTP/2 on that connection. Listen on it with
 /// <c>options.Listen(new AcceptedStreamEndPoint(), o =&gt; o.Protocols = HttpProtocols.Http2)</c>; TLS is already done.
 /// </summary>

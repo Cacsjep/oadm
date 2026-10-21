@@ -36,7 +36,7 @@ public sealed class SiteRefusedException : Exception
     public StatusCode Code { get; } = StatusCode.FailedPrecondition;
 }
 
-/// <summary>Binding, renaming and forgetting of sites (docs/sites.md, Binding).</summary>
+/// <summary>Binding, renaming and forgetting of sites (CLAUDE.md "# Sites", Binding).</summary>
 public sealed partial class SiteManager
 {
     private readonly SemaphoreSlim _bindLock = new(1, 1);
@@ -358,7 +358,12 @@ public sealed partial class SiteManager
         Site row;
         lock (_lock)
         {
-            var entry = _sites[siteId];
+            // Removed meanwhile (a Remove at the same time): the rename has nothing left to name.
+            if (!_sites.TryGetValue(siteId, out var entry))
+            {
+                throw new SiteRefusedException(Grpc.Core.StatusCode.NotFound, SiteTexts.SiteGone);
+            }
+
             entry.Row.Name = siteName;
             entry.Row.NormalizedName = siteName.ToUpperInvariant();
             row = Copy(entry.Row);

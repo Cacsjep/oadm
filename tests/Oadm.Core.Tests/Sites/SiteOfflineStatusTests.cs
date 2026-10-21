@@ -16,7 +16,7 @@ using Oadm.Tests.Shared;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// Site offline is computed, never stored (docs/sites.md, Site offline): reads and the change feed show it while the
+/// Site offline is computed, never stored (CLAUDE.md "# Sites", Site offline): reads and the change feed show it while the
 /// device's site is not online, the stored status stays the last real one, and a site going offline or online publishes
 /// its devices in one batch without writes.
 /// </summary>

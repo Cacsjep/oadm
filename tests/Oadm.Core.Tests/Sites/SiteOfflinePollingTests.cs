@@ -18,7 +18,7 @@ namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
 /// Polling and Site offline: devices of an offline site are neither polled nor refreshed; a site error during a poll
-/// never changes a status and never counts as a failed poll (docs/sites.md, Site errors are not device errors).
+/// never changes a status and never counts as a failed poll (CLAUDE.md "# Sites", Site errors are not device errors).
 /// </summary>
 public sealed class SiteOfflinePollingTests : IAsyncLifetime, IDisposable
 {

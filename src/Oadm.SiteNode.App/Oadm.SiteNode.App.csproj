@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The OADM Site Node app (docs/sites.md, "App"): the node's window next to the headless service. It talks to the
+  <!-- The OADM Site Node app (CLAUDE.md "# Sites", "App"): the node's window next to the headless service. It talks to the
        service over the local channel only; changes run through an elevated copy of itself (UAC / pkexec). -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

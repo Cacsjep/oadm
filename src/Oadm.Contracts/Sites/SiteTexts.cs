@@ -23,6 +23,10 @@ public static class SiteTexts
     public const string NodeGone = "The site node is no longer connected. Check it in the OADM Site Node app.";
     public const string NodeNotAnswering = "The site node does not answer.";
     public const string NotBound = "The site node was reset. Replace or remove the site.";
+
+    /// <summary>Accept site nodes was turned on while another program holds the site port: nothing changed.</summary>
+    public static string ListenPortInUse(int port) =>
+        string.Create(CultureInfo.InvariantCulture, $"Another program uses TCP {port}, the port site nodes connect to. Site nodes stay off.");
     public const string Connecting = "Connecting";
     public const string NodeDidNotAnswer = "The site node did not answer. Reset it in the OADM Site Node app.";
     public const string WaitingToBeBound = "Waiting to be bound";
@@ -116,7 +120,7 @@ public static class SiteTexts
 }
 
 /// <summary>
-/// The pairing code as typed (docs/sites.md, Binding): 8 characters of Crockford base32 (no I, L, O, U); case, spaces and
+/// The pairing code as typed (CLAUDE.md "# Sites", Binding): 8 characters of Crockford base32 (no I, L, O, U); case, spaces and
 /// dashes ignored; I and L read as 1, O as 0. Shared by the server's binding, the node and the client's form.
 /// </summary>
 public static class PairingCodeText

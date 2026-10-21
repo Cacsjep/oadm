@@ -714,7 +714,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>The rail key of the Web View page (plugin oadm.web-view).</summary>
     internal const string WebViewPageKey = "plugin:oadm.web-view";
 
-    /// <summary>A device at a site: its web interface opens in the Web View page (docs/sites.md, Client).</summary>
+    /// <summary>A device at a site: its web interface opens in the Web View page (CLAUDE.md "# Sites", Client).</summary>
     private void OpenInWebView(string deviceId)
     {
         if (NavItems.FirstOrDefault(n => n.Key == WebViewPageKey) is not { Page: CorePluginPageViewModel page } item)

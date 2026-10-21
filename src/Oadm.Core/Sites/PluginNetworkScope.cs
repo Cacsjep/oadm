@@ -125,7 +125,7 @@ public sealed class PluginNetworkScope : IPluginNetwork, IAsyncDisposable
         /// <summary>The plugin stopped: no more site events reach it.</summary>
         public void Detach() => _relays.SitesChanged -= OnChanged;
 
-        private void OnChanged(object? sender, EventArgs e) => SitesChanged?.Invoke(this, EventArgs.Empty);
+        private void OnChanged(object? sender, EventArgs e) => PluginEvents.Raise(SitesChanged, this);
     }
 
     /// <summary>A relay the scope closes when the plugin stops; disposing it removes it from the scope.</summary>

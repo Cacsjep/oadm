@@ -156,7 +156,8 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
             var request = await AdminLines.ReadAsync<AdminRequest>(stream, timeout.Token).ConfigureAwait(false);
             if (request is null)
                 return;
-            var admin = !AdminCommands.IsOpen(request.Command) && isAdmin();
+            // The pairing code is open while the node is not bound, administrators only otherwise: the handler decides.
+            var admin = (!AdminCommands.IsOpen(request.Command) || request.Command == AdminCommands.PairingCode) && isAdmin();
             AdminResponse response;
             try
             {
@@ -167,7 +168,7 @@ public sealed partial class AdminChannelHost(AdminHandler handler, NodeOptions o
                 response = AdminResponse.Fail("The site node cannot save its settings: " + e.Message);
             }
 
-            if (response.Ok && !AdminCommands.IsOpen(request.Command))
+            if (response.Ok && (!AdminCommands.IsOpen(request.Command) || request.Command == AdminCommands.PairingCode))
                 LogCommand(logger, request.Command);
             await AdminLines.WriteAsync(stream, response, timeout.Token).ConfigureAwait(false);
         }

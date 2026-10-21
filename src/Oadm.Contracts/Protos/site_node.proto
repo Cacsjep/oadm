@@ -2,7 +2,7 @@ syntax = "proto3";
 package oadm.sitenode.v1;
 option csharp_namespace = "Oadm.Contracts.SiteNode";
 
-// The protocol between the OADM server and an OADM Site Node (docs/sites.md, "Transport and protocol").
+// The protocol between the OADM server and an OADM Site Node (CLAUDE.md "# Sites", "Transport and protocol").
 //
 // The node hosts this service and the server calls it. The node always opens the connection: TCP + TLS to the server's
 // site port, then the roles turn (the server is the HTTP/2 client on that socket). The node never listens.

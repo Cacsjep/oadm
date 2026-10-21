@@ -65,8 +65,8 @@ public sealed record WrongCodeView(DateTimeOffset Time, string From);
 public sealed record ConnectionLogEntry(DateTimeOffset Time, string Server, string Target, string Kind, string Result);
 
 /// <summary>
-/// The node's state as the app and the command line show it. Everyone may read it, the pairing code too while it is shown
-/// (not bound, or a new server identity accepted): a code lasts 10 minutes.
+/// The node's state as the app and the command line show it. Everyone may read it, the pairing code too while the node is not
+/// bound and binding is open: a code lasts 10 minutes.
 /// </summary>
 public sealed class NodeView
 {
@@ -116,7 +116,7 @@ public sealed class NodeView
     /// <summary>Changes with every new pairing code and after a service restart (never the code itself).</summary>
     public long PairingCodeGeneration { get; init; }
 
-    /// <summary>"ABCD-EFGH" while the node shows a pairing code (not bound, or a new server identity accepted); else empty.</summary>
+    /// <summary>"ABCD-EFGH" while the node is not bound and binding is open; else empty (a bound node that accepted a new server identity gives its code to administrators only).</summary>
     public string PairingCode { get; init; } = "";
 
     /// <summary>When <see cref="PairingCode"/> is replaced by a new one.</summary>
@@ -148,12 +148,20 @@ public sealed class AdminResponse
     public string Error { get; init; } = "";
     public NodeView? State { get; init; }
     public string PairingCode { get; init; } = "";
+
+    /// <summary>When <see cref="PairingCode"/> is replaced by a new one (pairing-code).</summary>
+    public DateTimeOffset? PairingCodeValidUntil { get; init; }
+
     public IReadOnlyList<ConnectionLogEntry> Log { get; init; } = [];
 
     public static AdminResponse Fail(string error) => new() { Ok = false, Error = error };
 }
 
-/// <summary>The commands of the admin channel. <see cref="State"/>, <see cref="Log"/> and <see cref="PairingCode"/> are open to every local user.</summary>
+/// <summary>
+/// The commands of the admin channel. <see cref="State"/>, <see cref="Log"/> and <see cref="PairingCode"/> are open to every
+/// local user (the pairing code only while the node is not bound; for a bound node that accepted a new server identity it
+/// needs an administrator).
+/// </summary>
 public static class AdminCommands
 {
     public const string State = "state";

@@ -160,8 +160,10 @@ public sealed class NodeAppViewModelTests
         Assert.Equal(0, _elevation.Runs);
         Assert.DoesNotContain(_channel.Requests, r => r.Request.Command == AdminCommands.PairingCode);
 
-        _time.Advance(TimeSpan.FromMinutes(7) + TimeSpan.FromSeconds(30));
-        Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 1 more minute.", _vm.PairingHint);
+        _time.Advance(TimeSpan.FromMinutes(6) + TimeSpan.FromSeconds(30));
+        Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 2 more minutes.", _vm.PairingHint);
+        _time.Advance(TimeSpan.FromSeconds(80)); // the last minute counts in seconds
+        Assert.Equal(NodeAppViewModel.TypeCode + " Valid for 10 more seconds.", _vm.PairingHint);
 
         await _vm.CopyPairingCodeAsync();
         Assert.Equal(["ABCD-EFGH"], _dialogs.Copied);
@@ -546,5 +548,61 @@ public sealed class NodeAppViewModelTests
         Assert.False(closed);
         Assert.Null(dialog!.ErrorOf(nameof(AddPortViewModel.PortText)));
         Assert.True(dialog.IsIdle);
+    }
+
+    [Fact]
+    public async Task ABoundNodeThatAcceptedANewServerShowsItsCodeOnlyAfterAnAdministratorAskedForIt()
+    {
+        var accepted = new NodeView
+        {
+            NodeId = "a1",
+            Binding = NodeBinding.Bound,
+            Bound = new BoundServerView("OADM-SRV", "AB", DateTimeOffset.UnixEpoch, "Building B"),
+            NewServerIdentity = "0123456789ABCDEF",
+            NewServerAccepted = true,
+        };
+        _channel.State = accepted;
+        _channel.Answer = r => r.Command == AdminCommands.PairingCode ? new AdminResponse { Ok = true, PairingCode = "WXYZ-2345", State = accepted } : null!;
+        await _vm.RefreshAsync();
+        Assert.True(_vm.ShowPairing);
+        Assert.Null(_vm.PairingCode); // the state everyone reads never carries it
+        Assert.True(_vm.CanShowPairingCode);
+
+        await _vm.ShowPairingCodeAsync();
+
+        Assert.Equal(1, _elevation.Runs);
+        Assert.Equal("WXYZ-2345", _vm.PairingCode);
+        Assert.False(_vm.CanShowPairingCode);
+        await _vm.RefreshAsync();
+        Assert.Equal("WXYZ-2345", _vm.PairingCode); // kept while the accepted identity binds
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Bound);
+        await _vm.RefreshAsync();
+        Assert.Null(_vm.PairingCode);
+    }
+
+    [Fact]
+    public async Task TheAddPortDialogCannotBeClosedWhileTheAdministratorPromptIsOpen()
+    {
+        await _vm.RefreshAsync();
+        _elevation.Prompt = new TaskCompletionSource();
+        Task? adding = null;
+        AddPortViewModel? dialog = null;
+        _dialogs.AddPort = d =>
+        {
+            dialog = d;
+            d.PortText = "8080";
+            adding = d.AddAsync();
+            return Task.CompletedTask;
+        };
+
+        await _vm.AddPortAsync();
+
+        Assert.False(dialog!.IsIdle);
+        Assert.False(dialog.CancelCommand.CanExecute(null));
+        _elevation.Prompt.SetResult();
+        await adding!;
+        Assert.True(dialog.IsIdle);
+        Assert.True(dialog.CancelCommand.CanExecute(null));
     }
 }

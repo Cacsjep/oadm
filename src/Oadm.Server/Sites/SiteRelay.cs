@@ -14,7 +14,7 @@ using SdkSiteTexts = Oadm.Sdk.Sites.SiteTexts;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// A relay at a site (docs/sites.md, "Relay"): keeps one node <c>Relay</c> call open while the site is online and opens it
+/// A relay at a site (CLAUDE.md "# Sites", "Relay"): keeps one node <c>Relay</c> call open while the site is online and opens it
 /// again after the node reconnects. Its <see cref="State"/> follows the node's answers (running, waiting for approval in
 /// the node app, port in use, no permission) and the site (offline, node too old). The node asks its user for a port it
 /// has not allowed (Listen on, with the reason) when the call opens. <see cref="ReleaseAsync"/> tells the node that the plugin
@@ -267,7 +267,7 @@ internal abstract class SiteRelay : IRelay
             _state = state;
         }
 
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        Core.Sites.PluginEvents.Raise(StateChanged, this); // plugin handlers: a throw never ends the relay loop
     }
 
     /// <summary>A datagram, connection or data from the node.</summary>
@@ -331,28 +331,38 @@ internal abstract class SiteRelay : IRelay
             call = _call;
         }
 
-        if (call is not null)
+        try
         {
-            using var timeout = new CancellationTokenSource(ReleaseWait, _manager.Time);
-            await _writing.WaitAsync(timeout.Token).ConfigureAwait(false);
-            try
+            if (call is not null)
             {
-                await call.Requests.WriteAsync(new RelayMessage { Release = new RelayRelease() }, timeout.Token).ConfigureAwait(false);
-                await call.Requests.CompleteAsync().ConfigureAwait(false);
-                // The node ends the call once the port is back; an older node does not, the wait ends it.
-                await Task.WhenAny(_loop, Task.Delay(ReleaseWait, _manager.Time, timeout.Token)).ConfigureAwait(false);
-            }
-            catch (Exception e) when (e is RpcException or InvalidOperationException or ObjectDisposedException or OperationCanceledException or IOException)
-            {
-                // The link ended meanwhile: the node keeps the port.
-            }
-            finally
-            {
-                _writing.Release();
+                using var timeout = new CancellationTokenSource(ReleaseWait, _manager.Time);
+                var writing = false;
+                try
+                {
+                    await _writing.WaitAsync(timeout.Token).ConfigureAwait(false);
+                    writing = true;
+                    await call.Requests.WriteAsync(new RelayMessage { Release = new RelayRelease() }, timeout.Token).ConfigureAwait(false);
+                    await call.Requests.CompleteAsync().ConfigureAwait(false);
+                    // The node ends the call once the port is back; an older node does not, the wait ends it.
+                    await Task.WhenAny(_loop, Task.Delay(ReleaseWait, _manager.Time, timeout.Token)).ConfigureAwait(false);
+                }
+                catch (Exception e) when (e is RpcException or InvalidOperationException or ObjectDisposedException or OperationCanceledException or IOException)
+                {
+                    // The link ended meanwhile, or a send held the call too long: the node keeps the port.
+                }
+                finally
+                {
+                    if (writing)
+                    {
+                        _writing.Release();
+                    }
+                }
             }
         }
-
-        await DisposeAsync().ConfigureAwait(false);
+        finally
+        {
+            await DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     public async ValueTask DisposeAsync()

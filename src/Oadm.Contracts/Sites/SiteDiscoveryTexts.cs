@@ -1,7 +1,7 @@
 namespace Oadm.Contracts.Sites;
 
 /// <summary>
-/// The texts of discovery at sites (docs/sites.md, Client: add page and import), shared by the server (waiting list) and the
+/// The texts of discovery at sites (CLAUDE.md "# Sites", Client: add page and import), shared by the server (waiting list) and the
 /// client (add page), so one concept has one phrase.
 /// </summary>
 public static class SiteDiscoveryTexts

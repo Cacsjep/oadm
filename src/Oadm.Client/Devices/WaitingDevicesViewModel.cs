@@ -157,7 +157,7 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
 
     public WaitingDevicesState State { get; }
 
-    /// <summary>The Site column: shown while the server has sites (docs/sites.md, Client: one rule for every Site column).</summary>
+    /// <summary>The Site column: shown while the server has sites (CLAUDE.md "# Sites", Client: one rule for every Site column).</summary>
     public bool ShowSiteColumn { get; }
 
     public RangeObservableCollection<WaitingRowViewModel> Rows { get; } = [];

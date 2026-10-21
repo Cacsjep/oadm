@@ -44,7 +44,7 @@ public enum NodeStatusKind
 }
 
 /// <summary>
-/// The one window of the OADM Site Node app (docs/sites.md, "App"): server and pairing code, networks, ports and
+/// The one window of the OADM Site Node app (CLAUDE.md "# Sites", "App"): server and pairing code, networks, ports and
 /// requests, the node status, Reset. Reads the service's state every 2 seconds (the pairing code is part of it while the
 /// node is not bound); every change goes through <see cref="IElevation"/> unless the app runs as an administrator.
 /// </summary>
@@ -76,6 +76,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private bool _serverEdited;
     private int _busy;
     private int _failedReads;
+    private long _applied;
+    private string? _adminCode;
 
     public NodeAppViewModel(INodeChannel channel, IElevation elevation, IAppDialogs dialogs, TimeProvider? time = null)
     {
@@ -119,8 +121,16 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string? ServiceError { get; private set; }
 
-    /// <summary>"ABCD-EFGH" while the node is not bound (or a new server identity was accepted); null otherwise.</summary>
-    public string? PairingCode => State?.PairingCode is { Length: > 0 } code ? code : null;
+    /// <summary>
+    /// "ABCD-EFGH": from the state while the node is not bound; for a bound node that accepted a new server identity from an
+    /// administrator's answer (Accept, Show pairing code), never from the state everyone reads.
+    /// </summary>
+    public string? PairingCode => State?.PairingCode is { Length: > 0 } code ? code
+        : IsBound && IsPairing && _adminCode is { Length: > 0 } admin ? admin
+        : null;
+
+    /// <summary>Show pairing code: a bound node that accepted a new server identity, before the code was read as an administrator.</summary>
+    public bool CanShowPairingCode => IsBound && IsPairing && PairingCode is null;
 
     /// <summary>"Type this code at Bind on the Sites page of OADM. Valid for 8 more minutes."</summary>
     public string PairingHint
@@ -129,7 +139,14 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         {
             if (State?.PairingCodeValidUntil is not { } until)
                 return TypeCode;
-            var minutes = Math.Max(1, (int)Math.Ceiling((until - _time.GetUtcNow()).TotalMinutes));
+            var left = until - _time.GetUtcNow();
+            if (left < TimeSpan.FromMinutes(1))
+            {
+                var seconds = Math.Max(1, (int)Math.Ceiling(left.TotalSeconds));
+                return $"{TypeCode} Valid for {seconds} more {(seconds == 1 ? "second" : "seconds")}.";
+            }
+
+            var minutes = (int)Math.Ceiling(left.TotalMinutes);
             return $"{TypeCode} Valid for {minutes} more {(minutes == 1 ? "minute" : "minutes")}.";
         }
     }
@@ -269,7 +286,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     /// <summary>A change runs (often waiting for the administrator prompt): every change button and check box is off.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSaveServer), nameof(SaveServerBlockedReason), nameof(CanChange))]
-    [NotifyCanExecuteChangedFor(nameof(SaveServerCommand), nameof(AllowBindingCommand), nameof(AcceptServerCommand),
+    [NotifyCanExecuteChangedFor(nameof(SaveServerCommand), nameof(AllowBindingCommand), nameof(AcceptServerCommand), nameof(ShowPairingCodeCommand),
         nameof(AddPortCommand), nameof(RemovePortCommand), nameof(AllowRequestCommand),
         nameof(DismissRequestCommand), nameof(ResetCommand))]
     public partial bool IsBusy { get; private set; }
@@ -377,7 +394,10 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        var applied = _applied;
         var response = await _channel.SendAsync(AdminRequest.Of(AdminCommands.State), CancellationToken.None).ConfigureAwait(true);
+        if (applied != _applied)
+            return; // a change applied a newer state meanwhile
         if (!response.Ok || response.State is null)
         {
             // One failed read is tolerated (the service was busy for a moment): the window keeps the last state.
@@ -436,9 +456,19 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
             BindingError = response.Error;
     }
 
-    /// <summary>Lets the server with the new identity bind with the pairing code; the state then carries the code.</summary>
+    /// <summary>Lets the server with the new identity bind with the pairing code; the administrator's answer carries it.</summary>
     [RelayCommand(CanExecute = nameof(CanChange))]
     public Task AcceptServerAsync() => ChangeAsync(AdminRequest.Of(AdminCommands.AcceptServer));
+
+    /// <summary>The pairing code of a bound node that accepted a new server identity (administrators only).</summary>
+    [RelayCommand(CanExecute = nameof(CanChange))]
+    public async Task ShowPairingCodeAsync()
+    {
+        BindingError = null;
+        var response = await ChangeAsync(AdminRequest.Of(AdminCommands.PairingCode)).ConfigureAwait(true);
+        if (!response.Ok && response.Error != SystemElevation.Cancelled)
+            BindingError = response.Error;
+    }
 
     /// <summary>Add of the Ports card: the Add port dialog; its refusals stay in the dialog.</summary>
     [RelayCommand(CanExecute = nameof(CanChange))]
@@ -523,7 +553,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     [
         nameof(NodeStatusText), nameof(NodeStatusKind), nameof(IsNodeStatusOk), nameof(IsNodeStatusWarning), nameof(IsNodeStatusError),
         nameof(Link), nameof(IsLinkConnected), nameof(IsLinkReady), nameof(IsLinkUp), nameof(IsLinkError), nameof(ServerLabel), nameof(NodeLabel), nameof(NodeRole),
-        nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ShowBindingLine), nameof(BoundSince), nameof(ShowBoundSince), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
+        nameof(HasPairingCode), nameof(CanShowPairingCode), nameof(PairingCode), nameof(CanAcceptServer), nameof(ShowBindingLine), nameof(BoundSince), nameof(ShowBoundSince), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
     ];
 
     private async Task<AdminResponse> ChangeAsync(AdminRequest request)
@@ -532,6 +562,8 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
         var response = await SendAsAdministratorAsync(request).ConfigureAwait(true);
         if (!response.Ok && response.Error != SystemElevation.Cancelled)
             ActionError = response.Error;
+        if (response.Ok && response.PairingCode.Length > 0)
+            _adminCode = response.PairingCode;
         if (response.State is not null)
             Apply(response.State);
         else
@@ -557,6 +589,9 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     private void Apply(NodeView view)
     {
+        _applied++;
+        if (!(view.Binding == NodeBinding.Bound && view is { NewServerAccepted: true, NewServerIdentity.Length: > 0 }))
+            _adminCode = null; // only a bound node that accepted a new identity keeps an administrator's code
         State = view;
         if (!_serverEdited)
         {

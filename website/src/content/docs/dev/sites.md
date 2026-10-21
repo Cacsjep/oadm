@@ -1,6 +1,6 @@
 ---
 title: Sites
-description: Devices at a site, reached through an OADM Site Node: what your plugin declares, network checks, relays and tests.
+description: "Devices at a site, reached through an OADM Site Node: what your plugin declares, network checks, relays and tests."
 ---
 
 A **site** is a network the OADM server cannot reach itself: another building, a camera network behind a second network

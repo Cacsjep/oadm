@@ -44,7 +44,7 @@ public sealed partial class AddPortViewModel : ValidatingViewModel
 
     /// <summary>No request runs (the administrator prompt may be open meanwhile).</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddCommand))]
+    [NotifyCanExecuteChangedFor(nameof(AddCommand), nameof(CancelCommand))]
     public partial bool IsIdle { get; private set; } = true;
 
     /// <summary>Why Add is disabled (the port's error), null when it is not.</summary>
@@ -84,7 +84,8 @@ public sealed partial class AddPortViewModel : ValidatingViewModel
             Validation.SetServerError(nameof(PortText), response.Error);
     }
 
-    [RelayCommand]
+    /// <summary>Cancel (and the X): only while no request runs, so a refusal or an added port is never lost.</summary>
+    [RelayCommand(CanExecute = nameof(IsIdle))]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
     private int? Port() =>

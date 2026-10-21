@@ -11,7 +11,7 @@ namespace Oadm.Server.Tests.Sites;
 /// <summary>
 /// The site link with the real OADM Site Node in this process: a dropped link is a site error and never a device error,
 /// a cancelled connect is a cancellation, the port request follows the caller and is asked again when it did not arrive,
-/// and the server can ask whether the node answers now (docs/sites.md, Site errors are not device errors).
+/// and the server can ask whether the node answers now (CLAUDE.md "# Sites", Site errors are not device errors).
 /// </summary>
 public sealed class SiteLinkServerTests
 {

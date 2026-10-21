@@ -14,7 +14,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.SiteNode.State;
 
 /// <summary>
-/// The node's states (docs/sites.md, "States" and "Binding"): unbound with binding open (24 hours of run time, counted by
+/// The node's states (CLAUDE.md "# Sites", "States" and "Binding"): unbound with binding open (24 hours of run time, counted by
 /// <see cref="Tick"/> and saved every minute), unbound with binding closed, bound to one server. The pairing code lives in
 /// memory only (a new one at every start, every <see cref="CodeLifetime"/>, Allow binding, Reset, Unbind and after 5 wrong
 /// codes). Every local user may read it while it is shown: it lasts minutes only and the node binds only to the server
@@ -83,25 +83,30 @@ public sealed class BindingState
     /// <summary>The current pairing code (normalized, without the dash). Never sent to the server.</summary>
     public string PairingCode => CurrentCode().Code;
 
-    /// <summary>The current pairing code and when it is replaced by a new one (a code past its time is replaced first).</summary>
-    public (string Code, DateTimeOffset ValidUntil) CurrentCode()
+    /// <summary>
+    /// The current pairing code, when it is replaced by a new one and its generation, read together (a code past its time
+    /// is replaced first). The grace of a pairing started with the old code counts from the old code's scheduled end, not
+    /// from this read.
+    /// </summary>
+    public (string Code, DateTimeOffset ValidUntil, long Generation) CurrentCode()
     {
         var now = _time.GetTimestamp();
         bool rotated;
-        (string, DateTimeOffset) current;
+        (string, DateTimeOffset, long) current;
         lock (_lock)
         {
+            var lifetime = (long)(CodeLifetime.TotalSeconds * _time.TimestampFrequency);
             rotated = _time.GetElapsedTime(_codeStarted, now) >= CodeLifetime;
             if (rotated)
             {
                 _expiredCode = _code;
-                _expiredAt = now;
+                _expiredAt = _codeStarted + lifetime;
                 _code = Sites.Binding.PairingCode.Create();
                 _codeGeneration++;
                 _codeStarted = now;
             }
 
-            current = (_code, _time.GetUtcNow() + CodeLifetime - _time.GetElapsedTime(_codeStarted, now));
+            current = (_code, _time.GetUtcNow() + CodeLifetime - _time.GetElapsedTime(_codeStarted, now), _codeGeneration);
         }
 
         if (rotated)
@@ -113,15 +118,7 @@ public sealed class BindingState
     /// Changes with every new pairing code (and differs after a service restart); never the code. The app forgets a code it
     /// shows once this changes.
     /// </summary>
-    public long PairingCodeGeneration
-    {
-        get
-        {
-            CurrentCode();
-            lock (_lock)
-                return _codeGeneration;
-        }
-    }
+    public long PairingCodeGeneration => CurrentCode().Generation;
 
     public DateTimeOffset? LockedUntil
     {
@@ -205,6 +202,12 @@ public sealed class BindingState
         _store.Read(c => c.BoundServers.Count == 0
             ? c.BindingSecondsLeft > 0
             : c.NewServerAccepted && string.Equals(c.NewServerIdentity, fingerprintHex, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// True while every local user may read the pairing code (decision 2026-10-21): binding open on a node that is not bound.
+    /// A bound node that accepted a new server identity hands its code to administrators only.
+    /// </summary>
+    public bool ShowsPairingCodeToEveryone => Binding == NodeBinding.Open;
 
     /// <summary>True while the app shows a pairing code: binding open, or a new server identity accepted.</summary>
     public bool ShowsPairingCode => _store.Read(c => c.BoundServers.Count == 0 ? c.BindingSecondsLeft > 0 : c.NewServerAccepted && c.NewServerIdentity.Length > 0);

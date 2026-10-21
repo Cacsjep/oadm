@@ -25,7 +25,7 @@ public sealed record RtspMetadataOptions
 
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>The way to the device (docs/sites.md); the connection opens through <see cref="Router"/>.</summary>
+    /// <summary>The way to the device (CLAUDE.md "# Sites"); the connection opens through <see cref="Router"/>.</summary>
     public DeviceRoute Route { get; init; }
 
     /// <summary>Opens the connection on <see cref="Route"/>; default the server's own network only.</summary>

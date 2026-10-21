@@ -4,13 +4,14 @@ using Oadm.Sdk.Sites;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// Relays into the sites (docs/sites.md, "Relay", <see cref="ISiteRelays"/>): the bound sites for plugins and one
+/// Relays into the sites (CLAUDE.md "# Sites", "Relay", <see cref="ISiteRelays"/>): the bound sites for plugins and one
 /// self-reopening relay per <see cref="OpenUdp"/> / <see cref="OpenTcp"/> over the node's <c>Relay</c> call.
 /// </summary>
 public sealed partial class SiteManager : ISiteRelays
 {
     private EventHandler? _sitesChanged;
     private int _forwarding;
+    private readonly Lock _forwardLock = new();
 
     /// <summary>Every bound site, by name.</summary>
     public IReadOnlyList<ISiteInfo> BoundSites
@@ -34,13 +35,23 @@ public sealed partial class SiteManager : ISiteRelays
         {
             if (Interlocked.Exchange(ref _forwarding, 1) == 0)
             {
-                Changed += (_, _) => _sitesChanged?.Invoke(this, EventArgs.Empty);
+                // Plugin handlers: one that throws never ends the tick or a site session (Oadm.Core.Sites.PluginEvents).
+                Changed += (_, _) => PluginEvents.Raise(Volatile.Read(ref _sitesChanged), this);
             }
 
-            _sitesChanged += value;
+            lock (_forwardLock)
+            {
+                _sitesChanged += value;
+            }
         }
 
-        remove => _sitesChanged -= value;
+        remove
+        {
+            lock (_forwardLock)
+            {
+                _sitesChanged -= value;
+            }
+        }
     }
 
     public IUdpRelay OpenUdp(Guid siteId, int port, string reason)

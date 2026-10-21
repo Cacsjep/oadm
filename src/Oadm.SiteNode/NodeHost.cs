@@ -38,7 +38,7 @@ public static class NodeHost
 {
     public const string WindowsServiceName = "OadmSiteNode";
 
-    /// <summary>HTTP/2 streams per link (docs/sites.md, "Two connections per node").</summary>
+    /// <summary>HTTP/2 streams per link (CLAUDE.md "# Sites", "Two connections per node").</summary>
     public const int MaxStreamsPerLink = 4096;
 
     public static WebApplication Build(NodeOptions options, string[]? args = null)

@@ -28,7 +28,7 @@ using FakeDevice = Oadm.Sdk.Testing.FakeDevice;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// The host's side of the plugin SDK for sites (docs/sites.md, Plugins and SDK): <see cref="IDeviceNetwork"/> per route,
+/// The host's side of the plugin SDK for sites (CLAUDE.md "# Sites", Plugins and SDK): <see cref="IDeviceNetwork"/> per route,
 /// listeners on the server's own network (loopback only here), the relays a plugin opened closed when it stops, and
 /// <c>siteSupport</c> enforced for tasks, compliance types, pages and actions.
 /// </summary>

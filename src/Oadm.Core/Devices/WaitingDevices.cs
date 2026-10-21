@@ -157,7 +157,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
 
     /// <summary>
     /// The key of an entry: <see cref="Normalize(string?)"/> of the address, and for an entry of one site "@" and the site's
-    /// id after it (docs/sites.md, "Overlapping networks": two sites may both have 192.168.0.20). One entry per key; the
+    /// id after it (CLAUDE.md "# Sites", "Overlapping networks": two sites may both have 192.168.0.20). One entry per key; the
     /// address part keeps the address order of the list. Also compared with managed devices (address and route).
     /// </summary>
     public static string Normalize(string? address, Guid? siteId) =>

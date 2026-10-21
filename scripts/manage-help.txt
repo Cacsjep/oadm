@@ -161,7 +161,7 @@ Usage: manage package <windows|linux|macos> [--rid RID] [--version V]
 
 Publishes server and client for the RID (same as "manage publish all"), then builds the
 installer into artifacts/packages. Layout, services and data folders: packaging/README.md.
-"site-node" publishes and packages the OADM Site Node instead (service and app, docs/sites.md).
+"site-node" publishes and packages the OADM Site Node instead (service and app, CLAUDE.md "# Sites").
 "nuget" builds the plugin SDK packages instead (see the developer guide on the website).
 
 Every installer offers "Server and client" (default) or "Client only".

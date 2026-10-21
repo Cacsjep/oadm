@@ -4,7 +4,7 @@ using Oadm.Contracts.SiteNode;
 
 namespace Oadm.Server.Sites;
 
-/// <summary>Relays (docs/sites.md, "Relay"): a node <c>Relay</c> call on a worker link, open as long as the relay runs.</summary>
+/// <summary>Relays (CLAUDE.md "# Sites", "Relay"): a node <c>Relay</c> call on a worker link, open as long as the relay runs.</summary>
 internal sealed partial class SiteSession
 {
     /// <summary>

@@ -8,7 +8,7 @@ using Oadm.Sdk.Sites;
 namespace Oadm.Core.Sites;
 
 /// <summary>
-/// The server's own network as <see cref="IDeviceNetwork"/> (docs/sites.md, Plugins and SDK): ping, a TCP probe, DNS and
+/// The server's own network as <see cref="IDeviceNetwork"/> (CLAUDE.md "# Sites", Plugins and SDK): ping, a TCP probe, DNS and
 /// the server's address towards a device. The only place plugins' network checks open sockets on the server; a site route
 /// is <see cref="SiteDeviceNetwork"/>.
 /// </summary>
@@ -296,7 +296,7 @@ public abstract class LocalListener : IRelay
 
         if (changed)
         {
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            PluginEvents.Raise(StateChanged, this);
         }
     }
 
@@ -346,7 +346,7 @@ public abstract class LocalListener : IRelay
             _retry ??= _time.CreateTimer(_ => Retry(), null, RetryInterval, RetryInterval);
         }
 
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        PluginEvents.Raise(StateChanged, this);
     }
 
     public async ValueTask DisposeAsync()

@@ -36,6 +36,42 @@ public sealed class AdminTests
     }
 
     [Fact]
+    public async Task ABoundNodeGivesItsCodeForANewServerIdentityToAdministratorsOnly()
+    {
+        await using var node = await TestNode.StartAsync(c =>
+        {
+            c.BoundServers.Add(new BoundServer { Name = "OADM-SRV", Fingerprint = "AB12", BoundUtc = DateTimeOffset.UnixEpoch, SiteName = "Building B" });
+            c.BindingSecondsLeft = 0;
+            c.NewServerIdentity = "0123456789ABCDEF";
+            c.NewServerAccepted = true;
+        });
+        var handler = node.Get<AdminHandler>();
+
+        Assert.Empty(handler.Handle(AdminRequest.Of(AdminCommands.State), isAdmin: false).State!.PairingCode);
+        Assert.Equal(AdminTexts.NeedsAdministrator, handler.Handle(AdminRequest.Of(AdminCommands.PairingCode), isAdmin: false).Error);
+        var admin = handler.Handle(AdminRequest.Of(AdminCommands.PairingCode), isAdmin: true);
+        Assert.True(admin.Ok);
+        Assert.Equal(Sites.Binding.PairingCode.Format(node.Get<BindingState>().PairingCode), admin.PairingCode);
+        Assert.NotNull(admin.PairingCodeValidUntil);
+    }
+
+    [Fact]
+    public async Task AddPortNeverMarksAPortAsTheServersEvenWhenTheServerAskedForIt()
+    {
+        await using var node = await TestNode.StartAsync();
+        var handler = node.Get<AdminHandler>();
+        var store = node.Get<NodeStore>();
+        node.Get<PortPolicy>().Request([new PortEntry(PortUse.Listen, PortProtocol.Udp, 123, "NTP server")]);
+
+        Assert.True(handler.Handle(AdminRequest.Of(AdminCommands.AddPort, ("use", "listen"), ("protocol", "udp"), ("port", "123")), true).Ok);
+
+        var port = store.Read(c => c.Allowed.Single(p => p.Port == 123));
+        Assert.False(port.ByServer); // the administrator's: a release of the server never removes it
+        Assert.False(node.Get<PortPolicy>().Release(port));
+        Assert.Contains(store.Read(c => c.Allowed.ToList()), p => p.Port == 123);
+    }
+
+    [Fact]
     public async Task AdministratorsChangeServerNetworksAndPorts()
     {
         await using var node = await TestNode.StartAsync();

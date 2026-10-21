@@ -26,6 +26,9 @@ public sealed partial class SiteManager
     [LoggerMessage(Level = LogLevel.Information, Message = "Accepting site nodes on {Url} (port {Port})")]
     private partial void LogListening(string url, int port);
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "Site nodes cannot connect: TCP {Port} is in use ({Reason}). Tried again every 30 seconds")]
+    private partial void LogListenFailed(int port, string reason);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "No longer accepting site nodes")]
     private partial void LogListenerClosed();
 

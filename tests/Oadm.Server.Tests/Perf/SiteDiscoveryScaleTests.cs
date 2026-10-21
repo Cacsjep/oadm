@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 
 namespace Oadm.Server.Tests.Perf;
 
-/// <summary>The waiting list with 30,000 entries tried through sites (docs/sites.md, Tests: Perf).</summary>
+/// <summary>The waiting list with 30,000 entries tried through sites (CLAUDE.md "# Sites", Tests: Perf).</summary>
 [Trait("Category", "Perf")]
 public sealed class SiteDiscoveryScaleTests(ITestOutputHelper output)
 {

@@ -17,7 +17,7 @@ using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// "Remove site" with Keep devices (docs/sites.md, Binding 6): the site leaves a tombstone, so its devices are named
+/// "Remove site" with Keep devices (CLAUDE.md "# Sites", Binding 6): the site leaves a tombstone, so its devices are named
 /// "&lt;site&gt; (removed)" and the Sites page lists it as Removed with Replace with and Remove devices until its last
 /// device left; its waiting entries go.
 /// </summary>

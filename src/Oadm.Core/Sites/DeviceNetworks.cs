@@ -6,7 +6,7 @@ using Oadm.Sdk.Sites;
 namespace Oadm.Core.Sites;
 
 /// <summary>
-/// The <see cref="IDeviceNetwork"/> of every route (docs/sites.md, Plugins and SDK): the server's own network
+/// The <see cref="IDeviceNetwork"/> of every route (CLAUDE.md "# Sites", Plugins and SDK): the server's own network
 /// (<see cref="LocalDeviceNetwork"/>) or a site through its node (<see cref="SiteDeviceNetwork"/> over
 /// <see cref="ISiteNetwork"/>). Handed to task execution, task queries and core plugins.
 /// </summary>
@@ -88,7 +88,7 @@ public sealed class SiteDeviceNetwork : IDeviceNetwork
 }
 
 /// <summary>
-/// The relays of the server into its sites (docs/sites.md, "Relay"), implemented by the server's site manager over the
+/// The relays of the server into its sites (CLAUDE.md "# Sites", "Relay"), implemented by the server's site manager over the
 /// node's <c>Relay</c> call. Each relay keeps itself open: it opens again after the node reconnects and says why it does
 /// not run (<see cref="IRelay.State"/>).
 /// </summary>

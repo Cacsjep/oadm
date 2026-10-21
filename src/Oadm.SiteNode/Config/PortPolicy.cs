@@ -3,7 +3,7 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.Config;
 
 /// <summary>
-/// The two port lists (docs/sites.md, "Ports"): Connect to (devices) and Listen on (relays). A port allowed for one use
+/// The two port lists (CLAUDE.md "# Sites", "Ports"): Connect to (devices) and Listen on (relays). A port allowed for one use
 /// never allows the other. The server asks for more with RequestPorts; nothing is allowed by itself.
 /// </summary>
 public sealed class PortPolicy(NodeStore store)
@@ -36,8 +36,11 @@ public sealed class PortPolicy(NodeStore store)
         return added;
     }
 
-    /// <summary>Allow (administrator): adds the port to its list and drops the request.</summary>
-    public void Allow(PortEntry port)
+    /// <summary>
+    /// Allow (administrator): adds the port to its list and drops the request. <paramref name="fromRequest"/>: Allow of the
+    /// server's request (the port counts as the server's and a release removes it); false for a port the administrator adds.
+    /// </summary>
+    public void Allow(PortEntry port, bool fromRequest = true)
     {
         if (!IsValid(port))
             throw new ArgumentException("The port must be 1 to 65535.", nameof(port));
@@ -46,7 +49,7 @@ public sealed class PortPolicy(NodeStore store)
             var request = c.Requested.Find(port.SameAs);
             c.Requested.RemoveAll(port.SameAs);
             if (!c.Allowed.Exists(port.SameAs))
-                c.Allowed.Add(port with { Reason = request?.Reason ?? Reason(port.Reason), ByServer = request is not null });
+                c.Allowed.Add(port with { Reason = request?.Reason ?? Reason(port.Reason), ByServer = fromRequest && request is not null });
             return true;
         });
     }

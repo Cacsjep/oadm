@@ -15,7 +15,7 @@ using BigInteger = Org.BouncyCastle.Math.BigInteger;
 namespace Oadm.Sites.Binding;
 
 /// <summary>
-/// The binding exchange (docs/sites.md, Binding): J-PAKE (a balanced password-authenticated key exchange, NIST 3072-bit
+/// The binding exchange (CLAUDE.md "# Sites", Binding): J-PAKE (a balanced password-authenticated key exchange, NIST 3072-bit
 /// prime order group, SHA-256, BouncyCastle) with the pairing code as the shared secret, then a proof of each side over
 /// both TLS fingerprints with the session key. Neither side holds anything that lets it test codes offline: every value
 /// sent is blinded by fresh random exponents, and the key of a wrong guess cannot be computed by the other side, so a

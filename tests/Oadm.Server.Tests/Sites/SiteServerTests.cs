@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Core.Devices;
+using Oadm.Core.Settings;
 using Oadm.Core.Sites;
 using Oadm.Core.Vapix;
 using Oadm.Core.Tests.Sites;
@@ -26,7 +27,7 @@ using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// The server side of the sites with the real OADM Site Node in this process (docs/sites.md, Tests: "Server with an
+/// The server side of the sites with the real OADM Site Node in this process (CLAUDE.md "# Sites", Tests: "Server with an
 /// in-process node"), over real TLS and gRPC on loopback.
 /// </summary>
 public sealed class SiteServerTests
@@ -593,6 +594,71 @@ public sealed class SiteServerTests
         await SiteAsserts.RefusedAsync(StatusCode.PermissionDenied, async () =>
             await client.BindSiteAsync(new Proto.BindSiteRequest { NodeId = "x", Name = "y", PairingCode = "ABCDEFGH" }));
         Assert.True(server.Manager.Accept);
+    }
+
+    [Fact]
+    public async Task TurningOnSiteNodesWhileAnotherProgramHoldsThePortIsRefusedAndNothingIsStored()
+    {
+        using var other = new TcpListener(IPAddress.Loopback, 0);
+        other.Start();
+        var port = ((IPEndPoint)other.LocalEndpoint).Port;
+        await using var server = await SiteServer.StartAsync(accept: false,
+            options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30) });
+
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await server.Client.SetAcceptAsync(new Proto.SetAcceptRequest { Accept = true }));
+
+        Assert.Equal(StatusCode.FailedPrecondition, refused.StatusCode);
+        Assert.Equal(SiteTexts.ListenPortInUse(port), refused.Status.Detail);
+        Assert.False(server.Manager.Accept);
+        Assert.False(await server.Host.Get<ServerSettingsStore>().GetAsync<bool>(SiteSettings.Accept, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ABusyPortAtStartNeverStopsTheServerAndIsTriedAgainEvery30Seconds()
+    {
+        var folder = Support.TestServerHost.NewDataDirectory();
+        try
+        {
+            int port;
+            using (var probe = new TcpListener(IPAddress.Loopback, 0))
+            {
+                probe.Start();
+                port = ((IPEndPoint)probe.LocalEndpoint).Port;
+            }
+
+            var options = new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30) };
+            await using (var first = await SiteServer.StartAsync(dataDirectory: folder, options: options))
+            {
+                first.Host.KeepDataDirectory = true; // Accept site nodes is stored on
+            }
+
+            var other = new TcpListener(IPAddress.Loopback, port);
+            other.Start();
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            await using var restarted = await SiteServer.StartAsync(accept: false, dataDirectory: folder, time: time,
+                options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, Time = time, WorkerWait = TimeSpan.FromSeconds(30) });
+
+            // The server runs; site nodes cannot connect until the port is free.
+            Assert.Equal(0, restarted.Manager.ListenPort);
+            Assert.NotNull(await restarted.ListAsync());
+
+            other.Stop();
+            time.Advance(SiteManager.ListenRetry + TimeSpan.FromSeconds(1));
+            await Eventually.TrueAsync(() => restarted.Manager.ListenPort == port, "the site port opens on the next try");
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                try
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
     }
 
     private static bool SessionAlive(SiteServer server, Guid id) => server.Manager.HasSession(id);

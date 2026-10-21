@@ -78,7 +78,7 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
-  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rule for `Oadm.Server.exe` TCP 5080 (TCP 5081 for site nodes, on branch `feature/sites`, is the server's own rule while Accept site nodes is on, see "# Sites"), profiles
+  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rule for `Oadm.Server.exe` TCP 5080 (TCP 5081 for site nodes is the server's own rule while Accept site nodes is on, see "# Sites"), profiles
   Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
   allowed). Features `Client` (always) and `Server` (service, firewall rule, data folder); own UI `WixUI_Oadm`
   (welcome, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
@@ -96,7 +96,7 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
   0.0.3..1.0.0 is removed on upgrade through `Breaks: oadm`). Both take over the files of the former single package `oadm`
   (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
   LGPL-2.1.txt}`. Pre-release versions are written `1.2.0~rc.1`. No .rpm.
-- **OADM Site Node** (branch `feature/sites`; `manage package site-node [--rid win-x64|linux-x64|linux-arm64]
+- **OADM Site Node** (`manage package site-node [--rid win-x64|linux-x64|linux-arm64]
   [--version]`, details in `packaging/README.md`): `OADM-SiteNode-<version>-win-x64.msi` (WiX 6,
   `packaging/windows/site-node/`; `Program Files\OADM Site Node` on the system PATH, service "OADM Site Node"
   `OadmSiteNode` automatic, its own virtual account `NT SERVICE\OadmSiteNode`, restart on failure (also after a stop with
@@ -227,9 +227,9 @@ src/
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
   Oadm.Theme/          the OADM theme (colors of both appearances, icons, OadmTheme.axaml, OadmColors) and the shared
                        TermsWindow, used by the client and the OADM Site Node app
-  Oadm.Sites/          the link between server and site node (feature/sites): Kestrel over a connection the node opened,
+  Oadm.Sites/          the link between server and site node: Kestrel over a connection the node opened,
                        TLS with pinned fingerprints, pairing code and J-PAKE binding
-  Oadm.SiteNode/       OADM Site Node service and command line (feature/sites; README with the manual test plan)
+  Oadm.SiteNode/       OADM Site Node service and command line (README with the manual test plan)
   Oadm.SiteNode.Admin/ the node's local channel, texts and parsing shared by service, command line and app
   Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
 plugins/                (layout and SDK guide: plugins/README.md)
@@ -279,7 +279,7 @@ samples/               the plugins of the developer tutorials: Oadm.Samples.Upnp
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
 packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
-docs/                  specs of features not built yet (sites.md); built features live in this file
+docs/                  specs of features not built yet (none at the moment); built features live in this file
 ```
 
 # Architecture
@@ -523,7 +523,7 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `Setting`: Key, ValueJson.
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
-(factory default), `CertificateChanged`, `Unknown`, and on branch `feature/sites` `SiteOffline` (computed, never stored:
+(factory default), `CertificateChanged`, `Unknown`, and `SiteOffline` (computed, never stored:
 the site node of `Device.SiteId` is not online in `ISiteStates`; `DeviceRepository` reads and `DeviceChangeFeed` show it,
 writes keep the stored status; `Oadm.Core.Sites.SiteDeviceStatus`, `NoSiteStates` without sites; `SiteStatusPublisher`
 publishes a site's devices in one batch when it goes offline or online (a device with a newer change published meanwhile keeps it: `IDeviceChangeFeed.PublishUnlessNewer`) and queues a full refresh after more than 5
@@ -648,7 +648,7 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
     on port 554 -> live view (see "Live view")
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
-- **Routing** (docs/sites.md, on branch `feature/sites`): every device connection opens through
+- **Routing** (see "# Sites"): every device connection opens through
   `Oadm.Core.Sites.DeviceRouter` on the device's `DeviceRoute` (`Device.SiteId`, `DiscoveredDevice.Route`): the server's
   own network = a normal socket connect, a site = a new `ISiteTransport.OpenStreamAsync` stream per connection.
   `VapixClient` runs on `SocketsHttpHandler` (router connect callback, pinning via `CertificatePinning.ValidateSslCallback`;
@@ -1249,7 +1249,7 @@ and the saved per-client order cover other preferences):
 | Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than 30 days: plain text, warn chip <= 30 days, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
-| Site | (`feature/sites`) the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
+| Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
 
 Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) for every device every **60 s** by
 default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
@@ -1647,7 +1647,7 @@ uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with 
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
-Tags, Site (`feature/sites`), Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Tags, Site, Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
 Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
@@ -2400,7 +2400,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
   `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
   `compliance.view` ("See compliance", Operator and Viewer yes), `compliance.manage` ("Change compliance checks", Operator no),
-  `events.view`, `events.manage`, `events.clearLog`, `logs.server`, on `feature/sites` `sites.view` ("See sites", Operator and
+  `events.view`, `events.manage`, `events.clearLog`, `logs.server`, `sites.view` ("See sites", Operator and
   Viewer yes)), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
@@ -2780,9 +2780,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - This file is the single source of truth for the spec. When a decision changes, change it
   here in the same PR.
 
-# Sites (in development, branch `feature/sites`)
+# Sites
 
-Spec and decisions: `docs/sites.md`. Built so far (2026-10-19): the contracts and the link (`Oadm.Sites`), routing
+Released with 4.0.0 (decisions 2026-10-17 to 2026-10-21): the contracts and the link (`Oadm.Sites`), routing
 (see "Device Communication"), Site offline (see "Data Model"), the node program (`Oadm.SiteNode*`) and its installers, and
 the server side. **Outbound only** (decision 2026-10-20): the site node always connects to the server and never listens;
 the inbound mode ("Wait for the server", the node's listener and mDNS announce, the server dialing nodes, Search / Add
@@ -2802,8 +2802,11 @@ line), Ports (**Add** right of the title opens
 the dialog `AddPortWindow` (Direction Out / In, Protocol, Port); one table: Direction (Out = the node connects to devices,
 In = it listens at the site), Protocol, Port, State; requests first with Allow / Dismiss, allowed ports with Remove); footer
 Reset left (red), Save and Close right. No connection log in the app (the node's log files and `oadm-site-node log`). The
-pairing code is part of the state every local user reads (decision 2026-10-21: a code lasts 10 minutes,
-`BindingState.CodeLifetime`; a pairing started with a code just replaced still binds for a minute).
+pairing code is part of the state every local user reads while the node is not bound (decision 2026-10-21: a code lasts
+10 minutes, `BindingState.CodeLifetime`; the app counts the last minute in seconds, `oadm-site-node pairing-code` prints
+"Valid until"; a pairing started with a code still binds for a minute after the code's scheduled end; reading it with the
+command line is logged); a bound node that accepted a new server identity gives its code to administrators only (Show
+pairing code in the app). Add port in the app never marks a port as the server's (`PortPolicy.Allow(fromRequest: false)`).
 - `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
   30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
   starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),
@@ -2879,8 +2882,6 @@ pairing code is part of the state every local user reads (decision 2026-10-21: a
 - Not built yet: identity rotation over gRPC, the HTTP helper on `IStreamListener`.
 
 # Not built yet
-
-Sites are built on the branch `feature/sites` (see "# Sites") and not on main until the maintainer accepts them.
 
 SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,

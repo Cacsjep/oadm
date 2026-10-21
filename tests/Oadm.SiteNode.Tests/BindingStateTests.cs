@@ -16,7 +16,7 @@ using Oadm.Sites.Transport;
 
 namespace Oadm.SiteNode.Tests;
 
-/// <summary>The node's states with a fake clock (docs/sites.md, "States", "Binding").</summary>
+/// <summary>The node's states with a fake clock (CLAUDE.md "# Sites", "States", "Binding").</summary>
 public sealed class BindingStateTests : IDisposable
 {
     private readonly TempFolder _folder = new();
@@ -169,6 +169,25 @@ public sealed class BindingStateTests : IDisposable
         var (serverRound2, proof) = pairing.Continue(round1, round2);
         _state.Bind(link, "Building B", "OADM-SRV", serverRound2, proof);
         Assert.Equal(NodeBinding.Bound, _state.Binding);
+    }
+
+    [Fact]
+    public void TheGraceCountsFromTheCodesScheduledEndNotFromALateRead()
+    {
+        // A pairing starts with the code at minute 9; nothing reads the code until minute 60.
+        var code = _state.PairingCode;
+        _time.Advance(TimeSpan.FromMinutes(9));
+        var server = SiteTls.CreateIdentity("server");
+        var link = Link(server);
+        var pairing = new ServerPairing(code, link.NodeFingerprint, link.ServerFingerprint);
+        var (round1, round2) = _state.StartPairing(link, pairing.Round1);
+        _time.Advance(TimeSpan.FromMinutes(51));
+        var (serverRound2, proof) = pairing.Continue(round1, round2);
+
+        var late = Assert.Throws<NodeRefusalException>(() => _state.Bind(link, "Building B", "OADM-SRV", serverRound2, proof));
+
+        Assert.Equal(StatusCode.PermissionDenied, late.Code);
+        Assert.Equal(NodeBinding.Open, _state.Binding);
     }
 
     [Fact]

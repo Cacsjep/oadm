@@ -99,7 +99,7 @@ jobs:
         shell: bash
         run: ./manage.sh package ${{ matrix.target }} --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
 
-      # The OADM Site Node (docs/sites.md, "Packaging"): the MSI on Windows, both .deb packages on each Linux runner.
+      # The OADM Site Node (CLAUDE.md "# Sites", "Packaging"): the MSI on Windows, both .deb packages on each Linux runner.
       - name: Build site node package (Windows)
         if: matrix.target == 'windows'
         shell: pwsh

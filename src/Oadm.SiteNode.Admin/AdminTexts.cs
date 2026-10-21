@@ -35,5 +35,8 @@ public static class AdminTexts
 
     public static string CannotReach(string target) => "Cannot reach " + target;
 
+    /// <summary>The pairing code was asked for while binding is closed.</summary>
+    public const string BindingClosedAllow = "Binding is closed. Allow binding in the OADM Site Node app or with oadm-site-node allow-binding.";
+
     public static string Name(PortProtocol protocol) => protocol == PortProtocol.Udp ? "UDP" : "TCP";
 }

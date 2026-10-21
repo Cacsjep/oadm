@@ -4,7 +4,7 @@ option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
 import "google/protobuf/timestamp.proto";
 
-// Sites: remote networks the server reaches through an OADM Site Node (docs/sites.md). The Sites page lists the bound
+// Sites: remote networks the server reaches through an OADM Site Node (CLAUDE.md "# Sites"). The Sites page lists the bound
 // sites and the nodes waiting to be bound. Reading needs "See sites" (sites.view); everything that changes a site is
 // Administrator only.
 service SiteService {
