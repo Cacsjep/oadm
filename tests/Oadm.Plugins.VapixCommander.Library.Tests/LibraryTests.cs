@@ -11,8 +11,8 @@ public sealed partial class LibraryTests
 {
     private static readonly string[] Categories =
     [
-        "Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O", "Events",
-        "Storage", "Applications", "Maintenance",
+        "Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O", "Siren and light",
+        "Events", "Storage", "Applications", "Maintenance",
     ];
 
     // The schema registers its $id globally; load it once per test run.
@@ -79,8 +79,9 @@ public sealed partial class LibraryTests
     {
         var file = CommandLibrary.Files.Single(f => f.FileName == fileName);
         Assert.Contains(file.Category, Categories);
-        // "I/O" cannot be a file name on Windows; the file is IO.json.
-        Assert.Equal(file.Category.Replace("/", string.Empty, StringComparison.Ordinal) + ".json", fileName);
+        // "I/O" cannot be a file name on Windows; the file is IO.json. "Siren and light" is SirenAndLight.json.
+        var words = file.Category.Split([' ', '/'], StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(string.Concat(words.Select(w => char.ToUpperInvariant(w[0]) + w[1..])) + ".json", fileName);
         Assert.All(file.Commands, c => Assert.Equal(file.Category, c["category"]!.GetValue<string>()));
         Assert.NotEmpty(file.Commands);
     }
@@ -198,6 +199,7 @@ public sealed partial class LibraryTests
 
                     break;
                 case "password":
+                case "file":
                     Assert.Null(def);
                     break;
             }
@@ -315,6 +317,7 @@ public sealed partial class LibraryTests
         {
             "I/O" => "io.",
             "Applications" => "apps.",
+            "Siren and light" => "siren.",
             var c => c.ToLowerInvariant() + ".",
         }, id, StringComparison.Ordinal);
 
@@ -337,6 +340,16 @@ public sealed partial class LibraryTests
                 break;
             case "form":
                 Assert.IsType<JsonObject>(body);
+                break;
+            case "multipart":
+                var parts = Assert.IsType<JsonArray>(body);
+                var rpc = Assert.Single(parts, p => p!["json"] is not null)!["json"]!;
+                Assert.NotNull(rpc["apiVersion"]);
+                Assert.NotNull(rpc["method"]);
+                Assert.Equal("json-rpc", CommandLibrary.Kind(command));
+                var fileFields = CommandLibrary.Fields(command).Where(f => f["type"]!.GetValue<string>() == "file")
+                    .Select(f => "{{" + f["name"]!.GetValue<string>() + "}}").ToList();
+                Assert.Equal(fileFields.Order(), parts.Where(p => p!["file"] is not null).Select(p => p!["file"]!.GetValue<string>()).Order());
                 break;
             default:
                 Assert.Equal(JsonValueKind.String, body!.GetValueKind());

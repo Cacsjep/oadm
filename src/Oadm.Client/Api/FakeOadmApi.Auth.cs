@@ -51,6 +51,7 @@ public sealed partial class FakeOadmApi
             SeedAuthLocked();
             UserInfo me = _users.First(u => u.UserName == FakeUserName).Clone();
             me.AllPermissions = true;
+            me.StartPage = _roles.FirstOrDefault(r => r.Id == me.RoleId)?.StartPage ?? "";
             return Task.FromResult(me);
         }
     }

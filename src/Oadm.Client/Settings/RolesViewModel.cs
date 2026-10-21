@@ -14,12 +14,19 @@ using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Client.Settings;
 
+/// <summary>A page a role can start on: the rail key (empty = Devices) and its name.</summary>
+public sealed record StartPageChoice(string Key, string Title)
+{
+    public override string ToString() => Title;
+}
+
 /// <summary>One role of the matrix: a column. Holds the permissions as edited until Save.</summary>
 public sealed partial class RoleColumnViewModel : ObservableObject
 {
     private readonly HashSet<string> _saved;
     private string _savedName;
     private string _savedDescription;
+    private readonly string _savedStartPage;
 
     public RoleColumnViewModel(RoleInfo role)
     {
@@ -32,6 +39,8 @@ public sealed partial class RoleColumnViewModel : ObservableObject
         _savedDescription = role.Description;
         Name = role.Name;
         Description = role.Description;
+        _savedStartPage = role.StartPage;
+        StartPage = role.StartPage;
         _saved = new HashSet<string>(role.Permissions, StringComparer.Ordinal);
         Granted = new HashSet<string>(_saved, StringComparer.Ordinal);
     }
@@ -65,6 +74,18 @@ public sealed partial class RoleColumnViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsDirty))]
     public partial string Description { get; set; }
 
+    /// <summary>The page users of the role see first after a login, as edited (empty = Devices).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDirty))]
+    public partial string StartPage { get; set; }
+
+    /// <summary>"Starts on Compliance"; set by the matrix, which knows the page names.</summary>
+    [ObservableProperty]
+    public partial string StartPageText { get; internal set; } = "";
+
+    /// <summary>The start page changed and is not saved yet.</summary>
+    public bool StartPageChanged => StartPage != _savedStartPage;
+
     /// <summary>The permission keys as edited.</summary>
     public HashSet<string> Granted { get; }
 
@@ -80,6 +101,7 @@ public sealed partial class RoleColumnViewModel : ObservableObject
     /// <summary>A saved custom role without users (and nothing unsaved).</summary>
     public bool CanDelete => Kind == RoleKind.Custom;
 
+    /// <summary>Name and description can change (not for the Administrator role); the start page can for every role.</summary>
     public bool CanRename => IsEditable;
 
     /// <summary>"3 users", "1 user", "No users", "Not saved", "Everything".</summary>
@@ -94,7 +116,7 @@ public sealed partial class RoleColumnViewModel : ObservableObject
 
     public string? DescriptionTip => string.IsNullOrWhiteSpace(Description) ? null : Description;
 
-    public bool IsDirty => IsNew || Name != _savedName || Description != _savedDescription || !Granted.SetEquals(_saved);
+    public bool IsDirty => IsNew || Name != _savedName || Description != _savedDescription || StartPageChanged || !Granted.SetEquals(_saved);
 
     public bool Has(string key) => IsAdministrator || Granted.Contains(key);
 
@@ -120,7 +142,16 @@ public sealed partial class RoleColumnViewModel : ObservableObject
 
     partial void OnDescriptionChanged(string value) => OnPropertyChanged(nameof(DescriptionTip));
 
-    public RoleChange ToChange() => new() { Id = Id ?? "", Name = Name.Trim(), Description = Description.Trim(), Permissions = { Granted.Order(StringComparer.Ordinal) }, Version = Version };
+    public RoleChange ToChange()
+    {
+        var change = new RoleChange { Id = Id ?? "", Name = Name.Trim(), Description = Description.Trim(), Permissions = { Granted.Order(StringComparer.Ordinal) }, Version = Version };
+        if (StartPageChanged || (IsNew && StartPage.Length > 0))
+        {
+            change.StartPage = StartPage;
+        }
+
+        return change;
+    }
 }
 
 /// <summary>One check box of the matrix: a permission (or a whole group) for one role.</summary>
@@ -219,6 +250,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     private readonly UserSession _session;
     private readonly List<PermissionRowViewModel> _allRows = [];
     private readonly Dictionary<string, PermissionInfo> _byKey = new(StringComparer.Ordinal);
+    private IReadOnlyList<CorePluginInfo> _pluginPages = [];
 
     public RolesViewModel(IOadmApi api, IDialogService dialogs, UserSession session, ServerConnection? connection = null)
     {
@@ -276,7 +308,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
 
     /// <summary>The role being renamed; null for a new role.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorButton), nameof(IsNewEditor))]
+    [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorButton), nameof(IsNewEditor), nameof(IsNameEditable))]
     public partial RoleColumnViewModel? EditTarget { get; private set; }
 
     [ObservableProperty]
@@ -289,13 +321,24 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string EditDescription { get; set; } = "";
 
+    /// <summary>The start page chosen in the role dialog.</summary>
+    [ObservableProperty]
+    public partial StartPageChoice? EditStartPage { get; set; }
+
+    /// <summary>Devices, Compliance, Event rules, the plugin pages that are on, Logs (and a stored page that is off now).</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<StartPageChoice> StartPageChoices { get; private set; } = [new("", "Devices")];
+
+    /// <summary>The Administrator role keeps its name: the dialog only changes its start page.</summary>
+    public bool IsNameEditable => EditTarget?.IsEditable != false;
+
     /// <summary>A new role starts empty or from this role's permissions.</summary>
     [ObservableProperty]
     public partial RoleColumnViewModel? StartFrom { get; set; }
 
     public bool IsNewEditor => IsEditorOpen && EditTarget is null;
 
-    public string EditorTitle => EditTarget is null ? "New role" : $"Rename {EditTarget.Name}";
+    public string EditorTitle => EditTarget is null ? "New role" : $"Edit {EditTarget.Name}";
 
     public string EditorButton => EditTarget is null ? "Add role" : "Apply";
 
@@ -329,6 +372,16 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         try
         {
             var matrix = await _api.GetRoleMatrixAsync(CancellationToken.None).ConfigureAwait(true);
+            try
+            {
+                // The plugin pages a role can start on; without them only the built-in pages are offered.
+                _pluginPages = [.. (await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true)).Where(p => !p.NoPage)];
+            }
+            catch (RpcException)
+            {
+                _pluginPages = [];
+            }
+
             if (IsDirty && keepEdits)
             {
                 // Unsaved changes stay (a reconnect, a new user): only the user counts follow.
@@ -398,6 +451,8 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         EditName = "";
         EditDescription = "";
         StartFrom = null;
+        StartPageChoices = ChoicesWith("");
+        EditStartPage = StartPageChoices[0];
         IsEditorOpen = true;
         Validation.Reset(nameof(EditName), nameof(EditDescription));
         Validation.Validate();
@@ -418,9 +473,9 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     }
 
     [RelayCommand]
-    private void RenameRole(RoleColumnViewModel? role)
+    private void EditRole(RoleColumnViewModel? role)
     {
-        if (role is not { CanRename: true })
+        if (role is null)
         {
             return;
         }
@@ -428,6 +483,8 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         EditTarget = role;
         EditName = role.Name;
         EditDescription = role.Description;
+        StartPageChoices = ChoicesWith(role.StartPage);
+        EditStartPage = StartPageChoices.FirstOrDefault(c => c.Key == role.StartPage) ?? StartPageChoices[0];
         IsEditorOpen = true;
         Validation.Reset(nameof(EditName), nameof(EditDescription));
         Validation.Validate();
@@ -454,14 +511,23 @@ public sealed partial class RolesViewModel : ValidatingViewModel
             return;
         }
 
+        string startPage = EditStartPage?.Key ?? "";
         if (EditTarget is { } target)
         {
-            target.Name = EditName.Trim();
-            target.Description = EditDescription.Trim();
+            if (target.IsEditable)
+            {
+                target.Name = EditName.Trim();
+                target.Description = EditDescription.Trim();
+            }
+
+            target.StartPage = startPage;
+            target.StartPageText = StartPageTextOf(startPage);
         }
         else
         {
             var role = new RoleColumnViewModel(new RoleInfo { Name = EditName.Trim(), Description = EditDescription.Trim(), Kind = RoleKind.Custom });
+            role.StartPage = startPage;
+            role.StartPageText = StartPageTextOf(startPage);
             if (StartFrom is { } from)
             {
                 foreach (var key in _byKey.Keys.Where(from.Has))
@@ -552,7 +618,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
-        var changed = Columns.Where(c => c.IsDirty && c.IsEditable).ToList();
+        var changed = Columns.Where(c => c.IsDirty).ToList();
         if (changed.Count == 0)
         {
             return;
@@ -561,6 +627,11 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         var lines = changed.Select(c =>
         {
             var parts = c.Changes(NameOf);
+            if (c.StartPageChanged && !c.IsNew)
+            {
+                parts = [$"start page {TitleOf(c.StartPage)}", .. parts];
+            }
+
             string what = c.IsNew ? "new role" : parts.Count == 0 ? "name or description" : string.Join(", ", parts.Take(8)) + (parts.Count > 8 ? $" and {parts.Count - 8} more" : "");
             if (c.IsNew && parts.Count > 0)
             {
@@ -645,6 +716,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         foreach (var role in matrix.Roles)
         {
             var column = new RoleColumnViewModel(role);
+            column.StartPageText = StartPageTextOf(role.StartPage);
             column.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName is nameof(RoleColumnViewModel.IsDirty))
@@ -710,7 +782,39 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         Rows.ReplaceAll(visible);
     }
 
-    private void UpdateDirty() => IsDirty = Columns.Any(c => c.IsEditable && c.IsDirty);
+    private void UpdateDirty() => IsDirty = Columns.Any(c => c.IsDirty);
+
+    /// <summary>The start page choices, plus <paramref name="current"/> when it is a page that is not offered now (a plugin that is off).</summary>
+    private List<StartPageChoice> ChoicesWith(string current)
+    {
+        List<StartPageChoice> choices =
+        [
+            new("", "Devices"),
+            new(Oadm.Sdk.Client.HostPages.Compliance, "Compliance"),
+            new(Oadm.Sdk.Client.HostPages.EventRules, "Event rules"),
+            .. _pluginPages.OrderBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(p => new StartPageChoice("plugin:" + p.Id, p.DisplayName)),
+            new(Oadm.Sdk.Client.HostPages.Logs, "Logs"),
+        ];
+        if (current.Length > 0 && choices.All(c => c.Key != current))
+        {
+            choices.Add(new StartPageChoice(current, TitleOf(current)));
+        }
+
+        return choices;
+    }
+
+    /// <summary>The name of a start page ("Live View"; a plugin page that is off: its id with "(off)").</summary>
+    private string TitleOf(string key) => key switch
+    {
+        "" or Oadm.Sdk.Client.HostPages.Devices => "Devices",
+        Oadm.Sdk.Client.HostPages.Compliance => "Compliance",
+        Oadm.Sdk.Client.HostPages.EventRules => "Event rules",
+        Oadm.Sdk.Client.HostPages.Logs => "Logs",
+        _ => _pluginPages.FirstOrDefault(p => "plugin:" + p.Id == key)?.DisplayName
+            ?? (key.StartsWith("plugin:", StringComparison.Ordinal) ? key["plugin:".Length..] + " (off)" : key),
+    };
+
+    private string StartPageTextOf(string key) => "Starts on " + TitleOf(key);
 
     private static PermissionCellViewModel? CellOf(PermissionRowViewModel row, RoleColumnViewModel role) =>
         row.Cells.FirstOrDefault(c => c.Role == role);

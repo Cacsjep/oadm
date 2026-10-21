@@ -80,8 +80,9 @@ For anything the library does not have, write the request yourself, like Postman
 - **Query parameters**: one row per parameter, for example `action` = `list`, `group` = `Brand`. **Add** adds a row; the
   icons at the end of a row make a field of it or remove it.
 - **Headers**: only needed for some APIs. A GET request has none, so the table is hidden there.
-- **Body**: for POST, PUT and PATCH. Choose **json**, **form** (`key=value&key2=value`), **text** or **xml**. JSON and
-  XML are colored while you type. A GET request has no body, so the body is hidden there.
+- **Body**: for POST, PUT and PATCH. Choose **json**, **form** (`key=value&key2=value`), **text**, **xml** or
+  **multipart** (to send a file, see below). JSON and XML are colored while you type. A GET request has no body, so the
+  body is hidden there.
 - **Timeout** and **Response**: how long to wait and how OADM reads the answer (param.cgi lines, JSON-RPC, REST, XML or
   text). Both are filled in from the path for the known Axis APIs.
 - **Reset** starts a new request.
@@ -98,7 +99,7 @@ form and never touch the request again.
 - **Body and anywhere else**: type `{{name}}` where the value goes. The field appears below at once.
 - In JSON, write a whole value as `"{{level}}"` (with the quotes). If the field is a number or yes/no, OADM sends a
   real number or true/false: `"level": "{{level}}"` goes out as `"level": 40`.
-- Below the request, each field has a label, a type (text, number, yes/no, password) and a value for this send.
+- Below the request, each field has a label, a type (text, number, yes/no, password, file) and a value for this send.
 - Renaming a placeholder while you type keeps the field's label, type and value.
 - The remove icon of a field puts its value back where the placeholder was.
 
@@ -109,6 +110,24 @@ form and never touch the request again.
   "params": { "level": "{{level}}", "note": "{{note}}" }
 }
 ```
+
+### Send a file
+
+Some APIs take a file, for example **Upload siren and light profiles**. Such a command has a **Choose file** button
+below it. The file can be up to 1 MB; **Save with values** keeps it in the saved command.
+
+In your own command, choose the body **multipart** and list the parts. Each part has a `name` and one of `json`, `text`
+or `file`. A file part points to a field of the type **file**:
+
+```json
+[
+  { "name": "request", "json": { "apiVersion": "1.0", "method": "uploadProfiles", "params": { "uploadMode": "add" } } },
+  { "name": "file", "contentType": "application/json", "fileName": "profiles", "file": "{{profiles}}" }
+]
+```
+
+`fileName` is optional: without it the device gets the name of the chosen file. The request line shows the file's name
+and size, not its content.
 
 ### Save and change commands
 

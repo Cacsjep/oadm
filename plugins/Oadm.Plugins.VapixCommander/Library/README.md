@@ -3,9 +3,9 @@
 The bundled commands of the VAPIX Commander plugin. One file per category,
 `<Category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`, in the format
 of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated against `plugins/Oadm.Plugins.VapixCommander/Schema/command.schema.json`.
-`I/O` lives in `IO.json` because `/` cannot be part of a file name.
+`I/O` lives in `IO.json` because `/` cannot be part of a file name, `Siren and light` in `SirenAndLight.json`.
 
-161 commands: 58 readers (`writes: false`) and 103 setters/actions (`writes: true`, 17 of them `dangerous`).
+176 commands: 62 readers (`writes: false`) and 114 setters/actions (`writes: true`, 17 of them `dangerous`).
 
 | Category | Commands | File |
 |---|---|---|
@@ -20,6 +20,7 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 | PTZ | 10 | `PTZ.json` |
 | Audio | 8 | `Audio.json` |
 | I/O | 10 | `IO.json` |
+| Siren and light | 15 | `SirenAndLight.json` |
 | Events | 9 | `Events.json` |
 | Storage | 8 | `Storage.json` |
 | Applications | 4 | `Applications.json` |
@@ -28,7 +29,7 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 ## Conventions
 
 - **Ids** are `<category>.<object>[.<detail>].<verb>`, lower case: `image.daynight.shiftlevel.set`,
-  `time.ntp.get`. I/O uses `io.`, Applications `apps.`. Ids never change once released; a changed
+  `time.ntp.get`. I/O uses `io.`, Applications `apps.`, Siren and light `siren.`. Ids never change once released; a changed
   command gets `version` + 1.
 - **Readers** are named "Get ..." / "List ...", use GET, or POST with a JSON read method (`get*`, `list`,
   `listAll`, `status`, `systemready`) or a SOAP `Get*` operation. Every param.cgi and JSON reader has
@@ -60,6 +61,13 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
   `PTZ.ImageSource.I#.PTZEnabled` true/false).
 - **Passwords** (`users.add`, `users.password.set`, `events.mqtt.client.configure`) only travel in POST
   bodies (form or JSON), never in the URL; a test enforces this.
+- **Siren and light** (`siren_and_light.cgi`, API `siren-and-light` 1.0; AXIS D4100-E, D4200-VE and other strobes and
+  sirens): pattern names differ between models and firmware ("Alarm: Horror", "Alarm Horror"), so pattern fields are
+  text with **Get siren and light capabilities** named in the description, never a fixed list. `start` with a siren and a
+  light, and `setMaintenanceMode` with an optional duration, are split into commands without optional JSON values
+  (an empty optional value would be sent as null). Light colors are one color (`colors: ["{{color}}"]`); profiles with
+  several colors or only a siren or a light come through **Upload siren and light profiles** (multipart, file field,
+  file name `profiles` as the API documents).
 - Network addressing (static IP, DHCP switch) is not in the library: the Network plugin does it and
   follows the device to its new address; a raw command would lose the device.
 
@@ -286,6 +294,21 @@ Gaps in format v1 found while writing the library:
 | `io.supervised.set` | Set input supervision | I/O | yes | docs only (API present on the development camera, never sent) |
 | `io.virtualinput.activate` | Activate virtual input | I/O | yes | docs only (API present on the development camera, never sent) |
 | `io.virtualinput.deactivate` | Deactivate virtual input | I/O | yes | docs only (API present on the development camera, never sent) |
+| `siren.capabilities.get` | Get siren and light capabilities | Siren and light | no | docs only (no siren and light device) |
+| `siren.status.get` | Get siren and light status | Siren and light | no | docs only (no siren and light device) |
+| `siren.profiles.list` | List siren and light profiles | Siren and light | no | docs only (no siren and light device) |
+| `siren.healthcheck.get` | Get last siren and light health check | Siren and light | no | docs only (no siren and light device) |
+| `siren.profile.start` | Start siren and light profile | Siren and light | yes | docs only (no siren and light device) |
+| `siren.siren.start` | Start siren | Siren and light | yes | docs only (no siren and light device) |
+| `siren.light.start` | Start light | Siren and light | yes | docs only (no siren and light device) |
+| `siren.stop.all` | Stop siren and light | Siren and light | yes | docs only (no siren and light device) |
+| `siren.profile.stop` | Stop siren and light profile | Siren and light | yes | docs only (no siren and light device) |
+| `siren.profile.add` | Add siren and light profile | Siren and light | yes | docs only (no siren and light device) |
+| `siren.profile.remove` | Remove siren and light profile | Siren and light | yes | docs only (no siren and light device) |
+| `siren.profiles.upload` | Upload siren and light profiles | Siren and light | yes | docs only (no siren and light device) |
+| `siren.healthcheck.run` | Run siren and light health check | Siren and light | yes | docs only (no siren and light device) |
+| `siren.maintenance.on` | Turn on siren and light maintenance mode | Siren and light | yes | docs only (no siren and light device) |
+| `siren.maintenance.off` | Turn off siren and light maintenance mode | Siren and light | yes | docs only (no siren and light device) |
 | `events.actionrules.list` | List action rules | Events | no | executed on the development camera |
 | `events.mqtt.client.activate` | Connect MQTT client | Events | yes | docs only (API present on the development camera, never sent) |
 | `events.mqtt.client.configure` | Configure MQTT client | Events | yes | docs only (API present on the development camera, never sent) |

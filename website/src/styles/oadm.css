@@ -491,14 +491,9 @@ header .social-icons::after {
 	}
 }
 
-/* The Support Forum icon (top bar and below the downloads) in the accent color. */
+/* The Support Forum icon of the top bar in the accent color. */
 .support-icon {
 	color: var(--sl-color-accent);
-}
-
-/* The Documentation button's icon (Learning row) in green, a color no other icon uses. */
-.docs-icon {
-	color: #34d399;
 }
 
 /* Support Forum and newsletter while the forum does not answer (src/lib/forum.ts): greyed out, a note below them. */
@@ -517,11 +512,6 @@ header .social-icons::after {
 
 .downloads .forum-down[hidden] {
 	display: none;
-}
-
-/* The YouTube button's icon in YouTube red. */
-.youtube-icon {
-	color: #ff0033;
 }
 
 /* Download buttons: each system's icon in its own color. */
@@ -650,30 +640,54 @@ header .social-icons::after {
 	color: var(--sl-color-white);
 }
 
-/* The version of the latest release, right below the download buttons. */
+/* The version of the latest release in the "Download" label, a link to the changelog. */
 .downloads .dl-version {
-	margin-top: calc(5px - 0.75rem);
-	color: var(--sl-color-white);
-	font-size: 0.6875rem;
+	color: var(--sl-color-gray-2);
 	text-decoration: none;
+}
+
+.downloads .dl-version[hidden] {
+	display: none;
 }
 
 .downloads .dl-version:hover {
 	text-decoration: underline;
 }
 
-.downloads .community-label,
+/* The site node buttons sit below the OADM ones. */
 .downloads .site-node-label {
-	margin-top: 0.25rem;
-}
-
-/* The site node buttons sit below the OADM ones; Community keeps its distance to them. */
-.downloads .site-node-label ~ .community-label {
 	margin-top: 15px;
 }
 
-.downloads .learning-label {
-	margin-top: 15px;
+/* Below the downloads: forum, newsletter, YouTube and docs as one quiet row of grey links, no boxes. */
+.downloads .dl-links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.25rem 1.5rem;
+	margin-top: 0.75rem;
+}
+
+.downloads .dl-links a,
+.downloads .dl-links button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--sl-color-gray-3);
+	font: inherit;
+	font-size: var(--sl-text-sm);
+	text-decoration: none;
+	cursor: pointer;
+	transition: color 0.15s;
+}
+
+.downloads .dl-links a:hover,
+.downloads .dl-links button:hover,
+.downloads .dl-links button[aria-expanded='true'] {
+	color: var(--sl-color-white);
 }
 
 /* "Download" sits close to its buttons. */

@@ -4,7 +4,19 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
-## [Unreleased]
+## [3.6.2] - 2026-10-21
+
+### Added
+
+- VAPIX Commander: a **Siren and light** category for AXIS strobes and sirens: get capabilities, status, profiles and the
+  last health check; start a siren, a light or a profile, stop them, add, remove and upload profiles, run a health check
+  and turn maintenance mode on or off.
+- VAPIX Commander: commands can send a file (up to 1 MB). **Choose file** below the command; a saved command keeps the
+  file. In your own commands use the body type **multipart** and a field of the type **file**.
+
+### Fixed
+
+- Resize Issue: When OADM was minimized, window restore was not correct, therefore it was afterwards not return fullscreen.
 
 ### Added
 

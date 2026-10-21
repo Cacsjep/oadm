@@ -220,6 +220,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(16);
             e.Property(r => r.PermissionsJson).IsRequired();
             e.Property(r => r.KnownJson).IsRequired();
+            e.Property(r => r.StartPage).IsRequired().HasMaxLength(RoleStore.MaxStartPageLength);
             e.Property(r => r.CreatedUtc).HasConversion(UtcConverter);
             e.Property(r => r.ChangedUtc).HasConversion(UtcConverter);
         });

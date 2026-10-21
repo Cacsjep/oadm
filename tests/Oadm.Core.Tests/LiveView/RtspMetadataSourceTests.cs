@@ -313,7 +313,11 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
     private async Task WriteAsync(NetworkStream stream, string text) => await stream.WriteAsync(Encoding.ASCII.GetBytes(text), _cts.Token);
 }
 
-/// <summary>A fake clock that counts the timers created on it (each wait of the source's watch is one).</summary>
+/// <summary>
+/// A fake clock that counts the timers armed on it (each wait of the source's watch is one). A timer counts only once the
+/// clock holds it with a due time (after <c>CreateTimer</c> returned, or after a <c>Change</c> that set one): counted before,
+/// a test could advance the clock in between and the timer would be due one interval later, so it never fired.
+/// </summary>
 internal sealed class CountingTimeProvider : FakeTimeProvider
 {
     private int _timers;
@@ -322,7 +326,30 @@ internal sealed class CountingTimeProvider : FakeTimeProvider
 
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
     {
-        Interlocked.Increment(ref _timers);
-        return base.CreateTimer(callback, state, dueTime, period);
+        var timer = new CountedTimer(base.CreateTimer(callback, state, dueTime, period), this);
+        if (dueTime != Timeout.InfiniteTimeSpan)
+        {
+            Interlocked.Increment(ref _timers);
+        }
+
+        return timer;
+    }
+
+    private sealed class CountedTimer(ITimer inner, CountingTimeProvider owner) : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            var changed = inner.Change(dueTime, period);
+            if (changed && dueTime != Timeout.InfiniteTimeSpan)
+            {
+                Interlocked.Increment(ref owner._timers);
+            }
+
+            return changed;
+        }
+
+        public void Dispose() => inner.Dispose();
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 }

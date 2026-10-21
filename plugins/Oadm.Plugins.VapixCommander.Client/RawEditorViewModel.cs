@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Sdk.Actions;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 
@@ -36,9 +37,50 @@ public sealed partial class RawFieldViewModel : ObservableObject
     public partial string Type { get; set; } = FieldTypes.String;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileName))]
     public partial string Value { get; set; } = string.Empty;
 
     public bool IsPassword => Type == FieldTypes.Password;
+
+    /// <summary>A file field: <see cref="Value"/> holds the chosen file as {"name", "data"}.</summary>
+    public bool IsFile => Type == FieldTypes.File;
+
+    /// <summary>The value is typed (not a password or a file).</summary>
+    public bool IsTextValue => !IsPassword && !IsFile;
+
+    /// <summary>The chosen file's name of a file field.</summary>
+    public string? FileName
+    {
+        get
+        {
+            if (!IsFile || string.IsNullOrEmpty(Value))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(Value);
+                return ActionFile.From(document.RootElement)?.Name;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>Opens the file picker of the page; set by the editor.</summary>
+    public Func<Task<ActionFile?>>? PickFile { get; set; }
+
+    [RelayCommand]
+    private async Task ChooseFileAsync()
+    {
+        if (PickFile is not null && await PickFile().ConfigureAwait(true) is { } file)
+        {
+            Value = JsonSerializer.Serialize(new { name = file.Name, data = Convert.ToBase64String(file.Data) });
+        }
+    }
 
     /// <summary>The types offered for this field (a loaded choice field keeps its own type, which has no raw editor).</summary>
     public IReadOnlyList<string> TypeOptions { get; init; } = RawEditorViewModel.FieldTypeOptions;
@@ -58,7 +100,13 @@ public sealed partial class RawFieldViewModel : ObservableObject
     /// <summary>"{{name}}" as used in the request.</summary>
     public string Placeholder => "{{" + Name + "}}";
 
-    partial void OnTypeChanged(string value) => OnPropertyChanged(nameof(IsPassword));
+    partial void OnTypeChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsPassword));
+        OnPropertyChanged(nameof(IsFile));
+        OnPropertyChanged(nameof(IsTextValue));
+        OnPropertyChanged(nameof(FileName));
+    }
 
     partial void OnNameChanged(string value) => OnPropertyChanged(nameof(Placeholder));
 }
@@ -102,6 +150,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         ["/axis-cgi/applications/list.cgi"] = ("application", "1.0", ResponseKinds.Xml),
         ["/axis-cgi/applications/control.cgi"] = ("application", "1.0", ResponseKinds.Text),
         ["/axis-cgi/restart.cgi"] = ("param-cgi", "1.0", ResponseKinds.Text),
+        ["/axis-cgi/siren_and_light.cgi"] = ("siren-and-light", "1.0", ResponseKinds.JsonRpc),
     };
 
     [GeneratedRegex("^/config/rest/([a-z0-9-]+)/v([0-9]+)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
@@ -130,6 +179,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         {
             foreach (RawFieldViewModel field in e.NewItems ?? Array.Empty<RawFieldViewModel>())
             {
+                field.PickFile = PickFile;
                 field.PropertyChanged += (_, p) =>
                 {
                     if (p.PropertyName != nameof(RawFieldViewModel.Error) && p.PropertyName != nameof(RawFieldViewModel.HasError))
@@ -143,6 +193,20 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         ApplyPathDefaults();
         Validation.Rules(RawFields, () => MapProblems(BuildCore(forSave: true).Problems));
         Validation.Validate();
+    }
+
+    /// <summary>Opens the page's file picker for file fields (the request builder sets it).</summary>
+    public Func<Task<ActionFile?>>? PickFile
+    {
+        get;
+        set
+        {
+            field = value;
+            foreach (var row in Fields)
+            {
+                row.PickFile = value;
+            }
+        }
     }
 
     /// <summary>Error of the query table (below it).</summary>
@@ -283,7 +347,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     /// <summary>How the body editor colors the text (JSON, XML; form and text plain).</summary>
     public CodeLanguage BodyLanguage => BodyType switch
     {
-        BodyTypes.Json => CodeLanguage.Json,
+        BodyTypes.Json or BodyTypes.Multipart => CodeLanguage.Json,
         BodyTypes.Xml => CodeLanguage.Xml,
         _ => CodeLanguage.Plain,
     };
@@ -482,7 +546,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         }
 
         var placeholder = field.Placeholder;
-        var value = field.IsPassword ? string.Empty : field.Value;
+        var value = field.IsPassword || field.IsFile ? string.Empty : field.Value;
         _suppressEdits = true;
         try
         {
@@ -558,6 +622,17 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 catch (JsonException ex)
                 {
                     problems.Add("The JSON body is not valid: " + ex.Message);
+                }
+
+                break;
+            case BodyTypes.Multipart:
+                try
+                {
+                    body = JsonNode.Parse(string.IsNullOrWhiteSpace(BodyText) ? "[]" : BodyText);
+                }
+                catch (JsonException ex)
+                {
+                    problems.Add("The multipart body is not valid JSON: " + ex.Message);
                 }
 
                 break;
@@ -696,11 +771,26 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 FieldTypes.Number when double.TryParse(field.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) => JsonSerializer.SerializeToElement(d),
                 FieldTypes.Boolean => JsonSerializer.SerializeToElement(field.Value is "yes" or "true" or "1" or "on"),
                 FieldTypes.Enum when kept?.Options?.FirstOrDefault(o => DefaultText(o.Value) == field.Value) is { } option => option.Value,
+                FieldTypes.File when FileElement(field.Value) is { } file => file,
                 _ => JsonSerializer.SerializeToElement(field.Value),
             };
         }
 
         return result;
+    }
+
+    /// <summary>The {"name", "data"} object of a file field's value; null when it is not one.</summary>
+    private static JsonElement? FileElement(string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private void ApplyPathDefaults()

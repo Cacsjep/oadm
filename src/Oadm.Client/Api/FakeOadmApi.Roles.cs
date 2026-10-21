@@ -53,7 +53,13 @@ public sealed partial class FakeOadmApi
                     ?? throw new RpcException(new Status(StatusCode.NotFound, "The role does not exist (any more)."));
                 if (role?.Kind == RoleKind.Administrator)
                 {
-                    throw new RpcException(new Status(StatusCode.FailedPrecondition, "The Administrator role always has every permission and cannot change."));
+                    // Only the start page of the Administrator role changes.
+                    if (change.HasStartPage)
+                    {
+                        role.StartPage = change.StartPage;
+                    }
+
+                    continue;
                 }
 
                 if (_roles.Any(r => r != role && string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
@@ -74,6 +80,10 @@ public sealed partial class FakeOadmApi
 
                 role.Name = name;
                 role.Description = (change.Description ?? "").Trim();
+                if (change.HasStartPage)
+                {
+                    role.StartPage = change.StartPage;
+                }
                 role.Permissions.Clear();
                 role.Permissions.AddRange(change.Permissions.Where(known.Contains).Distinct().Order(StringComparer.Ordinal));
                 foreach (UserInfo user in _users.Where(u => u.RoleId == role.Id))

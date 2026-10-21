@@ -310,7 +310,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     /// <summary>Adds a library or saved command to the rollout set and selects it.</summary>
     public RolloutCommandViewModel Add(CommandListItem item)
     {
-        var vm = new RolloutCommandViewModel(item);
+        var vm = new RolloutCommandViewModel(item, Files is null ? null : Files.OpenFileAsync);
         RolloutItems.Add(vm);
         SelectedRolloutItem = vm;
         return vm;
@@ -356,6 +356,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             return;
         }
 
+        builder.Raw.PickFile = Files is null ? null : Files.OpenFileAsync;
         await Dialogs.ShowBuilderAsync(builder).ConfigureAwait(true);
         if (builder.Saved is { } saved)
         {

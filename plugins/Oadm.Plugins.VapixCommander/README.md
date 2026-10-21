@@ -11,7 +11,7 @@ one device (Postman-like). Command format v1 and JSON schema: `Schema/command-fo
 Every `Library/*.json` next to the plugin assembly (`ICorePluginContext.PluginDirectory`, fallback
 `AppContext.BaseDirectory/Library`), loaded once at start with strict JSON (unknown properties are errors) and
 `CommandValidator`; broken files and invalid or duplicate commands are skipped, logged and listed on the page ("N
-library entries could not be loaded"). The bundled library (161 commands) is checked by
+library entries could not be loaded"). The bundled library (176 commands) is checked by
 `tests/Oadm.Plugins.VapixCommander.Library.Tests` and `BundledLibraryTests` (every command loads and validates with this
 engine).
 
@@ -30,10 +30,17 @@ The payload stays in memory only; password values are never logged and are maske
 shown to the user.
 
 - `FieldValues` checks values per type (integer, number, boolean, enum, string / password with pattern and min / max
-  length; numbers min / max) before anything is sent.
+  length; numbers min / max; file: {"name", "data"} base64, at most 1 MB, a name without folders or quotes) before
+  anything is sent.
+- **Files** (decision 2026-10-21): a `file` field is filled with **Choose file** (the page's picker reads at most 1 MB + 1
+  byte) and travels inline with the command, so Send, rollouts, saved commands ("Save with values" keeps the file as the
+  default) and the event rule action carry it; no server upload store, no SDK change. It may only be the `file` of a
+  `multipart` part (`CommandValidator.ValidateFileUses`); the request line shows `file "profiles", 2 KB`, never the
+  bytes. First user: Siren and light **Upload siren and light profiles**.
 - `CommandRenderer` fills `{{field}}` in the path (URL-escaped), query (escaped, "," and ":" kept), headers (no
   Authorization / Cookie / Host), body (json: a value that is exactly `{{field}}` is typed; form; text; xml: XML-escaped;
-  SOAP content type for envelopes) and extract paths. Booleans are yes / no for `param-cgi`, true / false elsewhere,
+  SOAP content type for envelopes; multipart: json, text and file parts as `multipart/form-data` with quoted names and an
+  unquoted boundary, like the firmware upload) and extract paths. Booleans are yes / no for `param-cgi`, true / false elsewhere,
   unless `trueValue` / `falseValue`. Timeout via `VapixRequestOptions.Timeout` (default 15 s, at most 600 s). Paths must
   stay on the device (`CommandValidator.IsDevicePath`, checked again after the fields are filled in).
 - `CommandExecutor` sends with the factory's cached client (never disposed by the plugin), decodes the body as UTF-8

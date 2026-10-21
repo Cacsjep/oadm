@@ -55,6 +55,10 @@ public static class CommandRendering
             "json" => RenderJson(bodyNode, fields, values, kind)!.ToJsonString(),
             "form" => string.Join("&", bodyNode!.AsObject().Select(kv =>
                 Uri.EscapeDataString(Text(kv.Key)) + "=" + Uri.EscapeDataString(Text(kv.Value!.GetValue<string>())))),
+            "multipart" => string.Join("\n", bodyNode!.AsArray().Select(p => p!["json"] is { } json
+                ? RenderJson(json, fields, values, kind)!.ToJsonString()
+                : p["text"] is { } text ? Text(text.GetValue<string>())
+                : "file " + Text(p["file"]!.GetValue<string>()))),
             _ => Text(bodyNode!.GetValue<string>()),
         };
 
@@ -73,6 +77,11 @@ public static class CommandRendering
         if (value is null)
         {
             return string.Empty;
+        }
+
+        if (field["type"]!.GetValue<string>() == "file")
+        {
+            return value["name"]?.GetValue<string>() ?? string.Empty;
         }
 
         if (field["type"]!.GetValue<string>() == "boolean")

@@ -12,7 +12,7 @@ namespace Oadm.Theme.Shell;
 public static class WindowFit
 {
     /// <summary>Space kept free around a window that had to shrink.</summary>
-    public const double Margin = 16;
+    public const double Margin = 0;
 
     /// <summary>Fits every window that opens from now on.</summary>
     /// <remarks>

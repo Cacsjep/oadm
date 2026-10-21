@@ -49,6 +49,9 @@ public sealed partial class UserSession : ObservableObject
     [NotifyPropertyChangedFor(nameof(RoleText))]
     public partial string RoleName { get; private set; } = "";
 
+    /// <summary>The page the role starts on after a login (a rail key; empty = Devices).</summary>
+    public string StartPage { get; private set; } = "";
+
     /// <summary>The server of the session ("https://localhost:5080").</summary>
     [ObservableProperty]
     public partial string ServerAddress { get; private set; } = "";
@@ -99,6 +102,7 @@ public sealed partial class UserSession : ObservableObject
         UserName = null;
         IsAdmin = false;
         RoleName = "";
+        StartPage = "";
     }
 
     private void Apply(UserInfo user)
@@ -112,6 +116,7 @@ public sealed partial class UserSession : ObservableObject
         bool changed = admin != IsAdmin || legacy != before.Legacy || !permissions.SetEquals(before.Keys) || user.RoleName != RoleName;
         Volatile.Write(ref _rights, new Rights(LoggedIn: true, admin, legacy, permissions));
         RoleName = user.RoleName;
+        StartPage = user.StartPage;
         IsAdmin = admin;
         if (changed)
         {

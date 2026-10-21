@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -81,6 +82,8 @@ public static partial class CommandValidator
             {
                 problems.Add($"Placeholder {{{{{used}}}}} has no field.");
             }
+
+            ValidateFileUses(command, problems);
         }
 
         return problems;
@@ -148,6 +151,11 @@ public static partial class CommandValidator
             if (field.Type == FieldTypes.Enum && field.Options is not { Count: > 0 })
             {
                 problems.Add($"Field \"{field.Name}\" is an enum without options.");
+            }
+
+            if (field.IsFile && (field.Pattern is not null || field.Min is not null || field.Max is not null || field.Options is not null))
+            {
+                problems.Add($"Field \"{field.Name}\" is a file: it takes no pattern, min, max or options.");
             }
 
             if (field.Min is { } min && field.Max is { } max && min > max)
@@ -220,7 +228,7 @@ public static partial class CommandValidator
         var bodyType = request.EffectiveBodyType;
         if (!BodyTypes.All.Contains(bodyType))
         {
-            problems.Add($"Unknown body type \"{bodyType}\" (none, json, form, text, xml).");
+            problems.Add($"Unknown body type \"{bodyType}\" (none, json, form, text, xml, multipart).");
         }
         else
         {
@@ -239,12 +247,125 @@ public static partial class CommandValidator
                 case BodyTypes.Text or BodyTypes.Xml when body is not JsonValue text || text.GetValueKind() != JsonValueKind.String:
                     problems.Add($"A {bodyType} body must be a string.");
                     break;
+                case BodyTypes.Multipart:
+                    ValidateParts(body, problems);
+                    break;
             }
         }
 
         if (request.TimeoutSeconds is < 1 or > CommandLimits.MaxTimeoutSeconds)
         {
             problems.Add($"The timeout must be 1 to {CommandLimits.MaxTimeoutSeconds} seconds.");
+        }
+    }
+
+    /// <summary>A multipart body: 1 to <see cref="MultipartParts.MaxParts"/> parts, each with a name and exactly one of json, text or file.</summary>
+    private static void ValidateParts(JsonNode? body, List<string> problems)
+    {
+        if (body is not JsonArray parts || parts.Count is 0 or > MultipartParts.MaxParts)
+        {
+            problems.Add($"A multipart body must be a list of 1 to {MultipartParts.MaxParts} parts.");
+            return;
+        }
+
+        string[] known = [MultipartParts.Name, MultipartParts.Json, MultipartParts.Text, MultipartParts.File, MultipartParts.ContentType, MultipartParts.FileName];
+        foreach (var node in parts)
+        {
+            if (node is not JsonObject part)
+            {
+                problems.Add("Every multipart part must be an object.");
+                continue;
+            }
+
+            var name = StringOf(part[MultipartParts.Name]);
+            if (string.IsNullOrWhiteSpace(name) || !IsHeaderSafe(name))
+            {
+                problems.Add("Every multipart part needs a name without quotes or line breaks.");
+                continue;
+            }
+
+            if (part.Select(p => p.Key).FirstOrDefault(k => !known.Contains(k)) is { } unknown)
+            {
+                problems.Add($"Part \"{name}\" has the unknown property \"{unknown}\" (name, json, text, file, contentType, fileName).");
+            }
+
+            var kinds = new[] { MultipartParts.Json, MultipartParts.Text, MultipartParts.File }.Count(part.ContainsKey);
+            if (kinds != 1)
+            {
+                problems.Add($"Part \"{name}\" needs exactly one of json, text or file.");
+            }
+
+            if (part.ContainsKey(MultipartParts.Text) && StringOf(part[MultipartParts.Text]) is null)
+            {
+                problems.Add($"The text of part \"{name}\" must be a string.");
+            }
+
+            if (part.ContainsKey(MultipartParts.File) && Placeholders.Whole(StringOf(part[MultipartParts.File]) ?? string.Empty) is null)
+            {
+                problems.Add($"The file of part \"{name}\" must be exactly one {{{{field}}}} of a file field.");
+            }
+
+            if (part.ContainsKey(MultipartParts.ContentType)
+                && (StringOf(part[MultipartParts.ContentType]) is not { } contentType || !MediaTypeHeaderValue.TryParse(contentType, out _)))
+            {
+                problems.Add($"The content type of part \"{name}\" is not valid.");
+            }
+
+            if (part.ContainsKey(MultipartParts.FileName)
+                && (!part.ContainsKey(MultipartParts.File) || StringOf(part[MultipartParts.FileName]) is not { Length: > 0 } fileName
+                    || !IsHeaderSafe(fileName) || fileName.Contains('/', StringComparison.Ordinal) || fileName.Contains('\\', StringComparison.Ordinal)))
+            {
+                problems.Add($"The file name of part \"{name}\" is not valid (file parts only, no folders, quotes or line breaks).");
+            }
+        }
+
+        static string? StringOf(JsonNode? node) => node is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
+
+        static bool IsHeaderSafe(string text) => !text.Any(c => char.IsControl(c) || c == '"');
+    }
+
+    /// <summary>
+    /// A file field is only the file of a multipart part ("file": "{{field}}"): its bytes cannot go into a path, query,
+    /// header or text. Every other placeholder must not name a file field.
+    /// </summary>
+    private static void ValidateFileUses(CommandDefinition command, List<string> problems)
+    {
+        var files = (command.Fields ?? []).Where(f => f.IsFile).Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+        var request = command.Request;
+        var fileParts = new List<string>();
+        CommandRequest withoutFileParts = request;
+        if (request.EffectiveBodyType == BodyTypes.Multipart && request.Body is JsonArray parts)
+        {
+            var kept = new JsonArray();
+            foreach (var part in parts)
+            {
+                if (part is JsonObject obj && obj[MultipartParts.File] is JsonValue file && file.GetValueKind() == JsonValueKind.String)
+                {
+                    fileParts.Add(file.GetValue<string>());
+                    var copy = (JsonObject)obj.DeepClone();
+                    copy.Remove(MultipartParts.File);
+                    kept.Add(copy);
+                }
+                else
+                {
+                    kept.Add(part?.DeepClone());
+                }
+            }
+
+            withoutFileParts = new CommandRequest { Method = request.Method, Path = request.Path, Query = request.Query, Headers = request.Headers, Body = kept };
+        }
+
+        foreach (var name in Placeholders.InRequest(withoutFileParts).Where(files.Contains).Distinct(StringComparer.Ordinal))
+        {
+            problems.Add($"File field \"{name}\" can only be the file of a multipart part.");
+        }
+
+        foreach (var name in fileParts.Select(Placeholders.Whole).OfType<string>().Where(n => !files.Contains(n)).Distinct(StringComparer.Ordinal))
+        {
+            if (command.Fields?.Any(f => f.Name == name) == true)
+            {
+                problems.Add($"Field \"{name}\" is the file of a multipart part, so its type must be file.");
+            }
         }
     }
 

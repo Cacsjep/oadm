@@ -86,6 +86,12 @@ public sealed class RoleEntity
     /// <summary>JSON array of every permission key the role has seen.</summary>
     public string KnownJson { get; set; } = "[]";
 
+    /// <summary>
+    /// The page the client opens after a login (<see cref="RoleStore.MaxStartPageLength"/>): a rail page key ("compliance",
+    /// "plugin:oadm.live-view"); empty = Devices.
+    /// </summary>
+    public string StartPage { get; set; } = string.Empty;
+
     public DateTime CreatedUtc { get; set; }
 
     public DateTime ChangedUtc { get; set; }

@@ -71,7 +71,7 @@ public sealed partial class RolesCardView : UserControl
             grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = RoleHeader(role),
-                Width = new DataGridLength(150),
+                Width = new DataGridLength(170),
                 CellTemplate = new FuncDataTemplate<PermissionRowViewModel>((row, _) => row is null ? null : new CheckBox
                 {
                     HorizontalAlignment = HorizontalAlignment.Center,
@@ -134,12 +134,15 @@ public sealed partial class RolesCardView : UserControl
         return panel;
     }
 
-    /// <summary>The role's column header: name, "3 users" and its menu.</summary>
+    /// <summary>The role's column header: name, "3 users", "Starts on Compliance" and its menu.</summary>
     private Grid RoleHeader(RoleColumnViewModel role)
     {
         var text = new StackPanel { Spacing = 0, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Name)), TextTrimming = TextTrimming.CharacterEllipsis });
         text.Children.Add(new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Subtitle)), Classes = { "small", "secondary" } });
+        var start = new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.StartPageText)), Classes = { "small", "secondary" }, TextTrimming = TextTrimming.CharacterEllipsis };
+        start[!ToolTip.TipProperty] = new Binding(nameof(RoleColumnViewModel.StartPageText));
+        text.Children.Add(start);
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), DataContext = role };
         ToolTip.SetTip(grid, role.DescriptionTip);
@@ -147,7 +150,7 @@ public sealed partial class RolesCardView : UserControl
         if (!role.IsAdministrator && _vm is { } vm)
         {
             var menu = new MenuFlyout();
-            menu.Items.Add(new MenuItem { Header = "Rename", Command = vm.RenameRoleCommand, CommandParameter = role });
+            menu.Items.Add(new MenuItem { Header = "Edit", Command = vm.EditRoleCommand, CommandParameter = role });
             menu.Items.Add(new MenuItem { Header = "Copy", Command = vm.CopyRoleCommand, CommandParameter = role });
             if (role.CanReset)
             {
@@ -173,6 +176,7 @@ public sealed partial class RolesCardView : UserControl
         else if (_vm is { } admin)
         {
             var menu = new MenuFlyout();
+            menu.Items.Add(new MenuItem { Header = "Edit", Command = admin.EditRoleCommand, CommandParameter = role });
             menu.Items.Add(new MenuItem { Header = "Copy", Command = admin.CopyRoleCommand, CommandParameter = role });
             var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(button, "Role actions");

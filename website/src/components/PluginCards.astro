@@ -1,8 +1,9 @@
 ---
 // Landing page: one card per plugin with a picture of its page (from the headless tests), its name and one sentence.
 // A click opens a detail window with the large picture and a link to the plugin's docs page (without JavaScript the
-// card is that link). Order as in the navigation rail.
+// card is that link). Order as in the navigation rail. `path` for a page outside tools/.
 import { Image, getImage } from 'astro:assets';
+import compliance from '../assets/screens/compliance-page.png';
 import ntp from '../assets/screens/ntp-server-page.png';
 import dhcp from '../assets/screens/dhcp-server-page.png';
 import commander from '../assets/screens/plugin-vapix-commander-rollout.png';
@@ -23,6 +24,7 @@ import edgeStorage from '../assets/screens/edge-storage-page.png';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const plugins = [
+	{ name: 'Compliance', path: 'devices/compliance', image: compliance, text: 'Which devices need attention: unreachable, wrong login, certificate, firmware, apps, configuration.' },
 	{ name: 'NTP server', page: 'ntp-server', image: ntp, text: 'The time for every device, from this server.' },
 	{ name: 'DHCP server', page: 'dhcp-server', image: dhcp, text: 'Addresses for sites without infrastructure. New Axis devices add themselves.' },
 	{ name: 'VAPIX Commander', page: 'vapix-commander', image: commander, text: 'Any VAPIX command, rolled out to hundreds of devices.' },
@@ -46,7 +48,7 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 
 <div class="plugin-cards not-content">
 	{plugins.map((p, i) => (
-		<a class="plugin-card" href={`${base}tools/${p.page}/`} data-large={large[i]}>
+		<a class="plugin-card" href={`${base}${p.path ?? `tools/${p.page}`}/`} data-large={large[i]}>
 			<span class="plugin-shot">
 				<Image src={p.image} alt={`${p.name} page of OADM`} width={720} />
 			</span>

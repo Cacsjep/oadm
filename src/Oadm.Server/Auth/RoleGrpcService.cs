@@ -25,7 +25,8 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
             r.Name,
             r.Description,
             [.. r.Permissions],
-            r.Version)).ToList();
+            r.Version,
+            r.HasStartPage ? StartPageOf(r.StartPage) : null)).ToList();
         try
         {
             var diffs = await roles.SaveAsync(changes, ct).ConfigureAwait(false);
@@ -69,6 +70,41 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
         return reply;
     }
 
+    /// <summary>
+    /// The pages a role can start on (the client's rail keys, <c>HostPages</c>): Devices (stored empty), Compliance, Event
+    /// rules, Logs and every core plugin page, on or off (a page the user cannot open opens Devices). Anything else is
+    /// refused.
+    /// </summary>
+    private static readonly HashSet<string> HostStartPages = new(StringComparer.Ordinal) { "compliance", "eventRules", "logs" };
+
+    private string StartPageOf(string? value)
+    {
+        var page = (value ?? string.Empty).Trim();
+        if (page.Length == 0 || page == "devices")
+        {
+            return string.Empty;
+        }
+
+        if (HostStartPages.Contains(page)
+            || (page.StartsWith("plugin:", StringComparison.Ordinal)
+                && registry.AllCorePlugins.Any(p => p.Plugin.HasPage && "plugin:" + p.Id == page)))
+        {
+            return page;
+        }
+
+        throw GrpcGuard.InvalidArgument("Choose a start page from the list.");
+    }
+
+    /// <summary>The name a start page has in the rail ("Compliance", "Live View"), for the audit log.</summary>
+    private string StartPageName(string page) => page switch
+    {
+        "" => "Devices",
+        "compliance" => "Compliance",
+        "eventRules" => "Event rules",
+        "logs" => "Logs",
+        _ => registry.AllCorePlugins.FirstOrDefault(p => "plugin:" + p.Id == page)?.Plugin.DisplayName ?? page,
+    };
+
     /// <summary>"+Web View: Open devices, -Restart" (names as the matrix shows them), plus "renamed" when it was.</summary>
     private string Describe(RoleDiff diff)
     {
@@ -76,6 +112,11 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
         if (diff.Renamed)
         {
             parts.Add("name or description");
+        }
+
+        if (diff.StartPage is { } start)
+        {
+            parts.Add("start page " + StartPageName(start));
         }
 
         parts.AddRange(diff.Added.Select(k => "+" + NameOf(k)));
@@ -105,6 +146,7 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
                 Kind = (Proto.RoleKind)(int)role.Kind,
                 UserCount = role.UserCount,
                 Version = role.Version,
+                StartPage = role.StartPage,
             };
             info.Permissions.AddRange(role.Permissions.Keys.Order(StringComparer.Ordinal));
             reply.Roles.Add(info);

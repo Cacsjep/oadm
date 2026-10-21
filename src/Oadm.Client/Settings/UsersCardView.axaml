@@ -9,7 +9,9 @@
   <Border Classes="card">
     <StackPanel Spacing="12">
       <StackPanel Orientation="Horizontal">
-        <ui:ToolbarButton Text="User" IconKey="add" Command="{Binding OpenAddCommand}" />
+        <Button Classes="secondary" Command="{Binding OpenAddCommand}">
+          <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New user" />
+        </Button>
       </StackPanel>
       <DataGrid x:Name="UsersGrid" ItemsSource="{Binding Users}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                 SelectionMode="Single" MaxHeight="360">

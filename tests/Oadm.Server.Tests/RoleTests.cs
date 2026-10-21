@@ -174,13 +174,72 @@ public sealed class RoleTests
     }
 
     [Fact]
+    public async Task ARoleStartsOnItsPageEvenTheAdministratorRoleAndOnlyPagesAreTaken()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        await AddPluginsAsync(host);
+        var roles = Roles(host);
+        var matrix = await roles.GetMatrixAsync(new Proto.Empty());
+        Assert.All(matrix.Roles, r => Assert.Equal("", r.StartPage)); // Devices
+
+        // Operator: a plugin page; Administrator: only its start page may change.
+        var op = matrix.Roles.Single(r => r.Kind == Proto.RoleKind.Operator);
+        var admin = matrix.Roles.Single(r => r.Kind == Proto.RoleKind.Administrator);
+        matrix = await roles.SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles =
+            {
+                new Proto.RoleChange { Id = op.Id, Name = op.Name, Description = op.Description, Permissions = { op.Permissions }, Version = op.Version, StartPage = "plugin:" + PagePlugin.PluginId },
+                new Proto.RoleChange { Id = admin.Id, Name = admin.Name, Description = admin.Description, Version = admin.Version, StartPage = "compliance" },
+            },
+        });
+        Assert.Equal("plugin:" + PagePlugin.PluginId, matrix.Roles.Single(r => r.Id == op.Id).StartPage);
+        Assert.Equal("compliance", matrix.Roles.Single(r => r.Id == admin.Id).StartPage);
+
+        // "devices" is stored as the default; an unset start page keeps the stored one.
+        var viewer = matrix.Roles.Single(r => r.Kind == Proto.RoleKind.Viewer);
+        matrix = await roles.SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Id = viewer.Id, Name = viewer.Name, Description = viewer.Description, Permissions = { viewer.Permissions }, Version = viewer.Version, StartPage = "devices" } },
+        });
+        Assert.Equal("", matrix.Roles.Single(r => r.Id == viewer.Id).StartPage);
+        op = matrix.Roles.Single(r => r.Id == op.Id);
+        matrix = await roles.SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Id = op.Id, Name = op.Name, Description = "Keeps its page.", Permissions = { op.Permissions }, Version = op.Version } },
+        });
+        Assert.Equal("plugin:" + PagePlugin.PluginId, matrix.Roles.Single(r => r.Id == op.Id).StartPage);
+
+        // Only pages: an unknown plugin, a plugin without a page or a made-up key is refused.
+        op = matrix.Roles.Single(r => r.Id == op.Id);
+        foreach (var bad in new[] { "plugin:made.up", "users", "https://example.com", new string('x', 300) })
+        {
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await roles.SaveRolesAsync(new Proto.SaveRolesRequest
+            {
+                Roles = { new Proto.RoleChange { Id = op.Id, Name = op.Name, Description = op.Description, Permissions = { op.Permissions }, Version = op.Version, StartPage = bad } },
+            }));
+            Assert.Equal(StatusCode.InvalidArgument, refused.StatusCode);
+            Assert.Equal("Choose a start page from the list.", refused.Status.Detail);
+        }
+
+        // The caller learns its start page with the login.
+        var opUser = new Proto.AuthService.AuthServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
+        Assert.Equal("plugin:" + PagePlugin.PluginId, (await opUser.MeAsync(new Proto.Empty())).StartPage);
+        Assert.Equal("compliance", (await new Proto.AuthService.AuthServiceClient(host.Invoker).MeAsync(new Proto.Empty())).StartPage);
+
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Contains(audit, e => e.Action == AuditActions.RoleChanged && e.Target == "Administrator" && e.Detail == "start page Compliance");
+        Assert.Contains(audit, e => e.Action == AuditActions.RoleChanged && e.Target == op.Name && e.Detail == "start page Test page");
+    }
+
+    [Fact]
     public async Task BuiltInRolesAndRolesInUseAreProtected()
     {
         await using var host = await TestServerHost.StartAsync();
         var roles = Roles(host);
         var admin = await Assert.ThrowsAsync<RpcException>(async () => await roles.SaveRolesAsync(new Proto.SaveRolesRequest
         {
-            Roles = { new Proto.RoleChange { Id = BuiltInRoles.AdministratorId.ToString(), Name = "Administrator" } },
+            Roles = { new Proto.RoleChange { Id = BuiltInRoles.AdministratorId.ToString(), Name = "Boss" } },
         }));
         Assert.Equal(StatusCode.FailedPrecondition, admin.StatusCode);
         Assert.Equal(StatusCode.FailedPrecondition, await CodeOf(async () => await roles.DeleteRoleAsync(new Proto.RoleIdRequest { Id = BuiltInRoles.ViewerId.ToString() })));

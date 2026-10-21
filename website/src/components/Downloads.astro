@@ -31,7 +31,7 @@ const links = {
 ---
 
 <div class="downloads not-content" data-repo={repo}>
-	<span class="dl-label">Download</span>
+	<span class="dl-label">Download <a class="dl-version" href={`${base}project/changelog/`} hidden={!version}>{version}</a></span>
 	<div class="download-buttons">
 		<a class="dl" data-asset="^OADM-\d.*-win-x64\.msi$" href={links.windows}><Icon name="seti:windows" class="os-windows" />Windows</a>
 		<details class="dl-linux">
@@ -43,7 +43,6 @@ const links = {
 		</details>
 		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" class="os-macos" />macOS</a>
 	</div>
-	<a class="dl-version" href={`${base}project/changelog/`} hidden={!version}>{version}</a>
 	<span class="dl-label site-node-label">Site node</span>
 	<div class="download-buttons">
 		<a class="dl" data-asset="^OADM-SiteNode-.*-win-x64\.msi$" href={links.nodeWindows}><Icon name="seti:windows" class="os-windows" />Windows</a>
@@ -55,11 +54,12 @@ const links = {
 			</div>
 		</details>
 	</div>
-	<span class="dl-label community-label">Community</span>
-	<div class="download-buttons">
-		<a class="dl forum-link" href={portal}><Icon name="comment-alt" class="support-icon" />Support Forum</a>
-		<button class="dl newsletter-toggle" type="button" aria-expanded="false" aria-controls="newsletter"><Icon name="email" class="support-icon" />Subscribe to newsletter</button>
-	</div>
+	<nav class="dl-links" aria-label="Community and learning">
+		<a class="forum-link" href={portal}><Icon name="comment-alt" />Support Forum</a>
+		<button class="newsletter-toggle" type="button" aria-expanded="false" aria-controls="newsletter"><Icon name="email" />Newsletter</button>
+		<a href={youtube}><Icon name="youtube" />YouTube</a>
+		<a href={`${base}start/install/`}><Icon name="open-book" />Documentation</a>
+	</nav>
 	<p class="forum-down" hidden>Currently not available. We are working on it.</p>
 	<form id="newsletter" class="newsletter" data-portal={portal} hidden>
 		<div class="newsletter-row">
@@ -70,11 +70,6 @@ const links = {
 		<p class="newsletter-hint"><a href={`${portal}privacy/`}>Privacy notice</a></p>
 		<p class="newsletter-hint newsletter-after" hidden>Every newsletter has a one-click unsubscribe link. No account needed.</p>
 	</form>
-	<span class="dl-label learning-label">Learning</span>
-	<div class="download-buttons">
-		<a class="dl" href={youtube}><Icon name="youtube" class="youtube-icon" />YouTube channel</a>
-		<a class="dl" href={`${base}start/install/`}><Icon name="open-book" class="docs-icon" />Documentation</a>
-	</div>
 </div>
 
 <script>

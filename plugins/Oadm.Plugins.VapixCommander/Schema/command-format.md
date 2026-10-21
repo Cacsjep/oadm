@@ -53,7 +53,7 @@ JSON Schema: `command.schema.json` next to this file. Decisions by the user (202
 |---|---|
 | `name` | Placeholder name, `[a-zA-Z][a-zA-Z0-9_]*`, used as `{{name}}` anywhere in `request` |
 | `label`, `description` | Shown in the editor |
-| `type` | `string`, `integer`, `number`, `boolean`, `enum`, `password` (never logged, never saved in plain text in saved commands unless the user opts in; stored encrypted on the server) |
+| `type` | `string`, `integer`, `number`, `boolean`, `enum`, `password` (never logged, never saved in plain text in saved commands unless the user opts in; stored encrypted on the server), `file` (a file the user chooses, see Multipart below) |
 | `default` | Default value |
 | `min`, `max`, `pattern`, `options` (`[{ "value": "...", "label": "..." }]` for enum), `unit`, `required` (default true) | Validation, checked before any request is sent |
 
@@ -68,9 +68,34 @@ unless the field sets `"trueValue"`/`"falseValue"`.
 | `path` | Relative to the device base address, starts with `/` |
 | `query` | Map of query parameters (keys and values may contain placeholders) |
 | `headers` | Extra headers (no `Authorization`; auth is handled by OADM) |
-| `bodyType` | `none`, `json`, `form`, `text`, `xml` |
-| `body` | JSON value for `json`, map for `form`, string for `text`/`xml`; placeholders allowed in strings. In JSON, a value that is exactly `"{{field}}"` is replaced with the typed value (number/bool stay unquoted) |
+| `bodyType` | `none`, `json`, `form`, `text`, `xml`, `multipart` |
+| `body` | JSON value for `json`, map for `form`, string for `text`/`xml`, array of parts for `multipart`; placeholders allowed in strings. In JSON, a value that is exactly `"{{field}}"` is replaced with the typed value (number/bool stay unquoted) |
 | `timeoutSeconds` | Default 15, max 600 |
+
+### Multipart and file fields (decision 2026-10-21)
+
+A `multipart` body is sent as `multipart/form-data` (quoted part names and file names, unquoted boundary, like the
+firmware upload). It is an array of 1 to 10 parts; each part has a `name` and exactly one of:
+
+| Property | Part content |
+|---|---|
+| `json` | A JSON value, filled like a `json` body; content type `application/json` unless `contentType` says otherwise |
+| `text` | A string with placeholders |
+| `file` | Exactly `"{{field}}"` of a `file` field: the file's bytes; `fileName` is the name sent (default the chosen file's name), content type `application/octet-stream` unless `contentType` says otherwise |
+
+A `file` field's value is `{"name", "data"}` with the content in base64 (the SDK's `ActionFile`), at most 1 MB
+(`CommandLimits.MaxFileBytes`): the client reads the file and sends it with the command, so a send, a rollout and a saved
+command (the file as the field's default, "Save with values") carry it; nothing is uploaded to the server's file store.
+A file field may only be the `file` of a part (never in the path, query, headers or another body), the name must not hold
+folders, quotes or control characters. The request line shows a file part as `file "profiles", 2 KB`, never its content.
+
+```json
+"bodyType": "multipart",
+"body": [
+  { "name": "request", "json": { "apiVersion": "1.0", "method": "uploadProfiles", "params": { "uploadMode": "{{mode}}" } } },
+  { "name": "file", "contentType": "application/json", "fileName": "profiles", "file": "{{profiles}}" }
+]
+```
 
 ### Response interpretation (`response.kind`)
 
@@ -111,9 +136,10 @@ Paths support array indices (`data.devices.0.name` or `data.devices[0].name`) an
 ### Categories
 
 `Common`, `System`, `Network`, `Security`, `Users`, `Time`, `Video`, `Image`, `PTZ`, `Audio`,
-`I/O`, `Events`, `Storage`, `Applications`, `Maintenance`, plus `Custom` for saved (user-made) commands
-and exports. Each library file holds one category:
-`Library/<category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`.
+`I/O`, `Siren and light`, `Events`, `Storage`, `Applications`, `Maintenance`, plus `Custom` for saved (user-made)
+commands and exports. Each library file holds one category:
+`Library/<category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`; the file name is the
+category in PascalCase without spaces and "/" (`IO.json`, `SirenAndLight.json`).
 
 ### Safety rules (CLAUDE.md "device safety")
 

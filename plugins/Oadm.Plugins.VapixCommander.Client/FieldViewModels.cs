@@ -3,7 +3,9 @@ using System.Globalization;
 using System.Text.Json;
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Sdk.Actions;
 using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.VapixCommander.Client;
@@ -15,19 +17,22 @@ public sealed record FieldOptionItem(JsonElement Value, string Label)
 }
 
 /// <summary>
-/// One input of a command: text, number, password, yes/no or a select box, checked with the same rules as the server
-/// (<see cref="FieldValues.Convert"/>) while typing. The error is reported on the bound input property
-/// (<see cref="Text"/> or <see cref="SelectedOption"/>) and shows below the input once it was edited or the rollout
-/// was started (<see cref="ShowErrors"/>).
+/// One input of a command: text, number, password, yes/no, a select box or a file, checked with the same rules as the
+/// server (<see cref="FieldValues.Convert"/>) while typing. The error is reported on the bound input property
+/// (<see cref="Text"/>, <see cref="SelectedOption"/> or <see cref="FileName"/>) and shows below the input once it was
+/// edited or the rollout was started (<see cref="ShowErrors"/>).
 /// </summary>
 public sealed partial class FieldViewModel : ValidatingViewModel
 {
-    public FieldViewModel(CommandField field, bool hasStoredSecret = false)
+    private readonly Func<Task<ActionFile?>>? _pickFile;
+
+    public FieldViewModel(CommandField field, bool hasStoredSecret = false, Func<Task<ActionFile?>>? pickFile = null)
     {
         ArgumentNullException.ThrowIfNull(field);
         Field = field;
         HasStoredSecret = hasStoredSecret;
-        Validation.Rule(field.Type == FieldTypes.Enum ? nameof(SelectedOption) : nameof(Text), Check);
+        _pickFile = pickFile;
+        Validation.Rule(InputProperty, Check);
         Options = [.. (field.Options ?? []).Select(o => new FieldOptionItem(o.Value, string.IsNullOrEmpty(o.Label) ? FieldValues.TextOf(o.Value) : o.Label))];
         if (field.Default is { } value && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
         {
@@ -39,6 +44,10 @@ public sealed partial class FieldViewModel : ValidatingViewModel
             else if (field.Type == FieldTypes.Enum)
             {
                 SelectedOption = Options.FirstOrDefault(o => FieldValues.TextOf(o.Value) == FieldValues.TextOf(value));
+            }
+            else if (field.IsFile)
+            {
+                File = ActionFile.From(value);
             }
             else
             {
@@ -93,6 +102,38 @@ public sealed partial class FieldViewModel : ValidatingViewModel
 
     public bool IsEnum => Field.Type == FieldTypes.Enum;
 
+    public bool IsFile => Field.IsFile;
+
+    /// <summary>The chosen file (a saved command keeps it as its default); null without one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileName), nameof(FileDetails))]
+    public partial ActionFile? File { get; set; }
+
+    /// <summary>The chosen file's name; the validation error of a file field is reported on it.</summary>
+    public string? FileName => File?.Name;
+
+    /// <summary>"2 KB" of the chosen file.</summary>
+    public string? FileDetails => File is null ? null
+        : File.Data.Length < 1024 ? string.Create(CultureInfo.CurrentCulture, $"{File.Data.Length:N0} bytes")
+        : string.Create(CultureInfo.CurrentCulture, $"{File.Data.Length / 1024d:N0} KB");
+
+    /// <summary>Opens the file picker (the page's) and takes the chosen file.</summary>
+    [RelayCommand]
+    private async Task ChooseFileAsync()
+    {
+        if (_pickFile is not null && await _pickFile().ConfigureAwait(true) is { } file)
+        {
+            File = file;
+        }
+    }
+
+    private string InputProperty => Field.Type switch
+    {
+        FieldTypes.Enum => nameof(SelectedOption),
+        FieldTypes.File => nameof(FileName),
+        _ => nameof(Text),
+    };
+
     public string Placeholder => IsPassword && HasStoredSecret ? "Stored on the server (leave empty to use it)"
         : Field.Type switch
         {
@@ -131,11 +172,14 @@ public sealed partial class FieldViewModel : ValidatingViewModel
 
     partial void OnSelectedOptionChanged(FieldOptionItem? value) => Changed();
 
+    partial void OnFileChanged(ActionFile? value) => Changed();
+
     /// <summary>The value to send, or null when empty (the server then uses the default or a stored password).</summary>
     public JsonElement? Value => Field.Type switch
     {
         FieldTypes.Boolean => JsonSerializer.SerializeToElement(BoolValue),
         FieldTypes.Enum => SelectedOption?.Value,
+        FieldTypes.File => File is null ? null : JsonSerializer.SerializeToElement(new { name = File.Name, data = Convert.ToBase64String(File.Data) }),
         _ => string.IsNullOrEmpty(Text) ? null : JsonSerializer.SerializeToElement(Text),
     };
 
@@ -143,7 +187,7 @@ public sealed partial class FieldViewModel : ValidatingViewModel
     public bool Validate()
     {
         Validation.Validate();
-        Error = Validation.ErrorOf(Field.Type == FieldTypes.Enum ? nameof(SelectedOption) : nameof(Text));
+        Error = Validation.ErrorOf(InputProperty);
         return Error is null;
     }
 
@@ -171,11 +215,11 @@ public sealed partial class FieldViewModel : ValidatingViewModel
 /// <summary>One command of the rollout set: its definition and the entered values.</summary>
 public sealed partial class RolloutCommandViewModel : ObservableObject
 {
-    public RolloutCommandViewModel(CommandListItem item)
+    public RolloutCommandViewModel(CommandListItem item, Func<Task<ActionFile?>>? pickFile = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         Item = item;
-        Fields = [.. item.Command.Fields.Select(f => new FieldViewModel(f, item.StoredSecretFields.Contains(f.Name)))];
+        Fields = [.. item.Command.Fields.Select(f => new FieldViewModel(f, item.StoredSecretFields.Contains(f.Name), pickFile))];
         foreach (var field in Fields)
         {
             field.ValueChanged += (_, _) => OnPropertyChanged(nameof(IsValid));
@@ -256,7 +300,7 @@ public sealed partial class RolloutCommandViewModel : ObservableObject
             if (values.TryGetValue(field.Name, out var value))
             {
                 // Typed like the format: numbers and booleans unquoted.
-                field.Default = FieldValues.Convert(field, value, out var typed) is null && typed is not null
+                field.Default = !field.IsFile && FieldValues.Convert(field, value, out var typed) is null && typed is not null
                     ? JsonSerializer.SerializeToElement(typed, typed.GetType())
                     : value;
             }

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Oadm.Sdk.Actions;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.VapixCommander;
@@ -28,6 +29,9 @@ public sealed class RenderedRequest
 
     public string? ContentType { get; init; }
 
+    /// <summary>Parts of a multipart/form-data body (bodyType multipart).</summary>
+    public IReadOnlyList<RenderedPart>? Parts { get; init; }
+
     public required TimeSpan Timeout { get; init; }
 
     /// <summary>The response rules with placeholders in extract paths and params filled in.</summary>
@@ -39,7 +43,11 @@ public sealed class RenderedRequest
     public HttpRequestMessage ToHttpRequest()
     {
         var request = new HttpRequestMessage(new HttpMethod(Method), new Uri(RelativeUri, UriKind.Relative));
-        if (Form is not null)
+        if (Parts is not null)
+        {
+            request.Content = MultipartContentOf(Parts);
+        }
+        else if (Form is not null)
         {
             request.Content = new FormUrlEncodedContent(Form);
         }
@@ -78,6 +86,13 @@ public sealed class RenderedRequest
     /// <summary>The request body for display, password values masked; null without a body.</summary>
     public string? DescribeBody()
     {
+        if (Parts is not null)
+        {
+            return string.Join("\n", Parts.Select(p => p.FileName is null
+                ? $"--- {p.Name}{(p.ContentType is null ? string.Empty : " (" + p.ContentType + ")")}\n{Mask(p.Text ?? string.Empty)}"
+                : $"--- {p.Name}: file \"{p.FileName}\", {SizeText(p.Content.Length)}{(p.ContentType is null ? string.Empty : " (" + p.ContentType + ")")}"));
+        }
+
         if (Form is not null)
         {
             return Mask(string.Join('&', Form.Select(p => p.Key + "=" + p.Value)));
@@ -97,7 +112,42 @@ public sealed class RenderedRequest
 
         return text;
     }
+
+    /// <summary>Boundary of multipart bodies; sent unquoted, like the firmware upload (embedded HTTP servers expect that).</summary>
+    private const string Boundary = "oadm-vapix-commander-7d0a35e1";
+
+    /// <summary>multipart/form-data with quoted part names and file names (no filename* parameter) for the device's parser.</summary>
+    private static MultipartContent MultipartContentOf(IReadOnlyList<RenderedPart> parts)
+    {
+        var multipart = new MultipartContent("form-data", Boundary);
+        foreach (var part in parts)
+        {
+            var content = new ByteArrayContent(part.Content);
+            if (part.ContentType is not null)
+            {
+                content.Headers.ContentType = MediaTypeHeaderValue.Parse(part.ContentType);
+            }
+
+            content.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+            {
+                Name = "\"" + part.Name + "\"",
+                FileName = part.FileName is null ? null : "\"" + part.FileName + "\"",
+            };
+            multipart.Add(content);
+        }
+
+        multipart.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=" + Boundary);
+        return multipart;
+    }
+
+    private static string SizeText(int bytes) => bytes < 1024
+        ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{bytes} bytes")
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{bytes / 1024d:0.#} KB");
 }
+
+/// <summary>One part of a multipart body: its name, content and, for a file, the file name sent.</summary>
+/// <param name="Text">The content as text for display (json and text parts); null for a file.</param>
+public sealed record RenderedPart(string Name, string? ContentType, string? FileName, byte[] Content, string? Text);
 
 /// <summary>
 /// Builds the request of a command from checked values: placeholders in path, query, headers and body are
@@ -163,8 +213,12 @@ public static class CommandRenderer
         string? body = null;
         string? contentType = null;
         List<KeyValuePair<string, string>>? form = null;
+        List<RenderedPart>? parts = null;
         switch (request.EffectiveBodyType)
         {
+            case BodyTypes.Multipart:
+                parts = [.. ((JsonArray)request.Body!).Select(p => RenderPart((JsonObject)p!, values, paramCgi, s => Text(s)))];
+                break;
             case BodyTypes.Json:
                 body = RenderJson(request.Body, values, paramCgi)?.ToJsonString() ?? "null";
                 contentType = "application/json; charset=utf-8";
@@ -205,6 +259,7 @@ public static class CommandRenderer
             Headers = headers,
             Body = body,
             Form = form,
+            Parts = parts,
             ContentType = contentType,
             Timeout = TimeSpan.FromSeconds(Math.Clamp(request.EffectiveTimeoutSeconds, 1, CommandLimits.MaxTimeoutSeconds)),
             Secrets = [.. values.Values.Where(v => v.Field.IsSecret && v.Value is string { Length: > 0 }).Select(v => (string)v.Value!)],
@@ -214,6 +269,34 @@ public static class CommandRenderer
     /// <summary>Query escaping that keeps "," and ":" readable (param.cgi group lists, times).</summary>
     public static string EscapeQuery(string text) =>
         Uri.EscapeDataString(text).Replace("%2C", ",", StringComparison.Ordinal).Replace("%3A", ":", StringComparison.Ordinal);
+
+    /// <summary>One multipart part: json filled like a json body, text with placeholders, or the bytes of a file field.</summary>
+    private static RenderedPart RenderPart(JsonObject part, IReadOnlyDictionary<string, FieldValue> values, bool paramCgi, Func<string, string> text)
+    {
+        var name = part[MultipartParts.Name]!.GetValue<string>();
+        var contentType = part[MultipartParts.ContentType]?.GetValue<string>();
+        if (part[MultipartParts.File] is { } fileNode)
+        {
+            var field = Placeholders.Whole(fileNode.GetValue<string>())!;
+            if (!values.TryGetValue(field, out var value) || value.Value is not ActionFile file)
+            {
+                throw new CommandValidationException($"{Label(value?.Field, field)} is required.");
+            }
+
+            return new RenderedPart(name, contentType ?? "application/octet-stream", part[MultipartParts.FileName]?.GetValue<string>() ?? file.Name, file.Data, null);
+        }
+
+        if (part.ContainsKey(MultipartParts.Json))
+        {
+            var json = RenderJson(part[MultipartParts.Json], values, paramCgi)?.ToJsonString() ?? "null";
+            return new RenderedPart(name, contentType ?? "application/json", null, Encoding.UTF8.GetBytes(json), json);
+        }
+
+        var rendered = text(part[MultipartParts.Text]!.GetValue<string>());
+        return new RenderedPart(name, contentType, null, Encoding.UTF8.GetBytes(rendered), rendered);
+
+        static string Label(CommandField? field, string name) => string.IsNullOrWhiteSpace(field?.Label) ? name : field.Label;
+    }
 
     private static JsonNode? RenderJson(JsonNode? node, IReadOnlyDictionary<string, FieldValue> values, bool paramCgi)
     {

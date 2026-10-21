@@ -147,7 +147,7 @@ Website: landing page and user docs in `website/` with Astro Starlight (MkDocs M
 maintenance mode), own domain https://oadm.app/ (DNS at world4you: four A records to GitHub Pages, `www` CNAME `cacsjep.github.io`; custom domain and Enforce HTTPS in the Pages settings; the old cacsjep.github.io/oadm addresses redirect), published by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links
 match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
-screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub, LinkedIn, Discord and YouTube left (the docs header the same), Documentation and Bug report right (a menu: Support Forum https://support.oadm.app/ for users, GitHub issue for developers); phones narrower than 40rem see icons only, fixed, no border), its download buttons link the latest release files (Windows, Linux, macOS, each icon in the system's color; Linux is a menu x64 / ARM64, each = both .deb of its architecture), below them the intro video (`IntroVideo.astro`, `public/intro.mp4` with the preview image `intro-poster.jpg` and a play button in the middle; loaded on click, with sound and controls), below them a **Support Forum** button (the same link) and **Subscribe to newsletter**, which opens an email field that posts to the forum's `POST https://support.oadm.app/api/portal/subscribe` (double opt-in by mail, no forum account; the forum (`G:\oadm-portal`, PocketBase) must list `https://oadm.app` in `--origins`); the page checks the forum on every visit (`src/lib/forum.ts`: `GET /api/health`, 2 s; any answer counts) and while it does not answer greys out Support Forum, the newsletter and the Bug report menu's Support Forum entry with "Currently not available. We are working on it."; below them **Learning**: YouTube channel (https://www.youtube.com/@oadm-ca) and Documentation (`start/install`); texts follow "Wording"; search: the landing title names "AXIS Device Manager alternative", the page `start/axis-device-manager-alternative` compares with ADM (the same work, more in OADM, "Not in OADM yet": several servers in one client, firmware lookup, warranty data; no claims about ADM), `StructuredData.astro` (SoftwareApplication JSON-LD); **Changelog** (Project > Changelog, `project/changelog`) is written from
+screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub, LinkedIn, Discord and YouTube left (the docs header the same), Documentation and Bug report right (a menu: Support Forum https://support.oadm.app/ for users, GitHub issue for developers); phones narrower than 40rem see icons only, fixed, no border), above its download buttons one label "Download v3.6.0" (the version links the changelog), the buttons link the latest release files (Windows, Linux, macOS, each icon in the system's color; Linux is a menu x64 / ARM64, each = both .deb of its architecture), below them the intro video (`IntroVideo.astro`, `public/intro.mp4` with the preview image `intro-poster.jpg` and a play button in the middle; loaded on click, with sound and controls), below them one quiet row of grey links without boxes or headings (`.dl-links`): **Support Forum** (the same link), **Newsletter**, which opens an email field that posts to the forum's `POST https://support.oadm.app/api/portal/subscribe` (double opt-in by mail, no forum account; the forum (`G:\oadm-portal`, PocketBase) must list `https://oadm.app` in `--origins`); the page checks the forum on every visit (`src/lib/forum.ts`: `GET /api/health`, 2 s; any answer counts) and while it does not answer greys out Support Forum, the newsletter and the Bug report menu's Support Forum entry with "Currently not available. We are working on it."; in the same row **YouTube** (https://www.youtube.com/@oadm-ca) and **Documentation** (`start/install`); below the video "Explore the tools", one card per page with a screenshot (`PluginCards.astro`, Compliance first, then the plugins in rail order); texts follow "Wording"; search: the landing title names "AXIS Device Manager alternative", the page `start/axis-device-manager-alternative` compares with ADM (the same work, more in OADM, "Not in OADM yet": several servers in one client, firmware lookup, warranty data; no claims about ADM), `StructuredData.astro` (SoftwareApplication JSON-LD); **Changelog** (Project > Changelog, `project/changelog`) is written from
 `CHANGELOG.md` by `website/scripts/changelog.mjs` before every build and dev start (npm `prebuild` / `predev`, git-ignored;
 `pages.yml` also runs on changes of `CHANGELOG.md`). **SDK reference**
 (Developers > SDK reference, `/api/`): `tools/Oadm.ApiDocs` reads the built `Oadm.Sdk` and `Oadm.Sdk.Client` with Roslyn
@@ -321,7 +321,7 @@ Two processes, like ADM:
   administrator. `AuditService` (Admin): `List(limit, offset)` newest first + `total_count` (limit 0 = 10,000).
 - `RoleService` (`roles.proto`, Admin except `Mine`): `GetMatrix` (every `PermissionInfo` {key, name, description, group,
   icon_key, operator_default, viewer_default, full_device_control, available} in matrix order and every `RoleInfo` {id,
-  name, description, kind, permissions, user_count, version}), `SaveRoles(roles)` (create = empty id, change; one transaction;
+  name, description, kind, permissions, user_count, version, start_page}), `SaveRoles(roles)` (create = empty id, change; one transaction; `RoleChange.start_page` unset = keep, INVALID_ARGUMENT "Choose a start page from the list." for anything but a start page, the only change the Administrator role accepts;
   FAILED_PRECONDITION for the Administrator role and for a change whose `version` is older than the stored role (two
   administrators: "Another administrator changed the role X meanwhile. Click Discard and make your changes again.";
   version 0 = no check), INVALID_ARGUMENT names / over 50 roles), `DeleteRole(id)` (custom roles
@@ -964,8 +964,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 - **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
   dialogs alike, is fitted to the screen it opens on (`Oadm.Theme.Shell.WindowFit`, also used by the site node app, attached in `App`, applied once the window is placed: dialogs open next to
   their owner, also on another monitor, plugin windows on the monitor of the main window; a window larger than the
-  work area less 16 px per side shrinks to it, its minimum and maximum follow, then it is centered or moved back onto the
-  screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
+  work area shrinks to it (no margin: `WindowFit.Margin` = 0, a margin capped Maximize of the main window short of the
+  screen after a minimize and widened the title bar padding), its minimum and maximum follow, then it is centered or
+  moved back onto the screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
   button), input rows that must not leave the card wrap (`WrapPanel.inputRow`), grid columns keep readable minimum
   widths and the grid scrolls sideways. Check a new page with the layout survey (`LayoutSurveyTests`,
   `OADM_LAYOUT_SURVEY=1`, `OADM_LAYOUT_SURVEY_SIZE=1280x672`, screenshots and a list of controls that leave the window).
@@ -1874,10 +1875,12 @@ plugin `README.md`.
 ## VAPIX Commander (core plugin)
 
 `plugins/Oadm.Plugins.VapixCommander` (+ `.Client`), id `oadm.vapix-commander`, rail page **VAPIX Commander** (group
-Automation, icon `command`), on by default, switchable. Pick VAPIX commands from a library (161 bundled, `Library/*.json`)
+Automation, icon `command`), on by default, switchable. Pick VAPIX commands from a library (176 bundled, `Library/*.json`)
 or saved ones, fill their fields and roll them out to many devices, or send one to one device. Details: plugin
 `README.md`; command format: `Schema/command-format.md` + `command.schema.json` (the contract).
 
+- File fields (Siren and light **Upload siren and light profiles**): the file (at most 1 MB) travels inline with the
+  command as {"name", "data"} and only as a part of a `multipart` body, never in a URL, header or log.
 - Rules that must hold: every value is checked before anything is sent; requests stay on the device (paths through
   `CommandValidator.IsDevicePath`); payloads stay in memory, passwords are never logged (`***` in request lines and
   bodies), saved passwords are encrypted with the master key and never listed or exported; a rollout checks every
@@ -2458,7 +2461,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (`events.view`) and its changes, tag administration, the rail's plugin pages and the task menu (reloaded from the
   server, which filters them). The server checks every call again.
 - **Users page** (Admin only, subtitle "Who can log in to this server and what each role may do."; `Settings/UsersPageView`
-  = the users card on top and the roles card below with a splitter): **+ User** above the list, then users with role
+  = the users card on top at the height it needs and the roles card filling the rest, with a splitter): **New user** (secondary button) above the list, then users with role
   (plain text), last login, state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
   and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
   Add user (user name, password, role), Edit user (the role; Administrator with a hint) and Change password (new +
@@ -2466,12 +2469,21 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   the fields. **Roles
   card** (`RolesCardView`, `RolesViewModel`): the permission matrix, rows = permissions in groups (Devices, Tasks, Event
   rules, then one group per plugin in rail order; collapsible, a three-state check box per role for the whole group),
-  columns = roles (built in code-behind; header with name, "3 users" and a menu Rename, Copy, Reset to default, Delete),
+  columns = roles (built in code-behind; header with name, "3 users", "Starts on Compliance" and a menu Edit, Copy, Reset to default, Delete; the Administrator role Edit and Copy),
   the name column frozen; the permission's explanation as the tooltip of its name, an amber warning icon right after
   the name for full device control (tooltip `RolesCardView.FullDeviceControlTip`), "Plugin is off" for rights of a
-  plugin that is off. Toolbar New role, Save, Discard, search; changes are collected and saved together after one
+  plugin that is off. Toolbar New role (secondary button), Save, Discard, search; changes are collected and saved together after one
   confirmation that lists them per role; a new role, a copy and a rename open the dialog `Settings/RoleFormWindow`
-  (Name, Description, Start from) and stay "Not saved" until Save.
+  (Name, Description, Start from, **Start page**) and stay "Not saved" until Save; Edit opens the same dialog (the
+  Administrator role: name and description locked, only the start page).
+- **Start page per role** (`RoleEntity.StartPage`, migration `RoleStartPage`, empty = Devices): the page users of the role
+  see first after a login: Devices, Compliance, Event rules, any core plugin page, Logs (the rail keys, `HostPages`,
+  "plugin:<id>"). The server takes only those (`RoleGrpcService.StartPageOf`, a plugin page also while the plugin is off)
+  and audits "start page Compliance"; `UserInfo.start_page = 11` brings it with Login / Me / WatchSession
+  (`UserSession.StartPage`). The client opens it after the login (`MainWindowViewModel.Start`): at once when its rail
+  entry exists, a plugin page as soon as the connect added it; a page the user opens first wins, and a page that does not
+  come (no right, plugin off) leaves Devices. Tests `RoleTests.ARoleStartsOnItsPage...`, client `RolesMatrixTests`,
+  `ShellNavigationTests`.
 
 ## Automatic login on the add page
 

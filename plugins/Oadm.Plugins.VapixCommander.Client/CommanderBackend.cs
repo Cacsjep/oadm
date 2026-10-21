@@ -63,6 +63,12 @@ public interface ICommanderFiles
 
     /// <summary>Saves <paramref name="content"/> under a name the user picks (suggested <paramref name="fileName"/>); false when cancelled.</summary>
     Task<bool> SaveJsonAsync(string fileName, string content);
+
+    /// <summary>
+    /// A file the user picks for a file field, or null when cancelled. A file over <see cref="CommandLimits.MaxFileBytes"/> is
+    /// read only one byte past the limit (the field then says it is too large).
+    /// </summary>
+    Task<Oadm.Sdk.Actions.ActionFile?> OpenFileAsync();
 }
 
 /// <summary>Dialogs of the page (the view shows them; tests answer them).</summary>

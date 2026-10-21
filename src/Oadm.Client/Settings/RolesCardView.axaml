@@ -12,7 +12,9 @@
       <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
           <TextBlock Classes="cardTitle" Text="Roles" VerticalAlignment="Center" Margin="0,0,12,0" />
-          <ui:ToolbarButton Text="New role" IconKey="add" Command="{Binding NewRoleCommand}" />
+          <Button Classes="secondary" Command="{Binding NewRoleCommand}" VerticalAlignment="Center">
+            <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New role" />
+          </Button>
           <ui:ToolbarSeparator />
           <ui:ToolbarButton Text="Save" IconKey="save" IsPrimary="True" Command="{Binding SaveCommand}"
                             ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
@@ -21,7 +23,7 @@
         <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search permissions" />
       </Grid>
 
-      <DataGrid x:Name="Matrix" Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+      <DataGrid x:Name="Matrix" Classes="tallHeaders" Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
                 CanUserSortColumns="False" CanUserReorderColumns="False" CanUserResizeColumns="True" FrozenColumnCount="1"
                 Margin="0,12,0,0" />
 

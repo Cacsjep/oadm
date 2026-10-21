@@ -55,6 +55,41 @@ public sealed class RolesMatrixTests
     }
 
     [Fact]
+    public async Task Every_role_has_a_start_page_even_the_administrator_role()
+    {
+        var (vm, api, _) = Create();
+        await vm.LoadAsync();
+        Assert.All(vm.Columns, c => Assert.Equal("Starts on Devices", c.StartPageText));
+
+        // The Administrator role: only the start page, name and description stay.
+        var admin = Column(vm, "Administrator");
+        vm.EditRoleCommand.Execute(admin);
+        Assert.Equal("Edit Administrator", vm.EditorTitle);
+        Assert.False(vm.IsNameEditable);
+        Assert.Equal(["Devices", "Compliance", "Event rules"], vm.StartPageChoices.Take(3).Select(c => c.Title));
+        Assert.Equal("Logs", vm.StartPageChoices[^1].Title);
+        vm.EditStartPage = vm.StartPageChoices.Single(c => c.Key == "compliance");
+        vm.ApplyEditorCommand.Execute(null);
+        Assert.Equal("Starts on Compliance", admin.StartPageText);
+        Assert.True(vm.IsDirty);
+
+        // Operator: a plugin page of the server.
+        var op = Column(vm, "Operator");
+        vm.EditRoleCommand.Execute(op);
+        Assert.True(vm.IsNameEditable);
+        var plugin = vm.StartPageChoices.First(c => c.Key.StartsWith("plugin:", StringComparison.Ordinal));
+        vm.EditStartPage = plugin;
+        vm.ApplyEditorCommand.Execute(null);
+
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.IsDirty);
+        var matrix = await api.GetRoleMatrixAsync(CancellationToken.None);
+        Assert.Equal("compliance", matrix.Roles.Single(r => r.Name == "Administrator").StartPage);
+        Assert.Equal(plugin.Key, matrix.Roles.Single(r => r.Name == "Operator").StartPage);
+        Assert.Equal("Starts on " + plugin.Title, Column(vm, "Operator").StartPageText);
+    }
+
+    [Fact]
     public async Task Checking_a_group_gives_all_and_the_changes_are_saved_together()
     {
         var (vm, api, dialogs) = Create();
@@ -225,6 +260,17 @@ public sealed class RolesMatrixTests
             Capture(roleWindow, outDir, "client-roles-new.png");
             vm.ApplyEditorCommand.Execute(null);
             Assert.False(roleWindow.IsVisible); // applied: the dialog closed
+
+            // The Administrator role: only its start page.
+            vm.EditRoleCommand.Execute(Column(vm, "Administrator"));
+            var editWindow = new RoleFormWindow();
+            editWindow.Attach(vm);
+            editWindow.Show();
+            Capture(editWindow, outDir, "client-roles-edit-admin.png");
+            Assert.Contains(editWindow.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Start page");
+            vm.CancelEditorCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            Capture(window, outDir, "client-roles-start-page.png");
             window.Close();
             return true;
         }, CancellationToken.None);

@@ -45,6 +45,9 @@ message RoleInfo {
   repeated string permissions = 5;  // granted keys; empty for the Administrator role (it has all)
   int32 user_count = 6;
   int64 version = 7;                // changes with every save; a save of an older version is refused
+  // The page the client opens after a login: a rail page key ("compliance", "eventRules", "logs", "plugin:<core plugin
+  // id>"); empty = Devices. A page the user cannot open (no right, plugin off) opens Devices.
+  string start_page = 8;
 }
 
 message RoleMatrix {
@@ -59,6 +62,8 @@ message RoleChange {
   string description = 3;
   repeated string permissions = 4;
   int64 version = 5;   // RoleInfo.version the change was made on; 0 = no check (older clients)
+  // Unset: keep. The only change the Administrator role accepts. INVALID_ARGUMENT for a value that is not a page.
+  optional string start_page = 6;
 }
 
 message SaveRolesRequest { repeated RoleChange roles = 1; }
