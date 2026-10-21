@@ -2477,7 +2477,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (Name, Description, Start from, **Start page**) and stay "Not saved" until Save; Edit opens the same dialog (the
   Administrator role: name and description locked, only the start page).
 - **Start page per role** (`RoleEntity.StartPage`, migration `RoleStartPage`, empty = Devices): the page users of the role
-  see first after a login: Devices, Compliance, Event rules, any core plugin page, Logs (the rail keys, `HostPages`,
+  see first after a login: Devices, Compliance, Sites, Event rules, any core plugin page, Logs (the rail keys, `HostPages`,
   "plugin:<id>"). The server takes only those (`RoleGrpcService.StartPageOf`, a plugin page also while the plugin is off)
   and audits "start page Compliance"; `UserInfo.start_page = 11` brings it with Login / Me / WatchSession
   (`UserSession.StartPage`). The client opens it after the login (`MainWindowViewModel.Start`): at once when its rail

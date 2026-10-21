@@ -100,6 +100,7 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
     {
         "" => "Devices",
         "compliance" => "Compliance",
+        "sites" => "Sites",
         "eventRules" => "Event rules",
         "logs" => "Logs",
         _ => registry.AllCorePlugins.FirstOrDefault(p => "plugin:" + p.Id == page)?.Plugin.DisplayName ?? page,
