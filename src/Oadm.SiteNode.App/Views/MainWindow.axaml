@@ -108,7 +108,10 @@
               <StackPanel Grid.Column="2" Spacing="6" IsVisible="{Binding ShowBoundSince}">
                 <TextBlock Classes="secondary" Text="Bound since" />
                 <ui:FormField Classes="wide inline">
-                  <TextBox Text="{Binding BoundSince, Mode=OneWay}" IsReadOnly="True" />
+                  <!-- Plain text, level with the address field's text -->
+                  <Panel Height="{StaticResource Oadm.ControlHeight}">
+                    <TextBlock Text="{Binding BoundSince}" VerticalAlignment="Center" />
+                  </Panel>
                 </ui:FormField>
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="6" IsVisible="{Binding ShowPairing}">
