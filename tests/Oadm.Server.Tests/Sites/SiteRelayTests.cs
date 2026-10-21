@@ -162,7 +162,7 @@ public sealed class SiteRelayTests
         var waiting = await server.WaitingAsync(node.NodeId);
         var site = await server.Client.BindSiteAsync(new Contracts.V1.BindSiteRequest { NodeId = waiting.NodeId, Name = "Building B", PairingCode = node.Code });
         var id = Guid.Parse(site.Id);
-        await Eventually.TrueAsync(() => server.Manager.IsOnline(id), "the bound site online");
+        await Eventually.TrueAsync(() => server.Manager.IsUsable(id), "the bound site online");
         return id;
     }
 

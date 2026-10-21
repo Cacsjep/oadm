@@ -96,7 +96,8 @@ internal sealed class SiteServer : IAsyncDisposable
         }
 
         var id = Guid.Parse(site.Id);
-        await Eventually.TrueAsync(() => Manager.IsOnline(id), "the bound site online");
+        // Online, and its session took the node's first status: the site carries dials (a slow machine sees the gap).
+        await Eventually.TrueAsync(() => Manager.IsUsable(id), "the bound site online and carrying dials");
         return id;
     }
 

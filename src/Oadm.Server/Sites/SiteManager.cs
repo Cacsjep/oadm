@@ -180,6 +180,19 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
+    /// <summary>
+    /// The site carries dials now: online with a session whose first status arrived (a bound site shows online at once,
+    /// its session takes the node's first Watch status, milliseconds later, before it carries dials). Tests.
+    /// </summary>
+    internal bool IsUsable(Guid siteId)
+    {
+        lock (_lock)
+        {
+            return _sites.TryGetValue(siteId, out var entry) && entry.State == SiteState.Online && !entry.Row.NotBound
+                && entry.Session is { IsEnded: false, Ready: true };
+        }
+    }
+
     public bool IsStarting(Guid siteId)
     {
         lock (_lock)

@@ -183,6 +183,6 @@ public sealed class SiteBindingSecurityTests
         Assert.Equal(id.ToString(), site.Id);
         Assert.Single(server.Manager.Sites);
         Assert.Equal(replaced, node.Get<BindingState>().Bound!.Fingerprint);
-        await Eventually.TrueAsync(() => server.Manager.IsOnline(id), "the site is online again");
+        await Eventually.TrueAsync(() => server.Manager.IsUsable(id), "the site is online again");
     }
 }

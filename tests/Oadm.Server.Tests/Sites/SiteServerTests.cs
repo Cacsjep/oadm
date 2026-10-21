@@ -486,7 +486,7 @@ public sealed class SiteServerTests
             new NodeStore(folder).Update(c => c.ServerAddress = server.Address);
             await using var back = await SiteTestNode.StartAsync(folder: folder);
 
-            await Eventually.TrueAsync(() => server.Manager.IsOnline(id), "the site online without the 60 s wait");
+            await Eventually.TrueAsync(() => server.Manager.IsUsable(id), "the site online without the 60 s wait");
             Assert.DoesNotContain(SiteAudit.Offline, await server.AuditActionsAsync());
         }
         finally
@@ -564,20 +564,37 @@ public sealed class SiteServerTests
 
         Assert.Equal(reads, server.Manager.DeviceCountReads);
 
-        // A device joins the site: read once, then from memory again.
+        // A device joins the site: read, then from memory again. The feed delivers on its own thread: an event that arrives
+        // while a read runs reads once more (it may not be in that read), so the reads are compared once they settle.
         var device = await repository.AddAsync(new Device { Serial = "B8A44F000001", Address = "192.168.0.20", SiteId = id, Status = SdkStatus.Ok }, CancellationToken.None);
-        Assert.Equal(1, Count(await server.Manager.PageAsync(CancellationToken.None), id));
-        Assert.Equal(reads + 1, server.Manager.DeviceCountReads);
+        await Eventually.TrueAsync(async () => Count(await server.Manager.PageAsync(CancellationToken.None), id) == 1, "the device counted");
+        var joined = await SettledReadsAsync(server);
+        Assert.True(joined > reads);
 
         // A status change of the device keeps its site: nothing to read.
         await repository.UpdateAsync(device.Id, d => d.Status = SdkStatus.Unreachable, CancellationToken.None);
         Assert.Equal(1, Count(await server.Manager.PageAsync(CancellationToken.None), id));
-        Assert.Equal(reads + 1, server.Manager.DeviceCountReads);
+        Assert.Equal(joined, await SettledReadsAsync(server));
 
         // The device moves to the server's own network: read again.
         await repository.UpdateAsync(device.Id, d => d.SiteId = null, CancellationToken.None);
-        Assert.Equal(0, Count(await server.Manager.PageAsync(CancellationToken.None), id));
-        Assert.Equal(reads + 2, server.Manager.DeviceCountReads);
+        await Eventually.TrueAsync(async () => Count(await server.Manager.PageAsync(CancellationToken.None), id) == 0, "the device no longer counted");
+        Assert.True(await SettledReadsAsync(server) > joined);
+    }
+
+    /// <summary>The count of reads once two pages in a row read nothing more (the feed's events are in).</summary>
+    private static async Task<int> SettledReadsAsync(SiteServer server)
+    {
+        var settled = -1;
+        await Eventually.TrueAsync(async () =>
+        {
+            var before = server.Manager.DeviceCountReads;
+            await server.Manager.PageAsync(CancellationToken.None);
+            await server.Manager.PageAsync(CancellationToken.None);
+            settled = server.Manager.DeviceCountReads;
+            return settled == before;
+        }, "the device counts settled");
+        return settled;
     }
 
     private static int Count(Proto.SiteList list, Guid siteId) => list.Sites.Single(s => s.Id == siteId.ToString()).DeviceCount;

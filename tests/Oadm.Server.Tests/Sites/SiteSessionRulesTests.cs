@@ -163,7 +163,7 @@ public sealed class SiteSessionRulesTests
         // The node is bound, so the site is stored and comes online: never a node bound to a server without its site.
         await Eventually.TrueAsync(() => server.Manager.Sites.Count == 1, "the site stored");
         var id = server.Manager.Sites.Single().Id;
-        await Eventually.TrueAsync(() => server.Manager.IsOnline(id), "the site online");
+        await Eventually.TrueAsync(() => server.Manager.IsUsable(id), "the site online");
         Assert.Contains(SiteAudit.Bound, await server.AuditActionsAsync());
     }
 
