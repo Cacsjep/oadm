@@ -39,7 +39,7 @@ public readonly record struct AccessRule(Access Access, string? Permission = nul
 }
 
 /// <summary>
-/// The access table of the gRPC API (CLAUDE.md "Users, roles and sessions"). Every method of the contracts is listed (a test checks
+/// The access table of the gRPC API (docs/spec/security.md "Users, roles and sessions"). Every method of the contracts is listed (a test checks
 /// it); a method that is not listed is Administrator only, so a new call is never open by mistake.
 /// </summary>
 public static class AccessPolicy

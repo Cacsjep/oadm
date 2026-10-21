@@ -22,7 +22,7 @@ using Xunit.Abstractions;
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// The add page and the waiting list with sites (CLAUDE.md "# Sites", Client): the Site column in every mode, the import's Site
+/// The add page and the waiting list with sites (docs/spec/sites.md, Client): the Site column in every mode, the import's Site
 /// column, an address that answers with different devices through several sites, the waiting list per (site, address).
 /// Against the fake server: "Building B" online, "Warehouse" offline.
 /// </summary>

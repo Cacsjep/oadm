@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Shared by the OADM server and the OADM Site Node: the link between them (CLAUDE.md "# Sites"). No EF Core, no plugins. -->
+  <!-- Shared by the OADM server and the OADM Site Node: the link between them (docs/spec/sites.md). No EF Core, no plugins. -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

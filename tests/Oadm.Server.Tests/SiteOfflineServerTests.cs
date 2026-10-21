@@ -17,7 +17,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests;
 
 /// <summary>
-/// Site offline on the server (CLAUDE.md "# Sites", Site offline): the devices of an offline site show Site offline in every
+/// Site offline on the server (docs/spec/sites.md, Site offline): the devices of an offline site show Site offline in every
 /// list and stream, and tasks, queries, Log in, Set password, the RTSP port, live view and Web View refuse them with
 /// "Site offline: &lt;site&gt;" before any request.
 /// </summary>

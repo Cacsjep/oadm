@@ -18,7 +18,7 @@ using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// Work stream 1 (CLAUDE.md "# Sites", Server: Routing): every device connection opens on its route. The server's own network
+/// Work stream 1 (docs/spec/sites.md, Server: Routing): every device connection opens on its route. The server's own network
 /// connects as before; a site route asks the site transport for a new stream for each connection, with TLS, pinning and
 /// the login still in the server, end to end to the device.
 /// </summary>

@@ -8,7 +8,7 @@ using Oadm.Tests.Shared;
 namespace Oadm.Core.Tests.Discovery;
 
 /// <summary>
-/// Discovery everywhere by itself (CLAUDE.md "# Sites", "Discovery, everywhere by itself"): every mode asks the server's own
+/// Discovery everywhere by itself (docs/spec/sites.md, "Discovery, everywhere by itself"): every mode asks the server's own
 /// network and every online site, each result carries its route, the same MAC address through several routes is one
 /// device through the site, and two sites with the same 192.168.0.20 are two devices.
 /// </summary>

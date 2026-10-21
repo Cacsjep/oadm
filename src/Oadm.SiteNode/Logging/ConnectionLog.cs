@@ -7,7 +7,7 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.Logging;
 
 /// <summary>
-/// The node's own record of the connections through it (CLAUDE.md "# Sites", "Connection log"): time, server, target, short or
+/// The node's own record of the connections through it (docs/spec/sites.md, "Connection log"): time, server, target, short or
 /// permanent, result. Never contents. The newest 10,000 in memory, every line also in a daily file
 /// (logs/connections-yyyyMMdd.log) kept 30 days and at most 1 GB together (the oldest files go first).
 /// Bounded at every step: the same line (server, target, kind, result) again within the same minute is only counted and

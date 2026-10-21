@@ -5,7 +5,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Sites;
 
 /// <summary>
-/// Whether the server has sites (CLAUDE.md "# Sites", Client: one rule for every Site column): the device grid, the add page and
+/// Whether the server has sites (docs/spec/sites.md, Client: one rule for every Site column): the device grid, the add page and
 /// the waiting list show their Site column only while it does. Fed by <see cref="Shell.ServerConnection"/> from the site
 /// list (roles with "See sites"); a role without it falls back to the devices (one carries a site). UI thread only.
 /// </summary>

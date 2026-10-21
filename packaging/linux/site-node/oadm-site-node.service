@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=notify
 ExecStart=/opt/oadm/site-node/oadm-site-node
 WorkingDirectory=/opt/oadm/site-node
-# Its own system user, never root (CLAUDE.md "# Sites", "Site node program"). It may use ports below 1024 for relays
+# Its own system user, never root (docs/spec/sites.md, "Site node program"). It may use ports below 1024 for relays
 # (NTP, UDP 123) and nothing else.
 User=oadm-site-node
 Group=oadm-site-node

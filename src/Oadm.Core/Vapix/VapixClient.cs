@@ -37,7 +37,7 @@ public sealed record VapixConnectionOptions
     public bool AllowBasicOverHttp { get; init; }
 
     /// <summary>
-    /// The way to the device: the server's own network (default) or a site (CLAUDE.md "# Sites"). Built only by
+    /// The way to the device: the server's own network (default) or a site (docs/spec/sites.md). Built only by
     /// <see cref="DeviceConnections"/>, so every connection to a device carries its route.
     /// </summary>
     public DeviceRoute Route { get; init; }
@@ -156,7 +156,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         var client = new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials, Route = options.Route, Router = router };
         if (!options.Route.IsLocal)
         {
-            // The status reads get a pool of their own (CLAUDE.md "# Sites": polls never wait behind an upload or a page).
+            // The status reads get a pool of their own (docs/spec/sites.md: polls never wait behind an upload or a page).
             var status = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
             status.MaxConnectionsPerServer = DeviceRouter.SiteStatusConnectionsPerDevice;
             client._statusHttp = client.NewHttpClient(status, disposeHandler: true);
@@ -423,7 +423,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             : _statusHttp is not null && request.Options.TryGetValue(StatusReadOption, out var status) && status ? _statusHttp
             : _http;
 
-        // Through a site at most a few large transfers run at once (CLAUDE.md "# Sites"). A task waits as long as it takes and
+        // Through a site at most a few large transfers run at once (docs/spec/sites.md). A task waits as long as it takes and
         // says "Waiting for the site link"; its device timeout starts after the wait. Anyone else waits inside the request's
         // timeout, and a wait that uses it up is "Site ... is busy", never a device timeout. A streamed answer keeps its slot
         // until the caller disposes the response (or drops it: the slot is freed when it is collected).
@@ -470,7 +470,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
         catch (HttpRequestException ex) when (SiteFailure(ex) is { } site)
         {
-            // The site could not carry the connection: a site error, never a device error (CLAUDE.md "# Sites").
+            // The site could not carry the connection: a site error, never a device error (docs/spec/sites.md).
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
             throw;
         }

@@ -53,7 +53,7 @@ internal sealed class FakeCards(params NetworkCard[] cards) : INetworkCards
     }
 
     /// <summary>
-    /// The machine also sits in the office network, so only the camera card ("cam") is chosen (CLAUDE.md "# Sites", "Reach"):
+    /// The machine also sits in the office network, so only the camera card ("cam") is chosen (docs/spec/sites.md, "Reach"):
     /// the office card's addresses stay outside the node's networks.
     /// </summary>
     public static void ChooseCameraCard(Oadm.SiteNode.Config.NodeConfig config)

@@ -22,7 +22,7 @@ public sealed class AdminChannel(AdminEndpoint endpoint) : INodeChannel
 }
 
 /// <summary>
-/// Changes and the pairing code need an administrator of this computer (CLAUDE.md "# Sites", "App"). The app itself runs as the
+/// Changes and the pairing code need an administrator of this computer (docs/spec/sites.md, "App"). The app itself runs as the
 /// user; a change runs a copy of the app elevated (UAC on Windows, pkexec on Linux) that sends that one request and hands
 /// the answer back: on Linux over the copy's standard output (the answer holds the pairing code: never a file in a shared
 /// folder), on Windows in a file in the user's own temp folder (UAC cannot redirect the output).

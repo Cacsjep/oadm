@@ -5,7 +5,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Core.Plugins;
 
 /// <summary>
-/// The host's side of <see cref="SiteSupport.None"/> (CLAUDE.md "# Sites", Plugins and SDK: Declaration): a core plugin of such a
+/// The host's side of <see cref="SiteSupport.None"/> (docs/spec/sites.md, Plugins and SDK: Declaration): a core plugin of such a
 /// package gets a VAPIX factory, event streams and a network that refuse devices at a site before any request
 /// (<see cref="DeviceNotCompatibleException"/> "Not available for devices at a site"), and no relays into sites, so its
 /// pages and actions never reach them whatever the plugin does. The checks cost no extra database read: the server's own

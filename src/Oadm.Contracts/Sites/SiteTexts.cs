@@ -120,7 +120,7 @@ public static class SiteTexts
 }
 
 /// <summary>
-/// The pairing code as typed (CLAUDE.md "# Sites", Binding): 8 characters of Crockford base32 (no I, L, O, U); case, spaces and
+/// The pairing code as typed (docs/spec/sites.md, Binding): 8 characters of Crockford base32 (no I, L, O, U); case, spaces and
 /// dashes ignored; I and L read as 1, O as 0. Shared by the server's binding, the node and the client's form.
 /// </summary>
 public static class PairingCodeText

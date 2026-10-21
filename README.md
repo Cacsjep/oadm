@@ -282,8 +282,9 @@ plugin is logged and skipped; server and client still start.
 
 OADM is developed together with Claude, and the repository is set up for it:
 
-- [`CLAUDE.md`](CLAUDE.md) is the single source of truth for the spec and the coding rules. Claude Code reads it on its
-  own; give it to other assistants first. A changed decision goes into `CLAUDE.md` in the same change.
+- [`CLAUDE.md`](CLAUDE.md) and the feature specs in [`docs/spec/`](docs/spec/) are the single source of truth for the spec
+  and the coding rules. Claude Code reads `CLAUDE.md` on its own (it points to the spec file of each feature); give it to
+  other assistants first. A changed decision goes into the spec in the same change.
 - Describe the feature like a user story and let the assistant ask before it writes code, for example: *"Read
   CLAUDE.md and plugins/README.md. I want a task plugin 'Set host name' in the Network group, with a dialog for one or
   many devices. Ask me what is unclear, write the spec, then build it with tests and headless screenshots."*

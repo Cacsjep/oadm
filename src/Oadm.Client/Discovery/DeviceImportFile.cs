@@ -27,7 +27,7 @@ public sealed record ImportLine(int Line, string Address, string? UserName, stri
     public string? ExpectedSerial { get; init; }
 
     /// <summary>
-    /// From the optional "Site" column: the site's name; the line is checked only through that site (CLAUDE.md "# Sites", "Import
+    /// From the optional "Site" column: the site's name; the line is checked only through that site (docs/spec/sites.md, "Import
     /// from file"). Null = the server's own network and every site that reaches the address.
     /// </summary>
     public string? Site { get; init; }

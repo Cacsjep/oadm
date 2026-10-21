@@ -9,7 +9,7 @@ using Oadm.SiteNode.Networks;
 namespace Oadm.SiteNode.Discovery;
 
 /// <summary>
-/// Collects PTR, SRV, TXT and A records of _axis-video._tcp into devices (CLAUDE.md "# Sites" "Zero-conf": TXT macaddress, the
+/// Collects PTR, SRV, TXT and A records of _axis-video._tcp into devices (docs/spec/sites.md "Zero-conf": TXT macaddress, the
 /// instance "&lt;name&gt; - &lt;SERIAL&gt;", SRV port 80 at axis-&lt;serial&gt;.local). Pure logic, unit tested with packets.
 /// </summary>
 public sealed class AxisAggregator(Func<IPAddress, bool> reaches)

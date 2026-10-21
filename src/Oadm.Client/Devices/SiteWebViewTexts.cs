@@ -2,7 +2,7 @@ using Avalonia.Data.Converters;
 
 namespace Oadm.Client.Devices;
 
-/// <summary>Whether a device at a site can open in Web View (CLAUDE.md "# Sites", Client).</summary>
+/// <summary>Whether a device at a site can open in Web View (docs/spec/sites.md, Client).</summary>
 public enum SiteWebAccess
 {
     /// <summary>Web View is turned off (or the client does not know it yet).</summary>
@@ -16,7 +16,7 @@ public enum SiteWebAccess
 }
 
 /// <summary>
-/// The web interface of a device at a site opens in Web View (CLAUDE.md "# Sites", Client: the user's computer usually cannot
+/// The web interface of a device at a site opens in Web View (docs/spec/sites.md, Client: the user's computer usually cannot
 /// reach the site); while Web View is off, or the role may not open devices, the address link and "Open web interface"
 /// are disabled with the reason.
 /// </summary>

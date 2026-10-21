@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The OADM look shared by the client and the OADM Site Node app: colors of both appearances, icons, brushes and
-       styles (OadmTheme.axaml). Views reference these keys only (CLAUDE.md "Visual Style"). -->
+       styles (OadmTheme.axaml). Views reference these keys only (docs/spec/visual-style.md). -->
   <PropertyGroup>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>

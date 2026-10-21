@@ -194,7 +194,7 @@ public static partial class OadmServerHost
             }
         }
 
-        // Sites (CLAUDE.md "# Sites"): the site identity, the site listener (Accept site nodes) and the node sessions. The manager
+        // Sites (docs/spec/sites.md): the site identity, the site listener (Accept site nodes) and the node sessions. The manager
         // is the real ISiteStates and ISiteTransport; without sites everything connects on the server's own network.
         services.AddSingleton(new Sites.SiteOptions());
         services.AddSingleton<Sites.SiteIdentityStore>();
@@ -219,7 +219,7 @@ public static partial class OadmServerHost
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
         services.AddSingleton<TrustAnchorRegistry>();
-        // Routing (CLAUDE.md "# Sites"): every device connection opens on its route; without a site transport only the server's
+        // Routing (docs/spec/sites.md): every device connection opens on its route; without a site transport only the server's
         // own network exists and everything connects as before.
         services.AddSingleton(sp => new Core.Sites.DeviceRouter(sp.GetService<Core.Sites.ISiteTransport>(), sp.GetService<Core.Sites.ISiteStates>()));
         services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>(), sp.GetService<Core.Sites.ISiteNetwork>()));

@@ -17,7 +17,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// Discovery at sites with the real OADM Site Node in this process (CLAUDE.md "# Sites", Tests: "Server with an in-process
+/// Discovery at sites with the real OADM Site Node in this process (docs/spec/sites.md, Tests: "Server with an in-process
 /// node"): the node's network calls (<see cref="ISiteNetwork"/> over the control link) and Add manually through the node.
 /// </summary>
 public sealed class SiteDiscoveryInProcessTests

@@ -3,7 +3,7 @@
 # Usage: build-site-node-deb.sh <linux-x64|linux-arm64> <version> <node-dir> <app-dir> <out-dir>
 # Needs dpkg-deb only (Debian, Ubuntu or a container); no root, file owners are set with --root-owner-group.
 #
-# Two packages (CLAUDE.md "# Sites", "Packaging"):
+# Two packages (docs/spec/sites.md, "Packaging"):
 #   oadm-site-node_<version>_<arch>.deb      /opt/oadm/site-node/oadm-site-node (+ license texts),
 #                                            /usr/bin/oadm-site-node -> it (the command line),
 #                                            /usr/lib/systemd/system/oadm-site-node.service, maintainer scripts

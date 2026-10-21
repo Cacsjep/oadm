@@ -6,7 +6,7 @@
         xmlns:dgp="using:Avalonia.Controls.Primitives"
         xmlns:themes="using:Oadm.Theme">
   <!--
-    OADM visual style (see CLAUDE.md "Visual Style"). Dark (default) or light, MultiDrive look. Shared by the client
+    OADM visual style (see docs/spec/visual-style.md). Dark (default) or light, MultiDrive look. Shared by the client
     (Oadm.Client/Themes/OadmTheme.axaml adds the client-only styles) and the OADM Site Node app.
     Every brush and size used by the views is defined here, the colors in Colors.Dark.axaml / Colors.Light.axaml;
     views reference these keys only.

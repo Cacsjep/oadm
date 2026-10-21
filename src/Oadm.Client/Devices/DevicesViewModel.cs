@@ -233,7 +233,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>Why the chooser greys the Site column out.</summary>
     public const string NoSitesText = "Bind a site first (Sites page)";
 
-    /// <summary>The server has sites: the Site column shows (CLAUDE.md "# Sites", Client: one rule for every Site column).</summary>
+    /// <summary>The server has sites: the Site column shows (docs/spec/sites.md, Client: one rule for every Site column).</summary>
     [ObservableProperty]
     public partial bool HasSites { get; private set; }
 

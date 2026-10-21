@@ -86,7 +86,7 @@ Notes:
 
 ## OADM Site Node
 
-`manage package site-node [--rid RID] [--version V]` (CLAUDE.md, "Packaging") publishes the node service
+`manage package site-node [--rid RID] [--version V]` (docs/spec/packaging.md) publishes the node service
 (`src/Oadm.SiteNode`, `oadm-site-node`) and the app (`src/Oadm.SiteNode.App`, `oadm-site-node-app`) self-contained
 single-file into `artifacts/publish/site-node/<rid>` and `artifacts/publish/site-node-app/<rid>`, writes the notices
 (`tools/Oadm.Notices --product site-node`: hand-written part `notices/site-node.md`, no LGPL part, so no

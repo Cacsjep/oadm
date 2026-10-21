@@ -36,7 +36,7 @@ public sealed class SiteRefusedException : Exception
     public StatusCode Code { get; } = StatusCode.FailedPrecondition;
 }
 
-/// <summary>Binding, renaming and forgetting of sites (CLAUDE.md "# Sites", Binding).</summary>
+/// <summary>Binding, renaming and forgetting of sites (docs/spec/sites.md, Binding).</summary>
 public sealed partial class SiteManager
 {
     private readonly SemaphoreSlim _bindLock = new(1, 1);

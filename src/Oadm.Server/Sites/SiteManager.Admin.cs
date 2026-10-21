@@ -9,7 +9,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// Sites removed with Keep devices (CLAUDE.md "# Sites", Binding 6): a tombstone per site (table RemovedSites) names the devices
+/// Sites removed with Keep devices (docs/spec/sites.md, Binding 6): a tombstone per site (table RemovedSites) names the devices
 /// that still carry its id, so they show "&lt;site&gt; (removed)" and the Sites page lists the site as Removed with Replace
 /// with and Remove devices until no device is left. A tombstone is dropped once its last device left.
 /// </summary>

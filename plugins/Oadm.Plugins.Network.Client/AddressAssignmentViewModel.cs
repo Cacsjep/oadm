@@ -17,7 +17,7 @@ namespace Oadm.Plugins.Network.Client;
 /// (<see cref="AddressConflicts"/>). With static IPv6 every row also gets its own IPv6 address
 /// (<see cref="ShowIpv6"/>). <see cref="CheckAsync"/> asks the server (query "checkAddresses") which addresses other
 /// managed devices have and which answer ping or TCP 80/443, then suggests again around them. Devices at different sites
-/// are on different networks (CLAUDE.md "# Sites", "Overlapping networks"): the check runs once per route with a device of that
+/// are on different networks (docs/spec/sites.md, "Overlapping networks"): the check runs once per route with a device of that
 /// route, and each row is judged by what its own route knows.
 /// </summary>
 public sealed partial class AddressAssignmentViewModel : ObservableObject

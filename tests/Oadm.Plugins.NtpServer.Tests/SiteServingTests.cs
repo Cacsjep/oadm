@@ -10,7 +10,7 @@ using Oadm.Sdk.Testing;
 namespace Oadm.Plugins.NtpServer.Tests;
 
 /// <summary>
-/// "Serve at sites" (CLAUDE.md "# Sites", NTP server): one UDP relay of port 123 per site, answered from the server's time
+/// "Serve at sites" (docs/spec/sites.md, NTP server): one UDP relay of port 123 per site, answered from the server's time
 /// source, the rate limits per (site, client), and "Use OADM as NTP server" for a device at a site. The relays are the
 /// in-memory ones of Oadm.Sdk.Testing: no packet leaves the test, the real port 123 is never bound.
 /// </summary>

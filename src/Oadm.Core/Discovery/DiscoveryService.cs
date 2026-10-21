@@ -21,7 +21,7 @@ namespace Oadm.Core.Discovery;
 /// the device first appears.
 /// </para>
 /// <para>
-/// With sites (CLAUDE.md "# Sites", "Discovery, everywhere by itself") every session also asks every online site
+/// With sites (docs/spec/sites.md, "Discovery, everywhere by itself") every session also asks every online site
 /// (<see cref="ISiteNetwork"/>): zero-conf browses on each node, a range scan's first contact runs on each node that reaches
 /// the range and the devices it finds are probed through the site, an address probe runs on every route the caller gives.
 /// Each result carries its route. The same MAC address through several routes is one device, through a site rather than

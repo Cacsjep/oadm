@@ -7,7 +7,7 @@ using Oadm.Core.Sites;
 namespace Oadm.Tests.Shared;
 
 /// <summary>
-/// Sites without a node, for tests of everything above <see cref="ISiteTransport"/> (CLAUDE.md "# Sites", work stream 0). Each
+/// Sites without a node, for tests of everything above <see cref="ISiteTransport"/> (docs/spec/sites.md, work stream 0). Each
 /// site has a name, online or not, its allowed Connect to ports and a map of (host, port) to a real loopback endpoint (a
 /// FakeCamera), so two sites can both have 192.168.0.20 pointing to different cameras. An address that is not mapped
 /// answers like a dead device (host unreachable); an address outside the site's networks or a port it does not allow is

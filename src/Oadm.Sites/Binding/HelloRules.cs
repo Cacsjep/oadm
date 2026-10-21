@@ -5,7 +5,7 @@ using Oadm.Contracts.SiteNode;
 namespace Oadm.Sites.Binding;
 
 /// <summary>
-/// What a node's Hello may carry (CLAUDE.md "# Sites", Security review): the server stores, logs, audits and shows it before the
+/// What a node's Hello may carry (docs/spec/sites.md, Security review): the server stores, logs, audits and shows it before the
 /// node is bound, so every text is checked first and a Hello that breaks a rule is refused whole.
 /// </summary>
 public static class HelloRules

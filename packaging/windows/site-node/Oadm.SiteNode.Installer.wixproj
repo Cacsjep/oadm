@@ -1,6 +1,6 @@
 <Project Sdk="WixToolset.Sdk/6.0.2">
   <!--
-    OADM Site Node MSI (WiX Toolset 6, restored from NuGet; not part of Oadm.sln; CLAUDE.md "# Sites" "Packaging"). Built by
+    OADM Site Node MSI (WiX Toolset 6, restored from NuGet; not part of Oadm.sln; docs/spec/sites.md "Packaging"). Built by
     "manage package site-node" on Windows, which publishes the service and the app first and passes:
       OadmVersion     1.2.0 or 1.2.0-rc.1 (the MSI ProductVersion is the numeric part)
       OadmNodeDir     published service folder (oadm-site-node.exe, license texts)

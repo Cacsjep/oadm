@@ -1,7 +1,7 @@
 namespace Oadm.SiteNode.Feed;
 
 /// <summary>
-/// Reset tells the bound server first (CLAUDE.md "# Sites", Binding 7): every open <c>Watch</c> of the server sends a last
+/// Reset tells the bound server first (docs/spec/sites.md, Binding 7): every open <c>Watch</c> of the server sends a last
 /// <c>NodeStatus</c> with <c>reset</c>, the server marks the site not bound and ends the session. <see cref="AnnounceAsync"/>
 /// waits until the server ended every Watch or the wait limit passed; without a Watch it returns at once.
 /// </summary>

@@ -7,7 +7,7 @@ using Oadm.SiteNode.Config;
 namespace Oadm.SiteNode.Networks;
 
 /// <summary>
-/// Which networks the node reaches (CLAUDE.md "# Sites", "Reach"): all cards (default) or the cards chosen in the app, and extra
+/// Which networks the node reaches (docs/spec/sites.md, "Reach"): all cards (default) or the cards chosen in the app, and extra
 /// routed subnets. Every address the server asks for is checked here;
 /// the server cannot widen it. Never reached: special addresses (<see cref="Subnet.IsUsable"/>: loopback, link-local,
 /// multicast, 0.0.0.0/8, broadcast) and the node's own addresses on any card (its own services are not the devices').

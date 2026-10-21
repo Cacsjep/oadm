@@ -5,7 +5,7 @@ using System.Net.Sockets;
 namespace Oadm.Core.Sites;
 
 /// <summary>
-/// The route handler: opens every TCP connection to a device on its <see cref="DeviceRoute"/> (CLAUDE.md "# Sites", Server:
+/// The route handler: opens every TCP connection to a device on its <see cref="DeviceRoute"/> (docs/spec/sites.md, Server:
 /// Routing). The server's own network is a normal socket connect, exactly as before sites existed; a site route asks
 /// <see cref="ISiteTransport"/> for a new stream each time a connection opens (never a stream kept from creation), so a
 /// reconnected node is used at once. TLS, certificate pinning and the login stay in the server, end to end to the device.

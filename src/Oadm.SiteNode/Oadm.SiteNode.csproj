@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- OADM Site Node service (CLAUDE.md "# Sites", "Site node program"): headless, Windows service "OADM Site Node" or systemd
+  <!-- OADM Site Node service (docs/spec/sites.md, "Site node program"): headless, Windows service "OADM Site Node" or systemd
        unit oadm-site-node, runs without root. The same exe is the command line ("oadm-site-node status"). No plugins:
        published self-contained single-file like the host apps (Native AOT is allowed by the spec but not used yet: gRPC
        on Kestrel and System.Text.Json reflection would need source generators first). -->

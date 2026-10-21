@@ -16,7 +16,7 @@ using SiteTexts = Oadm.Contracts.Sites.SiteTexts;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// What strangers at the site port can and cannot do (CLAUDE.md "# Sites", Binding, Server listener, Security review), with the
+/// What strangers at the site port can and cannot do (docs/spec/sites.md, Binding, Server listener, Security review), with the
 /// real OADM Site Node in this process.
 /// </summary>
 public sealed class SiteBindingSecurityTests
