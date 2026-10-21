@@ -791,6 +791,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         [
             new("", "Devices"),
             new(Oadm.Sdk.Client.HostPages.Compliance, "Compliance"),
+            new(Oadm.Sdk.Client.HostPages.Sites, "Sites"),
             new(Oadm.Sdk.Client.HostPages.EventRules, "Event rules"),
             .. _pluginPages.OrderBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(p => new StartPageChoice("plugin:" + p.Id, p.DisplayName)),
             new(Oadm.Sdk.Client.HostPages.Logs, "Logs"),
@@ -808,6 +809,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     {
         "" or Oadm.Sdk.Client.HostPages.Devices => "Devices",
         Oadm.Sdk.Client.HostPages.Compliance => "Compliance",
+        Oadm.Sdk.Client.HostPages.Sites => "Sites",
         Oadm.Sdk.Client.HostPages.EventRules => "Event rules",
         Oadm.Sdk.Client.HostPages.Logs => "Logs",
         _ => _pluginPages.FirstOrDefault(p => "plugin:" + p.Id == key)?.DisplayName

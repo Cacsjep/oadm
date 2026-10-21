@@ -169,6 +169,8 @@
       <x:Double x:Key="Oadm.FontSizeSplashWordmark">34</x:Double>
       <x:Double x:Key="Oadm.GridRowHeight">34</x:Double>
       <x:Double x:Key="Oadm.GridHeaderHeight">36</x:Double>
+      <!-- Grids whose column headers hold three short lines (the role matrix: name, users, start page) -->
+      <x:Double x:Key="Oadm.GridTallHeaderHeight">58</x:Double>
       <x:Double x:Key="Oadm.ControlHeight">32</x:Double>
       <x:Double x:Key="Oadm.SearchWidth">260</x:Double>
       <x:Double x:Key="Oadm.SplitterHeight">16</x:Double>
@@ -1130,6 +1132,9 @@
     <Setter Property="CanUserReorderColumns" Value="True" />
     <Setter Property="CanUserResizeColumns" Value="True" />
     <Setter Property="CanUserSortColumns" Value="True" />
+  </Style>
+  <Style Selector="DataGrid.tallHeaders">
+    <Setter Property="ColumnHeaderHeight" Value="{StaticResource Oadm.GridTallHeaderHeight}" />
   </Style>
   <Style Selector="DataGridColumnHeader">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
