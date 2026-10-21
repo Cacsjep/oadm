@@ -694,13 +694,15 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         foreach (var (runtime, type, devices) in work)
         {
             var results = new List<(Guid, ComplianceResult)>(devices.Count);
+            var evaluated = new Dictionary<Guid, Device>(devices.Count);
             var invocation = runtime.Invocation;
             foreach (var device in devices)
             {
                 results.Add((device.Id, await EvaluateAsync(type, invocation, device, null, NoReads.Instance, ct).ConfigureAwait(false)));
+                evaluated[device.Id] = device;
             }
 
-            Apply(runtime.Check.Id, runtime.Check.Version, results, cached: true);
+            Apply(runtime.Check.Id, runtime.Check.Version, results, cached: true, evaluated);
         }
     }
 
@@ -756,7 +758,12 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     /// Stores results of a run, unless the check changed meanwhile (its results were reset). <paramref name="cached"/>:
     /// a check on cached data, worked out again at every start: only a changed result is kept and written, no checked time.
     /// </summary>
-    private void Apply(Guid checkId, int version, IReadOnlyList<(Guid DeviceId, ComplianceResult Result)> results, bool cached = false)
+    /// <param name="evaluated">
+    /// Cached data: the device rows the results were computed from. A result whose row was replaced meanwhile is dropped:
+    /// the change that replaced it evaluates the device again, and an older evaluation that ends later never overwrites it.
+    /// </param>
+    private void Apply(Guid checkId, int version, IReadOnlyList<(Guid DeviceId, ComplianceResult Result)> results, bool cached = false,
+        Dictionary<Guid, Device>? evaluated = null)
     {
         var changes = new List<ComplianceResultModel>();
         lock (_sync)
@@ -768,7 +775,8 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
             foreach (var (deviceId, result) in results)
             {
-                if (_deviceRows.TryGetValue(deviceId, out var device) && InScope(runtime, device))
+                if (_deviceRows.TryGetValue(deviceId, out var device) && InScope(runtime, device)
+                    && (evaluated is null || !evaluated.TryGetValue(deviceId, out var from) || ReferenceEquals(from, device)))
                 {
                     SetResult(runtime, deviceId, result, changes, checkedNow: !cached);
                 }
