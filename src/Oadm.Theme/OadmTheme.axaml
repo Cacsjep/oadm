@@ -1442,15 +1442,19 @@
     <Setter Property="Cursor" Value="Hand" />
   </Style>
   <!-- The picture on top of the OADM Site Node app: the OADM logo (server) and a hexagon with the sites icon (node),
-       joined by a line: grey while not linked, purple while connected, red while not connected or after an error; a
+       joined by a line: grey while not linked, purple while ready to bind, green while connected and bound, red while
+       not connected or after an error; a
        round badge in its middle (check or cross) except while grey. -->
   <Style Selector="Border.siteLink">
     <Setter Property="Height" Value="3" />
     <Setter Property="CornerRadius" Value="2" />
     <Setter Property="Background" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
-  <Style Selector="Border.siteLink.connected">
+  <Style Selector="Border.siteLink.ready">
     <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.siteLink.connected">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusOkBrush}" />
   </Style>
   <Style Selector="Border.siteLink.error">
     <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBrush}" />
@@ -1464,11 +1468,17 @@
     <Setter Property="HorizontalAlignment" Value="Center" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
-  <Style Selector="Border.siteLinkBadge.connected">
+  <Style Selector="Border.siteLinkBadge.ready">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
-  <Style Selector="Border.siteLinkBadge.connected ui|OadmIcon">
+  <Style Selector="Border.siteLinkBadge.ready ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge.connected">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="Border.siteLinkBadge.connected ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
   </Style>
   <Style Selector="Border.siteLinkBadge.error">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />

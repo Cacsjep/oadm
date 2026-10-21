@@ -2775,7 +2775,8 @@ gone; the columns `Sites.Mode` / `Port` stay for the migrations, unused. The nod
 (`NodeConfig.AllCards`; chosen cards restrict it, no chosen card = all cards, `NetworkScope.ReachesAllCards`). Node app
 (`Oadm.SiteNode.App`, 800 x 900, fixed size, one page, no tabs, decision 2026-10-21): cards Node status (a picture: the OADM logo
 `Oadm.Theme.Controls.OadmMark` (the splash logo without animation, shared with `SplashLogo`) with the server's name, a line
-with the status below it (grey not linked yet, purple connected, red not connected / lost / error, `LinkKind`), a hexagon
+with the status below it (grey not linked yet, purple "Ready to bind" (connected, not bound), green connected and bound, red not connected /
+lost / error, `LinkKind`), a hexagon
 with the sites icon and the site or computer name; the binding line and node ID with version centered below the status;
 then requests and relays that do not run), Server (two columns, labels above: Server address left; while not bound
 the **Pairing code** right in a read-only field like the address with a copy button, the hint "... Valid for N more

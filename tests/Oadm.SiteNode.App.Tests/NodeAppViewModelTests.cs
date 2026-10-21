@@ -306,8 +306,8 @@ public sealed class NodeAppViewModelTests
     public async Task TheNodeStatusSaysWhetherTheNodeReachesTheServer()
     {
         await _vm.RefreshAsync();
-        Assert.Equal("Connected", _vm.NodeStatusText);
-        Assert.Equal(LinkKind.Connected, _vm.Link);
+        Assert.Equal(NodeAppViewModel.ReadyToBind, _vm.NodeStatusText); // connected, not bound: purple
+        Assert.Equal(LinkKind.Ready, _vm.Link);
         Assert.Equal(("10.0.0.5", "site-pc", "Site node"), (_vm.ServerLabel, _vm.NodeLabel, _vm.NodeRole));
         Assert.True(_vm.IsNodeStatusOk);
 
@@ -335,6 +335,12 @@ public sealed class NodeAppViewModelTests
         _channel.State = FakeChannel.Sample(NodeBinding.Bound);
         await _vm.RefreshAsync();
         Assert.Equal("Connected", _vm.NodeStatusText);
+        Assert.Equal(LinkKind.Connected, _vm.Link); // bound: green
+
+        _channel.State = FakeChannel.Sample(NodeBinding.Closed);
+        await _vm.RefreshAsync();
+        Assert.Equal("Connected", _vm.NodeStatusText);
+        Assert.Equal(LinkKind.Idle, _vm.Link); // binding closed: nothing to bind
 
         _channel.State = FakeChannel.Sample(NodeBinding.Bound, connected: false, connectionText: "");
         await _vm.RefreshAsync();

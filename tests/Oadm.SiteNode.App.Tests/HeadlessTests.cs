@@ -36,7 +36,7 @@ public sealed class HeadlessTests
                 Assert.Contains("Pairing code", shown.Texts);
                 Assert.Contains("ABCD-EFGH", shown.Texts);
                 Assert.Contains(NodeAppViewModel.TypeCode + " Valid for 8 more minutes.", shown.Texts);
-                Assert.Contains("Connected", shown.Texts);
+                Assert.Contains(NodeAppViewModel.ReadyToBind, shown.Texts);
                 Assert.Contains("10.0.0.5", shown.Texts); // below the logo
                 Assert.Contains("site-pc", shown.Texts); // below the node
                 break;

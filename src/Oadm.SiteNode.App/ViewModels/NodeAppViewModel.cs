@@ -22,10 +22,14 @@ public interface IAppDialogs
     Task ShowAddPortAsync(AddPortViewModel dialog);
 }
 
-/// <summary>The line between server and node in the picture on top: grey (not linked yet), purple (connected), red (not connected, lost, error).</summary>
+/// <summary>
+/// The line between server and node in the picture on top: grey (not linked yet), purple (connected, ready to bind),
+/// green (connected and bound), red (not connected, lost, error).
+/// </summary>
 public enum LinkKind
 {
     Idle,
+    Ready,
     Connected,
     Error,
 }
@@ -53,6 +57,9 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
 
     /// <summary>The hint of the address field once an address is saved.</summary>
     public const string PortHint = "Port 5081 unless you type another.";
+
+    /// <summary>The status below the line while the node is connected and not bound yet.</summary>
+    public const string ReadyToBind = "Ready to bind";
 
     /// <summary>The first sentence below the pairing code.</summary>
     public const string TypeCode = "Type this code at Bind on the Sites page of OADM.";
@@ -142,19 +149,25 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     public bool IsNodeStatusError => NodeStatusKind == NodeStatusKind.Error;
 
     /// <summary>
-    /// The line of the picture: purple while connected; red without the service, while a bound node is not connected or
-    /// the server cannot be reached; grey otherwise (no address yet, binding closed, connecting).
+    /// The line of the picture: green while connected and bound; purple while connected and ready to bind (binding open,
+    /// or a new server identity accepted); red without the service, while a bound node is not connected or the server
+    /// cannot be reached; grey otherwise (no address yet, binding closed, connecting).
     /// </summary>
     public LinkKind Link => State switch
     {
         null => LinkKind.Error,
-        { Connected: true } => LinkKind.Connected,
+        { Connected: true } => IsPairing ? LinkKind.Ready : IsBound ? LinkKind.Connected : LinkKind.Idle,
         { ServerAddress.Length: 0 } => LinkKind.Idle,
         { Binding: NodeBinding.Bound } => LinkKind.Error,
         _ => HasConnectionProblem ? LinkKind.Error : LinkKind.Idle,
     };
 
     public bool IsLinkConnected => Link == LinkKind.Connected;
+
+    public bool IsLinkReady => Link == LinkKind.Ready;
+
+    /// <summary>The check badge in the middle of the line: connected and bound, or ready to bind.</summary>
+    public bool IsLinkUp => Link is LinkKind.Connected or LinkKind.Ready;
 
     public bool IsLinkError => Link == LinkKind.Error;
 
@@ -184,7 +197,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
             if (State is not { } s)
                 return (ServiceError is null or AdminTexts.ServiceNotRunning ? "Service not running" : ServiceError, NodeStatusKind.Error);
             if (s.Connected)
-                return ("Connected", NodeStatusKind.Ok); // the picture names the server and the node
+                return (IsPairing ? ReadyToBind : "Connected", NodeStatusKind.Ok); // the picture names the server and the node
             if (s.ServerAddress.Length == 0)
                 return ("No server address yet", NodeStatusKind.Warning);
             if (s.Binding == NodeBinding.Closed)
@@ -509,7 +522,7 @@ public sealed partial class NodeAppViewModel : ValidatingViewModel
     private static readonly string[] StateProperties =
     [
         nameof(NodeStatusText), nameof(NodeStatusKind), nameof(IsNodeStatusOk), nameof(IsNodeStatusWarning), nameof(IsNodeStatusError),
-        nameof(Link), nameof(IsLinkConnected), nameof(IsLinkError), nameof(ServerLabel), nameof(NodeLabel), nameof(NodeRole),
+        nameof(Link), nameof(IsLinkConnected), nameof(IsLinkReady), nameof(IsLinkUp), nameof(IsLinkError), nameof(ServerLabel), nameof(NodeLabel), nameof(NodeRole),
         nameof(HasPairingCode), nameof(CanAcceptServer), nameof(ShowBindingLine), nameof(BoundSince), nameof(ShowBoundSince), nameof(ConnectionProblem), nameof(IsPairing), nameof(ShowPairing),
     ];
 

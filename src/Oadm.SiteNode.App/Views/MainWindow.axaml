@@ -54,9 +54,10 @@
               </StackPanel>
               <Grid Grid.Column="1" RowDefinitions="72,Auto,Auto,Auto">
                 <Panel Margin="8,0">
-                  <Border Classes="siteLink" Classes.connected="{Binding IsLinkConnected}" Classes.error="{Binding IsLinkError}" />
-                  <Border Classes="siteLinkBadge" Classes.connected="{Binding IsLinkConnected}" Classes.error="{Binding IsLinkError}"
-                          IsVisible="{Binding IsLinkConnected}">
+                  <Border Classes="siteLink" Classes.connected="{Binding IsLinkConnected}" Classes.ready="{Binding IsLinkReady}"
+                          Classes.error="{Binding IsLinkError}" />
+                  <Border Classes="siteLinkBadge" Classes.connected="{Binding IsLinkConnected}" Classes.ready="{Binding IsLinkReady}"
+                          IsVisible="{Binding IsLinkUp}">
                     <ui:OadmIcon Data="{StaticResource Icon.check}" />
                   </Border>
                   <Border Classes="siteLinkBadge error" IsVisible="{Binding IsLinkError}">

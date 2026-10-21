@@ -92,7 +92,8 @@ Two parts, one installer:
   - **Node status**: a picture on top: left the OADM logo with the server's name (its address before binding, "Not
     set" without one) and "OADM server", right a hexagon with the sites icon with the site's name ("Site") or the
     computer's name ("Site node"), between them a line: grey while not linked yet (no address, binding closed,
-    connecting), purple with a check while connected, red with a cross while not connected, after a lost connection of a
+    connecting), purple with a check while connected and ready to bind ("Ready to bind"), green with a check while
+    connected and bound, red with a cross while not connected, after a lost connection of a
     bound node or without the service; below the line the status ("Connected", "Not connected: Cannot reach
     10.0.0.5:5081", "Not connected" while binding is closed, "No server address yet", "Service not running"; then
     "Start the OADM Site Node service." and no other card), centered below it the binding line and the node ID. Then the binding line ("Bound since
