@@ -44,7 +44,7 @@ public sealed class ProLicenseServiceTests
 
         Assert.Equal(Proto.ProLicenseStatus.ProLicenseActive, state.Status);
         Assert.Equal(("ACME GmbH", "Up to 500 devices", 500L, "2099-12-31", false), (state.Customer, state.Plan, state.MaxDevices, state.Expires, state.Trial));
-        Assert.Equal("PRO Up to 500 devices, valid until 2099-12-31", state.Reason);
+        Assert.Equal("Up to 500 devices, until 2099-12-31", state.Reason);
         Assert.True(pro.IsActive);
 
         state = await licenses.RemoveLicenseAsync(new Proto.Empty());

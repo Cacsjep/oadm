@@ -25,7 +25,7 @@ enum ProLicenseStatus {
 message ProLicenseState {
   string server_id = 1;        // this server's ID, the one licenses name
   ProLicenseStatus status = 2;
-  string reason = 3;           // "PRO Up to 500 devices, valid until 2028-10-22", "No license", ...
+  string reason = 3;           // "Up to 500 devices, until 2028-10-22", "No license", ...
   string customer = 4;
   string plan = 5;             // "Up to 500 devices"
   optional int64 max_devices = 6;   // unset = no limit
