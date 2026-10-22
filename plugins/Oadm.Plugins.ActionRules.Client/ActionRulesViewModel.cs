@@ -48,6 +48,9 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
 
     private readonly ICorePluginClientContext _ctx;
     private readonly Dictionary<Guid, DeviceRulesRow> _rows = [];
+    // The rows change from events and reads, the grouping from the page; on the UI thread they never overlap, without a UI
+    // context (tests) events arrive on another thread.
+    private readonly Lock _gate = new();
     private readonly Dictionary<string, TemplateSet> _templates = new(StringComparer.Ordinal);
     private List<RuleGroupRow> _allGroups = [];
     private IReadOnlyList<RuleGroupRow> _selectedGroups = [];
@@ -614,6 +617,14 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     public void HandleEvent(PluginEvent item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        lock (_gate)
+        {
+            Handle(item);
+        }
+    }
+
+    private void Handle(PluginEvent item)
+    {
         switch (item.Topic)
         {
             case ActionRulesMethods.RowsTopic:
@@ -640,6 +651,14 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     public void ApplyState(RulesState state, bool replaceRows)
     {
         ArgumentNullException.ThrowIfNull(state);
+        lock (_gate)
+        {
+            Apply(state, replaceRows);
+        }
+    }
+
+    private void Apply(RulesState state, bool replaceRows)
+    {
         _state = state;
         if (replaceRows)
         {
@@ -661,6 +680,14 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     /// <summary>Groups again (rows, grouping or search changed) and keeps the selected groups that still exist.</summary>
     private void Rebuild()
     {
+        lock (_gate)
+        {
+            RebuildRows();
+        }
+    }
+
+    private void RebuildRows()
+    {
         var by = (RuleGroupBy)Math.Clamp(GroupByIndex, 0, GroupByNames.Count - 1);
         var ok = _rows.Values.Where(r => r.State == RowStates.Ok).ToList();
         var problems = _rows.Values.Where(r => r.State != RowStates.Ok).OrderBy(r => r.Address, StringComparer.Ordinal).ToList();
@@ -677,6 +704,14 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     }
 
     private void Filter()
+    {
+        lock (_gate)
+        {
+            FilterRows();
+        }
+    }
+
+    private void FilterRows()
     {
         Recipients.Filter(IsRecipientsTab ? SearchText : string.Empty);
         Schedules.Filter(IsSchedulesTab ? SearchText : string.Empty);
