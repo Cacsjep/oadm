@@ -72,12 +72,25 @@ public sealed class ListenTests : IAsyncLifetime
 
         _est = await StartAsync();
         Assert.Null(_est.Listener);
-        Assert.Equal("Ethernet 2 is not available", _est.GetState().StatusText);
+        Assert.Equal("Interface Ethernet 2 is not available", _est.GetState().StatusText);
 
         _interfaces.List = [Lan, Cameras];
         _time.Advance(TimeSpan.FromSeconds(30));
         await Eventually.TrueAsync(() => _est.Listener is not null, "the listener opened again");
         Assert.Equal(["192.168.50.1"], _network.LastTcpAddresses.Select(a => a.ToString()));
+    }
+
+    [Fact]
+    public async Task A_new_address_of_the_chosen_interface_is_listened_on_within_30_seconds()
+    {
+        await _est.SaveAsync(new SaveRequest(_est.Store.Config with { InterfaceId = "cams" }), CancellationToken.None);
+        Assert.Equal(["192.168.50.1"], _network.LastTcpAddresses.Select(a => a.ToString()));
+
+        _interfaces.List = [Lan, Cameras with { Addresses = [IPAddress.Parse("192.168.50.7")] }]; // a new DHCP lease
+        _time.Advance(TimeSpan.FromSeconds(30));
+
+        await Eventually.TrueAsync(() => _network.LastTcpAddresses.Select(a => a.ToString()).SequenceEqual(["192.168.50.7"]), "listening on the new address");
+        Assert.NotNull(_est.Listener);
     }
 
     [Fact]

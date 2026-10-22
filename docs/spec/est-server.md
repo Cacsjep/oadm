@@ -26,8 +26,8 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     client's list empties: topic `enrollmentsCleared`).
   - **Not renewed** (only while there are any): device, profile, valid until, state (Not renewed, Expired), 500 at most
     with "Showing 500 of ...". No list of every certificate: the certificates are on the cameras (PKI page, device
-    details). No Revoke (decision 2026-10-22): without a revocation list it only stopped renewals, which Remove
-    certificate enrollment and removing the device already do; real revocation (a CRL the RADIUS servers of IEEE 802.1X
+    details). No Revoke (decision 2026-10-22): without a revocation list it only stopped renewals, which **Remove**
+    in the Certificate enrollment dialog and removing the device already do; real revocation (a CRL the RADIUS servers of IEEE 802.1X
     check) is a later feature of PKI.
 - **Task "Certificate enrollment"** (device context menu, Security; one task per device), its dialog like the
   Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set
@@ -44,7 +44,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - **Port TCP 9454** (setting; above 1024, so no rights needed on Linux servers and nodes). TLS 1.2+, own listener (not the
   gRPC Kestrel): `ctx.Network.ListenTcpAsync` on the server's own network (every address, or with **Listen on** one interface: the
   overload with its addresses, no IPv6 link-local; the set-up gives local cameras that interface's address of their
-  family, else "has no IPv4 address for this camera. Nothing was changed."; a gone interface: status "Ethernet 2 is not
+  family, else "has no IPv4 address for this camera. Nothing was changed."; a gone interface: status "Interface Ethernet 2 is not
   available", tried again every 30 s; the server certificate names that interface's addresses) and `ctx.Sites.OpenTcpRelayAsync(site, port)`
   per site the cameras of which are set up (the node app asks to allow the port, like NTP's). TLS and a small HTTP/1.1
   parser on the raw stream in the plugin (the SDK has no HTTPS helper on `IStreamListener` yet; built here, moved to the
@@ -53,8 +53,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   checked against the two Axis device ID root CAs (RSA, ECC; valid to 2060) shipped with the plugin (the camera sends the
   intermediates). No passwords, nothing to hand out. **And** the serial in the device ID certificate must be a device of
   the device list (at a site: a device of that site): a genuine Axis camera OADM does not manage gets nothing.
-- **Renewal** (`simplereenroll`): the client certificate must be one EST issued and still kept (the newest of its device
-  and profile or the one before it) or the device ID, same device.
+- **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate of the OADM CA
+  whose `axis-<serial>.local` names a managed device; with a record of it, the record's device must be that device. A
+  record is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps.
 - **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
   only; a 401 or 403 closes the connection; at most 64 connections, 4 per address, 2 minutes each.
 - **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
@@ -67,7 +68,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - **The server's TLS certificate:** issued by the OADM CA, SANs = the server's addresses and host name; **one per site**
   with the node's addresses toward the cameras (cameras dial an IP, so no SNI: the plugin picks the certificate by the
   site the connection came through). Re-issued when the addresses change (node network cards, DHCP).
-- Revocation: internal only (no CRL, no OCSP), permanent.
+- Revocation: none (no CRL, no OCSP); **Remove** in the dialog stops renewals, see "What the user sees".
 - Logs: one line per request (no keys, no CSR bodies).
 - Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
   or no valid identity, 403 not managed / other site / certificate of another camera, 400 request unreadable or refused, 404 unknown, 503 no
@@ -99,11 +100,15 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
   (`ctx.Records`, collection `certificates`, one row per certificate by serial number): a flush writes only the changed
   certificates, never the whole list. 4.1.0-rc.2 kept every certificate in one settings value `certificates`: loaded
   once, cut down, moved to the records and the settings value deleted.
-- **Not renewed**: the newest certificate, **halfway through its lifetime plus `NotRenewedGrace` (2 days)** (short
-  ones: plus a tenth of the lifetime; 1 year: day 184.5), without a newer one. Checked 1 minute after the start and
+- **Not renewed**: the newest certificate, **halfway through its lifetime plus `NotRenewedGrace` (2 days)**, or a tenth of the
+  lifetime when that is shorter (1 year: day 184.5), without a newer one. Checked 1 minute after the start and
   then every hour; flagged once (`NotRenewedUtc`, persisted): the event "Certificate not renewed", a warning in the
   server log, the page reads its list again. A later renewal replaces the record and ends it.
-- Never flagged (`RenewalStoppedUtc`): certificates of an `oadm_` profile removed with **Remove** in the dialog.
+- Never flagged (`RenewalStoppedUtc`): certificates of an `oadm_` profile removed with **Remove** in the dialog or by
+  Set up (a renamed or turned-off profile), and certificates revoked in 4.1.0-rc.2 (`revokedUtc` when loaded; the
+  setting `revoked` is deleted, so those cameras renew again).
+- Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf: 30,000 cameras
+  in about 0.5 s); one read of the device list per check; at most 20 log lines per check, then one summary line.
 
 ## Setting up a camera (the deploy task)
 
@@ -123,7 +128,8 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
 3. Install the CA certificates: the OADM CA chain with `cert` v1, matched by fingerprint (an existing alias is reused),
    new ones as "OADM CA <8 hex>" like PKI's; never deleting.
-   With IEEE 802.1X on (`IDeviceInfo.Dot1xEnabled`) the IEEE 802.1X profile is skipped with a warning (no lock-out),
+   With IEEE 802.1X on (`IDeviceInfo.Dot1xEnabled`) the IEEE 802.1X profile is skipped with a warning (no lock-out; a
+   network access profile already on the camera, OADM's or another one, is then left untouched),
    unless the payload says `replaceDot1x` (`SetupPayload`): the dialog (`EstSetupWindow`) shows, only when selected
    cameras have IEEE 802.1X on, the check box "Also replace the network access certificate of N cameras with IEEE 802.1X
    on" with the hint that the RADIUS server must trust the OADM CA (off by default); the task then logs that it was
@@ -176,7 +182,7 @@ THIRD-PARTY notices list the plugin's license.
    ("Plugin services"); accepting OADM-CA renewals without Certificate changed (`docs/spec/vapix.md`).
 2. **EST server** (built): listener, TLS, HTTP/1.1, the three operations, device ID check (the Axis device ID CA bundles
    from axis.com, checksums checked), managed-device check, issuing through PKI, enrollments, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
-3. **Deploy task** and remove task (built) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
+3. **Deploy task** (built; since 2026-10-22 one task, Certificate enrollment, that sets up or removes) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
    write test on 10.0.0.48 passed. Open: removing unused certificates.
 4. **Sites** (built): `ISites.OpenTcpRelayAsync` per bound site with set-up cameras (`EstService.ServeSiteAsync`, called
    by the set-up task with the node's address towards the camera, `LocalAddressTowardsAsync` on the device's route); the

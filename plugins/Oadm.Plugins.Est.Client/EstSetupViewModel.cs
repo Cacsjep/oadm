@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Est.Tasks;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Est.Client;
@@ -41,6 +41,9 @@ public sealed record EnrollmentProfileRow(CameraProfileInfo Profile)
 
     public bool IsEnrolled => string.Equals(Profile.Status, "ENROLLED", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The camera's network access certificate (IEEE 802.1X): removing it can take cameras off the network.</summary>
+    public bool IsNetworkAccess => Profile.Services.Contains(Device.CameraEstApi.ServiceOf(ProfileUse.Dot1x), StringComparer.OrdinalIgnoreCase);
+
     public bool IsProblem => !IsEnrolled;
 
     public static string UseOf(string service) => service.ToUpperInvariant() switch
@@ -66,6 +69,8 @@ public sealed partial class EstSetupViewModel : ObservableObject
     private readonly ITaskDialogContext? _ctx;
     private readonly Dictionary<Guid, Task<CameraProfileList>> _cache = [];
     private bool _started;
+    private int _loadVersion;
+    private EnrollmentProfileRow? _pendingRemove;
 
     public EstSetupViewModel(IReadOnlyList<IDeviceInfo> devices, ITaskDialogContext? ctx = null)
     {
@@ -82,12 +87,12 @@ public sealed partial class EstSetupViewModel : ObservableObject
 
     public string ScopeText => Devices.Count == 1
         ? $"Set up and Remove apply to {Devices[0].Label}."
-        : string.Create(CultureInfo.InvariantCulture, $"Set up and Remove apply to all {Devices.Count:N0} selected devices.");
+        : string.Create(CultureInfo.InvariantCulture, $"Set up and Remove apply to all {Devices.Count:N0} selected cameras.");
 
     [ObservableProperty]
     public partial EstDeviceChoice? SelectedDevice { get; set; }
 
-    public ObservableCollection<EnrollmentProfileRow> Profiles { get; } = [];
+    public RangeObservableCollection<EnrollmentProfileRow> Profiles { get; } = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RemoveCommand))]
@@ -138,6 +143,9 @@ public sealed partial class EstSetupViewModel : ObservableObject
         return LoadProfilesAsync();
     }
 
+    /// <summary>Another row: the open confirmation was about the previous one.</summary>
+    partial void OnSelectedProfileChanged(EnrollmentProfileRow? value) => ConfirmRemoveVisible = false;
+
     partial void OnSelectedDeviceChanged(EstDeviceChoice? value)
     {
         if (_started)
@@ -149,6 +157,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
     private async Task LoadProfilesAsync()
     {
         var device = SelectedDevice;
+        var version = ++_loadVersion; // a later choice wins, also when it reads the same camera again
         ConfirmRemoveVisible = false;
         Profiles.Clear();
         SelectedProfile = null;
@@ -163,7 +172,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
         try
         {
             var list = await QueryAsync(device.Device.Id).ConfigureAwait(true);
-            if (!ReferenceEquals(device, SelectedDevice))
+            if (version != _loadVersion)
             {
                 return;
             }
@@ -173,23 +182,20 @@ public sealed partial class EstSetupViewModel : ObservableObject
                 ErrorMessage = EstTaskIds.NeedsApis.Replace(" Nothing was changed.", string.Empty, StringComparison.Ordinal);
             }
 
-            foreach (var profile in list.Profiles)
-            {
-                Profiles.Add(new EnrollmentProfileRow(profile));
-            }
+            Profiles.ReplaceAll(list.Profiles.Select(p => new EnrollmentProfileRow(p)));
         }
 #pragma warning disable CA1031 // Any query failure is shown in the dialog.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            if (ReferenceEquals(device, SelectedDevice))
+            if (version == _loadVersion)
             {
                 ErrorMessage = "Could not read the enrollment profiles: " + ServerErrors.Message(ex);
             }
         }
         finally
         {
-            if (ReferenceEquals(device, SelectedDevice))
+            if (version == _loadVersion)
             {
                 IsLoading = false;
             }
@@ -237,17 +243,24 @@ public sealed partial class EstSetupViewModel : ObservableObject
     private void Remove()
     {
         var profile = SelectedProfile!;
-        var where = Devices.Count == 1 ? Devices[0].Label : string.Create(CultureInfo.InvariantCulture, $"all {Devices.Count:N0} selected devices");
+        _pendingRemove = profile;
+        var where = Devices.Count == 1 ? Devices[0].Label : string.Create(CultureInfo.InvariantCulture, $"all {Devices.Count:N0} selected cameras");
         ConfirmRemoveText = profile.IsOadm
-            ? $"Remove {profile.Id} from {where}? The cameras keep their certificates until they end, but no longer renew them."
+            ? $"Remove {profile.Id} from {where}? The cameras keep their certificates until they expire, but no longer renew them."
             : $"Remove {profile.Id} from {where}? OADM did not set it up: the cameras stop renewing the certificates of that EST server.";
+        if (profile.IsNetworkAccess)
+        {
+            ConfirmRemoveText += " Cameras with IEEE 802.1X on drop off the network when that certificate expires.";
+        }
+
         ConfirmRemoveVisible = true;
     }
 
+    /// <summary>Removes the profile the confirmation names (never a row selected after it opened).</summary>
     [RelayCommand]
     private void ConfirmRemove()
     {
-        if (SelectedProfile is { } profile)
+        if (ConfirmRemoveVisible && _pendingRemove is { } profile)
         {
             Complete(new SetupPayload { Action = SetupAction.Remove, Profiles = [profile.Id] });
         }

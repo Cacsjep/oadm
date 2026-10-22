@@ -11,7 +11,6 @@ version and date, and the release workflow copies it into the GitHub release.
 - EST server at sites: cameras at a site get and renew their certificates through their site node. The node app asks to
   allow TCP 9454 when the first camera there is set up; the EST server page shows the sites whose node has not allowed it
   yet.
-
 - EST server: the **Enrollments** list has a search and **Delete all**.
 - EST server: **Listen on** chooses the network interface the cameras reach the server on, like the NTP and DHCP
   servers; the page groups its settings under **General** and **Profiles**.
@@ -25,6 +24,8 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Settings: the server ID shows only in the **License** card, no longer also in the Server card.
+- EST server: certificates revoked in 4.1.0-rc.2 are renewed again after the update (Revoke is gone); remove the
+  camera's profile in **Certificate enrollment** to stop it.
 - EST server: the list of every certificate and **Revoke** are gone. The certificates are on the cameras (PKI page);
   to stop renewals remove the profile in the **Certificate enrollment** dialog. OADM keeps only the newest certificate of each camera and
   profile and the one before it.

@@ -6,6 +6,7 @@ description: Cameras get and renew their certificates from the OADM CA by themse
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/est-page.png';
+import dialogShot from '../../../assets/screens/est-setup-dialog.png';
 
 The EST server gives your Axis cameras their certificates for HTTPS, IEEE 802.1X, MQTT and RTSPS, and the cameras
 **renew them by themselves** before they expire. You set up each camera once; after that no task has to run again when a
@@ -21,7 +22,7 @@ The EST server is an OADM PRO plugin. It runs while an OADM PRO license or 30-da
 until these expire. Everything else in OADM works the same with or without a license.
 </Aside>
 
-<Image src={shot} alt="The EST server page with the port, the profiles, the enrollments and the certificates" class="screen" />
+<Image src={shot} alt="The EST server page with General, the profiles and the enrollments" class="screen" />
 
 ## What you need
 
@@ -84,7 +85,7 @@ Every request of a camera that OADM manages: time, device, profile, **New** or *
 until** a date, or the reason it was refused. New rows appear while the page is open. The list keeps the newest
 entries up to **Enrollments kept**.
 
-- **Search** finds a device, profile, kind or result.
+- **Search** finds a device, profile, kind, result or reason.
 - **Delete all** (red, with a confirmation) empties the list for every client.
 
 ### Not renewed
@@ -123,7 +124,8 @@ stay on the camera, unless they serve the same use as one of OADM's.
 
 <Aside type="caution" title="IEEE 802.1X">
 A camera with IEEE 802.1X on uses a certificate to get onto the network. A new one that your RADIUS server does not trust
-takes the camera off the network. So the set-up skips the `dot1x` profile on these cameras and warns, unless you tick
+takes the camera off the network. So the set-up skips the `dot1x` profile on these cameras, leaves the profile they
+have alone, and warns, unless you tick
 **Also replace the network access certificate of ... cameras with IEEE 802.1X on** in the dialog (off by default).
 
 Tick it only when your RADIUS server trusts the OADM CA, for example after **Enable IEEE 802.1X** of the PKI page set
@@ -131,6 +133,8 @@ these cameras up with the OADM CA. Cameras with IEEE 802.1X off get the `dot1x` 
 </Aside>
 
 ### The dialog
+
+<Image src={dialogShot} alt="The Certificate enrollment dialog with the enrollment profiles of a camera" class="screen" />
 
 | Column | Meaning |
 |---|---|
@@ -188,7 +192,7 @@ The EST server adds three events to the [event rules](../event-rules/):
 - **Certificate enrolled**: a camera got a certificate (profile, New or Renewal).
 - **Enrollment refused**: the EST server refused a camera OADM manages (profile, reason).
 - **Certificate not renewed**: a camera did not renew a certificate within 2 days after the halfway point of its
-  validity (profile, valid until). Not for cameras where you removed certificate enrollment.
+  validity (profile, valid until). Not for profiles you removed in **Certificate enrollment**.
 
 For example, send an email when a certificate is not renewed: a certificate of 1 year still has about six months left.
 
@@ -203,7 +207,7 @@ For example, send an email when a certificate is not renewed: a certificate of 1
 | **The camera has no Axis device ID certificate.** | The camera has no AXIS Edge Vault device ID. It cannot use the EST server. |
 | **The camera supports none of the EST server's profiles.** | Turn on a profile whose use the camera supports. |
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
-| **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server on TCP 9454 (or the port you chose). |
+| **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server (at a site: to the site node) on TCP 9454 (or the port you chose). |
 | **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |
 | At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |
 | A certificate shows **Not renewed** | The camera did not reach the EST server for its renewal. Check the Enrollments list, the camera's network and, at a site, the site node. Set up the camera again if it was reset. |

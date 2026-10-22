@@ -22,7 +22,7 @@ public static class EstPluginInfo
     /// <summary>Enrollments kept by default (newest first).</summary>
     public const int DefaultEnrollmentsKept = 500;
 
-    /// <summary>Certificates shown on one page of the Certificates list.</summary>
+    /// <summary>The most certificates the Not renewed list shows.</summary>
     public const int CertificatesPageSize = 500;
 
     /// <summary>Event "Certificate enrolled" (device, profile, new or renewal).</summary>
@@ -227,8 +227,8 @@ public sealed record SetupPayload(bool ReplaceDot1x = false)
     /// <summary>With <see cref="SetupAction.Remove"/>: the profile ids to remove from every selected camera (any profile).</summary>
     public IReadOnlyList<string> Profiles { get; init; } = [];
 
-    /// <summary>The payload of a run; an empty or unreadable one is the safe default (no replacement).</summary>
-    public static SetupPayload Parse(string? json)
+    /// <summary>The payload of a run; an empty one is Set up without replacement; unreadable (or an unknown action): null.</summary>
+    public static SetupPayload? Read(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -237,11 +237,13 @@ public sealed record SetupPayload(bool ReplaceDot1x = false)
 
         try
         {
-            return JsonSerializer.Deserialize<SetupPayload>(json, EstJson.Options) ?? new SetupPayload();
+            return JsonSerializer.Deserialize<SetupPayload>(json, EstJson.Options) is { } payload && Enum.IsDefined(payload.Action)
+                ? payload with { Profiles = payload.Profiles ?? [] }
+                : null;
         }
         catch (JsonException)
         {
-            return new SetupPayload();
+            return null;
         }
     }
 }

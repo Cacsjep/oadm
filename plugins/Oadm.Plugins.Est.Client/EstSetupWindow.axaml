@@ -64,7 +64,7 @@
           <TextBlock Classes="warning" Text="{Binding ConfirmRemoveText}" TextWrapping="Wrap" VerticalAlignment="Center" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0">
             <Button Classes="secondary" Content="Keep" Command="{Binding CancelRemoveCommand}" />
-            <Button Classes="danger" Content="Remove" Command="{Binding ConfirmRemoveCommand}" />
+            <Button Classes="danger" Content="Remove" Command="{Binding ConfirmRemoveCommand}" IsDefault="{Binding ConfirmRemoveVisible}" />
           </StackPanel>
         </Grid>
       </Grid>
@@ -78,7 +78,9 @@
     </StackPanel>
 
     <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Set up" Command="{Binding OkCommand}" IsDefault="True"
+      <!-- While the Remove confirmation is open, its button is the main one: Set up turns secondary and Enter confirms. -->
+      <Button Classes.primary="{Binding !ConfirmRemoveVisible}" Classes.secondary="{Binding ConfirmRemoveVisible}" Content="Set up"
+              Command="{Binding OkCommand}" IsDefault="{Binding !ConfirmRemoveVisible}"
               ToolTip.Tip="Adds the EST server's profiles to the cameras" />
     </ui:DialogFooter>
   </Grid>

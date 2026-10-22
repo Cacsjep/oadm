@@ -195,15 +195,18 @@ public sealed class EstEndpoint(
             return serial;
         }
 
-        if (store.FindCertificate(client.SerialNumber) is not { } own || !IssuedByCa(client, ca.Chain, now))
+        // Any valid certificate of the OADM CA for a camera, also one whose record is gone (the store keeps the newest two
+        // per camera and profile; a camera whose answers got lost renews with an older one). Its serial: the
+        // axis-<serial>.local name OADM put in; the caller still checks that this camera is managed (and, with a record,
+        // that the record names the same device).
+        if (!IssuedByCa(client, ca.Chain, now))
         {
             return null;
         }
 
-        // The serial of the device it was issued for: its axis-<serial>.local name.
         var san = client.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
         var name = san?.EnumerateDnsNames().FirstOrDefault(n => n.StartsWith("axis-", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".local", StringComparison.OrdinalIgnoreCase));
-        return own.DeviceId != Guid.Empty ? AxisDeviceId.Normalize(name) : null;
+        return AxisDeviceId.Normalize(name);
     }
 
     private static bool IssuedByCa(X509Certificate2 certificate, IReadOnlyList<byte[]> chainDer, DateTimeOffset now)

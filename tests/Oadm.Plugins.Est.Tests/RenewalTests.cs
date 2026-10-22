@@ -161,6 +161,55 @@ public sealed class RenewalTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Certificates_revoked_in_rc2_are_never_flagged_and_the_old_settings_go()
+    {
+        var now = _time.GetUtcNow().UtcDateTime;
+        var revoked = System.Text.Json.Nodes.JsonNode.Parse(EstJson.Serialize(Certificate("R1", "https", now)))!.AsObject();
+        revoked["revokedUtc"] = now.AddDays(1);
+        await _settings.SetAsync(EstStore.CertificatesKey, new System.Text.Json.Nodes.JsonArray(revoked).ToJsonString(), CancellationToken.None);
+        await _settings.SetAsync(EstStore.LegacyRevokedKey, "[]", CancellationToken.None);
+        await _est.DisposeAsync();
+        _est = await StartAsync();
+
+        _time.Advance(Lifetime);
+        await _est.CheckRenewalsAsync(CancellationToken.None);
+        await _est.Store.FlushAsync(CancellationToken.None);
+
+        Assert.Empty(_publisher.Fired);
+        Assert.NotNull(_est.Store.FindCertificate("R1")!.RenewalStoppedUtc);
+        Assert.Null(await _settings.GetAsync(EstStore.LegacyRevokedKey, CancellationToken.None));
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Stopping_and_forgetting_thirty_thousand_cameras_stays_linear()
+    {
+        var now = _time.GetUtcNow().UtcDateTime;
+        var devices = Enumerable.Range(0, 30_000).Select(i => new FakeDevice { Serial = $"ACCC8E{i:X6}", Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" }).ToList();
+        foreach (var device in devices)
+        {
+            Issue($"H{device.Serial}", "https", now, device);
+            Issue($"D{device.Serial}", "dot1x", now, device);
+        }
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        foreach (var device in devices)
+        {
+            _est.Store.StopRenewals(device.Id, now, "https");
+        }
+
+        foreach (var device in devices.Take(15_000))
+        {
+            _est.Store.ForgetDevice(device.Id);
+        }
+
+        watch.Stop();
+        Assert.Equal(30_000, _est.Store.CertificateCount);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"30,000 stops and 15,000 forgets took {watch.Elapsed}");
+        await _est.Store.FlushAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Only_the_certificates_that_changed_are_written()
     {
         var now = _time.GetUtcNow().UtcDateTime;

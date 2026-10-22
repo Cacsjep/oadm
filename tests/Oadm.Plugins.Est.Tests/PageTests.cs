@@ -241,7 +241,7 @@ public sealed class PageTests : IAsyncLifetime
         await vm.LoadAsync();
         Assert.Equal(["oadm_https", "corp_dot1x"], vm.Profiles.Select(p => p.Id));
         Assert.Equal([("HTTPS", "OADM", "Enrolled"), ("IEEE 802.1X", "Other", "No certificate")], vm.Profiles.Select(p => (p.Uses, p.SetUpBy, p.Status)));
-        Assert.Equal("Set up and Remove apply to all 2 selected devices.", vm.ScopeText);
+        Assert.Equal("Set up and Remove apply to all 2 selected cameras.", vm.ScopeText);
         Assert.False(vm.RemoveCommand.CanExecute(null));
 
         vm.SelectedDevice = vm.Devices[1];
@@ -251,16 +251,32 @@ public sealed class PageTests : IAsyncLifetime
         await Eventually.TrueAsync(() => vm.Profiles.Count == 2, "the first camera again, from the cache");
         Assert.Equal(1, cameras.Queries[first.Id]);
 
+        // Back and forth while a read runs: the list shows the camera once.
+        vm.SelectedDevice = vm.Devices[1];
+        vm.SelectedDevice = vm.Devices[0];
+        await Eventually.TrueAsync(() => !vm.IsLoading, "the reads ended");
+        Assert.Equal(2, vm.Profiles.Count);
+
         vm.SelectedProfile = vm.Profiles[1];
         vm.RemoveCommand.Execute(null);
         Assert.True(vm.ConfirmRemoveVisible);
-        Assert.Equal("Remove corp_dot1x from all 2 selected devices? OADM did not set it up: the cameras stop renewing the certificates of that EST server.", vm.ConfirmRemoveText);
+        Assert.Equal("Remove corp_dot1x from all 2 selected cameras? OADM did not set it up: the cameras stop renewing the certificates of that EST server. Cameras with IEEE 802.1X on drop off the network when that certificate expires.", vm.ConfirmRemoveText);
         vm.CancelRemoveCommand.Execute(null);
         Assert.Null(payload);
 
         vm.RemoveCommand.Execute(null);
+        Assert.EndsWith("Cameras with IEEE 802.1X on drop off the network when that certificate expires.", vm.ConfirmRemoveText, StringComparison.Ordinal);
+
+        // Another row closes the confirmation: Remove never takes a profile the text did not name.
+        vm.SelectedProfile = vm.Profiles[0];
+        Assert.False(vm.ConfirmRemoveVisible);
         vm.ConfirmRemoveCommand.Execute(null);
-        var remove = SetupPayload.Parse(payload);
+        Assert.Null(payload);
+
+        vm.SelectedProfile = vm.Profiles[1];
+        vm.RemoveCommand.Execute(null);
+        vm.ConfirmRemoveCommand.Execute(null);
+        var remove = SetupPayload.Read(payload)!;
         Assert.Equal((SetupAction.Remove, "corp_dot1x"), (remove.Action, Assert.Single(remove.Profiles)));
     }
 
@@ -273,17 +289,17 @@ public sealed class PageTests : IAsyncLifetime
         Assert.False(without.ShowDot1x);
         without.ReplaceDot1x = true; // hidden: it never counts
         without.OkCommand.Execute(null);
-        Assert.Equal((SetupAction.Setup, false), (SetupPayload.Parse(payload).Action, SetupPayload.Parse(payload).ReplaceDot1x));
+        Assert.Equal((SetupAction.Setup, false), (SetupPayload.Read(payload)!.Action, SetupPayload.Read(payload)!.ReplaceDot1x));
 
         var with = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice { Dot1xEnabled = true }, new FakeDevice()]);
         with.CloseRequested += (_, _) => payload = with.Payload;
         Assert.True(with.ShowDot1x);
         Assert.Equal("Also replace the network access certificate of 2 cameras with IEEE 802.1X on", with.Dot1xText);
         with.OkCommand.Execute(null);
-        Assert.False(SetupPayload.Parse(payload).ReplaceDot1x); // off by default
+        Assert.False(SetupPayload.Read(payload)!.ReplaceDot1x); // off by default
         with.ReplaceDot1x = true;
         with.OkCommand.Execute(null);
-        Assert.True(SetupPayload.Parse(payload).ReplaceDot1x);
+        Assert.True(SetupPayload.Read(payload)!.ReplaceDot1x);
     }
 
     [Fact]

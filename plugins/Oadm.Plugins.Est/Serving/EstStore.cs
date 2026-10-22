@@ -18,6 +18,9 @@ public sealed class EstStore : IAsyncDisposable
     public const string CertificatesKey = "certificates";
     public const string SitesKey = "sites";
 
+    /// <summary>4.1.0-rc.2 only (revoked device and profile pairs): deleted when loaded.</summary>
+    public const string LegacyRevokedKey = "revoked";
+
     private static readonly TimeSpan KeepEnded = TimeSpan.FromDays(30);
 
     private readonly IPluginSettings _settings;
@@ -31,6 +34,7 @@ public sealed class EstStore : IAsyncDisposable
     private readonly Dictionary<string, IssuedCertificate> _certificates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<DeviceProfile, string> _newest = []; // device and profile -> serial of its newest certificate
     private readonly Dictionary<DeviceProfile, string> _previous = []; // ... and of the one before it
+    private readonly Dictionary<Guid, HashSet<string>> _profilesOf = []; // device -> its profiles in _newest (O(1) per device)
     private readonly Dictionary<Guid, SortedSet<string>> _sites = [];
     private EstConfig _config = new();
     private bool _dirty;
@@ -67,8 +71,10 @@ public sealed class EstStore : IAsyncDisposable
         var legacy = await _settings.GetAsync(CertificatesKey, ct).ConfigureAwait(false);
         if (legacy is not null)
         {
-            certificates.AddRange(Read<List<IssuedCertificate>>(legacy) ?? []); // 4.1.0-rc.2: one settings value, moved to the records
+            certificates.AddRange(ReadLegacy(legacy)); // 4.1.0-rc.2: one settings value, moved to the records
         }
+
+        legacy ??= await _settings.GetAsync(LegacyRevokedKey, ct).ConfigureAwait(false);
         var sites = Read<Dictionary<Guid, List<string>>>(await _settings.GetAsync(SitesKey, ct).ConfigureAwait(false)) ?? [];
         lock (_gate)
         {
@@ -83,6 +89,7 @@ public sealed class EstStore : IAsyncDisposable
             _newest.Clear();
             _previous.Clear();
             _changedCertificates.Clear();
+            _profilesOf.Clear();
             foreach (var certificate in certificates.OrderBy(c => c.IssuedUtc)) // 4.1.0-rc.2 kept every certificate
             {
                 _certificates[certificate.SerialNumber] = certificate;
@@ -250,6 +257,44 @@ public sealed class EstStore : IAsyncDisposable
         }
 
         _newest[key] = certificate.SerialNumber;
+        if (!_profilesOf.TryGetValue(key.DeviceId, out var profiles))
+        {
+            _profilesOf[key.DeviceId] = profiles = new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        profiles.Add(key.Profile);
+    }
+
+    /// <summary>The keys of a device's profiles. Under the lock.</summary>
+    private IEnumerable<DeviceProfile> KeysOf(Guid deviceId) =>
+        _profilesOf.TryGetValue(deviceId, out var profiles) ? profiles.Select(p => new DeviceProfile(deviceId, p)) : [];
+
+    /// <summary>
+    /// 4.1.0-rc.2 kept revoked certificates (<c>revokedUtc</c>; Revoke is gone): they count as no longer renewed, never
+    /// as Not renewed.
+    /// </summary>
+    private static IEnumerable<IssuedCertificate> ReadLegacy(string json)
+    {
+        System.Text.Json.Nodes.JsonArray? list;
+        try
+        {
+            list = System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonArray;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            yield break;
+        }
+
+        foreach (var node in list ?? [])
+        {
+            if (Read<IssuedCertificate>(node?.ToJsonString()) is not { } certificate)
+            {
+                continue;
+            }
+
+            var revoked = node?["revokedUtc"]?.GetValue<DateTime?>();
+            yield return revoked is { } at && certificate.RenewalStoppedUtc is null ? certificate with { RenewalStoppedUtc = at } : certificate;
+        }
     }
 
     /// <summary>Removes a certificate and remembers to delete its record. Under the lock.</summary>
@@ -268,18 +313,26 @@ public sealed class EstStore : IAsyncDisposable
     {
         lock (_gate)
         {
-            var gone = _newest.Concat(_previous).Where(n => n.Key.DeviceId == deviceId).ToList();
-            if (gone.Count == 0)
+            var keys = KeysOf(deviceId).ToList();
+            if (keys.Count == 0)
             {
                 return;
             }
 
-            foreach (var (key, serial) in gone)
+            foreach (var key in keys)
             {
-                _newest.Remove(key);
-                _previous.Remove(key);
-                Drop(serial);
+                if (_newest.Remove(key, out var newest))
+                {
+                    Drop(newest);
+                }
+
+                if (_previous.Remove(key, out var previous))
+                {
+                    Drop(previous);
+                }
             }
+
+            _profilesOf.Remove(deviceId);
         }
 
         MarkDirty();
@@ -318,9 +371,10 @@ public sealed class EstStore : IAsyncDisposable
         var changed = false;
         lock (_gate)
         {
-            foreach (var (key, serial) in _newest)
+            var keys = profile is null ? KeysOf(deviceId) : [new DeviceProfile(deviceId, profile.ToLowerInvariant())];
+            foreach (var key in keys)
             {
-                if (key.DeviceId == deviceId && (profile is null || string.Equals(key.Profile, profile, StringComparison.OrdinalIgnoreCase))
+                if (_newest.TryGetValue(key, out var serial)
                     && _certificates.TryGetValue(serial, out var certificate) && certificate.RenewalStoppedUtc is null)
                 {
                     _certificates[serial] = certificate with { RenewalStoppedUtc = nowUtc };
@@ -421,6 +475,10 @@ public sealed class EstStore : IAsyncDisposable
                 foreach (var gone in _newest.Where(n => !_certificates.ContainsKey(n.Value)).Select(n => n.Key).ToList())
                 {
                     _newest.Remove(gone);
+                    if (_profilesOf.TryGetValue(gone.DeviceId, out var profiles) && profiles.Remove(gone.Profile) && profiles.Count == 0)
+                    {
+                        _profilesOf.Remove(gone.DeviceId);
+                    }
                 }
 
                 foreach (var gone in _previous.Where(n => !_certificates.ContainsKey(n.Value)).Select(n => n.Key).ToList())
@@ -444,6 +502,7 @@ public sealed class EstStore : IAsyncDisposable
                 if (dropLegacy)
                 {
                     await _settings.SetAsync(CertificatesKey, null, ct).ConfigureAwait(false);
+                    await _settings.SetAsync(LegacyRevokedKey, null, ct).ConfigureAwait(false);
                     lock (_gate)
                     {
                         _dropLegacyCertificates = false;

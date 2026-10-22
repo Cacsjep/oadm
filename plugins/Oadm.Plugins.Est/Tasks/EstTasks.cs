@@ -33,6 +33,7 @@ public static class EstTaskIds
         profiles.Count == 1 ? "Remove enrollment profile " + profiles[0] : string.Create(CultureInfo.InvariantCulture, $"Remove {profiles.Count} enrollment profiles");
 
     public const string RemoveStep = "Remove the enrollment profiles";
+    public const string BadOptions = "The task options cannot be read. Nothing was changed.";
     public const string NothingToRemove = "The camera has none of these enrollment profiles. Nothing was changed.";
 
     /// <summary>Camera profiles OADM writes are named "oadm_&lt;profile&gt;".</summary>
@@ -51,8 +52,9 @@ public static class EstTaskIds
     public const string NoCa = "The PKI has no certificate authority. Create one on the PKI page. Nothing was changed.";
     public const string Dot1xSkipped = "IEEE 802.1X is on: the IEEE 802.1X profile was skipped, so the camera keeps the certificate it uses for network access.";
     public const string Dot1xReplaced = "IEEE 802.1X is on: the IEEE 802.1X profile replaces the certificate the camera uses for network access, as chosen when the task started.";
-    public static string NotReached(int port) => string.Create(CultureInfo.InvariantCulture,
-        $"The camera could not reach the EST server within 2 minutes. Check that a firewall lets the camera reach this computer on TCP {port}.");
+    /// <summary>At a site the camera reaches the site node, else the OADM server.</summary>
+    public static string NotReached(int port, bool atSite = false) => string.Create(CultureInfo.InvariantCulture,
+        $"The camera could not reach the EST server within 2 minutes. Check that a firewall lets the camera reach {(atSite ? "the site node" : "the OADM server")} on TCP {port}.");
 
     public const string NoCertificate = "The camera reached the EST server but got no certificate within 2 minutes. The Enrollments list shows what reached the server.";
     public const string AlreadySetUp = "The camera already has these enrollment profiles. No profile was written.";
@@ -160,19 +162,22 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
     /// <summary>"Set up certificate enrollment" or "Remove enrollment profile oadm_https" in the tasks pane.</summary>
     string ITaskPlugin.GetTaskName(string? payloadJson) =>
-        SetupPayload.Parse(payloadJson) is { Action: SetupAction.Remove } remove ? EstTaskIds.RemoveName(remove.Profiles) : EstTaskIds.SetupName;
+        SetupPayload.Read(payloadJson) is { Action: SetupAction.Remove } remove ? EstTaskIds.RemoveName(remove.Profiles) : EstTaskIds.SetupName;
 
     public override async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        if (SetupPayload.Parse(payloadJson) is { Action: SetupAction.Remove } remove)
+        // Set up and Remove share the task: options that cannot be read change nothing (never taken for Set up).
+        var payload = SetupPayload.Read(payloadJson) ?? throw new ArgumentException(EstTaskIds.BadOptions, nameof(payloadJson));
+        if (payload.Action == SetupAction.Remove)
         {
-            await RemoveAsync(ctx, device, remove.Profiles, ct).ConfigureAwait(false);
+            await RemoveAsync(ctx, device, payload.Profiles, ct).ConfigureAwait(false);
             return;
         }
 
         ArgumentNullException.ThrowIfNull(device);
 
+        var dot1xSkipped = false;
         var (est, chain, profiles, address) = await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
         {
             var est = Service ?? throw new InvalidOperationException(EstTaskIds.NotRunning);
@@ -189,7 +194,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             var candidates = est.Store.Config.Profiles.Where(p => p.Enabled && services.Contains(CameraEstApi.ServiceOf(p.Use))).ToList();
             if (device.Dot1xEnabled == true && candidates.Any(p => p.Use == ProfileUse.Dot1x))
             {
-                if (SetupPayload.Parse(payloadJson).ReplaceDot1x)
+                if (payload.ReplaceDot1x)
                 {
                     ctx.Log(TaskLogLevel.Info, EstTaskIds.Dot1xReplaced); // the user chose it in the dialog
                 }
@@ -197,6 +202,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                 {
                     // No lock-out: a new network access certificate the RADIUS server may not trust would take the camera off the network.
                     candidates.RemoveAll(p => p.Use == ProfileUse.Dot1x);
+                    dot1xSkipped = true;
                     step.Warn(EstTaskIds.Dot1xSkipped);
                 }
             }
@@ -261,9 +267,12 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
         var wanted = profiles.Select(p => Wanted(p, device, address, est.Store.Config.Port, caAliases, Pick(deviceIds, p.Key))).ToList();
         var wantedServices = profiles.Select(p => CameraEstApi.ServiceOf(p.Use)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // OADM's profiles and those that would serve the same services; other profiles of the camera stay.
+        // OADM's profiles and those that would serve the same services; other profiles of the camera stay. With the IEEE
+        // 802.1X profile skipped, the camera's network access profile stays untouched too (no lock-out).
+        var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
         var current = (await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false))
             .Where(c => c.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) || c.Services.Any(wantedServices.Contains))
+            .Where(c => !(dot1xSkipped && c.Services.Contains(dot1xService, StringComparer.OrdinalIgnoreCase)))
             .ToList();
         var started = est.Time.GetUtcNow().UtcDateTime;
         if (Same(current, wanted))
@@ -288,6 +297,13 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
                 step.Complete(string.Join(", ", current.Select(c => c.Id)));
             }).ConfigureAwait(false);
+
+            // A removed profile of OADM that is not set up again (renamed, turned off): its certificate is not renewed any more.
+            var wantedIds = wanted.Select(w => w.Json["id"]!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+            foreach (var gone in current.Where(c => c.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) && !wantedIds.Contains(c.Id)))
+            {
+                est.Store.StopRenewals(device.Id, started, gone.Id[EstTaskIds.ProfilePrefix.Length..]);
+            }
         }
 
         // One at a time: writing a profile restarts the camera's EST client.
@@ -512,13 +528,13 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                     // At a site the relay is the usual reason: the node app still asks to allow the port, or the node is offline.
                     if (device.SiteId is { } site && est.SiteRelay(site) is { State: not Sdk.Sites.RelayState.Running } relay)
                     {
-                        throw new TimeoutException("The camera did not get its certificate: " + relay.StateText + ".");
+                        throw new TimeoutException("The camera did not get its certificate. " + relay.StateText + ".");
                     }
 
                     // The camera's own status tells the two cases apart (it sends no event for a failed enrollment).
                     throw new TimeoutException(string.Equals(status, "CONNECTED", StringComparison.OrdinalIgnoreCase)
                         ? EstTaskIds.NoCertificate
-                        : EstTaskIds.NotReached(est.Store.Config.Port));
+                        : EstTaskIds.NotReached(est.Store.Config.Port, device.SiteId is not null));
                 }
 
                 await Task.Delay(PollInterval, est.Time, ct).ConfigureAwait(false);

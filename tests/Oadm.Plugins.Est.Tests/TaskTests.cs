@@ -108,7 +108,52 @@ public sealed class TaskTests : IAsyncLifetime
         Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(ctx.Warnings);
         Assert.Contains("Info: " + EstTaskIds.Dot1xReplaced, ctx.LogLines);
-        Assert.False(SetupPayload.Parse("not json").ReplaceDot1x); // anything unreadable is the safe default
+    }
+
+    [Fact]
+    public async Task Setting_up_again_without_the_8021x_choice_keeps_the_cameras_8021x_profile()
+    {
+        // Set up earlier with "Also replace the network access certificate": the camera has both profiles.
+        var device = _device with { Dot1xEnabled = true };
+        var task = new EstSetupTask(() => _est);
+        var first = Context();
+        await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));
+        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+
+        var again = Context();
+        await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, device, "{}", CancellationToken.None));
+
+        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal)); // no lock-out
+        Assert.Contains(EstTaskIds.Dot1xSkipped, again.Warnings);
+    }
+
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("""{"action":2}""")]
+    [InlineData("""{"action":"Remove","profiles":"oadm_https"}""")]
+    public async Task Options_that_cannot_be_read_change_nothing(string payload)
+    {
+        var writes = _camera.Writes;
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, payload, CancellationToken.None));
+
+        Assert.StartsWith(EstTaskIds.BadOptions, error.Message, StringComparison.Ordinal);
+        Assert.Equal(writes, _camera.Writes);
+    }
+
+    [Fact]
+    public async Task A_profile_of_oadm_that_set_up_removes_stops_the_renewal_check_of_its_certificate()
+    {
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("web", ProfileUse.Https)] }), CancellationToken.None);
+        _camera.Profiles["oadm_https"] = new JsonObject { ["id"] = "oadm_https", ["services"] = new JsonArray("WEBSERVER"), ["status"] = "ENROLLED" };
+        var now = DateTime.UtcNow;
+        _est.Store.AddCertificate(new IssuedCertificate { SerialNumber = "01", DeviceId = _device.Id, Device = _device.Address, Profile = "https", IssuedUtc = now, NotAfterUtc = now.AddDays(365) });
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None)); // the profile was renamed to "web"
+
+        Assert.Equal(["oadm_web"], _camera.Profiles.Keys);
+        Assert.NotNull(_est.Store.FindCertificate("01")!.RenewalStoppedUtc);
     }
 
     [Fact]

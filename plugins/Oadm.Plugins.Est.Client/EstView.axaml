@@ -90,7 +90,7 @@
           <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
         </Button>
       </StackPanel>
-      <ui:SearchBox Grid.Column="2" Text="{Binding EnrollmentSearch}" Placeholder="Search device, profile, result" Width="260" />
+      <ui:SearchBox Grid.Column="2" Text="{Binding EnrollmentSearch}" Placeholder="Search device, profile, result, reason" Width="260" />
     </Grid>
     <Panel Grid.Row="2" Margin="0,8,0,0">
       <DataGrid ItemsSource="{Binding Enrollments}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"

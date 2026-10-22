@@ -110,9 +110,11 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(EnrollmentKind.Renewal, _service.Store.Enrollments()[0].Kind);
         Assert.Equal(2, _service.Store.CertificateCount);
 
-        // The camera retries with its previous certificate (the answer got lost): renewed again, the oldest record goes.
+        // The camera retries with its first certificate (answers got lost), twice: its record is gone by then, it still renews.
         var retry = await SendAsync("POST", "/.well-known/est/https/simplereenroll", renewalIdentity, Body(csr2));
         Assert.Equal(200, retry.Status);
+        Assert.Null(_service.Store.FindCertificate(issued.SerialNumber));
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", renewalIdentity, Body(csr2))).Status);
         Assert.Equal(2, _service.Store.CertificateCount);
         Assert.Single(_service.Store.Current());
     }

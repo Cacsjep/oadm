@@ -14,14 +14,14 @@ Apache 2.0).
     are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
     `POST .../simplereenroll`; everything else and unknown or disabled profiles 404. Who may enroll: the camera's Axis
-    device ID (or a certificate EST issued it that is still kept, chaining to the OADM CA) whose serial is a managed device of
+    device ID (or a valid certificate of the OADM CA for it, with or without a record) whose serial is a managed device of
     the same site. Answers: PKCS#7 certs-only, base64 at 76 characters, leaf and chain. Refusals: 401 (no or no valid
     identity), 403 (not managed, other site, certificate of another camera), 400 (request unreadable or refused by the CA), 503 (no PRO, no CA).
   - `DeviceId/AxisDeviceId`: the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
     keep-alive); `Protocol/EstMessages`: PKCS#7 certs-only and PKCS#10 in base64.
-  - `Serving/EstStore`: plugin settings `config` (port, profiles, enrollments kept 100..5000), `enrollments` (newest
+  - `Serving/EstStore`: plugin settings `config` (interface, port, profiles, enrollments kept 100..5000), `enrollments` (newest
     first), `sites`; plugin records `certificates` (`ctx.Records`, one row per certificate: per device and profile the
     newest and the one before it; dropped 30 days after they end or when the device is gone; only changed rows are
     written); written at most every 2 s.

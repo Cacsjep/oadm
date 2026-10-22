@@ -137,7 +137,7 @@ public sealed record NotRenewedRow(IssuedCertificate Source)
 
 /// <summary>
 /// The EST server page (docs/spec/est-server.md): port, profiles and Save with the status left of it; the newest
-/// enrollments; the certificates EST issued. <see cref="Activate"/> reads the state and watches the live
+/// enrollments; the certificates the cameras did not renew in time. <see cref="Activate"/> reads the state and watches the live
 /// events while the page is shown.
 /// </summary>
 public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
@@ -232,7 +232,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     public bool HasListenerProblems => ListenersText.Length > 0;
 
-    /// <summary>"2 cameras" or "Showing 500 of 1,204".</summary>
+    /// <summary>"2 certificates" or "Showing 500 of 1,204".</summary>
     [ObservableProperty]
     public partial string NotRenewedSummary { get; set; } = string.Empty;
 
@@ -491,7 +491,8 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     {
         StatusText = state.StatusText;
         StatusOk = state.StatusOk;
-        ListenersText = string.Join(Environment.NewLine, state.Listeners.Where(l => !l.Ok).Select(l => l.Text));
+        // The sites' relays only: this server's own listener is the status chip already.
+        ListenersText = string.Join(Environment.NewLine, state.Listeners.Where(l => !l.Ok && l.SiteId is not null).Select(l => l.Text));
         Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
         if (!form)
         {
