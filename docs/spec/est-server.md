@@ -104,7 +104,9 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    ID alias, `services` (`WEBSERVER` for HTTPS, `NETAUTH` for IEEE 802.1X, `MQTT`, `RTSPS`), `subject.cn` (the device's
    address) and `subjectAlternativeNames` (`IP:` the address, `DNS:` host name and `axis-<serial>.local`).
 5. Wait until the camera reports **ENROLLED** (poll every 3 s, up to 2 minutes; a refusal the EST server recorded for this
-   device and profile ends the wait at once with its reason). Seen on 10.0.0.48: ENROLLED within about 3 s; the
+   device and profile ends the wait at once with its reason; after 2 minutes the profile's status says why:
+   `UNCONNECTED` = the camera did not reach the server ("could not reach the EST server ... TCP <port>"), `CONNECTED` =
+   it reached the server but got no certificate). Seen on 10.0.0.48: ENROLLED within about 3 s; the
    certificate is stored under the profile id (`oadm_https`); the camera also installs the CA from the answer by itself
    (alias = the CA's common name). With HTTPS on (`HttpsEnabled`): the web server switches to the new certificate a few
    seconds later and restarts (connections drop); the task pins it (`UpdateDeviceTlsAsync`, again for up to 60 s while
@@ -120,12 +122,11 @@ rollback exists on the camera; the set-up is safe to run again (idempotent). Har
 `OADM_DEV_CAMERAS`): a real EST server on this computer with a test CA, the real task on 10.0.0.48, then the camera back
 as before (profile removed, previous web server certificate, test certificates deleted).
 
-**The camera's own EST errors** (not built yet): the camera sends the event `tnsaxis:CertificateManagement/EST/Error` (profile, error code
-0..7: startup, test connection, connection, enrollment, re-enrollment; internal or external, and a message such as
-"SSL peer certificate ... was not OK") on its event stream. The plugin listens for it on the set-up cameras (the
-device events connection of OADM, like Device triggers) and shows it in **Enrollments** as "Camera: <message>", so a
-renewal that never reaches the server is visible too. Reference: VAPIX "Enrollment over secure transport API"
-(`cert-est.v1`).
+**The camera's own EST errors**: VAPIX documents an event `tnsaxis:CertificateManagement/EST/Error`, but 10.0.0.48
+(AXIS OS 12.11.77) neither declares it nor sends it: probed 2026-10-22 with a profile whose server does not answer
+(status stays `UNCONNECTED`) and with an EST server that refuses the camera (status `CONNECTED`); the event stream
+carried only the audit log line of the profile change (`EstEventProbeTests`, HardwareWrite). So the set-up reads the
+profile status instead, and OADM keeps no event stream open to the cameras for EST.
 
 ## License of the code
 
@@ -142,7 +143,7 @@ THIRD-PARTY notices list the plugin's license.
    from axis.com, checksums checked), managed-device check, issuing through PKI, enrollments and certificates lists,
    revoke, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
 3. **Deploy task** and remove task (built) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
-   write test on 10.0.0.48 passed. Open: the camera's own EST error events in Enrollments, removing unused certificates.
+   write test on 10.0.0.48 passed. Open: removing unused certificates.
 4. **Sites** (built): `ISites.OpenTcpRelayAsync` per bound site with set-up cameras (`EstService.ServeSiteAsync`, called
    by the set-up task with the node's address towards the camera, `LocalAddressTowardsAsync` on the device's route); the
    addresses per site are stored (plugin setting `sites`) and form the site's own server certificate (picked by the

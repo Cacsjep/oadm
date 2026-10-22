@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Plugins.Est.Serving;
 using Oadm.Plugins.Est.Tasks;
 using Oadm.Sdk.Devices;
@@ -160,6 +162,30 @@ public sealed class TaskTests : IAsyncLifetime
         Assert.Equal("The EST server refused the camera: " + EstRefusals.NotManaged, error.Message);
     }
 
+    [Theory]
+    [InlineData("CONNECTED", false)]
+    [InlineData("UNCONNECTED", true)]
+    public async Task A_camera_without_a_certificate_after_two_minutes_says_whether_it_reached_the_server(string status, bool unreachable)
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time });
+        await est.StartAsync(CancellationToken.None);
+        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        _camera.Enroll = false;
+        _camera.ProfileStatus = status;
+        var ctx = Context();
+
+        var running = new EstSetupTask(() => est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None);
+        while (!running.IsCompleted)
+        {
+            time.Advance(TimeSpan.FromSeconds(3)); // the camera is asked every 3 s for 2 minutes
+            await Task.Delay(1);
+        }
+
+        var error = await Assert.ThrowsAsync<TimeoutException>(() => running);
+        Assert.Equal(unreachable ? EstTaskIds.NotReached(est.Store.Config.Port) : EstTaskIds.NoCertificate, error.Message);
+    }
+
     [Fact]
     public async Task Remove_removes_only_the_profiles_oadm_wrote()
     {
@@ -193,8 +219,10 @@ public sealed class TaskTests : IAsyncLifetime
 
         public bool HasEstApi { get; set; } = true;
 
-        /// <summary>A new profile reports ENROLLED (else CONNECTED for ever).</summary>
+        /// <summary>A new profile reports ENROLLED (else <see cref="ProfileStatus"/> for ever).</summary>
         public bool Enroll { get; set; } = true;
+
+        public string ProfileStatus { get; set; } = "CONNECTED";
 
         public Action? OnProfileAdded { get; set; }
 
@@ -243,7 +271,7 @@ public sealed class TaskTests : IAsyncLifetime
         private HttpResponseMessage AddProfile(string body)
         {
             var profile = JsonNode.Parse(body)!["data"]!.AsObject().DeepClone().AsObject();
-            profile["status"] = Enroll ? "ENROLLED" : "CONNECTED";
+            profile["status"] = Enroll ? "ENROLLED" : ProfileStatus;
             Profiles[profile["id"]!.GetValue<string>()] = profile;
             OnProfileAdded?.Invoke();
             return Json("""{"status":"success"}""");

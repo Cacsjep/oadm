@@ -12,6 +12,11 @@ version and date, and the release workflow copies it into the GitHub release.
   allow TCP 9454 when the first camera there is set up; the EST server page shows the sites whose node has not allowed it
   yet.
 
+### Changed
+
+- Set up certificate enrollment: when a camera gets no certificate within 2 minutes, the task says whether the camera
+  could not reach the EST server or reached it and got no certificate.
+
 ## [4.1.0-rc.2] - 2026-10-22
 
 ### Added

@@ -246,7 +246,7 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
         public void Flush() => Lines.AddRange(StepRun.Lines(_steps));
     }
 
-    private sealed class Devices : IDeviceRepository
+    internal sealed class Devices : IDeviceRepository
     {
         public List<IDeviceInfo> List { get; } = [];
 
@@ -256,7 +256,7 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
     }
 
     /// <summary>A real TCP listener on every address (the test computer's network).</summary>
-    private sealed class RealNetwork : IPluginNetwork, IAsyncDisposable
+    internal sealed class RealNetwork : IPluginNetwork, IAsyncDisposable
     {
         private readonly List<RealListener> _listeners = [];
 

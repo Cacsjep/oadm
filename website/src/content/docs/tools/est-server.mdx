@@ -184,7 +184,8 @@ For example, send an email when an enrollment is refused.
 | **The camera supports none of the EST server's profiles.** | Turn on a profile whose use the camera supports. |
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
 | Refused: **The certificate was revoked. Set up the camera again.** | Run Set up certificate enrollment on the camera. |
-| The camera does not get its certificate within 2 minutes | Check that the camera reaches the server on the port (firewall, routing). The Enrollments list shows what reached the server. |
+| **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server on TCP 9454 (or the port you chose). |
+| **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |
 | At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |
 | At a site: **site offline** | The site node is not connected. The camera renews when it is back. |
 

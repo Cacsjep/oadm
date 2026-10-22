@@ -37,6 +37,10 @@ public static class EstTaskIds
     public const string NoCa = "The PKI has no certificate authority. Create one on the PKI page. Nothing was changed.";
     public const string Dot1xSkipped = "IEEE 802.1X is on: the IEEE 802.1X profile was skipped, so the camera keeps the certificate it uses for network access.";
     public const string Dot1xReplaced = "IEEE 802.1X is on: the IEEE 802.1X profile replaces the certificate the camera uses for network access, as chosen when the task started.";
+    public static string NotReached(int port) => string.Create(CultureInfo.InvariantCulture,
+        $"The camera could not reach the EST server within 2 minutes. Check that a firewall lets the camera reach this computer on TCP {port}.");
+
+    public const string NoCertificate = "The camera reached the EST server but got no certificate within 2 minutes. The Enrollments list shows what reached the server.";
     public const string AlreadySetUp = "The camera already has these enrollment profiles. No profile was written.";
 
     /// <summary>The right to run the EST tasks (it also lifts a revoke): not for operators unless an administrator gives it.</summary>
@@ -473,8 +477,10 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                         throw new TimeoutException("The camera did not get its certificate: " + relay.StateText + ".");
                     }
 
-                    throw new TimeoutException(string.Create(CultureInfo.InvariantCulture,
-                        $"The camera did not get its certificate within {EnrollTimeout.TotalMinutes:0} minutes (status {status ?? "unknown"}). The EST server page lists what reached it."));
+                    // The camera's own status tells the two cases apart (it sends no event for a failed enrollment).
+                    throw new TimeoutException(string.Equals(status, "CONNECTED", StringComparison.OrdinalIgnoreCase)
+                        ? EstTaskIds.NoCertificate
+                        : EstTaskIds.NotReached(est.Store.Config.Port));
                 }
 
                 await Task.Delay(PollInterval, est.Time, ct).ConfigureAwait(false);
