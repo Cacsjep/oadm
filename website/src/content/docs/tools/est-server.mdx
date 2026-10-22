@@ -98,9 +98,11 @@ details show them.
 <Steps>
 
 1. Select the cameras on the **Devices** page, right-click and open **Security**.
-2. Click **Set up certificate enrollment**. When some of the cameras have IEEE 802.1X on, the dialog asks whether to
-   replace their network access certificate too (see below). Click **Set up**.
-3. Watch the task in the tasks pane. Each camera is one task with its steps.
+2. Click **Certificate enrollment**. The dialog shows the enrollment profiles of the first camera; with several cameras,
+   choose one at the top right. When some of the cameras have IEEE 802.1X on, the dialog asks whether to replace their
+   network access certificate too (see below).
+3. Click **Set up**.
+4. Watch the task in the tasks pane. Each camera is one task with its steps.
 
 </Steps>
 
@@ -128,11 +130,22 @@ Tick it only when your RADIUS server trusts the OADM CA, for example after **Ena
 these cameras up with the OADM CA. Cameras with IEEE 802.1X off get the `dot1x` profile either way.
 </Aside>
 
-To stop a camera from renewing, use **Remove certificate enrollment** (Security). It removes the profiles OADM added;
-the certificates stay on the camera until they expire.
+### The dialog
 
-Both tasks need the permission **Set up certificate enrollment** (Users page, roles). Administrators have it; give it to
-operators who should set up cameras.
+| Column | Meaning |
+|---|---|
+| **Profile** | The profile's name on the camera. OADM's start with `oadm_`. |
+| **Use** | HTTPS, IEEE 802.1X, MQTT or RTSPS. |
+| **Set up by** | **OADM**, or **Other** for a profile of another EST server. |
+| **EST server** | Where the camera gets and renews the certificate. |
+| **Status** | **Enrolled**, **No certificate** (the camera reached the server but got none) or **Server not reached**. |
+
+To stop renewals, select a profile and click **Remove**, then **Remove** again in the confirmation. It is removed from
+every selected camera that has it, also a profile of another EST server. The certificates stay on the cameras until
+they expire.
+
+Setting up and removing need the permission **Set up certificate enrollment** (Users page, roles). Administrators have
+it; give it to operators who should set up cameras.
 
 ## Cameras at sites
 

@@ -18,11 +18,24 @@ namespace Oadm.Plugins.Est.Tasks;
 public static class EstTaskIds
 {
     public const string Setup = "oadm.est.setup";
-    public const string SetupName = "Set up certificate enrollment";
-    public const string Remove = "oadm.est.remove";
-    public const string RemoveName = "Remove certificate enrollment";
 
-    /// <summary>Camera profiles OADM writes are named "oadm_&lt;profile&gt;"; the remove task removes only these.</summary>
+    /// <summary>The menu entry (Security) and the dialog.</summary>
+    public const string MenuName = "Certificate enrollment";
+
+    /// <summary>The name of a run that sets up.</summary>
+    public const string SetupName = "Set up certificate enrollment";
+
+    /// <summary>The dialog's read-only query: the camera's enrollment profiles (<see cref="CameraProfileList"/>).</summary>
+    public const string ListProfilesMethod = "listProfiles";
+
+    /// <summary>The name of a run that removes profiles.</summary>
+    public static string RemoveName(IReadOnlyList<string> profiles) =>
+        profiles.Count == 1 ? "Remove enrollment profile " + profiles[0] : string.Create(CultureInfo.InvariantCulture, $"Remove {profiles.Count} enrollment profiles");
+
+    public const string RemoveStep = "Remove the enrollment profiles";
+    public const string NothingToRemove = "The camera has none of these enrollment profiles. Nothing was changed.";
+
+    /// <summary>Camera profiles OADM writes are named "oadm_&lt;profile&gt;".</summary>
     public const string ProfilePrefix = "oadm_";
 
     /// <summary>"OADM CA 3FA2B4C1": the same aliases as the PKI plugin, so both reuse a CA certificate already on the camera.</summary>
@@ -92,7 +105,7 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
 
     public bool ShowInToolbar => false;
 
-    /// <summary>A confirmation in the client (no options).</summary>
+    /// <summary>The dialog: the cameras' enrollment profiles, Set up and Remove.</summary>
     public bool RequiresDialog => true;
 
     /// <summary>Cameras at a site enroll through their site node (a relay of the EST port).</summary>
@@ -100,7 +113,7 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
 
     protected EstService? Service => service();
 
-    /// <summary>Both tasks change how cameras get certificates: a right of its own.</summary>
+    /// <summary>Setting up and removing change how cameras get certificates: a right of its own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
         new(EstTaskIds.EnrollPermission, "Set up certificate enrollment", "Set up and remove certificate enrollment on cameras.") { OperatorDefault = false },
@@ -135,7 +148,7 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
 /// EST server's profiles (at most two, the uses the camera supports), trusts the OADM CA, signs in with its Axis device
 /// ID, enrolls and renews by itself. Safe to run again: the same set writes nothing.
 /// </summary>
-public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(service)
+public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(service), ITaskPlugin, ITaskPluginQuery
 {
     private static readonly TimeSpan EnrollTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -143,11 +156,21 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
     public override string Id => EstTaskIds.Setup;
 
-    public override string DisplayName => EstTaskIds.SetupName;
+    public override string DisplayName => EstTaskIds.MenuName;
+
+    /// <summary>"Set up certificate enrollment" or "Remove enrollment profile oadm_https" in the tasks pane.</summary>
+    string ITaskPlugin.GetTaskName(string? payloadJson) =>
+        SetupPayload.Parse(payloadJson) is { Action: SetupAction.Remove } remove ? EstTaskIds.RemoveName(remove.Profiles) : EstTaskIds.SetupName;
 
     public override async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        if (SetupPayload.Parse(payloadJson) is { Action: SetupAction.Remove } remove)
+        {
+            await RemoveAsync(ctx, device, remove.Profiles, ct).ConfigureAwait(false);
+            return;
+        }
+
         ArgumentNullException.ThrowIfNull(device);
 
         var (est, chain, profiles, address) = await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
@@ -541,18 +564,13 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     }
 
     private static string Truncate(string text, int length) => text.Length <= length ? text : text[..length];
-}
 
-/// <summary>"Remove certificate enrollment": removes the EST profiles OADM wrote ("oadm_..."); certificates stay until they end.</summary>
-public sealed class EstRemoveTask(Func<EstService?> service) : EstTaskBase(service)
-{
-    public override string Id => EstTaskIds.Remove;
-
-    public override string DisplayName => EstTaskIds.RemoveName;
-
-    public override async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
+    /// <summary>
+    /// Removes the chosen profiles from the camera, any profile (also of another EST server); profiles the camera does not
+    /// have are skipped. OADM's own profiles stop the Not renewed check of their certificates.
+    /// </summary>
+    private async Task RemoveAsync(ITaskExecutionContext ctx, IDeviceInfo device, IReadOnlyList<string> ids, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
         {
@@ -560,26 +578,51 @@ public sealed class EstRemoveTask(Func<EstService?> service) : EstTaskBase(servi
             step.Complete();
         }).ConfigureAwait(false);
 
-        var ours = (await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false))
-            .Where(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal))
+        var present = (await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false))
+            .Where(p => ids.Contains(p.Id, StringComparer.Ordinal))
             .ToList();
-        if (ours.Count == 0)
+        if (present.Count == 0)
         {
-            ctx.Log(TaskLogLevel.Info, "The camera has no enrollment profiles of OADM. Nothing was changed.");
+            ctx.Log(TaskLogLevel.Info, EstTaskIds.NothingToRemove);
             return;
         }
 
-        await ctx.StepAsync(EstTaskIds.RemoveOldStep, async step =>
+        await ctx.StepAsync(EstTaskIds.RemoveStep, async step =>
         {
-            foreach (var profile in ours)
+            foreach (var profile in present)
             {
                 await CameraEstApi.RemoveProfileAsync(ctx.Vapix, profile.Id, ct).ConfigureAwait(false);
             }
 
-            step.Complete(string.Join(", ", ours.Select(p => p.Id)));
+            step.Complete(string.Join(", ", present.Select(p => p.Id)));
         }).ConfigureAwait(false);
 
-        // The camera no longer renews: its certificates are never flagged Not renewed.
-        Service?.Store.StopRenewals(device.Id, Service.Time.GetUtcNow().UtcDateTime);
+        // The camera no longer renews these: their certificates are never flagged Not renewed.
+        if (Service is { } est)
+        {
+            foreach (var ours in present.Where(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
+            {
+                est.Store.StopRenewals(device.Id, est.Time.GetUtcNow().UtcDateTime, ours.Id[EstTaskIds.ProfilePrefix.Length..]);
+            }
+        }
+    }
+
+    /// <summary>The dialog's read-only query: the camera's enrollment profiles.</summary>
+    public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        if (!string.Equals(method, EstTaskIds.ListProfilesMethod, StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+        }
+
+        var apis = await CameraEstApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
+        if (!apis.HasCert || !apis.HasCertEst)
+        {
+            return EstJson.Serialize(new CameraProfileList(false, []));
+        }
+
+        var profiles = await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+        return EstJson.Serialize(new CameraProfileList(true, [.. profiles.Select(p => new CameraProfileInfo(p.Id, p.Services, p.Server, p.Status))]));
     }
 }

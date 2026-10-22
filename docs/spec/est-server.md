@@ -29,8 +29,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     details). No Revoke (decision 2026-10-22): without a revocation list it only stopped renewals, which Remove
     certificate enrollment and removing the device already do; real revocation (a CRL the RADIUS servers of IEEE 802.1X
     check) is a later feature of PKI.
-- **Task "Set up certificate enrollment"** (device context menu, Security; one task per device): which profile serves
-  which use; Nothing was changed on cameras that cannot do it. **Task "Remove certificate enrollment"**.
+- **Task "Certificate enrollment"** (device context menu, Security; one task per device), its dialog like the
+  Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set
+  up by OADM or Other, EST server, status Enrolled / No certificate / Server not reached), **Remove** (red, inline
+  confirmation; any profile, also of another EST server, decision 2026-10-22) and **Set up**; runs are named "Set up
+  certificate enrollment" or "Remove enrollment profile <id>".
 - **Event rules**: "Certificate enrolled", "Enrollment refused" (device, profile, reason), "Certificate not renewed"
   (device, profile, valid until).
 
@@ -100,13 +103,13 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
   ones: plus a tenth of the lifetime; 1 year: day 184.5), without a newer one. Checked 1 minute after the start and
   then every hour; flagged once (`NotRenewedUtc`, persisted): the event "Certificate not renewed", a warning in the
   server log, the page reads its list again. A later renewal replaces the record and ends it.
-- Never flagged (`RenewalStoppedUtc`): the cameras of "Remove certificate enrollment".
+- Never flagged (`RenewalStoppedUtc`): certificates of an `oadm_` profile removed with **Remove** in the dialog.
 
 ## Setting up a camera (the deploy task)
 
-Built in stage 3 (`Tasks/EstTasks.cs`), tested on 10.0.0.48. Device context menu, Security: **Set up certificate
-enrollment** (its dialog: the IEEE 802.1X choice below) and **Remove certificate enrollment** (a confirmation); the
-profiles come from the EST server page. Devices at a site too (stage 4).
+Built in stage 3 (`Tasks/EstTasks.cs`), tested on 10.0.0.48. Device context menu, Security: **Certificate enrollment**
+(`EstSetupTask`, one task id `oadm.est.setup`; the payload `SetupPayload` sets up, with the IEEE 802.1X choice below, or
+removes the chosen profile ids); the profiles come from the EST server page. Devices at a site too (stage 4).
 
 Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+** (`CanRun`), and before the first write a fresh
 `config/discover` with `cert` v1 and `cert-est` v1, an Axis device ID certificate of this camera's serial on the camera
@@ -146,8 +149,9 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 6. Not built yet: removing unused certificates OADM put there (never device ID certificates, their CAs, factory or
    public CAs).
 
-Both tasks need the task permission "Set up certificate enrollment" (`enroll`, not for operators by default). Remove
-certificate enrollment removes only the profiles named `oadm_...`; the certificates stay until they end. No
+Setting up and removing need the task permission "Set up certificate enrollment" (`enroll`, not for operators by
+default). Remove removes the chosen profiles that the camera has (others are skipped, "Nothing was changed" when none);
+the certificates stay until they end. No
 rollback exists on the camera; the set-up is safe to run again (idempotent). Hardware test:
 `tests/Oadm.Plugins.Est.Tests/EstHardwareWriteTests.cs` (`OADM_EST_HARDWARE_WRITE=1`, `OADM_EST_SERVER_ADDRESS`,
 `OADM_DEV_CAMERAS`): a real EST server on this computer with a test CA, the real task on 10.0.0.48, then the camera back

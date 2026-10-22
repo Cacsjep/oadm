@@ -31,14 +31,15 @@ Apache 2.0).
   - Events: "Certificate enrolled" (`oadm.est.enrolled`: profile, kind) and "Enrollment refused" (`oadm.est.refused`:
     profile, reason), only for managed devices; "Certificate not renewed" (`oadm.est.notrenewed`: profile, validUntil)
     from the hourly `CheckRenewalsAsync` (newest certificate per device and profile, halfway through its lifetime plus
-    `NotRenewedGrace`: Axis cameras renew halfway and retry daily; Remove certificate enrollment stops the check).
+    `NotRenewedGrace`: Axis cameras renew halfway and retry daily; removing an `oadm_` profile stops the check).
   - Methods: `getState`, `getEnrollments`, `getNotRenewed` (500 at most) for everyone; `save` and `clearEnrollments`
     Admin (permission `oadm.est:manage`).
-- Tasks (`Tasks/EstTasks.cs`, Security; the set-up dialog `EstSetupWindow` with the IEEE 802.1X choice, the remove
-  confirmation in `EstTaskDialogs.cs`): **Set up certificate enrollment**
+- Task **Certificate enrollment** (`Tasks/EstTasks.cs`, Security; the dialog `EstSetupWindow` like the Applications
+  dialog: the chosen camera's profiles through the read-only query `listProfiles`, Remove with an inline confirmation, Set
+  up with the IEEE 802.1X choice): set up
   (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` with the device ID, the OADM
-  CA chain, this server as EST server; waits for ENROLLED; pins a new HTTPS certificate) and **Remove certificate
-  enrollment** (only `oadm_...` profiles). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
+  CA chain, this server as EST server; waits for ENROLLED; pins a new HTTPS certificate) or remove the chosen profiles (any
+  profile; payload `SetupPayload.Action`). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
   stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`), whose connections get the site's own
   server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
 - Client part (`Oadm.Plugins.Est.Client.dll`): General (listen on, port, enrollments kept) and Profiles (name, use, days,

@@ -5,27 +5,81 @@
         x:Class="Oadm.Plugins.Est.Client.EstSetupWindow"
         x:DataType="vm:EstSetupViewModel"
         Title="{x:Static vm:EstSetupViewModel.Title}"
-        Width="560" SizeToContent="Height"
+        Width="980" Height="560" MinWidth="720" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Single operation: title bar, the text and the IEEE 802.1X choice in Border.dialogBody, footer. -->
-  <Grid RowDefinitions="Auto,Auto,Auto">
+  <!-- Like the Applications dialog: title bar, one card with the chosen camera's profiles, the IEEE 802.1X choice, footer. -->
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:EstSetupViewModel.Title}" />
-    <Border Grid.Row="1" Classes="dialogBody">
-      <StackPanel Spacing="12">
-        <TextBlock TextWrapping="Wrap" Text="{Binding Message}" />
-        <StackPanel Spacing="4" IsVisible="{Binding ShowDot1x}">
-          <CheckBox IsChecked="{Binding ReplaceDot1x}">
-            <TextBlock TextWrapping="Wrap" Text="{Binding Dot1xText}" />
-          </CheckBox>
-          <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="28,0,0,0" Text="{x:Static vm:EstSetupViewModel.Dot1xHint}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="Enrollment profiles" Description="{Binding ScopeText}">
+          <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" IsVisible="{Binding ShowDevicePicker}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:EstDeviceChoice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:CardHeader>
+
+        <!-- Toolbar: same buttons as the Applications dialog -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,10">
+          <Button Classes="toolbar danger" Command="{Binding RemoveCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Remove" />
+          </Button>
+          <Border Classes="vseparator" />
+          <Button Classes="toolbar" Command="{Binding RefreshCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
+          </Button>
         </StackPanel>
-      </StackPanel>
+
+        <Panel Grid.Row="2">
+          <DataGrid ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" SelectionMode="Single"
+                    IsReadOnly="True" CanUserReorderColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Profile" Binding="{Binding Id}" Width="160" x:DataType="vm:EnrollmentProfileRow" />
+              <DataGridTextColumn Header="Use" Binding="{Binding Uses}" Width="120" x:DataType="vm:EnrollmentProfileRow" />
+              <DataGridTextColumn Header="Set up by" Binding="{Binding SetUpBy}" Width="110" x:DataType="vm:EnrollmentProfileRow" />
+              <DataGridTextColumn Header="EST server" Binding="{Binding Server}" Width="*" x:DataType="vm:EnrollmentProfileRow" />
+              <DataGridTemplateColumn Header="Status" Width="170" SortMemberPath="Status">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:EnrollmentProfileRow">
+                    <ui:StatusChip Margin="10,0" Text="{Binding Status}" IsOk="{Binding IsEnrolled}" IsError="{Binding IsProblem}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <ProgressBar Classes.stream="{Binding IsLoading}" VerticalAlignment="Top" IsVisible="{Binding IsLoading}" />
+          <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasError}" />
+          <TextBlock Classes="secondary" Text="No enrollment profiles. Set up adds the profiles of the EST server." HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsEmpty}" />
+        </Panel>
+
+        <!-- Remove confirmation -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,12,0,0" IsVisible="{Binding ConfirmRemoveVisible}">
+          <TextBlock Classes="warning" Text="{Binding ConfirmRemoveText}" TextWrapping="Wrap" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0">
+            <Button Classes="secondary" Content="Keep" Command="{Binding CancelRemoveCommand}" />
+            <Button Classes="danger" Content="Remove" Command="{Binding ConfirmRemoveCommand}" />
+          </StackPanel>
+        </Grid>
+      </Grid>
     </Border>
-    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Set up" Command="{Binding OkCommand}" />
+
+    <StackPanel Grid.Row="2" Spacing="4" Margin="16,12,16,0" IsVisible="{Binding ShowDot1x}">
+      <CheckBox IsChecked="{Binding ReplaceDot1x}">
+        <TextBlock TextWrapping="Wrap" Text="{Binding Dot1xText}" />
+      </CheckBox>
+      <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="28,0,0,0" Text="{x:Static vm:EstSetupViewModel.Dot1xHint}" />
+    </StackPanel>
+
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Set up" Command="{Binding OkCommand}" IsDefault="True"
+              ToolTip.Tip="Adds the EST server's profiles to the cameras" />
     </ui:DialogFooter>
   </Grid>
 </Window>

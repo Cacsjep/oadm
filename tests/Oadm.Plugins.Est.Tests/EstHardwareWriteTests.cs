@@ -57,6 +57,7 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
 
         var webBefore = await Pki.Device.WebServerTls.GetAsync(vapix, ct);
         var caBefore = (await CameraEstApi.ListCaCertificatesAsync(vapix, ct)).Select(c => c.Alias).ToHashSet(StringComparer.Ordinal);
+        var certificatesBefore = (await CameraEstApi.ListCertificatesAsync(vapix, ct)).Select(c => c.Alias).ToHashSet(StringComparer.Ordinal);
         output.WriteLine($"Web server before: certificate {webBefore.CertificateAlias}");
         Assert.False(webBefore.CertificateAlias?.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) == true, "The camera still uses a test certificate: restore it first.");
 
@@ -122,8 +123,13 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
 
             Assert.DoesNotContain(again.Lines, l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal));
 
+            // The dialog's read-only query lists the new profile.
+            var listed = EstJson.Deserialize<CameraProfileList>(await task.QueryAsync(new QueryContext(vapix), device, EstTaskIds.ListProfilesMethod, null, ct));
+            output.WriteLine("Listed: " + string.Join(", ", listed.Profiles.Select(p => $"{p.Id} {p.Status} {string.Join("/", p.Services)} {p.Server}")));
+            Assert.Contains(listed.Profiles, p => p.Id == "oadm_https" && p.Status == "ENROLLED");
+
             var remove = new TaskContext(vapix, new FakeDeviceNetwork());
-            await new EstRemoveTask(() => est).ExecuteAsync(remove, device, "{}", ct);
+            await task.ExecuteAsync(remove, device, EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["oadm_https"] }), ct);
             Assert.Empty(await CameraEstApi.ReadProfilesAsync(vapix, ct));
         }
         finally
@@ -136,7 +142,7 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
 
             await RetryAsync(() => Pki.Device.WebServerTls.SetAsync(vapix, webBefore, ct));
             await Task.Delay(TimeSpan.FromSeconds(10), ct); // the web server restarts with its certificate
-            foreach (var certificate in (await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct))).Where(c => c.Alias.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
+            foreach (var certificate in (await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct))).Where(c => c.Alias.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) && !certificatesBefore.Contains(c.Alias)))
             {
                 await RetryAsync(() => Pki.Device.CertApi.DeleteCertificateAsync(vapix, certificate.Alias, ct));
             }
@@ -244,6 +250,13 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
         }
 
         public void Flush() => Lines.AddRange(StepRun.Lines(_steps));
+    }
+
+    private sealed class QueryContext(IVapixClient vapix) : ITaskQueryContext
+    {
+        public IVapixClient Vapix => vapix;
+
+        public Microsoft.Extensions.Logging.ILogger Logger => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
     }
 
     internal sealed class Devices : IDeviceRepository

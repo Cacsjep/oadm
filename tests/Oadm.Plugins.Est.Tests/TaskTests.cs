@@ -14,7 +14,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Est.Tests;
 
 /// <summary>
-/// "Set up certificate enrollment" and "Remove certificate enrollment" against a camera that answers like 10.0.0.48
+/// "Certificate enrollment" (set up and remove) against a camera that answers like 10.0.0.48
 /// (AXIS OS 12.11.77: its device ID certificates, its cert-est answers; recorded in Fixtures).
 /// </summary>
 public sealed class TaskTests : IAsyncLifetime
@@ -187,18 +187,61 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Remove_removes_only_the_profiles_oadm_wrote()
+    public async Task Remove_removes_the_chosen_profiles_also_of_another_est_server_and_names_the_task_after_them()
     {
         _camera.Profiles["oadm_https"] = new JsonObject { ["id"] = "oadm_https", ["services"] = new JsonArray("WEBSERVER") };
         _camera.Profiles["other"] = new JsonObject { ["id"] = "other", ["services"] = new JsonArray("MQTT") };
+        _camera.Profiles["keep"] = new JsonObject { ["id"] = "keep", ["services"] = new JsonArray("RTSPS") };
+        var task = new EstSetupTask(() => _est);
+        var payload = EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["oadm_https", "other", "missing"] });
         var ctx = Context();
 
-        await new EstRemoveTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None);
+        await task.ExecuteAsync(ctx, _device, payload, CancellationToken.None);
 
-        Assert.Equal(["other"], _camera.Profiles.Keys);
+        Assert.Equal(["keep"], _camera.Profiles.Keys);
+        Assert.Equal("oadm_https, other", StepRun.Detail(ctx.Steps, EstTaskIds.RemoveStep));
+        Assert.Equal("Remove 3 enrollment profiles", ((ITaskPlugin)task).GetTaskName(payload));
+        Assert.Equal("Remove enrollment profile other", ((ITaskPlugin)task).GetTaskName(EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["other"] })));
+        Assert.Equal(EstTaskIds.SetupName, ((ITaskPlugin)task).GetTaskName("{}"));
+        Assert.Equal(EstTaskIds.MenuName, task.DisplayName);
+
+        // A camera without any of them: nothing written.
+        var writes = _camera.Writes;
+        var again = Context();
+        await task.ExecuteAsync(again, _device, payload, CancellationToken.None);
+        Assert.Equal(writes, _camera.Writes);
+        Assert.Contains("Info: " + EstTaskIds.NothingToRemove, again.LogLines);
+    }
+
+    [Fact]
+    public async Task The_dialogs_query_lists_the_cameras_profiles_and_never_writes()
+    {
+        _camera.Profiles["oadm_https"] = new JsonObject { ["id"] = "oadm_https", ["services"] = new JsonArray("WEBSERVER"), ["status"] = "ENROLLED", ["server"] = "10.0.0.17:9454/.well-known/est/https" };
+        var query = new FakeQueryContext(_camera);
+
+        var json = await new EstSetupTask(() => _est).QueryAsync(query, _device, EstTaskIds.ListProfilesMethod, null, CancellationToken.None);
+
+        var list = EstJson.Deserialize<CameraProfileList>(json);
+        Assert.True(list.Supported);
+        var profile = Assert.Single(list.Profiles);
+        Assert.Equal(("oadm_https", "ENROLLED", "10.0.0.17:9454/.well-known/est/https"), (profile.Id, profile.Status, profile.Server));
+        Assert.Equal(["WEBSERVER"], profile.Services);
+        Assert.Equal(0, _camera.Writes);
+
+        _camera.HasEstApi = false;
+        Assert.False(EstJson.Deserialize<CameraProfileList>(await new EstSetupTask(() => _est).QueryAsync(query, _device, EstTaskIds.ListProfilesMethod, null, CancellationToken.None)).Supported);
+        await Assert.ThrowsAsync<ArgumentException>(() => new EstSetupTask(() => _est).QueryAsync(query, _device, "write", null, CancellationToken.None));
     }
 
     private FakeTaskContext Context() => new(_camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.17") } };
+
+    /// <summary>The query's context: the camera, read only.</summary>
+    private sealed class FakeQueryContext(IVapixClient vapix) : ITaskQueryContext
+    {
+        public IVapixClient Vapix => vapix;
+
+        public Microsoft.Extensions.Logging.ILogger Logger => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+    }
 
     private sealed class NoDevices : IDeviceRepository
     {

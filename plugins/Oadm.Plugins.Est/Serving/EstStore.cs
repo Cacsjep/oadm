@@ -309,15 +309,19 @@ public sealed class EstStore : IAsyncDisposable
     /// <summary>The camera did not renew the certificate in time.</summary>
     public void MarkNotRenewed(string serialNumber, DateTime nowUtc) => Change(serialNumber, c => c with { NotRenewedUtc = nowUtc });
 
-    /// <summary>No renewal is expected any more for the device's newest certificates (enrollment removed, device removed).</summary>
-    public void StopRenewals(Guid deviceId, DateTime nowUtc)
+    /// <summary>
+    /// No renewal is expected any more for the device's newest certificates (its enrollment profile was removed); null
+    /// <paramref name="profile"/> = every profile.
+    /// </summary>
+    public void StopRenewals(Guid deviceId, DateTime nowUtc, string? profile = null)
     {
         var changed = false;
         lock (_gate)
         {
             foreach (var (key, serial) in _newest)
             {
-                if (key.DeviceId == deviceId && _certificates.TryGetValue(serial, out var certificate) && certificate.RenewalStoppedUtc is null)
+                if (key.DeviceId == deviceId && (profile is null || string.Equals(key.Profile, profile, StringComparison.OrdinalIgnoreCase))
+                    && _certificates.TryGetValue(serial, out var certificate) && certificate.RenewalStoppedUtc is null)
                 {
                     _certificates[serial] = certificate with { RenewalStoppedUtc = nowUtc };
                     _changedCertificates.Add(serial);

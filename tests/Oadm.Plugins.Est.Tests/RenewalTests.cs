@@ -118,16 +118,19 @@ public sealed class RenewalTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Remove_certificate_enrollment_stops_the_renewal_check_of_the_camera()
+    public async Task Removing_an_oadm_profile_stops_the_renewal_check_of_its_certificates()
     {
         var issued = Issue("A1", "https", _time.GetUtcNow().UtcDateTime);
+        var other = Issue("B1", "mqtt", _time.GetUtcNow().UtcDateTime);
         var camera = new FakeCamera { Respond = (request, _) => request.RequestUri!.OriginalString == "config/discover"
             ? Json("""{"apis":{"cert":{"v1":{"version":"1.0","state":"released"}},"cert-est":{"v1":{"version":"1.0.1","state":"released"}}}}""")
             : Json("""{"status":"success","data":[{"id":"oadm_https","services":["WEBSERVER"]}]}""") };
 
-        await new EstRemoveTask(() => _est).ExecuteAsync(new FakeTaskContext(camera), _camera, "{}", CancellationToken.None);
+        var payload = EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["oadm_https"] });
+        await new EstSetupTask(() => _est).ExecuteAsync(new FakeTaskContext(camera), _camera, payload, CancellationToken.None);
 
         Assert.NotNull(_est.Store.FindCertificate(issued.SerialNumber)!.RenewalStoppedUtc);
+        Assert.Null(_est.Store.FindCertificate(other.SerialNumber)!.RenewalStoppedUtc); // another profile renews on
     }
 
     [Fact]

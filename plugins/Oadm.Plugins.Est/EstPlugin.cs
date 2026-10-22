@@ -25,10 +25,10 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public EstPlugin()
     {
-        TaskPlugins = [new Tasks.EstSetupTask(() => _service), new Tasks.EstRemoveTask(() => _service)];
+        TaskPlugins = [new Tasks.EstSetupTask(() => _service)];
     }
 
-    /// <summary>"Set up certificate enrollment" and "Remove certificate enrollment" (device context menu, Security).</summary>
+    /// <summary>"Certificate enrollment" (device context menu, Security): set up, or remove profiles.</summary>
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 
     /// <summary>The running server (null while stopped).</summary>

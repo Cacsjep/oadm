@@ -129,7 +129,7 @@ public sealed class PageTests : IAsyncLifetime
         Assert.Empty(vm.Enrollments);
         Assert.Empty(service.Store.Enrollments());
         Assert.False(vm.ClearEnrollmentsCommand.CanExecute(null));
-        Assert.Equal("No enrollments yet. Set up a camera with Set up certificate enrollment.", vm.EnrollmentsEmptyText);
+        Assert.Equal("No enrollments yet. Set up a camera with Certificate enrollment.", vm.EnrollmentsEmptyText);
         Assert.StartsWith("Delete every entry of the enrollments list?", _ctx.LastConfirm, StringComparison.Ordinal);
     }
 
@@ -223,39 +223,130 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
-    public void The_setup_dialog_offers_the_8021x_choice_only_for_cameras_with_8021x_on()
+    public async Task The_dialog_lists_the_chosen_cameras_profiles_and_removes_one_after_a_confirmation()
     {
+        var first = new FakeDevice { Address = "10.0.0.48", Model = "AXIS P3265-V" };
+        var second = new FakeDevice { Address = "10.0.0.49", Model = "AXIS M3215-LVE" };
+        var cameras = new DialogContext();
+        cameras.Profiles[first.Id] = new CameraProfileList(true,
+        [
+            new CameraProfileInfo("oadm_https", ["WEBSERVER"], "10.0.0.17:9454/.well-known/est/https", "ENROLLED"),
+            new CameraProfileInfo("corp_dot1x", ["NETAUTH"], "pki.example.com:443/.well-known/est/dot1x", "CONNECTED"),
+        ]);
+        cameras.Profiles[second.Id] = new CameraProfileList(false, []);
+        var vm = new EstSetupViewModel([first, second], cameras);
+        string? payload = null;
+        vm.CloseRequested += (_, ok) => payload = ok ? vm.Payload : null;
+
+        await vm.LoadAsync();
+        Assert.Equal(["oadm_https", "corp_dot1x"], vm.Profiles.Select(p => p.Id));
+        Assert.Equal([("HTTPS", "OADM", "Enrolled"), ("IEEE 802.1X", "Other", "No certificate")], vm.Profiles.Select(p => (p.Uses, p.SetUpBy, p.Status)));
+        Assert.Equal("Set up and Remove apply to all 2 selected devices.", vm.ScopeText);
+        Assert.False(vm.RemoveCommand.CanExecute(null));
+
+        vm.SelectedDevice = vm.Devices[1];
+        await Eventually.TrueAsync(() => !vm.IsLoading && vm.HasError, "the second camera was read");
+        Assert.Equal("The camera has no certificate enrollment. Needs AXIS OS 12.10 or later.", vm.ErrorMessage);
+        vm.SelectedDevice = vm.Devices[0];
+        await Eventually.TrueAsync(() => vm.Profiles.Count == 2, "the first camera again, from the cache");
+        Assert.Equal(1, cameras.Queries[first.Id]);
+
+        vm.SelectedProfile = vm.Profiles[1];
+        vm.RemoveCommand.Execute(null);
+        Assert.True(vm.ConfirmRemoveVisible);
+        Assert.Equal("Remove corp_dot1x from all 2 selected devices? OADM did not set it up: the cameras stop renewing the certificates of that EST server.", vm.ConfirmRemoveText);
+        vm.CancelRemoveCommand.Execute(null);
+        Assert.Null(payload);
+
+        vm.RemoveCommand.Execute(null);
+        vm.ConfirmRemoveCommand.Execute(null);
+        var remove = SetupPayload.Parse(payload);
+        Assert.Equal((SetupAction.Remove, "corp_dot1x"), (remove.Action, Assert.Single(remove.Profiles)));
+    }
+
+    [Fact]
+    public void Set_up_offers_the_8021x_choice_only_for_cameras_with_8021x_on()
+    {
+        string? payload = null;
         var without = new EstSetupViewModel([new FakeDevice(), new FakeDevice()]);
+        without.CloseRequested += (_, _) => payload = without.Payload;
         Assert.False(without.ShowDot1x);
         without.ReplaceDot1x = true; // hidden: it never counts
-        Assert.False(SetupPayload.Parse(without.Payload).ReplaceDot1x);
+        without.OkCommand.Execute(null);
+        Assert.Equal((SetupAction.Setup, false), (SetupPayload.Parse(payload).Action, SetupPayload.Parse(payload).ReplaceDot1x));
 
         var with = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice { Dot1xEnabled = true }, new FakeDevice()]);
+        with.CloseRequested += (_, _) => payload = with.Payload;
         Assert.True(with.ShowDot1x);
         Assert.Equal("Also replace the network access certificate of 2 cameras with IEEE 802.1X on", with.Dot1xText);
-        Assert.False(SetupPayload.Parse(with.Payload).ReplaceDot1x); // off by default
+        with.OkCommand.Execute(null);
+        Assert.False(SetupPayload.Parse(payload).ReplaceDot1x); // off by default
         with.ReplaceDot1x = true;
-        Assert.True(SetupPayload.Parse(with.Payload).ReplaceDot1x);
-        Assert.StartsWith("Set up certificate enrollment on 3 devices?", with.Message, StringComparison.Ordinal);
+        with.OkCommand.Execute(null);
+        Assert.True(SetupPayload.Parse(payload).ReplaceDot1x);
     }
 
     [Fact]
     public async Task Setup_dialog_renders()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var first = new FakeDevice { Address = "10.0.0.48", Model = "AXIS P3265-V", Dot1xEnabled = true };
+        var second = new FakeDevice { Address = "10.0.0.49", Model = "AXIS M3215-LVE" };
+        var empty = new FakeDevice { Address = "10.0.0.50", Model = "AXIS Q1656" };
+        var cameras = new DialogContext();
+        cameras.Profiles[first.Id] = new CameraProfileList(true,
+        [
+            new CameraProfileInfo("oadm_https", ["WEBSERVER"], "10.0.0.17:9454/.well-known/est/https", "ENROLLED"),
+            new CameraProfileInfo("corp_dot1x", ["NETAUTH"], "pki.example.com:443/.well-known/est/dot1x", "UNCONNECTED"),
+        ]);
+        cameras.Profiles[second.Id] = new CameraProfileList(false, []);
+        cameras.Profiles[empty.Id] = new CameraProfileList(true, []);
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
-        await session.Dispatch(() =>
+        await session.Dispatch(async () =>
         {
-            var vm = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice()]);
+            var vm = new EstSetupViewModel([first, second, empty], cameras);
             var window = new EstSetupWindow { DataContext = vm };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
+            await vm.LoadAsync();
             Pump();
             Capture(window, outDir, "est-setup-dialog.png");
+
+            vm.SelectedProfile = vm.Profiles[1];
+            vm.RemoveCommand.Execute(null);
+            Pump();
+            Capture(window, outDir, "est-setup-dialog-remove.png");
+
+            vm.CancelRemoveCommand.Execute(null);
+            vm.SelectedDevice = vm.Devices[2];
+            await Eventually.TrueAsync(() => !vm.IsLoading && vm.IsEmpty, "the empty camera");
+            Pump();
+            Capture(window, outDir, "est-setup-dialog-empty.png");
+
+            vm.SelectedDevice = vm.Devices[1];
+            await Eventually.TrueAsync(() => !vm.IsLoading && vm.HasError, "the camera without enrollment");
+            Pump();
+            Capture(window, outDir, "est-setup-dialog-unsupported.png");
             window.Close();
-            return Task.CompletedTask;
         }, CancellationToken.None);
         GC.KeepAlive(session);
+    }
+
+    /// <summary>The dialog's view of the server: the cameras' profiles as the task's query answers them.</summary>
+    private sealed class DialogContext : ITaskDialogContext
+    {
+        public Dictionary<Guid, CameraProfileList> Profiles { get; } = [];
+
+        public Dictionary<Guid, int> Queries { get; } = [];
+
+        public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
+        {
+            Assert.Equal(Oadm.Plugins.Est.Tasks.EstTaskIds.ListProfilesMethod, method);
+            Queries[deviceId] = Queries.GetValueOrDefault(deviceId) + 1;
+            return Task.FromResult<string?>(EstJson.Serialize(Profiles[deviceId]));
+        }
+
+        public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private static Window Host(Control view)

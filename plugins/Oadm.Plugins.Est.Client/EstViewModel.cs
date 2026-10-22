@@ -254,7 +254,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     /// <summary>"No enrollments yet ..." or "No enrollment matches the search."; null while rows show.</summary>
     public string? EnrollmentsEmptyText =>
         Enrollments.Count > 0 ? null
-        : _allEnrollments.Count == 0 ? "No enrollments yet. Set up a camera with Set up certificate enrollment."
+        : _allEnrollments.Count == 0 ? "No enrollments yet. Set up a camera with Certificate enrollment."
         : "No enrollment matches the search.";
 
     public bool HasNotRenewed => NotRenewed.Count > 0;

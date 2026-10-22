@@ -221,6 +221,12 @@ public sealed record SaveReply(EstState? State, string? Field = null, string? Er
 /// </summary>
 public sealed record SetupPayload(bool ReplaceDot1x = false)
 {
+    /// <summary>Set up (default) or remove <see cref="Profiles"/>.</summary>
+    public SetupAction Action { get; init; }
+
+    /// <summary>With <see cref="SetupAction.Remove"/>: the profile ids to remove from every selected camera (any profile).</summary>
+    public IReadOnlyList<string> Profiles { get; init; } = [];
+
     /// <summary>The payload of a run; an empty or unreadable one is the safe default (no replacement).</summary>
     public static SetupPayload Parse(string? json)
     {
@@ -251,3 +257,19 @@ public static class EstJson
         (string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, Options))
         ?? throw new ArgumentException("The request is empty.", nameof(json));
 }
+
+/// <summary>What a run of "Certificate enrollment" does.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SetupAction>))]
+public enum SetupAction
+{
+    Setup = 0,
+    Remove = 1,
+}
+
+/// <summary>The answer of the dialog's query <c>listProfiles</c>: the camera's enrollment profiles.</summary>
+/// <param name="Supported">The camera has certificate enrollment (cert and cert-est v1).</param>
+public sealed record CameraProfileList(bool Supported, IReadOnlyList<CameraProfileInfo> Profiles);
+
+/// <summary>One enrollment profile on a camera, as the dialog lists it.</summary>
+/// <param name="Status">The camera's status: ENROLLED, CONNECTED (reached the server, no certificate) or UNCONNECTED.</param>
+public sealed record CameraProfileInfo(string Id, IReadOnlyList<string> Services, string? Server, string? Status);

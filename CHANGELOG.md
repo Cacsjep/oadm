@@ -26,8 +26,11 @@ version and date, and the release workflow copies it into the GitHub release.
 
 - Settings: the server ID shows only in the **License** card, no longer also in the Server card.
 - EST server: the list of every certificate and **Revoke** are gone. The certificates are on the cameras (PKI page);
-  to stop renewals use **Remove certificate enrollment**. OADM keeps only the newest certificate of each camera and
+  to stop renewals remove the profile in the **Certificate enrollment** dialog. OADM keeps only the newest certificate of each camera and
   profile and the one before it.
+- EST server: one menu entry **Certificate enrollment** (Security) instead of two. Its dialog lists the enrollment
+  profiles of the chosen camera (also those of another EST server) with their status; **Remove** removes the selected
+  profile from every selected camera, **Set up** sets them up.
 - Set up certificate enrollment: when a camera gets no certificate within 2 minutes, the task says whether the camera
   could not reach the EST server or reached it and got no certificate.
 
