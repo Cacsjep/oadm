@@ -50,6 +50,10 @@ nothing in OADM changes, only PRO plugins read it.
   not valid; "Licensed to ..." below), **Import license** (file picker `.oadmlicense`) and **Remove license** (red,
   confirmed) for administrators, links **Start 30-day trial** (no license) and **Activate license** (unless a bought
   license is active) that open `https://oadm.app/activate/?server=<id>[&trial=1]`.
+- Issuing: the page `oadm.app/activate/` (`docs/spec/packaging.md` "Activation page") sends the server ID with a bought
+  license code, and the support forum returns the signed key as a `.oadmlicense` file (a code works for one server; the
+  same server can fetch it again); or the server ID with an email address, and the forum mails a 30-day trial key
+  (`features: ["trial"]`), once per server and per email address. The forum's own rules are documented in its repository.
 - Fake mode: keys signed with `FakeOadmApi.SampleLicenseKeys` for `FakeOadmApi.FakeServerId`.
 - Tests: `tests/Oadm.Core.Tests/Licensing/ProLicenseTests`, `tests/Oadm.Server.Tests/ProLicenseServiceTests`,
   `tests/Oadm.Client.Tests/LicenseCardTests`.

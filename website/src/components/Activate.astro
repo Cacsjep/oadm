@@ -1,0 +1,351 @@
+---
+// The activation page (/activate/): a bought license code or a 30-day trial for one OADM server. Both post to the support
+// forum, which signs the license key (docs/spec/licensing.md). `?server=<id>` fills the server ID (OADM's Settings > License
+// links here), `&trial=1` opens the trial.
+import { forumUrl } from '../lib/forum';
+---
+
+<section class="activate not-content" aria-labelledby="activate-title">
+	<h1 id="activate-title">Activate OADM <span class="pro-word">PRO</span></h1>
+	<p class="activate-lead">Find the server ID in OADM under Settings &gt; License.</p>
+
+	<div class="activate-card" data-portal={forumUrl}>
+		<div class="dl-tabs" role="tablist">
+			<button type="button" role="tab" id="activate-tab-license" aria-controls="activate-license" aria-selected="true" data-tab="license">Activate license</button>
+			<button type="button" role="tab" id="activate-tab-trial" aria-controls="activate-trial" aria-selected="false" tabindex="-1" data-tab="trial">Start 30-day trial</button>
+		</div>
+
+		<form id="activate-license" class="activate-form" role="tabpanel" aria-labelledby="activate-tab-license" data-kind="license" novalidate>
+			<div class="activate-fields">
+				<label>Server ID<input name="server" autocomplete="off" spellcheck="false" placeholder="7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37" /><span class="activate-error" hidden></span></label>
+				<label>License code<input name="code" autocomplete="off" spellcheck="false" placeholder="OADM-XXXX-XXXX-XXXX" /><span class="activate-error" hidden></span></label>
+				<label class="activate-trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
+			</div>
+			<p class="activate-message" role="status" hidden></p>
+			<div class="activate-done" hidden>
+				<button type="button" class="dl activate-again">Download again</button>
+				<p>In OADM, open Settings &gt; License and click Import license.</p>
+			</div>
+			<div class="activate-footer">
+				<a href={`${forumUrl}privacy/`}>Privacy notice</a>
+				<button type="submit" class="dl activate-send">Activate</button>
+			</div>
+		</form>
+
+		<form id="activate-trial" class="activate-form" role="tabpanel" aria-labelledby="activate-tab-trial" data-kind="trial" novalidate hidden>
+			<div class="activate-fields">
+				<label>Server ID<input name="server" autocomplete="off" spellcheck="false" placeholder="7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37" /><span class="activate-error" hidden></span></label>
+				<label>Email<input name="email" type="email" autocomplete="email" maxlength="254" /><span class="activate-error" hidden></span></label>
+				<label class="activate-trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
+			</div>
+			<p class="activate-hint">One trial per server. The license key comes by email.</p>
+			<p class="activate-message" role="status" hidden></p>
+			<div class="activate-done" hidden>
+				<p>Save the .oadmlicense file from the email. In OADM, open Settings &gt; License and click Import license.</p>
+			</div>
+			<div class="activate-footer">
+				<a href={`${forumUrl}privacy/`}>Privacy notice</a>
+				<button type="submit" class="dl activate-send">Start trial</button>
+			</div>
+		</form>
+	</div>
+</section>
+
+<script>
+	const card = document.querySelector<HTMLElement>('.activate-card');
+	if (card) {
+		const portal = card.dataset.portal ?? '';
+		const contact = 'contact@acs-dev.org';
+		const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+		const tabs = Array.from(card.querySelectorAll<HTMLButtonElement>('[role=tab]'));
+		const forms = Array.from(card.querySelectorAll<HTMLFormElement>('.activate-form'));
+
+		const select = (kind: string) => {
+			for (const tab of tabs) {
+				const on = tab.dataset.tab === kind;
+				tab.setAttribute('aria-selected', String(on));
+				tab.tabIndex = on ? 0 : -1;
+			}
+			for (const form of forms) form.hidden = form.dataset.kind !== kind;
+		};
+		tabs.forEach((tab) => tab.addEventListener('click', () => select(tab.dataset.tab!)));
+
+		// The link from OADM fills the server ID in both forms.
+		const params = new URLSearchParams(location.search);
+		const server = params.get('server')?.trim() ?? '';
+		if (server) forms.forEach((form) => (form.querySelector<HTMLInputElement>('input[name=server]')!.value = server));
+		if (params.get('trial') === '1') select('trial');
+
+		// "oadm abcd efgh jkmn", "ABCDEFGHJKMN" -> "OADM-ABCD-EFGH-JKMN".
+		const normalizeCode = (text: string) => {
+			let plain = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+			if (plain.startsWith('OADM')) plain = plain.slice(4);
+			return plain.length === 12 ? `OADM-${plain.slice(0, 4)}-${plain.slice(4, 8)}-${plain.slice(8)}` : text.trim().toUpperCase();
+		};
+
+		// An error directly below its field; it goes away once the field is edited.
+		const setError = (input: HTMLInputElement, text: string | null) => {
+			const error = input.parentElement!.querySelector<HTMLElement>('.activate-error')!;
+			error.textContent = text ?? '';
+			error.hidden = !text;
+			input.classList.toggle('invalid', !!text);
+		};
+		forms.forEach((form) =>
+			form.querySelectorAll<HTMLInputElement>('input').forEach((input) => input.addEventListener('input', () => setError(input, null))),
+		);
+
+		const check = (form: HTMLFormElement) => {
+			let first: HTMLInputElement | null = null;
+			const fail = (input: HTMLInputElement, text: string) => {
+				setError(input, text);
+				first ??= input;
+			};
+			const serverInput = form.querySelector<HTMLInputElement>('input[name=server]')!;
+			serverInput.value = serverInput.value.trim();
+			if (!guid.test(serverInput.value)) fail(serverInput, 'Enter the server ID from Settings > License in OADM.');
+			const code = form.querySelector<HTMLInputElement>('input[name=code]');
+			if (code) {
+				code.value = normalizeCode(code.value);
+				if (!/^OADM-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code.value)) fail(code, 'Enter the license code, OADM-XXXX-XXXX-XXXX.');
+			}
+			const email = form.querySelector<HTMLInputElement>('input[name=email]');
+			if (email) {
+				email.value = email.value.trim();
+				if (!email.value || !email.checkValidity()) fail(email, 'Enter a valid email address.');
+			}
+			(first as HTMLInputElement | null)?.focus();
+			return first === null;
+		};
+
+		const download = (text: string, fileName: string) => {
+			const url = URL.createObjectURL(new Blob([text + '\n'], { type: 'application/octet-stream' }));
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = fileName;
+			document.body.append(link);
+			link.click();
+			link.remove();
+			setTimeout(() => URL.revokeObjectURL(url), 60_000);
+		};
+
+		forms.forEach((form) => {
+			const kind = form.dataset.kind!;
+			const message = form.querySelector<HTMLElement>('.activate-message')!;
+			const send = form.querySelector<HTMLButtonElement>('.activate-send')!;
+			const done = form.querySelector<HTMLElement>('.activate-done')!;
+			const show = (text: string, ok: boolean) => {
+				message.textContent = text;
+				message.classList.toggle('ok', ok);
+				message.hidden = false;
+			};
+			// The forum does not answer: the request goes by email instead, with the form's content in the mail.
+			const showOffline = (data: Record<string, string>) => {
+				const lines = [`Server ID: ${data.server}`, kind === 'license' ? `License code: ${data.code}` : `Email: ${data.email}`];
+				const subject = kind === 'license' ? 'Activate OADM PRO' : 'OADM PRO trial';
+				const link = document.createElement('a');
+				link.href = `mailto:${contact}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
+				link.textContent = contact;
+				message.replaceChildren('Sorry, our server looks offline. Please send your request by email to ', link, '.');
+				message.classList.remove('ok');
+				message.hidden = false;
+			};
+
+			let license: { text: string; fileName: string } | null = null;
+			form.querySelector('.activate-again')?.addEventListener('click', () => {
+				if (license) download(license.text, license.fileName);
+			});
+
+			form.addEventListener('submit', async (event) => {
+				event.preventDefault();
+				message.hidden = true;
+				if (!check(form)) return;
+				const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
+				send.disabled = true;
+				try {
+					const response = await fetch(`${portal}api/portal/license/${kind === 'license' ? 'activate' : 'trial'}`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(data),
+					});
+					const answer = await response.json().catch(() => null);
+					if (response.ok && kind === 'license' && answer?.license) {
+						license = { text: answer.license, fileName: answer.fileName || 'oadm-pro.oadmlicense' };
+						download(license.text, license.fileName);
+						show('Your license key is downloading.', true);
+						done.hidden = false;
+						send.hidden = true;
+						return;
+					}
+					if (response.ok && kind === 'trial') {
+						form.querySelector<HTMLElement>('.activate-hint')!.hidden = true;
+						show(answer?.message || `We sent the trial license to ${data.email}.`, true);
+						done.hidden = false;
+						send.hidden = true;
+						return;
+					}
+					// The forum's own text for a refused request (wrong code, used elsewhere, too many requests, ...).
+					if (answer?.message && [400, 403, 404, 409, 429, 503].includes(response.status)) show(answer.message, false);
+					else showOffline(data);
+				} catch {
+					showOffline(data);
+				}
+				send.disabled = false;
+			});
+		});
+	}
+</script>
+
+<style>
+	.activate {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
+		max-width: 34rem;
+		margin: 3rem auto 0;
+		text-align: center;
+	}
+	.activate > * {
+		margin: 0;
+	}
+	.activate h1 {
+		color: var(--sl-color-white);
+		font-size: clamp(2rem, 5vw, 2.75rem);
+		font-weight: 700;
+		line-height: 1.15;
+	}
+	.activate .pro-word {
+		color: var(--sl-color-accent-high);
+	}
+	.activate-lead {
+		color: var(--sl-color-gray-2);
+	}
+	.activate-card {
+		width: 100%;
+		border: 1px solid color-mix(in srgb, var(--sl-color-accent) 45%, var(--sl-color-gray-5));
+		border-radius: 16px;
+		background: var(--sl-color-gray-6);
+		box-shadow: 0 0 80px -20px color-mix(in srgb, var(--sl-color-accent) 45%, transparent);
+		text-align: left;
+	}
+	.activate-card .dl-tabs {
+		padding-inline: 1.5rem;
+	}
+	.activate-form {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		padding: 1.5rem;
+	}
+	.activate-form[hidden] {
+		display: none;
+	}
+	.activate-form > *,
+	.activate-fields > * {
+		margin: 0;
+	}
+	.activate-fields {
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+	.activate-fields label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		font-weight: 500;
+	}
+	.activate-fields input {
+		width: 100%;
+		padding: 0.55rem 0.7rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 8px;
+		background: var(--sl-color-black);
+		color: var(--sl-color-white);
+		font: inherit;
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-sm);
+		font-weight: 400;
+	}
+	.activate-fields input[name='email'] {
+		font-family: inherit;
+	}
+	.activate-fields input:focus {
+		border-color: var(--sl-color-accent);
+		outline: none;
+	}
+	.activate-fields input.invalid {
+		border-color: var(--sl-color-red-high, #ff8f8f);
+	}
+	.activate-error {
+		color: var(--sl-color-red-high, #ff8f8f);
+		font-size: var(--sl-text-xs);
+		font-weight: 400;
+	}
+	.activate-error[hidden] {
+		display: none;
+	}
+	.activate-trap {
+		position: absolute;
+		left: -10000px;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+	}
+	.activate-hint[hidden] {
+		display: none;
+	}
+	.activate-hint {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-sm);
+	}
+	.activate-message {
+		color: var(--sl-color-red-high, #ff8f8f);
+		font-size: var(--sl-text-sm);
+	}
+	.activate-message a {
+		color: var(--sl-color-accent-high);
+	}
+	.activate-message.ok {
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-base);
+	}
+	.activate-done {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.75rem;
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+	}
+	.activate-done[hidden] {
+		display: none;
+	}
+	.activate-done p {
+		margin: 0;
+	}
+	.activate-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+	.activate-footer a {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-xs);
+	}
+	.activate-send {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent);
+		color: #fff;
+	}
+	.activate-send:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+	.activate-send[hidden] {
+		display: none;
+	}
+</style>
