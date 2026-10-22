@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [4.1.0-rc.3] - 2026-10-22
+
 ### Added
 
 - EST server at sites: cameras at a site get and renew their certificates through their site node. The node app asks to
