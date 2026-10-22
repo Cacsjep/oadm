@@ -5,17 +5,99 @@
         x:Class="Oadm.Plugins.Acap.Client.AcapWindow"
         x:DataType="vm:AcapDialogViewModel"
         Title="{Binding Title}"
-        Width="1040" Height="760" MinWidth="820" MinHeight="560"
+        Width="1320" Height="760" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,*,Auto,Auto">
+  <!-- Title bar, cards, button row. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
+    <!-- Two columns while installing: the installed applications left, the install or license card right -->
+    <DockPanel Grid.Row="1">
+    <!-- Install or upgrade -->
+    <Border DockPanel.Dock="Right" Width="560" Classes="card" Margin="0,0,16,0" IsVisible="{Binding ShowPackageCard}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="{Binding PackageTitle}" Description="{Binding PackageDetails}" />
+        <ui:FileRow Grid.Row="1" Margin="0,0,0,10" FileName="{Binding PackageFileName}" Details="{Binding PackageFileDetails}" Error="{Binding PackageError}" Command="{Binding PickPackageCommand}" />
+        <DataGrid Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Compatibility}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" IsVisible="{Binding HasPackage}">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="160" x:DataType="vm:DeviceCompatibilityRow" />
+            <DataGridTemplateColumn Header="Result" Width="150" SortMemberPath="Verdict">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
+                  <ui:StatusChip Margin="10,0" Text="{Binding Verdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Result}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Details">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
+                  <TextBlock Classes="cellText" Text="{Binding Details}" ToolTip.Tip="{Binding Details}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <StackPanel Grid.Row="3" Classes="form" Margin="0,10,0,0">
+          <!-- Optional license keys, installed right after the application -->
+          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasPackage}">
+            <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}" IsVisible="{Binding MayLicense}">
+              <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Add license keys" />
+            </Button>
+            <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding LicenseFilesText}" IsVisible="{Binding HasLicenseFiles}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding LicenseSummary}" IsVisible="{Binding HasLicenseFiles}" />
+            <Button Classes="link" Content="Remove keys" Command="{Binding ClearLicenseKeysCommand}" VerticalAlignment="Center" IsVisible="{Binding HasLicenseFiles}" />
+          </StackPanel>
+          <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
+          <StackPanel Orientation="Horizontal" Spacing="24" IsVisible="{Binding HasPackage}">
+            <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
+            <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" IsVisible="{Binding MayDowngrade}" />
+          </StackPanel>
+          <TextBlock Classes="secondary" Text="{Binding CompatibilitySummary}" IsVisible="{Binding HasPackage}" />
+          <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadStatus}" IsVisible="{Binding IsBusy}" />
+          <TextBlock Classes="secondary" Text="{Binding UploadStatus}" TextWrapping="Wrap" IsVisible="{Binding ShowUploadStatus}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Install license: the keys of the chosen files per selected device -->
+    <Border DockPanel.Dock="Right" Width="560" Classes="card" Margin="0,0,16,0" IsVisible="{Binding IsLicenseMode}">
+      <Grid RowDefinitions="Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="{Binding LicenseTitle}" Description="{Binding LicenseFilesText}">
+          <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Choose other keys" />
+          </Button>
+        </ui:CardHeader>
+        <DataGrid Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding LicenseRows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="160" x:DataType="vm:LicenseKeyRow" />
+            <DataGridTemplateColumn Header="Key" Width="150" SortMemberPath="Verdict">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LicenseKeyRow">
+                  <ui:StatusChip Margin="10,0" Text="{Binding Verdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Details">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LicenseKeyRow">
+                  <TextBlock Classes="cellText" Text="{Binding Details}" ToolTip.Tip="{Binding Details}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <StackPanel Grid.Row="2" Classes="form" Margin="0,10,0,0">
+          <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
+          <TextBlock Classes="secondary" Text="{Binding LicenseSummary}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
     <!-- Installed applications -->
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
+    <Border Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <ui:CardHeader Grid.Row="0" Title="Installed applications" Description="{Binding ScopeText}">
           <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" IsVisible="{Binding ShowDevicePicker}">
@@ -56,16 +138,16 @@
             <DataGrid.Columns>
               <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" x:DataType="vm:ApplicationRow" />
               <DataGridTextColumn Header="Vendor" Binding="{Binding Vendor}" Width="1.4*" x:DataType="vm:ApplicationRow" />
-              <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="100" x:DataType="vm:ApplicationRow" />
-              <DataGridTemplateColumn Header="Status" Width="120" SortMemberPath="Status">
+              <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="90" x:DataType="vm:ApplicationRow" />
+              <DataGridTemplateColumn Header="Status" Width="110" SortMemberPath="Status">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="vm:ApplicationRow">
                     <ui:StatusChip Margin="10,0" Text="{Binding Status}" IsOk="{Binding IsRunning}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="License" Binding="{Binding License}" Width="170" x:DataType="vm:ApplicationRow" />
-              <DataGridTextColumn Header="Signature" Binding="{Binding Signature}" Width="110" x:DataType="vm:ApplicationRow" />
+              <DataGridTextColumn Header="License" Binding="{Binding License}" Width="150" x:DataType="vm:ApplicationRow" />
+              <DataGridTextColumn Header="Signature" Binding="{Binding Signature}" Width="100" x:DataType="vm:ApplicationRow" />
             </DataGrid.Columns>
           </DataGrid>
           <ProgressBar Classes.stream="{Binding IsLoading}" VerticalAlignment="Top" IsVisible="{Binding IsLoading}" />
@@ -83,88 +165,9 @@
         </Grid>
       </Grid>
     </Border>
+    </DockPanel>
 
-    <!-- Install or upgrade -->
-    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding ShowPackageCard}">
-      <StackPanel>
-        <ui:CardHeader Title="{Binding PackageTitle}" Description="{Binding PackageDetails}" />
-        <StackPanel Classes="form">
-          <ui:FileRow FileName="{Binding PackageFileName}" Details="{Binding PackageFileDetails}" Error="{Binding PackageError}" Command="{Binding PickPackageCommand}" />
-          <DataGrid Classes="wrapRows" ItemsSource="{Binding Compatibility}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" IsVisible="{Binding HasPackage}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="240" x:DataType="vm:DeviceCompatibilityRow" />
-              <DataGridTemplateColumn Header="Result" Width="200" SortMemberPath="Verdict">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
-                    <ui:StatusChip Margin="10,0" Text="{Binding Verdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Result}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Details">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
-                    <TextBlock Classes="cellText" Text="{Binding Details}" ToolTip.Tip="{Binding Details}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-          <!-- Optional license keys, installed right after the application -->
-          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasPackage}">
-            <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}" IsVisible="{Binding MayLicense}">
-              <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Add license keys" />
-            </Button>
-            <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding LicenseFilesText}" IsVisible="{Binding HasLicenseFiles}" />
-            <TextBlock VerticalAlignment="Center" Text="{Binding LicenseSummary}" IsVisible="{Binding HasLicenseFiles}" />
-            <Button Classes="link" Content="Remove keys" Command="{Binding ClearLicenseKeysCommand}" VerticalAlignment="Center" IsVisible="{Binding HasLicenseFiles}" />
-          </StackPanel>
-          <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
-          <StackPanel Orientation="Horizontal" Spacing="24" IsVisible="{Binding HasPackage}">
-            <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
-            <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" IsVisible="{Binding MayDowngrade}" />
-            <TextBlock Classes="secondary" Text="{Binding CompatibilitySummary}" />
-          </StackPanel>
-          <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadStatus}" IsVisible="{Binding IsBusy}" />
-          <TextBlock Classes="secondary" Text="{Binding UploadStatus}" TextWrapping="Wrap" IsVisible="{Binding ShowUploadStatus}" />
-        </StackPanel>
-      </StackPanel>
-    </Border>
-
-    <!-- Install license: the keys of the chosen files per selected device -->
-    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding IsLicenseMode}">
-      <StackPanel>
-        <ui:CardHeader Title="{Binding LicenseTitle}" Description="{Binding LicenseFilesText}">
-          <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}">
-            <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Choose other keys" />
-          </Button>
-        </ui:CardHeader>
-        <StackPanel Classes="form">
-          <DataGrid Classes="wrapRows" ItemsSource="{Binding LicenseRows}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="240" x:DataType="vm:LicenseKeyRow" />
-              <DataGridTemplateColumn Header="Key" Width="200" SortMemberPath="Verdict">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:LicenseKeyRow">
-                    <ui:StatusChip Margin="10,0" Text="{Binding Verdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Details">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:LicenseKeyRow">
-                    <TextBlock Classes="cellText" Text="{Binding Details}" ToolTip.Tip="{Binding Details}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-          <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
-          <TextBlock Classes="secondary" Text="{Binding LicenseSummary}" />
-        </StackPanel>
-      </StackPanel>
-    </Border>
-
-    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallButton}" IsDefault="True"
               ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
       <Button Classes="primary" Content="Install license" Command="{Binding InstallLicenseCommand}" IsVisible="{Binding IsLicenseMode}"
