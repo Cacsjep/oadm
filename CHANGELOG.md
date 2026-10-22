@@ -21,6 +21,7 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
+- Settings: the server ID shows only in the **License** card, no longer also in the Server card.
 - EST server: the list of every certificate and **Revoke** are gone. The certificates are on the cameras (PKI page);
   to stop renewals use **Remove certificate enrollment**. OADM keeps only the newest certificate of each camera and
   profile and the one before it.

@@ -219,7 +219,6 @@ public sealed class BackupCardTests
             await settings.LoadAsync();
             Assert.True(settings.ShowBackup);
             Assert.Equal(2, settings.Backup!.Backups.Count); // loaded with the page
-            Assert.Equal(FakeOadmApi.FakeServerId, settings.ServerId); // the Server card always shows it
             var window = new Window { Width = 1520, Height = 1000, Content = new Oadm.Client.Settings.SettingsView { DataContext = settings, Margin = new Avalonia.Thickness(24) } };
             window.Show();
             Pump();

@@ -121,12 +121,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null,
         Infrastructure.IClientSettingsStore? clientSettings = null, LiveView.GpuDecodingService? gpu = null, Infrastructure.IUiDispatcher? ui = null,
-        LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null, Dialogs.IClipboardService? clipboard = null,
+        LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null,
         Licensing.LicenseViewModel? license = null, Oadm.Client.Support.SupportViewModel? support = null)
     {
         License = license;
         Support = support;
-        _clipboard = clipboard;
         Video = video ?? new LiveView.LiveVideoSettings(clientSettings);
         Backup = backup;
         ArgumentNullException.ThrowIfNull(connection);
@@ -357,25 +356,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         AllowBasicOverHttp = settings.HasAllowBasicOverHttp && settings.AllowBasicOverHttp; // unset = older server (off)
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
-        ServerId = settings.ServerId;
-    }
-
-    private readonly Dialogs.IClipboardService? _clipboard;
-
-    /// <summary>This server's ID, which plugin licenses name; read only, empty for an older server.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasServerId))]
-    public partial string ServerId { get; private set; } = "";
-
-    public bool HasServerId => ServerId.Length > 0;
-
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
-    private async Task CopyServerIdAsync()
-    {
-        if (_clipboard is not null && HasServerId)
-        {
-            await _clipboard.SetTextAsync(ServerId).ConfigureAwait(true);
-        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server settings saved")]
