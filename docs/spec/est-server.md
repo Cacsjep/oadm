@@ -69,15 +69,27 @@ Nothing was changed.
    an alias with the same content; aliases at most 32 characters.
 3. If a profile serves IEEE 802.1X: set the 802.1X CA trust (as PKI does) before the profile.
 4. Same set as planned: nothing written. Otherwise remove the camera's EST profiles and write the new ones **one at a
-   time** (writing a profile restarts the camera's EST client): `POST /config/rest/cert-est/v1/profiles` with `server` =
-   `https://<address>:9454/.well-known/est/<profile>`, `caCertificates`, `certificate` = the device ID alias (RSA or ECC to
-   match the profile; without it the camera answers 500), `services`, subject CN and SANs. The address: the server's
-   address toward the camera, or at a site the node's (`LocalAddressTowardsAsync`).
-5. Wait until the camera reports **ENROLLED** (poll, up to 2 minutes); with HTTPS: check it answers with the new
-   certificate and pin it.
+   time** (writing a profile restarts the camera's EST client): `POST /config/rest/cert-est/v1/profiles` with `id`,
+   `server` = `<address>:9454/.well-known/est/<profile>` (host, port and path, **no scheme**), `caCertificates` (the
+   aliases of step 2; the camera installs nothing it has not been given, so the server is never trusted blindly through
+   `/cacerts`), `certificate` = the device ID alias (RSA or ECC to match the profile; without it the camera answers 500),
+   `services` (from `GET .../supportedServices`), `subject.cn` (1..64 characters) and `subjectAlternativeNames` (`DNS:` /
+   `IP:`). Changes later: `PATCH .../profiles/{id}` (caCertificates, certificate, SANs), `.../{id}/server`,
+   `.../{id}/subject`. The address: the server's address toward the camera, or at a site the node's
+   (`LocalAddressTowardsAsync`).
+5. Wait until the camera reports **ENROLLED** (`status`: UNCONNECTED, CONNECTED = downloading the CA certificates,
+   ENROLLED = has a certificate and renews it before it expires; poll, up to 2 minutes); with HTTPS: check it answers with
+   the new certificate and pin it. On a timeout the step names the camera's last EST error (below).
 6. Remove only unused certificates OADM put there. Never device ID certificates, their CAs, factory or public CAs.
 
 No rollback exists on the camera; the task is safe to run again (idempotent).
+
+**The camera's own EST errors:** the camera sends the event `tnsaxis:CertificateManagement/EST/Error` (profile, error code
+0..7: startup, test connection, connection, enrollment, re-enrollment; internal or external, and a message such as
+"SSL peer certificate ... was not OK") on its event stream. The plugin listens for it on the set-up cameras (the
+device events connection of OADM, like Device triggers) and shows it in **Enrollments** as "Camera: <message>", so a
+renewal that never reaches the server is visible too. Reference: VAPIX "Enrollment over secure transport API"
+(`cert-est.v1`).
 
 ## License of the code
 
