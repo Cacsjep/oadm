@@ -1,0 +1,114 @@
+---
+// Landing page: a section shows only its first rows under a soft fade, with a button that shows the rest.
+// Without JavaScript everything shows. The hidden part stays in the page (search engines, find in page); a keyboard
+// focus inside it opens the section. `preview` = the visible height in rem, `fade` = the height of the fade in rem.
+interface Props {
+	more: string;
+	less?: string;
+	preview?: number;
+	fade?: number;
+}
+const { more, less = 'Show less', preview = 30, fade = 7 } = Astro.props;
+const id = `reveal-${Math.random().toString(36).slice(2, 9)}`;
+---
+
+<div class="reveal not-content" style={`--reveal-preview: ${preview}rem; --reveal-fade: ${fade}rem`} data-more={more} data-less={less}>
+	<div class="reveal-body" id={id}>
+		<slot />
+	</div>
+	<button type="button" class="dl reveal-toggle" aria-expanded="false" aria-controls={id} hidden>
+		<span class="reveal-label">{more}</span>
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+	</button>
+</div>
+
+<script>
+	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+	document.querySelectorAll<HTMLElement>('.reveal').forEach((reveal) => {
+		const body = reveal.querySelector<HTMLElement>('.reveal-body')!;
+		const button = reveal.querySelector<HTMLButtonElement>('.reveal-toggle')!;
+		const label = button.querySelector<HTMLElement>('.reveal-label')!;
+
+		const set = (open: boolean, scroll: boolean) => {
+			reveal.classList.toggle('open', open);
+			button.setAttribute('aria-expanded', String(open));
+			label.textContent = open ? reveal.dataset.less! : reveal.dataset.more!;
+			if (reduced.matches) {
+				body.style.maxHeight = open ? 'none' : '';
+				return;
+			}
+			// Animate from the current height to the target, then let the content size itself.
+			body.style.maxHeight = `${body.getBoundingClientRect().height}px`;
+			requestAnimationFrame(() => {
+				body.style.maxHeight = open ? `${body.scrollHeight}px` : '';
+			});
+			// Closing a long section: keep its start in view instead of leaving the reader far below it.
+			if (!open && scroll && reveal.getBoundingClientRect().top < 0) {
+				reveal.scrollIntoView({ block: 'start', behavior: 'smooth' });
+			}
+		};
+
+		body.addEventListener('transitionend', () => {
+			if (reveal.classList.contains('open')) body.style.maxHeight = 'none';
+		});
+		button.addEventListener('click', () => set(!reveal.classList.contains('open'), true));
+		body.addEventListener('focusin', () => {
+			if (!reveal.classList.contains('open')) set(true, false);
+		});
+
+		// Only fold when there is something to hide (e.g. a wide screen may show everything in the preview).
+		const fit = () => {
+			const fits = body.scrollHeight <= body.clientHeight + 8 && !reveal.classList.contains('open');
+			reveal.classList.toggle('fits', fits);
+		};
+		reveal.classList.add('ready');
+		button.hidden = false;
+		fit();
+		new ResizeObserver(fit).observe(body);
+	});
+</script>
+
+<style>
+	.reveal {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.25rem;
+		width: 100%;
+	}
+	.reveal-body {
+		width: 100%;
+	}
+	.reveal.ready .reveal-body {
+		max-height: var(--reveal-preview);
+		overflow: hidden;
+		transition: max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--reveal-fade)), transparent);
+		mask-image: linear-gradient(to bottom, #000 calc(100% - var(--reveal-fade)), transparent);
+	}
+	.reveal.ready.open .reveal-body,
+	.reveal.ready.fits .reveal-body {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+	.reveal.fits .reveal-toggle {
+		display: none;
+	}
+	.reveal-toggle svg {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		transition: transform 0.25s;
+	}
+	.reveal.open .reveal-toggle svg {
+		transform: rotate(180deg);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.reveal.ready .reveal-body,
+		.reveal-toggle svg {
+			transition: none;
+		}
+	}
+</style>
