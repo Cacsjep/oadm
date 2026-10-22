@@ -239,7 +239,27 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         }
     }
 
-    private void OnBasicOverHttpChanged(object? sender, EventArgs e) => InvalidateAll();
+    /// <summary>
+    /// The setting changed: new requests get new clients at once, but running ones (a firmware upload, a full refresh)
+    /// finish on the old client, which is disposed later (<see cref="RetiredClientLifetime"/>).
+    /// </summary>
+    private void OnBasicOverHttpChanged(object? sender, EventArgs e)
+    {
+        foreach (var id in _cache.Keys.ToArray())
+        {
+            if (_cache.TryRemove(id, out var entry))
+            {
+                var client = entry.Client;
+                _ = Task.Delay(RetiredClientLifetime, Time).ContinueWith(_ => client.Dispose(), TaskScheduler.Default);
+            }
+        }
+    }
+
+    /// <summary>How long a client replaced after a setting change stays usable for the requests that still run on it.</summary>
+    public static readonly TimeSpan RetiredClientLifetime = TimeSpan.FromMinutes(30);
+
+    /// <summary>The clock of the delayed disposal (tests).</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
 
     private void OnDeviceChanged(object? sender, DeviceChange change)
     {

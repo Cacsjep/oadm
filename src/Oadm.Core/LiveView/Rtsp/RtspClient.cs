@@ -104,6 +104,12 @@ public sealed class RtspClient : IAsyncDisposable
     /// </summary>
     public bool AllowBasic { get; init; }
 
+    /// <summary>
+    /// The server setting now: when it turns off, a session that logged in with Basic stops at its next request (keep-alive
+    /// included) instead of sending the password in clear text until it reconnects. Null: <see cref="AllowBasic"/> only.
+    /// </summary>
+    public Func<bool>? BasicAllowed { get; init; }
+
     /// <summary>Session id from the SETUP response (without the timeout parameter).</summary>
     public string? Session { get; private set; }
 
@@ -121,7 +127,7 @@ public sealed class RtspClient : IAsyncDisposable
     /// round trips on top.
     /// </summary>
     public static async Task<RtspClient> ConnectAsync(string host, int port, NetworkCredential? credentials, TimeSpan timeout, CancellationToken ct, TimeProvider? time = null,
-        DeviceRoute route = default, DeviceRouter? router = null, bool allowBasic = false)
+        DeviceRoute route = default, DeviceRouter? router = null, bool allowBasic = false, Func<bool>? basicAllowed = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         router ??= DeviceRouter.Local;
@@ -138,7 +144,7 @@ public sealed class RtspClient : IAsyncDisposable
             throw new LiveViewException(LiveViewError.Unreachable, $"RTSP port {port} on {host} is not reachable.", ex);
         }
 
-        return new RtspClient(stream, credentials, stream, time) { AllowBasic = allowBasic };
+        return new RtspClient(stream, credentials, stream, time) { AllowBasic = allowBasic, BasicAllowed = basicAllowed };
     }
 
     /// <summary>Receive buffer of the RTSP socket on the server's own network (video bursts at keyframes).</summary>
@@ -161,7 +167,7 @@ public sealed class RtspClient : IAsyncDisposable
                     throw new LiveViewException(LiveViewError.Unauthorized, "The camera offers no Digest authentication for RTSP.");
                 }
 
-                if (!AllowBasic)
+                if (!AllowBasic || BasicAllowed?.Invoke() == false)
                 {
                     throw new LiveViewException(LiveViewError.Unauthorized, Sdk.Devices.DeviceMessages.BasicOnlyOverHttp);
                 }
@@ -289,6 +295,11 @@ public sealed class RtspClient : IAsyncDisposable
             }
             else if (_basic is not null)
             {
+                if (BasicAllowed?.Invoke() == false)
+                {
+                    throw new IOException("Basic login over HTTP was turned off: the session ends."); // reconnects without Basic
+                }
+
                 sb.Append(CultureInfo.InvariantCulture, $"Authorization: {_basic}\r\n");
             }
 

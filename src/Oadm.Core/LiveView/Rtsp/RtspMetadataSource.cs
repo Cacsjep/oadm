@@ -26,6 +26,9 @@ public sealed record RtspMetadataOptions
     /// <summary>Answer a Basic-only RTSP login (the server setting Devices.AllowBasicOverHttp).</summary>
     public bool AllowBasic { get; init; }
 
+    /// <summary>The setting now (<see cref="RtspClient.BasicAllowed"/>); null = <see cref="AllowBasic"/> only.</summary>
+    public Func<bool>? BasicAllowed { get; init; }
+
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>The way to the device (docs/spec/sites.md); the connection opens through <see cref="Router"/>.</summary>
@@ -103,7 +106,7 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
         RtspClient client;
         try
         {
-            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time, options.Route, options.Router, options.AllowBasic).ConfigureAwait(false);
+            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time, options.Route, options.Router, options.BasicAllowed?.Invoke() ?? options.AllowBasic, options.BasicAllowed).ConfigureAwait(false);
         }
         catch (LiveViewException ex)
         {

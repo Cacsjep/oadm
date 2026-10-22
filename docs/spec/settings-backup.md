@@ -106,8 +106,10 @@ details for a support request. No passwords are included." and **Create support 
   page; device counts by status, model and AXIS OS; counts of waiting devices, tags, event rules and compliance checks;
   tasks of the last 7 days by state and plugin; sites (name, online / offline / not bound, node version, last seen); plugin
   packages (id, version, on or off) and load errors; the PRO license state and plan; the last automatic backup and restore.
-- **Never in it**: passwords, credentials, keys, the master key, tokens, the license key text, backup passwords, device
-  addresses or serial numbers, the database file (`SupportReportTests` seeds such values and scans every entry).
+- **Never in it**: passwords, credentials, keys, the master key, tokens, the license key text, backup passwords, the
+  database file (`SupportReportTests` seeds such values and scans every entry). The summary lists no device addresses or
+  serial numbers; the logs are copied as they are and name devices by address and serial number (and the user names OADM
+  logs in with), as the Logs page shows them.
 - **Client part**: the client downloads the server's ZIP to a temporary file, then writes the chosen file with every
   entry of it plus this computer's `client-*.log` files under `client-logs/` (same 200 MB cap), off the UI thread; a
   failure removes the cut file.

@@ -107,7 +107,7 @@ public sealed partial class SupportViewModel : ObservableObject
             saved = true;
             Show($"Saved {file.Name}.");
         }
-        catch (Exception ex) when (ex is RpcException or IOException or HttpRequestException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
+        catch (Exception ex) when (ex is RpcException or OperationCanceledException or IOException or HttpRequestException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
         {
             Show(ServerErrors.Message(ex), error: true);
         }

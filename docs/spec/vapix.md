@@ -73,7 +73,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. `DeviceConnections.For(device |
   discovered)` is the only place that builds `VapixConnectionOptions` (test `RoutingRulesTests`). The factory's cache key
   holds the route; a change of route or address drops the cached client. Through a site: at most 2 connections per
-  device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; never Basic over plain HTTP; a `SiteException`
+  device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; Basic over plain HTTP only with the setting **Allow Basic login over
+  HTTP** (`Devices.AllowBasicOverHttp`), as on the server's own network; a `SiteException`
   passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial. Names resolve on the route
   (`RoutedDns`; through a site in stream 5). With no site everything connects as before.
 - **Banned APIs**: `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`

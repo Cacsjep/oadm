@@ -62,7 +62,14 @@ public static class ParamRules
 
             case ParamKind.Hostname:
                 // Some host name parameters hold several, separated by spaces (Time.NTP.Server "10.0.0.17 ts1.univie.ac.at").
-                return text.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(name => IsIp(name) || IsHostName(name))
+                // Only plain spaces separate them: no tabs, and text of spaces only is not a name.
+                if (text.Length == 0)
+                {
+                    return null;
+                }
+
+                return text.Trim().Length > 0 && !text.Contains('\t', StringComparison.Ordinal)
+                    && text.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(name => IsIp(name) || IsHostName(name))
                     ? null
                     : "Enter a host name or an IP address.";
 

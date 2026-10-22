@@ -59,6 +59,7 @@ public sealed class DeviceEventStreams(
                 Port = port,
                 Credentials = stored is null ? null : new NetworkCredential(stored.UserName, stored.Password),
                 AllowBasic = basicOverHttp?.Current ?? false,
+                BasicAllowed = basicOverHttp is null ? null : () => basicOverHttp.Current,
                 Route = DeviceConnections.RouteOf(device),
                 Router = router,
             },

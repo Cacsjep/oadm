@@ -38,7 +38,7 @@ public sealed class HeadlessDialogTests
         var eapPath = Path.Combine(Path.GetTempPath(), "oadm-acap-headless-" + Guid.NewGuid().ToString("N") + ".eap");
         // Synchronous on purpose: awaiting before StartNew moves the test to a pool thread and the
         // session's Dispose then deadlocks.
-        File.WriteAllBytes(eapPath,EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Commend Österreich GmbH", version: "3.9.0", schema: "1.8.0", osMin: "11.11", osMax: "99")));
+        File.WriteAllBytes(eapPath,EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Sample Vendor GmbH", version: "3.9.0", schema: "1.8.0", osMin: "11.11", osMax: "99")));
 
         var d1 = new FakeDevice { Model = "P3265-V", Address = "10.0.0.48" };
         var d2 = new FakeDevice { Model = "M3086-V", Address = "10.0.0.52", Serial = "B8A44F000052" };

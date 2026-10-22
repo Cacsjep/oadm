@@ -60,6 +60,7 @@ public sealed class AxisLiveVideoSourceFactory(
                 Port = port ?? RtspClient.DefaultPort,
                 Credentials = stored is null ? null : new NetworkCredential(stored.UserName, stored.Password),
                 AllowBasic = basicOverHttp?.Current ?? false,
+                BasicAllowed = basicOverHttp is null ? null : () => basicOverHttp.Current,
                 Codec = key.Codec,
                 Size = key.Size,
                 Fps = key.Fps,

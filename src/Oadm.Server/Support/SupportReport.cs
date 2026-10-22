@@ -25,7 +25,8 @@ namespace Oadm.Server.Support;
 /// The support report (Settings page, card Support; docs/spec/settings-backup.md "Support report"): one ZIP with the
 /// server's log files (<c>logs/</c>, newest first up to <see cref="LogArchive.MaxBytes"/>) and <c>summary.txt</c> (versions,
 /// system, folders, counts of devices, tags, rules, tasks, plugins, sites, the license state and the server settings).
-/// Never a secret: no passwords, credentials, keys, license key text, device addresses or serial numbers, no database file.
+/// Never a secret: no passwords, credentials, keys, license key text, no database file. The summary lists no device addresses
+/// or serial numbers; the logs, copied as they are, name devices by address and serial number.
 /// Made in <c>&lt;datafolder&gt;/support</c>; the caller deletes it after the download, leftovers go after 30 minutes.
 /// </summary>
 public sealed class SupportReport(

@@ -21,7 +21,7 @@ public sealed class ApplicationApiClientTests
         Assert.Equal(new OsVersionRange("12", "12"), Assert.Single(aoa.CompatibleOsVersions));
 
         var gencam = apps.Single(a => a.Name == "ax_gencam");
-        Assert.Equal("Commend Österreich GmbH", gencam.Vendor);
+        Assert.Equal("Sample Vendor GmbH", gencam.Vendor);
         Assert.Equal("Valid", gencam.License);
         Assert.Equal("2026-11-07", gencam.LicenseExpirationDate);
         Assert.Equal("Stopped", gencam.Status);
@@ -123,7 +123,7 @@ public sealed class ApplicationApiClientTests
 
         Assert.Contains("Content-Disposition: form-data; name=\"file\"; filename=\"signed_App_1.0_aarch64.eap\"\r\n", body, StringComparison.Ordinal);
         Assert.DoesNotContain("filename*", body, StringComparison.Ordinal);
-        Assert.Equal("multipart/form-data; boundary=oadm-acap-5e2b9c41d7a3", multipart.Headers.ContentType!.ToString());
+        Assert.Matches("^multipart/form-data; boundary=oadm-acap-[0-9a-f]{32}$", multipart.Headers.ContentType!.ToString()); // unquoted, random
     }
 
     [Fact]

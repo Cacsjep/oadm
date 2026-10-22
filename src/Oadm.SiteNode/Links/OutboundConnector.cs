@@ -37,6 +37,9 @@ public sealed partial class OutboundConnector(
     /// <summary>A session that lasted this long starts the backoff over (1 s) when it ends.</summary>
     public static readonly TimeSpan StableAfter = TimeSpan.FromSeconds(30);
 
+    /// <summary>The last connection failure that was logged (target and reason): repeats go to the debug log.</summary>
+    private string? _lastFailure;
+
     private readonly Lock _lock = new();
     private readonly SemaphoreSlim _wake = new(0);
     private readonly List<SiteLink> _workers = [];
@@ -158,6 +161,7 @@ public sealed partial class OutboundConnector(
                 }
 
                 connection.Set(AdminTexts.Connected(Name(used)), true);
+                Volatile.Write(ref _lastFailure, null); // the next failure is logged again
                 var started = options.Time.GetTimestamp();
                 var served = await ServeControlAsync(tls, used, key, stoppingToken).ConfigureAwait(false);
                 connection.Set(AdminTexts.CannotReach(Name(used)), false);
@@ -335,9 +339,13 @@ public sealed partial class OutboundConnector(
                 else
                     LogOtherIdentity(logger, from, presented);
             }
+            else if (Interlocked.Exchange(ref _lastFailure, name + "|" + e.Message) != name + "|" + e.Message)
+            {
+                LogCannotConnect(logger, name, e.Message); // once per new reason, not every 10 s
+            }
             else
             {
-                LogCannotConnect(logger, name, e.Message);
+                LogCannotConnectAgain(logger, name, e.Message);
             }
 
             return null;
@@ -388,6 +396,9 @@ public sealed partial class OutboundConnector(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cannot connect to the server at {Target}: {Reason}")]
     private static partial void LogCannotConnect(ILogger logger, string target, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cannot connect to the server at {Target} again: {Reason}")]
+    private static partial void LogCannotConnectAgain(ILogger logger, string target, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The server at {Target} presents a new identity {Fingerprint}; accept it in the OADM Site Node app")]
     private static partial void LogNewIdentity(ILogger logger, string target, string fingerprint);

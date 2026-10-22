@@ -177,8 +177,8 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         EnsureLicenseAccepted(text);
     }
 
-    /// <summary>Boundary of the multipart bodies, sent unquoted like the firmware upload.</summary>
-    private const string Boundary = "oadm-acap-5e2b9c41d7a3";
+    /// <summary>The boundary prefix of the multipart bodies (sent unquoted like the firmware upload); random per upload.</summary>
+    private const string BoundaryPrefix = "oadm-acap-";
 
     /// <summary>
     /// multipart/form-data with one file part. The part name and file name are quoted and there is no filename*
@@ -193,8 +193,9 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
             Name = "\"" + name + "\"",
             FileName = "\"" + (safe.Length == 0 ? "package.eap" : safe) + "\"",
         };
-        var multipart = new MultipartContent("form-data", Boundary) { file };
-        multipart.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=" + Boundary);
+        var boundary = BoundaryPrefix + Guid.NewGuid().ToString("N"); // never found in a package by chance
+        var multipart = new MultipartContent("form-data", boundary) { file };
+        multipart.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=" + boundary);
         return multipart;
     }
 

@@ -51,6 +51,9 @@ public sealed class ConfigureTests
         Assert.Null(ParamRules.Problem(Def("Time.NTP.Server"), "ts1.univie.ac.at"));
         Assert.Equal("Host name or IP address, several separated by spaces", ParamRules.Hint(Def("Time.NTP.Server")));
         Assert.Equal("Enter a host name or an IP address.", ParamRules.Problem(Def("Time.NTP.Server"), "10.0.0.17 bad_name"));
+        Assert.Equal("Enter a host name or an IP address.", ParamRules.Problem(Def("Time.NTP.Server"), "   "));
+        Assert.Equal("Enter a host name or an IP address.", ParamRules.Problem(Def("Time.NTP.Server"), "\tpool.ntp.org"));
+        Assert.Null(ParamRules.Problem(Def("Time.NTP.Server"), ""));
         Assert.Equal("Enter the password.", ParamRules.Problem(Def("RemoteService.ProxyPassword"), string.Empty));
         Assert.Equal(DangerousParameters.ConnectionReason, DangerousParameters.Reason("Network.Filter.Enabled"));
         Assert.Equal("Line breaks and control characters are not allowed.", ParamRules.Problem(Def("API.RemoteSyslog1.Server1.Address"), "a\nb"));
