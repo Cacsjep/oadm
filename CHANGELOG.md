@@ -6,6 +6,30 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- **EST server** (OADM PRO, off by default): cameras with AXIS OS 12.10 or later get their certificates for HTTPS,
+  IEEE 802.1X, MQTT and RTSPS from the OADM CA and renew them by themselves. Only cameras OADM manages get certificates;
+  they sign in with their Axis device ID. Page **EST server** (port, profiles, enrollments, certificates with Revoke),
+  tasks **Set up certificate enrollment** and **Remove certificate enrollment** (Security), events **Certificate
+  enrolled** and **Enrollment refused**. Not for devices at a site yet.
+- Plugins: OADM PRO plugins are listed with an **OADM PRO** chip; without an active license they stay off and
+  **Activate** opens Settings > License. They stop when the license ends and run again with a new one.
+
+### Changed
+
+- A device's new HTTPS certificate from the OADM CA (renewed by the camera or by PKI) no longer shows **Certificate
+  changed**: OADM accepts a certificate the OADM CA issued directly for the same device. Any other new certificate still
+  does.
+- Turning off **Allow Basic login over HTTP** now also ends event streams and live videos that logged in with Basic at
+  once; turning it on or off no longer stops running tasks.
+
+### Fixed
+
+- The OADM Site Node tries to reach the server every 10 s at most (was 60 s) and logs a repeated failure only once.
+- Configure devices: a host name setting of spaces only or with a tab is refused.
+- Support report: the help says that the log files name devices by address and serial number.
+
 ## [4.1.0-rc.1] - 2026-10-22
 
 ### Added

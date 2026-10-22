@@ -21,12 +21,12 @@ const cross = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
 // Per two years (the maintenance period of most project offers). Individual: support for one plugin on one server, for a
 // project offer. Then two plans per server, sized by its devices (the license key's device limit), and one for a whole
 // company. Euro, without VAT. No plan is recommended; the one under the pointer lights up.
-const all = ['Support with an SLA', 'Feature requests first', 'EST Server', '30-day trial'];
+const all = ['Support with an SLA', 'Feature requests first', 'EST server', '30-day trial'];
 const plans = [
 	{ devices: 'Individual', price: '€440', from: true, text: 'One plugin with commercial support, ready for your project offer.', included: ['Support with an SLA for one plugin', 'Any plugin: OADM, PRO or your own', 'One server', '30-day trial'] },
 	{ devices: 'Up to 500 devices', price: '€940', text: 'One server. One site or a small customer.', included: all },
 	{ devices: 'Up to 30,000 devices', price: '€4,870', text: 'One server with every device it can manage.', included: all },
-	{ devices: 'Unlimited', price: '€9,740', text: 'Any number of servers and devices for one company.', included: all },
+	{ devices: 'Unlimited', price: '€9,740', text: 'A license key for each server of one company, any number of devices.', included: all },
 ];
 
 // The SLA of every plan (#sla; the "Support with an SLA" lines of the plans link here). Planned terms, final at launch.
@@ -171,7 +171,7 @@ const custom = [
 			const link = document.createElement('a');
 			link.href = `mailto:${contact}?subject=${encodeURIComponent(`Quote request: ${plan}`)}&body=${encodeURIComponent(lines.join('\n'))}`;
 			link.textContent = contact;
-			message.replaceChildren('Sorry, our server looks offline. Please send your request by email to ', link, '.');
+			message.replaceChildren('Our server looks offline. Send your request by email to ', link, '.');
 			message.classList.remove('ok');
 			message.hidden = false;
 		};

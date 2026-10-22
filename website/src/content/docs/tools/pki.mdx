@@ -58,6 +58,12 @@ Disable IEEE 802.1X, Renew certificates, View certificates, Delete certificates,
 certificates. These need AXIS OS 11.11 or later. Each runs as a task with its steps; see
 [Tasks](../../devices/tasks/).
 
+## Certificates that renew by themselves
+
+With the [EST server](../est-server/) (OADM PRO) cameras get their certificates from this CA and renew them by
+themselves. A camera's renewed HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate
+when this CA (or a previous one) issued it directly for the same camera.
+
 ## Good to know
 
 <Aside type="caution">

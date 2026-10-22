@@ -42,14 +42,14 @@ The device rejects the stored password. Right-click > **Log in** and enter the r
 
 **"The device accepts only Basic login over HTTP".**
 The device has HTTPS turned off and accepts only Basic login on HTTP. OADM does not send passwords unencrypted unless you
-allow it, so the device shows Credentials required even with the right password. Either:
+allow it, so the Status column shows **Basic login only** even with the right password. Either:
 
 - turn on HTTPS on the device (recommended), or allow Digest login for HTTP there, or
 - turn on **Allow Basic login over HTTP** in [Settings](../settings/) > Security. OADM then logs in to such devices with
   Basic over HTTP, for status checks, tasks, Log in, Web View and live view. Devices that offer Digest or HTTPS keep
   using them.
 
-On the device, the login setting is the parameter `Network.HTTP.AuthenticationPolicy`.
+On the device, the login method is a setting of its web interface (HTTP authentication).
 
 **Devices show Certificate changed.**
 The device presents another HTTPS certificate than when it was added. OADM sends nothing to it. Find out why, then
@@ -62,5 +62,5 @@ Another program holds the port. The page names it when it can, for example the W
 **A task failed with "Nothing was changed".**
 The device does not support it, for example its AXIS OS is too old. The task's **Details** show the step and the reason.
 
-Still stuck? Create a support report (**Settings** > **Support** > **Create support report**) and attach it to your post in
+Still stuck? Create a support report (administrators: **Settings** > **Support** > **Create support report**) and attach it to your post in
 the [Support Forum](https://support.oadm.app/) or to an [issue](https://github.com/Cacsjep/oadm/issues/new/choose).

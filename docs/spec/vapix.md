@@ -21,8 +21,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
 - Certificates: trust on first use. Store SHA-256 fingerprint on add. A later mismatch sets
   status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
-  Exception, renewals by an OADM CA (`docs/spec/est-server.md`): a new certificate that chains to the trust anchors (the
-  OADM CAs of PKI, not the OS store), is valid now and names the device (`axis-<serial>.local`, `Device.Serial` through
+  Exception, renewals by an OADM CA (`docs/spec/est-server.md`): a new server certificate issued directly by an OADM CA
+  (the PKI's renewal issuers only, not the roots above them, not the OS store), valid now and naming the device
+  (`axis-<serial>.local`, `Device.Serial` through
   `VapixConnectionOptions.DeviceSerial` and `CertificatePinning.DeviceSerial`) is accepted
   (`CertificatePinning.RenewedFingerprint`); the poll pins it (`Device.CertFingerprintSha256`) and logs it. Anything else
   stays Certificate changed.

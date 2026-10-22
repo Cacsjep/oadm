@@ -148,6 +148,7 @@ export default defineConfig({
 						{ label: 'Device triggers', slug: 'tools/device-triggers' },
 						{ label: 'Action Rule Editor', slug: 'tools/action-rule-editor' },
 						{ label: 'PKI', slug: 'tools/pki' },
+						{ label: 'EST server', slug: 'tools/est-server' },
 						{ label: 'Hardening scan', slug: 'tools/hardening-scan' },
 						{ label: 'Live View', slug: 'tools/live-view' },
 						{ label: 'Dashboards', slug: 'tools/dashboards' },

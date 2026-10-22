@@ -4,18 +4,19 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Agreed 2026-10-22; stages 1 to 3 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
 
 The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
-every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**, also
-at sites. A clean-room implementation from RFC 7030 and the Axis camera APIs.
+every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**
+(at sites: stage 4, planned; until then `plugin.json` says `"siteSupport": "none"` and the tasks refuse devices at a site). A clean-room implementation from RFC 7030 and the Axis camera APIs.
 
 ## What the user sees
 
-- **Plugins page:** "EST server" is listed for everyone with a **PRO** badge. The plugin's `plugin.json` has `"pro": true`:
-  the host refuses to turn it on without an active OADM PRO license or trial ("Needs OADM PRO. Start a 30-day trial." with
-  the link of Settings > License). When the license ends or is removed, the host turns it off: it stops serving, enrolled
-  cameras keep their certificates until they expire, renewals are refused while it is off. The same lock for every later
-  PRO plugin.
+- **Plugins page:** "EST server" is listed for everyone with the chip **OADM PRO** (`plugin.json` `"pro": true`): without
+  an active OADM PRO license or trial the check box is locked, the server refuses to turn it on
+  (`ProLicenseTexts.NeedsPro` "Needs an OADM PRO license or trial.") and **Activate** opens Settings > License. When the
+  license ends or is removed, the host stops it: it stops serving, enrolled cameras keep their certificates until they
+  expire, renewals are refused while it is off. The same lock for every later PRO plugin (`docs/spec/plugins.md`).
 - **Page "EST server"** (rail, group Security, next to PKI):
-  - Status next to Save: "Running on port 9454", "Port in use", ...; the sites it serves.
+  - Port and enrollments kept left, the profiles right; the status left of Save: "Running on port 9454", "OADM PRO is not
+    active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
   - **Profiles** (at most 2 per camera, the camera's limit; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
     MQTT, RTSPS), validity (days), key (RSA 2048+ / ECC P-256+). Two ready-made: **HTTPS** (server certificates) and
     **IEEE 802.1X** (client certificates).
@@ -42,6 +43,10 @@ at sites. A clean-room implementation from RFC 7030 and the Axis camera APIs.
   the device list (at a site: a device of that site): a genuine Axis camera OADM does not manage gets nothing.
 - **Renewal** (`simplereenroll`): the client certificate must be one EST issued (or the device ID), not revoked, same
   device.
+- **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
+  only; a 401 or 403 closes the connection; at most 64 connections, 4 per address, 2 minutes each.
+- **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
+  no `*`); EC keys only on P-256, P-384 or P-521.
 - **Issuing:** the OADM CA of the PKI plugin signs (one CA for everything), through the SDK's plugin services: PKI offers
   "sign a device certificate" and "CA chain", EST uses them. Like PKI's `DeviceCertificateIssuer`, OADM sets subject and
   SANs from what it knows (address, host name, FQDN, `axis-<serial>.local`), never from the CSR; EKU from the profile; key
@@ -61,8 +66,9 @@ at sites. A clean-room implementation from RFC 7030 and the Axis camera APIs.
 ## Certificate renewals and pinning
 
 A camera that renews its HTTPS certificate by EST presents a new certificate every period. OADM accepts a new device
-certificate **without** Certificate changed when it chains to an OADM CA (PKI's trust anchors) and names the same device
-(serial), and pins it again. Any other change still shows **Certificate changed**. Applies to all OADM-CA certificates
+certificate **without** Certificate changed when an OADM CA issued it **directly** (the PKI's active or a previous CA,
+`ITrustAnchors.SetRenewalIssuers`; never the roots above an imported CA, never another plugin's anchors), it is valid now,
+has serverAuth and names the same device (`axis-<serial>.local`), and pins it again. Any other change still shows **Certificate changed**. Applies to all OADM-CA certificates
 (also PKI's own HTTPS task).
 
 ## Setting up a camera (the deploy task)
@@ -84,8 +90,11 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
 3. Install the CA certificates: the OADM CA chain with `cert` v1, matched by fingerprint (an existing alias is reused),
    new ones as "OADM CA <8 hex>" like PKI's; never deleting.
+   With IEEE 802.1X on (`IDeviceInfo.Dot1xEnabled`) the IEEE 802.1X profile is skipped with a warning (no lock-out). HTTPS
+   comes last (its certificate restarts the web server); the reads while waiting are retried during that restart.
 4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
-   written. Otherwise remove the camera's EST profiles and add the new ones **one at a time**, each waited for:
+   written. Otherwise remove OADM's profiles (`oadm_...`) and the camera's profiles that serve the same services (others
+   stay), and add the new ones **one at a time**, each waited for:
    `POST /config/rest/cert-est/v1/profiles` with `id` = `oadm_<profile>` (the camera refuses `-` in ids, so profile names
    are letters, digits and `_`), `server` = `<address>:9454/.well-known/est/<profile>` (no scheme; the server's address
    toward the camera, `LocalAddressTowardsAsync`), `caCertificates` (the aliases of step 3), `certificate` = the device
@@ -96,17 +105,19 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    certificate is stored under the profile id (`oadm_https`); the camera also installs the CA from the answer by itself
    (alias = the CA's common name). With HTTPS on (`HttpsEnabled`): the web server switches to the new certificate a few
    seconds later and restarts (connections drop); the task pins it (`UpdateDeviceTlsAsync`, again for up to 60 s while
-   the web server restarts; a warning when it does not happen).
+   the web server restarts; a warning when it does not happen). Only when OADM talks HTTPS to the camera: the task never
+   changes how OADM connects.
 6. Not built yet: removing unused certificates OADM put there (never device ID certificates, their CAs, factory or
    public CAs).
 
-Remove certificate enrollment removes only the profiles named `oadm_...`; the certificates stay until they end. No
+Both tasks need the task permission "Set up certificate enrollment" (`enroll`, not for operators by default): setting up
+again also lifts a revoke. Remove certificate enrollment removes only the profiles named `oadm_...`; the certificates stay until they end. No
 rollback exists on the camera; the set-up is safe to run again (idempotent). Hardware test:
 `tests/Oadm.Plugins.Est.Tests/EstHardwareWriteTests.cs` (`OADM_EST_HARDWARE_WRITE=1`, `OADM_EST_SERVER_ADDRESS`,
 `OADM_DEV_CAMERAS`): a real EST server on this computer with a test CA, the real task on 10.0.0.48, then the camera back
 as before (profile removed, previous web server certificate, test certificates deleted).
 
-**The camera's own EST errors:** the camera sends the event `tnsaxis:CertificateManagement/EST/Error` (profile, error code
+**The camera's own EST errors** (not built yet): the camera sends the event `tnsaxis:CertificateManagement/EST/Error` (profile, error code
 0..7: startup, test connection, connection, enrollment, re-enrollment; internal or external, and a message such as
 "SSL peer certificate ... was not OK") on its event stream. The plugin listens for it on the set-up cameras (the
 device events connection of OADM, like Device triggers) and shows it in **Enrollments** as "Camera: <message>", so a

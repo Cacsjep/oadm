@@ -432,7 +432,7 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
 `docs/spec/est-server.md`; details: plugin `README.md`.
 
 - Rules that must hold: only cameras that sign in with a valid Axis device ID (or a certificate EST issued them) and that
-  OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the OADM CA of PKI
+  OADM manages (sites: planned) get certificates; OADM sets the names, never the request; the OADM CA of PKI
   signs (no CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
   requests are logged; the plugin checks the license on every request, and changing or removing that check is not
   allowed by its license.

@@ -38,7 +38,7 @@ import { forumUrl } from '../lib/forum';
 				<label>Email<input name="email" type="email" autocomplete="email" maxlength="254" /><span class="activate-error" hidden></span></label>
 				<label class="activate-trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
 			</div>
-			<p class="activate-hint">One trial per server. The license key comes by email.</p>
+			<p class="activate-hint">One trial per server and email address. The license key comes by email.</p>
 			<p class="activate-message" role="status" hidden></p>
 			<div class="activate-done" hidden>
 				<p>Save the .oadmlicense file from the email. In OADM, open Settings &gt; License and click Import license.</p>
@@ -145,7 +145,7 @@ import { forumUrl } from '../lib/forum';
 				const link = document.createElement('a');
 				link.href = `mailto:${contact}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
 				link.textContent = contact;
-				message.replaceChildren('Sorry, our server looks offline. Please send your request by email to ', link, '.');
+				message.replaceChildren('Our server looks offline. Send your request by email to ', link, '.');
 				message.classList.remove('ok');
 				message.hidden = false;
 			};

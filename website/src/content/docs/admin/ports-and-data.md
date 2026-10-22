@@ -11,9 +11,10 @@ description: Network ports, the data folder and what to back up.
 | TCP 5081 | [Site nodes](../sites/) to server, only while **Accept site nodes** is on |
 | UDP 123 | [NTP server](../../tools/ntp-server/), only when enabled |
 | UDP 67 | [DHCP server](../../tools/dhcp-server/), only when enabled |
+| TCP 9454 | [EST server](../../tools/est-server/): cameras get their certificates, only while it runs (the port can be changed) |
 
 The Windows installer opens TCP 5080 for Domain and Private networks. The server opens TCP 5081 while **Accept site
-nodes** is on, the NTP and DHCP servers their port while enabled. The server runs as Local System / root because these two servers need privileged ports.
+nodes** is on, the NTP and DHCP servers their port while enabled, the EST server its port while it runs. The server runs as Local System / root because these two servers need privileged ports.
 
 The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
 Metadata Monitor.
