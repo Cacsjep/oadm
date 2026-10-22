@@ -179,6 +179,9 @@ must never break.
 - **[OADM PRO license](docs/spec/licensing.md)**: a signed license key (the plugin license format, ECDSA P-256) for
   this server's ID; the public keys in the repo, the private keys never; only PRO plugins read it, **OADM itself is never
   limited**; Settings card License.
+- **[EST server](docs/spec/est-server.md)**: the first OADM PRO plugin (`oadm.est`, `"pro": true`, its own source-available
+  license): RFC 7030 on TCP 9454, cameras enroll with their Axis device ID and only if OADM manages them, the OADM CA of
+  PKI signs, cameras renew by themselves (renewals from an OADM CA never show Certificate changed), also at sites.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
