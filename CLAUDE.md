@@ -176,6 +176,9 @@ must never break.
 - **[Security and access](docs/spec/security.md)**: AES-256-GCM secrets with the master key, never logged; TLS with a
   pinned server certificate; users, roles and permissions, sessions, the audit log; limits on device answers; the
   service's firewall rules and folder checks.
+- **[OADM PRO license](docs/spec/licensing.md)**: a signed license key (the plugin license format, ECDSA P-256) for
+  this server's ID; the public keys in the repo, the private keys never; only PRO plugins read it, **OADM itself is never
+  limited**; Settings card License.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

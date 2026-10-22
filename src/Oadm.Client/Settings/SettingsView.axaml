@@ -4,6 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:c="using:Oadm.Client.Controls"
              xmlns:backup="using:Oadm.Client.Backup"
+             xmlns:licensing="using:Oadm.Client.Licensing"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
@@ -11,7 +12,7 @@
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how OADM looks and shows video on this computer." />
     <ScrollViewer Grid.Row="1">
-      <!-- Two columns: this computer and the server settings left, backup and restore right (administrators). -->
+      <!-- Two columns: this computer and the server settings left, backup and restore (administrators) and the license right. -->
       <!-- Each column grows to 760 px; on a wider window the space stays on the right (the page starts at the left).
            On a narrow window backup and restore moves below the server settings (SettingsView.axaml.cs). -->
       <Grid x:Name="Columns" RowDefinitions="Auto,Auto">
@@ -170,8 +171,13 @@
         </StackPanel>
       </StackPanel>
 
-      <backup:BackupCardView x:Name="BackupCard" Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding Backup}"
-                             IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}" />
+      <!-- Right column: backup and restore (administrators), then the license (every user) -->
+      <StackPanel x:Name="RightColumn" Grid.Column="2" Spacing="16" VerticalAlignment="Top">
+        <backup:BackupCardView DataContext="{Binding Backup}"
+                               IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}" />
+        <licensing:LicenseCardView DataContext="{Binding License}"
+                                   IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowLicense}" />
+      </StackPanel>
       </Grid>
     </ScrollViewer>
   </Grid>

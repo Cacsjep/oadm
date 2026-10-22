@@ -95,6 +95,12 @@ public static class ServiceRegistration
         services.AddSingleton<Sites.SitesViewModel>();
         services.AddSingleton<Compliance.ComplianceViewModel>();
         services.AddSingleton<Backup.BackupViewModel>();
+        services.AddSingleton(sp => new Licensing.LicenseViewModel(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<IDialogService>(),
+            sp.GetRequiredService<IClipboardService>(),
+            sp.GetRequiredService<IUrlLauncher>(),
+            sp.GetRequiredService<UserSession>()));
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();

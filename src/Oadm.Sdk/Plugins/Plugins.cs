@@ -284,6 +284,12 @@ public interface ITaskExecutionContext
     IPluginLicense? License => null;
 
     /// <summary>
+    /// The server's OADM PRO license, live (<see cref="IProLicense.Changed"/>): whether PRO is active, the plan, the devices
+    /// and the last day. OADM only checks; a PRO plugin decides what runs without it. Null on hosts without licenses.
+    /// </summary>
+    IProLicense? Pro => null;
+
+    /// <summary>
     /// Network checks towards this task's device, routed like it (through its site or on the server's own network): the
     /// address-in-use check, the device's host name, OADM's address towards the device. Null on hosts without it.
     /// </summary>
@@ -392,6 +398,12 @@ public interface ICorePluginContext
     /// decides what runs without a valid license. Null on hosts without licenses.
     /// </summary>
     IPluginLicense? License => null;
+
+    /// <summary>
+    /// The server's OADM PRO license, live (<see cref="IProLicense.Changed"/>): whether PRO is active, the plan, the devices
+    /// and the last day. OADM only checks; a PRO plugin decides what runs without it. Null on hosts without licenses.
+    /// </summary>
+    IProLicense? Pro => null;
 
     /// <summary>
     /// Publishes the plugin's events to the server's event rules (the plugin implements

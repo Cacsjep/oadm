@@ -313,6 +313,14 @@ public interface IOadmApi
     Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
         throw new NotSupportedException("This connection has no plugin downloads.");
 
+    // LicenseService (Settings page, card License): every signed-in user reads; Import and Remove are Administrator only
+    Task<ProLicenseState> GetLicenseAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
+
+    /// <summary>Checks and stores an OADM PRO license key (INVALID_ARGUMENT with the reason).</summary>
+    Task<ProLicenseState> ImportLicenseAsync(string license, CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
+
+    Task<ProLicenseState> RemoveLicenseAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
+
     // BackupService (Administrator only, Settings page)
     Task<BackupState> GetBackupStateAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
 

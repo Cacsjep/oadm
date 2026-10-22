@@ -531,6 +531,13 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task DeleteUploadAsync(string fileId, CancellationToken ct) =>
         await C.Files.DeleteAsync(new FileIdRequest { FileId = fileId }, cancellationToken: ct);
 
+    public async Task<ProLicenseState> GetLicenseAsync(CancellationToken ct) => await C.License.GetLicenseAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<ProLicenseState> ImportLicenseAsync(string license, CancellationToken ct) =>
+        await C.License.ImportLicenseAsync(new ImportLicenseRequest { License = license }, cancellationToken: ct);
+
+    public async Task<ProLicenseState> RemoveLicenseAsync(CancellationToken ct) => await C.License.RemoveLicenseAsync(new Empty(), cancellationToken: ct);
+
     public async Task<BackupState> GetBackupStateAsync(CancellationToken ct) => await C.Backup.GetStateAsync(new Empty(), cancellationToken: ct);
 
     public async Task<BackupState> SetBackupScheduleAsync(BackupSchedule schedule, CancellationToken ct) => await C.Backup.SetScheduleAsync(schedule, cancellationToken: ct);
@@ -673,6 +680,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public EventService.EventServiceClient Events { get; } = new(channel);
         public ComplianceService.ComplianceServiceClient Compliance { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
+        public LicenseService.LicenseServiceClient License { get; } = new(channel);
         public SiteService.SiteServiceClient Sites { get; } = new(channel);
     }
 }

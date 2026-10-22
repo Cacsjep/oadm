@@ -5,7 +5,7 @@ namespace Oadm.Client.Settings;
 
 public partial class SettingsView : UserControl
 {
-    /// <summary>Below this width the backup card moves under the server settings (small or scaled screens).</summary>
+    /// <summary>Below this width the backup and license cards move under the server settings (small or scaled screens).</summary>
     public const double TwoColumnWidth = 1100;
 
     private bool? _twoColumns;
@@ -30,8 +30,8 @@ public partial class SettingsView : UserControl
         _twoColumns = two;
         Columns.ColumnDefinitions[1].Width = new GridLength(two ? 16 : 0);
         Columns.ColumnDefinitions[2].Width = two ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetColumn(BackupCard, two ? 2 : 0);
-        Grid.SetRow(BackupCard, two ? 0 : 1);
-        BackupCard.Margin = two ? default : new Thickness(0, 16, 0, 0);
+        Grid.SetColumn(RightColumn, two ? 2 : 0);
+        Grid.SetRow(RightColumn, two ? 0 : 1);
+        RightColumn.Margin = two ? default : new Thickness(0, 16, 0, 0);
     }
 }

@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.Licensing"
+             x:Class="Oadm.Client.Licensing.LicenseCardView"
+             x:DataType="vm:LicenseViewModel">
+  <!-- Settings page, every user: the OADM PRO license of the server. Administrators import and remove it. -->
+  <Border Classes="card">
+    <StackPanel Classes="form">
+      <TextBlock Classes="sectionTitle" Text="License" />
+      <ui:FormField Label="Server ID" IsVisible="{Binding HasServerId}">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
+          <Button Classes="toolbar iconOnly" ToolTip.Tip="Copy server ID" Command="{Binding CopyServerIdCommand}">
+            <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+          </Button>
+        </StackPanel>
+      </ui:FormField>
+      <ui:FormField Label="OADM PRO" Hint="{Binding CustomerText}">
+        <Panel>
+          <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" IsVisible="{Binding !HasLicense}" />
+          <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsActive}" IsWarning="{Binding IsTrial}" IsError="{Binding IsProblem}"
+                         MaxLines="2" IsVisible="{Binding HasLicense}" />
+        </Panel>
+      </ui:FormField>
+      <ui:FormField Classes="wide" IsVisible="{Binding IsAdmin}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Classes="secondary" Command="{Binding ImportCommand}">
+            <ui:IconLabel Icon="{StaticResource Icon.key}" Text="Import license" />
+          </Button>
+          <Button Classes="danger" Content="Remove license" Command="{Binding RemoveCommand}" IsVisible="{Binding CanRemove}" />
+          <!-- The result sits next to the buttons it reports on. -->
+          <TextBlock Text="{Binding Message}" Classes.error="{Binding MessageIsError}" Classes.secondary="{Binding !MessageIsError}" VerticalAlignment="Center"
+                     IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </ui:FormField>
+      <ui:FormField Classes="wide" IsVisible="{Binding ShowLinks}">
+        <StackPanel Orientation="Horizontal" Spacing="16">
+          <Button Classes="link" Content="Start 30-day trial" Command="{Binding StartTrialCommand}" IsVisible="{Binding ShowStartTrial}" />
+          <Button Classes="link" Content="Activate license" Command="{Binding ActivateCommand}" IsVisible="{Binding ShowActivate}" />
+        </StackPanel>
+      </ui:FormField>
+    </StackPanel>
+  </Border>
+</UserControl>

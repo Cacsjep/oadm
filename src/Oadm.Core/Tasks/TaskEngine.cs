@@ -720,6 +720,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     _time)
                 {
                     License = _plugins.Licenses?.LicenseOf(task.Registration.Origin.PackageId),
+                    Pro = _plugins.Pro,
                     Network = (_options.Networks ?? Sites.DeviceNetworks.Local).For(device!),
                 };
                 steps = context.Steps;

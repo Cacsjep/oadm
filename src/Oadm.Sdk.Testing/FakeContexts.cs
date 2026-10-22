@@ -84,6 +84,9 @@ public sealed class FakeTaskContext : ITaskExecutionContext
     /// <inheritdoc />
     public IPluginLicense? License { get; init; }
 
+    /// <inheritdoc />
+    public IProLicense? Pro { get; init; }
+
     /// <summary>The device's route (<see cref="Sites.IDeviceNetwork"/>): the server's own network unless a test sets a site's.</summary>
     public Sites.IDeviceNetwork? Network { get; init; } = new FakeDeviceNetwork();
 
@@ -199,6 +202,9 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public IPluginLicense? License { get; init; }
 
+    /// <inheritdoc />
+    public IProLicense? Pro { get; init; }
+
     /// <summary>The bound sites and their relays (<see cref="FakeSites"/>); empty until a test adds a site.</summary>
     public FakeSites FakeSites { get; } = new();
 
@@ -231,4 +237,30 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner));
         return Task.FromResult<IReadOnlyList<Guid>>([.. deviceIds.Select(_ => Guid.NewGuid())]);
     }
+}
+
+/// <summary>
+/// An OADM PRO license for <see cref="FakeCoreContext.Pro"/> and <see cref="FakeTaskContext.Pro"/>: set
+/// <see cref="Current"/> to change it; <see cref="IProLicense.Changed"/> follows.
+/// </summary>
+public sealed class FakeProLicense : IProLicense
+{
+    /// <summary>An active PRO license, by default without a device limit or last day.</summary>
+    public static FakeProLicense ActivePro(string plan = "Unlimited", long? maxDevices = null, DateOnly? expires = null, bool trial = false) =>
+        new() { Current = new ProLicenseInfo(ProLicenseStatus.Active, ProLicenseTexts.Active(plan, expires, trial), "Test customer", plan, maxDevices, expires, trial) };
+
+    /// <inheritdoc />
+    public ProLicenseInfo Current
+    {
+        get;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    } = ProLicenseInfo.None;
+
+    /// <inheritdoc />
+    public event EventHandler? Changed;
 }

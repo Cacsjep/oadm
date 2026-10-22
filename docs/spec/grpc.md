@@ -163,3 +163,5 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   and one transaction for the whole selection, names in `add` without a definition are created with the next palette
   color, unknown ids ignored, RESOURCE_EXHAUSTED when a device would get more than 20 tags; reply `devices_changed`,
   `created`). Every write publishes one Updated device change per changed device.
+- `LicenseService` (`license.proto`, see `docs/spec/licensing.md`): `GetLicense` (every signed-in user), `ImportLicense`
+  and `RemoveLicense` (Admin, audited; INVALID_ARGUMENT with the reason).

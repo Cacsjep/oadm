@@ -126,6 +126,9 @@ public sealed partial class PluginRegistry
     /// <summary>The licenses of commercial plugins (set by <see cref="PluginLicenses.InitializeAsync"/>); null on hosts without.</summary>
     public IPluginLicenseSource? Licenses { get; set; }
 
+    /// <summary>The server's OADM PRO license for the plugins' contexts (set at server start); null on hosts without.</summary>
+    public Sdk.Licensing.IProLicense? Pro { get; set; }
+
     /// <summary>Task plugins of enabled packages.</summary>
     public IReadOnlyList<RegisteredTaskPlugin> TaskPlugins
     {

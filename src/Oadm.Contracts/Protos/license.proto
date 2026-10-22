@@ -1,0 +1,36 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+// The server's OADM PRO license (Settings page, card License; docs/spec/licensing.md). OADM itself never depends on it:
+// it only tells PRO plugins whether PRO is active. Reading is open to every signed-in user; Import and Remove are
+// Administrator only and audited.
+service LicenseService {
+  rpc GetLicense (Empty) returns (ProLicenseState);
+  // Checks and stores a license key (the text of a .oadmlicense file). INVALID_ARGUMENT with the reason.
+  rpc ImportLicense (ImportLicenseRequest) returns (ProLicenseState);
+  rpc RemoveLicense (Empty) returns (ProLicenseState);
+}
+
+// Oadm.Sdk.Licensing.ProLicenseStatus.
+enum ProLicenseStatus {
+  PRO_LICENSE_NONE = 0;
+  PRO_LICENSE_ACTIVE = 1;
+  PRO_LICENSE_EXPIRED = 2;
+  PRO_LICENSE_WRONG_SERVER = 3;
+  PRO_LICENSE_INVALID = 4;
+}
+
+message ProLicenseState {
+  string server_id = 1;        // this server's ID, the one licenses name
+  ProLicenseStatus status = 2;
+  string reason = 3;           // "PRO Up to 500 devices, valid until 2028-10-22", "No license", ...
+  string customer = 4;
+  string plan = 5;             // "Up to 500 devices"
+  optional int64 max_devices = 6;   // unset = no limit
+  string expires = 7;          // "2028-10-22", empty = never
+  bool trial = 8;
+}
+
+message ImportLicenseRequest { string license = 1; }

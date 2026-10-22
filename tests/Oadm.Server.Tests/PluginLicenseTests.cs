@@ -52,6 +52,7 @@ public sealed class PluginLicenseTests
         Assert.Equal(["reports", "export"], Package(list).License.AvailableFeatures);
         Assert.Null(list.Packages.First(p => p.Id != PluginId).License); // free plugins carry none
         Assert.NotNull(plugin.Context?.License);
+        Assert.Same(host.Get<Oadm.Core.Licensing.ProLicense>(), plugin.Context!.Pro); // the server's OADM PRO license
         Assert.False(plugin.Context!.License!.IsValid);
         var changed = 0;
         plugin.Context.License.Changed += (_, _) => changed++;

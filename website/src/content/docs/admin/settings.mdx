@@ -65,6 +65,21 @@ card shows what was restored.
 
 A backup of an older OADM is upgraded when it is restored. A backup of a newer OADM is refused: update OADM first.
 
+## License
+
+The **License** card shows this server's OADM PRO license. OADM itself works the same with or without one; PRO adds
+commercial support and PRO plugins.
+
+- **Server ID**: the ID a license is made for. The copy button puts it on the clipboard.
+- **OADM PRO**: the plan and the last day, **Trial** for a 30-day trial, or what is wrong (expired, made for another
+  server, not valid).
+- **Start 30-day trial** and **Activate license** open oadm.app with the server ID filled in. You get a license file
+  (`.oadmlicense`).
+- **Import license** (administrators): choose the license file. It applies at once.
+- **Remove license** (administrators): PRO plugins stop working on this server.
+
+A license moves with a backup: after a restore on a new computer the server keeps its ID and its license.
+
 ## On this computer
 
 Each client also keeps its own settings on the computer: the servers you used, the device list columns, group by tag,

@@ -173,6 +173,10 @@ public static class AccessPolicy
         ["/oadm.v1.SettingsService/AddCredential"] = AccessRule.Admin,
         ["/oadm.v1.SettingsService/RemoveCredential"] = AccessRule.Admin,
         ["/oadm.v1.SettingsService/RevealCredential"] = AccessRule.Admin,
+        ["/oadm.v1.LicenseService/GetLicense"] = AccessRule.SignedIn,
+        ["/oadm.v1.LicenseService/ImportLicense"] = AccessRule.Admin,
+        ["/oadm.v1.LicenseService/RemoveLicense"] = AccessRule.Admin,
+
         ["/oadm.v1.BackupService/GetState"] = AccessRule.Admin,
         ["/oadm.v1.BackupService/SetSchedule"] = AccessRule.Admin,
         ["/oadm.v1.BackupService/Create"] = AccessRule.Admin,

@@ -157,6 +157,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 {
                     // Not for devices at a site: no route into a site and no relays (docs/spec/sites.md, Declaration).
                     Network = SiteSupportGuard.Guard(entry.Network, siteSupport),
+                    Pro = _registry.Pro,
                     Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
                 };
                 try
@@ -474,6 +475,8 @@ internal sealed class CorePluginContext(
     Sdk.Licensing.IPluginLicense? license = null) : ICorePluginContext
 {
     public Sdk.Licensing.IPluginLicense? License { get; } = license;
+
+    public Sdk.Licensing.IProLicense? Pro { get; init; }
 
     private readonly Lazy<string?> _dataDirectory = new(() =>
     {

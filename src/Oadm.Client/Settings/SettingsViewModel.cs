@@ -95,6 +95,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     /// <summary>Live video on this computer: details over the picture, the adaptive frame rate.</summary>
     public LiveView.LiveVideoSettings Video { get; }
 
+    /// <summary>The card "License" (every user; administrators import and remove); null in tests without it.</summary>
+    public Licensing.LicenseViewModel? License { get; }
+
+    public bool ShowLicense => License is not null;
+
     /// <summary>The card "Backup and restore" (administrators); null without a dialog service (tests).</summary>
     public Oadm.Client.Backup.BackupViewModel? Backup { get; }
 
@@ -111,8 +116,10 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null,
         Infrastructure.IClientSettingsStore? clientSettings = null, LiveView.GpuDecodingService? gpu = null, Infrastructure.IUiDispatcher? ui = null,
-        LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null, Dialogs.IClipboardService? clipboard = null)
+        LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null, Dialogs.IClipboardService? clipboard = null,
+        Licensing.LicenseViewModel? license = null)
     {
+        License = license;
         _clipboard = clipboard;
         Video = video ?? new LiveView.LiveVideoSettings(clientSettings);
         Backup = backup;
@@ -270,6 +277,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             if (ShowBackup)
             {
                 await Backup!.LoadAsync().ConfigureAwait(true);
+            }
+
+            if (License is not null)
+            {
+                await License.LoadAsync().ConfigureAwait(true);
             }
         }
         catch (Exception ex)

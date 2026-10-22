@@ -255,6 +255,8 @@ Commercial plugins (decision 2026-10-17): OADM checks, the plugin decides. User 
   --customer [--expires] [--features] [--limit name=n]... [--out]` (`tools/Oadm.Tools`; `manage license ...` passes the
   arguments unchanged).
 - Tests: `tests/Oadm.Server.Tests/PluginLicenseTests`, `tests/Oadm.Tools.Tests`, `tests/Oadm.Client.Tests/PluginListTests`.
+- **OADM PRO**: `ICorePluginContext.Pro` and `ITaskExecutionContext.Pro` (`IProLicense`, DIM null): the server's OADM PRO
+  license for PRO plugins (`docs/spec/licensing.md`); test fake `FakeProLicense`.
 
 ## Plugin documentation
 

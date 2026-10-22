@@ -138,6 +138,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Compliance.ComplianceGrpcService>();
         app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
         app.MapGrpcService<Backup.BackupGrpcService>();
+        app.MapGrpcService<Licensing.LicenseGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
         app.MapGrpcService<Sites.SiteGrpcService>();
         if (app.Environment.IsDevelopment())
@@ -322,6 +323,12 @@ public static partial class OadmServerHost
         services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton<PluginActivation>();
         services.AddSingleton<PluginLicenses>();
+        // OADM PRO license (docs/spec/licensing.md): for the server ID plugin licenses use; OADM itself never depends on it.
+        services.AddSingleton(sp => new Core.Licensing.ProLicense(
+            sp.GetRequiredService<ServerSettingsStore>(),
+            () => sp.GetRequiredService<PluginLicenses>().ServerId,
+            sp.GetRequiredService<TimeProvider>(),
+            logger: sp.GetRequiredService<ILogger<Core.Licensing.ProLicense>>()));
         services.AddHostedService<PluginLicenseRefreshHostedService>();
         services.AddSingleton(sp => new CorePluginHost(
             sp.GetRequiredService<PluginRegistry>(),
@@ -553,6 +560,9 @@ public static partial class OadmServerHost
         // 4a. Licenses of commercial plugins: the server ID, the entered licenses, trials; before any plugin runs.
         await sp.GetRequiredService<PluginLicenses>().InitializeAsync(ct).ConfigureAwait(false);
         sp.GetRequiredService<ActionRunner>().Licenses = sp.GetRequiredService<PluginLicenses>();
+        var pro = sp.GetRequiredService<Core.Licensing.ProLicense>();
+        await pro.InitializeAsync(ct).ConfigureAwait(false);
+        registry.Pro = pro;
 
         // 4b. Event rules before the core plugins: their publishers queue into a running engine, and each event type
         // waits for its source's first full report before a rule that uses it runs anything.
