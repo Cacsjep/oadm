@@ -44,6 +44,7 @@ public static class DeviceConnections
             Scheme = SchemeOf(device),
             Credentials = credentials,
             PinnedCertificateFingerprint = device.CertFingerprintSha256,
+            DeviceSerial = device.Serial,
             Timeout = timeout ?? DefaultTimeout,
             Route = RouteOf(device),
             AllowBasicOverHttp = allowBasicOverHttp,

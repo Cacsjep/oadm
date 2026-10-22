@@ -35,6 +35,9 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
     /// <summary>Manifest <c>sitePorts</c>: the ports the package listens on at sites; empty = none.</summary>
     public IReadOnlyList<Sdk.Sites.SitePort> SitePorts { get; init; } = [];
 
+    /// <summary>Manifest <c>pro</c>: an OADM PRO plugin, on only with an active OADM PRO license.</summary>
+    public bool Pro { get; init; }
+
     /// <summary>A plugin compiled into the host (tests, built-in parts): it works wherever the host does.</summary>
     public static PluginOrigin FromAssembly(Assembly assembly)
     {
@@ -126,8 +129,14 @@ public sealed partial class PluginRegistry
     /// <summary>The licenses of commercial plugins (set by <see cref="PluginLicenses.InitializeAsync"/>); null on hosts without.</summary>
     public IPluginLicenseSource? Licenses { get; set; }
 
-    /// <summary>The server's OADM PRO license for the plugins' contexts (set at server start); null on hosts without.</summary>
+    /// <summary>
+    /// The server's OADM PRO license for the plugins' contexts and the lock of the PRO packages (set at server start); null on
+    /// hosts without (PRO packages stay off).
+    /// </summary>
     public Sdk.Licensing.IProLicense? Pro { get; set; }
+
+    /// <summary>OADM PRO is active, so PRO packages may run.</summary>
+    public bool ProActive => Pro?.IsActive == true;
 
     /// <summary>Task plugins of enabled packages.</summary>
     public IReadOnlyList<RegisteredTaskPlugin> TaskPlugins
@@ -266,6 +275,11 @@ public sealed partial class PluginRegistry
                 throw new InvalidOperationException($"{origin.DisplayName} is always on.");
             }
 
+            if (enabled && FindOriginLocked(packageId) is { Pro: true } && !ProActive)
+            {
+                throw new InvalidOperationException(Sdk.Licensing.ProLicenseTexts.NeedsPro);
+            }
+
             _enabledOverrides[packageId] = enabled;
             snapshot = new Dictionary<string, bool>(_enabledOverrides, StringComparer.OrdinalIgnoreCase);
         }
@@ -298,8 +312,16 @@ public sealed partial class PluginRegistry
         _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin)).Concat(_actions.Select(a => a.Origin))
             .FirstOrDefault(o => string.Equals(o.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// On: always-on, else the administrator's choice or the manifest default; a PRO package only while OADM PRO is active
+    /// (the choice is kept, so a new license turns it on again).
+    /// </summary>
     private bool IsEnabledLocked(PluginOrigin origin) =>
-        origin.AlwaysOn || (_enabledOverrides.TryGetValue(origin.PackageId, out var enabled) ? enabled : origin.EnabledByDefault);
+        origin.AlwaysOn
+        || ((_enabledOverrides.TryGetValue(origin.PackageId, out var enabled) ? enabled : origin.EnabledByDefault) && (!origin.Pro || ProActive));
+
+    /// <summary>The OADM PRO license changed: PRO packages may have turned on or off. Raises <see cref="EnabledChanged"/>.</summary>
+    public void ProChanged() => EnabledChanged?.Invoke(this, EventArgs.Empty);
 
     private static bool SamePackage(PluginOrigin a, PluginOrigin b) =>
         string.Equals(a.PackageId, b.PackageId, StringComparison.OrdinalIgnoreCase);

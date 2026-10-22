@@ -51,6 +51,7 @@ message PluginPackageInfo {
   PluginLicenseState license = 11;   // unset or status NOT_REQUIRED: a free plugin
   string site_support = 12;          // "full", "none" (plugin.json siteSupport; a manifest without it is "none"); empty from older servers
   repeated PluginSitePort site_ports = 13;   // plugin.json sitePorts: the ports it listens on at sites
+  bool pro = 14;                     // plugin.json pro: an OADM PRO plugin, on only while OADM PRO is active
 }
 
 // A port a plugin listens on at sites (relays), as plugin.json declares it.
@@ -84,8 +85,9 @@ message PluginLicenseState {
   string trial_ends = 8;
   repeated string available_features = 9;
 }
-// server_id: this server's ID, which licenses name (Plugins page, copy button).
-message PluginPackageList { repeated PluginPackageInfo packages = 1; string server_id = 2; }
+// server_id: this server's ID, which licenses name (Plugins page, copy button); pro_active: OADM PRO is active, so PRO
+// plugins can be turned on (SetPackageEnabled answers FAILED_PRECONDITION otherwise).
+message PluginPackageList { repeated PluginPackageInfo packages = 1; string server_id = 2; bool pro_active = 3; }
 message SetPackageLicenseRequest { string id = 1; string license = 2; }
 message PackageIdRequest { string id = 1; }
 message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }

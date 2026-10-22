@@ -74,6 +74,9 @@ public static class ProLicenseTexts
     /// <summary>An unknown signing key, changed content or another product.</summary>
     public const string NotValid = "This is not a valid OADM PRO license.";
 
+    /// <summary>A PRO plugin cannot be turned on without an active license (Plugins page, server refusal).</summary>
+    public const string NeedsPro = "Needs an OADM PRO license or trial.";
+
     /// <summary>"Expired on 2028-10-22."</summary>
     public static string ExpiredOn(DateOnly day) => $"Expired on {LicenseFile.Day(day)}.";
 

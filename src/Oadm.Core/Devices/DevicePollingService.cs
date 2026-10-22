@@ -580,6 +580,11 @@ public sealed partial class DevicePollingService : IDisposable
         {
             observation.Fingerprint = fingerprint; // trust on first use
         }
+        else if (device.CertFingerprintSha256 is not null && observation.Status == DeviceStatus.Ok && client.RenewedCertificateFingerprint is { } renewed)
+        {
+            observation.RenewedFingerprint = renewed; // an OADM CA renewed it (EST, PKI): pinned again, no Certificate changed
+            LogCertificateRenewed(device.Id, device.Address);
+        }
 
         if (full && observation.Status == DeviceStatus.Ok)
         {
@@ -723,6 +728,9 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} ({Address}) has a certificate an OADM CA renewed; it is pinned now")]
+    private partial void LogCertificateRenewed(Guid deviceId, string address);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading server settings failed")]
     private partial void LogSettingsFailed(Exception ex);
 
@@ -793,6 +801,9 @@ public sealed partial class DevicePollingService : IDisposable
 
         public string? Fingerprint { get; set; }
 
+        /// <summary>A certificate an OADM CA renewed: replaces the pinned fingerprint.</summary>
+        public string? RenewedFingerprint { get; set; }
+
         public NetworkInfo? Network { get; set; }
 
         /// <summary>apidiscovery list; null when not fetched (status poll) or the request failed.</summary>
@@ -819,7 +830,7 @@ public sealed partial class DevicePollingService : IDisposable
             d.Model = Model ?? d.Model;
             d.FirmwareVersion = Firmware ?? d.FirmwareVersion;
             d.LastSeenUtc = LastSeen ?? d.LastSeenUtc;
-            d.CertFingerprintSha256 ??= Fingerprint;
+            d.CertFingerprintSha256 = RenewedFingerprint ?? d.CertFingerprintSha256 ?? Fingerprint;
             d.ServerName = ServerName ?? d.ServerName;
             d.Soc = Soc ?? d.Soc;
             if (ProductType is not null)

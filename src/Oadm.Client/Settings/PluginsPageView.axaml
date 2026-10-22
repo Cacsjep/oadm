@@ -45,17 +45,24 @@
             <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="settings:PluginRowViewModel">
-                  <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding NeedsLicense}" VerticalAlignment="Center">
-                    <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
-                                   IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
-                    <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
-                            Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
-                            CommandParameter="{Binding}" />
-                    <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
-                            IsEnabled="{Binding CanEditLicense}"
-                            Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
-                            CommandParameter="{Binding}" />
-                  </StackPanel>
+                  <Panel>
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding IsPro}" VerticalAlignment="Center">
+                      <ui:StatusChip Text="OADM PRO" IsOk="{Binding ProActive}" ToolTip.Tip="{Binding ProDetail}" />
+                      <Button Classes="link" Content="Activate" IsVisible="{Binding CanActivatePro}"
+                              Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).ActivateProCommand}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding NeedsLicense}" VerticalAlignment="Center">
+                      <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
+                                     IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
+                      <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
+                              Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
+                              CommandParameter="{Binding}" />
+                      <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
+                              IsEnabled="{Binding CanEditLicense}"
+                              Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
+                              CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </Panel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

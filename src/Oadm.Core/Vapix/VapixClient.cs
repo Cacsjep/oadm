@@ -26,6 +26,12 @@ public sealed record VapixConnectionOptions
     /// <summary>Per-request timeout.</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// The managed device's serial number: a certificate an OADM CA renewed for it replaces the pin without Certificate
+    /// changed (<see cref="CertificatePinning.DeviceSerial"/>). Null for devices that are not managed yet.
+    /// </summary>
+    public string? DeviceSerial { get; init; }
+
     /// <summary>Extra trust anchors for rating the device certificate (<see cref="VapixClient.ObservedCertificate"/>); null = OS store only.</summary>
     public TrustAnchorRegistry? TrustAnchors { get; init; }
 
@@ -140,6 +146,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     /// <summary>SHA-256 fingerprint of the certificate the device presented last (HTTPS only).</summary>
     public string? CertificateFingerprint => Pinning?.ObservedFingerprint;
 
+    /// <summary>A certificate an OADM CA renewed replaced the pinned one: its fingerprint, to pin. Null otherwise.</summary>
+    public string? RenewedCertificateFingerprint => Pinning?.RenewedFingerprint;
+
     /// <summary>
     /// Subject, issuer, validity and chain trust of the certificate from the last TLS handshake
     /// (HTTPS only, null before the first handshake). Pooled connections are reused, so this
@@ -156,7 +165,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         ArgumentNullException.ThrowIfNull(options);
         router ??= DeviceRouter.Local;
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
-        var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
+        var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors, DeviceSerial = options.DeviceSerial };
         var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
         var client = new VapixClient(baseAddress, handler, pinning, options.Timeout)
         {

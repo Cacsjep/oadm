@@ -155,6 +155,7 @@ public sealed partial class LicenseViewModel : ObservableObject
             IsBusy = true;
             Apply(await _api.ImportLicenseAsync(text, CancellationToken.None).ConfigureAwait(true));
             Show("License imported.", error: false);
+            LicenseChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (RpcException ex)
         {
@@ -182,6 +183,7 @@ public sealed partial class LicenseViewModel : ObservableObject
             IsBusy = true;
             Apply(await _api.RemoveLicenseAsync(CancellationToken.None).ConfigureAwait(true));
             Message = null;
+            LicenseChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (RpcException ex)
         {
@@ -192,6 +194,9 @@ public sealed partial class LicenseViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    /// <summary>Raised after this client imported or removed the license: PRO plugins may have turned on or off.</summary>
+    public event EventHandler? LicenseChanged;
 
     /// <summary>The trial page of oadm.app with this server's ID.</summary>
     public Uri StartTrialUri => new(ActivatePage + "?server=" + Uri.EscapeDataString(ServerId) + "&trial=1");

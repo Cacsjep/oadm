@@ -2,11 +2,13 @@
 
 Core plugin (+ `.Client`), rail page **PKI** (group Security, icon `shield`), always on. Device API research:
 `tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
-part 2: the contributed Security tasks (below), the only writers of the `issued` registry.
+part 2: the contributed Security tasks (below), and the OADM CA service (`PkiCertificateAuthority`, offered as
+`IDeviceCertificateAuthority` through `ICorePluginContext.Services` while the plugin runs; the EST server signs with it),
+the only writers of the `issued` registry.
 - CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
   key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
   most 10, newest first, expired ones dropped), `issued` (`{serialNumber, deviceId, purpose https|dot1x, caId, notAfterUtc,
-  issuedUtc, alias}`; per device and purpose the newest counts; `IssuedRegistry` keeps changes in memory and writes at
+  issuedUtc, alias, source}`, source "EST" for certificates of the CA service, empty for PKI's tasks; per device and purpose the newest counts; `IssuedRegistry` keeps changes in memory and writes at
   most every 2 s and on stop, entries ended more than 30 days ago are dropped), `config`. Without `Secrets` the plugin keeps no CA
   ("CA cannot be stored on this server"); a key that cannot be decrypted (other master key) is the error state "CA key
   cannot be read" with Generate / Import only, nothing is overwritten.

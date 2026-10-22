@@ -181,6 +181,9 @@ public sealed record IssuedCertificate
 
     /// <summary>Alias of the certificate on the device ("OADM HTTPS 20261007-120000").</summary>
     public string? Alias { get; init; }
+
+    /// <summary>Which plugin asked for it through the OADM CA service ("EST"); null = PKI's own tasks.</summary>
+    public string? Source { get; init; }
 }
 
 /// <summary>The active CA as the page shows it.</summary>

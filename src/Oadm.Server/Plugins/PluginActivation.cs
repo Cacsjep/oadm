@@ -88,7 +88,58 @@ public sealed partial class PluginActivation(
         return registry.Packages.First(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Starts and stops the PRO packages when the OADM PRO license changes (imported, removed, ran out): the registry gates
+    /// them, this applies it to the running core plugins. The administrator's choice stays stored.
+    /// </summary>
+    public void FollowPro(Sdk.Licensing.IProLicense pro)
+    {
+        ArgumentNullException.ThrowIfNull(pro);
+        var active = pro.IsActive;
+        pro.Changed += (_, _) =>
+        {
+            var now = pro.IsActive;
+            if (now == active)
+            {
+                return;
+            }
+
+            active = now;
+            registry.ProChanged();
+            _ = SyncAsync(now);
+        };
+    }
+
+    private async Task SyncAsync(bool proActive)
+    {
+        await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
+            foreach (var package in registry.Packages.Where(p => p.Origin.Pro))
+            {
+                LogProChanged(logger, package.Id, package.Enabled ? "on" : "off", proActive ? "active" : "not active");
+            }
+        }
+#pragma warning disable CA1031 // A failed sync is logged; the next change or restart applies it.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogProSyncFailed(logger, ex);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public void Dispose() => _gate.Dispose();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} is {State}: OADM PRO is {Pro}")]
+    private static partial void LogProChanged(ILogger logger, string packageId, string state, string pro);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The PRO plugins could not follow the license change")]
+    private static partial void LogProSyncFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The stored plugin states cannot be read; every plugin uses its default")]
     private static partial void LogUnreadable(ILogger logger, Exception ex);

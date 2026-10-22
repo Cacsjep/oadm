@@ -205,6 +205,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public IProLicense? Pro { get; init; }
 
+    /// <summary>The services of other plugins (<see cref="FakePluginServices"/>); a test offers fakes here.</summary>
+    public FakePluginServices FakeServices { get; } = new();
+
+    /// <inheritdoc />
+    public IPluginServices? Services => FakeServices;
+
     /// <summary>The bound sites and their relays (<see cref="FakeSites"/>); empty until a test adds a site.</summary>
     public FakeSites FakeSites { get; } = new();
 

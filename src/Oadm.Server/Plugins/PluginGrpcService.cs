@@ -141,7 +141,7 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
 
     private Proto.PluginPackageList PackageList()
     {
-        var reply = new Proto.PluginPackageList { ServerId = licenses.ServerId };
+        var reply = new Proto.PluginPackageList { ServerId = licenses.ServerId, ProActive = registry.ProActive };
         reply.Packages.AddRange(registry.Packages.Select(p => WithSites(p, new Proto.PluginPackageInfo
         {
             Id = p.Id,
@@ -155,6 +155,7 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             Description = p.Origin.Description ?? string.Empty,
             Group = p.Group.ToString(),
             License = LicenseState(p),
+            Pro = p.Origin.Pro,
         })));
         return reply;
     }

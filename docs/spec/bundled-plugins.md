@@ -119,7 +119,9 @@ Delete and Install certificates, Install CA certificates. Details: plugin `READM
   certificate through `UpdateDeviceTlsAsync`; 802.1X checks the device clock first; only OADM's own certificates that
   nothing uses are removed; passwords of imports and backups are never stored or logged; nothing in tests touches a real
   trust store; View and Delete certificates read at most 5,000 devices per window (each device is read, 4 at a time; a
-  larger selection gets "Choose at most 5,000 devices."), the other tasks take any number.
+  larger selection gets "Choose at most 5,000 devices."), the other tasks take any number; while it runs it offers the
+  OADM CA to other plugins (`IDeviceCertificateAuthority`, `docs/spec/plugins.md` "Plugin services"), which signs the
+  same way.
 - Roles: everything but `getState` is Admin and audited; "Install in trusted root store" on the server asks with the CA's
   SHA-256 fingerprint.
 - Tests: `tests/Oadm.Plugins.Pki.Tests` (every task against a stateful fake camera); opt-in `HardwareWriteTests`

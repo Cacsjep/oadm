@@ -47,6 +47,8 @@ public sealed partial class PluginRowViewModel : ObservableObject
         License = PluginPackageStore.ToInfo(info.License);
         SiteText = SiteTextOf(info);
         SitePortsText = string.Join(", ", info.SitePorts.Select(p => $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Port}"));
+        IsPro = info.Pro;
+        ProLocked = info.Pro && !owner.ProActive;
         _applying = true;
         IsEnabled = info.Enabled;
         _applying = false;
@@ -90,6 +92,19 @@ public sealed partial class PluginRowViewModel : ObservableObject
     /// <summary>The plugin is sold with a license: the License column shows its state and the buttons.</summary>
     public bool NeedsLicense => License.Status != LicenseStatus.NotRequired;
 
+    /// <summary>An OADM PRO plugin: the License column shows "OADM PRO".</summary>
+    public bool IsPro { get; }
+
+    /// <summary>A PRO plugin while OADM PRO is not active: it stays off, the check box is locked, Activate opens Settings.</summary>
+    public bool ProLocked { get; }
+
+    public bool ProActive => IsPro && !ProLocked;
+
+    /// <summary>The tooltip of the OADM PRO chip.</summary>
+    public string ProDetail => ProLocked ? ProLicenseTexts.NeedsPro : "OADM PRO is active.";
+
+    public bool CanActivatePro => ProLocked && _owner.IsAdmin;
+
     /// <summary>"Licensed", "Trial", "Expired" ... for the status chip.</summary>
     public string LicenseText => License.Status switch
     {
@@ -129,7 +144,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     public string StateText => IsEnabled ? "On" : "Off";
 
-    public bool CanToggle => _owner.IsAdmin && !IsBusy && !AlwaysOn;
+    public bool CanToggle => _owner.IsAdmin && !IsBusy && !AlwaysOn && !ProLocked;
 
     partial void OnIsEnabledChanged(bool value)
     {
@@ -145,6 +160,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanToggle));
         OnPropertyChanged(nameof(CanEditLicense));
+        OnPropertyChanged(nameof(CanActivatePro));
     }
 
     internal void Set(bool enabled)
@@ -220,8 +236,18 @@ public sealed partial class PluginsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSites { get; private set; }
 
-    /// <summary>At least one plugin is sold with a license: the page shows the License column.</summary>
-    public bool HasLicensedPlugins => Plugins.Any(p => p.NeedsLicense);
+    /// <summary>At least one plugin is sold with a license or is a PRO plugin: the page shows the License column.</summary>
+    public bool HasLicensedPlugins => Plugins.Any(p => p.NeedsLicense || p.IsPro);
+
+    /// <summary>OADM PRO is active on the server: PRO plugins can be turned on.</summary>
+    public bool ProActive => _store.ProActive;
+
+    /// <summary>Asks the shell to open a host page (<c>HostPages</c> key): Activate opens Settings, where the License card is.</summary>
+    public event EventHandler<string>? NavigateRequested;
+
+    /// <summary>Activate of a PRO plugin: opens Settings (License card).</summary>
+    [RelayCommand]
+    private void ActivatePro() => NavigateRequested?.Invoke(this, Oadm.Sdk.Client.HostPages.Settings);
 
     public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 

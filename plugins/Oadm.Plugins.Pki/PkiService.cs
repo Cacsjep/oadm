@@ -88,6 +88,9 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <summary>Completes when the default CA of the first start is created (tests).</summary>
     public Task Background => _background;
 
+    /// <summary>Raised after a new CA became active (generated, imported, replaced).</summary>
+    public event EventHandler? CaChanged;
+
     private DateTimeOffset Now => _options.Time.GetUtcNow();
 
     public async Task StartAsync(CancellationToken ct)
@@ -631,6 +634,7 @@ public sealed partial class PkiService : IAsyncDisposable
         _generationError = null;
         _serverTrustError = null;
         ApplyAnchors();
+        CaChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private CaMaterial? LoadMaterial(StoredCa stored)

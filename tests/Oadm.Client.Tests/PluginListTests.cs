@@ -6,10 +6,13 @@ using Avalonia.VisualTree;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Oadm.Client.Api;
 using Oadm.Client.Plugins;
 using Oadm.Client.Settings;
 using Oadm.Client.Shell;
+using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tests;
 
@@ -45,6 +48,37 @@ public sealed class PluginListTests
         await WaitAsync(() => changed == 2);
         Assert.DoesNotContain(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.SnapshotReportPluginId);
         Assert.Null(vm.ErrorText);
+    }
+
+    [Fact]
+    public async Task A_pro_plugin_is_locked_until_oadm_pro_is_active()
+    {
+        var api = Substitute.For<IOadmApi>();
+        var list = new PluginPackageList { ServerId = "server" };
+        list.Packages.Add(new PluginPackageInfo { Id = "oadm.est", DisplayName = "EST server", Pro = true, Group = "Security" });
+        api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(list);
+        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+        var vm = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+        string? opened = null;
+        vm.NavigateRequested += (_, key) => opened = key;
+        await store.LoadAsync(CancellationToken.None);
+
+        var est = vm.Plugins.Single();
+        Assert.True(est.ProLocked);
+        Assert.False(est.CanToggle);
+        Assert.True(est.CanActivatePro);
+        Assert.Equal(Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, est.ProDetail);
+        Assert.True(vm.HasLicensedPlugins); // the License column shows "OADM PRO"
+        vm.ActivateProCommand.Execute(null);
+        Assert.Equal(Oadm.Sdk.Client.HostPages.Settings, opened);
+
+        list.ProActive = true;
+        await store.LoadAsync(CancellationToken.None);
+        est = vm.Plugins.Single();
+        Assert.False(est.ProLocked);
+        Assert.True(est.ProActive);
+        Assert.True(est.CanToggle);
+        Assert.False(est.CanActivatePro);
     }
 
     [Fact]

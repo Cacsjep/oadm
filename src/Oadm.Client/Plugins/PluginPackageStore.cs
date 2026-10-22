@@ -19,6 +19,9 @@ public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPacka
     /// <summary>The server ID licenses name (Plugins page); empty for an older server.</summary>
     public string ServerId { get; private set; } = string.Empty;
 
+    /// <summary>OADM PRO is active on the server: PRO plugins can be turned on.</summary>
+    public bool ProActive { get; private set; }
+
     /// <summary>
     /// The license of a package as the server checked it (<c>ICorePluginClientContext.LicenseOf</c>); NotRequired for a free
     /// plugin, null for a package the server does not list.
@@ -81,6 +84,7 @@ public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPacka
     {
         _packages = list?.Packages ?? [];
         ServerId = list?.ServerId ?? string.Empty;
+        ProActive = list?.ProActive ?? false;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

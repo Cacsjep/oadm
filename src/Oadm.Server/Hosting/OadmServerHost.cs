@@ -362,7 +362,9 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
                 sp.GetService<Core.Sites.ISiteRelays>(),
                 sp.GetService<Sdk.Network.IFirewallRules>(),
-                sp.GetRequiredService<TimeProvider>())));
+                sp.GetRequiredService<TimeProvider>()),
+            services: sp.GetRequiredService<PluginServiceRegistry>()));
+        services.AddSingleton<PluginServiceRegistry>();
 
         // Compliance checks (host and plugin types); their events go to the event rules.
         services.AddSingleton<Core.Compliance.ComplianceCatalog>();
@@ -576,6 +578,7 @@ public static partial class OadmServerHost
         var pro = sp.GetRequiredService<Core.Licensing.ProLicense>();
         await pro.InitializeAsync(ct).ConfigureAwait(false);
         registry.Pro = pro;
+        sp.GetRequiredService<PluginActivation>().FollowPro(pro); // PRO plugins turn on and off with the license
 
         // 4b. Event rules before the core plugins: their publishers queue into a running engine, and each event type
         // waits for its source's first full report before a rule that uses it runs anything.

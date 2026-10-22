@@ -1,4 +1,6 @@
+using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Tasks;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Pki;
@@ -57,6 +59,7 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
         var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
+        ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
     }
 
     public async Task StopAsync(CancellationToken ct)

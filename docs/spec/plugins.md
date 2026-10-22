@@ -172,7 +172,7 @@ answers is unchanged. Used by the System report for server reports.
   locked file. Windows: a console run on the service's data folder (`oadm debug --installed`) finds the service's TLS key
   in the machine key store and keeps it (`ServerTlsCertificate.OpenWithNamedKey`), never a new certificate.
 - Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, description, optional `enabledByDefault`,
-  default true, and `alwaysOn`, default false),
+  default true, `alwaysOn`, default false, and `pro`, default false: an OADM PRO plugin, "OADM PRO plugins" below),
   `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the
   host and never copied into the plugin folder.
 - Plugin failures (load or execution) are logged and isolated; a broken plugin never
@@ -195,6 +195,22 @@ is always on.
   Dashboard, I/O Monitor, Device triggers, Web View, Live View, Dashboards, Edge Recording Export, Edge storage, Action Rule Editor. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
+- **OADM PRO plugins** (manifest `pro`, `PluginOrigin.Pro`; `docs/spec/licensing.md`): listed for everyone, on only while
+  OADM PRO is active (`PluginRegistry.ProActive`): `IsEnabled` is the stored choice (or default) **and** an active license,
+  so the choice is kept and a new license brings the plugin back. Turning one on without the license: `SetEnabled` throws,
+  `SetPackageEnabled` answers FAILED_PRECONDITION `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.").
+  When the license changes (imported, removed, ran out) `PluginActivation.FollowPro` starts or stops the core plugins.
+  Plugins page: the License column shows the chip "OADM PRO" (ok while active, tooltip `NeedsPro` otherwise), the check
+  box is locked without the license and **Activate** (administrators) opens Settings with the License card; the client
+  reloads the list after it imported or removed the license.
+- **Plugin services** (`ICorePluginContext.Services`, `IPluginServices`: `Offer<T>`, `Withdraw<T>`, `Find<T>`; server
+  `PluginServiceRegistry`): core plugins offer each other services. The contract is an SDK interface (plugins load in
+  assembly contexts of their own, only SDK types are shared); one offer per interface (a second plugin's offer throws);
+  the host withdraws a plugin's offers when it stops, faults or its package is turned off, so users ask with `Find` each
+  time and never keep the result. Offered today: `Oadm.Sdk.Certificates.IDeviceCertificateAuthority` by PKI (the OADM
+  CA: `IsReady`, `Chain`, `Changed`, `SignAsync`; OADM's names, never the request's; SHA-1/MD5 requests and weak keys
+  refused with `CertificateRequestRefusedException`; device certificates go into PKI's issued registry with their
+  `Source`). Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
   (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
   set); `AllTaskPlugins` / `AllCorePlugins` / `Packages` (`PluginPackageState`: origin, enabled, has page, menu task

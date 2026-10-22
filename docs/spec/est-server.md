@@ -1,7 +1,7 @@
 # EST server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-22; not built yet (stages at the end).
+Agreed 2026-10-22; stage 1 built (stages at the end).
 
 The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
 every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**, also
@@ -99,8 +99,9 @@ THIRD-PARTY notices list the plugin's license.
 
 ## Stages
 
-1. **Host and SDK:** `"pro": true` in plugin.json, the Plugins page lock and badge, turning PRO plugins off when the license
-   ends; plugin services (PKI offers sign and chain); accepting OADM-CA renewals without Certificate changed.
+1. **Host and SDK** (built): `"pro": true` in plugin.json, the Plugins page lock and badge, turning PRO plugins off when
+   the license ends (`docs/spec/plugins.md` "OADM PRO plugins"); plugin services, PKI offers `IDeviceCertificateAuthority`
+   ("Plugin services"); accepting OADM-CA renewals without Certificate changed (`docs/spec/vapix.md`).
 2. **EST server:** listener, TLS with per-site certificates, HTTP/1.1, the three operations, device ID check, managed-device
    check, issuing through PKI, enrollments and certificates lists, revoke, events; tests with recorded camera requests.
 3. **Deploy task** and remove task with the camera's `cert` / `cert-est` APIs; fixtures from a real camera (read-only

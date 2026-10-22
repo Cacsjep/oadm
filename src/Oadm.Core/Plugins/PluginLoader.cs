@@ -157,6 +157,7 @@ public sealed partial class PluginLoader
                 License = manifest.License is { PublicKey.Length: > 0 } license ? license : null,
                 DeclaredSiteSupport = manifest.SiteSupport,
                 SitePorts = [.. (manifest.SitePorts ?? []).Where(p => p is { Port: > 0 and <= 65535 })],
+                Pro = manifest.Pro,
             };
             var registered = assemblies.Sum(a => RegisterTypes(a, origin));
             if (registered == 0)

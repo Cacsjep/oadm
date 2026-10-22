@@ -426,6 +426,12 @@ public interface ICorePluginContext
 
     /// <summary>The bound sites and relays into them (<see cref="Sites.ISites"/>). Null on hosts without sites.</summary>
     Sites.ISites? Sites => null;
+
+    /// <summary>
+    /// Services core plugins offer each other (<see cref="IPluginServices"/>), e.g. the OADM CA of the PKI plugin. Null on
+    /// hosts without them.
+    /// </summary>
+    IPluginServices? Services => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>
@@ -479,6 +485,12 @@ public sealed record PluginManifest(
 
     /// <summary>Ports the package listens on at sites (relays), known in advance; null = none.</summary>
     public IReadOnlyList<Sites.SitePort>? SitePorts { get; init; }
+
+    /// <summary>
+    /// An OADM PRO plugin: listed for everyone, but the host turns it on only with an active OADM PRO license or trial and
+    /// turns it off when the license ends (<see cref="Licensing.IProLicense"/>).
+    /// </summary>
+    public bool Pro { get; init; }
 }
 
 /// <summary>

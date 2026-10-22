@@ -6,6 +6,7 @@ using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Server.Plugins;
 using Oadm.Server.Tests.Support;
+using Oadm.Sdk.Testing;
 using Oadm.Tests.Shared;
 
 using Proto = Oadm.Contracts.V1;
@@ -60,6 +61,38 @@ public sealed class PluginPackageTests
         Assert.False(registry.IsEnabled("test.dashboard"));
         await host.Get<PluginActivation>().LoadAsync(CancellationToken.None);
         Assert.True(registry.IsEnabled("test.dashboard"));
+    }
+
+    [Fact]
+    public async Task APackageOfOadmProTurnsOnOnlyWithTheLicenseAndFollowsIt()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var core = new CountingCorePlugin("test.est");
+        var registry = host.Get<PluginRegistry>();
+        var pro = new Sdk.Testing.FakeProLicense();
+        registry.Pro = pro;
+        host.Get<PluginActivation>().FollowPro(pro);
+        registry.RegisterCorePlugin(core, new PluginOrigin("test.est", "1.0.0", null) { DisplayName = "EST server", EnabledByDefault = false, Pro = true });
+        await host.Get<PluginActivation>().LoadAsync(CancellationToken.None);
+        await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
+
+        var list = await host.Plugins.ListPackagesAsync(new Proto.Empty());
+        Assert.False(list.ProActive);
+        Assert.True(list.Packages.Single(p => p.Id == "test.est").Pro);
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.SetPackageEnabledAsync(new Proto.SetPackageEnabledRequest { Id = "test.est", Enabled = true }));
+        Assert.Equal((StatusCode.FailedPrecondition, Sdk.Licensing.ProLicenseTexts.NeedsPro), (refused.StatusCode, refused.Status.Detail));
+        Assert.Equal(0, core.Starts);
+
+        pro.Current = Sdk.Testing.FakeProLicense.ActivePro().Current;
+        await host.Plugins.SetPackageEnabledAsync(new Proto.SetPackageEnabledRequest { Id = "test.est", Enabled = true });
+        Assert.Equal(1, core.Starts);
+
+        // The license ends: the plugin stops by itself; a new license starts it again (the choice stays stored).
+        pro.Current = Sdk.Licensing.ProLicenseInfo.None;
+        await Eventually.TrueAsync(() => core.Stops == 1, "the PRO plugin stops");
+        Assert.False((await host.Plugins.ListPackagesAsync(new Proto.Empty())).Packages.Single(p => p.Id == "test.est").Enabled);
+        pro.Current = Sdk.Testing.FakeProLicense.ActivePro().Current;
+        await Eventually.TrueAsync(() => core.Starts == 2, "the PRO plugin starts again");
     }
 
     [Fact]

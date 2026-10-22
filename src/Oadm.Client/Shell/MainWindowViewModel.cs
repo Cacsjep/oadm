@@ -156,6 +156,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
+        if (pluginList is not null)
+        {
+            pluginList.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
+        }
+
         devices.OpenInWebViewRequested += (_, deviceId) => OpenInWebView(deviceId);
         OpenItem(_devicesItem);
     }

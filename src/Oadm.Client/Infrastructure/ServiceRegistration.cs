@@ -95,12 +95,18 @@ public static class ServiceRegistration
         services.AddSingleton<Sites.SitesViewModel>();
         services.AddSingleton<Compliance.ComplianceViewModel>();
         services.AddSingleton<Backup.BackupViewModel>();
-        services.AddSingleton(sp => new Licensing.LicenseViewModel(
-            sp.GetRequiredService<IOadmApi>(),
-            sp.GetRequiredService<IDialogService>(),
-            sp.GetRequiredService<IClipboardService>(),
-            sp.GetRequiredService<IUrlLauncher>(),
-            sp.GetRequiredService<UserSession>()));
+        services.AddSingleton(sp =>
+        {
+            var license = new Licensing.LicenseViewModel(
+                sp.GetRequiredService<IOadmApi>(),
+                sp.GetRequiredService<IDialogService>(),
+                sp.GetRequiredService<IClipboardService>(),
+                sp.GetRequiredService<IUrlLauncher>(),
+                sp.GetRequiredService<UserSession>());
+            // PRO plugins turn on or off with the license: the plugin list, rail pages and menus follow.
+            license.LicenseChanged += (_, _) => _ = sp.GetRequiredService<PluginPackageStore>().LoadAsync(CancellationToken.None);
+            return license;
+        });
         services.AddSingleton(sp => new Support.SupportViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IDialogService>(),

@@ -117,8 +117,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   "Image Health Dashboard", "I/O Monitor", "Device triggers", "Dashboards", "Edge Recording Export" (search; its downloads through
   `Download`), "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
   `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
-  menu_task_count, always_on, description; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
-  list), see "Plugins on and off".
+  menu_task_count, always_on, description, pro; the list's pro_active; any user) and `SetPackageEnabled(id, enabled)`
+  (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, or a PRO plugin without an active license; reply:
+  the whole list), see "Plugins on and off".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
   `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`

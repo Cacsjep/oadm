@@ -178,6 +178,63 @@ public sealed class CorePluginHostTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task ProPackageRunsOnlyWhileProIsActive()
+    {
+        var calls = new List<string>();
+        var pro = new Sdk.Testing.FakeProLicense();
+        _registry.Pro = pro;
+        Assert.True(_registry.RegisterCorePlugin(new TestCorePlugin("core.pro", calls), new PluginOrigin("pro.pkg", "1.0.0", null) { Pro = true }));
+
+        await _host.StartAllAsync(CancellationToken.None);
+        Assert.False(_registry.IsEnabled("pro.pkg"));
+        Assert.Equal(CorePluginState.Stopped, _host.GetStatus("core.pro").State);
+        var refused = Assert.Throws<InvalidOperationException>(() => _registry.SetEnabled("pro.pkg", true));
+        Assert.Equal(Sdk.Licensing.ProLicenseTexts.NeedsPro, refused.Message);
+
+        pro.Current = Sdk.Testing.FakeProLicense.ActivePro().Current;
+        await _host.SyncEnabledAsync(CancellationToken.None);
+        Assert.True(_registry.IsEnabled("pro.pkg"));
+        Assert.Equal(CorePluginState.Running, _host.GetStatus("core.pro").State);
+
+        // The license ends: the package stops, and the stored choice brings it back with a new license.
+        _registry.SetEnabled("pro.pkg", true);
+        pro.Current = Sdk.Licensing.ProLicenseInfo.None;
+        await _host.SyncEnabledAsync(CancellationToken.None);
+        Assert.False(_registry.IsEnabled("pro.pkg"));
+        Assert.Equal(CorePluginState.Stopped, _host.GetStatus("core.pro").State);
+        Assert.False(_registry.Packages.Single(p => p.Id == "pro.pkg").Enabled);
+        pro.Current = Sdk.Testing.FakeProLicense.ActivePro().Current;
+        Assert.True(_registry.IsEnabled("pro.pkg"));
+    }
+
+    [Fact]
+    public async Task ServicesLiveWhileTheOfferingPluginRuns()
+    {
+        var services = new PluginServiceRegistry();
+        await _host.DisposeAsync();
+        _host = new CorePluginHost(_registry, _devices, _vapix, _engine, _settings, services: services);
+        var offering = new TestCorePlugin("core.ca", []) { Offer = "the CA" };
+        Assert.True(_registry.RegisterCorePlugin(offering, new PluginOrigin("ca.pkg", "1.0.0", null)));
+        var user = new TestCorePlugin("core.user", []);
+        Assert.True(_registry.RegisterCorePlugin(user, new PluginOrigin("user.pkg", "1.0.0", null)));
+
+        await _host.StartAllAsync(CancellationToken.None);
+        Assert.Equal("the CA", user.Context!.Services!.Find<OfferedText>()?.Text);
+        Assert.Throws<InvalidOperationException>(() => user.Context.Services.Offer(new OfferedText("another")));
+
+        _registry.SetEnabled("ca.pkg", false);
+        await _host.SyncEnabledAsync(CancellationToken.None);
+        Assert.Null(user.Context.Services.Find<OfferedText>());
+
+        user.Context.Services.Offer(new OfferedText("mine"));
+        Assert.Equal("mine", services.Get<OfferedText>()?.Text);
+        user.Context.Services.Withdraw<OfferedText>();
+        Assert.Null(services.Get<OfferedText>());
+    }
+
+    private sealed record OfferedText(string Text);
+
     private void Register(ICorePlugin plugin) =>
         Assert.True(_registry.RegisterCorePlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
 
@@ -193,6 +250,9 @@ public sealed class CorePluginHostTests : IAsyncLifetime
 
         public bool FailStart { get; init; }
 
+        /// <summary>Offered as <see cref="OfferedText"/> on start.</summary>
+        public string? Offer { get; init; }
+
         public ICorePluginContext? Context { get; private set; }
 
         public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
@@ -204,6 +264,11 @@ public sealed class CorePluginHostTests : IAsyncLifetime
             }
 
             Context = ctx;
+            if (Offer is not null)
+            {
+                ctx.Services?.Offer(new OfferedText(Offer));
+            }
+
             return Task.CompletedTask;
         }
 

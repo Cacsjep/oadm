@@ -20,6 +20,7 @@ public sealed class CertificatePinning
     private readonly Lock _gate = new();
     private string? _observed;
     private string? _mismatch;
+    private string? _renewed;
     private CertificateInfo? _certificate;
     private X509Certificate2? _presented;
     private X509Certificate2[] _presentedChain = [];
@@ -85,6 +86,31 @@ public sealed class CertificatePinning
                 }
 
                 return _certificate;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The device's serial number (MAC, <c>Device.Serial</c>) for accepting renewals: with <see cref="TrustAnchors"/>, a new
+    /// certificate that chains to an anchor (an OADM CA), is valid now and names the device (<c>axis-&lt;serial&gt;.local</c>)
+    /// is accepted instead of a pin mismatch (<see cref="RenewedFingerprint"/>). Null: every other certificate is a mismatch.
+    /// </summary>
+    public string? DeviceSerial { get; init; }
+
+    /// <summary>The clock for the renewal check.</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>
+    /// Fingerprint of a certificate accepted as a renewal by an OADM CA (<see cref="DeviceSerial"/>); the caller pins it.
+    /// Null while the device presents the pinned certificate.
+    /// </summary>
+    public string? RenewedFingerprint
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _renewed;
             }
         }
     }
@@ -178,9 +204,56 @@ public sealed class CertificatePinning
                 _host = host;
                 _anchorVersion = anchors?.Version ?? 0;
             }
+
+            if (PinnedFingerprint is { } pinned && IsRenewal(certificate, chain, anchors))
+            {
+                var fingerprint = ComputeFingerprint(certificate);
+                lock (_gate)
+                {
+                    _observed = fingerprint;
+                    _mismatch = null;
+                    _renewed = string.Equals(pinned, fingerprint, StringComparison.Ordinal) ? null : fingerprint;
+                }
+
+                return true;
+            }
         }
 
         return Validate(certificate);
+    }
+
+    /// <summary>
+    /// A certificate an OADM CA issued for this device: chains to the anchors, valid now, names <c>axis-&lt;serial&gt;.local</c>
+    /// (docs/spec/est-server.md "Certificate renewals and pinning").
+    /// </summary>
+    private bool IsRenewal(X509Certificate2 certificate, IReadOnlyList<X509Certificate2>? chain, TrustAnchorSnapshot? anchors)
+    {
+        if (anchors is not { IsEmpty: false } || string.IsNullOrWhiteSpace(DeviceSerial))
+        {
+            return false;
+        }
+
+        var now = Time.GetUtcNow().UtcDateTime;
+        if (now < certificate.NotBefore.ToUniversalTime() || now > certificate.NotAfter.ToUniversalTime())
+        {
+            return false;
+        }
+
+        var name = "axis-" + DeviceSerial.Trim().ToLowerInvariant() + ".local";
+        try
+        {
+            var san = certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
+            if (san is null || !san.EnumerateDnsNames().Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            return CertificateTrustEvaluator.ChainsToAnchors(certificate, chain, anchors.Certificates);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Callback for <c>HttpClientHandler.ServerCertificateCustomValidationCallback</c>.</summary>

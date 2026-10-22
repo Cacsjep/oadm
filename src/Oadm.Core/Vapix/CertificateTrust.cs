@@ -110,6 +110,23 @@ public static class CertificateTrustEvaluator
             : result;
     }
 
+    /// <summary>
+    /// Whether <paramref name="certificate"/> chains to one of <paramref name="trustAnchors"/> alone (the OS store does not
+    /// count; validity dates are ignored). Self-issued certificates never do.
+    /// </summary>
+    public static bool ChainsToAnchors(X509Certificate2 certificate, IEnumerable<X509Certificate2>? intermediates, X509Certificate2Collection trustAnchors)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+        ArgumentNullException.ThrowIfNull(trustAnchors);
+        if (trustAnchors.Count == 0 || IsSelfIssued(certificate))
+        {
+            return false;
+        }
+
+        var extras = (intermediates ?? []).Concat(trustAnchors.Cast<X509Certificate2>());
+        return BuildChain(certificate, extras, trustAnchors, out _) == CertificateTrust.Trusted;
+    }
+
     private static CertificateTrust BuildChain(
         X509Certificate2 certificate,
         IEnumerable<X509Certificate2>? intermediates,
