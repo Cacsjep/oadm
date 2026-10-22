@@ -7,6 +7,6 @@
     <OadmAvaloniaVersion>12.1.4</OadmAvaloniaVersion>
     <OadmDataGridVersion>12.1.2</OadmDataGridVersion>
     <OadmCommunityToolkitVersion>8.4.2</OadmCommunityToolkitVersion>
-    <OadmBannedApiAnalyzersVersion>4.14.0</OadmBannedApiAnalyzersVersion>
+    <OadmBannedApiAnalyzersVersion>5.6.0</OadmBannedApiAnalyzersVersion>
   </PropertyGroup>
 </Project>
