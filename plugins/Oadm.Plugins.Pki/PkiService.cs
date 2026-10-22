@@ -718,6 +718,31 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _anchors.Set(der);
+
+        // Renewals are pinned again only for certificates the OADM CAs themselves issued: the CAs, not their chains.
+        var issuers = new List<byte[]>();
+        if (_ca is { } active)
+        {
+            issuers.Add(active.Certificate.RawData);
+        }
+
+        foreach (var previous in _previous)
+        {
+            try
+            {
+                using var certificate = CaCertificates.ReadPemCertificates(previous.CertificatePem).FirstOrDefault();
+                if (certificate is not null)
+                {
+                    issuers.Add(certificate.RawData);
+                }
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
+            {
+                // unreadable entries are not trusted
+            }
+        }
+
+        _anchors.SetRenewalIssuers(issuers);
     }
 
     private async Task<IReadOnlyList<StoredPreviousCa>> PrunePreviousAsync(List<StoredPreviousCa> previous, CancellationToken ct)

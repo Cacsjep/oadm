@@ -15,4 +15,14 @@ public interface ITrustAnchors
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "C# plugins only; the name is part of the documented SDK.")]
     void Set(IReadOnlyList<byte[]> derCertificates);
+
+    /// <summary>
+    /// The CAs that issue device certificates OADM pins again when a device renews them (DER, the CA certificates
+    /// themselves, never the roots above them): a new device certificate issued directly by one of them for the same
+    /// device replaces the pin instead of showing Certificate changed. The host uses only the PKI plugin's set (the OADM
+    /// CA); other plugins' sets are ignored. Default: nothing.
+    /// </summary>
+    void SetRenewalIssuers(IReadOnlyList<byte[]> derCertificates)
+    {
+    }
 }

@@ -21,6 +21,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, Entry> _entries = [];
+    private readonly SemaphoreSlim _making = new(1, 1);
 
     /// <summary>
     /// The certificate (with its key) for <paramref name="siteId"/> (<see cref="Guid.Empty"/> = this server) naming
@@ -45,14 +46,32 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
             }
         }
 
-        var made = await MakeAsync(ca, addresses, hostName, ct).ConfigureAwait(false);
-        lock (_gate)
+        // One at a time: connections that arrive while a certificate is made wait for it instead of each signing their own.
+        await _making.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            // The replaced certificate is left to the GC: a handshake may still use it.
-            _entries[siteId] = new Entry(names, caId, made);
-        }
+            lock (_gate)
+            {
+                if (_entries.TryGetValue(siteId, out var entry) && entry.Names == names && entry.CaId == caId
+                    && entry.Certificate.NotAfter.ToUniversalTime() - _time.GetUtcNow().UtcDateTime > Validity / 3)
+                {
+                    return entry.Certificate;
+                }
+            }
 
-        return made;
+            var made = await MakeAsync(ca, addresses, hostName, ct).ConfigureAwait(false);
+            lock (_gate)
+            {
+                // The replaced certificate is left to the GC: a handshake may still use it.
+                _entries[siteId] = new Entry(names, caId, made);
+            }
+
+            return made;
+        }
+        finally
+        {
+            _making.Release();
+        }
     }
 
     /// <summary>This server's addresses (unicast, network cards that are up, no loopback or IPv6 link-local).</summary>
@@ -71,7 +90,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
                 foreach (var unicast in card.GetIPProperties().UnicastAddresses)
                 {
                     var ip = unicast.Address;
-                    if (IPAddress.IsLoopback(ip) || (ip.AddressFamily == AddressFamily.InterNetworkV6 && ip.IsIPv6LinkLocal))
+                    if (IPAddress.IsLoopback(ip) || (ip.AddressFamily == AddressFamily.InterNetworkV6 && (ip.IsIPv6LinkLocal || IsTemporary(unicast))))
                     {
                         continue;
                     }
@@ -91,8 +110,22 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
         return addresses;
     }
 
+    /// <summary>A temporary (privacy) IPv6 address changes every day: it would make a new certificate each time.</summary>
+    private static bool IsTemporary(UnicastIPAddressInformation unicast)
+    {
+        try
+        {
+            return OperatingSystem.IsWindows() && unicast.SuffixOrigin == SuffixOrigin.Random;
+        }
+        catch (PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
     public void Dispose()
     {
+        _making.Dispose();
         lock (_gate)
         {
             foreach (var entry in _entries.Values)

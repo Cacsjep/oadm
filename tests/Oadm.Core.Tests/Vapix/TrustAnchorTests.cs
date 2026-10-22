@@ -58,7 +58,7 @@ public sealed class TrustAnchorTests
     public void LeafOfAnAnchoredIntermediateWithItsRootIsTrusted()
     {
         using var root = TestCertificates.CreateCa("Customer Root CA");
-        using var intermediate = CreateIntermediate(root, "Customer Issuing CA");
+        using var intermediate = TestCertificates.CreateIntermediate(root, "Customer Issuing CA");
         using var leaf = TestCertificates.IssuedBy(intermediate);
         using var rootPublic = X509CertificateLoader.LoadCertificate(root.RawData);
         using var intermediatePublic = X509CertificateLoader.LoadCertificate(intermediate.RawData);
@@ -143,19 +143,6 @@ public sealed class TrustAnchorTests
     {
         ICorePluginContext ctx = new MinimalContext();
         Assert.Null(ctx.TrustAnchors);
-    }
-
-    private static X509Certificate2 CreateIntermediate(X509Certificate2 root, string cn)
-    {
-        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest("CN=" + cn, key, HashAlgorithmName.SHA256);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-        var serial = RandomNumberGenerator.GetBytes(12);
-        serial[0] &= 0x7F;
-        using var issued = request.Create(root, DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddYears(5), serial);
-        return issued.CopyWithPrivateKey(key);
     }
 
     private sealed class AnchorPlugin(byte[] der) : ICorePlugin

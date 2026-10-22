@@ -50,6 +50,8 @@ public sealed record EstHost(
 public sealed partial class EstService : IAsyncDisposable
 {
     private const int MaxConnections = 64;
+    private const int MaxConnectionsPerAddress = 4;
+    private static readonly TimeSpan MaxConnectionTime = TimeSpan.FromMinutes(2);
     private const int MaxRequestsPerConnection = 20;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DeviceIndexAge = TimeSpan.FromSeconds(30);
@@ -59,7 +61,9 @@ public sealed partial class EstService : IAsyncDisposable
     private readonly EstEndpoint _endpoint;
     private readonly AxisDeviceId _deviceIds;
     private readonly ServerCertificates _certificates;
-    private readonly SemaphoreSlim _connections = new(MaxConnections, MaxConnections);
+    private readonly Dictionary<System.Net.IPAddress, int> _perAddress = [];
+    private readonly HashSet<Task> _serving = [];
+    private int _open;
     private readonly SemaphoreSlim _apply = new(1, 1);
     private readonly SemaphoreSlim _index = new(1, 1);
     private readonly CancellationTokenSource _cts = new();
@@ -69,7 +73,7 @@ public sealed partial class EstService : IAsyncDisposable
     private ITcpRelay? _listener;
     private Task _acceptLoop = Task.CompletedTask;
     private Dictionary<string, IDeviceInfo> _bySerial = new(StringComparer.OrdinalIgnoreCase);
-    private DateTimeOffset _indexedAt = DateTimeOffset.MinValue;
+    private long _indexedAtTicks = DateTimeOffset.MinValue.UtcTicks;
 
     public EstService(EstHost host)
     {
@@ -107,10 +111,16 @@ public sealed partial class EstService : IAsyncDisposable
     {
         await _cts.CancelAsync().ConfigureAwait(false);
         await CloseAsync(release: false).ConfigureAwait(false);
+        Task[] serving;
+        lock (_serving)
+        {
+            serving = [.. _serving];
+        }
+
+        await Task.WhenAll(serving).ConfigureAwait(false); // every connection ends before the store writes the last time
         await _store.DisposeAsync().ConfigureAwait(false);
         _certificates.Dispose();
         _cts.Dispose();
-        _connections.Dispose();
         _apply.Dispose();
         _index.Dispose();
     }
@@ -289,18 +299,29 @@ public sealed partial class EstService : IAsyncDisposable
             {
                 return;
             }
-
-            if (!_connections.Wait(0, CancellationToken.None))
+#pragma warning disable CA1031 // A failed accept must not end the server; the reason is logged.
+            catch (Exception ex)
+#pragma warning restore CA1031
             {
-                await connection.DisposeAsync().ConfigureAwait(false); // too many at once: the camera tries again later
+                LogAcceptFailed(ex);
+                await Task.Delay(TimeSpan.FromSeconds(1), _host.Time, ct).ConfigureAwait(false);
                 continue;
             }
 
-            _ = Task.Run(async () =>
+            var address = connection.Remote.Address;
+            if (!TryEnter(address))
+            {
+                await connection.DisposeAsync().ConfigureAwait(false); // too many at once (in all, or from this address): the camera tries again later
+                continue;
+            }
+
+            var serving = Task.Run(async () =>
             {
                 try
                 {
-                    await ServeAsync(connection, ct).ConfigureAwait(false);
+                    using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    lifetime.CancelAfter(MaxConnectionTime);
+                    await ServeAsync(connection, lifetime.Token).ConfigureAwait(false);
                 }
 #pragma warning disable CA1031 // One broken connection must not end the server; the reason is logged.
                 catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -310,9 +331,47 @@ public sealed partial class EstService : IAsyncDisposable
                 }
                 finally
                 {
-                    _connections.Release();
+                    Leave(address);
                 }
             }, CancellationToken.None);
+            Track(serving);
+        }
+    }
+
+    /// <summary>A connection slot: at most 64 in all and 4 per address, so one host cannot lock the cameras out.</summary>
+    private bool TryEnter(System.Net.IPAddress address)
+    {
+        lock (_perAddress)
+        {
+            if (_open >= MaxConnections || _perAddress.GetValueOrDefault(address) >= MaxConnectionsPerAddress)
+            {
+                return false;
+            }
+
+            _open++;
+            _perAddress[address] = _perAddress.GetValueOrDefault(address) + 1;
+            return true;
+        }
+    }
+
+    private void Leave(System.Net.IPAddress address)
+    {
+        lock (_perAddress)
+        {
+            _open--;
+            if (--_perAddress[address] <= 0)
+            {
+                _perAddress.Remove(address);
+            }
+        }
+    }
+
+    private void Track(Task serving)
+    {
+        lock (_serving)
+        {
+            _serving.RemoveWhere(t => t.IsCompleted);
+            _serving.Add(serving);
         }
     }
 
@@ -370,6 +429,11 @@ public sealed partial class EstService : IAsyncDisposable
             using var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct);
             handshake.CancelAfter(IdleTimeout);
             await tls.AuthenticateAsServerAsync(options, handshake.Token).ConfigureAwait(false);
+            if (client is null && tls.RemoteCertificate is { } remote)
+            {
+                client = X509CertificateLoader.LoadCertificate(remote.GetRawCertData()); // a resumed session skips the callback
+            }
+
             var identity = new ClientIdentity(client, presented);
             var origin = new RequestOrigin(connection.SiteId, connection.Remote.Address);
             var reader = EstHttp.Reader(tls);
@@ -394,7 +458,8 @@ public sealed partial class EstService : IAsyncDisposable
                 }
 
                 var result = await _endpoint.HandleAsync(request, identity, origin, ct).ConfigureAwait(false);
-                var close = request.CloseAfter || count == MaxRequestsPerConnection;
+                // A refusal of who the camera is ends the connection: nobody keeps a slot without a valid identity.
+                var close = request.CloseAfter || count == MaxRequestsPerConnection || result.Response.Status is 401 or 403;
                 await EstHttp.WriteAsync(tls, result.Response, close, ct).ConfigureAwait(false);
                 Record(result, connection);
                 if (close)
@@ -463,7 +528,15 @@ public sealed partial class EstService : IAsyncDisposable
     private void Record(EstResult result, IIncomingConnection connection)
     {
         var where = connection.SiteId is { } site ? "site " + site : SiteTexts.ThisServer;
-        LogRequest(result.Operation, result.Profile, connection.Remote, where, result.Response.Status, result.Enrollment?.Reason ?? string.Empty);
+        if (result.Response.Status == 401)
+        {
+            LogNoIdentity(result.Operation, connection.Remote, where); // anything on the network can do this: debug only, never in Enrollments
+        }
+        else
+        {
+            LogRequest(result.Operation, result.Profile, connection.Remote, where, result.Response.Status, result.Enrollment?.Reason ?? string.Empty);
+        }
+
         if (result.Enrollment is not { } enrollment)
         {
             return;
@@ -489,7 +562,8 @@ public sealed partial class EstService : IAsyncDisposable
     private async Task<IDeviceInfo?> FindBySerialAsync(string serial, CancellationToken ct)
     {
         var now = _host.Time.GetUtcNow();
-        if (_bySerial.TryGetValue(serial, out var known) && now - _indexedAt < DeviceIndexAge)
+        var indexedAt = new DateTimeOffset(Volatile.Read(ref _indexedAtTicks), TimeSpan.Zero);
+        if (_bySerial.TryGetValue(serial, out var known) && now - indexedAt < DeviceIndexAge)
         {
             return known;
         }
@@ -497,7 +571,7 @@ public sealed partial class EstService : IAsyncDisposable
         await _index.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (now - _indexedAt >= DeviceIndexAge)
+            if (now - new DateTimeOffset(Volatile.Read(ref _indexedAtTicks), TimeSpan.Zero) >= DeviceIndexAge)
             {
                 var devices = await _host.Devices.ListAsync(ct).ConfigureAwait(false);
                 var index = new Dictionary<string, IDeviceInfo>(devices.Count, StringComparer.OrdinalIgnoreCase);
@@ -507,7 +581,7 @@ public sealed partial class EstService : IAsyncDisposable
                 }
 
                 _bySerial = index;
-                _indexedAt = now;
+                Volatile.Write(ref _indexedAtTicks, now.UtcTicks);
             }
 
             return _bySerial.GetValueOrDefault(serial);
@@ -524,6 +598,9 @@ public sealed partial class EstService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "EST server on port {Port}: {State}")]
     private partial void LogListening(int port, string state);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "EST {Operation} from {Remote} ({Where}): 401, no valid identity")]
+    private partial void LogNoIdentity(string operation, System.Net.IPEndPoint remote, string where);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "EST {Operation} {Profile} from {Remote} ({Where}): {Status} {Reason}")]
     private partial void LogRequest(string operation, string profile, System.Net.IPEndPoint remote, string where, int status, string reason);
 
@@ -535,6 +612,9 @@ public sealed partial class EstService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST: the CA chain for TLS cannot be built; the server certificate is sent alone")]
     private partial void LogChainFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST server: accepting a connection failed")]
+    private partial void LogAcceptFailed(Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST connection from {Remote} failed")]
     private partial void LogConnectionFailed(Exception ex, System.Net.IPEndPoint remote);

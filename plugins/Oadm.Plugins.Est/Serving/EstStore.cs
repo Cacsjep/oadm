@@ -234,9 +234,17 @@ public sealed class EstStore : IAsyncDisposable
                 revoked = [.. _revoked];
             }
 
-            await _settings.SetAsync(EnrollmentsKey, EstJson.Serialize(enrollments), ct).ConfigureAwait(false);
-            await _settings.SetAsync(CertificatesKey, EstJson.Serialize(certificates), ct).ConfigureAwait(false);
-            await _settings.SetAsync(RevokedKey, EstJson.Serialize(revoked), ct).ConfigureAwait(false);
+            try
+            {
+                await _settings.SetAsync(EnrollmentsKey, EstJson.Serialize(enrollments), ct).ConfigureAwait(false);
+                await _settings.SetAsync(CertificatesKey, EstJson.Serialize(certificates), ct).ConfigureAwait(false);
+                await _settings.SetAsync(RevokedKey, EstJson.Serialize(revoked), ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                MarkDirty(); // written again with the next flush
+                throw;
+            }
         }
         finally
         {

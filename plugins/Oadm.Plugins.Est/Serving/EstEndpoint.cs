@@ -104,8 +104,11 @@ public sealed class EstEndpoint(
         IDeviceCertificateAuthority ca, CancellationToken ct)
     {
         var operation = kind == EnrollmentKind.Renewal ? "simplereenroll" : "simpleenroll";
+        // A 401 (no or no valid identity) is not recorded: anything on the network can cause it, it would push out the real
+        // enrollments.
         EstResult Refuse(int status, string reason, IDeviceInfo? device = null, string? serial = null) =>
-            new(HttpResponse.Text(status, reason), operation, profile.Name, Record(device, serial ?? origin.Remote?.ToString() ?? "-", profile, kind, ok: false, reason));
+            new(HttpResponse.Text(status, reason), operation, profile.Name,
+                status == 401 ? null : Record(device, serial ?? origin.Remote?.ToString() ?? "-", profile, kind, ok: false, reason));
 
         if (identity.Certificate is not { } client)
         {
@@ -165,6 +168,10 @@ public sealed class EstEndpoint(
         catch (CertificateRequestRefusedException ex)
         {
             return Refuse(400, ex.Message, device);
+        }
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException or FormatException)
+        {
+            return Refuse(400, EstRefusals.BadRequest, device); // e.g. an unsupported key: an answer, never a dropped connection
         }
 
         var now = _time.GetUtcNow().UtcDateTime;
@@ -277,18 +284,35 @@ public sealed class EstEndpoint(
     internal static IReadOnlyList<string> DnsNames(IDeviceInfo device)
     {
         var names = new List<string>();
-        if (!string.IsNullOrWhiteSpace(device.HostName) && !IPAddress.TryParse(device.HostName, out _))
+        // The camera reports its host name itself: only plain names (no wildcard, no odd characters) go into a certificate
+        // every OADM device trusts.
+        if (IsPlainHostName(device.HostName))
         {
-            names.Add(device.HostName.Trim());
+            names.Add(device.HostName!.Trim());
         }
 
-        if (!IPAddress.TryParse(HostPart(device.Address), out _) && !names.Contains(HostPart(device.Address), StringComparer.OrdinalIgnoreCase))
+        var host = HostPart(device.Address);
+        if (!IPAddress.TryParse(host, out _) && IsPlainHostName(host) && !names.Contains(host, StringComparer.OrdinalIgnoreCase))
         {
-            names.Add(HostPart(device.Address));
+            names.Add(host);
         }
 
         names.Add("axis-" + device.Serial.ToLowerInvariant() + ".local");
         return names;
+    }
+
+    /// <summary>Letters, digits and hyphens in labels of 1 to 63 characters, dot separated, at most 253: no "*", no spaces.</summary>
+    internal static bool IsPlainHostName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var trimmed = name.Trim().TrimEnd('.');
+        return trimmed.Length <= 253 && !IPAddress.TryParse(trimmed, out _)
+            && trimmed.Split('.').All(label => label.Length is >= 1 and <= 63 && !label.StartsWith('-') && !label.EndsWith('-')
+                && label.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'));
     }
 
     private static string HostPart(string address)

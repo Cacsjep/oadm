@@ -42,6 +42,20 @@ internal static class TestCertificates
         return X509CertificateLoader.LoadCertificate(issued.RawData);
     }
 
+    /// <summary>An intermediate CA issued by <paramref name="root"/>, with its key.</summary>
+    public static X509Certificate2 CreateIntermediate(X509Certificate2 root, string cn)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=" + cn, key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+        var serial = RandomNumberGenerator.GetBytes(12);
+        serial[0] &= 0x7F;
+        using var issued = request.Create(root, DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddYears(5), serial);
+        return issued.CopyWithPrivateKey(key);
+    }
+
     private static X509Extension San(string ip, string? dns = null)
     {
         var san = new SubjectAlternativeNameBuilder();

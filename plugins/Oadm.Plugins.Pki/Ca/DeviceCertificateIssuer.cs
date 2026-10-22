@@ -56,10 +56,25 @@ public sealed record CertificateNames(string CommonName, IReadOnlyList<string> I
             AddName(address);
         }
 
-        AddName(hostName);
-        AddName(fqdn);
+        // The device reports its host name and FQDN itself: only plain names go into a certificate every OADM device trusts.
+        AddName(IsPlainHostName(hostName) ? hostName : null);
+        AddName(IsPlainHostName(fqdn) ? fqdn : null);
         AddName("axis-" + serial.ToLowerInvariant() + ".local");
         return new CertificateNames(host, ips, dns);
+    }
+
+    /// <summary>Letters, digits and hyphens in labels of 1 to 63 characters, dot separated, at most 253: no "*", no spaces.</summary>
+    public static bool IsPlainHostName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var trimmed = name.Trim().TrimEnd('.');
+        return trimmed.Length <= 253
+            && trimmed.Split('.').All(label => label.Length is >= 1 and <= 63 && !label.StartsWith('-') && !label.EndsWith('-')
+                && label.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'));
     }
 
     /// <summary>"10.0.0.48" from "10.0.0.48", "cam.example.com:8443", "[fd00::1]:443", "https://cam".</summary>
@@ -203,6 +218,22 @@ public static class DeviceCertificateIssuer
         if (ec is null)
         {
             throw new CertificateRequestRejectedException("The device's key type is not supported (RSA or EC is needed).");
+        }
+
+        string? curve;
+        try
+        {
+            curve = ec.ExportParameters(false).Curve.Oid?.Value;
+        }
+        catch (CryptographicException)
+        {
+            curve = null;
+        }
+
+        // P-256, P-384, P-521 (by OID): smaller or unknown curves are weak or not supported everywhere.
+        if (curve is not ("1.2.840.10045.3.1.7" or "1.3.132.0.34" or "1.3.132.0.35"))
+        {
+            throw new CertificateRequestRejectedException("The device created an EC key on another curve; P-256 or larger is needed.");
         }
     }
 

@@ -111,20 +111,51 @@ public static class CertificateTrustEvaluator
     }
 
     /// <summary>
-    /// Whether <paramref name="certificate"/> chains to one of <paramref name="trustAnchors"/> alone (the OS store does not
-    /// count; validity dates are ignored). Self-issued certificates never do.
+    /// Whether one of <paramref name="issuers"/> signed <paramref name="certificate"/> itself (it is the next element of
+    /// the chain; a sibling CA under the same root does not count), the chain is complete to <paramref name="anchors"/>
+    /// or the issuers (the OS store does not count) and everything is valid at <paramref name="now"/>. Self-issued
+    /// certificates never are.
     /// </summary>
-    public static bool ChainsToAnchors(X509Certificate2 certificate, IEnumerable<X509Certificate2>? intermediates, X509Certificate2Collection trustAnchors)
+    public static bool IssuedDirectlyBy(X509Certificate2 certificate, X509Certificate2Collection issuers, X509Certificate2Collection anchors, DateTime now)
     {
         ArgumentNullException.ThrowIfNull(certificate);
-        ArgumentNullException.ThrowIfNull(trustAnchors);
-        if (trustAnchors.Count == 0 || IsSelfIssued(certificate))
+        ArgumentNullException.ThrowIfNull(issuers);
+        ArgumentNullException.ThrowIfNull(anchors);
+        if (issuers.Count == 0 || IsSelfIssued(certificate))
         {
             return false;
         }
 
-        var extras = (intermediates ?? []).Concat(trustAnchors.Cast<X509Certificate2>());
-        return BuildChain(certificate, extras, trustAnchors, out _) == CertificateTrust.Trusted;
+        var issuerPrints = issuers.Select(i => i.Thumbprint).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        using var chain = new X509Chain();
+        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        chain.ChainPolicy.CustomTrustStore.AddRange(anchors);
+        chain.ChainPolicy.CustomTrustStore.AddRange(issuers);
+        chain.ChainPolicy.ExtraStore.AddRange(anchors);
+        chain.ChainPolicy.ExtraStore.AddRange(issuers);
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.ChainPolicy.DisableCertificateDownloads = true;
+        chain.ChainPolicy.VerificationTime = now;
+        try
+        {
+            return chain.Build(certificate)
+                && chain.ChainElements.Count >= 2
+                && issuerPrints.Contains(chain.ChainElements[1].Certificate.Thumbprint);
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return false;
+        }
+        finally
+        {
+            foreach (var element in chain.ChainElements)
+            {
+                if (!ReferenceEquals(element.Certificate, certificate))
+                {
+                    element.Certificate.Dispose();
+                }
+            }
+        }
     }
 
     private static CertificateTrust BuildChain(

@@ -76,6 +76,15 @@ public static class EstHttp
         var target = parts[1];
         var query = target.IndexOf('?', StringComparison.Ordinal);
         var path = query >= 0 ? target[..query] : target;
+        var chunked = headers.TryGetValue("Transfer-Encoding", out var encoding) && encoding.Contains("chunked", StringComparison.OrdinalIgnoreCase);
+        var length = 0;
+        if (!chunked && headers.TryGetValue("Content-Length", out var lengthText)
+            && (!int.TryParse(lengthText, NumberStyles.None, CultureInfo.InvariantCulture, out length) || length > MaxBodyBytes))
+        {
+            throw new HttpFormatException("The request body is too large.");
+        }
+
+        // 100 Continue only for a body the server will read.
         if (headers.TryGetValue("Expect", out var expect) && expect.Equals("100-continue", StringComparison.OrdinalIgnoreCase))
         {
             await stream.WriteAsync("HTTP/1.1 100 Continue\r\n\r\n"u8.ToArray(), ct).ConfigureAwait(false);
@@ -83,23 +92,9 @@ public static class EstHttp
         }
 
         byte[] body;
-        if (headers.TryGetValue("Transfer-Encoding", out var encoding) && encoding.Contains("chunked", StringComparison.OrdinalIgnoreCase))
-        {
-            body = await ReadChunkedAsync(reader, ct).ConfigureAwait(false);
-        }
-        else if (headers.TryGetValue("Content-Length", out var lengthText))
-        {
-            if (!int.TryParse(lengthText, NumberStyles.None, CultureInfo.InvariantCulture, out var length) || length > MaxBodyBytes)
-            {
-                throw new HttpFormatException("The request body is too large.");
-            }
-
-            body = await reader.ReadExactlyAsync(length, ct).ConfigureAwait(false);
-        }
-        else
-        {
-            body = [];
-        }
+        body = chunked ? await ReadChunkedAsync(reader, ct).ConfigureAwait(false)
+            : length > 0 ? await reader.ReadExactlyAsync(length, ct).ConfigureAwait(false)
+            : [];
 
         var close = parts[2] == "HTTP/1.0" || (headers.TryGetValue("Connection", out var connection) && connection.Contains("close", StringComparison.OrdinalIgnoreCase));
         return new HttpRequest(parts[0], path, headers, body) { CloseAfter = close };

@@ -59,23 +59,40 @@ public sealed class TaskTests : IAsyncLifetime
         var again = Context();
         await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, "{}", CancellationToken.None));
         Assert.Equal(writes, _camera.Writes);
-        Assert.Contains("Info: The camera already has these EST profiles. Nothing was written.", again.LogLines);
+        Assert.Contains("Info: " + EstTaskIds.AlreadySetUp, again.LogLines);
     }
 
     [Fact]
-    public async Task Both_profiles_are_set_up_one_after_the_other_and_a_foreign_profile_is_replaced()
+    public async Task Both_profiles_are_set_up_https_last_and_only_a_profile_with_the_same_service_is_replaced()
     {
-        _camera.Profiles["other"] = new JsonObject { ["id"] = "other", ["services"] = new JsonArray("MQTT"), ["status"] = "ENROLLED" };
+        _camera.Profiles["other"] = new JsonObject { ["id"] = "other", ["services"] = new JsonArray("NETAUTH"), ["status"] = "ENROLLED" };
+        _camera.Profiles["mqtt"] = new JsonObject { ["id"] = "mqtt", ["services"] = new JsonArray("MQTT"), ["status"] = "ENROLLED" };
         var task = new EstSetupTask(() => _est);
         var ctx = Context();
 
         await StepRun.RunAsync(ctx.Steps, () => task.ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
 
-        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["mqtt", "oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
         Assert.Equal(["NETAUTH"], _camera.Profiles["oadm_dot1x"]["services"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Equal("other", StepRun.Detail(ctx.Steps, EstTaskIds.RemoveOldStep));
+        var adds = _camera.RequestLog.Where(r => r == "POST config/rest/cert-est/v1/profiles").Count();
+        Assert.Equal(2, adds);
+        Assert.True(StepRun.Lines(ctx.Steps).ToList().FindIndex(l => l.StartsWith(EstTaskIds.AddStep("dot1x"), StringComparison.Ordinal))
+            < StepRun.Lines(ctx.Steps).ToList().FindIndex(l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal)), "HTTPS last");
         var order = _camera.RequestLog.Where(r => r.StartsWith("POST config/rest/cert-est", StringComparison.Ordinal) || r.StartsWith("GET config/rest/cert-est/v1/profiles", StringComparison.Ordinal)).ToList();
         Assert.True(order.IndexOf("POST config/rest/cert-est/v1/profiles") < order.LastIndexOf("GET config/rest/cert-est/v1/profiles"), "waits before the next profile");
+    }
+
+    [Fact]
+    public async Task With_ieee_8021x_on_the_8021x_profile_is_skipped_with_a_warning()
+    {
+        var device = _device with { Dot1xEnabled = true };
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, device, "{}", CancellationToken.None));
+
+        Assert.Equal(["oadm_https"], _camera.Profiles.Keys);
+        Assert.Contains(EstTaskIds.Dot1xSkipped, ctx.Warnings);
     }
 
     [Fact]
@@ -96,6 +113,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task A_refusal_of_the_est_server_ends_the_wait_with_its_reason()
     {
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         _camera.Enroll = false;
         _camera.OnProfileAdded = () => _est.Store.AddEnrollment(new Enrollment
         {

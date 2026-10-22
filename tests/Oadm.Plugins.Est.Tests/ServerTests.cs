@@ -123,8 +123,24 @@ public sealed class ServerTests : IAsyncLifetime
         var notManaged = await SendAsync("POST", "/.well-known/est/https/simpleenroll", stranger, Body(csr));
         Assert.Equal((403, EstRefusals.NotManaged), (notManaged.Status, notManaged.Body.Trim()));
         Assert.Empty(DeviceRequests());
-        Assert.Equal("ACCC8E000001", _service.Store.Enrollments()[0].Device);
+        Assert.Equal("ACCC8E000001", Assert.Single(_service.Store.Enrollments()).Device); // the 401s are not listed
         Assert.Empty(_publisher.Fired); // refusals of unknown cameras are not device events
+    }
+
+    [Theory]
+    [InlineData("cam-entrance", true)]
+    [InlineData("cam.site.example", true)]
+    [InlineData("*.corp.example", false)]
+    [InlineData("cam entrance", false)]
+    [InlineData("-cam", false)]
+    [InlineData("10.0.0.48", false)]
+    [InlineData("", false)]
+    public void Only_plain_host_names_go_into_a_certificate(string name, bool plain)
+    {
+        Assert.Equal(plain, EstEndpoint.IsPlainHostName(name));
+        var names = EstEndpoint.DnsNames(new FakeDevice { Serial = Serial, Address = "10.0.0.48", HostName = name });
+        Assert.Equal(plain, names.Contains(name));
+        Assert.Contains("axis-b8a44f631339.local", names);
     }
 
     [Fact]

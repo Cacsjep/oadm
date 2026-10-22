@@ -91,9 +91,10 @@ public sealed class CertificatePinning
     }
 
     /// <summary>
-    /// The device's serial number (MAC, <c>Device.Serial</c>) for accepting renewals: with <see cref="TrustAnchors"/>, a new
-    /// certificate that chains to an anchor (an OADM CA), is valid now and names the device (<c>axis-&lt;serial&gt;.local</c>)
-    /// is accepted instead of a pin mismatch (<see cref="RenewedFingerprint"/>). Null: every other certificate is a mismatch.
+    /// The device's serial number (MAC, <c>Device.Serial</c>) for accepting renewals: a new server certificate issued
+    /// directly by an OADM CA (<see cref="TrustAnchorSnapshot.RenewalIssuers"/>, the PKI plugin's CAs only, never the roots
+    /// above them), valid now and naming the device (<c>axis-&lt;serial&gt;.local</c>) is accepted instead of a pin
+    /// mismatch (<see cref="RenewedFingerprint"/>). Null: every other certificate is a mismatch.
     /// </summary>
     public string? DeviceSerial { get; init; }
 
@@ -205,7 +206,7 @@ public sealed class CertificatePinning
                 _anchorVersion = anchors?.Version ?? 0;
             }
 
-            if (PinnedFingerprint is { } pinned && IsRenewal(certificate, chain, anchors))
+            if (PinnedFingerprint is { } pinned && IsRenewal(certificate, anchors))
             {
                 var fingerprint = ComputeFingerprint(certificate);
                 lock (_gate)
@@ -223,14 +224,20 @@ public sealed class CertificatePinning
     }
 
     /// <summary>
-    /// A certificate an OADM CA issued for this device: chains to the anchors, valid now, names <c>axis-&lt;serial&gt;.local</c>
-    /// (docs/spec/est-server.md "Certificate renewals and pinning").
+    /// A server certificate an OADM CA issued directly for this device: valid now, serverAuth, names
+    /// <c>axis-&lt;serial&gt;.local</c> (docs/spec/est-server.md "Certificate renewals and pinning").
     /// </summary>
-    private bool IsRenewal(X509Certificate2 certificate, IReadOnlyList<X509Certificate2>? chain, TrustAnchorSnapshot? anchors)
+    private bool IsRenewal(X509Certificate2 certificate, TrustAnchorSnapshot? anchors)
     {
-        if (anchors is not { IsEmpty: false } || string.IsNullOrWhiteSpace(DeviceSerial))
+        if (anchors is not { RenewalIssuers.Count: > 0 } || string.IsNullOrWhiteSpace(DeviceSerial))
         {
             return false;
+        }
+
+        if (certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().FirstOrDefault() is not { } eku
+            || !eku.EnhancedKeyUsages.Cast<Oid>().Any(o => o.Value == "1.3.6.1.5.5.7.3.1"))
+        {
+            return false; // only server certificates
         }
 
         var now = Time.GetUtcNow().UtcDateTime;
@@ -248,7 +255,7 @@ public sealed class CertificatePinning
                 return false;
             }
 
-            return CertificateTrustEvaluator.ChainsToAnchors(certificate, chain, anchors.Certificates);
+            return CertificateTrustEvaluator.IssuedDirectlyBy(certificate, anchors.RenewalIssuers, anchors.Certificates, now);
         }
         catch (CryptographicException)
         {

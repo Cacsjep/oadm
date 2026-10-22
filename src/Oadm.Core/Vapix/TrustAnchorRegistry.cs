@@ -12,6 +12,9 @@ public sealed record TrustAnchorSnapshot(long Version, X509Certificate2Collectio
 {
     public static TrustAnchorSnapshot Empty { get; } = new(0, []);
 
+    /// <summary>The OADM CAs whose device certificates are pinned again on renewal (the PKI plugin's issuers only).</summary>
+    public X509Certificate2Collection RenewalIssuers { get; init; } = [];
+
     public bool IsEmpty => Certificates.Count == 0;
 }
 
@@ -25,6 +28,7 @@ public sealed class TrustAnchorRegistry
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<string, X509Certificate2[]> _sets = new(StringComparer.OrdinalIgnoreCase);
+    private X509Certificate2[] _issuers = [];
     private volatile TrustAnchorSnapshot _current = TrustAnchorSnapshot.Empty;
 
     /// <summary>Raised after any set changed (outside the lock).</summary>
@@ -40,10 +44,33 @@ public sealed class TrustAnchorRegistry
         return new OwnerAnchors(this, ownerId);
     }
 
-    /// <summary>Replaces the set of <paramref name="ownerId"/>; an empty list removes it. Throws for undecodable certificates.</summary>
-    public void Set(string ownerId, IReadOnlyList<byte[]> derCertificates)
+    /// <summary>The only owner whose renewal issuers count: the PKI plugin (the OADM CA).</summary>
+    public const string RenewalOwner = "oadm.pki";
+
+    /// <summary>
+    /// Replaces the renewal issuers of <paramref name="ownerId"/> (<see cref="ITrustAnchors.SetRenewalIssuers"/>); only
+    /// <see cref="RenewalOwner"/>'s are used. Throws for undecodable certificates.
+    /// </summary>
+    public void SetRenewalIssuers(string ownerId, IReadOnlyList<byte[]> derCertificates)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        var parsed = Parse(derCertificates);
+        if (!string.Equals(ownerId, RenewalOwner, StringComparison.OrdinalIgnoreCase))
+        {
+            return; // no other plugin may make certificates replace a pin
+        }
+
+        lock (_gate)
+        {
+            _issuers = [.. parsed];
+            _current = _current with { Version = _current.Version + 1, RenewalIssuers = [.. _issuers] };
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static List<X509Certificate2> Parse(IReadOnlyList<byte[]> derCertificates)
+    {
         ArgumentNullException.ThrowIfNull(derCertificates);
         var parsed = new List<X509Certificate2>(derCertificates.Count);
         foreach (var der in derCertificates)
@@ -59,6 +86,14 @@ public sealed class TrustAnchorRegistry
             }
         }
 
+        return parsed;
+    }
+
+    /// <summary>Replaces the set of <paramref name="ownerId"/>; an empty list removes it. Throws for undecodable certificates.</summary>
+    public void Set(string ownerId, IReadOnlyList<byte[]> derCertificates)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        var parsed = Parse(derCertificates);
         lock (_gate)
         {
             if (parsed.Count == 0)
@@ -83,17 +118,23 @@ public sealed class TrustAnchorRegistry
                 }
             }
 
-            _current = new TrustAnchorSnapshot(_current.Version + 1, union);
+            _current = new TrustAnchorSnapshot(_current.Version + 1, union) { RenewalIssuers = [.. _issuers] };
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Removes the set of <paramref name="ownerId"/> (plugin stopped).</summary>
-    public void Remove(string ownerId) => Set(ownerId, []);
+    /// <summary>Removes the sets of <paramref name="ownerId"/> (plugin stopped): its anchors and its renewal issuers.</summary>
+    public void Remove(string ownerId)
+    {
+        Set(ownerId, []);
+        SetRenewalIssuers(ownerId, []);
+    }
 
     private sealed class OwnerAnchors(TrustAnchorRegistry registry, string ownerId) : ITrustAnchors
     {
         public void Set(IReadOnlyList<byte[]> derCertificates) => registry.Set(ownerId, derCertificates);
+
+        public void SetRenewalIssuers(IReadOnlyList<byte[]> derCertificates) => registry.SetRenewalIssuers(ownerId, derCertificates);
     }
 }

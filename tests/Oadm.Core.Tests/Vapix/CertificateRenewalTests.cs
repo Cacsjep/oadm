@@ -78,6 +78,42 @@ public sealed class CertificateRenewalTests
     }
 
     [Fact]
+    public void OnlyThePkiCaItselfVouchesForARenewal()
+    {
+        using var root = TestCertificates.CreateCa("Customer Root CA");
+        using var oadmCa = TestCertificates.CreateIntermediate(root, "OADM CA");
+        using var otherCa = TestCertificates.CreateIntermediate(root, "Other issuing CA");
+        using var old = TestCertificates.SelfSigned();
+        using var fromOadm = TestCertificates.IssuedBy(oadmCa, DeviceName);
+        using var fromSibling = TestCertificates.IssuedBy(otherCa, DeviceName);
+        using var fromRoot = TestCertificates.IssuedBy(root, DeviceName);
+        var anchors = new TrustAnchorRegistry();
+        // The PKI rates certificates with its CA and the root above it, but only its CA vouches for renewals.
+        anchors.Set(TrustAnchorRegistry.RenewalOwner, [oadmCa.RawData, root.RawData]);
+        anchors.SetRenewalIssuers(TrustAnchorRegistry.RenewalOwner, [oadmCa.RawData]);
+        CertificatePinning Fresh() => new(CertificatePinning.ComputeFingerprint(old)) { TrustAnchors = anchors, DeviceSerial = Serial };
+
+        Assert.True(Fresh().Validate(fromOadm, null, "10.0.0.48"));
+        Assert.False(Fresh().Validate(fromSibling, [otherCa], "10.0.0.48")); // another CA under the same root
+        Assert.False(Fresh().Validate(fromRoot, null, "10.0.0.48")); // the root itself
+    }
+
+    [Fact]
+    public void AnotherPluginsCertificatesNeverReplaceAPin()
+    {
+        using var ca = TestCertificates.CreateCa("Some plugin's CA");
+        using var old = TestCertificates.SelfSigned();
+        using var renewed = TestCertificates.IssuedBy(ca, DeviceName);
+        var anchors = new TrustAnchorRegistry();
+        anchors.Set("acme.plugin", [ca.RawData]);
+        anchors.SetRenewalIssuers("acme.plugin", [ca.RawData]);
+        var pinning = new CertificatePinning(CertificatePinning.ComputeFingerprint(old)) { TrustAnchors = anchors, DeviceSerial = Serial };
+
+        Assert.False(pinning.Validate(renewed, null, "10.0.0.48"));
+        Assert.Empty(anchors.Current.RenewalIssuers);
+    }
+
+    [Fact]
     public void WithoutTheDeviceSerialEveryOtherCertificateIsChanged()
     {
         using var ca = TestCertificates.CreateCa();
@@ -94,7 +130,8 @@ public sealed class CertificateRenewalTests
     private static TrustAnchorRegistry Anchors(X509Certificate2 ca)
     {
         var anchors = new TrustAnchorRegistry();
-        anchors.Set("oadm.pki", [ca.RawData]);
+        anchors.Set(TrustAnchorRegistry.RenewalOwner, [ca.RawData]);
+        anchors.SetRenewalIssuers(TrustAnchorRegistry.RenewalOwner, [ca.RawData]);
         return anchors;
     }
 }
