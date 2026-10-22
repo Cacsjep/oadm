@@ -198,6 +198,10 @@ as before (profile removed, previous web server certificate, test certificates d
 carried only the audit log line of the profile change (`EstEventProbeTests`, HardwareWrite). So the set-up reads the
 profile status instead, and OADM keeps no event stream open to the cameras for EST.
 
+**Accepted as they are** (decision 2026-10-22): host names and FQDNs a camera reports go into its certificates whatever
+their domain (only another camera's `axis-<serial>` name is refused); PKI takes the IP addresses a device reports; Set up
+removes a profile of another EST server whole when it serves a use OADM sets up.
+
 ## License of the code
 
 `plugins/Oadm.Plugins.Est*` carry their own `LICENSE` (source-available: the source can be read, using the plugin needs
