@@ -8,58 +8,62 @@
   <!-- One card (the host's page card): port and profiles with Save and the status left of it, then the enrollments and
        the certificates. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*,Auto,*">
-    <StackPanel Grid.Row="0" Classes="form">
-      <ui:FormField Label="Port">
-        <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
-      </ui:FormField>
-      <ui:FormField Label="Enrollments kept">
-        <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
-      </ui:FormField>
+    <!-- Two columns: port and enrollments kept left, the profiles right; Save with the status below, at the right edge. -->
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,48,Auto" RowDefinitions="Auto,Auto,Auto" HorizontalAlignment="Left">
+      <StackPanel Grid.Column="0" Classes="form">
+        <ui:FormField Label="Port">
+          <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+        </ui:FormField>
+        <ui:FormField Label="Enrollments kept">
+          <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+        </ui:FormField>
+      </StackPanel>
 
-      <ui:FormField Label="Profiles" Classes="wide">
-        <StackPanel Spacing="6">
-          <Grid ColumnDefinitions="220,12,160,12,110,12,100,12,Auto,12,Auto">
-            <TextBlock Grid.Column="0" Classes="secondary" Text="Name" />
-            <TextBlock Grid.Column="2" Classes="secondary" Text="Use" />
-            <TextBlock Grid.Column="4" Classes="secondary" Text="Valid (days)" />
-            <TextBlock Grid.Column="6" Classes="secondary" Text="Key" />
-            <TextBlock Grid.Column="8" Classes="secondary" Text="On" />
-          </Grid>
-          <!-- At most four rows (one per use): no virtualization needed. -->
-          <ItemsControl ItemsSource="{Binding Profiles}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:ProfileRowViewModel">
-                <Grid ColumnDefinitions="220,12,160,12,110,12,100,12,Auto,12,Auto" Margin="0,0,0,6">
-                  <TextBox Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
-                  <ComboBox Grid.Column="2" ItemsSource="{Binding UseChoices}" SelectedItem="{Binding Use}" HorizontalAlignment="Stretch"
-                            VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
-                  <TextBox Grid.Column="4" Text="{Binding Validity}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
-                  <ComboBox Grid.Column="6" ItemsSource="{Binding KeyChoices}" SelectedItem="{Binding Key}" HorizontalAlignment="Stretch"
-                            VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
-                  <CheckBox Grid.Column="8" IsChecked="{Binding Enabled}" VerticalAlignment="Top" Margin="0,4,0,0" IsEnabled="{Binding MayManage}" />
-                  <Button Grid.Column="10" Classes="link danger" Content="Remove" VerticalAlignment="Top" Margin="0,7,0,0" IsVisible="{Binding MayManage}"
+      <StackPanel Grid.Column="2" Spacing="6">
+        <Grid ColumnDefinitions="180,12,150,12,100,12,90,12,Auto,12,Auto">
+          <TextBlock Grid.Column="0" Classes="secondary" Text="Profile" />
+          <TextBlock Grid.Column="2" Classes="secondary" Text="Use" />
+          <TextBlock Grid.Column="4" Classes="secondary" Text="Valid (days)" />
+          <TextBlock Grid.Column="6" Classes="secondary" Text="Key" />
+          <TextBlock Grid.Column="8" Classes="secondary" Text="On" />
+        </Grid>
+        <!-- At most four rows (one per use): no virtualization needed. Inputs stay at the top so an error below one does
+             not move the others; the check box and Remove sit centered in an input-high box. -->
+        <ItemsControl ItemsSource="{Binding Profiles}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ProfileRowViewModel">
+              <Grid ColumnDefinitions="180,12,150,12,100,12,90,12,Auto,12,Auto" Margin="0,0,0,6">
+                <TextBox Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
+                <ComboBox Grid.Column="2" ItemsSource="{Binding UseChoices}" SelectedItem="{Binding Use}" HorizontalAlignment="Stretch"
+                          VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
+                <TextBox Grid.Column="4" Text="{Binding Validity}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
+                <ComboBox Grid.Column="6" ItemsSource="{Binding KeyChoices}" SelectedItem="{Binding Key}" HorizontalAlignment="Stretch"
+                          VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
+                <Panel Grid.Column="8" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top">
+                  <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center" IsEnabled="{Binding MayManage}" />
+                </Panel>
+                <Panel Grid.Column="10" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top" IsVisible="{Binding MayManage}">
+                  <Button Classes="link danger" Content="Remove" VerticalAlignment="Center"
                           Command="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).RemoveProfileCommand}" CommandParameter="{Binding}" />
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddProfileCommand}" IsVisible="{Binding MayManage}">
-            <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add profile" />
-          </Button>
-        </StackPanel>
-      </ui:FormField>
+                </Panel>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddProfileCommand}" IsVisible="{Binding MayManage}">
+          <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add profile" />
+        </Button>
+      </StackPanel>
 
-      <ui:FormField InputWidth="460">
-        <DockPanel>
-          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
-                  ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
-          <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
-                         Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" ToolTip.Tip="{Binding ListenersText}" />
-        </DockPanel>
-      </ui:FormField>
-      <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap"
+      <DockPanel Grid.Row="1" Grid.ColumnSpan="3" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+                ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+        <ui:StatusChip VerticalAlignment="Center" Margin="0,0,12,0"
+                       Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" ToolTip.Tip="{Binding ListenersText}" />
+      </DockPanel>
+      <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right"
                  IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-    </StackPanel>
+    </Grid>
 
     <TextBlock Grid.Row="1" Classes="sectionTitle" Text="Enrollments" Margin="{DynamicResource Oadm.GapTop}" />
     <Panel Grid.Row="2" Margin="0,8,0,0">
