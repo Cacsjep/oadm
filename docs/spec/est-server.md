@@ -62,12 +62,15 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   PKI never take a reported host name or FQDN `axis-<12 hex>...` of another serial into a certificate, so a camera
   cannot name another camera (`EstEndpoint.NamesOtherCamera`, `CertificateNames.NamesOtherCamera`).
 - **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
-  only; a 401 or 403 closes the connection; at most 64 connections, 4 per address, 2 minutes each.
+  only; a 401 or 403 closes the connection, and so does every answer to a connection without a client certificate (one
+  `cacerts`, never a slot held); at most 64 connections, 4 per address, 2 minutes each; the client's chain is collected
+  without downloads (`DisableCertificateDownloads`).
 - **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
   no `*`); EC keys only on P-256, P-384 or P-521.
 - **Issuing:** the OADM CA of the PKI plugin signs (one CA for everything), through the SDK's plugin services: PKI offers
   "sign a device certificate" and "CA chain", EST uses them. Like PKI's `DeviceCertificateIssuer`, OADM sets subject and
-  SANs from what it knows (address, host name, FQDN, `axis-<serial>.local`), never from the CSR; EKU from the profile; key
+  SANs from what it knows (the stored address, host name, FQDN, `axis-<serial>.local`; never the address a connection
+  came from, never another camera's axis name), never from the CSR; EKU from the profile; key
   policy RSA >= 2048 / EC >= 256; SHA-1/MD5 CSRs refused. The answer carries the leaf **and the chain** (Axis refuses a
   leaf only), PKCS#7 certs-only, base64 wrapped at 76 characters. Every certificate goes into PKI's issued registry.
 - **The server's TLS certificate:** issued by the OADM CA, SANs = the server's addresses and host name; **one per site**
@@ -101,7 +104,8 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
 
 - **Records**: per device and profile the newest certificate and the one before it (a camera whose answer got lost
   renews with the previous one); a renewal or a new set-up pushes out the older ones; at most 2 x devices x profiles.
-  Ended more than 30 days ago: dropped; a device OADM no longer manages: forgotten by the check. Stored as plugin records
+  Ended more than 30 days ago: dropped; a device OADM no longer manages: forgotten when the check finds its certificate
+  due, or at once when its camera signs in again with a new device id (removed and added again). Stored as plugin records
   (`ctx.Records`, collection `certificates`, one row per certificate by serial number): a flush writes only the changed
   certificates, never the whole list. 4.1.0-rc.2 kept every certificate in one settings value `certificates`: loaded
   once, cut down, moved to the records and the settings value deleted.
@@ -115,6 +119,19 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
 - Set up counts the profiles that stay on the camera (another EST server's for other uses, kept network access
   profiles): it picks the most of the EST server's profiles that fit in two, preferring those that replace a profile
   (`EstSetupTask.Fitting`), else "leave no room ... Nothing was changed" before any write.
+- OADM's own profile that differs is changed in place (`PATCH /profiles/<id>` with only the fields that differ, never
+  `id`, `services` only when they change, `subject` always): seen on 10.0.0.48, deleting and adding it again under the
+  same name never stores the new certificate while the previous one is on the camera (status stays CONNECTED), and a
+  PATCH that repeats the profile's own services is refused ("Service ... exists in a different EST profile"). Step
+  "Change the <profile> profile"; `EstHardwareWriteTests` covers it (another host name, then set up again).
+- Set up changes per profile: an identical profile stays (no new certificate, no web server restart); a written one is
+  done only once a new certificate was issued for it ("kept its previous certificate" otherwise); an add whose answer got
+  lost is checked and tried once more. IEEE 802.1X: its profiles stay untouched unless this run writes OADM's IEEE 802.1X
+  profile (replace chosen and the profile fits). "Nothing to remove" is a warning (Done with warnings).
+- Sites: a site that leaves the bound ones (removed, or its node reset and waiting to be replaced) loses its relay; its
+  addresses stay until the hourly check finds no managed device there. A chosen interface that goes away while
+  listening closes the listener ("Interface ... is not available"); failures of the hourly check and of the 30 s retry
+  are logged.
 - Robustness: a failed write of the store is logged and tried again; stopping never opens a listener or relay any more;
   a move of 4.1.0-rc.2 data cut short keeps the records' newer state.
 - Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf: 30,000 cameras
@@ -148,8 +165,8 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    chosen. HTTPS
    comes last (its certificate restarts the web server); the reads while waiting are retried during that restart.
 4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
-   written. Otherwise remove OADM's profiles (`oadm_...`) and the camera's profiles that serve the same services (others
-   stay), and add the new ones **one at a time**, each waited for:
+   written. Otherwise remove those of OADM's profiles (`oadm_...`) and of the camera's profiles serving the same services
+   that are not identical to a wanted one (others stay), and add the missing ones **one at a time**, each waited for:
    `POST /config/rest/cert-est/v1/profiles` with `id` = `oadm_<profile>` (the camera refuses `-` in ids, so profile names
    are letters, digits and `_`), `server` = `<address>:9454/.well-known/est/<profile>` (no scheme; the server's address
    toward the camera, `LocalAddressTowardsAsync`), `caCertificates` (the aliases of step 3), `certificate` = the device

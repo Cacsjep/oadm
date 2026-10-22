@@ -632,6 +632,16 @@ public sealed class TaskPluginInfoTests
     }
 
     [Fact]
+    public void A_device_reports_only_ip_addresses_and_never_another_cameras_axis_name()
+    {
+        var names = CertificateNames.For("10.0.0.48", "B8A44F631339", "axis-accc8e000001", "axis-accc8e000001.local",
+            ["10.0.0.48", "fe80::1", "axis-accc8e000001.local", "mail.example.com"]);
+
+        Assert.Equal(["axis-b8a44f631339.local"], names.DnsNames);
+        Assert.Equal(["10.0.0.48", "fe80::1"], names.IpAddresses);
+    }
+
+    [Fact]
     public async Task Signing_refuses_weak_keys_and_caps_the_validity_at_the_ca_end()
     {
         await using var pki = await PkiHarness.StartAsync();

@@ -51,9 +51,13 @@ public sealed record CertificateNames(string CommonName, IReadOnlyList<string> I
         }
 
         AddName(host);
+        // The addresses the device reports itself: IP addresses only, never a name (a camera could name another camera).
         foreach (var address in deviceAddresses ?? [])
         {
-            AddName(address);
+            if (address is not null && IPAddress.TryParse(address.Trim().Trim('[', ']'), out _))
+            {
+                AddName(address);
+            }
         }
 
         // The device reports its host name and FQDN itself: only plain names go into a certificate every OADM device trusts,

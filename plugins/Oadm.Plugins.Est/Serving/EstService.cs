@@ -195,11 +195,8 @@ public sealed partial class EstService : IAsyncDisposable
             }
 
             var bound = sites.List.ToDictionary(s => s.Id);
-            foreach (var gone in _store.Sites().Where(id => !bound.ContainsKey(id)))
-            {
-                _store.RemoveSite(gone);
-            }
-
+            // A site missing from the bound ones (removed, or its node was reset and waits to be replaced) loses its relay
+            // below; its addresses stay until the hourly check finds no managed device there (a replaced node keeps the site).
             var wanted = _store.Sites().Where(bound.ContainsKey).ToHashSet();
             List<ITcpRelay> remove;
             lock (_siteRelays)
@@ -696,6 +693,8 @@ public sealed partial class EstService : IAsyncDisposable
             ClientCertificateRequired = true,
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+            // The client's chain is only collected here: never a download of an issuer URL the client names.
+            CertificateChainPolicy = new X509ChainPolicy { DisableCertificateDownloads = true, RevocationMode = X509RevocationMode.NoCheck },
 #pragma warning disable CA5359 // The client certificate is checked per request (EstEndpoint): a refusal gets an answer with its reason.
             RemoteCertificateValidationCallback = (_, certificate, chain, _) =>
             {
@@ -757,7 +756,8 @@ public sealed partial class EstService : IAsyncDisposable
 
                 var result = await _endpoint.HandleAsync(request, identity, origin, ct).ConfigureAwait(false);
                 // A refusal of who the camera is ends the connection: nobody keeps a slot without a valid identity.
-                var close = request.CloseAfter || count == MaxRequestsPerConnection || result.Response.Status is 401 or 403;
+                var close = request.CloseAfter || count == MaxRequestsPerConnection || result.Response.Status is 401 or 403
+                    || identity.Certificate is null; // no identity: one answer (the CA), never a slot held
                 await EstHttp.WriteAsync(tls, result.Response, close, ct).ConfigureAwait(false);
                 Record(result, connection);
                 if (close)
@@ -883,13 +883,23 @@ public sealed partial class EstService : IAsyncDisposable
         {
             var now = _host.Time.GetUtcNow().UtcDateTime;
             var due = _store.DueForRenewal(now, NotRenewedGrace);
-            if (due.Count == 0)
+            var unbound = _host.Sites is { } sites
+                ? _store.Sites().Where(id => !sites.List.Any(s => s.Id == id)).ToList()
+                : [];
+            if (due.Count == 0 && unbound.Count == 0)
             {
                 return;
             }
 
             // One read of the device list for the whole check.
-            var managed = (await _host.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+            var devices = await _host.Devices.ListAsync(ct).ConfigureAwait(false);
+            var managed = devices.Select(d => d.Id).ToHashSet();
+            var usedSites = devices.Select(d => d.SiteId).OfType<Guid>().ToHashSet();
+            foreach (var gone in unbound.Where(id => !usedSites.Contains(id)))
+            {
+                _store.RemoveSite(gone); // removed for good: no managed device there any more
+            }
+
             var flagged = 0;
             foreach (var certificate in due)
             {
@@ -925,6 +935,12 @@ public sealed partial class EstService : IAsyncDisposable
         catch (OperationCanceledException)
         {
             // stopping
+        }
+#pragma warning disable CA1031 // The check runs again in an hour; the reason goes to the server log.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogCheckFailed(ex);
         }
         finally
         {
@@ -971,8 +987,26 @@ public sealed partial class EstService : IAsyncDisposable
     /// </summary>
     private async Task RetryListenAsync(CancellationToken ct)
     {
-        if (InterfaceOptions.IsAll(_store.Config.InterfaceId) || ListenInterface() is not { } nic)
+        if (InterfaceOptions.IsAll(_store.Config.InterfaceId))
         {
+            return;
+        }
+
+        if (ListenInterface() is not { } nic)
+        {
+            if (_listener is not null)
+            {
+                try
+                {
+                    await CloseAsync(release: false).ConfigureAwait(false); // gone while listening: the status says so
+                    PublishState();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // stopping
+                }
+            }
+
             return;
         }
 
@@ -995,6 +1029,12 @@ public sealed partial class EstService : IAsyncDisposable
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
             // stopping
+        }
+#pragma warning disable CA1031 // Tried again in 30 s; the reason goes to the server log.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogListenFailed(ex);
         }
     }
 
@@ -1069,6 +1109,12 @@ public sealed partial class EstService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "EST: every enrollment was deleted")]
     private partial void LogEnrollmentsCleared();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST: the check for certificates not renewed failed; tried again in an hour")]
+    private partial void LogCheckFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST server: listening on the chosen interface failed; tried again in 30 s")]
+    private partial void LogListenFailed(Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST server not listening: {Reason}")]
     private partial void LogInterfaceMissing(string reason);

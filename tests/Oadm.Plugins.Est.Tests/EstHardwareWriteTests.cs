@@ -123,6 +123,44 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
 
             Assert.DoesNotContain(again.Lines, l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal));
 
+            // A changed profile (another name of the camera: other SANs) is written again under the same id while the
+            // previous certificate is still on the camera: the camera must enroll a new one.
+            var renamed = device with { HostName = "oadm-est-renamed" };
+            var beforeRewrite = est.Store.Current().Single().SerialNumber;
+            await RetryAsync(() => CameraEstApi.DiscoverAsync(vapix, ct));
+            var rewrite = new TaskContext(vapix, new FakeDeviceNetwork { LocalAddress = serverAddress });
+            try
+            {
+                await task.ExecuteAsync(rewrite, renamed, "{}", ct);
+            }
+            finally
+            {
+                rewrite.Flush();
+                foreach (var line in rewrite.Lines)
+                {
+                    output.WriteLine("Rewrite: " + line);
+                }
+
+                foreach (var enrollment in est.Store.Enrollments())
+                {
+                    output.WriteLine($"Rewrite enrollment {enrollment.TimeUtc:HH:mm:ss} {enrollment.Kind} {enrollment.Profile}: {(enrollment.Ok ? "ok" : "refused")} {enrollment.Reason}");
+                }
+
+                foreach (var p in await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct)))
+                {
+                    output.WriteLine($"Rewrite profile {p.Id} {p.Status} {p.Certificate}");
+                }
+
+                foreach (var c in await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct)))
+                {
+                    output.WriteLine("Rewrite certificate " + c.Alias);
+                }
+            }
+
+            Assert.Contains(rewrite.Lines, l => l.StartsWith(EstTaskIds.ChangeStep("https"), StringComparison.Ordinal));
+            Assert.NotEqual(beforeRewrite, est.Store.Current().Single().SerialNumber);
+            Assert.Contains("DNS:oadm-est-renamed", (await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct))).Single().SubjectAlternativeNames);
+
             // The dialog's read-only query lists the new profile.
             var listed = EstJson.Deserialize<CameraProfileList>(await task.QueryAsync(new QueryContext(vapix), device, EstTaskIds.ListProfilesMethod, null, ct));
             output.WriteLine("Listed: " + string.Join(", ", listed.Profiles.Select(p => $"{p.Id} {p.Status} {string.Join("/", p.Services)} {p.Server}")));

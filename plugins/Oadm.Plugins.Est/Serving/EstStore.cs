@@ -30,6 +30,7 @@ public sealed partial class EstStore : IAsyncDisposable
     private readonly IPluginRecords _records;
     private readonly HashSet<string> _changedCertificates = new(StringComparer.OrdinalIgnoreCase); // serials to write or delete
     private bool _dropLegacyCertificates;
+    private bool _stopped;
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -437,6 +438,15 @@ public sealed partial class EstStore : IAsyncDisposable
         }
     }
 
+    /// <summary>The newest certificate of a device and profile; O(1).</summary>
+    public IssuedCertificate? NewestOf(Guid deviceId, string profile)
+    {
+        lock (_gate)
+        {
+            return _newest.TryGetValue(new DeviceProfile(deviceId, profile.ToLowerInvariant()), out var serial) ? _certificates.GetValueOrDefault(serial) : null;
+        }
+    }
+
     /// <summary>The newest certificate of every device and profile, newest first.</summary>
     public IReadOnlyList<IssuedCertificate> Current()
     {
@@ -541,6 +551,11 @@ public sealed partial class EstStore : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _flushTimer?.Dispose();
+        lock (_gate)
+        {
+            _stopped = true;
+        }
+
         await FlushAsync(CancellationToken.None).ConfigureAwait(false);
         _writeGate.Dispose();
     }
@@ -549,6 +564,12 @@ public sealed partial class EstStore : IAsyncDisposable
     {
         lock (_gate)
         {
+            if (_stopped)
+            {
+                LogChangeAfterStop(); // nothing writes any more (a task still running while the plugin stopped)
+                return;
+            }
+
             _dirty = true;
             if (_flushPending)
             {
@@ -578,6 +599,9 @@ public sealed partial class EstStore : IAsyncDisposable
             LogFlushFailed(ex);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST: a change after the EST server stopped was not saved")]
+    private partial void LogChangeAfterStop();
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST: saving the enrollments and certificates failed; tried again in a few seconds")]
     private partial void LogFlushFailed(Exception ex);

@@ -26,7 +26,7 @@ Apache 2.0).
     newest and the one before it; dropped 30 days after they end or when the device is gone; only changed rows are
     written); written at most every 2 s.
   - Signing: `IDeviceCertificateAuthority` of PKI (`ctx.Services`), names from OADM (CN = the device's address; SAN =
-    its address, the address it connected from on the server's network, host name, `axis-<serial>.local`), validity from
+    its stored address, host name, `axis-<serial>.local`; never the address a connection came from), validity from
     the profile, source "EST".
   - Events: "Certificate enrolled" (`oadm.est.enrolled`: profile, kind) and "Enrollment refused" (`oadm.est.refused`:
     profile, reason), only for managed devices; "Certificate not renewed" (`oadm.est.notrenewed`: profile, validUntil)

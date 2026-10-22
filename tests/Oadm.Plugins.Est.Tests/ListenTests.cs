@@ -94,11 +94,24 @@ public sealed class ListenTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_chosen_interface_that_goes_away_while_listening_stops_and_says_so()
+    {
+        await _est.SaveAsync(new SaveRequest(_est.Store.Config with { InterfaceId = "cams" }), CancellationToken.None);
+        Assert.NotNull(_est.Listener);
+
+        _interfaces.List = [Lan]; // unplugged
+        _time.Advance(TimeSpan.FromSeconds(30));
+
+        await Eventually.TrueAsync(() => _est.Listener is null, "the listener closed");
+        Assert.Equal("Interface Ethernet 2 is not available", _est.GetState().StatusText);
+    }
+
+    [Fact]
     public async Task Set_up_gives_the_camera_the_address_of_the_chosen_interface()
     {
         await _est.SaveAsync(new SaveRequest(_est.Store.Config with { InterfaceId = "cams", Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var device = new FakeDevice { Serial = "B8A44F631339", Address = "192.168.50.20", FirmwareVersion = "12.11.77" };
-        var camera = new TaskTests.EstCamera();
+        var camera = new TaskTests.EstCamera { Server = _est, Device = device };
         var ctx = new FakeTaskContext(camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.17") } };
 
         await new EstSetupTask(() => _est).ExecuteAsync(ctx, device, "{}", CancellationToken.None);

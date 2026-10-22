@@ -276,15 +276,8 @@ public sealed partial class EstEndpoint(
             addresses.Add(stored.ToString());
         }
 
-        // The address the camera connected from, when it reached the server directly (behind a site the node's NAT may differ).
-        if (origin.SiteId is null && origin.Remote is { } remote)
-        {
-            var text = (remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote).ToString();
-            if (!addresses.Contains(text))
-            {
-                addresses.Add(text);
-            }
-        }
+        // Only the address OADM stores for the device: never the address a connection came from (a camera could take
+        // another camera's address for a moment and get a certificate naming it).
 
         return addresses;
     }

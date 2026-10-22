@@ -34,6 +34,9 @@ public static class EstTaskIds
 
     public const string RemoveStep = "Remove the enrollment profiles";
     public const string BadOptions = "The task options cannot be read. Nothing was changed.";
+    public const string OnlyDot1x = "IEEE 802.1X is on: its profile was skipped and no other profile applies. Nothing was changed.";
+    public const string KeptOldCertificate = "The camera kept its previous certificate: the EST server issued no new one within 2 minutes. The Enrollments list shows what reached the server.";
+    public const string CameraNotRead = "OADM could not read the camera's enrollment status within 2 minutes.";
     public const string NoRoom = "The camera's other enrollment profiles leave no room (two at most). Remove one in Certificate enrollment first. Nothing was changed.";
     public const string Dot1xParameter = "Network.Interface.I0.dot1x.Enabled";
 
@@ -85,6 +88,8 @@ public static class EstTaskIds
     public const string PinStep = "Pin the new HTTPS certificate";
 
     public static string AddStep(string profile) => $"Add the {profile} profile";
+
+    public static string ChangeStep(string profile) => $"Change the {profile} profile";
 
     public static string WaitStep(string profile) => $"Wait for the {profile} certificate";
 
@@ -201,6 +206,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
             // IEEE 802.1X read fresh from the camera, never the cached state; unknown counts as on (no lock-out).
             var dot1xOn = await Dot1xOnAsync(ctx, ct).ConfigureAwait(false);
+            var before = candidates.Count;
             if (dot1xOn && payload.ReplaceDot1x)
             {
                 ctx.Log(TaskLogLevel.Info, EstTaskIds.Dot1xReplaced); // the user chose it in the dialog
@@ -209,7 +215,6 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             {
                 // No lock-out: a new network access certificate the RADIUS server may not trust would take the camera off
                 // the network, and a removed profile would stop renewing the one it has. Its profiles stay untouched.
-                protectNetworkAccess = true;
                 if (candidates.RemoveAll(p => p.Use == ProfileUse.Dot1x) > 0)
                 {
                     step.Warn(EstTaskIds.Dot1xSkipped);
@@ -227,11 +232,18 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             // The camera holds at most two profiles (a third is refused, seen on 10.0.0.48): those that stay (another EST
             // server's for other uses, a kept network access profile) count. The most profiles that fit, in the order of the
             // EST server page; decided here, before the first write. HTTPS last: its certificate restarts the web server.
-            var fitting = Fitting(candidates, existing, protectNetworkAccess, dot1xService);
+            // With IEEE 802.1X on, its profiles stay untouched unless this run writes OADM's IEEE 802.1X profile (replace chosen):
+            // a removal without a replacement would stop the renewal of the network access certificate.
+            bool Protect(IReadOnlyList<EstProfile> set) => dot1xOn && !set.Any(p => p.Use == ProfileUse.Dot1x);
+            var fitting = Fitting(candidates, existing, Protect, dot1xService);
+            protectNetworkAccess = Protect(fitting);
             var profiles = fitting.OrderBy(p => p.Use == ProfileUse.Https).ToList();
             if (profiles.Count == 0)
             {
-                throw new DeviceNotCompatibleException(candidates.Count > 0 ? EstTaskIds.NoRoom : EstTaskIds.NoProfile);
+                throw new DeviceNotCompatibleException(
+                    candidates.Count > 0 ? EstTaskIds.NoRoom
+                    : before > 0 && dot1xOn ? EstTaskIds.OnlyDot1x
+                    : EstTaskIds.NoProfile);
             }
 
             var address = ctx.Network is { } network ? await network.LocalAddressTowardsAsync(device.Address, ct).ConfigureAwait(false) : null;
@@ -298,41 +310,65 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             ctx.Log(TaskLogLevel.Info, EstTaskIds.AlreadySetUp);
             foreach (var (profile, json) in wanted)
             {
-                await WaitEnrolledAsync(ctx, est, device, profile, json, started, ct).ConfigureAwait(false);
+                await WaitEnrolledAsync(ctx, est, device, profile, json, started, requireNew: false, ct).ConfigureAwait(false);
             }
 
             return;
         }
 
-        if (current.Count > 0)
+        // Per profile: an identical one stays as it is (no new certificate, no web server restart); OADM's own profile that
+        // differs is changed in place (re-adding it under the same name fails while its certificate is on the camera); the
+        // other ones in the way go.
+        var unchanged = wanted.Where(w => current.Any(c => Matches(c, w.Json))).ToList();
+        var unchangedIds = unchanged.Select(w => w.Json["id"]!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+        var changeIds = wanted.Select(w => w.Json["id"]!.GetValue<string>())
+            .Where(id => !unchangedIds.Contains(id) && current.Any(c => c.Id == id))
+            .ToHashSet(StringComparer.Ordinal);
+        var remove = current.Where(c => !unchangedIds.Contains(c.Id) && !changeIds.Contains(c.Id)).ToList();
+        if (remove.Count > 0)
         {
             await ctx.StepAsync(EstTaskIds.RemoveOldStep, async step =>
             {
-                foreach (var old in current)
+                foreach (var old in remove)
                 {
                     await CameraEstApi.RemoveProfileAsync(ctx.Vapix, old.Id, ct).ConfigureAwait(false);
                 }
 
-                step.Complete(string.Join(", ", current.Select(c => c.Id)));
+                step.Complete(string.Join(", ", remove.Select(c => c.Id)));
             }).ConfigureAwait(false);
 
             // A removed profile of OADM that is not set up again (renamed, turned off): its certificate is not renewed any more.
             var wantedIds = wanted.Select(w => w.Json["id"]!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
-            foreach (var gone in current.Where(c => c.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) && !wantedIds.Contains(c.Id)))
+            foreach (var gone in remove.Where(c => c.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) && !wantedIds.Contains(c.Id)))
             {
                 est.Store.StopRenewals(device.Id, started, gone.Id[EstTaskIds.ProfilePrefix.Length..]);
             }
         }
 
-        // One at a time: writing a profile restarts the camera's EST client.
+        // One at a time: writing a profile restarts the camera's EST client. A written profile is done once a new
+        // certificate was issued for it (never the previous one the camera still holds under the same name).
         foreach (var (profile, json) in wanted)
         {
-            await ctx.StepAsync(EstTaskIds.AddStep(profile.Name), async step =>
+            var id = json["id"]!.GetValue<string>();
+            var written = !unchangedIds.Contains(id);
+            if (changeIds.Contains(id))
             {
-                await CameraEstApi.AddProfileAsync(ctx.Vapix, json, ct).ConfigureAwait(false);
-                step.Complete(json["server"]!.GetValue<string>());
-            }).ConfigureAwait(false);
-            await WaitEnrolledAsync(ctx, est, device, profile, json, started, ct).ConfigureAwait(false);
+                await ctx.StepAsync(EstTaskIds.ChangeStep(profile.Name), async step =>
+                {
+                    await CameraEstApi.SetProfileAsync(ctx.Vapix, id, Changes(current.First(c => c.Id == id), json), ct).ConfigureAwait(false);
+                    step.Complete(json["server"]!.GetValue<string>());
+                }).ConfigureAwait(false);
+            }
+            else if (written)
+            {
+                await ctx.StepAsync(EstTaskIds.AddStep(profile.Name), async step =>
+                {
+                    await AddProfileOnceAsync(ctx, json, ct).ConfigureAwait(false);
+                    step.Complete(json["server"]!.GetValue<string>());
+                }).ConfigureAwait(false);
+            }
+
+            await WaitEnrolledAsync(ctx, est, device, profile, json, started, requireNew: written, ct).ConfigureAwait(false);
         }
 
         // Pin only when OADM talks HTTPS to the camera: the task never changes how OADM connects.
@@ -425,28 +461,73 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     }
 
     /// <summary>The camera already has exactly these profiles (the subject cannot be read back, so it is not compared).</summary>
-    internal static bool Same(IReadOnlyList<CameraEstProfile> current, IReadOnlyList<(EstProfile Profile, JsonObject Json)> wanted)
+    internal static bool Same(IReadOnlyList<CameraEstProfile> current, IReadOnlyList<(EstProfile Profile, JsonObject Json)> wanted) =>
+        current.Count == wanted.Count && wanted.All(w => current.Any(c => Matches(c, w.Json)));
+
+    /// <summary>The camera's profile is the one OADM would write (the subject cannot be read back, so it is not compared).</summary>
+    internal static bool Matches(CameraEstProfile have, JsonObject json) =>
+        have.Id == json["id"]!.GetValue<string>()
+        && have.Server == json["server"]!.GetValue<string>()
+        && have.Certificate == json["certificate"]!.GetValue<string>()
+        && SameSet(have.CaCertificates, json["caCertificates"]!.AsArray())
+        && SameSet(have.Services, json["services"]!.AsArray())
+        && SameSet(have.SubjectAlternativeNames, json["subjectAlternativeNames"]!.AsArray());
+
+    /// <summary>
+    /// The fields of a profile change: only what differs (the camera refuses its own unchanged services as "in a different
+    /// EST profile", seen on 10.0.0.48), never the id.
+    /// </summary>
+    internal static JsonObject Changes(CameraEstProfile have, JsonObject json)
     {
-        if (current.Count != wanted.Count)
+        var changes = new JsonObject();
+        if (have.Server != json["server"]!.GetValue<string>())
         {
-            return false;
+            changes["server"] = json["server"]!.DeepClone();
         }
 
-        foreach (var (_, json) in wanted)
+        if (have.Certificate != json["certificate"]!.GetValue<string>())
         {
+            changes["certificate"] = json["certificate"]!.DeepClone();
+        }
+
+        if (!SameSet(have.CaCertificates, json["caCertificates"]!.AsArray()))
+        {
+            changes["caCertificates"] = json["caCertificates"]!.DeepClone();
+        }
+
+        if (!SameSet(have.Services, json["services"]!.AsArray()))
+        {
+            changes["services"] = json["services"]!.DeepClone();
+        }
+
+        if (!SameSet(have.SubjectAlternativeNames, json["subjectAlternativeNames"]!.AsArray()))
+        {
+            changes["subjectAlternativeNames"] = json["subjectAlternativeNames"]!.DeepClone();
+        }
+
+        changes["subject"] = json["subject"]!.DeepClone(); // cannot be read back: always sent
+        return changes;
+    }
+
+    /// <summary>
+    /// Adds a profile; when the answer got lost (the camera's port went down for a moment, e.g. while it re-authenticates
+    /// on the network), reads the profiles and adds again only when it is not there.
+    /// </summary>
+    private static async Task AddProfileOnceAsync(ITaskExecutionContext ctx, JsonObject json, CancellationToken ct)
+    {
+        try
+        {
+            await CameraEstApi.AddProfileAsync(ctx.Vapix, json, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            await Task.Delay(PollInterval, ct).ConfigureAwait(false);
             var id = json["id"]!.GetValue<string>();
-            if (current.FirstOrDefault(c => c.Id == id) is not { } have
-                || have.Server != json["server"]!.GetValue<string>()
-                || have.Certificate != json["certificate"]!.GetValue<string>()
-                || !SameSet(have.CaCertificates, json["caCertificates"]!.AsArray())
-                || !SameSet(have.Services, json["services"]!.AsArray())
-                || !SameSet(have.SubjectAlternativeNames, json["subjectAlternativeNames"]!.AsArray()))
+            if (!(await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false)).Any(p => p.Id == id))
             {
-                return false;
+                await CameraEstApi.AddProfileAsync(ctx.Vapix, json, ct).ConfigureAwait(false);
             }
         }
-
-        return true;
     }
 
     private static bool SameSet(IReadOnlyList<string> have, JsonArray want) =>
@@ -508,28 +589,32 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     /// Waits until the camera reports ENROLLED (up to 2 minutes); a refusal by the EST server for this device and profile
     /// ends the wait at once with its reason.
     /// </summary>
-    private static async Task WaitEnrolledAsync(ITaskExecutionContext ctx, EstService est, IDeviceInfo device, EstProfile profile, JsonObject json, DateTime started, CancellationToken ct)
+    private static async Task WaitEnrolledAsync(ITaskExecutionContext ctx, EstService est, IDeviceInfo device, EstProfile profile, JsonObject json, DateTime started,
+        bool requireNew, CancellationToken ct)
     {
         var id = json["id"]!.GetValue<string>();
         await ctx.StepAsync(EstTaskIds.WaitStep(profile.Name), async step =>
         {
             var until = est.Time.GetUtcNow() + EnrollTimeout;
             string? status = null;
+            var readFailed = false;
             while (true)
             {
                 try
                 {
                     var profiles = await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false);
                     status = profiles.FirstOrDefault(p => p.Id == id)?.Status;
+                    readFailed = false;
                 }
                 catch (Exception ex) when ((ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested)) && est.Time.GetUtcNow() < until)
                 {
                     status = null; // the web server restarts with a new certificate: ask again
+                    readFailed = true;
                 }
 
-                if (string.Equals(status, "ENROLLED", StringComparison.OrdinalIgnoreCase))
+                var issued = Newest(est, device, profile, started);
+                if (string.Equals(status, "ENROLLED", StringComparison.OrdinalIgnoreCase) && (issued is not null || !requireNew))
                 {
-                    var issued = Newest(est, device, profile, started);
                     step.Complete(issued is null ? "Enrolled" : "Valid until " + issued.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                     return;
                 }
@@ -549,9 +634,11 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                         throw new TimeoutException("The camera did not get its certificate. " + relay.StateText + ".");
                     }
 
-                    // The camera's own status tells the two cases apart (it sends no event for a failed enrollment).
-                    throw new TimeoutException(string.Equals(status, "CONNECTED", StringComparison.OrdinalIgnoreCase)
-                        ? EstTaskIds.NoCertificate
+                    // The camera's own status tells the cases apart (it sends no event for a failed enrollment).
+                    throw new TimeoutException(
+                        readFailed ? EstTaskIds.CameraNotRead
+                        : string.Equals(status, "ENROLLED", StringComparison.OrdinalIgnoreCase) ? EstTaskIds.KeptOldCertificate
+                        : string.Equals(status, "CONNECTED", StringComparison.OrdinalIgnoreCase) ? EstTaskIds.NoCertificate
                         : EstTaskIds.NotReached(est.Store.Config.Port, device.SiteId is not null));
                 }
 
@@ -560,10 +647,9 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         }).ConfigureAwait(false);
     }
 
+    /// <summary>The certificate EST issued this camera for the profile since <paramref name="started"/>; O(1) per call.</summary>
     private static IssuedCertificate? Newest(EstService est, IDeviceInfo device, EstProfile profile, DateTime started) =>
-        est.Store.Current()
-            .Where(c => c.DeviceId == device.Id && c.IssuedUtc >= started && string.Equals(c.Profile, profile.Name, StringComparison.OrdinalIgnoreCase))
-            .MaxBy(c => c.IssuedUtc);
+        est.Store.NewestOf(device.Id, profile.Name) is { } newest && newest.IssuedUtc >= started ? newest : null;
 
     /// <summary>OADM pins the HTTPS certificate EST issued, once the camera's web server presents it (it may restart).</summary>
     private static async Task PinAsync(ITaskExecutionContext ctx, EstService est, IDeviceInfo device, EstProfile profile, DateTime started, CancellationToken ct)
@@ -600,14 +686,16 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     private static string Truncate(string text, int length) => text.Length <= length ? text : text[..length];
 
     /// <summary>The largest set of <paramref name="candidates"/> (in their order) that fits next to the profiles that stay.</summary>
-    internal static IReadOnlyList<EstProfile> Fitting(IReadOnlyList<EstProfile> candidates, IReadOnlyList<CameraEstProfile> existing, bool protectNetworkAccess, string dot1xService)
+    internal static IReadOnlyList<EstProfile> Fitting(IReadOnlyList<EstProfile> candidates, IReadOnlyList<CameraEstProfile> existing,
+        Func<IReadOnlyList<EstProfile>, bool> protectNetworkAccess, string dot1xService)
     {
         for (var size = Math.Min(EstTaskIds.MaxProfilesPerCamera, candidates.Count); size > 0; size--)
         {
             foreach (var subset in Subsets(candidates, size))
             {
                 var chosen = subset.Select(p => CameraEstApi.ServiceOf(p.Use)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                if (existing.Count(e => Stays(e, chosen, protectNetworkAccess, dot1xService)) + size <= EstTaskIds.MaxProfilesPerCamera)
+                var protect = protectNetworkAccess(subset);
+                if (existing.Count(e => Stays(e, chosen, protect, dot1xService)) + size <= EstTaskIds.MaxProfilesPerCamera)
                 {
                     return subset;
                 }
@@ -675,11 +763,12 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             .ToList();
         if (present.Count == 0)
         {
-            ctx.Log(TaskLogLevel.Info, EstTaskIds.NothingToRemove);
+            ctx.ReportWarning(EstTaskIds.NothingToRemove); // tells these cameras apart in a run on many
             return;
         }
 
-        if (Service is null && present.Any(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
+        var est = Service;
+        if (est is null && present.Any(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
         {
             throw new InvalidOperationException(EstTaskIds.NotRunning); // it has to stop the renewal check of their certificates
         }
@@ -695,7 +784,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         }).ConfigureAwait(false);
 
         // The camera no longer renews these: their certificates are never flagged Not renewed.
-        if (Service is { } est)
+        if (est is not null)
         {
             foreach (var ours in present.Where(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
             {

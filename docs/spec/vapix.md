@@ -23,7 +23,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
   Exception, renewals by an OADM CA (`docs/spec/est-server.md`): a new server certificate issued directly by an OADM CA
   (the PKI's renewal issuers only, not the roots above them, not the OS store), valid now and naming the device
-  (`axis-<serial>.local`, `Device.Serial` through
+  and no other camera (exactly one `axis-<12 hex>.local`: `axis-<serial>.local`, `Device.Serial` through
   `VapixConnectionOptions.DeviceSerial` and `CertificatePinning.DeviceSerial`) is accepted
   (`CertificatePinning.RenewedFingerprint`); the poll pins it (`Device.CertFingerprintSha256`) and logs it. Anything else
   stays Certificate changed.

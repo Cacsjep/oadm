@@ -227,6 +227,19 @@ public sealed class CertificatePinning
     /// A server certificate an OADM CA issued directly for this device: valid now, serverAuth, names
     /// <c>axis-&lt;serial&gt;.local</c> (docs/spec/est-server.md "Certificate renewals and pinning").
     /// </summary>
+    /// <summary>The serial of an <c>axis-&lt;12 hex&gt;.local</c> name (upper case), else null.</summary>
+    internal static string? AxisLocalSerial(string name)
+    {
+        var trimmed = name.TrimEnd('.');
+        if (trimmed.Length != 23 || !trimmed.StartsWith("axis-", StringComparison.OrdinalIgnoreCase) || !trimmed.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var serial = trimmed[5..17];
+        return serial.All(char.IsAsciiHexDigit) ? serial.ToUpperInvariant() : null;
+    }
+
     private bool IsRenewal(X509Certificate2 certificate, TrustAnchorSnapshot? anchors)
     {
         if (anchors is not { RenewalIssuers.Count: > 0 } || string.IsNullOrWhiteSpace(DeviceSerial))
@@ -246,11 +259,13 @@ public sealed class CertificatePinning
             return false;
         }
 
-        var name = "axis-" + DeviceSerial.Trim().ToLowerInvariant() + ".local";
         try
         {
+            // Exactly one camera named, this one: a certificate that names a second axis-<serial>.local is no renewal of it
+            // (the same rule as the EST server's sign-in).
             var san = certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
-            if (san is null || !san.EnumerateDnsNames().Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
+            var serials = (san?.EnumerateDnsNames() ?? []).Select(AxisLocalSerial).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (serials.Count != 1 || !string.Equals(serials[0], DeviceSerial.Trim(), StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }

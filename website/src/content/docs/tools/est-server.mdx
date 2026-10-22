@@ -180,7 +180,7 @@ issued it directly for this camera, and remembers it. Any other new certificate 
 The EST server only answers cameras that:
 
 - sign in with their **Axis device ID**, checked against the Axis device ID certificate authorities, or with a
-  certificate the EST server gave them, and
+  certificate the OADM CA gave them (from the EST server or the PKI page), and
 - are **managed by OADM**: the serial number in the device ID must be a device in the device list.
 
 A genuine Axis camera that OADM does not manage gets nothing. OADM sets the names in every certificate itself; what the

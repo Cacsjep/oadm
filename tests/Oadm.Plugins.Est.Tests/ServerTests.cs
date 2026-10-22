@@ -160,9 +160,16 @@ public sealed class ServerTests : IAsyncLifetime
         // Through the server's own listener the same camera is refused: it belongs to the site.
         Assert.Equal(403, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
 
-        // The site goes away: its relay is released and its addresses forgotten.
+        // The site leaves the bound ones (its node was reset, or it was removed): its relay is released, its addresses stay
+        // while a managed device is still there (a replaced node keeps the site and its cameras).
         _sites.Remove(site.Id);
         await Eventually.TrueAsync(() => ((InMemoryRelay)relay).IsReleased, "the relay of the removed site is released");
+        await _service.CheckRenewalsAsync(CancellationToken.None);
+        Assert.Single(_service.Store.Sites());
+
+        // Removed for good: no managed device there any more.
+        _devices.List.RemoveAll(d => d.SiteId == site.Id);
+        await _service.CheckRenewalsAsync(CancellationToken.None);
         Assert.Empty(_service.Store.Sites());
     }
 

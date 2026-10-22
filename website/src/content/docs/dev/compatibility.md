@@ -81,7 +81,7 @@ in a context of its own, so two plugins can use different versions of the same l
 | 0.1.0 | 3.x | The first SDK on NuGet |
 
 A plugin built with the 4.1 packages (SDK 0.3.0) needs OADM 4.1 or later; one built with the 4.0 packages (SDK 0.2.0)
-needs OADM 4.0 or later. A plugin built with SDK 0.1.0 still loads on 0.2.0, but its `plugin.json` has no `siteSupport`: OADM keeps it away from
+needs OADM 4.0 or later. A plugin built with SDK 0.1.0 still loads on 0.2.0 or later, but its `plugin.json` has no `siteSupport`: OADM keeps it away from
 devices at a site until you rebuild it with the new project SDK (or add `"siteSupport": "full"` to your own
 `plugin.json`).
 

@@ -28,6 +28,8 @@ public sealed class TaskTests : IAsyncLifetime
     {
         _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true));
         await _est.StartAsync(CancellationToken.None);
+        _camera.Server = _est;
+        _camera.Device = _device;
     }
 
     public async Task DisposeAsync()
@@ -220,6 +222,7 @@ public sealed class TaskTests : IAsyncLifetime
         await est.StartAsync(CancellationToken.None);
         await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var device = _device with { Address = "192.168.5.20", SiteId = site.Id };
+        _camera.Server = est;
         var ctx = new FakeTaskContext(_camera) { Network = new FakeDeviceNetwork(site.Id) { LocalAddress = IPAddress.Parse("192.168.5.2") } };
 
         Assert.Equal(Sdk.Sites.SiteSupport.Full, new EstSetupTask(() => est).SiteSupport);
@@ -286,6 +289,78 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_written_profile_needs_a_new_certificate_the_previous_one_does_not_count()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time });
+        await est.StartAsync(CancellationToken.None);
+        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        _camera.Server = null; // the camera says ENROLLED with the certificate it had, nothing new reaches the server
+        var ctx = Context();
+
+        var running = new EstSetupTask(() => est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None);
+        while (!running.IsCompleted)
+        {
+            time.Advance(TimeSpan.FromSeconds(3));
+            await Task.Yield();
+        }
+
+        var error = await Assert.ThrowsAsync<TimeoutException>(() => running);
+        Assert.Equal(EstTaskIds.KeptOldCertificate, error.Message);
+    }
+
+    [Fact]
+    public async Task Setting_up_again_after_one_profile_changed_rewrites_only_that_one()
+    {
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        var task = new EstSetupTask(() => _est);
+        var first = Context();
+        await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, _device, "{}", CancellationToken.None));
+        Assert.Equal(["oadm_https", "oadm_mqtt"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+
+        await _est.SaveAsync(new SaveRequest(_est.Store.Config with { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt, Enabled: false)] }), CancellationToken.None);
+        var again = Context();
+        await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, "{}", CancellationToken.None));
+
+        Assert.Equal(["oadm_https"], _camera.Profiles.Keys);
+        Assert.Equal("oadm_mqtt", StepRun.Detail(again.Steps, EstTaskIds.RemoveOldStep));
+        Assert.DoesNotContain(StepRun.Lines(again.Steps), l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal)); // no new certificate, no restart
+    }
+
+    [Fact]
+    public async Task A_changed_profile_of_oadm_is_changed_in_place_with_only_what_differs()
+    {
+        var task = new EstSetupTask(() => _est);
+        var first = Context();
+        await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, _device, "{}", CancellationToken.None));
+        var issued = _est.Store.NewestOf(_device.Id, "https")!.SerialNumber;
+
+        var renamed = _device with { HostName = "cam-renamed" };
+        var again = Context();
+        await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, renamed, "{}", CancellationToken.None));
+
+        Assert.Contains(_camera.RequestLog, r => r == "PATCH config/rest/cert-est/v1/profiles/oadm_https");
+        Assert.DoesNotContain(_camera.RequestLog, r => r.StartsWith("DELETE config/rest/cert-est", StringComparison.Ordinal));
+        Assert.Contains("DNS:cam-renamed", _camera.Profiles["oadm_https"]["subjectAlternativeNames"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.NotEqual(issued, _est.Store.NewestOf(_device.Id, "https")!.SerialNumber); // a new certificate
+        Assert.All(StepRun.Lines(again.Steps), line => Assert.EndsWith(": Done", line, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Replace_chosen_but_no_8021x_profile_written_keeps_the_cameras_8021x_profile()
+    {
+        // IEEE 802.1X on, "replace" ticked, but the EST server's IEEE 802.1X profile is off: nothing replaces it.
+        _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
+        _camera.Profiles["oadm_dot1x"] = new JsonObject { ["id"] = "oadm_dot1x", ["services"] = new JsonArray("NETAUTH"), ["status"] = "ENROLLED" };
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("dot1x", ProfileUse.Dot1x, Enabled: false)] }), CancellationToken.None);
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));
+
+        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal)); // no lock-out
+    }
+
+    [Fact]
     public async Task Remove_removes_the_chosen_profiles_also_of_another_est_server_and_names_the_task_after_them()
     {
         _camera.Profiles["oadm_https"] = new JsonObject { ["id"] = "oadm_https", ["services"] = new JsonArray("WEBSERVER") };
@@ -309,7 +384,7 @@ public sealed class TaskTests : IAsyncLifetime
         var again = Context();
         await task.ExecuteAsync(again, _device, payload, CancellationToken.None);
         Assert.Equal(writes, _camera.Writes);
-        Assert.Contains("Info: " + EstTaskIds.NothingToRemove, again.LogLines);
+        Assert.Contains(EstTaskIds.NothingToRemove, again.Warnings);
     }
 
     [Fact]
@@ -369,6 +444,13 @@ public sealed class TaskTests : IAsyncLifetime
 
         public Action? OnProfileAdded { get; set; }
 
+        /// <summary>
+        /// Enrolling like a real camera: the EST server issues a certificate for the profile (the task waits for a new one).
+        /// </summary>
+        public EstService? Server { get; set; }
+
+        public IDeviceInfo? Device { get; set; }
+
         public Dictionary<string, JsonObject> Profiles { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, string> CaCertificates { get; } = new(StringComparer.Ordinal);
@@ -398,6 +480,8 @@ public sealed class TaskTests : IAsyncLifetime
                 }),
                 ("GET", "config/rest/cert-est/v1/profiles") => Data(ProfilesJson()),
                 ("POST", "config/rest/cert-est/v1/profiles") => AddProfile(body!),
+                ("PATCH", _) when path.StartsWith("config/rest/cert-est/v1/profiles/", StringComparison.Ordinal) =>
+                    ChangeProfile(Uri.UnescapeDataString(path["config/rest/cert-est/v1/profiles/".Length..]), body!),
                 ("DELETE", _) when path.StartsWith("config/rest/cert-est/v1/profiles/", StringComparison.Ordinal) =>
                     Remove(Uri.UnescapeDataString(path["config/rest/cert-est/v1/profiles/".Length..])),
                 ("GET", "config/rest/cert/v1/certificates") => Data(new JsonArray(
@@ -411,6 +495,30 @@ public sealed class TaskTests : IAsyncLifetime
 
         private JsonArray ProfilesJson() => new([.. Profiles.Values.Select(p => (JsonNode)p.DeepClone())]);
 
+        private HttpResponseMessage ChangeProfile(string id, string body)
+        {
+            if (!Profiles.TryGetValue(id, out var profile))
+            {
+                return Json("""{"status":"error","error":{"code":2,"message":"Item does not exist"}}""");
+            }
+
+            var changes = JsonNode.Parse(body)!["data"]!.AsObject();
+            if (changes.ContainsKey("id") || (changes["services"] is JsonArray services
+                && services.Select(n => n!.GetValue<string>()).ToHashSet().SetEquals(profile["services"]!.AsArray().Select(n => n!.GetValue<string>()))))
+            {
+                // like the camera: its own unchanged services count as another profile's
+                return Json("""{"status":"error","error":{"code":5,"message":"Validation error: Service exists in a different EST profile"}}""");
+            }
+
+            Profiles.Remove(id);
+            foreach (var (key, value) in changes)
+            {
+                profile[key] = value?.DeepClone();
+            }
+
+            return AddProfile(new JsonObject { ["data"] = profile }.ToJsonString());
+        }
+
         private HttpResponseMessage AddProfile(string body)
         {
             if (Profiles.Count >= 2)
@@ -420,7 +528,18 @@ public sealed class TaskTests : IAsyncLifetime
 
             var profile = JsonNode.Parse(body)!["data"]!.AsObject().DeepClone().AsObject();
             profile["status"] = Enroll ? "ENROLLED" : ProfileStatus;
-            Profiles[profile["id"]!.GetValue<string>()] = profile;
+            var id = profile["id"]!.GetValue<string>();
+            Profiles[id] = profile;
+            if (Enroll && Server is { } server && Device is { } device && id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal))
+            {
+                server.Store.AddCertificate(new IssuedCertificate
+                {
+                    SerialNumber = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)), DeviceId = device.Id,
+                    Device = device.Address, Profile = id[EstTaskIds.ProfilePrefix.Length..], IssuedUtc = server.Time.GetUtcNow().UtcDateTime,
+                    NotAfterUtc = server.Time.GetUtcNow().UtcDateTime.AddDays(365),
+                });
+            }
+
             OnProfileAdded?.Invoke();
             return Json("""{"status":"success"}""");
         }

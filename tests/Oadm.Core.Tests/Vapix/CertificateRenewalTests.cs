@@ -49,6 +49,21 @@ public sealed class CertificateRenewalTests
     }
 
     [Fact]
+    public void ACertificateNamingASecondCameraIsCertificateChanged()
+    {
+        // A camera that got its certificate to name another camera too must never be taken for that camera.
+        using var ca = TestCertificates.CreateCa();
+        using var old = TestCertificates.SelfSigned();
+        using var both = TestCertificates.IssuedByWithNames(ca, "axis-accc8e000001.local", DeviceName);
+        var pinning = Pinning(ca, CertificatePinning.ComputeFingerprint(old));
+
+        Assert.False(pinning.Validate(both, null, "10.0.0.48"));
+        Assert.Null(pinning.RenewedFingerprint);
+        Assert.Equal("B8A44F631339", CertificatePinning.AxisLocalSerial("AXIS-b8a44f631339.local."));
+        Assert.Null(CertificatePinning.AxisLocalSerial("axis-b8a44f6313390.local"));
+    }
+
+    [Fact]
     public void AnotherCaIsCertificateChanged()
     {
         using var ca = TestCertificates.CreateCa();

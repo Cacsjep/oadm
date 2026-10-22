@@ -181,6 +181,20 @@ public sealed class RenewalTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_move_of_rc2_data_cut_short_keeps_the_newer_state_of_the_records()
+    {
+        var now = _time.GetUtcNow().UtcDateTime;
+        var flagged = Certificate("A1", "https", now) with { NotRenewedUtc = now.AddDays(20) };
+        await _records.SetManyAsync(EstStore.CertificatesKey, [new("A1", EstJson.Serialize(flagged))], CancellationToken.None);
+        await _settings.SetAsync(EstStore.CertificatesKey, EstJson.Serialize(new[] { Certificate("A1", "https", now) }), CancellationToken.None); // not deleted yet
+        await _est.DisposeAsync();
+
+        _est = await StartAsync();
+
+        Assert.NotNull(_est.Store.FindCertificate("A1")!.NotRenewedUtc);
+    }
+
+    [Fact]
     [Trait("Category", "Perf")]
     public async Task Stopping_and_forgetting_thirty_thousand_cameras_stays_linear()
     {
