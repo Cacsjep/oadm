@@ -1,7 +1,7 @@
 ---
 // Landing page: OADM PRO, after "Extend OADM with plugins". Its own panel with a soft violet glow so it stands apart
 // from the free sections; no buy button. The top bar's PRO link jumps here (#pro). A click on a plan, or "Request a custom
-// plugin", opens the quote form: it posts to the support forum, which mails the request to its admins (`/api/portal/quote`).
+// plugin", opens the quote form: it posts to the support forum.
 // "Start 30-day trial" and "Activate license" open the activation page (/activate/).
 import { forumUrl } from '../lib/forum';
 
@@ -134,7 +134,6 @@ const custom = [
 			<label><span>Country <small>Optional</small></span><input name="country" autocomplete="country-name" maxlength="80" /></label>
 			<label><span>Number of devices <small>Optional</small></span><input name="devices" inputmode="numeric" maxlength="50" /></label>
 			<label class="wide"><span>Message <small>Optional</small></span><textarea name="message" rows="4" maxlength="4000" placeholder="Your project, the plugin you need, the term of your offer"></textarea></label>
-			<!-- honeypot: hidden from people, bots fill it -->
 			<label class="quote-trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
 		</div>
 		<p class="quote-message" role="status" hidden></p>
