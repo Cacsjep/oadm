@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [4.1.0-rc.1] - 2026-10-22
+
 ### Added
 
 - Settings: a **License** card for OADM PRO: the server ID, the license state, **Import license** and **Remove license**,
