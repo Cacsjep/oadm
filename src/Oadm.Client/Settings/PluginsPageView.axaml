@@ -45,7 +45,7 @@
             <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="settings:PluginRowViewModel">
-                  <Panel>
+                  <StackPanel Spacing="4" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding IsPro}" VerticalAlignment="Center">
                       <ui:StatusChip Text="OADM PRO" IsOk="{Binding ProActive}" ToolTip.Tip="{Binding ProDetail}" />
                       <Button Classes="link" Content="Activate" IsVisible="{Binding CanActivatePro}"
@@ -62,7 +62,7 @@
                               Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
                               CommandParameter="{Binding}" />
                     </StackPanel>
-                  </Panel>
+                  </StackPanel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

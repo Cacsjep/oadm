@@ -18,8 +18,16 @@ public sealed class PluginLicenseRefreshHostedService(PluginLicenses licenses, T
         {
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                licenses.Refresh();
-                pro?.Refresh();
+                try
+                {
+                    licenses.Refresh();
+                    pro?.Refresh();
+                }
+#pragma warning disable CA1031 // The check runs again next hour; it must never stop the server.
+                catch (Exception)
+#pragma warning restore CA1031
+                {
+                }
             }
         }
         catch (OperationCanceledException)

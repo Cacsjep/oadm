@@ -136,6 +136,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 entry.State = CorePluginState.Starting;
                 entry.Error = null;
                 entry.Subscriptions?.Dispose();
+                DisposePro(entry);
                 entry.Subscriptions = _eventSubscriptions is null ? null : new PluginEventSubscriptions(_eventSubscriptions(registered.Id));
                 await DisposeNetworkAsync(entry).ConfigureAwait(false);
                 entry.Network = _networks?.Invoke();
@@ -160,7 +161,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 {
                     // Not for devices at a site: no route into a site and no relays (docs/spec/sites.md, Declaration).
                     Network = SiteSupportGuard.Guard(entry.Network, siteSupport),
-                    Pro = _registry.Pro,
+                    Pro = entry.Pro = _registry.Pro is { } pro ? new PluginProLicense(pro) : null,
                     Services = _services?.For(registered.Id),
                     Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
                 };
@@ -176,6 +177,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 {
                     entry.State = CorePluginState.Stopped;
                     entry.Subscriptions?.Dispose();
+                    DisposePro(entry);
                     await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     _services?.RemoveOwner(registered.Id);
                     throw;
@@ -187,6 +189,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     entry.State = CorePluginState.Faulted;
                     entry.Error = ex.Message;
                     entry.Subscriptions?.Dispose();
+                    DisposePro(entry);
                     await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     _services?.RemoveOwner(registered.Id);
                     LogStartFailed(ex, registered.Id);
@@ -259,6 +262,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         {
             await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
             entry.Subscriptions?.Dispose(); // a stopped plugin receives no more events
+            DisposePro(entry);
             await DisposeNetworkAsync(entry).ConfigureAwait(false); // its listeners and relays close
             entry.State = CorePluginState.Stopped;
             _trustAnchors?.Remove(id); // a stopped plugin's CAs are no longer vouched for
@@ -271,9 +275,16 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             entry.State = CorePluginState.Faulted;
             entry.Error = ex.Message;
             entry.Subscriptions?.Dispose();
+            DisposePro(entry);
             await DisposeNetworkAsync(entry).ConfigureAwait(false);
             LogStopFailed(ex, id);
         }
+    }
+
+    private static void DisposePro(Entry entry)
+    {
+        entry.Pro?.Dispose();
+        entry.Pro = null;
     }
 
     /// <summary>Closes the listeners and relays a plugin run left open.</summary>
@@ -460,6 +471,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         /// <summary>The network of the current run (listeners, relays); closed when the plugin stops or fails.</summary>
         public Sites.PluginNetworkScope? Network;
+
+        /// <summary>The OADM PRO license of the current run; its handlers are dropped when the plugin stops or fails.</summary>
+        public PluginProLicense? Pro;
     }
 }
 

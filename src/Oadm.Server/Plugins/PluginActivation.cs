@@ -65,7 +65,7 @@ public sealed partial class PluginActivation(
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var before = registry.IsEnabled(packageId);
+            var before = registry.ChoiceOf(packageId); // the stored choice, not the effective state (a PRO lock is not a choice)
             var states = registry.SetEnabled(packageId, enabled);
             try
             {
@@ -73,7 +73,7 @@ public sealed partial class PluginActivation(
             }
             catch
             {
-                registry.SetEnabled(packageId, before);
+                registry.RestoreChoice(packageId, before);
                 throw;
             }
 
@@ -95,18 +95,11 @@ public sealed partial class PluginActivation(
     public void FollowPro(Sdk.Licensing.IProLicense pro)
     {
         ArgumentNullException.ThrowIfNull(pro);
-        var active = pro.IsActive;
         pro.Changed += (_, _) =>
         {
-            var now = pro.IsActive;
-            if (now == active)
-            {
-                return;
-            }
-
-            active = now;
+            // No shortcut on a remembered state: changes can overlap, the sync reads the current one.
             registry.ProChanged();
-            _ = SyncAsync(now);
+            _ = SyncAsync(pro.IsActive);
         };
     }
 

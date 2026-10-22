@@ -23,6 +23,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     private readonly IReadOnlyList<string> _keys;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _write = new(1, 1);
+    private readonly Lock _state = new();
     private string? _text;
     private ProLicenseInfo _current = ProLicenseInfo.None;
 
@@ -51,8 +52,8 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     /// <summary>Reads the stored license and checks it (server start, after the server ID exists).</summary>
     public async Task InitializeAsync(CancellationToken ct)
     {
-        _text = await _settings.GetAsync<string>(SettingKey, ct).ConfigureAwait(false);
-        Refresh();
+        var text = await _settings.GetAsync<string>(SettingKey, ct).ConfigureAwait(false);
+        Update(text, setText: true);
     }
 
     /// <summary>
@@ -72,7 +73,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
         try
         {
             await _settings.SetAsync(SettingKey, text.Trim(), CancellationToken.None).ConfigureAwait(false);
-            _text = text.Trim();
+            info = Update(text.Trim(), setText: true); // inside the write lock: a Remove that follows cannot be overtaken
         }
         finally
         {
@@ -80,7 +81,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
         }
 
         LogImported(_logger, info.Customer ?? "", info.Plan ?? "", info.IsTrial);
-        return Set(info);
+        return info;
     }
 
     /// <summary>Removes the license; PRO is no longer active.</summary>
@@ -90,7 +91,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
         try
         {
             await _settings.ResetAsync(SettingKey, CancellationToken.None).ConfigureAwait(false);
-            _text = null;
+            Update(null, setText: true);
         }
         finally
         {
@@ -98,11 +99,11 @@ public sealed partial class ProLicense : IProLicense, IDisposable
         }
 
         LogRemoved(_logger);
-        return Set(ProLicenseInfo.None);
+        return ProLicenseInfo.None;
     }
 
     /// <summary>Checks the stored license again (it may have run out) and raises <see cref="Changed"/> when it changed.</summary>
-    public ProLicenseInfo Refresh() => Set(_text is null ? ProLicenseInfo.None : Check(_text));
+    public ProLicenseInfo Refresh() => Update(null, setText: false);
 
     /// <summary>What <paramref name="text"/> says for this server today, without storing it.</summary>
     public ProLicenseInfo Check(string text) =>
@@ -110,20 +111,54 @@ public sealed partial class ProLicense : IProLicense, IDisposable
 
     public void Dispose() => _write.Dispose();
 
-    private ProLicenseInfo Set(ProLicenseInfo info)
+    /// <summary>
+    /// Sets the stored text (<paramref name="setText"/>) or checks the current one again, and the state from it, under one
+    /// lock: an hourly check never overwrites an import or a removal that happened meanwhile.
+    /// </summary>
+    private ProLicenseInfo Update(string? text, bool setText)
     {
-        var old = Interlocked.Exchange(ref _current, info);
-        if (!Equals(old, info))
+        ProLicenseInfo info;
+        bool changed;
+        lock (_state)
+        {
+            if (setText)
+            {
+                _text = text;
+            }
+
+            info = _text is null ? ProLicenseInfo.None : Check(_text);
+            changed = !Equals(Interlocked.Exchange(ref _current, info), info);
+        }
+
+        if (changed)
         {
             if (info.Status is ProLicenseStatus.Expired or ProLicenseStatus.WrongServer or ProLicenseStatus.Invalid)
             {
                 LogNotActive(_logger, info.Reason);
             }
 
-            Changed?.Invoke(this, EventArgs.Empty);
+            Raise();
         }
 
         return info;
+    }
+
+    /// <summary>Every handler on its own: a plugin's failing handler never stops the others, the hourly check or an import.</summary>
+    private void Raise()
+    {
+        foreach (var handler in Changed?.GetInvocationList().Cast<EventHandler>() ?? [])
+        {
+            try
+            {
+                handler(this, EventArgs.Empty);
+            }
+#pragma warning disable CA1031 // Plugin code is untrusted; the failure is logged.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogHandlerFailed(_logger, ex);
+            }
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OADM PRO license imported: {Customer}, {Plan}, trial {Trial}")]
@@ -131,6 +166,9 @@ public sealed partial class ProLicense : IProLicense, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OADM PRO license removed")]
     private static partial void LogRemoved(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A handler of the OADM PRO license change failed")]
+    private static partial void LogHandlerFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "OADM PRO license is not active: {Reason}")]
     private static partial void LogNotActive(ILogger logger, string reason);

@@ -201,7 +201,8 @@ public static class LicenseFile
 
             return new LicenseData(Text("plugin"), Text("server"), Text("customer"), Date("issued") ?? throw new FormatException("issued"), Date("expires"), features, limits);
         }
-        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or NullReferenceException or ArgumentException
+            or KeyNotFoundException)
         {
             return null;
         }

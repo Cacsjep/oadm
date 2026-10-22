@@ -288,6 +288,33 @@ public sealed partial class PluginRegistry
         return snapshot;
     }
 
+    /// <summary>The administrator's stored choice for a package; null = none (the manifest default applies).</summary>
+    public bool? ChoiceOf(string packageId)
+    {
+        lock (_sync)
+        {
+            return _enabledOverrides.TryGetValue(packageId, out var enabled) ? enabled : null;
+        }
+    }
+
+    /// <summary>Puts back a choice read with <see cref="ChoiceOf"/> (a change that could not be stored is undone).</summary>
+    public void RestoreChoice(string packageId, bool? choice)
+    {
+        lock (_sync)
+        {
+            if (choice is { } enabled)
+            {
+                _enabledOverrides[packageId] = enabled;
+            }
+            else
+            {
+                _enabledOverrides.Remove(packageId);
+            }
+        }
+
+        EnabledChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>A task plugin of an enabled package.</summary>
     public bool TryGetTaskPlugin(string id, [NotNullWhen(true)] out RegisteredTaskPlugin? plugin)
     {

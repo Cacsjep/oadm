@@ -282,6 +282,9 @@ public sealed partial class PluginsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Reads the plugin list again (the page opened): the PRO lock follows a license that ended or changed elsewhere.</summary>
+    public Task RefreshAsync() => _store.LoadAsync(CancellationToken.None);
+
     /// <summary>Opens "License of X": paste or choose the file, the server checks and stores it.</summary>
     [RelayCommand]
     private async Task EnterLicenseAsync(PluginRowViewModel? row)

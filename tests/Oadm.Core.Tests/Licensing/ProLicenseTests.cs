@@ -99,7 +99,7 @@ public sealed class ProLicenseTests : IAsyncLifetime
         var info = await license.ImportAsync(Sign(), CancellationToken.None);
 
         Assert.True(info.IsActive);
-        Assert.Same(info, license.Current);
+        Assert.Equal(info, license.Current);
         Assert.Equal(1, changed);
         using var again = NewLicense();
         await again.InitializeAsync(CancellationToken.None);
@@ -149,6 +149,39 @@ public sealed class ProLicenseTests : IAsyncLifetime
     }
 
     /// <summary>Changes the customer inside the signed content: the signature no longer matches.</summary>
+    [Fact]
+    public async Task AFailingHandlerNeitherStopsTheOthersNorTheImport()
+    {
+        using var license = NewLicense();
+        await license.InitializeAsync(CancellationToken.None);
+        var reached = 0;
+        license.Changed += (_, _) => throw new InvalidOperationException("a broken plugin");
+        license.Changed += (_, _) => reached++;
+
+        var info = await license.ImportAsync(Sign(), CancellationToken.None);
+
+        Assert.True(info.IsActive);
+        Assert.Equal(1, reached);
+        Assert.True(license.Refresh().IsActive);
+    }
+
+    [Fact]
+    public async Task AStoppedPluginsHandlersAreDropped()
+    {
+        using var license = NewLicense();
+        await license.InitializeAsync(CancellationToken.None);
+        var view = new Oadm.Core.Plugins.PluginProLicense(license);
+        var calls = 0;
+        view.Changed += (_, _) => calls++;
+        await license.ImportAsync(Sign(), CancellationToken.None);
+        Assert.Equal(1, calls);
+        Assert.True(view.Current.IsActive);
+
+        view.Dispose();
+        await license.RemoveAsync(CancellationToken.None);
+        Assert.Equal(1, calls);
+    }
+
     private static string Tamper(string key)
     {
         var parts = key[LicenseFile.Prefix.Length..].Split('.');

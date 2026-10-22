@@ -227,6 +227,10 @@ public sealed class CorePluginHostTests : IAsyncLifetime
         await _host.SyncEnabledAsync(CancellationToken.None);
         Assert.Null(user.Context.Services.Find<OfferedText>());
 
+        // A late offer from the stopped plugin (a background task) brings nothing back.
+        offering.Context!.Services!.Offer(new OfferedText("late"));
+        Assert.Null(user.Context.Services.Find<OfferedText>());
+
         user.Context.Services.Offer(new OfferedText("mine"));
         Assert.Equal("mine", services.Get<OfferedText>()?.Text);
         user.Context.Services.Withdraw<OfferedText>();

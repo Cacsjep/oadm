@@ -409,6 +409,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _ = credentials.LoadAsync();
         }
 
+        // The plugin list is read again when the page opens: OADM PRO may have ended or been imported on another client.
+        if (item.Page is PluginsViewModel plugins)
+        {
+            _ = plugins.RefreshAsync();
+        }
+
         // The server log is read when the page opens (newest page first).
         if (item.Page is Logging.LogsViewModel logs)
         {
