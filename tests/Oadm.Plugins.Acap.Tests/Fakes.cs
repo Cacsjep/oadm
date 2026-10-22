@@ -114,7 +114,7 @@ internal sealed class FakeAcapDevice : IVapixClient
 
     private async Task<HttpResponseMessage> UploadAsync(HttpRequestMessage request, CancellationToken ct)
     {
-        var multipart = Assert.IsType<MultipartFormDataContent>(request.Content);
+        var multipart = Assert.IsType<MultipartContent>(request.Content);
         var part = Assert.Single(multipart);
         Assert.Equal("file", part.Headers.ContentDisposition!.Name!.Trim('"'));
         Assert.Equal("application/octet-stream", part.Headers.ContentType!.MediaType);
@@ -150,7 +150,7 @@ internal sealed class FakeAcapDevice : IVapixClient
     private async Task<string> LicenseAsync(HttpRequestMessage request, string action, string package, CancellationToken ct)
     {
         Assert.Equal("uploadlicensekey", action);
-        var multipart = Assert.IsType<MultipartFormDataContent>(request.Content);
+        var multipart = Assert.IsType<MultipartContent>(request.Content);
         var part = Assert.Single(multipart);
         Assert.Equal("fileData", part.Headers.ContentDisposition!.Name!.Trim('"'));
         var xml = await part.ReadAsStringAsync(ct);

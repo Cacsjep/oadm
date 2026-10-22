@@ -129,11 +129,12 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     public async Task UploadAsync(Stream package, string fileName, IProgress<long>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(package);
-        using var content = new MultipartFormDataContent();
         var file = new StreamContent(new ProgressReadStream(package, progress), 81920);
         file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        content.Add(file, "file", fileName);
+        using var content = Multipart(file, "file", fileName);
         using var request = new HttpRequestMessage(HttpMethod.Post, UploadPath) { Content = content };
+        // With Digest auth the device answers 401 before the package is sent, not after it.
+        request.Headers.ExpectContinue = true;
         // upload.cgi answers only after the installation, which can take minutes for large packages.
         request.Options.Set(VapixRequestOptions.Timeout, UploadTimeout);
         var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
@@ -168,13 +169,33 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         }
 
         ArgumentException.ThrowIfNullOrEmpty(keyXml);
-        using var content = new MultipartFormDataContent();
         var file = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(keyXml));
         file.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
-        content.Add(file, "fileData", "license.xml");
+        using var content = Multipart(file, "fileData", "license.xml");
         using var request = new HttpRequestMessage(HttpMethod.Post, BuildLicenseUri(package)) { Content = content };
         var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
         EnsureLicenseAccepted(text);
+    }
+
+    /// <summary>Boundary of the multipart bodies, sent unquoted like the firmware upload.</summary>
+    private const string Boundary = "oadm-acap-5e2b9c41d7a3";
+
+    /// <summary>
+    /// multipart/form-data with one file part. The part name and file name are quoted and there is no filename*
+    /// parameter: upload.cgi answers "Error: 3" (package too large) to the unquoted form MultipartFormDataContent sends.
+    /// </summary>
+    public static MultipartContent Multipart(HttpContent file, string name, string fileName)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        var safe = new string([.. Path.GetFileName(fileName).Where(c => c is >= ' ' and < (char)127 and not '"' and not '\\')]);
+        file.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        {
+            Name = "\"" + name + "\"",
+            FileName = "\"" + (safe.Length == 0 ? "package.eap" : safe) + "\"",
+        };
+        var multipart = new MultipartContent("form-data", Boundary) { file };
+        multipart.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=" + Boundary);
+        return multipart;
     }
 
     /// <summary>

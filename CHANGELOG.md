@@ -4,6 +4,18 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## Unreleased
+
+### Changed
+
+- Applications (ACAP): the window is wider; while you install an application or a license, the installed applications
+  stay on the left and the install card sits on the right.
+
+### Fixed
+
+- Applications (ACAP): installing an application failed with "The package is too large or the device's storage is full.
+  (error 3)" on AXIS OS 12 devices.
+
 ## [4.0.0-rc.1] - 2026-10-21
 
 ### Added

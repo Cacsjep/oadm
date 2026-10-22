@@ -115,6 +115,18 @@ public sealed class ApplicationApiClientTests
     }
 
     [Fact]
+    public async Task Multipart_quotes_the_part_name_and_file_name()
+    {
+        // The unquoted form of MultipartFormDataContent makes upload.cgi answer "Error: 3" (seen on AXIS OS 12).
+        using var multipart = ApplicationApiClient.Multipart(new ByteArrayContent([1, 2, 3]), "file", "signed_\"App\"_1.0_aarch64.eap");
+        var body = await multipart.ReadAsStringAsync();
+
+        Assert.Contains("Content-Disposition: form-data; name=\"file\"; filename=\"signed_App_1.0_aarch64.eap\"\r\n", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("filename*", body, StringComparison.Ordinal);
+        Assert.Equal("multipart/form-data; boundary=oadm-acap-5e2b9c41d7a3", multipart.Headers.ContentType!.ToString());
+    }
+
+    [Fact]
     public async Task Upload_error_is_reported()
     {
         var device = new FakeAcapDevice { UploadReply = "Error: 2" };
