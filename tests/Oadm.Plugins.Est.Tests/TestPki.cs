@@ -68,7 +68,7 @@ internal static class TestPki
 /// <summary>The OADM CA as the PKI plugin offers it, for tests: signs with OADM's names, records every request.</summary>
 internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
 {
-    private readonly X509Certificate2 _ca = TestPki.Root("OADM Test CA");
+    private readonly X509Certificate2 _ca = TestPki.Root("OADM Test CA " + Guid.NewGuid().ToString("N")[..8]); // unique: Windows caches chains by name
 
     public bool IsReady { get; set; } = true;
 

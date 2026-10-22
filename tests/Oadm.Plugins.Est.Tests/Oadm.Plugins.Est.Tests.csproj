@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!-- test method names use underscores -->
-    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1849;CA5394;CA1001</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1849;CA5394;CA1001;CA5359</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +14,7 @@
     <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
     <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,5 +32,9 @@
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Est\Oadm.Plugins.Est.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Est.Client\Oadm.Plugins.Est.Client.csproj" />
+    <!-- The hardware test: the real VAPIX client, the dev cameras and PKI's web server settings (to restore the camera). -->
+    <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki\Oadm.Plugins.Pki.csproj" />
+    <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
   </ItemGroup>
 </Project>

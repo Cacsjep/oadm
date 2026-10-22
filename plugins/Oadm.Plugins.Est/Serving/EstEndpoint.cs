@@ -176,6 +176,7 @@ public sealed class EstEndpoint(
             Profile = profile.Name,
             IssuedUtc = now,
             NotAfterUtc = issued.NotAfterUtc,
+            Fingerprint = Convert.ToHexString(SHA256.HashData(issued.Certificate)),
         };
         store.AddCertificate(certificate);
         var reason = "Valid until " + issued.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

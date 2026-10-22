@@ -1,7 +1,7 @@
 # EST server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-22; stages 1 and 2 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
+Agreed 2026-10-22; stages 1 to 3 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
 
 The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
 every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**, also
@@ -67,31 +67,44 @@ certificate **without** Certificate changed when it chains to an OADM CA (PKI's 
 
 ## Setting up a camera (the deploy task)
 
-Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+**, the REST APIs `cert` v1 and `cert-est` v1 (checked
-fresh before the first write), an Axis device ID certificate on the camera (found by its chain, not its alias). Others:
-Nothing was changed. Checked on 10.0.0.48 (P3265-V, 12.11.77): device ID certificates ECC P-256, RSA 2048 and RSA 4096,
-subject `serialNumber` = the serial in lower case, issued by "Axis device ID Intermediate CA ECC 2" / "RSA 2" (in the
-shipped bundles), valid to 9999; the camera starts with no EST profiles.
+Built in stage 3 (`Tasks/EstTasks.cs`), tested on 10.0.0.48. Device context menu, Security: **Set up certificate
+enrollment** and **Remove certificate enrollment**, each with a confirmation (no options: the profiles come from the EST
+server page; the confirmation says that an IEEE 802.1X profile replaces the certificate for network access). Not for
+devices at a site until stage 4.
 
-1. Read the camera's EST profiles and certificates.
-2. Upload the CA chain (EST server certificate's issuer and the profile's issuer) with `cert` v1, never deleting; reuse
-   an alias with the same content; aliases at most 32 characters.
-3. If a profile serves IEEE 802.1X: set the 802.1X CA trust (as PKI does) before the profile.
-4. Same set as planned: nothing written. Otherwise remove the camera's EST profiles and write the new ones **one at a
-   time** (writing a profile restarts the camera's EST client): `POST /config/rest/cert-est/v1/profiles` with `id`,
-   `server` = `<address>:9454/.well-known/est/<profile>` (host, port and path, **no scheme**), `caCertificates` (the
-   aliases of step 2; the camera installs nothing it has not been given, so the server is never trusted blindly through
-   `/cacerts`), `certificate` = the device ID alias (RSA or ECC to match the profile; without it the camera answers 500),
-   `services` (from `GET .../supportedServices`: `WEBSERVER` for HTTPS, `NETAUTH` for IEEE 802.1X, `MQTT`, `RTSPS`), `subject.cn` (1..64 characters) and `subjectAlternativeNames` (`DNS:` /
-   `IP:`). Changes later: `PATCH .../profiles/{id}` (caCertificates, certificate, SANs), `.../{id}/server`,
-   `.../{id}/subject`. The address: the server's address toward the camera, or at a site the node's
-   (`LocalAddressTowardsAsync`).
-5. Wait until the camera reports **ENROLLED** (`status`: UNCONNECTED, CONNECTED = downloading the CA certificates,
-   ENROLLED = has a certificate and renews it before it expires; poll, up to 2 minutes); with HTTPS: check it answers with
-   the new certificate and pin it. On a timeout the step names the camera's last EST error (below).
-6. Remove only unused certificates OADM put there. Never device ID certificates, their CAs, factory or public CAs.
+Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+** (`CanRun`), and before the first write a fresh
+`config/discover` with `cert` v1 and `cert-est` v1, an Axis device ID certificate of this camera's serial on the camera
+(found by its chain, not its alias), and at least one enabled profile whose service the camera has. Others: Nothing was
+changed. Checked on 10.0.0.48 (P3265-V, 12.11.77): device ID certificates ECC P-256, RSA 2048 and RSA 4096, subject
+`serialNumber` = the serial in lower case, issued by "Axis device ID Intermediate CA ECC 2" / "RSA 2" (in the shipped
+bundles), valid to 9999; the camera starts with no EST profiles.
 
-No rollback exists on the camera; the task is safe to run again (idempotent).
+1. Check compatibility; the profiles: the enabled ones of the EST server whose service the camera has, at most 2.
+   `supportedServices` lists only the services no profile uses yet, so the services of the camera's profiles count too.
+2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
+3. Install the CA certificates: the OADM CA chain with `cert` v1, matched by fingerprint (an existing alias is reused),
+   new ones as "OADM CA <8 hex>" like PKI's; never deleting.
+4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
+   written. Otherwise remove the camera's EST profiles and add the new ones **one at a time**, each waited for:
+   `POST /config/rest/cert-est/v1/profiles` with `id` = `oadm_<profile>` (the camera refuses `-` in ids, so profile names
+   are letters, digits and `_`), `server` = `<address>:9454/.well-known/est/<profile>` (no scheme; the server's address
+   toward the camera, `LocalAddressTowardsAsync`), `caCertificates` (the aliases of step 3), `certificate` = the device
+   ID alias, `services` (`WEBSERVER` for HTTPS, `NETAUTH` for IEEE 802.1X, `MQTT`, `RTSPS`), `subject.cn` (the device's
+   address) and `subjectAlternativeNames` (`IP:` the address, `DNS:` host name and `axis-<serial>.local`).
+5. Wait until the camera reports **ENROLLED** (poll every 3 s, up to 2 minutes; a refusal the EST server recorded for this
+   device and profile ends the wait at once with its reason). Seen on 10.0.0.48: ENROLLED within about 3 s; the
+   certificate is stored under the profile id (`oadm_https`); the camera also installs the CA from the answer by itself
+   (alias = the CA's common name). With HTTPS on (`HttpsEnabled`): the web server switches to the new certificate a few
+   seconds later and restarts (connections drop); the task pins it (`UpdateDeviceTlsAsync`, again for up to 60 s while
+   the web server restarts; a warning when it does not happen).
+6. Not built yet: removing unused certificates OADM put there (never device ID certificates, their CAs, factory or
+   public CAs).
+
+Remove certificate enrollment removes only the profiles named `oadm_...`; the certificates stay until they end. No
+rollback exists on the camera; the set-up is safe to run again (idempotent). Hardware test:
+`tests/Oadm.Plugins.Est.Tests/EstHardwareWriteTests.cs` (`OADM_EST_HARDWARE_WRITE=1`, `OADM_EST_SERVER_ADDRESS`,
+`OADM_DEV_CAMERAS`): a real EST server on this computer with a test CA, the real task on 10.0.0.48, then the camera back
+as before (profile removed, previous web server certificate, test certificates deleted).
 
 **The camera's own EST errors:** the camera sends the event `tnsaxis:CertificateManagement/EST/Error` (profile, error code
 0..7: startup, test connection, connection, enrollment, re-enrollment; internal or external, and a message such as
@@ -114,7 +127,7 @@ THIRD-PARTY notices list the plugin's license.
 2. **EST server** (built): listener, TLS, HTTP/1.1, the three operations, device ID check (the Axis device ID CA bundles
    from axis.com, checksums checked), managed-device check, issuing through PKI, enrollments and certificates lists,
    revoke, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
-3. **Deploy task** and remove task with the camera's `cert` / `cert-est` APIs; fixtures from a real camera (read-only
-   first), the write tests only on the developer's explicit go.
+3. **Deploy task** and remove task (built) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
+   write test on 10.0.0.48 passed. Open: the camera's own EST error events in Enrollments, removing unused certificates.
 4. **Sites:** TCP relay per site, the node's certificate, the node app's port request.
 5. **Docs:** user docs page, plugin README, website PRO section.

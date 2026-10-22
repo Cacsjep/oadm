@@ -31,7 +31,7 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
         Key = EstViewModel.Keys.First(k => k.Value == profile.Key);
         Enabled = profile.Enabled;
         Validation
-            .Rule(nameof(Name), () => !NamePattern().IsMatch(Name.Trim()) ? "Use 1 to 32 letters, digits, - or _."
+            .Rule(nameof(Name), () => !NamePattern().IsMatch(Name.Trim()) ? "Use 1 to 32 letters, digits or _."
                 : _owner.Profiles.Any(p => p != this && string.Equals(p.Name.Trim(), Name.Trim(), StringComparison.OrdinalIgnoreCase)) ? "Another profile has this name."
                 : null)
             .Rule(nameof(Validity), () => int.TryParse(Validity, NumberStyles.None, CultureInfo.InvariantCulture, out var days) && days is >= 1 and <= 825
@@ -84,7 +84,7 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
 
     partial void OnUseChanged(Choice<ProfileUse> value) => _owner.ProfilesEdited();
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,32}$")]
+    [GeneratedRegex("^[A-Za-z0-9_]{1,32}$")]
     private static partial Regex NamePattern();
 }
 

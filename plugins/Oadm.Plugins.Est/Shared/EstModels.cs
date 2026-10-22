@@ -75,7 +75,7 @@ public enum ProfileKey
 }
 
 /// <summary>An EST profile: one path, one kind of certificate.</summary>
-/// <param name="Name">The path segment and name ("https"): letters, digits, '-' and '_', 1..32 characters.</param>
+/// <param name="Name">The path segment and name ("https"): letters, digits and '_', 1..32 characters (the camera refuses '-' in its profile ids).</param>
 /// <param name="Use">What the camera uses the certificate for.</param>
 /// <param name="ValidityDays">How long each certificate is valid (1..825).</param>
 /// <param name="Key">The key the camera creates.</param>
@@ -148,6 +148,9 @@ public sealed record IssuedCertificate
     public DateTime IssuedUtc { get; init; }
 
     public DateTime NotAfterUtc { get; init; }
+
+    /// <summary>SHA-256 of the certificate (upper hex): the set-up task pins an HTTPS certificate by it.</summary>
+    public string? Fingerprint { get; init; }
 
     public DateTime? RevokedUtc { get; init; }
 

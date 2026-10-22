@@ -57,12 +57,15 @@ public sealed partial class EstService : IAsyncDisposable
     private readonly EstHost _host;
     private readonly EstStore _store;
     private readonly EstEndpoint _endpoint;
+    private readonly AxisDeviceId _deviceIds;
     private readonly ServerCertificates _certificates;
     private readonly SemaphoreSlim _connections = new(MaxConnections, MaxConnections);
     private readonly SemaphoreSlim _apply = new(1, 1);
     private readonly SemaphoreSlim _index = new(1, 1);
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger _logger;
+    private readonly Lock _contextGate = new();
+    private (X509Certificate2 Certificate, SslStreamCertificateContext Context)? _context;
     private ITcpRelay? _listener;
     private Task _acceptLoop = Task.CompletedTask;
     private Dictionary<string, IDeviceInfo> _bySerial = new(StringComparer.OrdinalIgnoreCase);
@@ -74,10 +77,22 @@ public sealed partial class EstService : IAsyncDisposable
         _logger = host.Logger;
         _store = new EstStore(host.Settings, host.Time);
         _certificates = new ServerCertificates(host.Authority, host.Time);
-        _endpoint = new EstEndpoint(_store, host.DeviceIds ?? new AxisDeviceId(), FindBySerialAsync, host.Authority, host.ProActive, host.Time);
+        _deviceIds = host.DeviceIds ?? new AxisDeviceId();
+        _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time);
     }
 
     public EstStore Store => _store;
+
+    /// <summary>The OADM CA now (null without PKI).</summary>
+    public IDeviceCertificateAuthority? Authority => _host.Authority();
+
+    /// <summary>OADM PRO is active.</summary>
+    public bool ProActive => _host.ProActive();
+
+    /// <summary>The Axis device ID CAs the server checks cameras against.</summary>
+    public AxisDeviceId DeviceIds => _deviceIds;
+
+    public TimeProvider Time => _host.Time;
 
     /// <summary>The listener on this server's network (null while closed).</summary>
     public ITcpRelay? Listener => _listener;
@@ -184,7 +199,7 @@ public sealed partial class EstService : IAsyncDisposable
             var profile = config.Profiles[i];
             if (!ProfileName().IsMatch(profile.Name ?? string.Empty))
             {
-                return ($"profiles[{i}].name", "Use 1 to 32 letters, digits, - or _.");
+                return ($"profiles[{i}].name", "Use 1 to 32 letters, digits or _.");
             }
 
             if (config.Profiles.Take(i).Any(p => string.Equals(p.Name, profile.Name, StringComparison.OrdinalIgnoreCase)))
@@ -287,6 +302,12 @@ public sealed partial class EstService : IAsyncDisposable
                 {
                     await ServeAsync(connection, ct).ConfigureAwait(false);
                 }
+#pragma warning disable CA1031 // One broken connection must not end the server; the reason is logged.
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+#pragma warning restore CA1031
+                {
+                    LogConnectionFailed(ex, connection.Remote);
+                }
                 finally
                 {
                     _connections.Release();
@@ -314,7 +335,7 @@ public sealed partial class EstService : IAsyncDisposable
         await using var tlsDispose = tls.ConfigureAwait(false);
         var options = new SslServerAuthenticationOptions
         {
-            ServerCertificateContext = SslStreamCertificateContext.Create(certificate, AuthorityChain(), offline: true),
+            ServerCertificateContext = ContextFor(certificate),
             ClientCertificateRequired = true,
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -399,6 +420,35 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The TLS context of a server certificate with the CA chain, made once per certificate. Chain building can fail on
+    /// some systems ("unknown chain building error"): then the certificate alone (the cameras have the CA chain anyway).
+    /// </summary>
+    private SslStreamCertificateContext ContextFor(X509Certificate2 certificate)
+    {
+        lock (_contextGate)
+        {
+            if (_context is { } cached && ReferenceEquals(cached.Certificate, certificate))
+            {
+                return cached.Context;
+            }
+
+            SslStreamCertificateContext context;
+            try
+            {
+                context = SslStreamCertificateContext.Create(certificate, AuthorityChain(), offline: true);
+            }
+            catch (System.Security.Cryptography.CryptographicException ex)
+            {
+                LogChainFailed(ex);
+                context = SslStreamCertificateContext.Create(certificate, null, offline: true);
+            }
+
+            _context = (certificate, context);
+            return context;
+        }
+    }
+
     private X509Certificate2Collection AuthorityChain()
     {
         var chain = new X509Certificate2Collection();
@@ -468,7 +518,7 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,32}$")]
+    [GeneratedRegex("^[A-Za-z0-9_]{1,32}$")]
     private static partial Regex ProfileName();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "EST server on port {Port}: {State}")]
@@ -482,6 +532,12 @@ public sealed partial class EstService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "EST connection from {Remote} ended: {Message}")]
     private partial void LogConnectionEnded(System.Net.IPEndPoint remote, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST: the CA chain for TLS cannot be built; the server certificate is sent alone")]
+    private partial void LogChainFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST connection from {Remote} failed")]
+    private partial void LogConnectionFailed(Exception ex, System.Net.IPEndPoint remote);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "EST: {Count} certificates revoked")]
     private partial void LogRevoked(int count);
