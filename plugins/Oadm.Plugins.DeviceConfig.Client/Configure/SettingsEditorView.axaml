@@ -52,8 +52,9 @@
                     <ui:OadmIcon Classes="warn" Data="{DynamicResource Icon.status.warning}" IsVisible="{Binding IsDangerous}" ToolTip.Tip="{Binding DangerReason}" VerticalAlignment="Center" />
                     <ui:OadmIcon Classes="warn" Data="{DynamicResource Icon.status.warning}" IsVisible="{Binding HasNote}" ToolTip.Tip="{Binding Note}" VerticalAlignment="Center" />
                   </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Top">
-                    <Panel Width="340">
+                  <!-- The hint wraps next to the input instead of running out of the window. -->
+                  <Grid Grid.Column="2" ColumnDefinitions="340,*" VerticalAlignment="Top">
+                    <Panel Grid.Column="0">
                       <TextBox Text="{Binding Value}" IsVisible="{Binding IsText}" />
                       <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch">
                         <ComboBox.ItemTemplate>
@@ -64,10 +65,10 @@
                       </ComboBox>
                       <ui:PasswordBox Text="{Binding Value}" IsVisible="{Binding IsPassword}" />
                     </Panel>
-                    <StackPanel Classes="inputHeight" IsVisible="{Binding HasHint}">
-                      <TextBlock Classes="secondary small" Text="{Binding Hint}" VerticalAlignment="Center" />
-                    </StackPanel>
-                  </StackPanel>
+                    <Panel Grid.Column="1" MinHeight="{StaticResource Oadm.ControlHeight}" Margin="10,0,0,0" IsVisible="{Binding HasHint}">
+                      <TextBlock Classes="secondary small" Text="{Binding Hint}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    </Panel>
+                  </Grid>
                 </Grid>
               </DataTemplate>
             </ItemsControl.DataTemplates>

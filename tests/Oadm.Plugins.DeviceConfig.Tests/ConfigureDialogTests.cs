@@ -454,6 +454,12 @@ public sealed class ConfigureDialogTests(Xunit.Abstractions.ITestOutputHelper ou
             Save(window, outDir, "device-config-configure.png");
             Assert.Equal("Image.I0.Appearance Compression: Enter 0 to 100.", dialog.NextBlockedReason);
 
+            // A long hint wraps next to its input (several NTP servers).
+            editor.SearchText = "NTP";
+            Pump();
+            Save(window, outDir, "device-config-configure-hostname.png");
+            editor.SearchText = "Appearance";
+
             editor.Parameters.Single(p => p.Name == "Image.I0.Appearance.Compression").Value = "45";
             editor.Parameters.Single(p => p.Name == "HTTPS.Port").Value = "8443";
             editor.Tab = SettingsTab.ActionRules;

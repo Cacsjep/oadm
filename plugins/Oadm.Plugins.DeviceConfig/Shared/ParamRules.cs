@@ -61,7 +61,10 @@ public static class ParamRules
                     : "Enter IP addresses separated by commas.";
 
             case ParamKind.Hostname:
-                return text.Length == 0 || IsIp(text) || IsHostName(text) ? null : "Enter a host name or an IP address.";
+                // Some host name parameters hold several, separated by spaces (Time.NTP.Server "10.0.0.17 ts1.univie.ac.at").
+                return text.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(name => IsIp(name) || IsHostName(name))
+                    ? null
+                    : "Enter a host name or an IP address.";
 
             default:
                 return null;
@@ -77,7 +80,7 @@ public static class ParamRules
             ParamKind.Number => definition.Min is null && definition.Max is null ? "Whole number" : Capitalize(Range(definition)),
             ParamKind.Ip => "IP address",
             ParamKind.IpList => "IP addresses separated by commas",
-            ParamKind.Hostname => "Host name or IP address",
+            ParamKind.Hostname => "Host name or IP address, several separated by spaces",
             _ => null,
         };
     }
