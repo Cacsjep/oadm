@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [4.1.0-rc.2] - 2026-10-22
+
 ### Added
 
 - **EST server** (OADM PRO, off by default): cameras with AXIS OS 12.10 or later get their certificates for HTTPS,
