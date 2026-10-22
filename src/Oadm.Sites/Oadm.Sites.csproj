@@ -5,7 +5,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- J-PAKE of the pairing code (MIT). -->
-    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Oadm.Contracts\Oadm.Contracts.csproj" />
