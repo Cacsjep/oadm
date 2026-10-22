@@ -17,7 +17,8 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - **Page "EST server"** (rail, group Security, next to PKI):
   - **General** left (Listen on, port, enrollments kept), **Profiles** right; the status left of Save: "Running on port 9454", "OADM PRO is not
     active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
-  - **Profiles** (at most 2 per camera, the camera's limit; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
+  - **Profiles** (at most 2 per camera, the camera's limit: a third add is refused, "No more profiles can be added",
+    seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
     MQTT, RTSPS), validity (days), key (RSA 2048+ / ECC P-256+). Two ready-made: **HTTPS** (server certificates) and
     **IEEE 802.1X** (client certificates).
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). Search in
@@ -53,9 +54,13 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   checked against the two Axis device ID root CAs (RSA, ECC; valid to 2060) shipped with the plugin (the camera sends the
   intermediates). No passwords, nothing to hand out. **And** the serial in the device ID certificate must be a device of
   the device list (at a site: a device of that site): a genuine Axis camera OADM does not manage gets nothing.
-- **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate of the OADM CA
-  whose `axis-<serial>.local` names a managed device; with a record of it, the record's device must be that device. A
-  record is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps.
+- **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate the OADM CA
+  itself issued (chain element 1 is the OADM CA, never another CA below a root above an imported OADM CA) whose DNS
+  names hold exactly one `axis-<serial>.local` serial, a managed device; with a record of it, the record's device must
+  be that device (a record of a device OADM no longer manages is forgotten: a camera removed and added again). A record
+  is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps. EST and
+  PKI never take a reported host name or FQDN `axis-<12 hex>...` of another serial into a certificate, so a camera
+  cannot name another camera (`EstEndpoint.NamesOtherCamera`, `CertificateNames.NamesOtherCamera`).
 - **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
   only; a 401 or 403 closes the connection; at most 64 connections, 4 per address, 2 minutes each.
 - **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
@@ -107,6 +112,11 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
 - Never flagged (`RenewalStoppedUtc`): certificates of an `oadm_` profile removed with **Remove** in the dialog or by
   Set up (a renamed or turned-off profile), and certificates revoked in 4.1.0-rc.2 (`revokedUtc` when loaded; the
   setting `revoked` is deleted, so those cameras renew again).
+- Set up counts the profiles that stay on the camera (another EST server's for other uses, kept network access
+  profiles): it picks the most of the EST server's profiles that fit in two, preferring those that replace a profile
+  (`EstSetupTask.Fitting`), else "leave no room ... Nothing was changed" before any write.
+- Robustness: a failed write of the store is logged and tried again; stopping never opens a listener or relay any more;
+  a move of 4.1.0-rc.2 data cut short keeps the records' newer state.
 - Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf: 30,000 cameras
   in about 0.5 s); one read of the device list per check; at most 20 log lines per check, then one summary line.
 
@@ -128,8 +138,10 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
 3. Install the CA certificates: the OADM CA chain with `cert` v1, matched by fingerprint (an existing alias is reused),
    new ones as "OADM CA <8 hex>" like PKI's; never deleting.
-   With IEEE 802.1X on (`IDeviceInfo.Dot1xEnabled`) the IEEE 802.1X profile is skipped with a warning (no lock-out; a
-   network access profile already on the camera, OADM's or another one, is then left untouched),
+   With IEEE 802.1X on (read fresh in the check step, `Network.Interface.I0.dot1x.Enabled`; unknown counts as on; the
+   dialog counts cameras not read yet too) the IEEE 802.1X profile is skipped with a warning (no lock-out): every
+   profile on the camera that serves IEEE 802.1X, also one serving other uses too, stays untouched, and a wanted use such
+   a profile serves is skipped with a warning,
    unless the payload says `replaceDot1x` (`SetupPayload`): the dialog (`EstSetupWindow`) shows, only when selected
    cameras have IEEE 802.1X on, the check box "Also replace the network access certificate of N cameras with IEEE 802.1X
    on" with the hint that the RADIUS server must trust the OADM CA (off by default); the task then logs that it was

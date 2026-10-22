@@ -213,6 +213,9 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     /// <summary>Every enrollment the server keeps (at most 5,000), newest first.</summary>
     private List<EnrollmentRow> _allEnrollments = [];
 
+    private int? _enrollmentsKept;
+    private int _loadVersion;
+
     [ObservableProperty]
     public partial string EnrollmentSearch { get; set; } = string.Empty;
 
@@ -285,11 +288,15 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     internal async Task LoadAsync(CancellationToken ct)
     {
+        var version = ++_loadVersion; // a later load (the page shown again) owns the overlay
         try
         {
             ApplyState(EstJson.Deserialize<EstState>(await _ctx.InvokeAsync(EstMethods.GetState, null, ct).ConfigureAwait(true)), form: true);
             var enrollments = EstJson.Deserialize<EnrollmentList>(await _ctx.InvokeAsync(EstMethods.GetEnrollments, null, ct).ConfigureAwait(true));
-            _allEnrollments = [.. enrollments.Enrollments.Select(e => new EnrollmentRow(e))];
+            // Rows that arrived live during the read and are newer than its newest stay on top.
+            var newest = enrollments.Enrollments.Count > 0 ? enrollments.Enrollments[0].TimeUtc : DateTime.MinValue;
+            var live = _allEnrollments.Where(r => r.Source.TimeUtc > newest).ToList();
+            _allEnrollments = [.. live, .. enrollments.Enrollments.Select(e => new EnrollmentRow(e))];
             FilterEnrollments();
             await LoadNotRenewedAsync(ct).ConfigureAwait(true);
         }
@@ -305,7 +312,10 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         }
         finally
         {
-            IsLoading = false;
+            if (version == _loadVersion)
+            {
+                IsLoading = false;
+            }
         }
     }
 
@@ -430,8 +440,11 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         ActionError = null;
         try
         {
+            // Only the rows shown when the server deleted: one that arrived live meanwhile stays (the clear event of the
+            // server empties every page anyway, in order with the new rows).
+            var deleted = _allEnrollments.ToHashSet(ReferenceEqualityComparer.Instance);
             await _ctx.InvokeAsync(EstMethods.ClearEnrollments, null, CancellationToken.None).ConfigureAwait(true);
-            _allEnrollments = [];
+            _allEnrollments.RemoveAll(deleted.Contains);
             FilterEnrollments();
         }
 #pragma warning disable CA1031 // The page shows the reason.
@@ -489,6 +502,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     private void ApplyState(EstState state, bool form)
     {
+        _enrollmentsKept = state.Config.EnrollmentsKept;
         StatusText = state.StatusText;
         StatusOk = state.StatusOk;
         // The sites' relays only: this server's own listener is the status chip already.
@@ -517,7 +531,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             case EstMethods.EnrollmentsTopic:
                 var added = EstJson.Deserialize<EnrollmentList>(e.PayloadJson).Enrollments.Select(x => new EnrollmentRow(x)).ToList();
                 _allEnrollments.InsertRange(0, added);
-                if (int.TryParse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var kept) && _allEnrollments.Count > kept)
+                if (_enrollmentsKept is { } kept && _allEnrollments.Count > kept) // the saved setting, never an unsaved field
                 {
                     _allEnrollments.RemoveRange(kept, _allEnrollments.Count - kept);
                     FilterEnrollments();

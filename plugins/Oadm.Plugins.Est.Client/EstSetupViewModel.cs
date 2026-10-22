@@ -77,7 +77,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(devices);
         _ctx = ctx;
         Devices = [.. devices.Select(d => new EstDeviceChoice(d))];
-        Dot1xDevices = devices.Count(d => d.Dot1xEnabled == true);
+        Dot1xDevices = devices.Count(d => d.Dot1xEnabled != false); // not read yet counts: the task reads it fresh and treats unknown as on
         SelectedDevice = Devices.Count > 0 ? Devices[0] : null;
     }
 
@@ -251,6 +251,11 @@ public sealed partial class EstSetupViewModel : ObservableObject
         if (profile.IsNetworkAccess)
         {
             ConfirmRemoveText += " Cameras with IEEE 802.1X on drop off the network when that certificate expires.";
+        }
+        else if (Devices.Count > 1 && !profile.IsOadm)
+        {
+            // Another server's profile of the same name may serve IEEE 802.1X on the other cameras.
+            ConfirmRemoveText += " Cameras where it serves IEEE 802.1X drop off the network when that certificate expires.";
         }
 
         ConfirmRemoveVisible = true;

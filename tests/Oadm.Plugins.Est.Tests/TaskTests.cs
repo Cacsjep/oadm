@@ -68,13 +68,12 @@ public sealed class TaskTests : IAsyncLifetime
     public async Task Both_profiles_are_set_up_https_last_and_only_a_profile_with_the_same_service_is_replaced()
     {
         _camera.Profiles["other"] = new JsonObject { ["id"] = "other", ["services"] = new JsonArray("NETAUTH"), ["status"] = "ENROLLED" };
-        _camera.Profiles["mqtt"] = new JsonObject { ["id"] = "mqtt", ["services"] = new JsonArray("MQTT"), ["status"] = "ENROLLED" };
         var task = new EstSetupTask(() => _est);
         var ctx = Context();
 
         await StepRun.RunAsync(ctx.Steps, () => task.ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
 
-        Assert.Equal(["mqtt", "oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
         Assert.Equal(["NETAUTH"], _camera.Profiles["oadm_dot1x"]["services"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Equal("other", StepRun.Detail(ctx.Steps, EstTaskIds.RemoveOldStep));
         var adds = _camera.RequestLog.Where(r => r == "POST config/rest/cert-est/v1/profiles").Count();
@@ -88,7 +87,8 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task With_ieee_8021x_on_the_8021x_profile_is_skipped_with_a_warning()
     {
-        var device = _device with { Dot1xEnabled = true };
+        var device = _device;
+        _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
         var ctx = Context();
 
         await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, device, "{}", CancellationToken.None));
@@ -100,7 +100,8 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task With_ieee_8021x_on_the_8021x_profile_is_written_when_the_user_chose_it()
     {
-        var device = _device with { Dot1xEnabled = true };
+        var device = _device;
+        _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
         var ctx = Context();
 
         await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));
@@ -114,7 +115,8 @@ public sealed class TaskTests : IAsyncLifetime
     public async Task Setting_up_again_without_the_8021x_choice_keeps_the_cameras_8021x_profile()
     {
         // Set up earlier with "Also replace the network access certificate": the camera has both profiles.
-        var device = _device with { Dot1xEnabled = true };
+        var device = _device;
+        _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
         var task = new EstSetupTask(() => _est);
         var first = Context();
         await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));
@@ -125,6 +127,58 @@ public sealed class TaskTests : IAsyncLifetime
 
         Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal)); // no lock-out
         Assert.Contains(EstTaskIds.Dot1xSkipped, again.Warnings);
+    }
+
+    [Fact]
+    public async Task With_ieee_8021x_on_a_profile_that_also_serves_it_stays_and_its_other_use_is_skipped()
+    {
+        _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
+        _camera.Profiles["corp"] = new JsonObject { ["id"] = "corp", ["services"] = new JsonArray("WEBSERVER", "NETAUTH"), ["status"] = "ENROLLED" };
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+
+        Assert.Equal(["corp", "oadm_mqtt"], _camera.Profiles.Keys.Order(StringComparer.Ordinal)); // never removed: no lock-out
+        Assert.Contains(EstTaskIds.ServedByNetworkAccessProfile("https", "corp"), ctx.Warnings);
+    }
+
+    [Fact]
+    public async Task Ieee_8021x_the_camera_does_not_report_counts_as_on()
+    {
+        _camera.Parameters.Remove("Network.Interface.I0.dot1x.Enabled");
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device with { Dot1xEnabled = false }, "{}", CancellationToken.None));
+
+        Assert.Equal(["oadm_https"], _camera.Profiles.Keys);
+        Assert.Contains(EstTaskIds.Dot1xSkipped, ctx.Warnings);
+    }
+
+    [Fact]
+    public async Task With_a_profile_that_stays_the_profile_that_replaces_another_one_is_chosen()
+    {
+        // HTTPS and IEEE 802.1X wanted; "mqtt" stays, "other" serves IEEE 802.1X: only one fits, the one replacing "other".
+        _camera.Profiles["other"] = new JsonObject { ["id"] = "other", ["services"] = new JsonArray("NETAUTH"), ["status"] = "ENROLLED" };
+        _camera.Profiles["mqtt"] = new JsonObject { ["id"] = "mqtt", ["services"] = new JsonArray("MQTT"), ["status"] = "ENROLLED" };
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+
+        Assert.Equal(["mqtt", "oadm_dot1x"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_camera_with_two_profiles_that_stay_is_not_touched()
+    {
+        _camera.Profiles["a"] = new JsonObject { ["id"] = "a", ["services"] = new JsonArray("MQTT") };
+        _camera.Profiles["b"] = new JsonObject { ["id"] = "b", ["services"] = new JsonArray("RTSPS") };
+        var writes = _camera.Writes;
+
+        var error = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
+
+        Assert.Equal(EstTaskIds.NoRoom, error.Message);
+        Assert.Equal(writes, _camera.Writes);
     }
 
     [Theory]
@@ -303,6 +357,7 @@ public sealed class TaskTests : IAsyncLifetime
         public EstCamera()
         {
             Respond = Answer;
+            Parameters["Network.Interface.I0.dot1x.Enabled"] = "no"; // the task reads it fresh; unknown would count as on
         }
 
         public bool HasEstApi { get; set; } = true;
@@ -358,6 +413,11 @@ public sealed class TaskTests : IAsyncLifetime
 
         private HttpResponseMessage AddProfile(string body)
         {
+            if (Profiles.Count >= 2)
+            {
+                return Json("""{"status":"error","error":{"code":7,"message":"Cannot create more items: No more profiles can be added."}}""");
+            }
+
             var profile = JsonNode.Parse(body)!["data"]!.AsObject().DeepClone().AsObject();
             profile["status"] = Enroll ? "ENROLLED" : ProfileStatus;
             Profiles[profile["id"]!.GetValue<string>()] = profile;

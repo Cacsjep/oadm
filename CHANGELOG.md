@@ -14,6 +14,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - EST server: the **Enrollments** list has a search and **Delete all**.
 - EST server: **Listen on** chooses the network interface the cameras reach the server on, like the NTP and DHCP
   servers; the page groups its settings under **General** and **Profiles**.
+- Plugin SDK 0.3.0 (OADM 4.1): OADM PRO, plugin services, records and the listener below. Plugins built with the 4.1
+  packages need OADM 4.1 or later.
 - SDK: `ICorePluginContext.Records` (`IPluginRecords`): a plugin's records in their own database table, one row per
   record, for data that grows with the devices. The EST server keeps its certificates there and writes only the
   changed ones (before: one value rewritten whole); certificates of 4.1.0-rc.2 move on the first start.
@@ -24,6 +26,10 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Settings: the server ID shows only in the **License** card, no longer also in the Server card.
+- EST server security: a renewal signs in only with a certificate the OADM CA issued itself that names one camera;
+  EST and PKI never put another camera's `axis-<serial>` name, reported by a camera as its host name, into a certificate.
+- Set up certificate enrollment reads IEEE 802.1X fresh from the camera (unknown counts as on), never removes a profile
+  that serves it, and counts the camera's other profiles against its limit of two before changing anything.
 - EST server: certificates revoked in 4.1.0-rc.2 are renewed again after the update (Revoke is gone); remove the
   camera's profile in **Certificate enrollment** to stop it.
 - EST server: the list of every certificate and **Revoke** are gone. The certificates are on the cameras (PKI page);

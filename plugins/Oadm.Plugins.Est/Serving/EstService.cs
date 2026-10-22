@@ -99,6 +99,7 @@ public sealed partial class EstService : IAsyncDisposable
     private long _indexedAtTicks = DateTimeOffset.MinValue.UtcTicks;
     private ITimer? _renewalTimer;
     private ITimer? _listenRetry;
+    private volatile bool _stopping; // DisposeAsync began: nothing opens a listener or relay any more
     private IReadOnlyList<System.Net.IPAddress> _boundAddresses = [];
     private (DateTimeOffset At, IReadOnlyList<string> Addresses)? _certificateAddresses;
     private int _checkingRenewals;
@@ -107,10 +108,11 @@ public sealed partial class EstService : IAsyncDisposable
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _logger = host.Logger;
-        _store = new EstStore(host.Settings, host.Records, host.Time);
+        _store = new EstStore(host.Settings, host.Records, host.Time) { Logger = host.Logger };
         _certificates = new ServerCertificates(host.Authority, host.Time);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
-        _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time);
+        _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time,
+            async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null);
     }
 
     public EstStore Store => _store;
@@ -187,6 +189,11 @@ public sealed partial class EstService : IAsyncDisposable
         await _sitesGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (_stopping)
+            {
+                return; // stopping: a relay opened now would never be closed
+            }
+
             var bound = sites.List.ToDictionary(s => s.Id);
             foreach (var gone in _store.Sites().Where(id => !bound.ContainsKey(id)))
             {
@@ -280,6 +287,12 @@ public sealed partial class EstService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_stopping)
+        {
+            return;
+        }
+
+        _stopping = true;
         if (_host.Sites is { } sites)
         {
             sites.SitesChanged -= OnSitesChanged;
@@ -316,7 +329,18 @@ public sealed partial class EstService : IAsyncDisposable
         {
         }
 
-        await _store.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await _store.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            DisposeRest();
+        }
+    }
+
+    private void DisposeRest()
+    {
         _certificates.Dispose();
         _cts.Dispose();
         _apply.Dispose();
@@ -494,7 +518,7 @@ public sealed partial class EstService : IAsyncDisposable
         await _apply.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_listener is not null)
+            if (_listener is not null || _stopping)
             {
                 return;
             }

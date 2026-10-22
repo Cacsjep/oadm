@@ -231,8 +231,8 @@ public interface IPluginNetwork
 
     /// <summary>
     /// Listens on TCP <paramref name="port"/> on <paramref name="addresses"/> of the server only (the addresses of the
-    /// interface a page's "Listen on" chose); an empty list listens on every address. Hosts without it listen on every
-    /// address.
+    /// interface a page's "Listen on" chose); an empty list listens on every address. SDK 0.3.0 (OADM 4.1): a plugin that
+    /// uses it sets <c>minSdkVersion</c> 0.3.0. Implementations that do not override it listen on every address.
     /// </summary>
     Task<ITcpRelay> ListenTcpAsync(int port, string reason, IReadOnlyList<IPAddress> addresses, CancellationToken ct) =>
         ListenTcpAsync(port, reason, ct);

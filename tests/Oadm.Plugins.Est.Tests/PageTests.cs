@@ -284,14 +284,15 @@ public sealed class PageTests : IAsyncLifetime
     public void Set_up_offers_the_8021x_choice_only_for_cameras_with_8021x_on()
     {
         string? payload = null;
-        var without = new EstSetupViewModel([new FakeDevice(), new FakeDevice()]);
+        var without = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = false }, new FakeDevice { Dot1xEnabled = false }]);
         without.CloseRequested += (_, _) => payload = without.Payload;
         Assert.False(without.ShowDot1x);
         without.ReplaceDot1x = true; // hidden: it never counts
         without.OkCommand.Execute(null);
         Assert.Equal((SetupAction.Setup, false), (SetupPayload.Read(payload)!.Action, SetupPayload.Read(payload)!.ReplaceDot1x));
 
-        var with = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice { Dot1xEnabled = true }, new FakeDevice()]);
+        Assert.True(new EstSetupViewModel([new FakeDevice()]).ShowDot1x); // not read yet: counts as on
+        var with = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice { Dot1xEnabled = true }, new FakeDevice { Dot1xEnabled = false }]);
         with.CloseRequested += (_, _) => payload = with.Payload;
         Assert.True(with.ShowDot1x);
         Assert.Equal("Also replace the network access certificate of 2 cameras with IEEE 802.1X on", with.Dot1xText);
@@ -307,8 +308,8 @@ public sealed class PageTests : IAsyncLifetime
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var first = new FakeDevice { Address = "10.0.0.48", Model = "AXIS P3265-V", Dot1xEnabled = true };
-        var second = new FakeDevice { Address = "10.0.0.49", Model = "AXIS M3215-LVE" };
-        var empty = new FakeDevice { Address = "10.0.0.50", Model = "AXIS Q1656" };
+        var second = new FakeDevice { Address = "10.0.0.49", Model = "AXIS M3215-LVE", Dot1xEnabled = false };
+        var empty = new FakeDevice { Address = "10.0.0.50", Model = "AXIS Q1656", Dot1xEnabled = false };
         var cameras = new DialogContext();
         cameras.Profiles[first.Id] = new CameraProfileList(true,
         [

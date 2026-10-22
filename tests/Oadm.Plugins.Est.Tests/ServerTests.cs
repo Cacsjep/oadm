@@ -210,6 +210,57 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_certificate_naming_two_cameras_or_not_issued_by_the_oadm_ca_itself_signs_in_as_nobody()
+    {
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+
+        // A camera that reported another camera's axis name as its host name: its certificate names two serials.
+        using var twoNames = Leaf(_ca.Certificate, "axis-accc8e000099.local", "axis-" + Serial.ToLowerInvariant() + ".local");
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", twoNames, Body(csr))).Status);
+
+        // Issued by another CA below the OADM CA's root, not by the OADM CA itself.
+        using var other = TestPki.Intermediate(_ca.Certificate, "Corporate issuing CA");
+        using var notDirect = Leaf(other, "axis-" + Serial.ToLowerInvariant() + ".local");
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", notDirect, Body(csr))).Status);
+
+        // The OADM CA's own certificate for this camera, without a record (e.g. from PKI): renews.
+        using var own = Leaf(_ca.Certificate, "cam-entrance", "axis-" + Serial.ToLowerInvariant() + ".local");
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", own, Body(csr))).Status);
+        Assert.DoesNotContain(DeviceRequests(), r => r.DnsNames.Contains("axis-accc8e000099.local"));
+    }
+
+    [Fact]
+    public void Another_cameras_axis_name_reported_as_host_name_never_goes_into_a_certificate()
+    {
+        var device = new FakeDevice { Serial = Serial, Address = "axis-accc8e000099.local", HostName = "axis-accc8e000099" };
+
+        Assert.Equal(["axis-" + Serial.ToLowerInvariant() + ".local"], EstEndpoint.DnsNames(device));
+        Assert.True(Oadm.Plugins.Pki.Ca.CertificateNames.NamesOtherCamera("axis-ACCC8E000099.local", Serial));
+        Assert.False(Oadm.Plugins.Pki.Ca.CertificateNames.NamesOtherCamera("axis-" + Serial + ".local", Serial));
+        Assert.False(Oadm.Plugins.Pki.Ca.CertificateNames.NamesOtherCamera("axis-entrance", Serial));
+    }
+
+    /// <summary>A certificate signed by <paramref name="issuer"/> with these DNS names, with its key.</summary>
+    private static X509Certificate2 Leaf(X509Certificate2 issuer, params string[] names)
+    {
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=camera", key, System.Security.Cryptography.HashAlgorithmName.SHA256);
+        var san = new SubjectAlternativeNameBuilder();
+        foreach (var name in names)
+        {
+            san.AddDnsName(name);
+        }
+
+        request.CertificateExtensions.Add(san.Build());
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        var serial = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+        serial[0] &= 0x7F;
+        using var signed = request.Create(issuer, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddDays(30), serial);
+        return TestPki.Usable(signed.CopyWithPrivateKey(key));
+    }
+
+    [Fact]
     public async Task Unknown_paths_and_profiles_look_the_same_and_without_pro_or_ca_nothing_is_issued()
     {
         Assert.Equal(404, (await SendAsync("GET", "/.well-known/est/nope/cacerts", null)).Status);

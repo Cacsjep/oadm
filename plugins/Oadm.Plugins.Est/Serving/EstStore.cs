@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Est.Serving;
@@ -10,7 +13,7 @@ namespace Oadm.Plugins.Est.Serving;
 /// most 2 x devices x profiles. Only changed certificates are written. Kept in memory; changes are written at most every
 /// <see cref="FlushDelay"/> and on dispose. Thread-safe.
 /// </summary>
-public sealed class EstStore : IAsyncDisposable
+public sealed partial class EstStore : IAsyncDisposable
 {
     public const string ConfigKey = "config";
     public const string EnrollmentsKey = "enrollments";
@@ -51,6 +54,11 @@ public sealed class EstStore : IAsyncDisposable
 
     public TimeSpan FlushDelay { get; init; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>Where a write that failed is reported (it is tried again with the next flush).</summary>
+    public ILogger Logger { get => _logger; init => _logger = value ?? NullLogger.Instance; }
+
+    private readonly ILogger _logger = NullLogger.Instance;
+
     public EstConfig Config
     {
         get
@@ -71,7 +79,10 @@ public sealed class EstStore : IAsyncDisposable
         var legacy = await _settings.GetAsync(CertificatesKey, ct).ConfigureAwait(false);
         if (legacy is not null)
         {
-            certificates.AddRange(ReadLegacy(legacy)); // 4.1.0-rc.2: one settings value, moved to the records
+            // 4.1.0-rc.2: one settings value, moved to the records. A move cut short (the server stopped before the old
+            // value was deleted): the records already hold the newer state of those certificates.
+            var moved = certificates.Select(c => c.SerialNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            certificates.AddRange(ReadLegacy(legacy).Where(c => !moved.Contains(c.SerialNumber)));
         }
 
         legacy ??= await _settings.GetAsync(LegacyRevokedKey, ct).ConfigureAwait(false);
@@ -223,6 +234,7 @@ public sealed class EstStore : IAsyncDisposable
     public void AddCertificate(IssuedCertificate certificate)
     {
         ArgumentNullException.ThrowIfNull(certificate);
+        certificate = certificate with { SerialNumber = certificate.SerialNumber.ToUpperInvariant() }; // one record key per certificate
         lock (_gate)
         {
             _certificates[certificate.SerialNumber] = certificate;
@@ -559,7 +571,16 @@ public sealed class EstStore : IAsyncDisposable
         {
             // disposed meanwhile: DisposeAsync wrote it
         }
+#pragma warning disable CA1031 // A failed write (database locked, disk full) is logged and tried again with the next flush.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogFlushFailed(ex);
+        }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST: saving the enrollments and certificates failed; tried again in a few seconds")]
+    private partial void LogFlushFailed(Exception ex);
 
     private static T? Read<T>(string? json)
         where T : class

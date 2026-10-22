@@ -75,7 +75,8 @@ You can add profiles for **MQTT** (client certificate) and **RTSPS** (server cer
 - **On**: a profile that is off answers like one that does not exist; cameras set up with it get nothing until you turn
   it on again.
 
-A camera holds at most two profiles. When the EST server has more, the set-up uses the first two the camera supports.
+A camera holds at most two profiles, also counting profiles of another EST server that stay. When not all fit, the
+set-up uses those that fit, in the order of this list; when none fits, the camera is not changed.
 
 Errors show below the fields. **Save** applies the changes at once.
 

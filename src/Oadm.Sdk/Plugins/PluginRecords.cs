@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace Oadm.Sdk.Plugins;
@@ -29,39 +28,52 @@ public interface IPluginRecords
 /// </summary>
 public sealed class MemoryPluginRecords : IPluginRecords
 {
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _collections = new(StringComparer.Ordinal);
+    private readonly Lock _gate = new();
+    private readonly Dictionary<string, Dictionary<string, string>> _collections = new(StringComparer.Ordinal);
+    private int _written;
 
     /// <summary>Every write of <see cref="SetManyAsync"/> so far (tests check that only changed records are written).</summary>
-    public int WrittenRecords { get; private set; }
+    public int WrittenRecords => Volatile.Read(ref _written);
 
     /// <inheritdoc />
     public Task<IReadOnlyDictionary<string, string>> ListAsync(string collection, CancellationToken ct)
     {
         PluginRecordRules.ValidateCollection(collection);
-        IReadOnlyDictionary<string, string> list = _collections.TryGetValue(collection, out var records)
-            ? new Dictionary<string, string>(records, StringComparer.Ordinal)
-            : new Dictionary<string, string>(StringComparer.Ordinal);
-        return Task.FromResult(list);
+        lock (_gate)
+        {
+            IReadOnlyDictionary<string, string> list = _collections.TryGetValue(collection, out var records)
+                ? new Dictionary<string, string>(records, StringComparer.Ordinal)
+                : new Dictionary<string, string>(StringComparer.Ordinal);
+            return Task.FromResult(list);
+        }
     }
 
     /// <inheritdoc />
     public Task SetManyAsync(string collection, IReadOnlyCollection<KeyValuePair<string, string?>> records, CancellationToken ct)
     {
         PluginRecordRules.Validate(collection, records);
-        var target = _collections.GetOrAdd(collection, _ => new ConcurrentDictionary<string, string>(StringComparer.Ordinal));
-        foreach (var (key, value) in records)
+        lock (_gate) // one batch at a time, all or nothing seen by readers, like the database's transaction
         {
-            if (value is null)
+            if (!_collections.TryGetValue(collection, out var target))
             {
-                target.TryRemove(key, out _);
+                _collections[collection] = target = new Dictionary<string, string>(StringComparer.Ordinal);
             }
-            else
+
+            foreach (var (key, value) in records)
             {
-                target[key] = value;
+                if (value is null)
+                {
+                    target.Remove(key);
+                }
+                else
+                {
+                    target[key] = value;
+                }
             }
+
+            _written += records.Count;
         }
 
-        WrittenRecords += records.Count;
         return Task.CompletedTask;
     }
 
@@ -69,7 +81,11 @@ public sealed class MemoryPluginRecords : IPluginRecords
     public Task ClearAsync(string collection, CancellationToken ct)
     {
         PluginRecordRules.ValidateCollection(collection);
-        _collections.TryRemove(collection, out _);
+        lock (_gate)
+        {
+            _collections.Remove(collection);
+        }
+
         return Task.CompletedTask;
     }
 }

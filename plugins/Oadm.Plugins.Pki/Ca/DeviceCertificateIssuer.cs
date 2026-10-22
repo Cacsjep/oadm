@@ -56,11 +56,26 @@ public sealed record CertificateNames(string CommonName, IReadOnlyList<string> I
             AddName(address);
         }
 
-        // The device reports its host name and FQDN itself: only plain names go into a certificate every OADM device trusts.
-        AddName(IsPlainHostName(hostName) ? hostName : null);
-        AddName(IsPlainHostName(fqdn) ? fqdn : null);
+        // The device reports its host name and FQDN itself: only plain names go into a certificate every OADM device trusts,
+        // never another camera's axis name (EST maps an axis-<serial>.local name to a camera).
+        AddName(IsPlainHostName(hostName) && !NamesOtherCamera(hostName!, serial) ? hostName : null);
+        AddName(IsPlainHostName(fqdn) && !NamesOtherCamera(fqdn!, serial) ? fqdn : null);
         AddName("axis-" + serial.ToLowerInvariant() + ".local");
         return new CertificateNames(host, ips, dns);
+    }
+
+    /// <summary>An <c>axis-&lt;12 hex&gt;</c> name (any domain) of a serial other than <paramref name="serial"/>.</summary>
+    public static bool NamesOtherCamera(string name, string serial)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var trimmed = name.Trim();
+        if (trimmed.Length < 17 || !trimmed.StartsWith("axis-", StringComparison.OrdinalIgnoreCase) || (trimmed.Length > 17 && trimmed[17] != '.'))
+        {
+            return false;
+        }
+
+        var candidate = trimmed[5..17];
+        return candidate.All(char.IsAsciiHexDigit) && !string.Equals(candidate, serial, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Letters, digits and hyphens in labels of 1 to 63 characters, dot separated, at most 253: no "*", no spaces.</summary>

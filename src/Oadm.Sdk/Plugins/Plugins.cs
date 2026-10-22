@@ -341,8 +341,8 @@ public interface ICorePluginContext
     IPluginSettings Settings { get; }
 
     /// <summary>
-    /// The plugin's own records in the server database, one row per record (data that grows with the devices); null on
-    /// hosts before OADM 4.1.
+    /// The plugin's own records in the server database, one row per record (data that grows with the devices); null where
+    /// the host keeps none. SDK 0.3.0 (OADM 4.1): a plugin that uses it sets <c>minSdkVersion</c> 0.3.0.
     /// </summary>
     IPluginRecords? Records => null;
     /// <summary>The server log.</summary>
@@ -612,5 +612,5 @@ public static class TaskPluginNames
 public static class SdkInfo
 {
     /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
 }

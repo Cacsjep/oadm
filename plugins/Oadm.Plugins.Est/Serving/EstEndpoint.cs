@@ -41,13 +41,14 @@ public static class EstRefusals
 /// Who may enroll (docs/spec/est-server.md): the camera signs in with its Axis device ID, or with a certificate EST issued
 /// it, and its serial number is a device OADM manages (at a site: a device of that site).
 /// </summary>
-public sealed class EstEndpoint(
+public sealed partial class EstEndpoint(
     EstStore store,
     AxisDeviceId deviceIds,
     Func<string, CancellationToken, Task<IDeviceInfo?>> findBySerial,
     Func<IDeviceCertificateAuthority?> authority,
     Func<bool> proActive,
-    TimeProvider? time = null)
+    TimeProvider? time = null,
+    Func<Guid, CancellationToken, Task<bool>>? isManaged = null)
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
@@ -132,10 +133,16 @@ public sealed class EstEndpoint(
             return Refuse(403, EstRefusals.OtherSite, device);
         }
 
-        // A certificate EST issued signs in only for its own device.
+        // A certificate EST issued signs in only for its own device. A record of a device OADM no longer manages (the camera
+        // was removed and added again: a new device id) is forgotten.
         if (store.FindCertificate(client.SerialNumber) is { } own && own.DeviceId != device.Id)
         {
-            return Refuse(403, EstRefusals.OtherCamera, device);
+            if (isManaged is null || await isManaged(own.DeviceId, ct).ConfigureAwait(false))
+            {
+                return Refuse(403, EstRefusals.OtherCamera, device);
+            }
+
+            store.ForgetDevice(own.DeviceId);
         }
 
         byte[] csr;
@@ -195,18 +202,19 @@ public sealed class EstEndpoint(
             return serial;
         }
 
-        // Any valid certificate of the OADM CA for a camera, also one whose record is gone (the store keeps the newest two
-        // per camera and profile; a camera whose answers got lost renews with an older one). Its serial: the
-        // axis-<serial>.local name OADM put in; the caller still checks that this camera is managed (and, with a record,
-        // that the record names the same device).
+        // Any valid certificate the OADM CA itself issued for a camera, also one whose record is gone (the store keeps the
+        // newest two per camera and profile; a camera whose answers got lost renews with an older one). Its serial: the one
+        // axis-<serial>.local name OADM put in. A certificate naming two serials (a camera that reported another camera's
+        // axis name as its host name) names none. The caller still checks that the camera is managed and, with a record,
+        // that the record names the same device.
         if (!IssuedByCa(client, ca.Chain, now))
         {
             return null;
         }
 
         var san = client.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
-        var name = san?.EnumerateDnsNames().FirstOrDefault(n => n.StartsWith("axis-", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".local", StringComparison.OrdinalIgnoreCase));
-        return AxisDeviceId.Normalize(name);
+        var serials = (san?.EnumerateDnsNames() ?? []).Select(AxisLocalSerial).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return serials.Count == 1 ? serials[0] : null;
     }
 
     private static bool IssuedByCa(X509Certificate2 certificate, IReadOnlyList<byte[]> chainDer, DateTimeOffset now)
@@ -231,7 +239,9 @@ public sealed class EstEndpoint(
             chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
             chain.ChainPolicy.DisableCertificateDownloads = true;
             chain.ChainPolicy.VerificationTime = now.UtcDateTime;
-            var ok = chain.Build(certificate);
+            // Issued by the OADM CA itself (element 1), never by another CA below a root above an imported OADM CA.
+            var ok = chain.Build(certificate) && chain.ChainElements.Count >= 2
+                && chain.ChainElements[1].Certificate.RawData.AsSpan().SequenceEqual(chainDer[0]);
             foreach (var element in chain.ChainElements)
             {
                 if (!ReferenceEquals(element.Certificate, certificate))
@@ -279,18 +289,25 @@ public sealed class EstEndpoint(
         return addresses;
     }
 
+    /// <summary>The serial of an <c>axis-&lt;12 hex&gt;.local</c> name (upper case), else null.</summary>
+    internal static string? AxisLocalSerial(string name) => AxisLocalName().Match(name) is { Success: true } match ? match.Groups[1].Value.ToUpperInvariant() : null;
+
+    /// <summary>A name that looks like another camera's (<c>axis-&lt;12 hex&gt;</c>, any domain) is never taken from the camera.</summary>
+    internal static bool NamesOtherCamera(string name, string serial) =>
+        AxisNamePrefix().Match(name) is { Success: true } match && !string.Equals(match.Groups[1].Value, serial, StringComparison.OrdinalIgnoreCase);
+
     internal static IReadOnlyList<string> DnsNames(IDeviceInfo device)
     {
         var names = new List<string>();
         // The camera reports its host name itself: only plain names (no wildcard, no odd characters) go into a certificate
-        // every OADM device trusts.
-        if (IsPlainHostName(device.HostName))
+        // every OADM device trusts, never another camera's axis name.
+        if (IsPlainHostName(device.HostName) && !NamesOtherCamera(device.HostName!.Trim(), device.Serial))
         {
             names.Add(device.HostName!.Trim());
         }
 
         var host = HostPart(device.Address);
-        if (!IPAddress.TryParse(host, out _) && IsPlainHostName(host) && !names.Contains(host, StringComparer.OrdinalIgnoreCase))
+        if (!IPAddress.TryParse(host, out _) && IsPlainHostName(host) && !NamesOtherCamera(host, device.Serial) && !names.Contains(host, StringComparer.OrdinalIgnoreCase))
         {
             names.Add(host);
         }
@@ -346,4 +363,10 @@ public sealed class EstEndpoint(
 
     private static HttpResponse Unavailable(string reason) =>
         HttpResponse.Text(503, reason) with { Headers = [new("Retry-After", "600")] };
+
+    [System.Text.RegularExpressions.GeneratedRegex("^axis-([0-9a-fA-F]{12})\\.local\\.?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex AxisLocalName();
+
+    [System.Text.RegularExpressions.GeneratedRegex("^axis-([0-9a-fA-F]{12})(\\.|$)", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex AxisNamePrefix();
 }

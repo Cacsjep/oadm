@@ -131,7 +131,8 @@ public sealed class LocalDeviceNetwork : IDeviceNetwork
 
 /// <summary>
 /// Listeners on the server's own network for plugins (<see cref="IPluginNetwork.ListenUdpAsync"/>,
-/// <see cref="IPluginNetwork.ListenTcpAsync"/>): bound on every address (IPv4 and IPv6) by the host, with the firewall rule
+/// <see cref="IPluginNetwork.ListenTcpAsync"/>): bound on every address (IPv4 and IPv6), or on the addresses of one
+/// interface (an address that is not available is left out while the others serve), by the host, with the firewall rule
 /// of the Windows service open while it listens. A port another program holds is <see cref="RelayState.PortInUse"/>
 /// and tried again every <see cref="LocalListener.RetryInterval"/>.
 /// </summary>
@@ -241,7 +242,18 @@ public abstract class LocalListener : IRelay
                     socket.ExclusiveAddressUse = true;
                 }
 
-                socket.Bind(new IPEndPoint(address, Port));
+                try
+                {
+                    socket.Bind(new IPEndPoint(address, Port));
+                }
+                catch (SocketException e) when (_addresses.Count > 1 && e.SocketErrorCode == SocketError.AddressNotAvailable)
+                {
+                    // One address of a chosen interface is not ready (an IPv6 address still checked) or gone: the others serve.
+                    sockets.Remove(socket);
+                    socket.Dispose();
+                    continue;
+                }
+
                 Port = ((IPEndPoint)socket.LocalEndPoint!).Port; // port 0: the IPv6 socket takes the same port
                 if (Protocol == SiteProtocol.Tcp)
                 {
@@ -249,7 +261,7 @@ public abstract class LocalListener : IRelay
                 }
             }
 
-            state = RelayState.Running;
+            state = sockets.Count > 0 ? RelayState.Running : RelayState.PortInUse; // none of the addresses: tried again later
         }
         catch (SocketException e)
         {

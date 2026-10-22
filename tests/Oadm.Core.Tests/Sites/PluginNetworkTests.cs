@@ -167,6 +167,22 @@ public sealed class PluginNetworkTests
         Assert.True(Volatile.Read(ref changed) > 0);
     }
 
+    [Fact]
+    public async Task AListenerOnOneInterfaceServesTheAddressesItCanBindAndLeavesOutTheOthers()
+    {
+        // Loopback stands in for the interface's ready address; 203.0.113.9 (documentation range) is on no card here.
+        await using var scope = new PluginNetworkScope(DeviceNetworks.Local);
+
+        var listener = await scope.ListenTcpAsync(0, "EST server", [IPAddress.Loopback, IPAddress.Parse("203.0.113.9")], CancellationToken.None);
+
+        Assert.Equal(RelayState.Running, listener.State);
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, listener.Port);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var connection = await listener.AcceptAsync(cts.Token);
+        Assert.Equal(IPAddress.Loopback, connection.Remote.Address);
+    }
+
     // ---------- the plugin's scope ----------
 
     [Fact]

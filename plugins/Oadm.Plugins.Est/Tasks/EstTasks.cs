@@ -34,6 +34,11 @@ public static class EstTaskIds
 
     public const string RemoveStep = "Remove the enrollment profiles";
     public const string BadOptions = "The task options cannot be read. Nothing was changed.";
+    public const string NoRoom = "The camera's other enrollment profiles leave no room (two at most). Remove one in Certificate enrollment first. Nothing was changed.";
+    public const string Dot1xParameter = "Network.Interface.I0.dot1x.Enabled";
+
+    public static string ServedByNetworkAccessProfile(string profile, string kept) =>
+        $"The camera's IEEE 802.1X profile {kept} also serves the {profile} profile's use: the {profile} profile was skipped.";
     public const string NothingToRemove = "The camera has none of these enrollment profiles. Nothing was changed.";
 
     /// <summary>Camera profiles OADM writes are named "oadm_&lt;profile&gt;".</summary>
@@ -177,7 +182,8 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
         ArgumentNullException.ThrowIfNull(device);
 
-        var dot1xSkipped = false;
+        var protectNetworkAccess = false;
+        var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
         var (est, chain, profiles, address) = await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
         {
             var est = Service ?? throw new InvalidOperationException(EstTaskIds.NotRunning);
@@ -192,26 +198,40 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             var (free, existing) = await CameraEstApi.ReadEstAsync(ctx.Vapix, ct).ConfigureAwait(false);
             var services = free.Concat(existing.SelectMany(p => p.Services)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var candidates = est.Store.Config.Profiles.Where(p => p.Enabled && services.Contains(CameraEstApi.ServiceOf(p.Use))).ToList();
-            if (device.Dot1xEnabled == true && candidates.Any(p => p.Use == ProfileUse.Dot1x))
+
+            // IEEE 802.1X read fresh from the camera, never the cached state; unknown counts as on (no lock-out).
+            var dot1xOn = await Dot1xOnAsync(ctx, ct).ConfigureAwait(false);
+            if (dot1xOn && payload.ReplaceDot1x)
             {
-                if (payload.ReplaceDot1x)
+                ctx.Log(TaskLogLevel.Info, EstTaskIds.Dot1xReplaced); // the user chose it in the dialog
+            }
+            else if (dot1xOn)
+            {
+                // No lock-out: a new network access certificate the RADIUS server may not trust would take the camera off
+                // the network, and a removed profile would stop renewing the one it has. Its profiles stay untouched.
+                protectNetworkAccess = true;
+                if (candidates.RemoveAll(p => p.Use == ProfileUse.Dot1x) > 0)
                 {
-                    ctx.Log(TaskLogLevel.Info, EstTaskIds.Dot1xReplaced); // the user chose it in the dialog
-                }
-                else
-                {
-                    // No lock-out: a new network access certificate the RADIUS server may not trust would take the camera off the network.
-                    candidates.RemoveAll(p => p.Use == ProfileUse.Dot1x);
-                    dot1xSkipped = true;
                     step.Warn(EstTaskIds.Dot1xSkipped);
+                }
+
+                // A use a kept network access profile serves too: the camera takes one profile per use.
+                var kept = existing.Where(e => e.Services.Contains(dot1xService, StringComparer.OrdinalIgnoreCase)).ToList();
+                foreach (var taken in candidates.Where(c => kept.Any(k => k.Services.Contains(CameraEstApi.ServiceOf(c.Use), StringComparer.OrdinalIgnoreCase))).ToList())
+                {
+                    candidates.Remove(taken);
+                    step.Warn(EstTaskIds.ServedByNetworkAccessProfile(taken.Name, kept.First(k => k.Services.Contains(CameraEstApi.ServiceOf(taken.Use), StringComparer.OrdinalIgnoreCase)).Id));
                 }
             }
 
-            // HTTPS last: its certificate restarts the camera's web server.
-            var profiles = candidates.Take(EstTaskIds.MaxProfilesPerCamera).OrderBy(p => p.Use == ProfileUse.Https).ToList();
+            // The camera holds at most two profiles (a third is refused, seen on 10.0.0.48): those that stay (another EST
+            // server's for other uses, a kept network access profile) count. The most profiles that fit, in the order of the
+            // EST server page; decided here, before the first write. HTTPS last: its certificate restarts the web server.
+            var fitting = Fitting(candidates, existing, protectNetworkAccess, dot1xService);
+            var profiles = fitting.OrderBy(p => p.Use == ProfileUse.Https).ToList();
             if (profiles.Count == 0)
             {
-                throw new DeviceNotCompatibleException(EstTaskIds.NoProfile);
+                throw new DeviceNotCompatibleException(candidates.Count > 0 ? EstTaskIds.NoRoom : EstTaskIds.NoProfile);
             }
 
             var address = ctx.Network is { } network ? await network.LocalAddressTowardsAsync(device.Address, ct).ConfigureAwait(false) : null;
@@ -267,12 +287,10 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
         var wanted = profiles.Select(p => Wanted(p, device, address, est.Store.Config.Port, caAliases, Pick(deviceIds, p.Key))).ToList();
         var wantedServices = profiles.Select(p => CameraEstApi.ServiceOf(p.Use)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // OADM's profiles and those that would serve the same services; other profiles of the camera stay. With the IEEE
-        // 802.1X profile skipped, the camera's network access profile stays untouched too (no lock-out).
-        var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
+        // OADM's profiles and those that would serve the same services; other profiles of the camera stay, and with IEEE
+        // 802.1X on (not replaced) every network access profile stays untouched (no lock-out).
         var current = (await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false))
-            .Where(c => c.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) || c.Services.Any(wantedServices.Contains))
-            .Where(c => !(dot1xSkipped && c.Services.Contains(dot1xService, StringComparer.OrdinalIgnoreCase)))
+            .Where(c => !Stays(c, wantedServices, protectNetworkAccess, dot1xService))
             .ToList();
         var started = est.Time.GetUtcNow().UtcDateTime;
         if (Same(current, wanted))
@@ -504,7 +522,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                     var profiles = await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false);
                     status = profiles.FirstOrDefault(p => p.Id == id)?.Status;
                 }
-                catch (HttpRequestException) when (est.Time.GetUtcNow() < until)
+                catch (Exception ex) when ((ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested)) && est.Time.GetUtcNow() < until)
                 {
                     status = null; // the web server restarts with a new certificate: ask again
                 }
@@ -581,6 +599,64 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
     private static string Truncate(string text, int length) => text.Length <= length ? text : text[..length];
 
+    /// <summary>The largest set of <paramref name="candidates"/> (in their order) that fits next to the profiles that stay.</summary>
+    internal static IReadOnlyList<EstProfile> Fitting(IReadOnlyList<EstProfile> candidates, IReadOnlyList<CameraEstProfile> existing, bool protectNetworkAccess, string dot1xService)
+    {
+        for (var size = Math.Min(EstTaskIds.MaxProfilesPerCamera, candidates.Count); size > 0; size--)
+        {
+            foreach (var subset in Subsets(candidates, size))
+            {
+                var chosen = subset.Select(p => CameraEstApi.ServiceOf(p.Use)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (existing.Count(e => Stays(e, chosen, protectNetworkAccess, dot1xService)) + size <= EstTaskIds.MaxProfilesPerCamera)
+                {
+                    return subset;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /// <summary>The subsets of <paramref name="size"/> items, in the items' order (a few profiles: at most one per use).</summary>
+    private static IEnumerable<IReadOnlyList<EstProfile>> Subsets(IReadOnlyList<EstProfile> items, int size, int start = 0)
+    {
+        if (size == 0)
+        {
+            yield return [];
+            yield break;
+        }
+
+        for (var i = start; i <= items.Count - size; i++)
+        {
+            foreach (var rest in Subsets(items, size - 1, i + 1))
+            {
+                yield return [items[i], .. rest];
+            }
+        }
+    }
+
+    /// <summary>
+    /// A camera profile Set up leaves alone: another EST server's for other uses, and with <paramref name="protectNetworkAccess"/>
+    /// every profile that serves IEEE 802.1X. OADM's other profiles and those serving a wanted use are replaced.
+    /// </summary>
+    private static bool Stays(CameraEstProfile profile, ISet<string> wanted, bool protectNetworkAccess, string dot1xService) =>
+        (protectNetworkAccess && profile.Services.Contains(dot1xService, StringComparer.OrdinalIgnoreCase))
+        || (!profile.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) && !profile.Services.Any(wanted.Contains));
+
+    /// <summary>IEEE 802.1X on the camera, read now (<c>Network.Interface.I0.dot1x.Enabled</c>); unknown counts as on.</summary>
+    private static async Task<bool> Dot1xOnAsync(ITaskExecutionContext ctx, CancellationToken ct)
+    {
+        try
+        {
+            var parameters = await ctx.Vapix.ListParametersAsync([EstTaskIds.Dot1xParameter], ct).ConfigureAwait(false);
+            return !parameters.TryGetValue(EstTaskIds.Dot1xParameter, out var value) || !string.Equals(value, "no", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (HttpRequestException)
+        {
+            return true;
+        }
+    }
+
     /// <summary>
     /// Removes the chosen profiles from the camera, any profile (also of another EST server); profiles the camera does not
     /// have are skipped. OADM's own profiles stop the Not renewed check of their certificates.
@@ -601,6 +677,11 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         {
             ctx.Log(TaskLogLevel.Info, EstTaskIds.NothingToRemove);
             return;
+        }
+
+        if (Service is null && present.Any(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(EstTaskIds.NotRunning); // it has to stop the renewal check of their certificates
         }
 
         await ctx.StepAsync(EstTaskIds.RemoveStep, async step =>
