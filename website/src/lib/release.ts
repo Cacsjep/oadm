@@ -4,7 +4,7 @@
 export const repo = 'Cacsjep/oadm';
 export const releasePage = `https://github.com/${repo}/releases/latest`;
 
-export type Asset = { name: string; browser_download_url: string };
+export type Asset = { name: string; size?: number; browser_download_url: string };
 export type Release = { version: string; url: string; assets: Asset[] };
 
 let cached: Promise<Release> | undefined;

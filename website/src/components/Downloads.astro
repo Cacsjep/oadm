@@ -1,6 +1,7 @@
 ---
-// Download buttons for the latest release. The links are read from GitHub when the site is built and again in the
-// browser, so a new release shows up without a website rebuild. Without either, they open the release page.
+// One Download button for the latest release. It opens a dialog with every file per system: OADM, the OADM Site Node
+// and the portable ZIPs. The files are read from GitHub when the site is built and again in the browser, so a new
+// release shows up without a website rebuild. Without either, every link opens the release page.
 import { Icon } from '@astrojs/starlight/components';
 
 import { latestRelease, releasePage, repo } from '../lib/release';
@@ -12,52 +13,125 @@ const portal = 'https://support.oadm.app/';
 const youtube = 'https://www.youtube.com/@oadm-ca';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
-// The site node row shows only while the latest release has site node files (a pre-release is never "latest").
-const hasSiteNode = assets.some((a) => /^OADM-SiteNode-/.test(a.name));
-const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
-// OADM-<version>-win-x64.msi, not OADM-SiteNode-<version>-win-x64.msi.
-const links = {
-	windows: find(/^OADM-\d.*-win-x64\.msi$/),
-	macos: find(/osx-x64\.pkg$/),
-	server: find(/^oadm-server_.*_amd64\.deb$/),
-	client: find(/^oadm-client_.*_amd64\.deb$/),
-	serverArm: find(/^oadm-server_.*_arm64\.deb$/),
-	clientArm: find(/^oadm-client_.*_arm64\.deb$/),
-	// The OADM Site Node (user docs "Sites"): an MSI, and on Linux the service and the app as two .deb files.
-	nodeWindows: find(/^OADM-SiteNode-.*-win-x64\.msi$/),
-	node: find(/^oadm-site-node_.*_amd64\.deb$/),
-	nodeApp: find(/^oadm-site-node-app_.*_amd64\.deb$/),
-	nodeArm: find(/^oadm-site-node_.*_arm64\.deb$/),
-	nodeAppArm: find(/^oadm-site-node-app_.*_arm64\.deb$/),
-};
+type Row = { name: string; note?: string; pattern: string };
+type Group = { title?: string; rows: Row[] };
+type Tab = { id: string; label: string; icon: 'seti:windows' | 'linux' | 'apple' | 'seti:zip'; iconClass: string; groups: Group[]; note?: string };
+
+const portable = (title: string, rid: string): Group => ({
+	title,
+	rows: [
+		{ name: 'Server', pattern: `^OADM-Server-.*-${rid}\\.zip$` },
+		{ name: 'Client', pattern: `^OADM-Client-.*-${rid}\\.zip$` },
+	],
+});
+const linux = (id: string, label: string, deb: string): Tab => ({
+	id,
+	label,
+	icon: 'linux',
+	iconClass: 'os-linux',
+	groups: [
+		{
+			rows: [
+				{ name: 'Server', pattern: `^oadm-server_.*_${deb}\\.deb$` },
+				{ name: 'Client', pattern: `^oadm-client_.*_${deb}\\.deb$` },
+				{ name: 'Site Node', pattern: `^oadm-site-node_.*_${deb}\\.deb$` },
+				{ name: 'Site Node App', note: 'Optional, needs a desktop', pattern: `^oadm-site-node-app_.*_${deb}\\.deb$` },
+			],
+		},
+	],
+});
+const tabs: Tab[] = [
+	{
+		id: 'windows',
+		label: 'Windows',
+		icon: 'seti:windows',
+		iconClass: 'os-windows',
+		groups: [
+			{
+				rows: [
+					{ name: 'Server and Client Installer', pattern: '^OADM-\\d.*-win-x64\\.msi$' },
+					{ name: 'Site Node Installer', pattern: '^OADM-SiteNode-.*-win-x64\\.msi$' },
+				],
+			},
+		],
+	},
+	linux('linux-x64', 'Linux x64', 'amd64'),
+	linux('linux-arm64', 'Linux ARM64', 'arm64'),
+	{
+		id: 'macos',
+		label: 'macOS',
+		icon: 'apple',
+		iconClass: 'os-macos',
+		groups: [{ rows: [{ name: 'Server and Client Installer', pattern: 'osx-x64\\.pkg$' }] }],
+		note: 'The Site Node runs on Windows and Linux.',
+	},
+	{
+		id: 'portable',
+		label: 'Portable',
+		icon: 'seti:zip',
+		iconClass: 'os-portable',
+		groups: [
+			portable('Windows x64', 'win-x64'),
+			portable('Linux x64', 'linux-x64'),
+			portable('Linux ARM64', 'linux-arm64'),
+			portable('macOS', 'osx-x64'),
+		],
+		note: 'Server and client as ZIP files that run without installing.',
+	},
+];
+
+// Without release data (offline build) every row shows and opens the release page.
+const known = assets.length > 0;
+const asset = (pattern: string) => assets.find((a) => new RegExp(pattern).test(a.name));
+const size = (bytes?: number) => (bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : '');
+const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePage;
 ---
 
 <div class="downloads not-content" data-repo={repo}>
-	<span class="dl-label">Download <a class="dl-version" href={`${base}project/changelog/`} hidden={!version}>{version}</a></span>
-	<div class="download-buttons">
-		<a class="dl" data-asset="^OADM-\d.*-win-x64\.msi$" href={links.windows}><Icon name="seti:windows" class="os-windows" />Windows</a>
-		<details class="dl-linux">
-			<summary class="dl"><Icon name="linux" class="os-linux" />Linux<Icon name="down-caret" class="dl-caret" /></summary>
-			<div class="dl-menu">
-				<a data-linux="amd64" data-pair="oadm-client_" data-asset="^oadm-server_.*_amd64\.deb$" data-client={links.client} href={links.server}>x64</a>
-				<a data-linux="arm64" data-pair="oadm-client_" data-asset="^oadm-server_.*_arm64\.deb$" data-client={links.clientArm} href={links.serverArm}>ARM64</a>
+	<button class="dl dl-main" type="button" aria-haspopup="dialog" aria-controls="download-dialog">
+		<Icon name="download" />Download<span class="dl-version-text" hidden={!version}>{version}</span>
+	</button>
+	<dialog id="download-dialog" class="dl-dialog" aria-labelledby="download-title">
+		<div class="dl-dialog-head">
+			<h2 id="download-title">Download OADM <span class="dl-version-text">{version}</span></h2>
+			<button class="dl-close" type="button" aria-label="Close"><Icon name="close" /></button>
+		</div>
+		<div class="dl-tabs" role="tablist">
+			{tabs.map((tab, i) => (
+				<button type="button" role="tab" id={`dl-tab-${tab.id}`} aria-controls={`dl-panel-${tab.id}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1} data-tab={tab.id}>
+					<Icon name={tab.icon} class={tab.iconClass} />{tab.label}
+				</button>
+			))}
+		</div>
+		{tabs.map((tab, i) => (
+			<div class:list={["dl-panel", { "dl-panel-portable": tab.id === "portable" }]} role="tabpanel" id={`dl-panel-${tab.id}`} aria-labelledby={`dl-tab-${tab.id}`} hidden={i !== 0}>
+				{tab.groups.map((group) => (
+					<section class="dl-group" hidden={known && !group.rows.some((r) => asset(r.pattern))}>
+						{group.title && <h3>{group.title}</h3>}
+						{group.rows.map((row) => {
+							const file = asset(row.pattern);
+							return (
+								<a class="dl-row" data-asset={row.pattern} href={file?.browser_download_url ?? releasePage} hidden={known && !file}>
+									<span class="dl-row-text">
+										<span class="dl-row-name">{row.name}{row.note && <span class="dl-row-note">{row.note}</span>}</span>
+										<span class="dl-row-file">{file?.name ?? 'Release page'}</span>
+									</span>
+									<span class="dl-row-size">{size(file?.size)}</span>
+									<Icon name="download" class="dl-row-icon" />
+								</a>
+							);
+						})}
+					</section>
+				))}
+				{tab.note && <p class="dl-panel-note">{tab.note}</p>}
 			</div>
-		</details>
-		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" class="os-macos" />macOS</a>
-	</div>
-	<div class="site-node-downloads" hidden={!hasSiteNode}>
-	<span class="dl-label site-node-label">Site node</span>
-	<div class="download-buttons">
-		<a class="dl" data-asset="^OADM-SiteNode-.*-win-x64\.msi$" href={links.nodeWindows}><Icon name="seti:windows" class="os-windows" />Windows</a>
-		<details class="dl-linux">
-			<summary class="dl"><Icon name="linux" class="os-linux" />Linux<Icon name="down-caret" class="dl-caret" /></summary>
-			<div class="dl-menu">
-				<a data-linux="amd64" data-pair="oadm-site-node-app_" data-asset="^oadm-site-node_.*_amd64\.deb$" data-client={links.nodeApp} href={links.node}>x64</a>
-				<a data-linux="arm64" data-pair="oadm-site-node-app_" data-asset="^oadm-site-node_.*_arm64\.deb$" data-client={links.nodeAppArm} href={links.nodeArm}>ARM64</a>
-			</div>
-		</details>
-	</div>
-	</div>
+		))}
+		<div class="dl-dialog-foot">
+			<a href={`${base}start/install/`}>How to install</a>
+			<a class="dl-checksums" href={checksums}>Checksums</a>
+			<a href={releasePage}>All files on GitHub</a>
+		</div>
+	</dialog>
 	<nav class="dl-links" aria-label="Community and learning">
 		<a class="forum-link" href={portal}><Icon name="comment-alt" />Support Forum</a>
 		<button class="newsletter-toggle" type="button" aria-expanded="false" aria-controls="newsletter"><Icon name="email" />Newsletter</button>
@@ -79,30 +153,37 @@ const links = {
 <script>
 	import { disableForumLink, forumAvailable } from '../lib/forum';
 
-	// Refresh the links from the latest release in the browser.
 	const root = document.querySelector<HTMLElement>('.downloads');
 
-	// Linux has two packages: each Linux button downloads both .deb files of its architecture (OADM: server and client;
-	// site node: service and app). A Linux menu closes after a choice and on a click elsewhere.
-	const linuxMenus = Array.from(root?.querySelectorAll<HTMLDetailsElement>('.dl-linux') ?? []);
-	document.addEventListener('click', (event) => {
-		for (const menu of linuxMenus) if (menu.open && !menu.contains(event.target as Node)) menu.open = false;
-	});
-	root?.querySelectorAll<HTMLAnchorElement>('a[data-linux]').forEach((button) => button.addEventListener('click', (event) => {
-		const menu = button.closest('details');
-		if (menu) menu.open = false;
-		const link = event.currentTarget as HTMLAnchorElement;
-		const client = link.dataset.client;
-		if (!client || client === link.href || !client.endsWith('.deb')) return;
-		event.preventDefault();
-		for (const url of [link.href, client]) {
-			const frame = document.createElement('iframe');
-			frame.hidden = true;
-			frame.src = url;
-			document.body.append(frame);
-			setTimeout(() => frame.remove(), 60_000);
+	// The Download button opens the dialog on the tab of the visitor's system; the backdrop or Escape closes it.
+	const dialog = root?.querySelector<HTMLDialogElement>('.dl-dialog');
+	const tabs = Array.from(dialog?.querySelectorAll<HTMLButtonElement>('[role=tab]') ?? []);
+	const select = (id: string) => {
+		for (const tab of tabs) {
+			const on = tab.dataset.tab === id;
+			tab.setAttribute('aria-selected', String(on));
+			tab.tabIndex = on ? 0 : -1;
+			const panel = dialog?.querySelector<HTMLElement>(`#${tab.getAttribute('aria-controls')}`);
+			if (panel) panel.hidden = !on;
 		}
-	}));
+	};
+	const platform = () => {
+		const hints = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? '';
+		const agent = `${hints} ${navigator.userAgent}`;
+		if (/iPhone|iPad|Android/i.test(agent)) return 'windows';
+		if (/Mac/i.test(agent)) return 'macos';
+		if (/Linux|X11/i.test(agent)) return /aarch64|arm64/i.test(agent) ? 'linux-arm64' : 'linux-x64';
+		return 'windows';
+	};
+	tabs.forEach((tab) => tab.addEventListener('click', () => select(tab.dataset.tab!)));
+	root?.querySelector('.dl-main')?.addEventListener('click', () => {
+		select(platform());
+		dialog?.showModal();
+	});
+	dialog?.querySelector('.dl-close')?.addEventListener('click', () => dialog.close());
+	dialog?.addEventListener('click', (event) => {
+		if (event.target === dialog) dialog.close();
+	});
 
 	// Newsletter: the button opens the form, which posts to the support forum (double opt-in by mail).
 	const toggle = root?.querySelector<HTMLButtonElement>('.newsletter-toggle');
@@ -162,29 +243,35 @@ const links = {
 	});
 
 	if (root) {
-		// no-store: never a cached answer, so a new release shows on the next page load.
+		// Refresh the files from the latest release in the browser. no-store: never a cached answer, so a new release shows
+		// on the next page load.
 		fetch(`https://api.github.com/repos/${root.dataset.repo}/releases/latest`, { cache: 'no-store' })
 			.then((r) => (r.ok ? r.json() : null))
 			.then((release) => {
 				if (!release) return;
-				const version = root.querySelector<HTMLAnchorElement>('.dl-version');
-				if (version && release.tag_name) {
-					version.textContent = release.tag_name;
-					version.hidden = false;
+				if (release.tag_name) {
+					root.querySelectorAll<HTMLElement>('.dl-version-text').forEach((version) => {
+						version.textContent = release.tag_name;
+						version.hidden = false;
+					});
 				}
-				const assets: { name: string; browser_download_url: string }[] = release.assets ?? [];
-				const siteNode = root.querySelector<HTMLElement>('.site-node-downloads');
-				if (siteNode) siteNode.hidden = !assets.some((a) => /^OADM-SiteNode-/.test(a.name));
+				const assets: { name: string; size: number; browser_download_url: string }[] = release.assets ?? [];
+				if (assets.length === 0) return;
 				root.querySelectorAll<HTMLAnchorElement>('a[data-asset]').forEach((link) => {
 					const pattern = new RegExp(link.dataset.asset ?? '^$');
 					const asset = assets.find((a) => pattern.test(a.name));
-					if (asset) link.href = asset.browser_download_url;
+					link.hidden = !asset;
+					if (!asset) return;
+					link.href = asset.browser_download_url;
+					link.querySelector('.dl-row-file')!.textContent = asset.name;
+					link.querySelector('.dl-row-size')!.textContent = `${Math.round(asset.size / (1024 * 1024))} MB`;
 				});
-				root.querySelectorAll<HTMLAnchorElement>('a[data-linux]').forEach((linux) => {
-					const pair = linux.dataset.pair ?? 'oadm-client_';
-					const client = assets.find((a) => a.name.startsWith(pair) && a.name.endsWith(`_${linux.dataset.linux}.deb`));
-					if (client) linux.dataset.client = client.browser_download_url;
+				root.querySelectorAll<HTMLElement>('.dl-group').forEach((group) => {
+					group.hidden = !group.querySelector('a[data-asset]:not([hidden])');
 				});
+				const sums = assets.find((a) => a.name === 'SHA256SUMS.txt');
+				const checksums = root.querySelector<HTMLAnchorElement>('.dl-checksums');
+				if (sums && checksums) checksums.href = sums.browser_download_url;
 			})
 			.catch(() => {});
 	}

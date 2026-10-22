@@ -264,13 +264,6 @@ html[data-has-hero] .content-panel:has(.hero) {
 	margin-bottom: 3rem;
 }
 
-.download-buttons {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: center;
-	gap: 0.5rem;
-}
-
 .dl {
 	display: inline-flex;
 	align-items: center;
@@ -296,26 +289,6 @@ html[data-has-hero] .content-panel:has(.hero) {
 	height: 1.1rem;
 }
 
-.dl-meta {
-	color: var(--sl-color-gray-3);
-	font-size: var(--sl-text-xs);
-}
-
-.dl-meta {
-	margin: 0;
-}
-
-.dl-meta a {
-	color: var(--sl-color-gray-2);
-}
-
-.dl-meta {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: center;
-	gap: 0.4rem;
-}
-
 /* Landing page: its own top bar (TopBar.astro) instead of the docs header. */
 html[data-has-hero] {
 	--sl-nav-height: 3.5rem;
@@ -323,14 +296,6 @@ html[data-has-hero] {
 
 html[data-has-hero] header.header {
 	display: none;
-}
-
-.dl-label {
-	color: var(--sl-color-gray-3);
-	font-size: var(--sl-text-xs);
-	font-weight: 600;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
 }
 
 /* No theme switch after the social icons, so no divider either. */
@@ -514,72 +479,6 @@ header .social-icons::after {
 	display: none;
 }
 
-/* Download buttons: each system's icon in its own color. */
-.dl .os-windows {
-	color: #00a4ef;
-}
-
-.dl .os-linux {
-	color: #fcc624;
-}
-
-.dl .os-macos {
-	color: #a2aaad;
-}
-
-/* Linux: one button with a menu for the architecture. */
-.dl-linux {
-	position: relative;
-}
-
-.dl-linux summary::-webkit-details-marker {
-	display: none;
-}
-
-.dl-linux[open] summary {
-	border-color: var(--sl-color-accent);
-}
-
-.dl .dl-caret {
-	width: 0.9rem;
-	height: 0.9rem;
-	color: var(--sl-color-gray-3);
-	transition: transform 0.15s;
-}
-
-.dl-linux[open] .dl-caret {
-	transform: rotate(180deg);
-}
-
-.dl-menu {
-	position: absolute;
-	top: calc(100% + 0.3rem);
-	left: 0;
-	z-index: 5;
-	display: flex;
-	flex-direction: column;
-	min-width: 100%;
-	padding: 0.25rem;
-	border: 1px solid var(--sl-color-gray-5);
-	border-radius: 8px;
-	background: var(--sl-color-gray-6);
-	box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
-}
-
-.dl-menu a {
-	padding: 0.4rem 0.7rem;
-	border-radius: 4px;
-	color: var(--sl-color-white);
-	font-size: var(--sl-text-sm);
-	font-weight: 500;
-	text-decoration: none;
-	white-space: nowrap;
-}
-
-.dl-menu a:hover {
-	background: var(--sl-color-gray-5);
-}
-
 /* Newsletter form below the Support Forum and newsletter buttons. */
 .newsletter {
 	display: flex;
@@ -640,31 +539,279 @@ header .social-icons::after {
 	color: var(--sl-color-white);
 }
 
-/* The version of the latest release in the "Download" label, a link to the changelog. */
-.downloads .dl-version {
+/* The one Download button of the landing page (accent), with the version of the latest release. */
+.downloads .dl-main {
+	border-color: var(--sl-color-accent);
+	background: var(--sl-color-accent);
+	color: #fff;
+}
+
+.downloads .dl-main:hover {
+	background: color-mix(in srgb, var(--sl-color-accent) 85%, white);
+}
+
+.downloads .dl-main .dl-version-text {
+	font-weight: 500;
+	opacity: 0.75;
+}
+
+.downloads .dl-version-text[hidden] {
+	display: none;
+}
+
+/* The download dialog: one tab per system, the files grouped (OADM, OADM Site Node, Portable). */
+.dl-dialog {
+	position: fixed;
+	inset: 0;
+	margin: auto;
+	box-sizing: border-box;
+	width: calc(100vw - 2rem);
+	max-width: 40rem;
+	height: fit-content;
+	max-height: calc(100dvh - 2rem);
+	padding: 0;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 12px;
+	background: var(--sl-color-gray-6);
+	color: var(--sl-color-white);
+	box-shadow: 0 24px 64px rgb(0 0 0 / 0.6);
+	text-align: left;
+}
+
+.dl-dialog::backdrop {
+	background: rgb(0 0 0 / 0.6);
+	backdrop-filter: blur(2px);
+}
+
+.dl-dialog-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 1.1rem 1.25rem 0.5rem;
+}
+
+.dl-dialog h2 {
+	margin: 0;
+	font-size: var(--sl-text-xl);
+	font-weight: 600;
+}
+
+.dl-dialog h2 .dl-version-text {
+	color: var(--sl-color-gray-3);
+	font-weight: 500;
+}
+
+.dl-close {
+	display: inline-flex;
+	padding: 0.3rem;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: var(--sl-color-gray-3);
+	cursor: pointer;
+}
+
+.dl-close:hover {
+	background: var(--sl-color-gray-5);
+	color: var(--sl-color-white);
+}
+
+.dl-close svg {
+	width: 1.2rem;
+	height: 1.2rem;
+}
+
+.dl-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+	padding: 0.5rem 1.25rem 0;
+	border-bottom: 1px solid var(--sl-color-gray-5);
+}
+
+.dl-tabs [role='tab'] {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	margin-bottom: -1px;
+	padding: 0.55rem 0.8rem;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: var(--sl-color-gray-3);
+	font: inherit;
+	font-size: var(--sl-text-sm);
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.dl-tabs [role='tab']:hover {
+	color: var(--sl-color-white);
+}
+
+.dl-tabs [role='tab'][aria-selected='true'] {
+	border-bottom-color: var(--sl-color-accent);
+	color: var(--sl-color-white);
+}
+
+.dl-tabs svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.dl-tabs .os-windows {
+	color: #00a4ef;
+}
+
+.dl-tabs .os-linux {
+	color: #fcc624;
+}
+
+.dl-tabs .os-portable {
 	color: var(--sl-color-gray-2);
+}
+
+.dl-tabs .os-macos {
+	color: #a2aaad;
+}
+
+.dl-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	padding: 1rem 1.25rem;
+}
+
+.dl-panel[hidden],
+.dl-group[hidden],
+.dl-row[hidden] {
+	display: none;
+}
+
+.dl-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+/* Portable: the server and the client of one system side by side. */
+.dl-panel-portable .dl-group {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.35rem;
+}
+
+.dl-panel-portable .dl-group h3 {
+	grid-column: 1 / -1;
+}
+
+.dl-group h3 {
+	margin: 0 0 0.15rem;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-xs);
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.dl-row {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.6rem 0.85rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 8px;
+	background: var(--sl-color-black);
+	color: var(--sl-color-white);
+	text-decoration: none;
+	transition: border-color 0.15s;
+}
+
+.dl-row:hover {
+	border-color: var(--sl-color-accent);
+}
+
+.dl-row-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.dl-row-name {
+	font-size: var(--sl-text-sm);
+	font-weight: 600;
+}
+
+.dl-row-note {
+	margin-left: 0.5rem;
+	color: var(--sl-color-gray-3);
+	font-weight: 400;
+}
+
+.dl-row-file {
+	overflow: hidden;
+	color: var(--sl-color-gray-3);
+	font-family: var(--sl-font-mono);
+	font-size: var(--sl-text-xs);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dl-row-size {
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-xs);
+	white-space: nowrap;
+}
+
+.dl-row-icon {
+	width: 1.1rem;
+	height: 1.1rem;
+	color: var(--sl-color-accent-high);
+}
+
+.dl-panel-note {
+	margin: 0;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
+}
+
+.dl-dialog-foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 1.5rem;
+	padding: 0.85rem 1.25rem 1.1rem;
+	border-top: 1px solid var(--sl-color-gray-5);
+}
+
+.dl-dialog-foot a {
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
 	text-decoration: none;
 }
 
-.downloads .dl-version[hidden] {
-	display: none;
+.dl-dialog-foot a:hover {
+	color: var(--sl-color-white);
 }
 
-.downloads .dl-version:hover {
-	text-decoration: underline;
-}
+@media (max-width: 40rem) {
+	.dl-row-note {
+		display: block;
+		margin-left: 0;
+	}
 
-/* The site node buttons sit below the OADM ones (only while the latest release has them). */
-.downloads .site-node-downloads {
-	display: contents;
-}
+	.dl-tabs {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+	}
 
-.downloads .site-node-downloads[hidden] {
-	display: none;
-}
+	.dl-tabs [role='tab'] {
+		justify-content: center;
+	}
 
-.downloads .site-node-label {
-	margin-top: 15px;
+	.dl-panel-portable .dl-group {
+		grid-template-columns: 1fr;
+	}
 }
 
 /* Below the downloads: forum, newsletter, YouTube and docs as one quiet row of grey links, no boxes. */
@@ -698,8 +845,3 @@ header .social-icons::after {
 	color: var(--sl-color-white);
 }
 
-/* "Download" sits close to its buttons. */
-.downloads .dl-label {
-	margin-bottom: calc(5px - 0.75rem);
-	line-height: 1;
-}
