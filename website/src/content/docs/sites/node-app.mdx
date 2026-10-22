@@ -48,7 +48,8 @@ The **Ports** table lists the ports the node may use:
 
 - **Out**: the device ports the node may connect to. TCP 80, 443 and 554 by default.
 - **In**: ports the node opens at the site for the server, for example UDP 123 when the
-  [NTP server](../../tools/ntp-server/#devices-at-sites) serves the cameras there. Empty by default.
+  [NTP server](../../tools/ntp-server/#devices-at-sites) serves the cameras there, or TCP 9454 when cameras there get
+  their certificates from the [EST server](../../tools/est-server/#cameras-at-sites). Empty by default.
 
 Ports the server asks for come first, marked **Requested**, for example a camera on TCP 8443: **Allow** or **Dismiss**.
 **Add** right of the title adds a port. When the server no longer needs a port it asked for (the NTP server no longer

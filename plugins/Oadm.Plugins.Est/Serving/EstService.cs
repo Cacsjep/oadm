@@ -24,6 +24,9 @@ public sealed record EstHost(
     Func<IDeviceCertificateAuthority?> Authority,
     Func<bool> ProActive)
 {
+    /// <summary>The bound sites and their relays; null on hosts without sites.</summary>
+    public ISites? Sites { get; init; }
+
     public IPluginEvents? Events { get; init; }
 
     public Sdk.Events.IEventPublisher? Publisher { get; init; }
@@ -71,6 +74,8 @@ public sealed partial class EstService : IAsyncDisposable
     private readonly Lock _contextGate = new();
     private (X509Certificate2 Certificate, SslStreamCertificateContext Context)? _context;
     private ITcpRelay? _listener;
+    private readonly Dictionary<Guid, (string Name, ITcpRelay Relay)> _siteRelays = [];
+    private readonly SemaphoreSlim _sitesGate = new(1, 1);
     private Task _acceptLoop = Task.CompletedTask;
     private Dictionary<string, IDeviceInfo> _bySerial = new(StringComparer.OrdinalIgnoreCase);
     private long _indexedAtTicks = DateTimeOffset.MinValue.UtcTicks;
@@ -105,12 +110,152 @@ public sealed partial class EstService : IAsyncDisposable
     {
         await _store.LoadAsync(ct).ConfigureAwait(false);
         await OpenAsync(_store.Config.Port, ct).ConfigureAwait(false);
+        if (_host.Sites is { } sites)
+        {
+            sites.SitesChanged += OnSitesChanged;
+            await SyncSitesAsync(ct).ConfigureAwait(false);
+        }
     }
+
+    /// <summary>The relay of a site (null when none is open): the set-up task reports its state.</summary>
+    public ITcpRelay? SiteRelay(Guid siteId)
+    {
+        lock (_siteRelays)
+        {
+            return _siteRelays.TryGetValue(siteId, out var entry) ? entry.Relay : null;
+        }
+    }
+
+    /// <summary>
+    /// A camera at <paramref name="siteId"/> gets <paramref name="address"/> (the node's address towards it) as EST server:
+    /// the address goes into the site's server certificate and the site's relay opens (the node app may ask to allow the
+    /// port). Returns the site's relay; null when the site is not bound or cannot carry one.
+    /// </summary>
+    public async Task<ITcpRelay?> ServeSiteAsync(Guid siteId, string address, CancellationToken ct)
+    {
+        _store.AddSiteAddress(siteId, address);
+        await SyncSitesAsync(ct).ConfigureAwait(false);
+        PublishState();
+        return SiteRelay(siteId);
+    }
+
+    /// <summary>
+    /// One relay per bound site with set-up cameras; a site that is gone loses its relay (released: its node gives the
+    /// port back) and its addresses.
+    /// </summary>
+    private async Task SyncSitesAsync(CancellationToken ct)
+    {
+        if (_host.Sites is not { } sites)
+        {
+            return;
+        }
+
+        await _sitesGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var bound = sites.List.ToDictionary(s => s.Id);
+            foreach (var gone in _store.Sites().Where(id => !bound.ContainsKey(id)))
+            {
+                _store.RemoveSite(gone);
+            }
+
+            var wanted = _store.Sites().Where(bound.ContainsKey).ToHashSet();
+            List<ITcpRelay> remove;
+            lock (_siteRelays)
+            {
+                remove = [.. _siteRelays.Where(r => !wanted.Contains(r.Key)).Select(r => r.Value.Relay)];
+                foreach (var id in _siteRelays.Keys.Where(id => !wanted.Contains(id)).ToList())
+                {
+                    _siteRelays.Remove(id);
+                }
+            }
+
+            foreach (var relay in remove)
+            {
+                await relay.ReleaseAsync().ConfigureAwait(false);
+            }
+
+            foreach (var id in wanted)
+            {
+                lock (_siteRelays)
+                {
+                    if (_siteRelays.ContainsKey(id))
+                    {
+                        continue;
+                    }
+                }
+
+                try
+                {
+                    var relay = await sites.OpenTcpRelayAsync(id, _store.Config.Port, "EST server", ct).ConfigureAwait(false);
+                    relay.StateChanged += (_, _) => PublishState();
+                    lock (_siteRelays)
+                    {
+                        _siteRelays[id] = (bound[id].Name, relay);
+                    }
+
+                    Track(Task.Run(() => AcceptLoopAsync(relay, _cts.Token), CancellationToken.None));
+                    LogSiteListening(bound[id].Name, relay.StateText);
+                }
+                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ObjectDisposedException)
+                {
+                    LogSiteFailed(bound[id].Name, ex.Message); // removed meanwhile, or the plugin stops
+                }
+            }
+        }
+        finally
+        {
+            _sitesGate.Release();
+        }
+    }
+
+    private async Task CloseSitesAsync(bool release)
+    {
+        List<ITcpRelay> relays;
+        lock (_siteRelays)
+        {
+            relays = [.. _siteRelays.Values.Select(v => v.Relay)];
+            _siteRelays.Clear();
+        }
+
+        foreach (var relay in relays)
+        {
+            if (release)
+            {
+                await relay.ReleaseAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                await relay.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private void OnSitesChanged(object? sender, EventArgs e) => _ = Task.Run(async () =>
+    {
+        try
+        {
+            await SyncSitesAsync(_cts.Token).ConfigureAwait(false);
+            PublishState();
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // stopping
+        }
+    });
 
     public async ValueTask DisposeAsync()
     {
+        if (_host.Sites is { } sites)
+        {
+            sites.SitesChanged -= OnSitesChanged;
+        }
+
         await _cts.CancelAsync().ConfigureAwait(false);
         await CloseAsync(release: false).ConfigureAwait(false);
+        await _sitesGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        await CloseSitesAsync(release: false).ConfigureAwait(false); // the port stays allowed at the nodes for the next start
+        _sitesGate.Release();
         Task[] serving;
         lock (_serving)
         {
@@ -123,6 +268,7 @@ public sealed partial class EstService : IAsyncDisposable
         _cts.Dispose();
         _apply.Dispose();
         _index.Dispose();
+        _sitesGate.Dispose();
     }
 
     public EstState GetState()
@@ -153,7 +299,13 @@ public sealed partial class EstService : IAsyncDisposable
             text = listener.StateText;
         }
 
-        var listeners = listener is null ? [] : new List<ListenerState> { new(null, "This server", listener.State == RelayState.Running, listener.StateText) };
+        var listeners = listener is null ? new List<ListenerState>() : [new(null, "This server", listener.State == RelayState.Running, listener.StateText)];
+        lock (_siteRelays)
+        {
+            listeners.AddRange(_siteRelays.Select(s => new ListenerState(s.Key, s.Value.Name, s.Value.Relay.State == RelayState.Running, s.Value.Relay.StateText))
+                .OrderBy(l => l.Name, StringComparer.CurrentCultureIgnoreCase));
+        }
+
         return new EstState { Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount };
     }
 
@@ -171,6 +323,17 @@ public sealed partial class EstService : IAsyncDisposable
         {
             await CloseAsync(release: true).ConfigureAwait(false);
             await OpenAsync(request.Config.Port, ct).ConfigureAwait(false);
+            await _sitesGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await CloseSitesAsync(release: true).ConfigureAwait(false);
+            }
+            finally
+            {
+                _sitesGate.Release();
+            }
+
+            await SyncSitesAsync(ct).ConfigureAwait(false); // the sites listen on the new port
         }
 
         PublishState();
@@ -380,7 +543,8 @@ public sealed partial class EstService : IAsyncDisposable
     {
         await using var _ = connection.ConfigureAwait(false);
         var site = connection.SiteId ?? Guid.Empty;
-        var addresses = connection.SiteId is null ? _host.LocalAddresses() : [];
+        // At a site: the node's addresses the cameras there were given (no SNI: the site picks the certificate).
+        var addresses = connection.SiteId is { } siteId ? _store.SiteAddresses(siteId) : _host.LocalAddresses();
         var certificate = await _certificates.GetAsync(site, addresses, connection.SiteId is null ? _host.HostName : null, ct).ConfigureAwait(false);
         if (certificate is null)
         {
@@ -527,7 +691,15 @@ public sealed partial class EstService : IAsyncDisposable
 
     private void Record(EstResult result, IIncomingConnection connection)
     {
-        var where = connection.SiteId is { } site ? "site " + site : SiteTexts.ThisServer;
+        string where = SiteTexts.ThisServer;
+        if (connection.SiteId is { } site)
+        {
+            lock (_siteRelays)
+            {
+                where = _siteRelays.TryGetValue(site, out var entry) ? "site " + entry.Name : "site " + site;
+            }
+        }
+
         if (result.Response.Status == 401)
         {
             LogNoIdentity(result.Operation, connection.Remote, where); // anything on the network can do this: debug only, never in Enrollments
@@ -594,6 +766,12 @@ public sealed partial class EstService : IAsyncDisposable
 
     [GeneratedRegex("^[A-Za-z0-9_]{1,32}$")]
     private static partial Regex ProfileName();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "EST server at site {Site}: {State}")]
+    private partial void LogSiteListening(string site, string state);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST server cannot serve at site {Site}: {Error}")]
+    private partial void LogSiteFailed(string site, string error);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "EST server on port {Port}: {State}")]
     private partial void LogListening(int port, string state);

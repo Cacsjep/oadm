@@ -11,7 +11,7 @@ Apache 2.0).
     at most 64 connections, 20 requests and 30 s idle per connection.
   - `Serving/ServerCertificates`: the server's TLS certificate from the OADM CA (ECC P-256 key made in memory, 90 days,
     made again with a third left, when the addresses or the CA change); SAN = the server's addresses (network cards that
-    are up) and host name; one per site (stage 4).
+    are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
     `POST .../simplereenroll`; everything else and unknown or disabled profiles 404. Who may enroll: the camera's Axis
     device ID (or a certificate EST issued it, not revoked, chaining to the OADM CA) whose serial is a managed device of
@@ -35,7 +35,9 @@ Apache 2.0).
   confirmation in `EstTaskDialogs.cs`): **Set up certificate enrollment**
   (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` with the device ID, the OADM
   CA chain, this server as EST server; waits for ENROLLED; pins a new HTTPS certificate) and **Remove certificate
-  enrollment** (only `oadm_...` profiles). Not at sites yet. `Device/CameraEstApi.cs`: the camera's REST calls.
+  enrollment** (only `oadm_...` profiles). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
+  stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`), whose connections get the site's own
+  server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
 - Client part (`Oadm.Plugins.Est.Client.dll`): port, enrollments kept, profiles (name, use, days, key, on; at most one per
   use), Save with the status left of it; Enrollments (live); Certificates with search and **Revoke** (red, confirmed).
 - Revoke: the camera keeps the certificate until it ends, but the device gets nothing more for that profile until it is

@@ -45,6 +45,7 @@ public static class EstTaskIds
     public const string NoDeviceId = "The camera has no Axis device ID certificate. Nothing was changed.";
     public const string NoProfile = "The camera supports none of the EST server's profiles. Nothing was changed.";
     public const string NoAddress = "OADM has no address towards the camera. Nothing was changed.";
+    public const string NoSiteRelay = "The EST server cannot listen at the camera's site. Nothing was changed.";
 
     // Steps: imperative, with the article.
     public const string CheckStep = "Check compatibility";
@@ -84,8 +85,8 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
     /// <summary>A confirmation in the client (no options).</summary>
     public bool RequiresDialog => true;
 
-    /// <summary>The EST server only answers at this server's network for now (sites: stage 4).</summary>
-    public Sdk.Sites.SiteSupport? SiteSupport => Sdk.Sites.SiteSupport.None;
+    /// <summary>Cameras at a site enroll through their site node (a relay of the EST port).</summary>
+    public Sdk.Sites.SiteSupport? SiteSupport => Sdk.Sites.SiteSupport.Full;
 
     protected EstService? Service => service();
 
@@ -183,6 +184,12 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             if (address.AddressFamily == AddressFamily.InterNetworkV6 && address.ScopeId != 0)
             {
                 address = new IPAddress(address.GetAddressBytes()); // the server's own scope id means nothing to the camera
+            }
+
+            // At a site the camera reaches the node: its address goes into the site's server certificate, its relay opens.
+            if (device.SiteId is { } siteId && await est.ServeSiteAsync(siteId, address.ToString(), ct).ConfigureAwait(false) is null)
+            {
+                throw new DeviceNotCompatibleException(EstTaskIds.NoSiteRelay);
             }
 
             step.Complete(string.Join(", ", profiles.Select(p => p.Name)));
@@ -460,6 +467,12 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
                 if (est.Time.GetUtcNow() >= until)
                 {
+                    // At a site the relay is the usual reason: the node app still asks to allow the port, or the node is offline.
+                    if (device.SiteId is { } site && est.SiteRelay(site) is { State: not Sdk.Sites.RelayState.Running } relay)
+                    {
+                        throw new TimeoutException("The camera did not get its certificate: " + relay.StateText + ".");
+                    }
+
                     throw new TimeoutException(string.Create(CultureInfo.InvariantCulture,
                         $"The camera did not get its certificate within {EnrollTimeout.TotalMinutes:0} minutes (status {status ?? "unknown"}). The EST server page lists what reached it."));
                 }

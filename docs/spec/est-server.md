@@ -1,11 +1,11 @@
 # EST server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-22; stages 1 to 3 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
+Agreed 2026-10-22; stages 1 to 4 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
 
 The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
 every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**
-(at sites: stage 4, planned; until then `plugin.json` says `"siteSupport": "none"` and the tasks refuse devices at a site). A clean-room implementation from RFC 7030 and the Axis camera APIs.
+also at sites (through a relay of the site node). A clean-room implementation from RFC 7030 and the Axis camera APIs.
 
 ## What the user sees
 
@@ -74,9 +74,8 @@ has serverAuth and names the same device (`axis-<serial>.local`), and pins it ag
 ## Setting up a camera (the deploy task)
 
 Built in stage 3 (`Tasks/EstTasks.cs`), tested on 10.0.0.48. Device context menu, Security: **Set up certificate
-enrollment** and **Remove certificate enrollment**, each with a confirmation (no options: the profiles come from the EST
-server page; the confirmation says that an IEEE 802.1X profile replaces the certificate for network access). Not for
-devices at a site until stage 4.
+enrollment** (its dialog: the IEEE 802.1X choice below) and **Remove certificate enrollment** (a confirmation); the
+profiles come from the EST server page. Devices at a site too (stage 4).
 
 Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+** (`CanRun`), and before the first write a fresh
 `config/discover` with `cert` v1 and `cert-est` v1, an Axis device ID certificate of this camera's serial on the camera
@@ -144,5 +143,11 @@ THIRD-PARTY notices list the plugin's license.
    revoke, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
 3. **Deploy task** and remove task (built) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
    write test on 10.0.0.48 passed. Open: the camera's own EST error events in Enrollments, removing unused certificates.
-4. **Sites:** TCP relay per site, the node's certificate, the node app's port request.
+4. **Sites** (built): `ISites.OpenTcpRelayAsync` per bound site with set-up cameras (`EstService.ServeSiteAsync`, called
+   by the set-up task with the node's address towards the camera, `LocalAddressTowardsAsync` on the device's route); the
+   addresses per site are stored (plugin setting `sites`) and form the site's own server certificate (picked by the
+   connection's site: no SNI); a removed site's relay is released and its addresses dropped; a port change releases and
+   reopens every relay; `plugin.json` `"siteSupport": "full"`, `sitePorts` TCP 9454 "EST server". The page lists the relays
+   that do not run below Save ("EST server at <site>: waiting for approval in the OADM Site Node app"); the set-up's wait
+   ends with that text when the relay does not run.
 5. **Docs:** user docs page, plugin README, website PRO section.

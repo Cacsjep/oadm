@@ -32,7 +32,8 @@ until these expire. Everything else in OADM works the same with or without a lic
 - The cameras must reach the OADM server on **TCP 9454** (you can change the port). On Windows the installed server
   opens the port in the Windows firewall while the EST server runs; on Linux and macOS open it yourself if a firewall
   runs.
-- Cameras on the server's own network. Cameras at a [site](../../sites/sites-page/) are not supported yet.
+- Cameras at a [site](../../sites/sites-page/) work too: they reach the EST server through their site node (see
+  [Cameras at sites](#cameras-at-sites)).
 
 ## Turn it on
 
@@ -129,6 +130,20 @@ the certificates stay on the camera until they expire.
 Both tasks need the permission **Set up certificate enrollment** (Users page, roles). Administrators have it; give it to
 operators who should set up cameras. Setting up a camera again also allows a revoked profile again.
 
+## Cameras at sites
+
+Cameras at a site cannot reach the server. They talk to their site node instead, and the node passes the connection on:
+
+- When you set up the first camera of a site, the node opens the EST port (TCP 9454) at the site. The OADM Site Node app
+  lists it under **Ports** as **Requested**: click **Allow** there. Until then the page shows "EST server at (site name):
+  waiting for approval in the OADM Site Node app" and the set-up waits; after two minutes it ends with that reason, and
+  running it again after Allow is enough.
+- The camera gets the node's address in its site network as EST server, and the EST server answers there with a
+  certificate of its own for that address.
+- A camera at a site only enrolls through its own site. Renewals work while the node is online; when it is offline, the
+  camera tries again later.
+- When a site is removed, the node gives the port back.
+
 ## Renewals
 
 The camera renews each certificate by itself before it expires, without OADM running a task. It signs in with its
@@ -170,5 +185,7 @@ For example, send an email when an enrollment is refused.
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
 | Refused: **The certificate was revoked. Set up the camera again.** | Run Set up certificate enrollment on the camera. |
 | The camera does not get its certificate within 2 minutes | Check that the camera reaches the server on the port (firewall, routing). The Enrollments list shows what reached the server. |
+| At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |
+| At a site: **site offline** | The site node is not connected. The camera renews when it is back. |
 
 The server log has one line for every request (Logs page).

@@ -25,6 +25,7 @@ public sealed class ServerTests : IAsyncLifetime
     private readonly FakePluginNetwork _network = new();
     private readonly Devices _devices = new();
     private readonly FakePublisher _publisher = new();
+    private readonly FakeSites _sites = new();
     private X509Certificate2 _intermediate = null!;
     private X509Certificate2 _deviceId = null!;
     private EstService _service = null!;
@@ -41,6 +42,7 @@ public sealed class ServerTests : IAsyncLifetime
             LocalAddresses = () => ["10.0.0.17"],
             HostName = "oadm-server",
             Publisher = _publisher,
+            Sites = _sites,
         });
         await _service.StartAsync(CancellationToken.None);
     }
@@ -127,6 +129,49 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Empty(_publisher.Fired); // refusals of unknown cameras are not device events
     }
 
+    [Fact]
+    public async Task A_camera_at_a_site_enrolls_through_the_site_relay_with_the_sites_own_certificate()
+    {
+        var site = _sites.Add("Building B");
+        site.AllowedPorts.Add((SiteProtocol.Tcp, EstPluginInfo.DefaultPort));
+        _devices.List[0] = new FakeDevice { Serial = Serial, Address = "192.168.5.20", SiteId = site.Id };
+
+        var relay = await _service.ServeSiteAsync(site.Id, "192.168.5.2", CancellationToken.None);
+
+        Assert.NotNull(relay);
+        Assert.Equal((RelayState.Running, (Guid?)site.Id, EstPluginInfo.DefaultPort), (relay.State, relay.SiteId, relay.Port));
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+        X509Certificate2? server = null;
+        var response = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr), s => server = s, relay);
+        Assert.Equal(200, response.Status);
+        var names = server!.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Equal([IPAddress.Parse("192.168.5.2")], names.EnumerateIPAddresses()); // the node's address, not the server's
+        Assert.Equal("Building B", Assert.Single(_service.GetState().Listeners, l => l.SiteId == site.Id).Name);
+
+        // Through the server's own listener the same camera is refused: it belongs to the site.
+        Assert.Equal(403, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+
+        // The site goes away: its relay is released and its addresses forgotten.
+        _sites.Remove(site.Id);
+        await Eventually.TrueAsync(() => ((InMemoryRelay)relay).IsReleased, "the relay of the removed site is released");
+        Assert.Empty(_service.Store.Sites());
+    }
+
+    [Fact]
+    public async Task A_site_whose_node_has_not_allowed_the_port_says_so_on_the_page()
+    {
+        var site = _sites.Add("Warehouse");
+
+        var relay = await _service.ServeSiteAsync(site.Id, "192.168.9.2", CancellationToken.None);
+
+        Assert.Equal(RelayState.WaitingForApproval, relay!.State);
+        var listener = Assert.Single(_service.GetState().Listeners, l => l.SiteId == site.Id);
+        Assert.False(listener.Ok);
+        Assert.Contains("waiting for approval in the OADM Site Node app", listener.Text, StringComparison.Ordinal);
+        Assert.Equal("Running on port 9454", _service.GetState().StatusText); // this server's own listener still runs
+    }
+
     [Theory]
     [InlineData("cam-entrance", true)]
     [InlineData("cam.site.example", true)]
@@ -211,9 +256,10 @@ public sealed class ServerTests : IAsyncLifetime
     private static byte[] Body(byte[] csr) => Encoding.ASCII.GetBytes(Convert.ToBase64String(csr, Base64FormattingOptions.InsertLineBreaks));
 
     /// <summary>One request over TLS like a camera's EST client; the server certificate must chain to the OADM CA.</summary>
-    private async Task<Response> SendAsync(string method, string path, X509Certificate2? clientCertificate, byte[]? body = null, Action<X509Certificate2>? onServer = null)
+    private async Task<Response> SendAsync(string method, string path, X509Certificate2? clientCertificate, byte[]? body = null, Action<X509Certificate2>? onServer = null,
+        ITcpRelay? via = null)
     {
-        var relay = (InMemoryTcpRelay)_service.Listener!;
+        var relay = (InMemoryTcpRelay)(via ?? _service.Listener!);
         var stream = relay.Connect(new IPEndPoint(IPAddress.Parse("10.0.0.48"), 40000));
         await using var tls = new SslStream(stream, leaveInnerStreamOpen: false);
         var options = new SslClientAuthenticationOptions

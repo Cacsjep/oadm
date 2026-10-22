@@ -14,6 +14,7 @@ public sealed class EstStore : IAsyncDisposable
     public const string EnrollmentsKey = "enrollments";
     public const string CertificatesKey = "certificates";
     public const string RevokedKey = "revoked";
+    public const string SitesKey = "sites";
 
     private static readonly TimeSpan KeepEnded = TimeSpan.FromDays(30);
 
@@ -24,6 +25,7 @@ public sealed class EstStore : IAsyncDisposable
     private readonly LinkedList<Enrollment> _enrollments = new();
     private readonly Dictionary<string, IssuedCertificate> _certificates = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<RevokedPair> _revoked = [];
+    private readonly Dictionary<Guid, SortedSet<string>> _sites = [];
     private EstConfig _config = new();
     private bool _dirty;
     private bool _flushPending;
@@ -54,6 +56,7 @@ public sealed class EstStore : IAsyncDisposable
         var enrollments = Read<List<Enrollment>>(await _settings.GetAsync(EnrollmentsKey, ct).ConfigureAwait(false)) ?? [];
         var certificates = Read<List<IssuedCertificate>>(await _settings.GetAsync(CertificatesKey, ct).ConfigureAwait(false)) ?? [];
         var revoked = Read<List<RevokedPair>>(await _settings.GetAsync(RevokedKey, ct).ConfigureAwait(false)) ?? [];
+        var sites = Read<Dictionary<Guid, List<string>>>(await _settings.GetAsync(SitesKey, ct).ConfigureAwait(false)) ?? [];
         lock (_gate)
         {
             _config = config;
@@ -71,7 +74,67 @@ public sealed class EstStore : IAsyncDisposable
 
             _revoked.Clear();
             _revoked.UnionWith(revoked);
+            _sites.Clear();
+            foreach (var (site, addresses) in sites)
+            {
+                _sites[site] = new SortedSet<string>(addresses, StringComparer.Ordinal);
+            }
         }
+    }
+
+    /// <summary>
+    /// The site node's address a camera at <paramref name="siteId"/> was given as EST server (the set-up task): it goes
+    /// into the site's server certificate. Returns true when it is new.
+    /// </summary>
+    public bool AddSiteAddress(Guid siteId, string address)
+    {
+        lock (_gate)
+        {
+            if (!_sites.TryGetValue(siteId, out var addresses))
+            {
+                _sites[siteId] = addresses = new SortedSet<string>(StringComparer.Ordinal);
+            }
+
+            if (!addresses.Add(address))
+            {
+                return false;
+            }
+        }
+
+        MarkDirty();
+        return true;
+    }
+
+    /// <summary>The node addresses of a site the cameras were given; empty when no camera there is set up.</summary>
+    public IReadOnlyList<string> SiteAddresses(Guid siteId)
+    {
+        lock (_gate)
+        {
+            return _sites.TryGetValue(siteId, out var addresses) ? [.. addresses] : [];
+        }
+    }
+
+    /// <summary>The sites with set-up cameras.</summary>
+    public IReadOnlyList<Guid> Sites()
+    {
+        lock (_gate)
+        {
+            return [.. _sites.Keys];
+        }
+    }
+
+    /// <summary>A removed site: its addresses are forgotten.</summary>
+    public void RemoveSite(Guid siteId)
+    {
+        lock (_gate)
+        {
+            if (!_sites.Remove(siteId))
+            {
+                return;
+            }
+        }
+
+        MarkDirty();
     }
 
     /// <summary>Stores new settings at once.</summary>
@@ -214,6 +277,7 @@ public sealed class EstStore : IAsyncDisposable
             List<Enrollment> enrollments;
             List<IssuedCertificate> certificates;
             List<RevokedPair> revoked;
+            Dictionary<Guid, List<string>> sites;
             lock (_gate)
             {
                 _flushPending = false;
@@ -232,6 +296,7 @@ public sealed class EstStore : IAsyncDisposable
                 enrollments = [.. _enrollments];
                 certificates = [.. _certificates.Values];
                 revoked = [.. _revoked];
+                sites = _sites.ToDictionary(s => s.Key, s => s.Value.ToList());
             }
 
             try
@@ -239,6 +304,7 @@ public sealed class EstStore : IAsyncDisposable
                 await _settings.SetAsync(EnrollmentsKey, EstJson.Serialize(enrollments), ct).ConfigureAwait(false);
                 await _settings.SetAsync(CertificatesKey, EstJson.Serialize(certificates), ct).ConfigureAwait(false);
                 await _settings.SetAsync(RevokedKey, EstJson.Serialize(revoked), ct).ConfigureAwait(false);
+                await _settings.SetAsync(SitesKey, EstJson.Serialize(sites), ct).ConfigureAwait(false);
             }
             catch
             {

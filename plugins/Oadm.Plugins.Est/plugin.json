@@ -6,5 +6,6 @@
   "enabledByDefault": false,
   "pro": true,
   "description": "Cameras get and renew their certificates from the OADM CA by themselves.",
-  "siteSupport": "none"
+  "siteSupport": "full",
+  "sitePorts": [{ "protocol": "tcp", "port": 9454, "reason": "EST server" }]
 }

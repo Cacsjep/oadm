@@ -110,6 +110,26 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_camera_at_a_site_gets_the_nodes_address_and_the_site_relay_opens()
+    {
+        var sites = new FakeSites();
+        var site = sites.Add("Building B");
+        site.AllowedPorts.Add((Sdk.Sites.SiteProtocol.Tcp, EstPluginInfo.DefaultPort));
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(sites), () => _ca, () => true) { Sites = sites });
+        await est.StartAsync(CancellationToken.None);
+        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        var device = _device with { Address = "192.168.5.20", SiteId = site.Id };
+        var ctx = new FakeTaskContext(_camera) { Network = new FakeDeviceNetwork(site.Id) { LocalAddress = IPAddress.Parse("192.168.5.2") } };
+
+        Assert.Equal(Sdk.Sites.SiteSupport.Full, new EstSetupTask(() => est).SiteSupport);
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => est).ExecuteAsync(ctx, device, "{}", CancellationToken.None));
+
+        Assert.Equal("192.168.5.2:9454/.well-known/est/https", _camera.Profiles["oadm_https"]["server"]!.GetValue<string>());
+        Assert.Equal(Sdk.Sites.RelayState.Running, est.SiteRelay(site.Id)!.State);
+        Assert.Equal(["192.168.5.2"], est.Store.SiteAddresses(site.Id));
+    }
+
+    [Fact]
     public async Task A_camera_without_the_est_api_or_too_old_is_not_touched()
     {
         var task = new EstSetupTask(() => _est);

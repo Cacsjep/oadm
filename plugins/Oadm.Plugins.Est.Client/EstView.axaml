@@ -9,7 +9,7 @@
        the certificates. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*,Auto,*">
     <!-- Two columns: port and enrollments kept left, the profiles right; Save with the status below, at the right edge. -->
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,48,Auto" RowDefinitions="Auto,Auto,Auto" HorizontalAlignment="Left">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,48,Auto" RowDefinitions="Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
       <StackPanel Grid.Column="0" Classes="form">
         <ui:FormField Label="Port">
           <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
@@ -59,9 +59,11 @@
         <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
                 ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
         <ui:StatusChip VerticalAlignment="Center" Margin="0,0,12,0"
-                       Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" ToolTip.Tip="{Binding ListenersText}" />
+                       Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" />
       </DockPanel>
-      <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right"
+      <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Classes="secondary" Text="{Binding ListenersText}" TextWrapping="Wrap" HorizontalAlignment="Right"
+                 TextAlignment="Right" Margin="0,6,0,0" IsVisible="{Binding HasListenerProblems}" />
+      <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right"
                  IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     </Grid>
 

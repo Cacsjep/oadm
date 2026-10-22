@@ -6,6 +6,12 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- EST server at sites: cameras at a site get and renew their certificates through their site node. The node app asks to
+  allow TCP 9454 when the first camera there is set up; the EST server page shows the sites whose node has not allowed it
+  yet.
+
 ## [4.1.0-rc.2] - 2026-10-22
 
 ### Added

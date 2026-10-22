@@ -11,7 +11,7 @@ internal static class TestPki
     public static X509Certificate2 Root(string name)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest("CN=" + name, key, HashAlgorithmName.SHA256);
+        var request = new CertificateRequest("CN=" + Unique(name), key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
@@ -21,7 +21,7 @@ internal static class TestPki
     public static X509Certificate2 Intermediate(X509Certificate2 issuer, string name)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest("CN=" + name, key, HashAlgorithmName.SHA256);
+        var request = new CertificateRequest("CN=" + Unique(name), key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
@@ -57,6 +57,9 @@ internal static class TestPki
         return (new CertificateRequest(subject, key, HashAlgorithmName.SHA256).CreateSigningRequest(), key);
     }
 
+    /// <summary>A name of its own per test CA: Windows caches chains by name, CAs of other tests with the same name mix up.</summary>
+    private static string Unique(string name) => name + " " + Guid.NewGuid().ToString("N")[..8];
+
     private static byte[] Serial()
     {
         var serial = RandomNumberGenerator.GetBytes(12);
@@ -68,7 +71,7 @@ internal static class TestPki
 /// <summary>The OADM CA as the PKI plugin offers it, for tests: signs with OADM's names, records every request.</summary>
 internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
 {
-    private readonly X509Certificate2 _ca = TestPki.Root("OADM Test CA " + Guid.NewGuid().ToString("N")[..8]); // unique: Windows caches chains by name
+    private readonly X509Certificate2 _ca = TestPki.Root("OADM Test CA");
 
     public bool IsReady { get; set; } = true;
 

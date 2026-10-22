@@ -199,9 +199,12 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial bool StatusOk { get; set; }
 
-    /// <summary>Where it listens: "This server: listening on TCP 9454".</summary>
+    /// <summary>The listeners that do not run, one per line ("EST server at Building B: waiting for approval in the OADM Site Node app").</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasListenerProblems))]
     public partial string ListenersText { get; set; } = string.Empty;
+
+    public bool HasListenerProblems => ListenersText.Length > 0;
 
     [ObservableProperty]
     public partial string CertificateSearch { get; set; } = string.Empty;

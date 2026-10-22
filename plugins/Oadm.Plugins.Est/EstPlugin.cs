@@ -66,6 +66,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             () => ctx.Pro?.IsActive == true)
         {
             Events = ctx.Events,
+            Sites = ctx.Sites,
             Publisher = ctx.EventPublisher,
             Logger = ctx.Logger,
         });
