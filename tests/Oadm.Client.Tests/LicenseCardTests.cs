@@ -119,6 +119,11 @@ public sealed class LicenseCardTests
             await license.ImportTextAsync(Sign());
             Pump();
             Save(window, outDir, "client-page-settings-license-active.png");
+
+            await license.ImportTextAsync(Sign(trial: true));
+            Pump();
+            Assert.True(license.IsTrial);
+            Save(window, outDir, "client-page-settings-license-trial.png");
             window.Close();
             return true;
         }, CancellationToken.None);
