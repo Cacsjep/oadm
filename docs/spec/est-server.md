@@ -69,7 +69,9 @@ certificate **without** Certificate changed when it chains to an OADM CA (PKI's 
 
 Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+**, the REST APIs `cert` v1 and `cert-est` v1 (checked
 fresh before the first write), an Axis device ID certificate on the camera (found by its chain, not its alias). Others:
-Nothing was changed.
+Nothing was changed. Checked on 10.0.0.48 (P3265-V, 12.11.77): device ID certificates ECC P-256, RSA 2048 and RSA 4096,
+subject `serialNumber` = the serial in lower case, issued by "Axis device ID Intermediate CA ECC 2" / "RSA 2" (in the
+shipped bundles), valid to 9999; the camera starts with no EST profiles.
 
 1. Read the camera's EST profiles and certificates.
 2. Upload the CA chain (EST server certificate's issuer and the profile's issuer) with `cert` v1, never deleting; reuse
@@ -80,7 +82,7 @@ Nothing was changed.
    `server` = `<address>:9454/.well-known/est/<profile>` (host, port and path, **no scheme**), `caCertificates` (the
    aliases of step 2; the camera installs nothing it has not been given, so the server is never trusted blindly through
    `/cacerts`), `certificate` = the device ID alias (RSA or ECC to match the profile; without it the camera answers 500),
-   `services` (from `GET .../supportedServices`), `subject.cn` (1..64 characters) and `subjectAlternativeNames` (`DNS:` /
+   `services` (from `GET .../supportedServices`: `WEBSERVER` for HTTPS, `NETAUTH` for IEEE 802.1X, `MQTT`, `RTSPS`), `subject.cn` (1..64 characters) and `subjectAlternativeNames` (`DNS:` /
    `IP:`). Changes later: `PATCH .../profiles/{id}` (caCertificates, certificate, SANs), `.../{id}/server`,
    `.../{id}/subject`. The address: the server's address toward the camera, or at a site the node's
    (`LocalAddressTowardsAsync`).

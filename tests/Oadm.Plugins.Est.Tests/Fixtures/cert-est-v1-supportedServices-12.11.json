@@ -1,0 +1,9 @@
+{
+  "status": "success",
+  "data": [
+    "MQTT",
+    "NETAUTH",
+    "WEBSERVER",
+    "RTSPS"
+  ]
+}

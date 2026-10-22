@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Recorded read-only answers and the public device ID certificates of 10.0.0.48 (P3265-V, AXIS OS 12.11.77). -->
+    <None Include="Fixtures\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <!-- Oadm.Client supplies the host theme and the host page view for the page tests. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />

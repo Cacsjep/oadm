@@ -116,6 +116,18 @@ public sealed class ProtocolTests
     }
 
     [Theory]
+    [InlineData("device-id-ecc-p256-12.11.pem")]
+    [InlineData("device-id-rsa-2048-12.11.pem")]
+    public void A_real_camera_device_id_passes_with_the_shipped_axis_certificates(string file)
+    {
+        // The camera sends only its own certificate here: the shipped intermediates complete the chain.
+        using var certificate = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", file)));
+
+        Assert.Equal("B8A44F631339", new AxisDeviceId().Verify(certificate, [], DateTimeOffset.UtcNow));
+        Assert.Equal("B8A44F631339", AxisDeviceId.SerialOf(certificate));
+    }
+
+    [Theory]
     [InlineData("B8A44F631339", "B8A44F631339")]
     [InlineData("axis-b8a44f631339-ecc", "B8A44F631339")]
     [InlineData("B8A44F6313", null)]
