@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Est.Client"
+        x:Class="Oadm.Plugins.Est.Client.EstSetupWindow"
+        x:DataType="vm:EstSetupViewModel"
+        Title="{x:Static vm:EstSetupViewModel.Title}"
+        Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: title bar, the text and the IEEE 802.1X choice in Border.dialogBody, footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:EstSetupViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Spacing="12">
+        <TextBlock TextWrapping="Wrap" Text="{Binding Message}" />
+        <StackPanel Spacing="4" IsVisible="{Binding ShowDot1x}">
+          <CheckBox IsChecked="{Binding ReplaceDot1x}">
+            <TextBlock TextWrapping="Wrap" Text="{Binding Dot1xText}" />
+          </CheckBox>
+          <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="28,0,0,0" Text="{x:Static vm:EstSetupViewModel.Dot1xHint}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Set up" Command="{Binding OkCommand}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

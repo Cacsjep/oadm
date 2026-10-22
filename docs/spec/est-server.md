@@ -90,7 +90,11 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
 3. Install the CA certificates: the OADM CA chain with `cert` v1, matched by fingerprint (an existing alias is reused),
    new ones as "OADM CA <8 hex>" like PKI's; never deleting.
-   With IEEE 802.1X on (`IDeviceInfo.Dot1xEnabled`) the IEEE 802.1X profile is skipped with a warning (no lock-out). HTTPS
+   With IEEE 802.1X on (`IDeviceInfo.Dot1xEnabled`) the IEEE 802.1X profile is skipped with a warning (no lock-out),
+   unless the payload says `replaceDot1x` (`SetupPayload`): the dialog (`EstSetupWindow`) shows, only when selected
+   cameras have IEEE 802.1X on, the check box "Also replace the network access certificate of N cameras with IEEE 802.1X
+   on" with the hint that the RADIUS server must trust the OADM CA (off by default); the task then logs that it was
+   chosen. HTTPS
    comes last (its certificate restarts the web server); the reads while waiting are retried during that restart.
 4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
    written. Otherwise remove OADM's profiles (`oadm_...`) and the camera's profiles that serve the same services (others

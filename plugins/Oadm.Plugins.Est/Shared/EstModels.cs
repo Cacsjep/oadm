@@ -197,6 +197,31 @@ public sealed record RevokeRequest(IReadOnlyList<string> SerialNumbers);
 
 public sealed record RevokeReply(int Revoked);
 
+/// <summary>
+/// The payload of "Set up certificate enrollment". <paramref name="ReplaceDot1x"/>: also give cameras with IEEE 802.1X on
+/// the IEEE 802.1X profile (their network access certificate is replaced; the RADIUS server must trust the OADM CA).
+/// </summary>
+public sealed record SetupPayload(bool ReplaceDot1x = false)
+{
+    /// <summary>The payload of a run; an empty or unreadable one is the safe default (no replacement).</summary>
+    public static SetupPayload Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new SetupPayload();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<SetupPayload>(json, EstJson.Options) ?? new SetupPayload();
+        }
+        catch (JsonException)
+        {
+            return new SetupPayload();
+        }
+    }
+}
+
 /// <summary>JSON of the page calls and the stored settings.</summary>
 public static class EstJson
 {

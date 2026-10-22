@@ -93,7 +93,8 @@ replaced.
 <Steps>
 
 1. Select the cameras on the **Devices** page, right-click and open **Security**.
-2. Click **Set up certificate enrollment** and confirm.
+2. Click **Set up certificate enrollment**. When some of the cameras have IEEE 802.1X on, the dialog asks whether to
+   replace their network access certificate too (see below). Click **Set up**.
 3. Watch the task in the tasks pane. Each camera is one task with its steps.
 
 </Steps>
@@ -114,9 +115,12 @@ Running the task again is safe: a camera that already has the same profiles is n
 stay on the camera, unless they serve the same use as one of OADM's.
 
 <Aside type="caution" title="IEEE 802.1X">
-When IEEE 802.1X is on for a camera, the set-up skips the `dot1x` profile and warns: a new network access certificate
-that your RADIUS server does not trust would take the camera off the network. Make sure the RADIUS server trusts the
-OADM CA (PKI page, IEEE 802.1X card) before you use the `dot1x` profile on such cameras.
+A camera with IEEE 802.1X on uses a certificate to get onto the network. A new one that your RADIUS server does not trust
+takes the camera off the network. So the set-up skips the `dot1x` profile on these cameras and warns, unless you tick
+**Also replace the network access certificate of ... cameras with IEEE 802.1X on** in the dialog (off by default).
+
+Tick it only when your RADIUS server trusts the OADM CA, for example after **Enable IEEE 802.1X** of the PKI page set
+these cameras up with the OADM CA. Cameras with IEEE 802.1X off get the `dot1x` profile either way.
 </Aside>
 
 To stop a camera from renewing, use **Remove certificate enrollment** (Security). It removes the profiles OADM added;

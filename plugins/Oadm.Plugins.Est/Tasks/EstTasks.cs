@@ -36,6 +36,7 @@ public static class EstTaskIds
     public const string NoPro = "OADM PRO is not active. Nothing was changed.";
     public const string NoCa = "The PKI has no certificate authority. Create one on the PKI page. Nothing was changed.";
     public const string Dot1xSkipped = "IEEE 802.1X is on: the IEEE 802.1X profile was skipped, so the camera keeps the certificate it uses for network access.";
+    public const string Dot1xReplaced = "IEEE 802.1X is on: the IEEE 802.1X profile replaces the certificate the camera uses for network access, as chosen when the task started.";
     public const string AlreadySetUp = "The camera already has these enrollment profiles. No profile was written.";
 
     /// <summary>The right to run the EST tasks (it also lifts a revoke): not for operators unless an administrator gives it.</summary>
@@ -152,10 +153,18 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             var (free, existing) = await CameraEstApi.ReadEstAsync(ctx.Vapix, ct).ConfigureAwait(false);
             var services = free.Concat(existing.SelectMany(p => p.Services)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var candidates = est.Store.Config.Profiles.Where(p => p.Enabled && services.Contains(CameraEstApi.ServiceOf(p.Use))).ToList();
-            if (device.Dot1xEnabled == true && candidates.RemoveAll(p => p.Use == ProfileUse.Dot1x) > 0)
+            if (device.Dot1xEnabled == true && candidates.Any(p => p.Use == ProfileUse.Dot1x))
             {
-                // No lock-out: a new network access certificate the RADIUS server may not trust would take the camera off the network.
-                step.Warn(EstTaskIds.Dot1xSkipped);
+                if (SetupPayload.Parse(payloadJson).ReplaceDot1x)
+                {
+                    ctx.Log(TaskLogLevel.Info, EstTaskIds.Dot1xReplaced); // the user chose it in the dialog
+                }
+                else
+                {
+                    // No lock-out: a new network access certificate the RADIUS server may not trust would take the camera off the network.
+                    candidates.RemoveAll(p => p.Use == ProfileUse.Dot1x);
+                    step.Warn(EstTaskIds.Dot1xSkipped);
+                }
             }
 
             // HTTPS last: its certificate restarts the camera's web server.

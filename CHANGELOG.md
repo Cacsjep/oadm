@@ -12,7 +12,8 @@ version and date, and the release workflow copies it into the GitHub release.
   IEEE 802.1X, MQTT and RTSPS from the OADM CA and renew them by themselves. Only cameras OADM manages get certificates;
   they sign in with their Axis device ID. Page **EST server** (port, profiles, enrollments, certificates with Revoke),
   tasks **Set up certificate enrollment** and **Remove certificate enrollment** (Security), events **Certificate
-  enrolled** and **Enrollment refused**. Not for devices at a site yet.
+  enrolled** and **Enrollment refused**. Cameras with IEEE 802.1X on keep their network access certificate unless you
+  choose to replace it in the set-up dialog. Not for devices at a site yet.
 - Plugins: OADM PRO plugins are listed with an **OADM PRO** chip; without an active license they stay off and
   **Activate** opens Settings > License. They stop when the license ends and run again with a new one.
 

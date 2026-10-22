@@ -142,6 +142,42 @@ public sealed class PageTests : IAsyncLifetime
         GC.KeepAlive(session);
     }
 
+    [Fact]
+    public void The_setup_dialog_offers_the_8021x_choice_only_for_cameras_with_8021x_on()
+    {
+        var without = new EstSetupViewModel([new FakeDevice(), new FakeDevice()]);
+        Assert.False(without.ShowDot1x);
+        without.ReplaceDot1x = true; // hidden: it never counts
+        Assert.False(SetupPayload.Parse(without.Payload).ReplaceDot1x);
+
+        var with = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice { Dot1xEnabled = true }, new FakeDevice()]);
+        Assert.True(with.ShowDot1x);
+        Assert.Equal("Also replace the network access certificate of 2 cameras with IEEE 802.1X on", with.Dot1xText);
+        Assert.False(SetupPayload.Parse(with.Payload).ReplaceDot1x); // off by default
+        with.ReplaceDot1x = true;
+        Assert.True(SetupPayload.Parse(with.Payload).ReplaceDot1x);
+        Assert.StartsWith("Set up certificate enrollment on 3 devices?", with.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Setup_dialog_renders()
+    {
+        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        await session.Dispatch(() =>
+        {
+            var vm = new EstSetupViewModel([new FakeDevice { Dot1xEnabled = true }, new FakeDevice()]);
+            var window = new EstSetupWindow { DataContext = vm };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Pump();
+            Capture(window, outDir, "est-setup-dialog.png");
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+        GC.KeepAlive(session);
+    }
+
     private static Window Host(Control view)
     {
         var page = new Oadm.Client.Shell.CorePluginPageView

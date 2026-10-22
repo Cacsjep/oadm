@@ -31,7 +31,8 @@ Apache 2.0).
     profile, reason), only for managed devices.
   - Methods: `getState`, `getEnrollments`, `getCertificates` (search, 500 a page) for everyone; `save`, `revoke` Admin
     (permission `oadm.est:manage`).
-- Tasks (`Tasks/EstTasks.cs`, Security, confirmation popups in `EstTaskDialogs.cs`): **Set up certificate enrollment**
+- Tasks (`Tasks/EstTasks.cs`, Security; the set-up dialog `EstSetupWindow` with the IEEE 802.1X choice, the remove
+  confirmation in `EstTaskDialogs.cs`): **Set up certificate enrollment**
   (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` with the device ID, the OADM
   CA chain, this server as EST server; waits for ENROLLED; pins a new HTTPS certificate) and **Remove certificate
   enrollment** (only `oadm_...` profiles). Not at sites yet. `Device/CameraEstApi.cs`: the camera's REST calls.

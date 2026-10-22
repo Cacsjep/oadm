@@ -96,6 +96,20 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task With_ieee_8021x_on_the_8021x_profile_is_written_when_the_user_chose_it()
+    {
+        var device = _device with { Dot1xEnabled = true };
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));
+
+        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+        Assert.Empty(ctx.Warnings);
+        Assert.Contains("Info: " + EstTaskIds.Dot1xReplaced, ctx.LogLines);
+        Assert.False(SetupPayload.Parse("not json").ReplaceDot1x); // anything unreadable is the safe default
+    }
+
+    [Fact]
     public async Task A_camera_without_the_est_api_or_too_old_is_not_touched()
     {
         var task = new EstSetupTask(() => _est);

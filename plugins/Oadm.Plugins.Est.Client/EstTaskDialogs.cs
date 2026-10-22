@@ -9,14 +9,9 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Est.Client;
 
-/// <summary>Texts of the confirmations of the EST tasks (no options; the profiles come from the EST server page).</summary>
+/// <summary>Texts of the EST task confirmations (the profiles come from the EST server page).</summary>
 public static class EstConfirmations
 {
-    public static (string Title, string Message, string Confirm) Setup(int devices) =>
-        (EstTaskIds.SetupName,
-         $"Set up certificate enrollment on {DeviceCount(devices)}? They get certificates from the OADM CA for the profiles of the EST server and renew them by themselves. A profile for IEEE 802.1X replaces the certificate they use for network access.",
-         "Set up");
-
     public static (string Title, string Message, string Confirm) Remove(int devices) =>
         (EstTaskIds.RemoveName,
          $"Remove certificate enrollment from {DeviceCount(devices)}? They keep their certificates until they end, but no longer renew them.",
@@ -26,7 +21,7 @@ public static class EstConfirmations
         devices == 1 ? "1 device" : string.Create(CultureInfo.InvariantCulture, $"{devices:N0} devices");
 }
 
-/// <summary>"Set up certificate enrollment": the shared confirmation popup; the payload is empty.</summary>
+/// <summary>"Set up certificate enrollment": the confirmation with the IEEE 802.1X choice (<see cref="EstSetupWindow"/>).</summary>
 public sealed class EstSetupDialog : ITaskPluginDialog
 {
     public string PluginId => EstTaskIds.Setup;
@@ -34,8 +29,21 @@ public sealed class EstSetupDialog : ITaskPluginDialog
     public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
     {
         ArgumentNullException.ThrowIfNull(devices);
-        var (title, message, confirm) = EstConfirmations.Setup(devices.Count);
-        return devices.Count > 0 && await MessageWindow.ConfirmAsync(owner, title, message, confirm).ConfigureAwait(true) ? "{}" : null;
+        if (devices.Count == 0)
+        {
+            return null;
+        }
+
+        var vm = new EstSetupViewModel(devices);
+        var window = new EstSetupWindow { DataContext = vm };
+        var ok = false;
+        vm.CloseRequested += (_, result) =>
+        {
+            ok = result;
+            window.Close();
+        };
+        await window.ShowDialog(owner).ConfigureAwait(true);
+        return ok ? vm.Payload : null;
     }
 }
 
