@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.Support"
+             x:Class="Oadm.Client.Support.SupportCardView"
+             x:DataType="vm:SupportViewModel">
+  <!-- Settings page, administrators: the support report for a support request. -->
+  <Border Classes="card">
+    <StackPanel Classes="form">
+      <TextBlock Classes="sectionTitle" Text="Support" />
+      <TextBlock Classes="secondary" Text="Logs and server details for a support request. No passwords are included." TextWrapping="Wrap" />
+      <ui:FormField Classes="wide">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Classes="secondary" Command="{Binding CreateCommand}">
+            <ui:IconLabel Icon="{StaticResource Icon.file}" Text="Create support report" />
+          </Button>
+          <!-- The result sits next to the button it reports on. -->
+          <TextBlock Text="{Binding Status}" Classes.error="{Binding StatusIsError}" Classes.secondary="{Binding !StatusIsError}" VerticalAlignment="Center"
+                     TextWrapping="Wrap" IsVisible="{Binding ShowStatus}" />
+        </StackPanel>
+      </ui:FormField>
+      <ui:ProgressRow Value="{Binding Progress}" Text="{Binding Status}" IsVisible="{Binding IsBusy}" />
+    </StackPanel>
+  </Border>
+</UserControl>

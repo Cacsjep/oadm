@@ -101,6 +101,10 @@ public static class ServiceRegistration
             sp.GetRequiredService<IClipboardService>(),
             sp.GetRequiredService<IUrlLauncher>(),
             sp.GetRequiredService<UserSession>()));
+        services.AddSingleton(sp => new Support.SupportViewModel(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<IDialogService>(),
+            Path.Combine(options.DataFolder, "logs")));
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();

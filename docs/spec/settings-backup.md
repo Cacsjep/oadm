@@ -38,7 +38,7 @@ starts with the card **This computer** (every user, saved at once in the client 
 graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
 (see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
 the card **Backup and restore** right (administrators, see "Backup and restore") with the card **License** below it (every
-user, `docs/spec/licensing.md`); narrower than 1100 px the right column
+user, `docs/spec/licensing.md`) and the card **Support** below that (administrators, see "Support report"); narrower than 1100 px the right column
 moves below the server settings. The server
 address is set with `--server` or in the
 client settings file. Client-side (local JSON in LocalApplicationData): server address, device grid column layout and group
@@ -89,3 +89,27 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
 - **Tests**: `tests/Oadm.Core.Tests/Backup/BackupTests` (format, another server, an older OADM upgraded, rollback, entries
   outside the folder), `tests/Oadm.Server.Tests/BackupServiceTests` (create, check, restore with a restart, automatic,
   schedule), `tests/Oadm.Client.Tests/BackupCardTests` (+ screenshots).
+
+# Support report
+
+Settings page card **Support** (right column below License, Administrator only, hidden for other roles): "Logs and server
+details for a support request. No passwords are included." and **Create support report** (save dialog, suggested
+`oadm-support-<yyyyMMdd-HHmm>.zip`; `ui:ProgressRow` while it runs; "Saved <file>." next to the button). Server
+`Oadm.Server.Support` (`SupportReport`, `SupportGrpcService`), gRPC `SupportService.CreateReport` (`support.proto`, audited
+"Created support report"), client `Support/` (`SupportViewModel`, `SupportCardView`).
+
+- **Server part** (made in `<datafolder>/support`, deleted after the download; files older than 30 minutes are leftovers and
+  go with the next report): `oadm-support-<server name>-<yyyyMMdd-HHmm>.zip` with `logs/` (the server's `*.log` files,
+  newest first up to 200 MB, `Oadm.Contracts.Logging.LogArchive`; files in use read shared; the ones left out are named in
+  the summary) and `summary.txt`: OADM version, server name, service or console, OS, architecture, .NET, time zone, uptime;
+  the data folder and the sizes of database, plugin data, uploads, backups and logs; the server settings of the Settings
+  page; device counts by status, model and AXIS OS; counts of waiting devices, tags, event rules and compliance checks;
+  tasks of the last 7 days by state and plugin; sites (name, online / offline / not bound, node version, last seen); plugin
+  packages (id, version, on or off) and load errors; the PRO license state and plan; the last automatic backup and restore.
+- **Never in it**: passwords, credentials, keys, the master key, tokens, the license key text, backup passwords, device
+  addresses or serial numbers, the database file (`SupportReportTests` seeds such values and scans every entry).
+- **Client part**: the client downloads the server's ZIP to a temporary file, then writes the chosen file with every
+  entry of it plus this computer's `client-*.log` files under `client-logs/` (same 200 MB cap), off the UI thread; a
+  failure removes the cut file.
+- **Tests**: `tests/Oadm.Server.Tests/SupportReportTests` (contents, no secrets, admin only, audit, the log cap, the file
+  name), `tests/Oadm.Client.Tests/SupportCardTests` (combined ZIP, failure, card for administrators + screenshots).

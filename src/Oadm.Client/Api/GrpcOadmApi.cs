@@ -533,6 +533,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
 
     public async Task<ProLicenseState> GetLicenseAsync(CancellationToken ct) => await C.License.GetLicenseAsync(new Empty(), cancellationToken: ct);
 
+    public Task<Oadm.Sdk.Plugins.PluginDownload> CreateSupportReportAsync(CancellationToken ct) =>
+        OpenDownloadAsync(C.Support.CreateReport(new Empty(), cancellationToken: CancellationToken.None), ct);
+
     public async Task<ProLicenseState> ImportLicenseAsync(string license, CancellationToken ct) =>
         await C.License.ImportLicenseAsync(new ImportLicenseRequest { License = license }, cancellationToken: ct);
 
@@ -681,6 +684,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public ComplianceService.ComplianceServiceClient Compliance { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
         public LicenseService.LicenseServiceClient License { get; } = new(channel);
+        public SupportService.SupportServiceClient Support { get; } = new(channel);
         public SiteService.SiteServiceClient Sites { get; } = new(channel);
     }
 }

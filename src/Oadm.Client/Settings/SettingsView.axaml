@@ -5,6 +5,7 @@
              xmlns:c="using:Oadm.Client.Controls"
              xmlns:backup="using:Oadm.Client.Backup"
              xmlns:licensing="using:Oadm.Client.Licensing"
+             xmlns:support="using:Oadm.Client.Support"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
@@ -171,12 +172,14 @@
         </StackPanel>
       </StackPanel>
 
-      <!-- Right column: backup and restore (administrators), then the license (every user) -->
+      <!-- Right column: backup and restore (administrators), the license (every user), then support (administrators) -->
       <StackPanel x:Name="RightColumn" Grid.Column="2" Spacing="16" VerticalAlignment="Top">
         <backup:BackupCardView DataContext="{Binding Backup}"
                                IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}" />
         <licensing:LicenseCardView DataContext="{Binding License}"
                                    IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowLicense}" />
+        <support:SupportCardView DataContext="{Binding Support}"
+                                 IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowSupport}" />
       </StackPanel>
       </Grid>
     </ScrollViewer>

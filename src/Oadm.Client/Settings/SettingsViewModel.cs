@@ -105,6 +105,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     public bool ShowBackup => Backup is not null && IsAdmin;
 
+    /// <summary>The card "Support" (administrators): the support report; null in tests without it.</summary>
+    public Oadm.Client.Support.SupportViewModel? Support { get; }
+
+    public bool ShowSupport => Support is not null && IsAdmin;
+
     /// <summary>Server settings can only be changed by administrators (the server checks it too).</summary>
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
@@ -117,9 +122,10 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null,
         Infrastructure.IClientSettingsStore? clientSettings = null, LiveView.GpuDecodingService? gpu = null, Infrastructure.IUiDispatcher? ui = null,
         LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null, Dialogs.IClipboardService? clipboard = null,
-        Licensing.LicenseViewModel? license = null)
+        Licensing.LicenseViewModel? license = null, Oadm.Client.Support.SupportViewModel? support = null)
     {
         License = license;
+        Support = support;
         _clipboard = clipboard;
         Video = video ?? new LiveView.LiveVideoSettings(clientSettings);
         Backup = backup;
@@ -156,6 +162,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
                     OnPropertyChanged(nameof(IsAdmin));
                     OnPropertyChanged(nameof(IsOperator));
                     OnPropertyChanged(nameof(ShowBackup));
+                    OnPropertyChanged(nameof(ShowSupport));
                     if (ShowBackup && IsLoaded)
                     {
                         _ = Backup!.LoadAsync();

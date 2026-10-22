@@ -313,6 +313,12 @@ public interface IOadmApi
     Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
         throw new NotSupportedException("This connection has no plugin downloads.");
 
+    /// <summary>
+    /// SupportService (Administrator only, Settings page card Support): the server's support report, a ZIP with its logs and
+    /// a summary without secrets (name, length and the bytes as a stream).
+    /// </summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> CreateSupportReportAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no support report.");
+
     // LicenseService (Settings page, card License): every signed-in user reads; Import and Remove are Administrator only
     Task<ProLicenseState> GetLicenseAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
 

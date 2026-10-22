@@ -62,4 +62,5 @@ Another program holds the port. The page names it when it can, for example the W
 **A task failed with "Nothing was changed".**
 The device does not support it, for example its AXIS OS is too old. The task's **Details** show the step and the reason.
 
-Still stuck? [Open an issue](https://github.com/Cacsjep/oadm/issues/new/choose) with the OADM version and the log lines.
+Still stuck? Create a support report (**Settings** > **Support** > **Create support report**) and attach it to your post in
+the [Support Forum](https://support.oadm.app/) or to an [issue](https://github.com/Cacsjep/oadm/issues/new/choose).

@@ -1,0 +1,13 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "Protos/plugins.proto";
+
+// The support report (Settings page, card Support; docs/spec/settings-backup.md "Support report"): one ZIP with the
+// server's log files and a summary of the server, for a support request. No passwords, keys or device addresses.
+// Administrator only, audited.
+service SupportService {
+  // Made on the server, then streamed (first message: file name and length).
+  rpc CreateReport (Empty) returns (stream DownloadChunk);
+}

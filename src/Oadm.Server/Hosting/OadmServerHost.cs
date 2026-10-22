@@ -139,6 +139,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
         app.MapGrpcService<Backup.BackupGrpcService>();
         app.MapGrpcService<Licensing.LicenseGrpcService>();
+        app.MapGrpcService<Support.SupportGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
         app.MapGrpcService<Sites.SiteGrpcService>();
         if (app.Environment.IsDevelopment())
@@ -264,6 +265,18 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<Backup.BackupManager>>()));
         services.AddHostedService<Backup.BackupScheduleHostedService>();
+        // Support report (Settings page): the server's logs and a summary without secrets in one ZIP.
+        services.AddSingleton(sp => new Support.SupportReport(
+            sp.GetRequiredService<OadmPaths>(),
+            sp.GetRequiredService<ServerSettingsStore>(),
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<PluginRegistry>(),
+            sp.GetRequiredService<Core.Licensing.ProLicense>(),
+            sp.GetRequiredService<Backup.BackupManager>(),
+            sp.GetRequiredService<ServerRunMode>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetService<Core.Sites.ISiteStates>()));
         // Live view: RTSP upstreams shared between viewers
         services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
         services.AddSingleton<IDeviceOptics, AxisDeviceOptics>();
