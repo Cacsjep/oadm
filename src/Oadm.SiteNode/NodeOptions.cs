@@ -45,7 +45,7 @@ public sealed class NodeOptions
     public Discovery.IAxisBrowser? Browser { get; set; }
 
     /// <summary>Longest wait between two connection attempts to the server.</summary>
-    public TimeSpan MaxBackoff { get; set; } = TimeSpan.FromSeconds(60);
+    public TimeSpan MaxBackoff { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>A connection attempt to the server (TCP connect) ends after this time; the TLS handshake has its own.</summary>
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(10);

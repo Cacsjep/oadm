@@ -27,6 +27,8 @@ pairing code is part of the state every local user reads while the node is not b
 "Valid until"; a pairing started with a code still binds for a minute after the code's scheduled end; reading it with the
 command line is logged); a bound node that accepted a new server identity gives its code to administrators only (Show
 pairing code in the app). Add port in the app never marks a port as the server's (`PortPolicy.Allow(fromRequest: false)`).
+- The node connects out with a backoff of 1, 2, 4 and 8 s, then every 10 s while the server cannot be reached
+  (`NodeOptions.MaxBackoff`, decision 2026-10-22).
 - `Oadm.Server.Sites`: `SiteManager` (`ISiteStates`, `ISiteTransport`, `ISiteLargeTransfers`; `SiteOptions`: offline after
   30 s without an answer, online after 60 s stable, after a start "starting" until the node settles or 2 minutes, while
   starting no site events, compliance results stay and devices' status events start from `Device.StoredStatus`),

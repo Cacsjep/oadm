@@ -27,7 +27,7 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
 - **Links** (`Links/`): the node always connects to the server and never listens. Every TLS connection it opens is a
   `SiteLink`; Kestrel serves `SiteNodeService` on it through `AcceptedStreamListener` (no socket endpoint of its own).
   `OutboundConnector` connects to the
-  typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4 ... 60
+  typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4, 8, then every 10
   s, started over only after a session that lasted 30 s or served the bound server (a server that accepts TLS and
   closes at once is not tried every second); dual mode where the OS has IPv6, else IPv4. Unbound: any server key (the
   pairing proves it); bound: only the pinned key, another one is noted with where it came from (a waiting one is not
