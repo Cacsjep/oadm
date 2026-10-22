@@ -53,6 +53,10 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `ComplianceCheckEntity` / `ComplianceResultEntity` (tables ComplianceChecks, ComplianceResults, migration
   `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance".
 - `Setting`: Key, ValueJson.
+- `PluginRecord` (table PluginRecords, migration `PluginRecords`): key (PluginId max 128, Collection max 64, Key max 255),
+  ValueJson (valid JSON). A plugin's records (`IPluginRecords`, `DbPluginRecords`): one row per record, a plugin sees
+  only its own; batch writes are one transaction (existing rows read 500 keys at a time). 60,000 rows written in about
+  4 s, one changed in about 10 ms (`PluginRecordsTests`, Perf). First user: the EST server's certificates.
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
 (factory default), `CertificateChanged`, `Unknown`, and `SiteOffline` (computed, never stored:

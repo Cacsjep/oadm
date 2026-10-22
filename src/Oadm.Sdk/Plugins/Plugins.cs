@@ -339,6 +339,12 @@ public interface ICorePluginContext
     ITaskRunner Tasks { get; }
     /// <summary>The plugin's own settings in the server database.</summary>
     IPluginSettings Settings { get; }
+
+    /// <summary>
+    /// The plugin's own records in the server database, one row per record (data that grows with the devices); null on
+    /// hosts before OADM 4.1.
+    /// </summary>
+    IPluginRecords? Records => null;
     /// <summary>The server log.</summary>
     ILogger Logger { get; }
 

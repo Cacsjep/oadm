@@ -30,6 +30,9 @@ public sealed record EstHost(
 
     public IPluginEvents? Events { get; init; }
 
+    /// <summary>The plugin's records (the certificates, one row each); null keeps them in memory only (tests).</summary>
+    public IPluginRecords? Records { get; init; }
+
     public Sdk.Events.IEventPublisher? Publisher { get; init; }
 
     public ILogger Logger { get; init; } = NullLogger.Instance;
@@ -100,7 +103,7 @@ public sealed partial class EstService : IAsyncDisposable
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _logger = host.Logger;
-        _store = new EstStore(host.Settings, host.Time);
+        _store = new EstStore(host.Settings, host.Records, host.Time);
         _certificates = new ServerCertificates(host.Authority, host.Time);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time);

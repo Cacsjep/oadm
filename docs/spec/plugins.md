@@ -50,7 +50,10 @@ returns null or throws `NotSupportedException`.
   `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
   `DeviceIdentityException` and the record stays; see "Following moved devices" and the PKI tasks).
 - `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or running), `Settings` (namespaced per
-  plugin), `Logger`, `PluginDirectory` (never `Assembly.Location`), `Secrets` (AES-256-GCM with the master key),
+  plugin), `Records` (`IPluginRecords`, 4.1: the plugin's records in the table PluginRecords, named collections of JSON
+  values by key, one row per record, `SetManyAsync` writes many in one transaction; for data that grows with the devices,
+  where one settings value would be rewritten whole; `MemoryPluginRecords` for tests and hosts without a database; null
+  on older hosts), `Logger`, `PluginDirectory` (never `Assembly.Location`), `Secrets` (AES-256-GCM with the master key),
   `Events` (live events to the plugin's page), `TrustAnchors` (CAs the server trusts when rating device certificates),
   `EventStreams` (a device's RTSP event stream with the stored credentials; the RTSP port per device), `Firewall` (UDP
   rules, Windows service only; `FirewallRuleKeeper`), `DataDirectory` (`<datafolder>/plugin-data/<id>`: working files, never a

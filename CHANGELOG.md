@@ -15,6 +15,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - EST server: the **Enrollments** list has a search and **Delete all**.
 - EST server: **Listen on** chooses the network interface the cameras reach the server on, like the NTP and DHCP
   servers; the page groups its settings under **General** and **Profiles**.
+- SDK: `ICorePluginContext.Records` (`IPluginRecords`): a plugin's records in their own database table, one row per
+  record, for data that grows with the devices. The EST server keeps its certificates there and writes only the
+  changed ones (before: one value rewritten whole); certificates of 4.1.0-rc.2 move on the first start.
 - SDK: `IPluginNetwork.ListenTcpAsync` with the addresses of one interface; `InterfaceOptions.All`, `AllId`, `IsAll`.
 - EST server: **Not renewed** lists the certificates a camera did not renew in time (cameras renew halfway through the
   validity), with the new event **Certificate not renewed** for the event rules.

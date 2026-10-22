@@ -740,6 +740,29 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("TaskSteps", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.Plugins.PluginRecord", b =>
+                {
+                    b.Property<string>("PluginId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Collection")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ValueJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PluginId", "Collection", "Key");
+
+                    b.ToTable("PluginRecords", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.Security.CredentialListEntry", b =>
                 {
                     b.Property<Guid>("Id")

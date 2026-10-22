@@ -3,23 +3,27 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.Est.Serving;
 
 /// <summary>
-/// The plugin settings of the EST server: <c>config</c>, <c>enrollments</c> (newest first, <see cref="EstConfig.EnrollmentsKept"/>),
-/// <c>certificates</c> (per device and profile the newest certificate EST issued and the one before it, which a camera
-/// whose answer got lost renews with; ended more than 30 days ago or of a device OADM no longer manages dropped: at most
-/// 2 x devices x profiles) and <c>sites</c>. Kept in memory; changes
-/// are written at most every
+/// The data of the EST server. Plugin settings: <c>config</c>, <c>enrollments</c> (newest first,
+/// <see cref="EstConfig.EnrollmentsKept"/>) and <c>sites</c>. Plugin records, collection <c>certificates</c>, one row per
+/// certificate by serial number: per device and profile the newest certificate EST issued and the one before it (a camera
+/// whose answer got lost renews with it); ended more than 30 days ago or of a device OADM no longer manages dropped: at
+/// most 2 x devices x profiles. Only changed certificates are written. Kept in memory; changes are written at most every
 /// <see cref="FlushDelay"/> and on dispose. Thread-safe.
 /// </summary>
 public sealed class EstStore : IAsyncDisposable
 {
     public const string ConfigKey = "config";
     public const string EnrollmentsKey = "enrollments";
+    /// <summary>The records collection of the certificates (4.1.0-rc.2: a settings value under the same name).</summary>
     public const string CertificatesKey = "certificates";
     public const string SitesKey = "sites";
 
     private static readonly TimeSpan KeepEnded = TimeSpan.FromDays(30);
 
     private readonly IPluginSettings _settings;
+    private readonly IPluginRecords _records;
+    private readonly HashSet<string> _changedCertificates = new(StringComparer.OrdinalIgnoreCase); // serials to write or delete
+    private bool _dropLegacyCertificates;
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -33,9 +37,11 @@ public sealed class EstStore : IAsyncDisposable
     private bool _flushPending;
     private ITimer? _flushTimer;
 
-    public EstStore(IPluginSettings settings, TimeProvider? time = null)
+    /// <param name="records">The plugin's records; null keeps the certificates in memory only (tests).</param>
+    public EstStore(IPluginSettings settings, IPluginRecords? records = null, TimeProvider? time = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _records = records ?? new MemoryPluginRecords();
         _time = time ?? TimeProvider.System;
     }
 
@@ -56,7 +62,13 @@ public sealed class EstStore : IAsyncDisposable
     {
         var config = Read<EstConfig>(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false)) ?? new EstConfig();
         var enrollments = Read<List<Enrollment>>(await _settings.GetAsync(EnrollmentsKey, ct).ConfigureAwait(false)) ?? [];
-        var certificates = Read<List<IssuedCertificate>>(await _settings.GetAsync(CertificatesKey, ct).ConfigureAwait(false)) ?? [];
+        var certificates = (await _records.ListAsync(CertificatesKey, ct).ConfigureAwait(false)).Values
+            .Select(Read<IssuedCertificate>).OfType<IssuedCertificate>().ToList();
+        var legacy = await _settings.GetAsync(CertificatesKey, ct).ConfigureAwait(false);
+        if (legacy is not null)
+        {
+            certificates.AddRange(Read<List<IssuedCertificate>>(legacy) ?? []); // 4.1.0-rc.2: one settings value, moved to the records
+        }
         var sites = Read<Dictionary<Guid, List<string>>>(await _settings.GetAsync(SitesKey, ct).ConfigureAwait(false)) ?? [];
         lock (_gate)
         {
@@ -70,10 +82,17 @@ public sealed class EstStore : IAsyncDisposable
             _certificates.Clear();
             _newest.Clear();
             _previous.Clear();
+            _changedCertificates.Clear();
             foreach (var certificate in certificates.OrderBy(c => c.IssuedUtc)) // 4.1.0-rc.2 kept every certificate
             {
                 _certificates[certificate.SerialNumber] = certificate;
                 Index(certificate);
+            }
+
+            if (legacy is not null)
+            {
+                _changedCertificates.UnionWith(_certificates.Keys);
+                _dropLegacyCertificates = true;
             }
 
             _sites.Clear();
@@ -81,6 +100,11 @@ public sealed class EstStore : IAsyncDisposable
             {
                 _sites[site] = new SortedSet<string>(addresses, StringComparer.Ordinal);
             }
+        }
+
+        if (legacy is not null)
+        {
+            MarkDirty(); // the move to the records is written with the next flush
         }
     }
 
@@ -195,6 +219,7 @@ public sealed class EstStore : IAsyncDisposable
         lock (_gate)
         {
             _certificates[certificate.SerialNumber] = certificate;
+            _changedCertificates.Add(certificate.SerialNumber);
             Index(certificate);
         }
 
@@ -212,19 +237,26 @@ public sealed class EstStore : IAsyncDisposable
         {
             if (newest.IssuedUtc > certificate.IssuedUtc)
             {
-                _certificates.Remove(certificate.SerialNumber); // older than the newest: never kept
+                Drop(certificate.SerialNumber); // older than the newest: never kept
                 return;
             }
 
             if (_previous.TryGetValue(key, out var before) && before != certificate.SerialNumber)
             {
-                _certificates.Remove(before);
+                Drop(before);
             }
 
             _previous[key] = serial;
         }
 
         _newest[key] = certificate.SerialNumber;
+    }
+
+    /// <summary>Removes a certificate and remembers to delete its record. Under the lock.</summary>
+    private void Drop(string serialNumber)
+    {
+        _certificates.Remove(serialNumber);
+        _changedCertificates.Add(serialNumber);
     }
 
     /// <summary>The newest certificate of every device and profile. Under the lock.</summary>
@@ -246,7 +278,7 @@ public sealed class EstStore : IAsyncDisposable
             {
                 _newest.Remove(key);
                 _previous.Remove(key);
-                _certificates.Remove(serial);
+                Drop(serial);
             }
         }
 
@@ -288,6 +320,7 @@ public sealed class EstStore : IAsyncDisposable
                 if (key.DeviceId == deviceId && _certificates.TryGetValue(serial, out var certificate) && certificate.RenewalStoppedUtc is null)
                 {
                     _certificates[serial] = certificate with { RenewalStoppedUtc = nowUtc };
+                    _changedCertificates.Add(serial);
                     changed = true;
                 }
             }
@@ -309,6 +342,7 @@ public sealed class EstStore : IAsyncDisposable
             }
 
             _certificates[serialNumber] = change(certificate);
+            _changedCertificates.Add(serialNumber);
         }
 
         MarkDirty();
@@ -362,8 +396,9 @@ public sealed class EstStore : IAsyncDisposable
         try
         {
             List<Enrollment> enrollments;
-            List<IssuedCertificate> certificates;
+            List<KeyValuePair<string, string?>> certificates;
             Dictionary<Guid, List<string>> sites;
+            bool dropLegacy;
             lock (_gate)
             {
                 _flushPending = false;
@@ -376,7 +411,7 @@ public sealed class EstStore : IAsyncDisposable
                 var cutoff = _time.GetUtcNow().UtcDateTime - KeepEnded;
                 foreach (var ended in _certificates.Values.Where(c => c.NotAfterUtc < cutoff).Select(c => c.SerialNumber).ToList())
                 {
-                    _certificates.Remove(ended);
+                    Drop(ended);
                 }
 
                 foreach (var gone in _newest.Where(n => !_certificates.ContainsKey(n.Value)).Select(n => n.Key).ToList())
@@ -390,19 +425,35 @@ public sealed class EstStore : IAsyncDisposable
                 }
 
                 enrollments = [.. _enrollments];
-                certificates = [.. _certificates.Values];
+                certificates = [.. _changedCertificates.Select(serial => new KeyValuePair<string, string?>(
+                    serial, _certificates.TryGetValue(serial, out var certificate) ? EstJson.Serialize(certificate) : null))];
+                _changedCertificates.Clear();
                 sites = _sites.ToDictionary(s => s.Key, s => s.Value.ToList());
+                dropLegacy = _dropLegacyCertificates;
             }
 
             try
             {
                 await _settings.SetAsync(EnrollmentsKey, EstJson.Serialize(enrollments), ct).ConfigureAwait(false);
-                await _settings.SetAsync(CertificatesKey, EstJson.Serialize(certificates), ct).ConfigureAwait(false);
+                await _records.SetManyAsync(CertificatesKey, certificates, ct).ConfigureAwait(false);
                 await _settings.SetAsync(SitesKey, EstJson.Serialize(sites), ct).ConfigureAwait(false);
+                if (dropLegacy)
+                {
+                    await _settings.SetAsync(CertificatesKey, null, ct).ConfigureAwait(false);
+                    lock (_gate)
+                    {
+                        _dropLegacyCertificates = false;
+                    }
+                }
             }
             catch
             {
-                MarkDirty(); // written again with the next flush
+                lock (_gate)
+                {
+                    _changedCertificates.UnionWith(certificates.Select(c => c.Key)); // written again with the next flush
+                }
+
+                MarkDirty();
                 throw;
             }
         }

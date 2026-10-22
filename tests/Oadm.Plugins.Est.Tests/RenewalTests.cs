@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Plugins.Est.Serving;
 using Oadm.Plugins.Est.Tasks;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Est.Tests;
@@ -17,6 +18,7 @@ public sealed class RenewalTests : IAsyncLifetime
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero));
     private readonly FakeAuthority _ca = new();
     private readonly FakeSettings _settings = new();
+    private readonly MemoryPluginRecords _records = new();
     private readonly ServerTests.Devices _devices = new();
     private readonly ServerTests.FakePublisher _publisher = new();
     private readonly FakeCoreContext _page = new();
@@ -143,6 +145,9 @@ public sealed class RenewalTests : IAsyncLifetime
         _est = await StartAsync();
         Assert.Equal(["A3"], _est.Store.Current().Select(c => c.SerialNumber));
         Assert.Equal(2, _est.Store.CertificateCount);
+        await _est.Store.FlushAsync(CancellationToken.None);
+        Assert.Equal(["A2", "A3"], (await _records.ListAsync(EstStore.CertificatesKey, CancellationToken.None)).Keys.Order(StringComparer.Ordinal));
+        Assert.Null(await _settings.GetAsync(EstStore.CertificatesKey, CancellationToken.None)); // moved to the records
 
         _time.Advance(Lifetime);
         await _est.CheckRenewalsAsync(CancellationToken.None);
@@ -152,11 +157,34 @@ public sealed class RenewalTests : IAsyncLifetime
         Assert.True(_est.Store.FindCertificate("A3")!.NotRenewed);
     }
 
+    [Fact]
+    public async Task Only_the_certificates_that_changed_are_written()
+    {
+        var now = _time.GetUtcNow().UtcDateTime;
+        for (var i = 0; i < 1000; i++)
+        {
+            Issue($"C{i}", "https", now, new FakeDevice { Serial = $"ACCC8E{i:X6}" });
+        }
+
+        await _est.Store.FlushAsync(CancellationToken.None);
+        var written = _records.WrittenRecords;
+        Assert.Equal(1000, written);
+
+        Issue("A1", "https", now);
+        Issue("A2", "https", now.AddDays(1));
+        Issue("A3", "https", now.AddDays(2)); // A1 goes
+        await _est.Store.FlushAsync(CancellationToken.None);
+
+        Assert.Equal(3, _records.WrittenRecords - written); // A2 and A3 written, A1 deleted
+        Assert.Equal(1002, (await _records.ListAsync(EstStore.CertificatesKey, CancellationToken.None)).Count);
+    }
+
     private async Task<EstService> StartAsync()
     {
         var est = new EstService(new EstHost(_settings, _devices, new FakePluginNetwork(), () => _ca, () => true)
         {
             Time = _time,
+            Records = _records,
             Publisher = _publisher,
             Events = _page,
         });

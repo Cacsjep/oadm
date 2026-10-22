@@ -24,6 +24,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     /// <summary>Longer task log messages are cut to this length.</summary>
     public const int TaskLogEntryMaxLength = 2000;
     public DbSet<Setting> Settings => Set<Setting>();
+    public DbSet<Plugins.PluginRecord> PluginRecords => Set<Plugins.PluginRecord>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<RoleEntity> Roles => Set<RoleEntity>();
     public DbSet<AuthTokenEntity> AuthTokens => Set<AuthTokenEntity>();
@@ -357,6 +358,16 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasKey(s => s.Key);
             e.Property(s => s.Key).HasMaxLength(255);
             e.Property(s => s.ValueJson).IsRequired();
+        });
+
+        modelBuilder.Entity<Plugins.PluginRecord>(e =>
+        {
+            e.ToTable("PluginRecords");
+            e.HasKey(r => new { r.PluginId, r.Collection, r.Key });
+            e.Property(r => r.PluginId).HasMaxLength(128);
+            e.Property(r => r.Collection).HasMaxLength(Sdk.Plugins.PluginRecordRules.MaxCollectionLength);
+            e.Property(r => r.Key).HasMaxLength(Sdk.Plugins.PluginRecordRules.MaxKeyLength);
+            e.Property(r => r.ValueJson).IsRequired();
         });
     }
 }

@@ -237,6 +237,21 @@ public sealed class CorePluginHostTests : IAsyncLifetime
         Assert.Null(services.Get<OfferedText>());
     }
 
+    [Fact]
+    public async Task EveryPluginGetsItsOwnRecords()
+    {
+        var a = new TestCorePlugin("core.a", []);
+        var b = new TestCorePlugin("core.b", []);
+        Assert.True(_registry.RegisterCorePlugin(a, new PluginOrigin("a.pkg", "1.0.0", null)));
+        Assert.True(_registry.RegisterCorePlugin(b, new PluginOrigin("b.pkg", "1.0.0", null)));
+
+        await _host.StartAllAsync(CancellationToken.None);
+        await a.Context!.Records!.SetManyAsync("items", [new("one", "1")], CancellationToken.None);
+
+        Assert.Equal("1", (await a.Context.Records.ListAsync("items", CancellationToken.None))["one"]);
+        Assert.Empty(await b.Context!.Records!.ListAsync("items", CancellationToken.None));
+    }
+
     private sealed record OfferedText(string Text);
 
     private void Register(ICorePlugin plugin) =>

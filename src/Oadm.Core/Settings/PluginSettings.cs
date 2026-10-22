@@ -9,6 +9,8 @@ namespace Oadm.Core.Settings;
 public sealed class DbPluginSettingsProvider(IDbContextFactory<OadmDbContext> dbFactory) : IPluginSettingsProvider
 {
     public IPluginSettings GetSettings(string pluginId) => new PluginSettings(dbFactory, pluginId);
+
+    public IPluginRecords? GetRecords(string pluginId) => new DbPluginRecords(dbFactory, pluginId);
 }
 
 /// <summary>

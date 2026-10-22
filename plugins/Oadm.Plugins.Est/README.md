@@ -22,8 +22,9 @@ Apache 2.0).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
     keep-alive); `Protocol/EstMessages`: PKCS#7 certs-only and PKCS#10 in base64.
   - `Serving/EstStore`: plugin settings `config` (port, profiles, enrollments kept 100..5000), `enrollments` (newest
-    first), `certificates` (per device and profile the newest and the one before it; dropped 30 days after they end or
-    when the device is gone), `sites`; written at most every 2 s.
+    first), `sites`; plugin records `certificates` (`ctx.Records`, one row per certificate: per device and profile the
+    newest and the one before it; dropped 30 days after they end or when the device is gone; only changed rows are
+    written); written at most every 2 s.
   - Signing: `IDeviceCertificateAuthority` of PKI (`ctx.Services`), names from OADM (CN = the device's address; SAN =
     its address, the address it connected from on the server's network, host name, `axis-<serial>.local`), validity from
     the profile, source "EST".

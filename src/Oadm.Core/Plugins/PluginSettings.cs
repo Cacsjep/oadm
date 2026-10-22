@@ -13,12 +13,22 @@ public interface IPluginSettingsProvider
 {
     /// <exception cref="ArgumentException">Empty plugin id or one containing ':'.</exception>
     IPluginSettings GetSettings(string pluginId);
+
+    /// <summary>The plugin's records (<see cref="ICorePluginContext.Records"/>); null where the host keeps none.</summary>
+    IPluginRecords? GetRecords(string pluginId) => null;
 }
 
 /// <summary>Volatile settings for tests. Same key layout and validation as the database store.</summary>
 public sealed class InMemoryPluginSettingsProvider : IPluginSettingsProvider
 {
     private readonly ConcurrentDictionary<string, string?> _values = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, MemoryPluginRecords> _records = new(StringComparer.Ordinal);
+
+    public IPluginRecords? GetRecords(string pluginId)
+    {
+        SettingKeys.ValidatePluginId(pluginId);
+        return _records.GetOrAdd(pluginId, _ => new MemoryPluginRecords());
+    }
 
     public IPluginSettings GetSettings(string pluginId)
     {

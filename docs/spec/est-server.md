@@ -92,8 +92,10 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
 
 - **Records**: per device and profile the newest certificate and the one before it (a camera whose answer got lost
   renews with the previous one); a renewal or a new set-up pushes out the older ones; at most 2 x devices x profiles.
-  Ended more than 30 days ago: dropped; a device OADM no longer manages: forgotten by the check. Records of 4.1.0-rc.2
-  (every certificate) are cut down when loaded.
+  Ended more than 30 days ago: dropped; a device OADM no longer manages: forgotten by the check. Stored as plugin records
+  (`ctx.Records`, collection `certificates`, one row per certificate by serial number): a flush writes only the changed
+  certificates, never the whole list. 4.1.0-rc.2 kept every certificate in one settings value `certificates`: loaded
+  once, cut down, moved to the records and the settings value deleted.
 - **Not renewed**: the newest certificate, **halfway through its lifetime plus `NotRenewedGrace` (2 days)** (short
   ones: plus a tenth of the lifetime; 1 year: day 184.5), without a newer one. Checked 1 minute after the start and
   then every hour; flagged once (`NotRenewedUtc`, persisted): the event "Certificate not renewed", a warning in the

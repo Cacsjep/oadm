@@ -163,6 +163,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     Network = SiteSupportGuard.Guard(entry.Network, siteSupport),
                     Pro = entry.Pro = _registry.Pro is { } pro ? new PluginProLicense(pro) : null,
                     Services = _services?.For(registered.Id),
+                    Records = _settings.GetRecords(registered.Id),
                     Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
                 };
                 try
@@ -516,6 +517,8 @@ internal sealed class CorePluginContext(
     public ITaskRunner Tasks { get; } = tasks;
 
     public IPluginSettings Settings { get; } = settings;
+
+    public IPluginRecords? Records { get; init; }
 
     public ILogger Logger { get; } = logger;
 

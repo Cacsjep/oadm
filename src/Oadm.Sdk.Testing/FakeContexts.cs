@@ -190,6 +190,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public IPluginSettings Settings => PluginSettings;
 
+    /// <summary>The plugin's records, in memory.</summary>
+    public MemoryPluginRecords PluginRecords { get; } = new();
+
+    /// <inheritdoc />
+    public IPluginRecords? Records => PluginRecords;
+
     /// <inheritdoc />
     public ILogger Logger { get; init; } = NullLogger.Instance;
 

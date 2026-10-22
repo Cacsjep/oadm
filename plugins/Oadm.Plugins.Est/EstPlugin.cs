@@ -74,6 +74,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             () => ctx.Pro?.IsActive == true)
         {
             Events = ctx.Events,
+            Records = ctx.Records ?? throw new InvalidOperationException("The EST server needs OADM 4.1 or later."),
             Sites = ctx.Sites,
             Publisher = ctx.EventPublisher,
             Logger = ctx.Logger,

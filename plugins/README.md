@@ -747,6 +747,10 @@ recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`Soap
 - **Saved settings**: `ctx.Settings.GetAsync/SetAsync(key, json)` (per plugin, server database). Store one JSON
   document on Save (the NTP server uses key `config`: enabled, interface, upstream) and read it in `StartAsync`, so the
   service comes back after a server restart. Never block `StartAsync` on the network: start background loops.
+- **Many records** (one per device, certificate, lease): `ctx.Records` (`IPluginRecords`, one row per record in the
+  server database): `ListAsync(collection)` on start, `SetManyAsync(collection, changes)` with only what changed (null
+  deletes), `ClearAsync`. Never a list that grows with the devices in one settings value: it is rewritten whole on every
+  change. Tests: `MemoryPluginRecords` (`FakeCoreContext.PluginRecords`).
 - **Live events to the page**: `ctx.Events?.Publish(topic, payloadJson)` (SDK `IPluginEvents`, null on hosts without
   it). Fire and forget, never blocks; every watching page has its own queue of 256 events (oldest dropped). Batch
   high-rate sources (the NTP request log publishes at most every 500 ms) and keep payloads small (max 1 M characters).
