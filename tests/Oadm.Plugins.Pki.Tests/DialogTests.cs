@@ -72,7 +72,7 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
         Assert.Equal("Devices that could not be read", vm.VisibleRows[^1].Group);
         Assert.Equal("Timeout: the device did not answer", vm.VisibleRows[^1].Error);
 
-        vm.SearchText = "trustlix device";
+        vm.SearchText = "site device";
         Assert.Equal(2, vm.VisibleRows.Count);
         Assert.All(vm.VisibleRows, r => Assert.Equal("HTTPS", r.InUse));
         vm.SearchText = devices[1].Address;
@@ -96,7 +96,7 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
         Assert.False(vm.CanDelete);
         Assert.Equal("Check the certificates to delete.", vm.DeleteBlockedReason);
 
-        var used = vm.AllRows.First(r => r.Alias == "Trustlix Device HTTPS lUZuIXuu");
+        var used = vm.AllRows.First(r => r.Alias == "Site Device HTTPS lUZuIXuu");
         used.IsChecked = true;
         Assert.False(used.IsChecked);
         Assert.Equal("In use by HTTPS: it cannot be deleted.", used.BlockedReason);

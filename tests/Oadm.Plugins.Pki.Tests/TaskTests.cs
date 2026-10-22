@@ -24,7 +24,7 @@ public sealed class DeviceApiTests
         Assert.Equal(ConnectionPolicy.HttpAndHttps, configuration.Policy);
         Assert.Equal(6, configuration.Ciphers.Count);
         Assert.Equal("ECDHE-ECDSA-AES128-GCM-SHA256", configuration.Ciphers[0]);
-        Assert.Equal("Trustlix Device HTTPS lUZuIXuu", configuration.CertificateAlias);
+        Assert.Equal("Site Device HTTPS lUZuIXuu", configuration.CertificateAlias);
         Assert.Empty(configuration.CaCertificates);
     }
 
@@ -79,7 +79,7 @@ public sealed class DeviceApiTests
 
         var certificates = CertApi.ParseList(System.Text.Json.Nodes.JsonNode.Parse(PkiFixture.Read(PkiFixture.Certificates))!["data"]);
         Assert.Equal(4, certificates.Count);
-        Assert.Contains(certificates, c => c.Alias == "Trustlix Device HTTPS lUZuIXuu" && c.Keystore == "SE0");
+        Assert.Contains(certificates, c => c.Alias == "Site Device HTTPS lUZuIXuu" && c.Keystore == "SE0");
         Assert.Equal("OADM%20HTTPS%20%28x%29%2Fy", CertApi.Escape("OADM HTTPS (x)/y"));
     }
 
@@ -91,10 +91,10 @@ public sealed class DeviceApiTests
         var list = CertificateInventory.Describe(
             certificates, cas, WebServerTls.Parse(PkiFixture.Read(PkiFixture.WebServer)), NetworkInfoApi.Parse(PkiFixture.Read(PkiFixture.NetworkInfo)).Dot1x, [], null);
 
-        var https = list.Single(c => c.Alias == "Trustlix Device HTTPS lUZuIXuu");
+        var https = list.Single(c => c.Alias == "Site Device HTTPS lUZuIXuu");
         Assert.Equal(CertificateKind.Server, https.Kind);
         Assert.Equal(["HTTPS"], https.InUse);
-        Assert.Equal("Trustlix Root CA", https.IssuedBy);
+        Assert.Equal("Example Root CA", https.IssuedBy);
         Assert.False(https.FromOadm);
         Assert.False(https.Factory);
 
@@ -183,7 +183,7 @@ public sealed class HttpsTaskTests
         var alias = h.Camera.WebServerAlias;
         Assert.StartsWith("OADM HTTPS ", alias, StringComparison.Ordinal);
         Assert.Equal(ConnectionPolicy.HttpAndHttps, h.Camera.Policy); // policy unchanged
-        Assert.Contains("Trustlix Device HTTPS lUZuIXuu", h.Camera.CertificateAliases); // never deletes what OADM did not issue
+        Assert.Contains("Site Device HTTPS lUZuIXuu", h.Camera.CertificateAliases); // never deletes what OADM did not issue
 
         // The certificate: OADM's subject and SAN, serverAuth, issued by the CA, served and pinned by OADM.
         using var served = h.Served(alias);
@@ -260,7 +260,7 @@ public sealed class HttpsTaskTests
         Assert.Contains("Get certificate request: Failed", h.Lines);
         Assert.Contains("Switch web server to the new certificate: Skipped", h.Lines);
         Assert.Equal(before.Order(), h.Camera.CertificateAliases.Order());
-        Assert.Equal("Trustlix Device HTTPS lUZuIXuu", h.Camera.WebServerAlias);
+        Assert.Equal("Site Device HTTPS lUZuIXuu", h.Camera.WebServerAlias);
         Assert.Contains(h.Context.LogEntries, e => e.Message.Contains("unfinished key", StringComparison.Ordinal));
     }
 
@@ -334,7 +334,7 @@ public sealed class Dot1xTaskTests
         Assert.Equal([caAlias], p["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()));
         using var certificate = h.Served(alias);
         Assert.Contains(certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().Single().EnhancedKeyUsages.Cast<Oid>(), o => o.Value == DeviceCertificateIssuer.ClientAuthOid);
-        Assert.Equal("Trustlix Device HTTPS lUZuIXuu", h.Camera.WebServerAlias); // HTTPS untouched
+        Assert.Equal("Site Device HTTPS lUZuIXuu", h.Camera.WebServerAlias); // HTTPS untouched
     }
 
     [Fact]
@@ -445,7 +445,7 @@ public sealed class RenewDeleteInstallTests
     {
         await using var h = await TaskHarness.StartAsync();
         var task = h.Task<DeleteCertificatesTask>(PkiTaskIds.Delete);
-        h.Camera.AddCertificate("old one", h.Camera.CertificatePem("Trustlix Device HTTPS lUZuIXuu"));
+        h.Camera.AddCertificate("old one", h.Camera.CertificatePem("Site Device HTTPS lUZuIXuu"));
 
         string Payload(params CertificateRef[] refs) =>
             PkiJson.Serialize(new DeletePayload { Devices = new Dictionary<Guid, IReadOnlyList<CertificateRef>> { [h.Device.Id] = refs } });
@@ -463,8 +463,8 @@ public sealed class RenewDeleteInstallTests
         Assert.DoesNotContain("COMODO ECC Certification Authority", h.Camera.CaAliases);
 
         // In use by HTTPS, or an Axis factory certificate: nothing is deleted, not even the valid choice.
-        var ex = await h.RunAsync(PkiTaskIds.Delete, Payload(new CertificateRef("Trustlix Device HTTPS lUZuIXuu", false)));
-        Assert.Equal("\"Trustlix Device HTTPS lUZuIXuu\" is in use by HTTPS. Nothing was changed.", ex!.Message);
+        var ex = await h.RunAsync(PkiTaskIds.Delete, Payload(new CertificateRef("Site Device HTTPS lUZuIXuu", false)));
+        Assert.Equal("\"Site Device HTTPS lUZuIXuu\" is in use by HTTPS. Nothing was changed.", ex!.Message);
         var writes = h.Camera.Writes.Count;
         ex = await h.RunAsync(PkiTaskIds.Delete, Payload(new CertificateRef("COMODO RSA Certification Authority", true), new CertificateRef("Axis device ID RSA-2048 (802.1AR)", false)));
         Assert.Contains("Axis factory certificate", ex!.Message, StringComparison.Ordinal);
