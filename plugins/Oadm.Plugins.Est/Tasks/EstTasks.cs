@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Oadm.Plugins.Est.Device;
 using Oadm.Plugins.Est.Serving;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
@@ -43,12 +44,17 @@ public static class EstTaskIds
     public const string NoCertificate = "The camera reached the EST server but got no certificate within 2 minutes. The Enrollments list shows what reached the server.";
     public const string AlreadySetUp = "The camera already has these enrollment profiles. No profile was written.";
 
-    /// <summary>The right to run the EST tasks (it also lifts a revoke): not for operators unless an administrator gives it.</summary>
+    /// <summary>The right to run the EST tasks: not for operators unless an administrator gives it.</summary>
     public const string EnrollPermission = "enroll";
     public const string NeedsApis = "The camera has no certificate enrollment. Needs AXIS OS 12.10 or later. Nothing was changed.";
     public const string NoDeviceId = "The camera has no Axis device ID certificate. Nothing was changed.";
     public const string NoProfile = "The camera supports none of the EST server's profiles. Nothing was changed.";
     public const string NoAddress = "OADM has no address towards the camera. Nothing was changed.";
+    public static string InterfaceMissing(string notAvailable) => $"The EST server does not listen: {notAvailable}. Nothing was changed.";
+
+    public static string NoInterfaceAddress(string name, AddressFamily family) =>
+        $"The EST server listens on {name}, which has no {(family == AddressFamily.InterNetwork ? "IPv4" : "IPv6")} address for this camera. Nothing was changed.";
+
     public const string NoSiteRelay = "The EST server cannot listen at the camera's site. Nothing was changed.";
 
     // Steps: imperative, with the article.
@@ -94,10 +100,10 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
 
     protected EstService? Service => service();
 
-    /// <summary>Setting up lifts a revoke and both tasks change how cameras get certificates: a right of its own.</summary>
+    /// <summary>Both tasks change how cameras get certificates: a right of its own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(EstTaskIds.EnrollPermission, "Set up certificate enrollment", "Set up and remove certificate enrollment on cameras; setting up again allows a revoked profile again.") { OperatorDefault = false },
+        new(EstTaskIds.EnrollPermission, "Set up certificate enrollment", "Set up and remove certificate enrollment on cameras.") { OperatorDefault = false },
     ];
 
     public IReadOnlyList<string>? RequiredPermissions(string? payloadJson) => [EstTaskIds.EnrollPermission];
@@ -185,6 +191,16 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                 throw new DeviceNotCompatibleException(EstTaskIds.NoAddress);
             }
 
+            if (device.SiteId is null && !InterfaceOptions.IsAll(est.Store.Config.InterfaceId))
+            {
+                // "Listen on" one interface: the camera gets that interface's address of its address family.
+                var nic = est.ListenInterface() ?? throw new DeviceNotCompatibleException(EstTaskIds.InterfaceMissing(EstService.NotAvailable(est.Store.Config)));
+                var own = EstService.ListenAddresses(nic).Where(a => a.AddressFamily == address.AddressFamily).ToList();
+                address = own.FirstOrDefault(a => a.Equals(address))
+                    ?? own.FirstOrDefault()
+                    ?? throw new DeviceNotCompatibleException(EstTaskIds.NoInterfaceAddress(nic.Name, address.AddressFamily));
+            }
+
             if (address.AddressFamily == AddressFamily.InterNetworkV6 && address.ScopeId != 0)
             {
                 address = new IPAddress(address.GetAddressBytes()); // the server's own scope id means nothing to the camera
@@ -226,7 +242,6 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         var current = (await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false))
             .Where(c => c.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) || c.Services.Any(wantedServices.Contains))
             .ToList();
-        est.Store.ClearRevoked(device.Id); // set up again: revoked profiles may enroll again
         var started = est.Time.GetUtcNow().UtcDateTime;
         if (Same(current, wanted))
         {
@@ -489,7 +504,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     }
 
     private static IssuedCertificate? Newest(EstService est, IDeviceInfo device, EstProfile profile, DateTime started) =>
-        est.Store.Certificates(null, 0, int.MaxValue).Certificates
+        est.Store.Current()
             .Where(c => c.DeviceId == device.Id && c.IssuedUtc >= started && string.Equals(c.Profile, profile.Name, StringComparison.OrdinalIgnoreCase))
             .MaxBy(c => c.IssuedUtc);
 
@@ -563,5 +578,8 @@ public sealed class EstRemoveTask(Func<EstService?> service) : EstTaskBase(servi
 
             step.Complete(string.Join(", ", ours.Select(p => p.Id)));
         }).ConfigureAwait(false);
+
+        // The camera no longer renews: its certificates are never flagged Not renewed.
+        Service?.Store.StopRenewals(device.Id, Service.Time.GetUtcNow().UtcDateTime);
     }
 }

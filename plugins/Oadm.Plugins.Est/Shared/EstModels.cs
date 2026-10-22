@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Network;
 
 namespace Oadm.Plugins.Est;
 
@@ -29,6 +30,9 @@ public static class EstPluginInfo
 
     /// <summary>Event "Enrollment refused" (device, profile, reason).</summary>
     public const string RefusedEvent = "oadm.est.refused";
+
+    /// <summary>Event "Certificate not renewed" (device, profile, valid until).</summary>
+    public const string NotRenewedEvent = "oadm.est.notrenewed";
 }
 
 /// <summary>Page backend methods (<c>InvokeAsync</c>) and live event topics.</summary>
@@ -40,20 +44,26 @@ public static class EstMethods
     /// <summary>() -> <see cref="EnrollmentList"/>.</summary>
     public const string GetEnrollments = "getEnrollments";
 
-    /// <summary><see cref="CertificatesRequest"/> -> <see cref="CertificateList"/>.</summary>
-    public const string GetCertificates = "getCertificates";
+    /// <summary>No payload -> <see cref="CertificateList"/> of the certificates the cameras did not renew in time.</summary>
+    public const string GetNotRenewed = "getNotRenewed";
 
     /// <summary><see cref="SaveRequest"/> -> <see cref="SaveReply"/> (Admin).</summary>
     public const string Save = "save";
 
-    /// <summary><see cref="RevokeRequest"/> -> <see cref="RevokeReply"/> (Admin).</summary>
-    public const string Revoke = "revoke";
+    /// <summary>() -> (): deletes every enrollment (Admin).</summary>
+    public const string ClearEnrollments = "clearEnrollments";
 
     /// <summary>Event: <see cref="EstState"/> changed (status, a relay, the settings).</summary>
     public const string StateTopic = "state";
 
     /// <summary>Event: new enrollments (<see cref="EnrollmentList"/> of the new ones).</summary>
     public const string EnrollmentsTopic = "enrollments";
+
+    /// <summary>Event: every enrollment was deleted; the pages empty their list.</summary>
+    public const string EnrollmentsClearedTopic = "enrollmentsCleared";
+
+    /// <summary>Event: certificates were flagged Not renewed; the page reads the list again.</summary>
+    public const string CertificatesTopic = "certificates";
 }
 
 /// <summary>What a profile's certificates are for on the camera.</summary>
@@ -91,6 +101,12 @@ public sealed record EstProfile(string Name, ProfileUse Use, int ValidityDays = 
 public sealed record EstConfig
 {
     public int Port { get; init; } = EstPluginInfo.DefaultPort;
+
+    /// <summary>The interface it listens on (<see cref="InterfaceOptions.AllId"/> = every address).</summary>
+    public string InterfaceId { get; init; } = InterfaceOptions.AllId;
+
+    /// <summary>Its name when saved ("Ethernet"), shown while it is gone.</summary>
+    public string? InterfaceName { get; init; } = InterfaceOptions.AllLabel;
 
     public IReadOnlyList<EstProfile> Profiles { get; init; } = Defaults;
 
@@ -152,14 +168,19 @@ public sealed record IssuedCertificate
     /// <summary>SHA-256 of the certificate (upper hex): the set-up task pins an HTTPS certificate by it.</summary>
     public string? Fingerprint { get; init; }
 
-    public DateTime? RevokedUtc { get; init; }
+    /// <summary>When OADM saw that the camera had not renewed it in time (event "Certificate not renewed").</summary>
+    public DateTime? NotRenewedUtc { get; init; }
 
+    /// <summary>When enrollment was removed from the camera, or the camera from OADM: no renewal is expected.</summary>
+    public DateTime? RenewalStoppedUtc { get; init; }
+
+    /// <summary>The camera did not renew it in time (a renewal replaces the record); the page's "Not renewed".</summary>
     [JsonIgnore]
-    public bool Revoked => RevokedUtc is not null;
+    public bool NotRenewed => this is { NotRenewedUtc: not null, RenewalStoppedUtc: null };
 }
 
-/// <summary>A device and profile whose certificate was revoked: no more certificates until the camera is set up again.</summary>
-public sealed record RevokedPair(Guid DeviceId, string Profile);
+/// <summary>A device and one of its profiles (profile in lower case).</summary>
+public sealed record DeviceProfile(Guid DeviceId, string Profile);
 
 /// <summary>A listener as the page shows it: "This server" or a site, and its state in plain words.</summary>
 public sealed record ListenerState(Guid? SiteId, string Name, bool Ok, string Text);
@@ -176,16 +197,16 @@ public sealed record EstState
 
     public IReadOnlyList<ListenerState> Listeners { get; init; } = [];
 
+    /// <summary>The "Listen on" choices: All interfaces, then the server's interfaces.</summary>
+    public IReadOnlyList<InterfaceOption> Interfaces { get; init; } = [];
+
     public int CertificateCount { get; init; }
 }
 
 public sealed record EnrollmentList(IReadOnlyList<Enrollment> Enrollments);
 
-/// <param name="Search">Device or profile contains it; empty = every certificate.</param>
-/// <param name="Offset">The first entry of the page.</param>
-public sealed record CertificatesRequest(string? Search = null, int Offset = 0);
-
-/// <param name="Total">The matching certificates.</param>
+/// <param name="Certificates">The certificates the cameras did not renew in time (the first 500).</param>
+/// <param name="Total">All of them.</param>
 public sealed record CertificateList(IReadOnlyList<IssuedCertificate> Certificates, int Total);
 
 public sealed record SaveRequest(EstConfig Config);
@@ -193,9 +214,6 @@ public sealed record SaveRequest(EstConfig Config);
 /// <summary>Null error = saved; else the field and its error, shown below the field.</summary>
 public sealed record SaveReply(EstState? State, string? Field = null, string? Error = null);
 
-public sealed record RevokeRequest(IReadOnlyList<string> SerialNumbers);
-
-public sealed record RevokeReply(int Revoked);
 
 /// <summary>
 /// The payload of "Set up certificate enrollment". <paramref name="ReplaceDot1x"/>: also give cameras with IEEE 802.1X on

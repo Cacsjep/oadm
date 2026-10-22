@@ -146,13 +146,16 @@ public abstract class LocalListener : IRelay
     private readonly CancellationTokenSource _life = new();
     private readonly Lock _lock = new();
     private readonly string _reason;
+    private readonly IReadOnlyList<IPAddress> _addresses;
     private List<Socket> _sockets = [];
     private ITimer? _retry;
     private RelayState _state = RelayState.PortInUse;
     private int _disposed;
 
-    private protected LocalListener(SiteProtocol protocol, int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly)
+    private protected LocalListener(SiteProtocol protocol, int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly,
+        IReadOnlyList<IPAddress>? addresses = null)
     {
+        _addresses = addresses ?? [];
         ArgumentOutOfRangeException.ThrowIfLessThan(port, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65535);
         Protocol = protocol;
@@ -316,6 +319,17 @@ public abstract class LocalListener : IRelay
             yield break;
         }
 
+        if (_addresses.Count > 0)
+        {
+            // One interface: its own addresses only.
+            foreach (var address in _addresses)
+            {
+                yield return address;
+            }
+
+            yield break;
+        }
+
         yield return IPAddress.Any;
         if (Socket.OSSupportsIPv6)
         {
@@ -389,9 +403,10 @@ public abstract class LocalListener : IRelay
     }
 
     /// <summary>A TCP listener on the server's own network.</summary>
-    internal static async Task<ITcpRelay> OpenTcpAsync(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly, CancellationToken ct)
+    internal static async Task<ITcpRelay> OpenTcpAsync(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly,
+        IReadOnlyList<IPAddress>? addresses, CancellationToken ct)
     {
-        var listener = new LocalTcpListener(port, reason, firewall, time, loopbackOnly);
+        var listener = new LocalTcpListener(port, reason, firewall, time, loopbackOnly, addresses);
         await listener.StartAsync(ct).ConfigureAwait(false);
         return listener;
     }
@@ -467,8 +482,9 @@ public abstract class LocalListener : IRelay
         }
     }
 
-    private sealed class LocalTcpListener(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly)
-        : LocalListener(SiteProtocol.Tcp, port, reason, firewall, time, loopbackOnly), ITcpRelay
+    private sealed class LocalTcpListener(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly,
+        IReadOnlyList<IPAddress>? addresses)
+        : LocalListener(SiteProtocol.Tcp, port, reason, firewall, time, loopbackOnly, addresses), ITcpRelay
     {
         private readonly System.Threading.Channels.Channel<Socket> _accepted =
             System.Threading.Channels.Channel.CreateBounded<Socket>(new System.Threading.Channels.BoundedChannelOptions(128)

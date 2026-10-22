@@ -2,15 +2,29 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.Est.Client"
+             xmlns:net="using:Oadm.Sdk.Network"
              x:Class="Oadm.Plugins.Est.Client.EstView"
              x:DataType="vm:EstViewModel"
              ui:PageHeader.Subtitle="Cameras get and renew their certificates from the OADM CA by themselves.">
-  <!-- One card (the host's page card): port and profiles with Save and the status left of it, then the enrollments and
-       the certificates. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,Auto,*,Auto,*">
-    <!-- Two columns: port and enrollments kept left, the profiles right; Save with the status below, at the right edge. -->
+  <!-- One card (the host's page card): General and Profiles with Save and the status left of it, then the enrollments and,
+       only when there are any, the certificates the cameras did not renew in time. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <!-- Two columns: General (listen on, port, enrollments kept) left, the profiles right; Save with the status below, at
+         the right edge. -->
     <Grid Grid.Row="0" ColumnDefinitions="Auto,48,Auto" RowDefinitions="Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
       <StackPanel Grid.Column="0" Classes="form">
+        <TextBlock Classes="sectionTitle" Text="General" />
+        <!-- Same shared select as the NTP and DHCP server pages. -->
+        <ui:FormField Label="Listen on" InputWidth="320">
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
+                    ToolTip.Tip="The interface the cameras reach this server on.">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="net:InterfaceOption">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FormField>
         <ui:FormField Label="Port">
           <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
         </ui:FormField>
@@ -20,6 +34,7 @@
       </StackPanel>
 
       <StackPanel Grid.Column="2" Spacing="6">
+        <TextBlock Classes="sectionTitle" Text="Profiles" />
         <Grid ColumnDefinitions="180,12,150,12,100,12,90,12,Auto,12,Auto">
           <TextBlock Grid.Column="0" Classes="secondary" Text="Profile" />
           <TextBlock Grid.Column="2" Classes="secondary" Text="Use" />
@@ -67,7 +82,16 @@
                  IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     </Grid>
 
-    <TextBlock Grid.Row="1" Classes="sectionTitle" Text="Enrollments" Margin="{DynamicResource Oadm.GapTop}" />
+    <!-- Like the event rule log: title, Delete all (red, confirmed), search at the right. -->
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" Margin="{DynamicResource Oadm.GapTop}">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
+        <TextBlock Classes="sectionTitle" Text="Enrollments" VerticalAlignment="Center" />
+        <Button Classes="toolbar danger" Command="{Binding ClearEnrollmentsCommand}" IsVisible="{Binding MayManage}">
+          <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
+        </Button>
+      </StackPanel>
+      <ui:SearchBox Grid.Column="2" Text="{Binding EnrollmentSearch}" Placeholder="Search device, profile, result" Width="260" />
+    </Grid>
     <Panel Grid.Row="2" Margin="0,8,0,0">
       <DataGrid ItemsSource="{Binding Enrollments}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                 SelectionMode="Single" MinHeight="140">
@@ -85,44 +109,29 @@
           </DataGridTemplateColumn>
         </DataGrid.Columns>
       </DataGrid>
-      <TextBlock Classes="secondary" Text="No enrollments yet. Set up a camera with Set up certificate enrollment." IsVisible="{Binding !HasEnrollments}"
+      <TextBlock Classes="secondary" Text="{Binding EnrollmentsEmptyText}" IsVisible="{Binding EnrollmentsEmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
     </Panel>
 
-    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="{DynamicResource Oadm.GapTop}">
-      <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Certificates" VerticalAlignment="Center" />
-      <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding CertificateSummary}" VerticalAlignment="Center" Margin="12,0,0,0" />
-      <ui:SearchBox Grid.Column="2" Text="{Binding CertificateSearch}" Placeholder="Search device, profile" Width="260" />
-    </Grid>
-    <Panel Grid.Row="4" Margin="0,8,0,0">
-      <DataGrid ItemsSource="{Binding Certificates}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
-                SelectionMode="Single" MinHeight="140">
-        <DataGrid.Columns>
-          <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:CertificateRow" />
-          <DataGridTextColumn Header="Profile" Width="110" Binding="{Binding Profile}" x:DataType="vm:CertificateRow" />
-          <DataGridTextColumn Header="Issued" Width="110" Binding="{Binding Issued}" SortMemberPath="IssuedSortKey" x:DataType="vm:CertificateRow" />
-          <DataGridTextColumn Header="Valid until" Width="110" Binding="{Binding ValidUntil}" SortMemberPath="ValidUntilSortKey" x:DataType="vm:CertificateRow" />
-          <DataGridTemplateColumn Header="State" Width="110" SortMemberPath="State" x:DataType="vm:CertificateRow">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate x:DataType="vm:CertificateRow">
-                <ui:StatusChip Margin="8,0" Text="{Binding State}" IsOk="{Binding IsValid}" IsError="{Binding IsProblem}" />
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTemplateColumn Width="100" CanUserSort="False" x:DataType="vm:CertificateRow">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate x:DataType="vm:CertificateRow">
-                <Button Classes="link danger" Content="Revoke" Margin="10,0" IsVisible="{Binding CanRevoke}"
-                        IsEnabled="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).MayManage}"
-                        Command="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).RevokeCommand}" CommandParameter="{Binding}" />
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-        </DataGrid.Columns>
-      </DataGrid>
-      <TextBlock Classes="secondary" Text="No certificates yet." IsVisible="{Binding !HasCertificates}"
-                 HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-    </Panel>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="{DynamicResource Oadm.GapTop}" IsVisible="{Binding HasNotRenewed}">
+      <TextBlock Classes="sectionTitle" Text="Not renewed" VerticalAlignment="Center" />
+      <TextBlock Classes="secondary" Text="{Binding NotRenewedSummary}" VerticalAlignment="Center" />
+    </StackPanel>
+    <DataGrid Grid.Row="4" Margin="0,8,0,0" ItemsSource="{Binding NotRenewed}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+              SelectionMode="Single" MaxHeight="240" IsVisible="{Binding HasNotRenewed}">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:NotRenewedRow" />
+        <DataGridTextColumn Header="Profile" Width="110" Binding="{Binding Profile}" x:DataType="vm:NotRenewedRow" />
+        <DataGridTextColumn Header="Valid until" Width="150" Binding="{Binding ValidUntil}" SortMemberPath="ValidUntilSortKey" x:DataType="vm:NotRenewedRow" />
+        <DataGridTemplateColumn Header="State" Width="140" SortMemberPath="State" x:DataType="vm:NotRenewedRow">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:NotRenewedRow">
+              <ui:StatusChip Margin="8,0" Text="{Binding State}" IsError="True" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
 
     <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="5" Text="Reading the EST server" IsVisible="{Binding IsLoading}" />
   </Grid>

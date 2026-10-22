@@ -31,7 +31,7 @@ public static class EstRefusals
     public const string NotDeviceId = "The camera's certificate is not a valid Axis device ID or an EST certificate.";
     public const string NotManaged = "OADM does not manage this camera.";
     public const string OtherSite = "The camera belongs to another site.";
-    public const string Revoked = "The certificate was revoked. Set up the camera again.";
+    public const string OtherCamera = "The camera signed in with the certificate of another camera.";
     public const string BadRequest = "The certificate request cannot be read.";
 }
 
@@ -39,7 +39,7 @@ public static class EstRefusals
 /// The EST operations (RFC 7030) of one request: <c>GET /.well-known/est/&lt;profile&gt;/cacerts</c>,
 /// <c>POST .../simpleenroll</c> and <c>POST .../simplereenroll</c>; everything else and unknown or disabled profiles 404.
 /// Who may enroll (docs/spec/est-server.md): the camera signs in with its Axis device ID, or with a certificate EST issued
-/// it that is not revoked, and its serial number is a device OADM manages (at a site: a device of that site).
+/// it, and its serial number is a device OADM manages (at a site: a device of that site).
 /// </summary>
 public sealed class EstEndpoint(
     EstStore store,
@@ -132,15 +132,10 @@ public sealed class EstEndpoint(
             return Refuse(403, EstRefusals.OtherSite, device);
         }
 
-        if (store.IsRevoked(device.Id, profile.Name))
+        // A certificate EST issued signs in only for its own device.
+        if (store.FindCertificate(client.SerialNumber) is { } own && own.DeviceId != device.Id)
         {
-            return Refuse(403, EstRefusals.Revoked, device);
-        }
-
-        // A certificate EST issued signs in only for its own device and while it is not revoked.
-        if (store.FindCertificate(client.SerialNumber) is { } own && (own.DeviceId != device.Id || own.Revoked))
-        {
-            return Refuse(403, EstRefusals.Revoked, device);
+            return Refuse(403, EstRefusals.OtherCamera, device);
         }
 
         byte[] csr;

@@ -109,6 +109,12 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(200, renewal.Status);
         Assert.Equal(EnrollmentKind.Renewal, _service.Store.Enrollments()[0].Kind);
         Assert.Equal(2, _service.Store.CertificateCount);
+
+        // The camera retries with its previous certificate (the answer got lost): renewed again, the oldest record goes.
+        var retry = await SendAsync("POST", "/.well-known/est/https/simplereenroll", renewalIdentity, Body(csr2));
+        Assert.Equal(200, retry.Status);
+        Assert.Equal(2, _service.Store.CertificateCount);
+        Assert.Single(_service.Store.Current());
     }
 
     [Fact]
@@ -202,22 +208,6 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_revoked_certificate_stops_the_profile_for_the_camera()
-    {
-        var (csr, key) = TestPki.Request();
-        using var _ = key;
-        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
-        var serial = Assert.Single(_service.Store.Certificates(null, 0, 10).Certificates).SerialNumber;
-
-        Assert.Equal(1, _service.Revoke(new RevokeRequest([serial])).Revoked);
-
-        var again = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
-        Assert.Equal((403, EstRefusals.Revoked), (again.Status, again.Body.Trim()));
-        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/dot1x/simpleenroll", _deviceId, Body(csr))).Status); // other profile
-        Assert.Equal(DeviceCertificateUse.Client, DeviceRequests()[^1].Use);
-    }
-
-    [Fact]
     public async Task Unknown_paths_and_profiles_look_the_same_and_without_pro_or_ca_nothing_is_issued()
     {
         Assert.Equal(404, (await SendAsync("GET", "/.well-known/est/nope/cacerts", null)).Status);
@@ -307,7 +297,7 @@ public sealed class ServerTests : IAsyncLifetime
 
     private sealed record Response(int Status, Dictionary<string, string> Headers, string Body);
 
-    private sealed class Devices : IDeviceRepository
+    internal sealed class Devices : IDeviceRepository
     {
         public List<IDeviceInfo> List { get; } = [];
 
@@ -316,7 +306,7 @@ public sealed class ServerTests : IAsyncLifetime
         public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(List.Find(d => d.Id == id));
     }
 
-    private sealed class FakePublisher : Sdk.Events.IEventPublisher
+    internal sealed class FakePublisher : Sdk.Events.IEventPublisher
     {
         public List<(string Type, Guid? Device)> Fired { get; } = [];
 

@@ -55,7 +55,13 @@ public sealed class PluginNetworkScope : IPluginNetwork, IAsyncDisposable
     public async Task<ITcpRelay> ListenTcpAsync(int port, string reason, CancellationToken ct)
     {
         ThrowIfDisposed();
-        return Track(new TrackedTcp(this, await LocalListener.OpenTcpAsync(port, reason, _firewall, _time, _loopbackOnly, ct).ConfigureAwait(false)));
+        return Track(new TrackedTcp(this, await LocalListener.OpenTcpAsync(port, reason, _firewall, _time, _loopbackOnly, null, ct).ConfigureAwait(false)));
+    }
+
+    public async Task<ITcpRelay> ListenTcpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct)
+    {
+        ThrowIfDisposed();
+        return Track(new TrackedTcp(this, await LocalListener.OpenTcpAsync(port, reason, _firewall, _time, _loopbackOnly, addresses, ct).ConfigureAwait(false)));
     }
 
     /// <summary>Closes every listener and relay still open (the plugin stopped).</summary>

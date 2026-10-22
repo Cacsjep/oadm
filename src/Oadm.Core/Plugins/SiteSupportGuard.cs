@@ -95,5 +95,8 @@ public static class SiteSupportGuard
         public Task<IUdpRelay> ListenUdpAsync(int port, string reason, CancellationToken ct) => inner.ListenUdpAsync(port, reason, ct);
 
         public Task<ITcpRelay> ListenTcpAsync(int port, string reason, CancellationToken ct) => inner.ListenTcpAsync(port, reason, ct);
+
+        public Task<ITcpRelay> ListenTcpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct) =>
+            inner.ListenTcpAsync(port, reason, addresses, ct);
     }
 }

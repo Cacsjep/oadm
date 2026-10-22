@@ -436,4 +436,4 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
   signs (no CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
   requests are logged; the plugin checks the license on every request, and changing or removing that check is not
   allowed by its license.
-- Roles: reading for everyone; Save and Revoke Admin (permission "Change the EST server"), audited.
+- Roles: reading for everyone; Save and Delete all of the enrollments Admin (permission "Change the EST server"), audited.

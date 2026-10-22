@@ -181,6 +181,18 @@ public sealed record InterfaceOption(string Id, string Label, string Name, IRead
 /// <summary>Builds the entries of an interface select.</summary>
 public static class InterfaceOptions
 {
+    /// <summary>The id of the choice that listens on every address.</summary>
+    public const string AllId = "all";
+
+    /// <summary>The text of that choice.</summary>
+    public const string AllLabel = "All interfaces";
+
+    /// <summary>The first entry of every select: every address.</summary>
+    public static InterfaceOption All { get; } = new(AllId, AllLabel, AllLabel, []);
+
+    /// <summary>The id means every address (null, empty or <see cref="AllId"/>).</summary>
+    public static bool IsAll(string? id) => string.IsNullOrWhiteSpace(id) || string.Equals(id, AllId, StringComparison.Ordinal);
+
     /// <summary>"Ethernet - 10.0.0.17 (Intel I219)"; the description is left out when it equals the name.</summary>
     public static string Label(ServerNetworkInterface nic, string addressText)
     {

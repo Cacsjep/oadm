@@ -19,9 +19,9 @@ public static class NtpServerPluginInfo
     public const int MaxRequests = 40;
 
     /// <summary>Interface option that binds 0.0.0.0 and [::].</summary>
-    public const string AllInterfaces = "all";
+    public const string AllInterfaces = Sdk.Network.InterfaceOptions.AllId;
 
-    public const string AllInterfacesLabel = "All interfaces";
+    public const string AllInterfacesLabel = Sdk.Network.InterfaceOptions.AllLabel;
 }
 
 /// <summary>Page backend methods (<c>InvokeAsync</c>) and live event topics (<c>ICorePluginContext.Events</c>).</summary>

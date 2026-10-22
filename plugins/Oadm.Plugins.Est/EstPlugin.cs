@@ -52,6 +52,14 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         {
             Description = "The EST server refused a camera OADM manages.",
         },
+        new(EstPluginInfo.NotRenewedEvent, "Certificate not renewed", EstPluginInfo.DisplayName, EventKind.Stateless, EventScope.Device,
+        [
+            new EventField("profile", "Profile"),
+            new EventField("validUntil", "Valid until") { Filter = false },
+        ])
+        {
+            Description = "A camera did not renew a certificate from the EST server in time.",
+        },
     ];
 
     public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
@@ -83,13 +91,13 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }
     }
 
-    /// <summary>Reading is for everyone; Save and Revoke change the server (Admin, audited).</summary>
+    /// <summary>Reading is for everyone; Save and Delete all change the server (Admin, audited).</summary>
     public UserRole RequiredRole(string method) =>
-        method is EstMethods.GetState or EstMethods.GetEnrollments or EstMethods.GetCertificates ? UserRole.Operator : UserRole.Admin;
+        method is EstMethods.GetState or EstMethods.GetEnrollments or EstMethods.GetNotRenewed ? UserRole.Operator : UserRole.Admin;
 
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(PermissionKeys.Manage, "Change the EST server", "Change the port and the profiles, and revoke certificates.") { OperatorDefault = false },
+        new(PermissionKeys.Manage, "Change the EST server", "Change the interface, the port and the profiles, and delete the enrollments.") { OperatorDefault = false },
     ];
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
@@ -99,18 +107,18 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         {
             EstMethods.GetState => EstJson.Serialize(service.GetState()),
             EstMethods.GetEnrollments => EstJson.Serialize(new EnrollmentList(service.Store.Enrollments())),
-            EstMethods.GetCertificates => EstJson.Serialize(GetCertificates(service, payloadJson)),
+            EstMethods.GetNotRenewed => EstJson.Serialize(service.Store.NotRenewed(EstPluginInfo.CertificatesPageSize)),
             EstMethods.Save => EstJson.Serialize(await service.SaveAsync(EstJson.Deserialize<SaveRequest>(payloadJson), ct).ConfigureAwait(false)),
-            EstMethods.Revoke => EstJson.Serialize(service.Revoke(EstJson.Deserialize<RevokeRequest>(payloadJson))),
+            EstMethods.ClearEnrollments => ClearEnrollments(service),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
     }
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
-    private static CertificateList GetCertificates(EstService service, string? payloadJson)
+    private static string? ClearEnrollments(EstService service)
     {
-        var request = string.IsNullOrWhiteSpace(payloadJson) ? new CertificatesRequest() : EstJson.Deserialize<CertificatesRequest>(payloadJson);
-        return service.Store.Certificates(request.Search, request.Offset, EstPluginInfo.CertificatesPageSize);
+        service.ClearEnrollments();
+        return null;
     }
 }

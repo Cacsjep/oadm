@@ -98,7 +98,7 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
                 }
             }
 
-            var issued = Assert.Single(est.Store.Certificates(null, 0, 10).Certificates);
+            var issued = Assert.Single(est.Store.Current());
             output.WriteLine($"Issued {issued.SerialNumber}, valid until {issued.NotAfterUtc:yyyy-MM-dd}, pinned {ctx.PinnedFingerprint}");
             var profile = Assert.Single(await CameraEstApi.ReadProfilesAsync(vapix, ct));
             Assert.Equal(("oadm_https", "ENROLLED"), (profile.Id, profile.Status));

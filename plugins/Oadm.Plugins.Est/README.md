@@ -14,23 +14,25 @@ Apache 2.0).
     are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
     `POST .../simplereenroll`; everything else and unknown or disabled profiles 404. Who may enroll: the camera's Axis
-    device ID (or a certificate EST issued it, not revoked, chaining to the OADM CA) whose serial is a managed device of
+    device ID (or a certificate EST issued it that is still kept, chaining to the OADM CA) whose serial is a managed device of
     the same site. Answers: PKCS#7 certs-only, base64 at 76 characters, leaf and chain. Refusals: 401 (no or no valid
-    identity), 403 (not managed, other site, revoked), 400 (request unreadable or refused by the CA), 503 (no PRO, no CA).
+    identity), 403 (not managed, other site, certificate of another camera), 400 (request unreadable or refused by the CA), 503 (no PRO, no CA).
   - `DeviceId/AxisDeviceId`: the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
     keep-alive); `Protocol/EstMessages`: PKCS#7 certs-only and PKCS#10 in base64.
   - `Serving/EstStore`: plugin settings `config` (port, profiles, enrollments kept 100..5000), `enrollments` (newest
-    first), `certificates` (dropped 30 days after they end), `revoked` (device and profile pairs); written at most every
-    2 s.
+    first), `certificates` (per device and profile the newest and the one before it; dropped 30 days after they end or
+    when the device is gone), `sites`; written at most every 2 s.
   - Signing: `IDeviceCertificateAuthority` of PKI (`ctx.Services`), names from OADM (CN = the device's address; SAN =
     its address, the address it connected from on the server's network, host name, `axis-<serial>.local`), validity from
     the profile, source "EST".
   - Events: "Certificate enrolled" (`oadm.est.enrolled`: profile, kind) and "Enrollment refused" (`oadm.est.refused`:
-    profile, reason), only for managed devices.
-  - Methods: `getState`, `getEnrollments`, `getCertificates` (search, 500 a page) for everyone; `save`, `revoke` Admin
-    (permission `oadm.est:manage`).
+    profile, reason), only for managed devices; "Certificate not renewed" (`oadm.est.notrenewed`: profile, validUntil)
+    from the hourly `CheckRenewalsAsync` (newest certificate per device and profile, halfway through its lifetime plus
+    `NotRenewedGrace`: Axis cameras renew halfway and retry daily; Remove certificate enrollment stops the check).
+  - Methods: `getState`, `getEnrollments`, `getNotRenewed` (500 at most) for everyone; `save` and `clearEnrollments`
+    Admin (permission `oadm.est:manage`).
 - Tasks (`Tasks/EstTasks.cs`, Security; the set-up dialog `EstSetupWindow` with the IEEE 802.1X choice, the remove
   confirmation in `EstTaskDialogs.cs`): **Set up certificate enrollment**
   (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` with the device ID, the OADM
@@ -38,9 +40,8 @@ Apache 2.0).
   enrollment** (only `oadm_...` profiles). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
   stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`), whose connections get the site's own
   server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
-- Client part (`Oadm.Plugins.Est.Client.dll`): port, enrollments kept, profiles (name, use, days, key, on; at most one per
-  use), Save with the status left of it; Enrollments (live); Certificates with search and **Revoke** (red, confirmed).
-- Revoke: the camera keeps the certificate until it ends, but the device gets nothing more for that profile until it is
-  set up again (the set-up task clears it, stage 3).
+- Client part (`Oadm.Plugins.Est.Client.dll`): General (listen on, port, enrollments kept) and Profiles (name, use, days,
+  key, on; at most one per use), Save with the status left of it; Enrollments (live, search, Delete all); Not renewed (only while there are
+  any). No Revoke and no list of every certificate (docs/spec/est-server.md).
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device
   ID hierarchy and a fake CA, the page with screenshots).

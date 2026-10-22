@@ -765,7 +765,8 @@ recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`Soap
   configured interface that is gone stays as "(not available)"); bind the ComboBox to `Listen.Items` /
   `Listen.Selected`.
 - **Privileged ports**: listen through the host with `ctx.Network.ListenUdpAsync` / `ListenTcpAsync` (it binds the
-  port and opens the Windows firewall rule; at sites `ctx.Sites.OpenUdpRelayAsync` / `OpenTcpRelayAsync`), never your
+  port and opens the Windows firewall rule; `ListenTcpAsync(port, reason, addresses, ct)` binds only the addresses of the
+  interface "Listen on" chose, `InterfaceOptions.All` / `IsAll` for the "All interfaces" entry; at sites `ctx.Sites.OpenUdpRelayAsync` / `OpenTcpRelayAsync`), never your
   own socket. Make the port injectable (tests use `Oadm.Sdk.Testing.FakePluginNetwork` or an in-memory relay, never the
   real port). Map bind errors per OS with `Oadm.Sdk.Network.PortBindErrors` (`Classify(SocketError, HostOs)`; texts
   `InUseText`, `PermissionText`, `FindUdpPortOwner`, `PermissionFix`): Windows has no privileged ports, so

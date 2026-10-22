@@ -11,6 +11,7 @@ using Oadm.Plugins.Est.DeviceId;
 using Oadm.Plugins.Est.Protocol;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Sites;
 
@@ -42,6 +43,9 @@ public sealed record EstHost(
     public Func<IReadOnlyList<string>> LocalAddresses { get; init; } = ServerCertificates.LocalAddresses;
 
     public string HostName { get; init; } = Environment.MachineName;
+
+    /// <summary>The server's network interfaces for "Listen on".</summary>
+    public IServerNetworkInterfaces Interfaces { get; init; } = SystemNetworkInterfaces.Instance;
 }
 
 /// <summary>
@@ -58,6 +62,15 @@ public sealed partial class EstService : IAsyncDisposable
     private const int MaxRequestsPerConnection = 20;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DeviceIndexAge = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RenewalCheckDelay = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RenewalCheckInterval = TimeSpan.FromHours(1);
+    private static readonly TimeSpan ListenRetryInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Axis cameras renew halfway through the lifetime and try again daily: a certificate counts as not renewed this long
+    /// after its halfway point (short ones: a tenth of their lifetime) without a newer one.
+    /// </summary>
+    public static readonly TimeSpan NotRenewedGrace = TimeSpan.FromDays(2);
 
     private readonly EstHost _host;
     private readonly EstStore _store;
@@ -79,6 +92,9 @@ public sealed partial class EstService : IAsyncDisposable
     private Task _acceptLoop = Task.CompletedTask;
     private Dictionary<string, IDeviceInfo> _bySerial = new(StringComparer.OrdinalIgnoreCase);
     private long _indexedAtTicks = DateTimeOffset.MinValue.UtcTicks;
+    private ITimer? _renewalTimer;
+    private ITimer? _listenRetry;
+    private int _checkingRenewals;
 
     public EstService(EstHost host)
     {
@@ -110,6 +126,8 @@ public sealed partial class EstService : IAsyncDisposable
     {
         await _store.LoadAsync(ct).ConfigureAwait(false);
         await OpenAsync(_store.Config.Port, ct).ConfigureAwait(false);
+        _renewalTimer = _host.Time.CreateTimer(_ => Track(CheckRenewalsAsync(_cts.Token)), null, RenewalCheckDelay, RenewalCheckInterval);
+        _listenRetry = _host.Time.CreateTimer(_ => Track(RetryListenAsync(_cts.Token)), null, ListenRetryInterval, ListenRetryInterval);
         if (_host.Sites is { } sites)
         {
             sites.SitesChanged += OnSitesChanged;
@@ -251,6 +269,16 @@ public sealed partial class EstService : IAsyncDisposable
             sites.SitesChanged -= OnSitesChanged;
         }
 
+        if (_renewalTimer is not null)
+        {
+            await _renewalTimer.DisposeAsync().ConfigureAwait(false);
+        }
+
+        if (_listenRetry is not null)
+        {
+            await _listenRetry.DisposeAsync().ConfigureAwait(false);
+        }
+
         await _cts.CancelAsync().ConfigureAwait(false);
         await CloseAsync(release: false).ConfigureAwait(false);
         await _sitesGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
@@ -287,7 +315,7 @@ public sealed partial class EstService : IAsyncDisposable
         }
         else if (listener is null)
         {
-            text = "Stopped";
+            text = !InterfaceOptions.IsAll(config.InterfaceId) && ListenInterface() is null ? NotAvailable(config) : "Stopped";
         }
         else if (listener.State == RelayState.Running)
         {
@@ -306,8 +334,31 @@ public sealed partial class EstService : IAsyncDisposable
                 .OrderBy(l => l.Name, StringComparer.CurrentCultureIgnoreCase));
         }
 
-        return new EstState { Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount };
+        return new EstState
+        {
+            Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount, Interfaces = ListInterfaces(),
+        };
     }
+
+    /// <summary>"Listen on": All interfaces first, then every interface that is up and has an address.</summary>
+    public IReadOnlyList<InterfaceOption> ListInterfaces() =>
+        [InterfaceOptions.All, .. UsableInterfaces().Select(n => InterfaceOptions.From(n))];
+
+    /// <summary>The chosen interface now; null with All interfaces or when it is gone.</summary>
+    public ServerNetworkInterface? ListenInterface()
+    {
+        var id = _store.Config.InterfaceId;
+        return InterfaceOptions.IsAll(id) ? null : UsableInterfaces().FirstOrDefault(n => string.Equals(n.Id, id, StringComparison.Ordinal));
+    }
+
+    /// <summary>The addresses the chosen interface listens on (no IPv6 link-local); empty with All interfaces.</summary>
+    public static IReadOnlyList<System.Net.IPAddress> ListenAddresses(ServerNetworkInterface? nic) =>
+        nic is null ? [] : [.. nic.Addresses.Where(a => !a.IsIPv6LinkLocal)];
+
+    internal static string NotAvailable(EstConfig config) => $"{config.InterfaceName ?? config.InterfaceId} is not available";
+
+    private IEnumerable<ServerNetworkInterface> UsableInterfaces() =>
+        _host.Interfaces.List().Where(n => n.IsUp && !n.IsLoopback && ListenAddresses(n).Count > 0);
 
     public async Task<SaveReply> SaveAsync(SaveRequest request, CancellationToken ct)
     {
@@ -317,12 +368,35 @@ public sealed partial class EstService : IAsyncDisposable
             return new SaveReply(null, error.Field, error.Message);
         }
 
-        var portChanged = request.Config.Port != _store.Config.Port;
-        await _store.SaveConfigAsync(request.Config, ct).ConfigureAwait(false);
-        if (portChanged)
+        var config = request.Config;
+        if (InterfaceOptions.IsAll(config.InterfaceId))
+        {
+            config = config with { InterfaceId = InterfaceOptions.AllId, InterfaceName = InterfaceOptions.AllLabel };
+        }
+        else if (UsableInterfaces().FirstOrDefault(n => string.Equals(n.Id, config.InterfaceId, StringComparison.Ordinal)) is { } nic)
+        {
+            config = config with { InterfaceName = nic.Name };
+        }
+        else if (string.Equals(config.InterfaceId, _store.Config.InterfaceId, StringComparison.Ordinal))
+        {
+            config = config with { InterfaceName = _store.Config.InterfaceName }; // gone meanwhile: kept, it listens again when it is back
+        }
+        else
+        {
+            return new SaveReply(null, "interface", "This interface is not available on the server.");
+        }
+
+        var portChanged = config.Port != _store.Config.Port;
+        var reopen = portChanged || !string.Equals(config.InterfaceId, _store.Config.InterfaceId, StringComparison.Ordinal);
+        await _store.SaveConfigAsync(config, ct).ConfigureAwait(false);
+        if (reopen)
         {
             await CloseAsync(release: true).ConfigureAwait(false);
-            await OpenAsync(request.Config.Port, ct).ConfigureAwait(false);
+            await OpenAsync(config.Port, ct).ConfigureAwait(false);
+        }
+
+        if (portChanged)
+        {
             await _sitesGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
@@ -338,15 +412,6 @@ public sealed partial class EstService : IAsyncDisposable
 
         PublishState();
         return new SaveReply(GetState());
-    }
-
-    public RevokeReply Revoke(RevokeRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var count = _store.Revoke(request.SerialNumbers ?? []);
-        LogRevoked(count);
-        PublishState();
-        return new RevokeReply(count);
     }
 
     /// <summary>The field and its error of the first invalid entry; null when the settings are fine.</summary>
@@ -404,7 +469,26 @@ public sealed partial class EstService : IAsyncDisposable
         await _apply.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var listener = await network.ListenTcpAsync(port, "EST server", ct).ConfigureAwait(false);
+            if (_listener is not null)
+            {
+                return;
+            }
+
+            ITcpRelay listener;
+            if (InterfaceOptions.IsAll(_store.Config.InterfaceId))
+            {
+                listener = await network.ListenTcpAsync(port, "EST server", ct).ConfigureAwait(false);
+            }
+            else if (ListenInterface() is { } nic)
+            {
+                listener = await network.ListenTcpAsync(port, "EST server", ListenAddresses(nic), ct).ConfigureAwait(false);
+            }
+            else
+            {
+                LogInterfaceMissing(NotAvailable(_store.Config)); // tried again every 30 s
+                return;
+            }
+
             listener.StateChanged += (_, _) => PublishState();
             _listener = listener;
             _acceptLoop = Task.Run(() => AcceptLoopAsync(listener, _cts.Token), CancellationToken.None);
@@ -544,7 +628,9 @@ public sealed partial class EstService : IAsyncDisposable
         await using var _ = connection.ConfigureAwait(false);
         var site = connection.SiteId ?? Guid.Empty;
         // At a site: the node's addresses the cameras there were given (no SNI: the site picks the certificate).
-        var addresses = connection.SiteId is { } siteId ? _store.SiteAddresses(siteId) : _host.LocalAddresses();
+        var addresses = connection.SiteId is { } siteId ? _store.SiteAddresses(siteId)
+            : ListenInterface() is { } nic ? [.. ListenAddresses(nic).Select(a => a.ToString())]
+            : _host.LocalAddresses();
         var certificate = await _certificates.GetAsync(site, addresses, connection.SiteId is null ? _host.HostName : null, ct).ConfigureAwait(false);
         if (certificate is null)
         {
@@ -728,6 +814,82 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Flags the certificates the cameras did not renew in time (<see cref="NotRenewedGrace"/>): event "Certificate not
+    /// renewed" once per certificate, a log line, the page reloads its list. The certificates of a device OADM no longer
+    /// manages are forgotten. Runs every hour; one check at a time.
+    /// </summary>
+    public async Task CheckRenewalsAsync(CancellationToken ct)
+    {
+        if (Interlocked.Exchange(ref _checkingRenewals, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            var now = _host.Time.GetUtcNow().UtcDateTime;
+            var flagged = 0;
+            foreach (var certificate in _store.DueForRenewal(now, NotRenewedGrace))
+            {
+                if (await _host.Devices.FindAsync(certificate.DeviceId, ct).ConfigureAwait(false) is null)
+                {
+                    _store.ForgetDevice(certificate.DeviceId);
+                    continue;
+                }
+
+                _store.MarkNotRenewed(certificate.SerialNumber, now);
+                flagged++;
+                LogNotRenewed(certificate.Device, certificate.Profile, certificate.NotAfterUtc);
+                _host.Publisher?.Fire(EstPluginInfo.NotRenewedEvent, certificate.DeviceId, new Dictionary<string, string>
+                {
+                    ["profile"] = certificate.Profile,
+                    ["validUntil"] = certificate.NotAfterUtc.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + " UTC",
+                });
+            }
+
+            if (flagged > 0)
+            {
+                _host.Events?.Publish(EstMethods.CertificatesTopic, "{}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // stopping
+        }
+        finally
+        {
+            Volatile.Write(ref _checkingRenewals, 0);
+        }
+    }
+
+    /// <summary>Delete all of the Enrollments list: every page empties its list.</summary>
+    public void ClearEnrollments()
+    {
+        _store.ClearEnrollments();
+        LogEnrollmentsCleared();
+        _host.Events?.Publish(EstMethods.EnrollmentsClearedTopic, "{}");
+    }
+
+    /// <summary>The chosen interface was gone: listen once it is back.</summary>
+    private async Task RetryListenAsync(CancellationToken ct)
+    {
+        if (_listener is not null || InterfaceOptions.IsAll(_store.Config.InterfaceId) || ListenInterface() is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await OpenAsync(_store.Config.Port, ct).ConfigureAwait(false);
+            PublishState();
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // stopping
+        }
+    }
+
     private void PublishState() => _host.Events?.Publish(EstMethods.StateTopic, EstJson.Serialize(GetState()));
 
     /// <summary>The managed device with this serial; the index is read again when older than 30 s or on a miss (at most every 30 s).</summary>
@@ -797,6 +959,12 @@ public sealed partial class EstService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST connection from {Remote} failed")]
     private partial void LogConnectionFailed(Exception ex, System.Net.IPEndPoint remote);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "EST: {Count} certificates revoked")]
-    private partial void LogRevoked(int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "EST: every enrollment was deleted")]
+    private partial void LogEnrollmentsCleared();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST server not listening: {Reason}")]
+    private partial void LogInterfaceMissing(string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST: {Device} did not renew its {Profile} certificate (valid until {NotAfter:yyyy-MM-dd HH:mm} UTC)")]
+    private partial void LogNotRenewed(string device, string profile, DateTime notAfter);
 }

@@ -237,8 +237,15 @@ public sealed class FakePluginNetwork(FakeSites? sites = null) : IPluginNetwork
     }
 
     /// <inheritdoc />
-    public Task<ITcpRelay> ListenTcpAsync(int port, string reason, CancellationToken ct)
+    public Task<ITcpRelay> ListenTcpAsync(int port, string reason, CancellationToken ct) => ListenTcpAsync(port, reason, [], ct);
+
+    /// <summary>The addresses of the last TCP listener (empty = every address).</summary>
+    public IReadOnlyList<System.Net.IPAddress> LastTcpAddresses { get; private set; } = [];
+
+    /// <inheritdoc />
+    public Task<ITcpRelay> ListenTcpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct)
     {
+        LastTcpAddresses = addresses;
         var relay = new InMemoryTcpRelay(null, port, reason, SiteTexts.ThisServer, ListenState);
         Listeners.Enqueue(relay);
         return Task.FromResult<ITcpRelay>(relay);

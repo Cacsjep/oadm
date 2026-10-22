@@ -6,7 +6,9 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Network;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Est.Client;
@@ -108,35 +110,34 @@ public sealed record EnrollmentRow(Enrollment Source)
     public bool Refused => !Source.Ok;
 
     public string Reason => Source.Reason;
+
+    /// <summary>Device, profile, kind, result or reason contains <paramref name="search"/> (empty: every row).</summary>
+    public bool Matches(string search) =>
+        search.Length == 0
+        || Device.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Profile.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Kind.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Result.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Reason.Contains(search, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>A certificate EST issued as the list shows it.</summary>
-public sealed record CertificateRow(IssuedCertificate Source)
+/// <summary>A certificate the camera did not renew in time, as the Not renewed list shows it.</summary>
+public sealed record NotRenewedRow(IssuedCertificate Source)
 {
     public string Device => Source.Device;
 
     public string Profile => Source.Profile;
 
-    public string Issued => Source.IssuedUtc.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.CurrentCulture);
-
-    public DateTime IssuedSortKey => Source.IssuedUtc;
-
-    public string ValidUntil => Source.NotAfterUtc.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.CurrentCulture);
+    public string ValidUntil => Source.NotAfterUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture);
 
     public DateTime ValidUntilSortKey => Source.NotAfterUtc;
 
-    public string State => Source.Revoked ? "Revoked" : Source.NotAfterUtc < DateTime.UtcNow ? "Expired" : "Valid";
-
-    public bool IsValid => State == "Valid";
-
-    public bool IsProblem => !IsValid;
-
-    public bool CanRevoke => !Source.Revoked;
+    public string State => Source.NotAfterUtc < DateTime.UtcNow ? "Expired" : "Not renewed";
 }
 
 /// <summary>
 /// The EST server page (docs/spec/est-server.md): port, profiles and Save with the status left of it; the newest
-/// enrollments; the certificates EST issued with Revoke. <see cref="Activate"/> reads the state and watches the live
+/// enrollments; the certificates EST issued. <see cref="Activate"/> reads the state and watches the live
 /// events while the page is shown.
 /// </summary>
 public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
@@ -172,6 +173,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
             SaveCommand.NotifyCanExecuteChanged();
             AddProfileCommand.NotifyCanExecuteChanged();
+            ClearEnrollmentsCommand.NotifyCanExecuteChanged();
         };
         Validation
             .Rule(nameof(Port), () => int.TryParse(Port, NumberStyles.None, CultureInfo.InvariantCulture, out var port) && port is >= 1025 and <= 65535
@@ -179,6 +181,13 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             .Rule(nameof(EnrollmentsKept), () => int.TryParse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var kept) && kept is >= 100 and <= 5000
                 ? null : "Keep from 100 to 5,000 enrollments.");
         Validation.Validate();
+        Listen.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(InterfaceSelection.Selected))
+            {
+                OnPropertyChanged(nameof(SelectedInterface));
+            }
+        };
     }
 
     [ObservableProperty]
@@ -187,11 +196,28 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial string EnrollmentsKept { get; set; } = EstPluginInfo.DefaultEnrollmentsKept.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>The "Listen on" select (shared with the NTP and DHCP server pages).</summary>
+    public InterfaceSelection Listen { get; } = new();
+
+    public InterfaceOption? SelectedInterface
+    {
+        get => Listen.Selected;
+        set => Listen.Selected = value;
+    }
+
     public RangeObservableCollection<ProfileRowViewModel> Profiles { get; } = [];
 
+    /// <summary>The enrollments that match <see cref="EnrollmentSearch"/>, newest first (bound to the grid).</summary>
     public RangeObservableCollection<EnrollmentRow> Enrollments { get; } = [];
 
-    public RangeObservableCollection<CertificateRow> Certificates { get; } = [];
+    /// <summary>Every enrollment the server keeps (at most 5,000), newest first.</summary>
+    private List<EnrollmentRow> _allEnrollments = [];
+
+    [ObservableProperty]
+    public partial string EnrollmentSearch { get; set; } = string.Empty;
+
+    /// <summary>The certificates the cameras did not renew in time (the section shows only when there are any).</summary>
+    public RangeObservableCollection<NotRenewedRow> NotRenewed { get; } = [];
 
     [ObservableProperty]
     public partial string StatusText { get; set; } = "Loading";
@@ -206,18 +232,15 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     public bool HasListenerProblems => ListenersText.Length > 0;
 
+    /// <summary>"2 cameras" or "Showing 500 of 1,204".</summary>
     [ObservableProperty]
-    public partial string CertificateSearch { get; set; } = string.Empty;
-
-    /// <summary>"1,204 certificates" or "Showing 500 of 1,204 certificates".</summary>
-    [ObservableProperty]
-    public partial string CertificateSummary { get; set; } = string.Empty;
+    public partial string NotRenewedSummary { get; set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsSaving { get; set; }
 
-    /// <summary>A save or revoke failed: the reason, below the Save button's row.</summary>
+    /// <summary>A save failed: the reason, below the Save button's row.</summary>
     [ObservableProperty]
     public partial string? ActionError { get; set; }
 
@@ -226,9 +249,15 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     public bool MayManage => _ctx.Has(PermissionKeys.Of(EstPluginInfo.PluginId, PermissionKeys.Manage));
 
-    public bool HasEnrollments => Enrollments.Count > 0;
+    public bool HasEnrollments => _allEnrollments.Count > 0;
 
-    public bool HasCertificates => Certificates.Count > 0;
+    /// <summary>"No enrollments yet ..." or "No enrollment matches the search."; null while rows show.</summary>
+    public string? EnrollmentsEmptyText =>
+        Enrollments.Count > 0 ? null
+        : _allEnrollments.Count == 0 ? "No enrollments yet. Set up a camera with Set up certificate enrollment."
+        : "No enrollment matches the search.";
+
+    public bool HasNotRenewed => NotRenewed.Count > 0;
 
     public bool CanAddProfile => MayManage && Profiles.Count < Uses.Count;
 
@@ -260,9 +289,9 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         {
             ApplyState(EstJson.Deserialize<EstState>(await _ctx.InvokeAsync(EstMethods.GetState, null, ct).ConfigureAwait(true)), form: true);
             var enrollments = EstJson.Deserialize<EnrollmentList>(await _ctx.InvokeAsync(EstMethods.GetEnrollments, null, ct).ConfigureAwait(true));
-            Enrollments.ReplaceAll(enrollments.Enrollments.Select(e => new EnrollmentRow(e)));
-            OnPropertyChanged(nameof(HasEnrollments));
-            await LoadCertificatesAsync(ct).ConfigureAwait(true);
+            _allEnrollments = [.. enrollments.Enrollments.Select(e => new EnrollmentRow(e))];
+            FilterEnrollments();
+            await LoadNotRenewedAsync(ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -280,16 +309,14 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         }
     }
 
-    internal async Task LoadCertificatesAsync(CancellationToken ct)
+    internal async Task LoadNotRenewedAsync(CancellationToken ct)
     {
-        var list = EstJson.Deserialize<CertificateList>(await _ctx.InvokeAsync(
-            EstMethods.GetCertificates, EstJson.Serialize(new CertificatesRequest(CertificateSearch)), ct).ConfigureAwait(true));
-        Certificates.ReplaceAll(list.Certificates.Select(c => new CertificateRow(c)));
-        CertificateSummary = list.Total == 0 ? string.Empty
-            : list.Total > list.Certificates.Count
-                ? string.Create(CultureInfo.CurrentCulture, $"Showing {list.Certificates.Count:N0} of {list.Total:N0} certificates")
-                : list.Total == 1 ? "1 certificate" : string.Create(CultureInfo.CurrentCulture, $"{list.Total:N0} certificates");
-        OnPropertyChanged(nameof(HasCertificates));
+        var list = EstJson.Deserialize<CertificateList>(await _ctx.InvokeAsync(EstMethods.GetNotRenewed, null, ct).ConfigureAwait(true));
+        NotRenewed.ReplaceAll(list.Certificates.Select(c => new NotRenewedRow(c)));
+        NotRenewedSummary = list.Total > list.Certificates.Count
+            ? string.Create(CultureInfo.CurrentCulture, $"Showing {list.Certificates.Count:N0} of {list.Total:N0}")
+            : list.Total == 1 ? "1 certificate" : string.Create(CultureInfo.CurrentCulture, $"{list.Total:N0} certificates");
+        OnPropertyChanged(nameof(HasNotRenewed));
     }
 
     [RelayCommand(CanExecute = nameof(CanAddProfile))]
@@ -322,6 +349,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             var config = new EstConfig
             {
                 Port = int.Parse(Port, NumberStyles.None, CultureInfo.InvariantCulture),
+                InterfaceId = Listen.SelectedId ?? InterfaceOptions.AllId,
                 EnrollmentsKept = int.Parse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture),
                 Profiles = [.. Profiles.Select(p => p.ToProfile())],
             };
@@ -344,34 +372,6 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         finally
         {
             IsSaving = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task RevokeAsync(CertificateRow? row)
-    {
-        if (row is null || !row.CanRevoke || !MayManage)
-        {
-            return;
-        }
-
-        var message = $"Revoke the {row.Profile} certificate of {row.Device}? The camera keeps it until it expires but gets no new one for this profile until you set it up again.";
-        if (!await _ctx.ConfirmAsync("Revoke certificate", message, "Revoke").ConfigureAwait(true))
-        {
-            return;
-        }
-
-        ActionError = null;
-        try
-        {
-            await _ctx.InvokeAsync(EstMethods.Revoke, EstJson.Serialize(new RevokeRequest([row.Source.SerialNumber])), CancellationToken.None).ConfigureAwait(true);
-            await LoadCertificatesAsync(CancellationToken.None).ConfigureAwait(true);
-        }
-#pragma warning disable CA1031 // The page shows the reason.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ActionError = ex.Message;
         }
     }
 
@@ -400,15 +400,55 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         OnPropertyChanged(nameof(SaveTip));
     }
 
-    partial void OnCertificateSearchChanged(string value) => _ = SearchAsync();
+    partial void OnEnrollmentSearchChanged(string value) => FilterEnrollments();
 
-    private async Task SearchAsync()
+    /// <summary>One pass over at most 5,000 rows and one reset of the grid.</summary>
+    private void FilterEnrollments()
+    {
+        var search = EnrollmentSearch.Trim();
+        Enrollments.ReplaceAll(search.Length == 0 ? _allEnrollments : _allEnrollments.Where(r => r.Matches(search)));
+        NotifyEnrollments();
+    }
+
+    private void NotifyEnrollments()
+    {
+        OnPropertyChanged(nameof(HasEnrollments));
+        OnPropertyChanged(nameof(EnrollmentsEmptyText));
+        ClearEnrollmentsCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanClearEnrollments => MayManage && HasEnrollments;
+
+    [RelayCommand(CanExecute = nameof(CanClearEnrollments))]
+    private async Task ClearEnrollmentsAsync()
+    {
+        if (!await _ctx.ConfirmAsync("Delete all", "Delete every entry of the enrollments list? Other clients see the empty list too.", "Delete all").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        ActionError = null;
+        try
+        {
+            await _ctx.InvokeAsync(EstMethods.ClearEnrollments, null, CancellationToken.None).ConfigureAwait(true);
+            _allEnrollments = [];
+            FilterEnrollments();
+        }
+#pragma warning disable CA1031 // The page shows the reason.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            ActionError = ex.Message;
+        }
+    }
+
+    private async Task ReloadNotRenewedAsync()
     {
         try
         {
-            await LoadCertificatesAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+            await LoadNotRenewedAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
         }
-#pragma warning disable CA1031 // A failed search leaves the list as it was.
+#pragma warning disable CA1031 // A failed read leaves the list as it was.
         catch (Exception)
 #pragma warning restore CA1031
         {
@@ -438,6 +478,9 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             case "enrollmentsKept":
                 Validation.SetServerError(nameof(EnrollmentsKept), error);
                 break;
+            case "interface":
+                Validation.SetServerError(nameof(SelectedInterface), error);
+                break;
             default:
                 ActionError = error;
                 break;
@@ -449,11 +492,13 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         StatusText = state.StatusText;
         StatusOk = state.StatusOk;
         ListenersText = string.Join(Environment.NewLine, state.Listeners.Where(l => !l.Ok).Select(l => l.Text));
+        Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
         if (!form)
         {
             return;
         }
 
+        Listen.Select(state.Config.InterfaceId);
         Port = state.Config.Port.ToString(CultureInfo.InvariantCulture);
         EnrollmentsKept = state.Config.EnrollmentsKept.ToString(CultureInfo.InvariantCulture);
         Profiles.ReplaceAll(state.Config.Profiles.Select(p => new ProfileRowViewModel(this, p)));
@@ -470,17 +515,29 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
                 break;
             case EstMethods.EnrollmentsTopic:
                 var added = EstJson.Deserialize<EnrollmentList>(e.PayloadJson).Enrollments.Select(x => new EnrollmentRow(x)).ToList();
-                Enrollments.InsertRange(0, added);
-                if (int.TryParse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var kept) && Enrollments.Count > kept)
+                _allEnrollments.InsertRange(0, added);
+                if (int.TryParse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var kept) && _allEnrollments.Count > kept)
                 {
-                    Enrollments.ReplaceAll([.. Enrollments.Take(kept)]);
+                    _allEnrollments.RemoveRange(kept, _allEnrollments.Count - kept);
+                    FilterEnrollments();
                 }
-                OnPropertyChanged(nameof(HasEnrollments));
-                if (added.Any(a => a.Ok))
+                else
                 {
-                    _ = SearchAsync();
+                    Enrollments.InsertRange(0, added.Where(a => a.Matches(EnrollmentSearch.Trim())));
+                    NotifyEnrollments();
+                }
+                if (added.Any(a => a.Ok) && HasNotRenewed)
+                {
+                    _ = ReloadNotRenewedAsync(); // a late renewal ends a Not renewed
                 }
 
+                break;
+            case EstMethods.EnrollmentsClearedTopic:
+                _allEnrollments = [];
+                FilterEnrollments();
+                break;
+            case EstMethods.CertificatesTopic:
+                _ = ReloadNotRenewedAsync();
                 break;
         }
     }

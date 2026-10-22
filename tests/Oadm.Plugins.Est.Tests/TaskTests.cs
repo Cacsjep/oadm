@@ -208,7 +208,7 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     /// <summary>A camera with the cert and cert-est APIs: the device ID certificates of 10.0.0.48, profiles that enroll at once.</summary>
-    private sealed class EstCamera : FakeCamera
+    internal sealed class EstCamera : FakeCamera
     {
         private static readonly string[] AllServices = ["MQTT", "NETAUTH", "WEBSERVER", "RTSPS"];
 

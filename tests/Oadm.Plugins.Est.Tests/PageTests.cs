@@ -15,7 +15,7 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Est.Tests;
 
-/// <summary>The page against the running plugin (fake core context with a fake CA): form, errors below fields, lists, revoke.</summary>
+/// <summary>The page against the running plugin (fake core context with a fake CA): form, errors below fields, lists.</summary>
 public sealed class PageTests : IAsyncLifetime
 {
     private readonly FakeCoreContext _core = new() { Pro = FakeProLicense.ActivePro() };
@@ -27,7 +27,7 @@ public sealed class PageTests : IAsyncLifetime
     {
         _core.FakeServices.Offer<IDeviceCertificateAuthority>(_ca);
         await _plugin.StartAsync(_core, CancellationToken.None);
-        _ctx = new PageContext(_plugin);
+        _ctx = new PageContext(_plugin, _core);
     }
 
     public async Task DisposeAsync()
@@ -70,31 +70,107 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Certificates_are_listed_and_revoked_after_a_confirmation()
+    public async Task Only_certificates_the_cameras_did_not_renew_are_listed()
     {
         var device = new FakeDevice { Address = "10.0.0.48" };
-        _plugin.Service!.Store.AddCertificate(new IssuedCertificate
-        {
-            SerialNumber = "0A1B", DeviceId = device.Id, Device = device.Address, Profile = "https",
-            IssuedUtc = DateTime.UtcNow, NotAfterUtc = DateTime.UtcNow.AddDays(365),
-        });
-        _plugin.Service.Store.AddEnrollment(new Enrollment { TimeUtc = DateTime.UtcNow, DeviceId = device.Id, Device = "10.0.0.48", Profile = "https", Ok = true, Reason = "Valid until 2027-10-22" });
+        var other = new FakeDevice { Address = "10.0.0.49" };
+        var now = DateTime.UtcNow;
+        var store = _plugin.Service!.Store;
+        store.AddCertificate(new IssuedCertificate { SerialNumber = "01", DeviceId = device.Id, Device = device.Address, Profile = "https", IssuedUtc = now.AddDays(-200), NotAfterUtc = now.AddDays(165) });
+        store.AddCertificate(new IssuedCertificate { SerialNumber = "02", DeviceId = other.Id, Device = other.Address, Profile = "https", IssuedUtc = now, NotAfterUtc = now.AddDays(365) });
+        store.MarkNotRenewed("01", now);
+        store.AddEnrollment(new Enrollment { TimeUtc = now, DeviceId = device.Id, Device = "10.0.0.48", Profile = "https", Ok = true, Reason = "Valid until 2027-10-22" });
         using var vm = new EstViewModel(_ctx);
         await vm.LoadAsync(CancellationToken.None);
 
-        Assert.Equal("1 certificate", vm.CertificateSummary);
-        var row = Assert.Single(vm.Certificates);
-        Assert.Equal(("10.0.0.48", "Valid", true), (row.Device, row.State, row.CanRevoke));
+        Assert.True(vm.HasNotRenewed);
+        Assert.Equal("1 certificate", vm.NotRenewedSummary);
+        var row = Assert.Single(vm.NotRenewed);
+        Assert.Equal(("10.0.0.48", "https", "Not renewed"), (row.Device, row.Profile, row.State));
         Assert.Equal("Enrolled", Assert.Single(vm.Enrollments).Result);
+    }
+
+    [Fact]
+    public async Task Five_thousand_enrollments_are_searched_and_deleted_after_a_confirmation()
+    {
+        var service = _plugin.Service!;
+        await service.SaveAsync(new SaveRequest(service.Store.Config with { EnrollmentsKept = 5000 }), CancellationToken.None);
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 5000; i++)
+        {
+            service.Store.AddEnrollment(new Enrollment
+            {
+                TimeUtc = now.AddSeconds(i), Device = $"10.1.{i / 250}.{i % 250}", Profile = i % 2 == 0 ? "https" : "dot1x",
+                Kind = i % 3 == 0 ? EnrollmentKind.Renewal : EnrollmentKind.New, Ok = i % 10 != 0,
+                Reason = i % 10 == 0 ? EstRefusals.NotManaged : "Valid until 2027-10-22",
+            });
+        }
+
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+        Assert.Equal(5000, vm.Enrollments.Count);
+        Assert.Null(vm.EnrollmentsEmptyText);
+
+        vm.EnrollmentSearch = "does not manage";
+        Assert.Equal(500, vm.Enrollments.Count);
+        vm.EnrollmentSearch = "10.1.3.249";
+        Assert.Equal("10.1.3.249", Assert.Single(vm.Enrollments).Device);
+        vm.EnrollmentSearch = "nothing like this";
+        Assert.Empty(vm.Enrollments);
+        Assert.Equal("No enrollment matches the search.", vm.EnrollmentsEmptyText);
+        vm.EnrollmentSearch = string.Empty;
+        Assert.Equal(5000, vm.Enrollments.Count);
 
         _ctx.Confirm = false;
-        await vm.RevokeCommand.ExecuteAsync(row);
-        Assert.Equal("Valid", vm.Certificates[0].State);
+        await vm.ClearEnrollmentsCommand.ExecuteAsync(null);
+        Assert.Equal(5000, vm.Enrollments.Count);
         _ctx.Confirm = true;
-        await vm.RevokeCommand.ExecuteAsync(row);
-        Assert.Equal("Revoked", vm.Certificates[0].State);
-        Assert.True(_plugin.Service.Store.IsRevoked(device.Id, "https"));
-        Assert.StartsWith("Revoke the https certificate of 10.0.0.48?", _ctx.LastConfirm, StringComparison.Ordinal);
+        await vm.ClearEnrollmentsCommand.ExecuteAsync(null);
+        Assert.Empty(vm.Enrollments);
+        Assert.Empty(service.Store.Enrollments());
+        Assert.False(vm.ClearEnrollmentsCommand.CanExecute(null));
+        Assert.Equal("No enrollments yet. Set up a camera with Set up certificate enrollment.", vm.EnrollmentsEmptyText);
+        Assert.StartsWith("Delete every entry of the enrollments list?", _ctx.LastConfirm, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task New_enrollments_appear_live_under_the_search_and_delete_all_of_another_client_empties_the_list()
+    {
+        var service = _plugin.Service!;
+        service.Store.AddEnrollment(new Enrollment { TimeUtc = DateTime.UtcNow, Device = "10.0.0.48", Profile = "https", Ok = true, Reason = "Valid until 2027-10-22" });
+        using var vm = new EstViewModel(_ctx);
+        vm.Activate();
+        await Eventually.TrueAsync(() => vm.Enrollments.Count == 1, "the page read the list");
+        while (_core.Published.Reader.TryRead(out _))
+        {
+            // events of the start: the page already read the state
+        }
+
+        vm.EnrollmentSearch = "10.0.0.49";
+        _core.Publish(EstMethods.EnrollmentsTopic, EstJson.Serialize(new EnrollmentList(
+        [
+            new Enrollment { TimeUtc = DateTime.UtcNow, Device = "10.0.0.49", Profile = "https", Ok = true, Reason = "Valid until 2027-10-22" },
+            new Enrollment { TimeUtc = DateTime.UtcNow, Device = "10.0.0.50", Profile = "https", Ok = true, Reason = "Valid until 2027-10-22" },
+        ])));
+        await Eventually.TrueAsync(() => vm.Enrollments.Count == 1, "the matching new row");
+        Assert.Equal("10.0.0.49", vm.Enrollments[0].Device);
+        vm.EnrollmentSearch = string.Empty;
+        Assert.Equal(3, vm.Enrollments.Count);
+
+        service.ClearEnrollments(); // Delete all on another client
+        await Eventually.TrueAsync(() => vm.Enrollments.Count == 0, "the list emptied");
+        vm.Deactivate();
+    }
+
+    [Fact]
+    public async Task Without_not_renewed_certificates_the_section_is_hidden()
+    {
+        var now = DateTime.UtcNow;
+        _plugin.Service!.Store.AddCertificate(new IssuedCertificate { SerialNumber = "02", DeviceId = Guid.NewGuid(), Device = "10.0.0.49", Profile = "https", IssuedUtc = now, NotAfterUtc = now.AddDays(365) });
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+
+        Assert.False(vm.HasNotRenewed);
     }
 
     [Fact]
@@ -109,17 +185,21 @@ public sealed class PageTests : IAsyncLifetime
             store.AddCertificate(new IssuedCertificate
             {
                 SerialNumber = $"0{i}AB", DeviceId = Guid.NewGuid(), Device = address, Profile = i % 2 == 0 ? "https" : "dot1x",
-                IssuedUtc = now.AddDays(-i), NotAfterUtc = now.AddDays(365 - i), RevokedUtc = i == 3 ? now : null,
+                IssuedUtc = now.AddDays(-i), NotAfterUtc = now.AddDays(365 - i),
             });
             store.AddEnrollment(new Enrollment
             {
                 TimeUtc = now.AddMinutes(-i * 7), Device = address, Profile = i % 2 == 0 ? "https" : "dot1x",
                 Kind = i > 2 ? EnrollmentKind.Renewal : EnrollmentKind.New, Ok = i != 1,
-                Reason = i == 1 ? EstRefusals.Revoked : "Valid until 2027-10-22",
+                Reason = i == 1 ? EstRefusals.NotManaged : "Valid until 2027-10-22",
             });
         }
 
         store.AddEnrollment(new Enrollment { TimeUtc = now, Device = "ACCC8E000001", Profile = "https", Reason = EstRefusals.NotManaged });
+        var renewing = Guid.NewGuid();
+        store.AddCertificate(new IssuedCertificate { SerialNumber = "10AB", DeviceId = renewing, Device = "10.0.0.50", Profile = "https", IssuedUtc = now.AddDays(-400), NotAfterUtc = now.AddDays(-35) });
+        store.AddCertificate(new IssuedCertificate { SerialNumber = "11AB", DeviceId = renewing, Device = "10.0.0.50", Profile = "https", IssuedUtc = now.AddDays(-340), NotAfterUtc = now.AddDays(25) });
+        store.MarkNotRenewed("11AB", now);
 
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         await session.Dispatch(async () =>
@@ -218,7 +298,7 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     /// <summary>The page's view of the plugin: calls go straight to it.</summary>
-    private sealed class PageContext(EstPlugin plugin) : ICorePluginClientContext
+    private sealed class PageContext(EstPlugin plugin, FakeCoreContext core) : ICorePluginClientContext
     {
         public bool Confirm { get; set; } = true;
 
@@ -233,6 +313,9 @@ public sealed class PageTests : IAsyncLifetime
         }
 
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => plugin.InvokeAsync(method, payloadJson, ct);
+
+        /// <summary>The events the plugin publishes, as the host streams them to the page.</summary>
+        public IAsyncEnumerable<PluginEvent> WatchEventsAsync(CancellationToken ct) => core.Published.Reader.ReadAllAsync(ct);
 
         public Task<bool> ConfirmAsync(string title, string message, string confirmText)
         {

@@ -12,8 +12,18 @@ version and date, and the release workflow copies it into the GitHub release.
   allow TCP 9454 when the first camera there is set up; the EST server page shows the sites whose node has not allowed it
   yet.
 
+- EST server: the **Enrollments** list has a search and **Delete all**.
+- EST server: **Listen on** chooses the network interface the cameras reach the server on, like the NTP and DHCP
+  servers; the page groups its settings under **General** and **Profiles**.
+- SDK: `IPluginNetwork.ListenTcpAsync` with the addresses of one interface; `InterfaceOptions.All`, `AllId`, `IsAll`.
+- EST server: **Not renewed** lists the certificates a camera did not renew in time (cameras renew halfway through the
+  validity), with the new event **Certificate not renewed** for the event rules.
+
 ### Changed
 
+- EST server: the list of every certificate and **Revoke** are gone. The certificates are on the cameras (PKI page);
+  to stop renewals use **Remove certificate enrollment**. OADM keeps only the newest certificate of each camera and
+  profile and the one before it.
 - Set up certificate enrollment: when a camera gets no certificate within 2 minutes, the task says whether the camera
   could not reach the EST server or reached it and got no certificate.
 

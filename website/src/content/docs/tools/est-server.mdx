@@ -48,8 +48,11 @@ until these expire. Everything else in OADM works the same with or without a lic
 
 ## The page
 
-### Port and enrollments kept
+### General
 
+- **Listen on**: the network interface the cameras reach the server on, or **All interfaces** (default). Cameras set up
+  later get this interface's address. When the interface is gone, the status says so and the server listens again once
+  it is back.
 - **Port**: the TCP port the cameras connect to, 1025 to 65535 (default 9454). After a change set up the cameras again,
   so they use the new port.
 - **Enrollments kept**: how many enrollments the list keeps, 100 to 5,000 (default 500).
@@ -78,16 +81,17 @@ Errors show below the fields. **Save** applies the changes at once.
 ### Enrollments
 
 Every request of a camera that OADM manages: time, device, profile, **New** or **Renewal**, and the result: **Valid
-until** a date, or the reason it was refused. New rows appear while the page is open.
+until** a date, or the reason it was refused. New rows appear while the page is open. The list keeps the newest
+entries up to **Enrollments kept**.
 
-### Certificates
+- **Search** finds a device, profile, kind or result.
+- **Delete all** (red, with a confirmation) empties the list for every client.
 
-Every certificate the EST server issued: device, profile, issued, valid until and state (**Valid**, **Expired**,
-**Revoked**). Search finds a device or a profile; the list shows the newest 500 matches.
+### Not renewed
 
-**Revoke** (red, with a confirmation) stops a certificate from being renewed. The camera keeps it until it expires, but
-gets no new certificate for this profile until you set it up again. Use it for a camera that left the system or was
-replaced.
+Shows only when a camera did not renew a certificate in time: device, profile, valid until, and **Not renewed** or
+**Expired**. See [Renewals](#renewals). The certificates themselves are on the cameras: the PKI page and the device
+details show them.
 
 ## Set up cameras
 
@@ -128,7 +132,7 @@ To stop a camera from renewing, use **Remove certificate enrollment** (Security)
 the certificates stay on the camera until they expire.
 
 Both tasks need the permission **Set up certificate enrollment** (Users page, roles). Administrators have it; give it to
-operators who should set up cameras. Setting up a camera again also allows a revoked profile again.
+operators who should set up cameras.
 
 ## Cameras at sites
 
@@ -146,7 +150,8 @@ Cameras at a site cannot reach the server. They talk to their site node instead,
 
 ## Renewals
 
-The camera renews each certificate by itself before it expires, without OADM running a task. It signs in with its
+The camera renews each certificate by itself halfway through its validity (a certificate of 1 year after about six
+months), without OADM running a task. When that fails, it tries again every day. It signs in with its
 current certificate or its device ID and gets a new certificate with the same names.
 
 A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when the OADM CA
@@ -165,12 +170,14 @@ camera asks for does not count. No password or code is needed.
 
 ## Event rules
 
-The EST server adds two events to the [event rules](../event-rules/):
+The EST server adds three events to the [event rules](../event-rules/):
 
 - **Certificate enrolled**: a camera got a certificate (profile, New or Renewal).
 - **Enrollment refused**: the EST server refused a camera OADM manages (profile, reason).
+- **Certificate not renewed**: a camera did not renew a certificate within 2 days after the halfway point of its
+  validity (profile, valid until). Not for cameras where you removed certificate enrollment.
 
-For example, send an email when an enrollment is refused.
+For example, send an email when a certificate is not renewed: a certificate of 1 year still has about six months left.
 
 ## Troubleshooting
 
@@ -183,10 +190,10 @@ For example, send an email when an enrollment is refused.
 | **The camera has no Axis device ID certificate.** | The camera has no AXIS Edge Vault device ID. It cannot use the EST server. |
 | **The camera supports none of the EST server's profiles.** | Turn on a profile whose use the camera supports. |
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
-| Refused: **The certificate was revoked. Set up the camera again.** | Run Set up certificate enrollment on the camera. |
 | **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server on TCP 9454 (or the port you chose). |
 | **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |
 | At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |
+| A certificate shows **Not renewed** | The camera did not reach the EST server for its renewal. Check the Enrollments list, the camera's network and, at a site, the site node. Set up the camera again if it was reset. |
 | At a site: **site offline** | The site node is not connected. The camera renews when it is back. |
 
 The server log has one line for every request (Logs page).
