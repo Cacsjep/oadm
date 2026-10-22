@@ -1,0 +1,123 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Est.Client"
+             x:Class="Oadm.Plugins.Est.Client.EstView"
+             x:DataType="vm:EstViewModel"
+             ui:PageHeader.Subtitle="Cameras get and renew their certificates from the OADM CA by themselves.">
+  <!-- One card (the host's page card): port and profiles with Save and the status left of it, then the enrollments and
+       the certificates. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto,*">
+    <StackPanel Grid.Row="0" Classes="form">
+      <ui:FormField Label="Port">
+        <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+      </ui:FormField>
+      <ui:FormField Label="Enrollments kept">
+        <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+      </ui:FormField>
+
+      <ui:FormField Label="Profiles" Classes="wide">
+        <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="220,12,160,12,110,12,100,12,Auto,12,Auto">
+            <TextBlock Grid.Column="0" Classes="secondary" Text="Name" />
+            <TextBlock Grid.Column="2" Classes="secondary" Text="Use" />
+            <TextBlock Grid.Column="4" Classes="secondary" Text="Valid (days)" />
+            <TextBlock Grid.Column="6" Classes="secondary" Text="Key" />
+            <TextBlock Grid.Column="8" Classes="secondary" Text="On" />
+          </Grid>
+          <!-- At most four rows (one per use): no virtualization needed. -->
+          <ItemsControl ItemsSource="{Binding Profiles}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ProfileRowViewModel">
+                <Grid ColumnDefinitions="220,12,160,12,110,12,100,12,Auto,12,Auto" Margin="0,0,0,6">
+                  <TextBox Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
+                  <ComboBox Grid.Column="2" ItemsSource="{Binding UseChoices}" SelectedItem="{Binding Use}" HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
+                  <TextBox Grid.Column="4" Text="{Binding Validity}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
+                  <ComboBox Grid.Column="6" ItemsSource="{Binding KeyChoices}" SelectedItem="{Binding Key}" HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
+                  <CheckBox Grid.Column="8" IsChecked="{Binding Enabled}" VerticalAlignment="Top" Margin="0,4,0,0" IsEnabled="{Binding MayManage}" />
+                  <Button Grid.Column="10" Classes="link danger" Content="Remove" VerticalAlignment="Top" Margin="0,7,0,0" IsVisible="{Binding MayManage}"
+                          Command="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).RemoveProfileCommand}" CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddProfileCommand}" IsVisible="{Binding MayManage}">
+            <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add profile" />
+          </Button>
+        </StackPanel>
+      </ui:FormField>
+
+      <ui:FormField InputWidth="460">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+                  ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+          <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                         Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" ToolTip.Tip="{Binding ListenersText}" />
+        </DockPanel>
+      </ui:FormField>
+      <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap"
+                 IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+
+    <TextBlock Grid.Row="1" Classes="sectionTitle" Text="Enrollments" Margin="{DynamicResource Oadm.GapTop}" />
+    <Panel Grid.Row="2" Margin="0,8,0,0">
+      <DataGrid ItemsSource="{Binding Enrollments}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                SelectionMode="Single" MinHeight="140">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Time" Width="160" Binding="{Binding Time}" SortMemberPath="TimeSortKey" x:DataType="vm:EnrollmentRow" />
+          <DataGridTextColumn Header="Device" Width="160" Binding="{Binding Device}" x:DataType="vm:EnrollmentRow" />
+          <DataGridTextColumn Header="Profile" Width="110" Binding="{Binding Profile}" x:DataType="vm:EnrollmentRow" />
+          <DataGridTextColumn Header="Kind" Width="90" Binding="{Binding Kind}" x:DataType="vm:EnrollmentRow" />
+          <DataGridTemplateColumn Header="Result" Width="*" SortMemberPath="Result" x:DataType="vm:EnrollmentRow">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:EnrollmentRow">
+                <ui:StatusChip Margin="8,0" Text="{Binding Reason}" IsOk="{Binding Ok}" IsError="{Binding Refused}" MaxLines="2" ToolTip.Tip="{Binding Reason}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Classes="secondary" Text="No enrollments yet. Set up a camera with Set up certificate enrollment." IsVisible="{Binding !HasEnrollments}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+    </Panel>
+
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="{DynamicResource Oadm.GapTop}">
+      <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Certificates" VerticalAlignment="Center" />
+      <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding CertificateSummary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+      <ui:SearchBox Grid.Column="2" Text="{Binding CertificateSearch}" Placeholder="Search device, profile" Width="260" />
+    </Grid>
+    <Panel Grid.Row="4" Margin="0,8,0,0">
+      <DataGrid ItemsSource="{Binding Certificates}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                SelectionMode="Single" MinHeight="140">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:CertificateRow" />
+          <DataGridTextColumn Header="Profile" Width="110" Binding="{Binding Profile}" x:DataType="vm:CertificateRow" />
+          <DataGridTextColumn Header="Issued" Width="110" Binding="{Binding Issued}" SortMemberPath="IssuedSortKey" x:DataType="vm:CertificateRow" />
+          <DataGridTextColumn Header="Valid until" Width="110" Binding="{Binding ValidUntil}" SortMemberPath="ValidUntilSortKey" x:DataType="vm:CertificateRow" />
+          <DataGridTemplateColumn Header="State" Width="110" SortMemberPath="State" x:DataType="vm:CertificateRow">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:CertificateRow">
+                <ui:StatusChip Margin="8,0" Text="{Binding State}" IsOk="{Binding IsValid}" IsError="{Binding IsProblem}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Width="100" CanUserSort="False" x:DataType="vm:CertificateRow">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:CertificateRow">
+                <Button Classes="link danger" Content="Revoke" Margin="10,0" IsVisible="{Binding CanRevoke}"
+                        IsEnabled="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).MayManage}"
+                        Command="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).RevokeCommand}" CommandParameter="{Binding}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Classes="secondary" Text="No certificates yet." IsVisible="{Binding !HasCertificates}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+    </Panel>
+
+    <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="5" Text="Reading the EST server" IsVisible="{Binding IsLoading}" />
+  </Grid>
+</UserControl>

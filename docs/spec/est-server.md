@@ -1,7 +1,7 @@
 # EST server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-22; stage 1 built (stages at the end).
+Agreed 2026-10-22; stages 1 and 2 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
 
 The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
 every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**, also
@@ -20,7 +20,9 @@ at sites. A clean-room implementation from RFC 7030 and the Axis camera APIs.
     MQTT, RTSPS), validity (days), key (RSA 2048+ / ECC P-256+). Two ready-made: **HTTPS** (server certificates) and
     **IEEE 802.1X** (client certificates).
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting).
-  - **Certificates** issued by EST: device, profile, valid until, **Revoke** (red; a revoked certificate is never renewed).
+  - **Certificates** issued by EST: device, profile, valid until, **Revoke** (red, confirmed). The camera keeps a revoked
+    certificate until it ends, but gets no new one for that profile until it is set up again (the camera signs in with
+    its device ID, so the device and profile are blocked, not the one certificate).
 - **Task "Set up certificate enrollment"** (device context menu, Security; one task per device): which profile serves
   which use; Nothing was changed on cameras that cannot do it. **Task "Remove certificate enrollment"**.
 - **Event rules**: "Certificate enrolled", "Enrollment refused" (device, profile, reason).
@@ -50,6 +52,11 @@ at sites. A clean-room implementation from RFC 7030 and the Axis camera APIs.
   site the connection came through). Re-issued when the addresses change (node network cards, DHCP).
 - Revocation: internal only (no CRL, no OCSP), permanent.
 - Logs: one line per request (no keys, no CSR bodies).
+- Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
+  or no valid identity, 403 not managed / other site / revoked, 400 request unreadable or refused, 404 unknown, 503 no
+  OADM PRO or no CA (Retry-After 600).
+- The server's TLS certificate: ECC P-256 key made in memory (never stored), 90 days, made again with a third left or
+  when the addresses or the CA change.
 
 ## Certificate renewals and pinning
 
@@ -102,8 +109,9 @@ THIRD-PARTY notices list the plugin's license.
 1. **Host and SDK** (built): `"pro": true` in plugin.json, the Plugins page lock and badge, turning PRO plugins off when
    the license ends (`docs/spec/plugins.md` "OADM PRO plugins"); plugin services, PKI offers `IDeviceCertificateAuthority`
    ("Plugin services"); accepting OADM-CA renewals without Certificate changed (`docs/spec/vapix.md`).
-2. **EST server:** listener, TLS with per-site certificates, HTTP/1.1, the three operations, device ID check, managed-device
-   check, issuing through PKI, enrollments and certificates lists, revoke, events; tests with recorded camera requests.
+2. **EST server** (built): listener, TLS, HTTP/1.1, the three operations, device ID check (the Axis device ID CA bundles
+   from axis.com, checksums checked), managed-device check, issuing through PKI, enrollments and certificates lists,
+   revoke, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
 3. **Deploy task** and remove task with the camera's `cert` / `cert-est` APIs; fixtures from a real camera (read-only
    first), the write tests only on the developer's explicit go.
 4. **Sites:** TCP relay per site, the node's certificate, the node app's port request.

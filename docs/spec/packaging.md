@@ -15,7 +15,8 @@ package and runtime pack with license, copyright, project and where it is used (
 license texts from `packaging/notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1; Apache-2.0,
 LGPL-2.1 and OFL-1.1 always) and the license and notice files the packages ship (root `LICENSE*`/`NOTICE*`/
 `THIRD-PARTY-NOTICES*`, the nuspec license file, `legal/**`), deduplicated by content; a license without a text is a
-warning. `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OADM contributors"; `LICENSE` keeps the Apache appendix template unchanged), `LGPL-2.1.txt` and `TERMS.md` are written next to
+warning. A plugin folder with its own `LICENSE` (the OADM PRO plugins, e.g. `oadm.est`) is named at the top ("Except the
+plugin oadm.est: it has its own license"). `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OADM contributors"; `LICENSE` keeps the Apache appendix template unchanged), `LGPL-2.1.txt` and `TERMS.md` are written next to
 each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share/doc/<package>/`); the About page starts
 its license sentence with the same copyright line.
 **Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device

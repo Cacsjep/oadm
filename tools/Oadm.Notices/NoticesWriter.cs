@@ -13,7 +13,11 @@ namespace Oadm.Notices;
 /// <param name="Contents">What the file covers ("the OADM server, the OADM client and the bundled plugins").</param>
 /// <param name="BundledSummary">The bundled components in the table of contents ("FFmpeg, fonts, .NET").</param>
 public sealed record NoticesOptions(string ProductVersion, string? Rid, string BundledNotices, IReadOnlyList<string> AlwaysIncluded,
-    string Product = "OADM", string Contents = "the OADM server, the OADM client and the bundled plugins", string BundledSummary = "FFmpeg, fonts, .NET");
+    string Product = "OADM", string Contents = "the OADM server, the OADM client and the bundled plugins", string BundledSummary = "FFmpeg, fonts, .NET")
+{
+    /// <summary>Plugins with a license of their own (a LICENSE file in the plugin folder, e.g. the OADM PRO plugins), by id.</summary>
+    public IReadOnlyList<string> OwnLicensePlugins { get; init; } = [];
+}
 
 /// <param name="Text">The notices file.</param>
 /// <param name="PackageCount">Distinct package versions listed.</param>
@@ -138,6 +142,10 @@ public static partial class NoticesWriter
         var title = $"{options.Product} third-party notices";
         sb.Append(title).Append('\n').Append(new string('=', title.Length)).Append("\n\n");
         sb.Append(CultureInfo.InvariantCulture, $"{options.Product} {options.ProductVersion}{(options.Rid is null ? string.Empty : $" ({options.Rid})")}. {options.Product} itself is licensed under the Apache License 2.0 (LICENSE.txt).\n");
+        foreach (var plugin in options.OwnLicensePlugins)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"Except the plugin {plugin}: it has its own license (plugins/{plugin}/LICENSE).\n");
+        }
         sb.Append(CultureInfo.InvariantCulture, $"This file lists the third-party software in {options.Contents}:\n");
         sb.Append(CultureInfo.InvariantCulture, $"  1. Bundled components ({options.BundledSummary})\n");
         sb.Append(CultureInfo.InvariantCulture, $"  2. NuGet packages ({packages.Count})\n");

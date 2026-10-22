@@ -22,6 +22,7 @@ if (options is null)
 }
 
 var uses = new List<PackageUse>();
+var ownLicenses = new List<string>();
 string? assetsFile = null;
 foreach (var app in options.Apps)
 {
@@ -65,6 +66,11 @@ foreach (var root in options.PluginRoots)
 
     foreach (var plugin in Directory.GetDirectories(root).Order(StringComparer.Ordinal))
     {
+        if (File.Exists(Path.Combine(plugin, "LICENSE")))
+        {
+            ownLicenses.Add(Path.GetFileName(plugin));
+        }
+
         foreach (var deps in Directory.GetFiles(plugin, "*.deps.json").Order(StringComparer.Ordinal))
         {
             uses.AddRange(DepsFile.Read(deps, "plugin " + Path.GetFileName(plugin)));
@@ -79,7 +85,7 @@ var siteNode = options.Product == "site-node";
 var bundled = File.ReadAllText(Path.Combine(options.Repo, siteNode ? Path.Combine("packaging", "notices", "site-node.md") : "THIRD-PARTY-NOTICES.md"));
 var noticesOptions = siteNode
     ? new NoticesOptions(options.Version, options.Rid, bundled, ["Apache-2.0", "OFL-1.1"], "OADM Site Node", "the OADM Site Node service and app", "fonts, .NET")
-    : new NoticesOptions(options.Version, options.Rid, bundled, ["Apache-2.0", "LGPL-2.1", "OFL-1.1"]);
+    : new NoticesOptions(options.Version, options.Rid, bundled, ["Apache-2.0", "LGPL-2.1", "OFL-1.1"]) { OwnLicensePlugins = [.. ownLicenses] };
 var result = NoticesWriter.Build(
     noticesOptions,
     uses,

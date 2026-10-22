@@ -199,6 +199,15 @@ public sealed class NoticesGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void PluginsWithTheirOwnLicenseAreNamedAtTheTop()
+    {
+        var text = NoticesWriter.Build(Options() with { OwnLicensePlugins = ["oadm.est"] }, [], (id, _) => throw new KeyNotFoundException(id), Templates()).Text;
+
+        Assert.Contains("Apache License 2.0 (LICENSE.txt).\nExcept the plugin oadm.est: it has its own license (plugins/oadm.est/LICENSE).\n", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Except the plugin", NoticesWriter.Build(Options(), [], (id, _) => throw new KeyNotFoundException(id), Templates()).Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OutputIsDeterministic()
     {
         var packages = new Dictionary<string, PackageInfo> { ["Z"] = Info("Z", "1.0.0", "MIT"), ["a"] = Info("a", "1.0.0", "Apache-2.0") };

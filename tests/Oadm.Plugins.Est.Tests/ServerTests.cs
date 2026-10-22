@@ -1,0 +1,279 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+
+using Oadm.Plugins.Est.DeviceId;
+using Oadm.Plugins.Est.Protocol;
+using Oadm.Plugins.Est.Serving;
+using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Sites;
+using Oadm.Sdk.Testing;
+
+namespace Oadm.Plugins.Est.Tests;
+
+/// <summary>The EST server end to end: TLS with the device ID over an in-memory connection, the operations, who may enroll.</summary>
+public sealed class ServerTests : IAsyncLifetime
+{
+    private const string Serial = "B8A44F631339";
+
+    private readonly X509Certificate2 _root = TestPki.Root("Device ID Root");
+    private readonly FakeAuthority _ca = new();
+    private readonly FakeSettings _settings = new();
+    private readonly FakePluginNetwork _network = new();
+    private readonly Devices _devices = new();
+    private readonly FakePublisher _publisher = new();
+    private X509Certificate2 _intermediate = null!;
+    private X509Certificate2 _deviceId = null!;
+    private EstService _service = null!;
+    private bool _pro = true;
+
+    public async Task InitializeAsync()
+    {
+        _intermediate = TestPki.Intermediate(_root, "Device ID Intermediate");
+        _deviceId = TestPki.DeviceId(_intermediate, Serial);
+        _devices.List.Add(new FakeDevice { Serial = Serial, Address = "10.0.0.48", HostName = "cam-entrance" });
+        _service = new EstService(new EstHost(_settings, _devices, _network, () => _ca, () => _pro)
+        {
+            DeviceIds = new AxisDeviceId([X509CertificateLoader.LoadCertificate(_root.RawData)]),
+            LocalAddresses = () => ["10.0.0.17"],
+            HostName = "oadm-server",
+            Publisher = _publisher,
+        });
+        await _service.StartAsync(CancellationToken.None);
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _service.DisposeAsync();
+        _deviceId.Dispose();
+        _intermediate.Dispose();
+        _root.Dispose();
+        _ca.Dispose();
+    }
+
+    [Fact]
+    public async Task Cacerts_answers_the_oadm_ca_and_the_server_proves_it_is_oadm()
+    {
+        X509Certificate2? server = null;
+        var response = await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s);
+
+        Assert.Equal(200, response.Status);
+        Assert.Equal("application/pkcs7-mime", response.Headers["Content-Type"]);
+        Assert.Equal("base64", response.Headers["Content-Transfer-Encoding"]);
+        Assert.Equal([_ca.Certificate.RawData], EstMessages.ReadCertsOnly(Convert.FromBase64String(response.Body)));
+
+        // The server's TLS certificate comes from the OADM CA and names this server.
+        Assert.NotNull(server);
+        Assert.Equal(_ca.Certificate.Subject, server.Issuer);
+        var names = server.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Contains(IPAddress.Parse("10.0.0.17"), names.EnumerateIPAddresses());
+        Assert.Contains("oadm-server", names.EnumerateDnsNames());
+        Assert.Equal("Running on port 9454", _service.GetState().StatusText);
+    }
+
+    [Fact]
+    public async Task A_managed_camera_enrolls_with_its_device_id_and_renews_with_its_new_certificate()
+    {
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+
+        var response = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+
+        Assert.Equal(200, response.Status);
+        Assert.StartsWith("application/pkcs7-mime; smime-type=certs-only", response.Headers["Content-Type"], StringComparison.Ordinal);
+        var certificates = EstMessages.ReadCertsOnly(Convert.FromBase64String(response.Body));
+        Assert.Equal(2, certificates.Count); // the leaf and the chain: Axis refuses a leaf alone
+        using var issued = X509CertificateLoader.LoadCertificate(certificates[0]);
+        Assert.Equal("CN=10.0.0.48", issued.Subject); // OADM's names, never the request's
+        var names = issued.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Contains("axis-b8a44f631339.local", names.EnumerateDnsNames());
+        Assert.Contains("cam-entrance", names.EnumerateDnsNames());
+        var request = Assert.Single(DeviceRequests());
+        Assert.Equal((DeviceCertificateUse.Server, "EST", TimeSpan.FromDays(365)), (request.Use, request.Source, request.Validity));
+
+        var enrollment = Assert.Single(_service.Store.Enrollments());
+        Assert.Equal((true, EnrollmentKind.New, "https", "10.0.0.48"), (enrollment.Ok, enrollment.Kind, enrollment.Profile, enrollment.Device));
+        Assert.Equal(1, _service.Store.CertificateCount);
+        Assert.Equal(EstPluginInfo.EnrolledEvent, Assert.Single(_publisher.Fired).Type);
+
+        // Renewal with the certificate it got (and its key).
+        using var renewalIdentity = TestPki.Usable(issued.CopyWithPrivateKey(key));
+        var (csr2, key2) = TestPki.Request();
+        using var __ = key2;
+        var renewal = await SendAsync("POST", "/.well-known/est/https/simplereenroll", renewalIdentity, Body(csr2));
+        Assert.Equal(200, renewal.Status);
+        Assert.Equal(EnrollmentKind.Renewal, _service.Store.Enrollments()[0].Kind);
+        Assert.Equal(2, _service.Store.CertificateCount);
+    }
+
+    [Fact]
+    public async Task Only_managed_cameras_with_a_device_id_get_certificates()
+    {
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+        using var stranger = TestPki.DeviceId(_intermediate, "ACCC8E000001");
+        using var foreignRoot = TestPki.Root("Not Axis");
+        using var forged = TestPki.DeviceId(foreignRoot, Serial);
+
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", null, Body(csr))).Status);
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", forged, Body(csr))).Status);
+        var notManaged = await SendAsync("POST", "/.well-known/est/https/simpleenroll", stranger, Body(csr));
+        Assert.Equal((403, EstRefusals.NotManaged), (notManaged.Status, notManaged.Body.Trim()));
+        Assert.Empty(DeviceRequests());
+        Assert.Equal("ACCC8E000001", _service.Store.Enrollments()[0].Device);
+        Assert.Empty(_publisher.Fired); // refusals of unknown cameras are not device events
+    }
+
+    [Fact]
+    public async Task A_camera_at_a_site_enrolls_only_through_its_site()
+    {
+        _devices.List[0] = new FakeDevice { Serial = Serial, Address = "10.0.0.48", SiteId = Guid.NewGuid() };
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+
+        var response = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+
+        Assert.Equal((403, EstRefusals.OtherSite), (response.Status, response.Body.Trim()));
+        Assert.Equal(EstPluginInfo.RefusedEvent, Assert.Single(_publisher.Fired).Type);
+    }
+
+    [Fact]
+    public async Task A_revoked_certificate_stops_the_profile_for_the_camera()
+    {
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+        var serial = Assert.Single(_service.Store.Certificates(null, 0, 10).Certificates).SerialNumber;
+
+        Assert.Equal(1, _service.Revoke(new RevokeRequest([serial])).Revoked);
+
+        var again = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal((403, EstRefusals.Revoked), (again.Status, again.Body.Trim()));
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/dot1x/simpleenroll", _deviceId, Body(csr))).Status); // other profile
+        Assert.Equal(DeviceCertificateUse.Client, DeviceRequests()[^1].Use);
+    }
+
+    [Fact]
+    public async Task Unknown_paths_and_profiles_look_the_same_and_without_pro_or_ca_nothing_is_issued()
+    {
+        Assert.Equal(404, (await SendAsync("GET", "/.well-known/est/nope/cacerts", null)).Status);
+        Assert.Equal(404, (await SendAsync("GET", "/.well-known/est/https/csrattrs", null)).Status);
+        Assert.Equal(404, (await SendAsync("GET", "/index.html", null)).Status);
+
+        _pro = false;
+        var noPro = await SendAsync("GET", "/.well-known/est/https/cacerts", null);
+        Assert.Equal((503, EstRefusals.NotPro), (noPro.Status, noPro.Body.Trim()));
+        Assert.Equal(EstRefusals.NotPro, _service.GetState().StatusText);
+    }
+
+    [Fact]
+    public async Task Settings_are_checked_and_a_new_port_opens_a_new_listener()
+    {
+        var bad = await _service.SaveAsync(new SaveRequest(new EstConfig { Port = 80 }), CancellationToken.None);
+        Assert.Equal("port", bad.Field);
+        var twice = await _service.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new("a", ProfileUse.Https), new("b", ProfileUse.Https)] }), CancellationToken.None);
+        Assert.Equal(("profiles[1].use", "Another profile has this use."), (twice.Field, twice.Error));
+        var name = await _service.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new("a b", ProfileUse.Https)] }), CancellationToken.None);
+        Assert.Equal("profiles[0].name", name.Field);
+
+        var saved = await _service.SaveAsync(new SaveRequest(new EstConfig { Port = 9455, Profiles = [new("web", ProfileUse.Https, 90)] }), CancellationToken.None);
+        Assert.Null(saved.Error);
+        Assert.Equal(2, _network.Listeners.Count);
+        Assert.True(_network.Listeners.First().IsReleased);
+        Assert.Equal(9455, _service.Listener!.Port);
+        Assert.Contains("\"port\":9455", _settings.Values[EstStore.ConfigKey], StringComparison.Ordinal);
+        Assert.Equal(404, (await SendAsync("GET", "/.well-known/est/https/cacerts", null)).Status);
+        Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/web/cacerts", null)).Status);
+    }
+
+    /// <summary>The requests for cameras (the server's own TLS certificate has no device).</summary>
+    private List<DeviceCertificateRequest> DeviceRequests() => [.. _ca.Requests.Where(r => r.DeviceId is not null)];
+
+    private static byte[] Body(byte[] csr) => Encoding.ASCII.GetBytes(Convert.ToBase64String(csr, Base64FormattingOptions.InsertLineBreaks));
+
+    /// <summary>One request over TLS like a camera's EST client; the server certificate must chain to the OADM CA.</summary>
+    private async Task<Response> SendAsync(string method, string path, X509Certificate2? clientCertificate, byte[]? body = null, Action<X509Certificate2>? onServer = null)
+    {
+        var relay = (InMemoryTcpRelay)_service.Listener!;
+        var stream = relay.Connect(new IPEndPoint(IPAddress.Parse("10.0.0.48"), 40000));
+        await using var tls = new SslStream(stream, leaveInnerStreamOpen: false);
+        var options = new SslClientAuthenticationOptions
+        {
+            TargetHost = "10.0.0.17",
+            RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+            {
+                using var chain = new X509Chain();
+                chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                chain.ChainPolicy.CustomTrustStore.Add(_ca.Certificate);
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                var server = X509CertificateLoader.LoadCertificate(certificate!.GetRawCertData());
+                onServer?.Invoke(server);
+                return chain.Build(server);
+            },
+        };
+        if (clientCertificate is not null)
+        {
+            options.ClientCertificateContext = SslStreamCertificateContext.Create(clientCertificate, [X509CertificateLoader.LoadCertificate(_intermediate.RawData)], offline: true);
+        }
+
+        await tls.AuthenticateAsClientAsync(options);
+        var head = new StringBuilder($"{method} {path} HTTP/1.1\r\nHost: 10.0.0.17:9454\r\nConnection: close\r\n");
+        if (body is not null)
+        {
+            head.Append(CultureInfo.InvariantCulture, $"Content-Type: application/pkcs10\r\nContent-Transfer-Encoding: base64\r\nContent-Length: {body.Length}\r\n");
+        }
+
+        head.Append("\r\n");
+        await tls.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()));
+        if (body is not null)
+        {
+            await tls.WriteAsync(body);
+        }
+
+        await tls.FlushAsync();
+        using var answer = new MemoryStream();
+        await tls.CopyToAsync(answer);
+        var text = Encoding.ASCII.GetString(answer.ToArray());
+        var split = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        var lines = text[..split].Split("\r\n");
+        var headers = lines.Skip(1).Select(l => l.Split(": ", 2)).ToDictionary(p => p[0], p => p[1], StringComparer.OrdinalIgnoreCase);
+        return new Response(int.Parse(lines[0].Split(' ')[1], CultureInfo.InvariantCulture), headers, text[(split + 4)..]);
+    }
+
+    private sealed record Response(int Status, Dictionary<string, string> Headers, string Body);
+
+    private sealed class Devices : IDeviceRepository
+    {
+        public List<IDeviceInfo> List { get; } = [];
+
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. List]);
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(List.Find(d => d.Id == id));
+    }
+
+    private sealed class FakePublisher : Sdk.Events.IEventPublisher
+    {
+        public List<(string Type, Guid? Device)> Fired { get; } = [];
+
+        public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null)
+        {
+            lock (Fired)
+            {
+                Fired.Add((typeId, deviceId));
+            }
+        }
+
+        public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null)
+        {
+        }
+
+        public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices)
+        {
+        }
+
+        public bool IsWatched(string typeId) => true;
+    }
+}

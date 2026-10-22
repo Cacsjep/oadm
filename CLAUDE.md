@@ -87,6 +87,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
   Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of the chosen cameras and their tools (format, check, encryption; off by default)
   Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
+  Oadm.Plugins.Est(.Client)/              OADM PRO core plugin: EST server, cameras enroll and renew certificates from the OADM CA
+                                          (off by default, own source-available LICENSE)
   Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows,
                                           ActionEngine: the devices' action rules over SOAP, DeviceEvents: a device's event list)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
