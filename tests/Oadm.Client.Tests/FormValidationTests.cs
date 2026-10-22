@@ -338,6 +338,41 @@ public sealed class FormValidationTests
         }, CancellationToken.None);
     }
 
+    [Fact]
+    public async Task Allow_Basic_login_over_HTTP_loads_saves_and_shows_its_hint()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(async () =>
+        {
+            var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5));
+            using var f = new DevicesFixture(api);
+            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
+            await vm.LoadAsync();
+            Assert.False(vm.AllowBasicOverHttp); // off by default
+            Assert.Equal("Off", vm.AllowBasicOverHttpText);
+
+            var window = new Window { Width = 900, Height = 1300, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            window.Show();
+            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Device login" && x.IsEffectivelyVisible);
+            Assert.Equal("Sends passwords unencrypted. Only for devices without HTTPS.", field.Hint);
+            Assert.Contains(field.GetVisualDescendants().OfType<CheckBox>(), c => Equals(c.Content, "Allow Basic login over HTTP"));
+
+            vm.AllowBasicOverHttp = true;
+            await vm.SaveCommand.ExecuteAsync(null);
+            Assert.True((await api.GetSettingsAsync(CancellationToken.None)).AllowBasicOverHttp);
+
+            // A partial update without the field keeps it, like the server.
+            await api.SetSettingsAsync(new Oadm.Contracts.V1.ServerSettings { PollingIntervalSeconds = 60, FullRefreshMinutes = 10 }, CancellationToken.None);
+            await vm.LoadAsync();
+            Assert.True(vm.AllowBasicOverHttp);
+            Assert.Equal("On", vm.AllowBasicOverHttpText);
+            window.Close();
+        }, CancellationToken.None);
+    }
+
     private static void Capture(Window window, string? outDir, string name)
     {
         WriteableBitmap? frame = window.CaptureRenderedFrame();

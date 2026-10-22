@@ -73,7 +73,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
             Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds),
             Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin),
-            Read(rows, SettingKeys.DevicesWaitingRetryMinutes, defaults.WaitingRetryMinutes));
+            Read(rows, SettingKeys.DevicesWaitingRetryMinutes, defaults.WaitingRetryMinutes),
+            Read(rows, SettingKeys.DevicesAllowBasicOverHttp, defaults.AllowBasicOverHttp));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -91,6 +92,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(settings.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(settings.MaxParallelTasksPerPlugin),
             [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(settings.WaitingRetryMinutes),
+            [SettingKeys.DevicesAllowBasicOverHttp] = JsonSerializer.Serialize(settings.AllowBasicOverHttp),
         };
         foreach (var (key, json) in values)
         {
@@ -205,6 +207,13 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.DevicesWaitingRetryMinutes:
                 RequireInt(key, value, ServerSettings.MinWaitingRetryMinutes, ServerSettings.MaxWaitingRetryMinutes);
                 break;
+            case SettingKeys.DevicesAllowBasicOverHttp:
+                if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    throw new ArgumentException($"'{key}' must be true or false.", nameof(valueJson));
+                }
+
+                break;
             case SettingKeys.ServerName:
                 if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -254,6 +263,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(d.MaxParallelTasksPerPlugin),
             [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(d.WaitingRetryMinutes),
+            [SettingKeys.DevicesAllowBasicOverHttp] = JsonSerializer.Serialize(d.AllowBasicOverHttp),
         };
     }
 }

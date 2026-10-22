@@ -4,9 +4,18 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 
 - Auth: AXIS OS 12 uses Digest on port 80 and Basic on port 443 (seen in
   `/config/rest/virtualhost/v1` and the 401 headers). The client offers Digest only over
-  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP, with one exception: the add
-  page's automatic login to a device that passed the anonymous Axis check (`AllowBasicOverHttp`, see
-  "Security and access" 2).
+  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP, with two exceptions
+  (`VapixConnectionOptions.AllowBasicOverHttp`): the add page's automatic login to a device that passed the anonymous
+  Axis check (server network only, see `docs/spec/security.md`), and every device connection while the server setting
+  `Devices.AllowBasicOverHttp` is on (Settings > Security "Allow Basic login over HTTP", default off, every route, a site
+  too; `BasicOverHttpSetting` read live, a change drops every cached client of `VapixClientFactory`). Digest stays
+  preferred when the device offers it.
+- A 401 over HTTP whose challenge offers only Basic (`WWW-Authenticate: Basic realm="AXIS_<serial>"`, a device set to
+  Basic login) while Basic was not allowed sets `VapixAuthenticationException.BasicOnlyOverHttp`: Log in and the add
+  page say `DeviceMessages.BasicOnlyOverHttp` ("The device accepts only Basic login over HTTP. Turn on HTTPS on the
+  device, or allow Basic login over HTTP in Settings.") instead of "The user name or password is wrong."; the device
+  status stays Credentials required, with that text as the Status column's tooltip (`docs/spec/main-window.md`). Live
+  view and event streams: the same rule on RTSP (`docs/spec/live-view.md`).
 - Factory-default check without credentials: `systemready.cgi` returns `needsetup` (yes =
   no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.

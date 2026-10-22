@@ -76,6 +76,42 @@ public sealed class DeviceLoginTests
     }
 
     [Fact]
+    public async Task ADeviceWithOnlyBasicOverHttpSaysWhatToDoAndWorksOnceTheSettingAllowsIt()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.0.12", FakeSerials.Make(12), "Right-pass1").BasicOnlyOverHttp = true;
+        await using var host = await TestServerHost.StartAsync(network);
+        var device = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.12", 12, "Right-pass1", SdkDeviceStatus.CredentialsRequired);
+
+        // Setting off: the right password is never sent as Basic over HTTP, and the reply says why instead of "wrong".
+        var reply = await host.Devices.LogInAsync(Request("root", "Right-pass1", false, device));
+        var result = Assert.Single(reply.Results);
+        Assert.False(result.Ok);
+        Assert.False(result.Rejected);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp, result.Message);
+        Assert.Equal(SdkDeviceStatus.CredentialsRequired, (await host.Get<DevicePollingService>().PollAsync(device.Id, CancellationToken.None))!.Status);
+
+        // The device list says why (kept in server memory, never stored).
+        var listed = await TestHelpers.GetDeviceAsync(host, device.Id.ToString());
+        Assert.Equal(Proto.DeviceStatus.CredentialsRequired, listed.Status);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp, listed.StatusDetail);
+
+        // An administrator allows it: the cached clients are dropped and the device is checked again at once.
+        await host.Settings.SetAsync(new Proto.ServerSettings { AllowBasicOverHttp = true });
+        await TestHelpers.WaitUntilAsync(
+            async () => (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())).Status == Proto.DeviceStatus.Ok,
+            "the check right after the setting changed");
+        Assert.Equal("", (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())).StatusDetail);
+        reply = await host.Devices.LogInAsync(Request("root", "Right-pass1", false, device));
+        Assert.True(Assert.Single(reply.Results).Ok);
+        var fake = network["10.9.0.12"];
+        lock (fake) // the polling adds to it on another thread under the same lock
+        {
+            Assert.Contains(fake.CredentialRequests, r => r.Scheme == Uri.UriSchemeHttp && r.User == "root");
+        }
+    }
+
+    [Fact]
     public async Task ADeviceWithAChangedCertificateIsNotContacted()
     {
         var network = new FakeAxisNetwork();

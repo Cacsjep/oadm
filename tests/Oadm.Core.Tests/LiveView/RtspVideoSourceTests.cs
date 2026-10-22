@@ -34,6 +34,45 @@ public sealed class RtspVideoSourceTests
     }
 
     [Fact]
+    public async Task ACameraWithOnlyBasicIsAnsweredWhenTheSettingAllowsIt()
+    {
+        await using var server = new FakeRtspServer("h264-640x360", "root", "secret", basicOnly: true);
+        await using var source = await RtspVideoSource.OpenAsync(Options(server.Port, VideoCodecKind.H264, "secret") with { AllowBasic = true }, CancellationToken.None);
+
+        var frames = 0;
+        await foreach (var _ in source.ReadFramesAsync(CancellationToken.None))
+        {
+            frames++;
+        }
+
+        Assert.Equal(15, frames);
+        Assert.Equal(["DESCRIBE", "DESCRIBE", "SETUP", "PLAY"], server.Methods.Take(4));
+        Assert.Contains(server.RawRequests, r => r.Contains("Authorization: Basic cm9vdDpzZWNyZXQ=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ACameraWithOnlyBasicSaysWhatToDoWhileTheSettingIsOff()
+    {
+        await using var server = new FakeRtspServer("h264-640x360", "root", "secret", basicOnly: true);
+
+        var ex = await Assert.ThrowsAsync<LiveViewException>(() => RtspVideoSource.OpenAsync(Options(server.Port, VideoCodecKind.H264, "secret"), CancellationToken.None));
+
+        Assert.Equal(LiveViewError.Unauthorized, ex.Error);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp, ex.Message);
+        Assert.DoesNotContain(server.RawRequests, r => r.Contains("Authorization:", StringComparison.Ordinal)); // the password never left
+    }
+
+    [Fact]
+    public async Task DigestStaysPreferredWhenBasicIsAllowed()
+    {
+        await using var server = new FakeRtspServer("h264-640x360", "root", "secret");
+        await using var source = await RtspVideoSource.OpenAsync(Options(server.Port, VideoCodecKind.H264, "secret") with { AllowBasic = true }, CancellationToken.None);
+
+        Assert.True(server.AuthorizedDescribe);
+        Assert.DoesNotContain(server.RawRequests, r => r.Contains("Authorization: Basic", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task WrongPasswordIsReportedAsUnauthorized()
     {
         await using var server = new FakeRtspServer("h264-640x360", "root", "secret");
@@ -78,11 +117,14 @@ public sealed class RtspVideoSourceTests
         private readonly string _fixture;
         private readonly string _user;
         private readonly string _password;
+        private readonly bool _basicOnly;
         private readonly Task _run;
         private readonly CancellationTokenSource _cts = new();
 
-        public FakeRtspServer(string fixture, string user, string password)
+        /// <param name="basicOnly">Challenges like an AXIS OS camera set to Basic login: <c>WWW-Authenticate: Basic realm="AXIS_B8A44FCC135D"</c>.</param>
+        public FakeRtspServer(string fixture, string user, string password, bool basicOnly = false)
         {
+            _basicOnly = basicOnly;
             _fixture = fixture;
             _user = user;
             _password = password;
@@ -142,7 +184,9 @@ public sealed class RtspVideoSourceTests
 
                 if (!Authorized(auth, method, nonce))
                 {
-                    await WriteAsync(stream, $"RTSP/1.0 401 Unauthorized\r\nCSeq: {cseq}\r\nWWW-Authenticate: Digest realm=\"AXIS_TEST\", nonce=\"{nonce}\", qop=\"auth\"\r\n\r\n");
+                    await WriteAsync(stream, _basicOnly
+                        ? $"RTSP/1.0 401 Unauthorized\r\nCSeq: {cseq}\r\nWWW-Authenticate: Basic realm=\"AXIS_B8A44FCC135D\"\r\n\r\n"
+                        : $"RTSP/1.0 401 Unauthorized\r\nCSeq: {cseq}\r\nWWW-Authenticate: Digest realm=\"AXIS_TEST\", nonce=\"{nonce}\", qop=\"auth\"\r\n\r\n");
                     continue;
                 }
 
@@ -184,6 +228,11 @@ public sealed class RtspVideoSourceTests
             if (header is null)
             {
                 return false;
+            }
+
+            if (_basicOnly)
+            {
+                return header.Trim() == "Authorization: Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_user}:{_password}"));
             }
 
             var p = DigestAuthenticator.ParseParameters(header["Authorization: Digest ".Length..]);

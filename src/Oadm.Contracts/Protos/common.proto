@@ -70,6 +70,9 @@ message Device {
   string soc = 29;                                // raw basicdeviceinfo Soc, e.g. "Axis Artpec-8"; empty until known
   string site_id = 30;                            // the site the device is reached through; empty = the server's own network
   string site_name = 31;                          // the name of site_id (Site column, search, export); empty without a site
+  // Why the device has its status when the status alone does not say it (the Status column's tooltip); empty when there
+  // is nothing more to say. Kept in server memory only (DeviceStatusNotes), e.g. DeviceMessages.BasicOnlyOverHttp.
+  string status_detail = 32;
 }
 
 // One entry of the device's VAPIX API discovery list (apidiscovery.cgi getApiList).

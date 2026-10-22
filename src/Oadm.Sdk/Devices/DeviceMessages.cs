@@ -46,6 +46,16 @@ public static class DeviceMessages
     /// <summary>The device has no password yet (status Password not set).</summary>
     public const string PasswordNotSet = "Password not set - the device is in factory default";
 
+    /// <summary>
+    /// The device has no HTTPS and accepts only Basic login, which OADM sends over plain HTTP only when the server setting
+    /// allows it.
+    /// </summary>
+    public const string BasicOnlyOverHttp =
+        "The device accepts only Basic login over HTTP. Turn on HTTPS on the device, or allow Basic login over HTTP in Settings.";
+
+    /// <summary>The device list's Status text of such a device (status Credentials required, <see cref="BasicOnlyOverHttp"/>).</summary>
+    public const string BasicLoginOnly = "Basic login only";
+
     /// <summary>The device refused the login of a request (HTTP 401).</summary>
     public const string Unauthorized = "Unauthorized - HTTP 401 (check the credentials)";
 

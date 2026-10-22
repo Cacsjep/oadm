@@ -25,7 +25,8 @@ public sealed class DeviceEventStreams(
     CredentialStore credentials,
     ILoggerFactory? loggerFactory = null,
     ServerSettingsStore? settings = null,
-    DeviceRouter? router = null) : IDeviceEventStreams, IDisposable
+    DeviceRouter? router = null,
+    Vapix.BasicOverHttpSetting? basicOverHttp = null) : IDeviceEventStreams, IDisposable
 {
     public const string RtspPortsKey = "Devices.RtspPorts";
 
@@ -57,6 +58,7 @@ public sealed class DeviceEventStreams(
                 Address = device.Address,
                 Port = port,
                 Credentials = stored is null ? null : new NetworkCredential(stored.UserName, stored.Password),
+                AllowBasic = basicOverHttp?.Current ?? false,
                 Route = DeviceConnections.RouteOf(device),
                 Router = router,
             },

@@ -40,6 +40,12 @@ public static class SettingKeys
     /// <summary>How often the server tries the devices of the waiting list again (minutes). Int, default 15, 1..1440.</summary>
     public const string DevicesWaitingRetryMinutes = "Devices.WaitingRetryMinutes";
 
+    /// <summary>
+    /// Devices that accept only Basic login get it over plain HTTP too (Digest stays preferred when the device offers it).
+    /// Bool, default false: Basic goes only over HTTPS (docs/spec/security.md). Read live by the device connections.
+    /// </summary>
+    public const string DevicesAllowBasicOverHttp = "Devices.AllowBasicOverHttp";
+
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
 
@@ -91,7 +97,8 @@ public sealed record ServerSettings(
     int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
     int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds,
     int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin,
-    int WaitingRetryMinutes = ServerSettings.DefaultWaitingRetryMinutes)
+    int WaitingRetryMinutes = ServerSettings.DefaultWaitingRetryMinutes,
+    bool AllowBasicOverHttp = false)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;

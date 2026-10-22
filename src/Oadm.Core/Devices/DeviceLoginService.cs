@@ -222,6 +222,9 @@ public sealed partial class DeviceLoginService
     {
         switch (DeviceStatusClassifier.FromException(ex))
         {
+            case DeviceStatus.CredentialsRequired when VapixAuthenticationException.Find(ex) is { BasicOnlyOverHttp: true }:
+                // The password may be right: OADM did not send it (Basic over plain HTTP is off).
+                return new DeviceLoginResult(deviceId, false, Message: Sdk.Devices.DeviceMessages.BasicOnlyOverHttp);
             case DeviceStatus.CredentialsRequired:
                 return new DeviceLoginResult(deviceId, false, Rejected: true, Message: WrongLoginMessage);
             case DeviceStatus.CertificateChanged:

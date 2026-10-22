@@ -146,10 +146,13 @@ public sealed partial class SettingsGrpcService(
         Add("Discovery duration (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);
         Add("Parallel tasks per plugin", before.MaxParallelTasksPerPlugin, after.MaxParallelTasksPerPlugin);
         Add("Try waiting devices every (min)", before.WaitingRetryMinutes, after.WaitingRetryMinutes);
+        Add("Allow Basic login over HTTP", OnOff(before.AllowBasicOverHttp), OnOff(after.AllowBasicOverHttp));
         Add("Server name", before.ServerName, after.ServerName);
         Add("Listen URL", before.ListenUrl, after.ListenUrl);
         return changes.Count == 0 ? "No change" : string.Join(", ", changes);
     }
+
+    private static string OnOff(bool value) => value ? "On" : "Off";
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Credential list password of {UserName} revealed")]
     private static partial void LogRevealed(ILogger logger, string userName);

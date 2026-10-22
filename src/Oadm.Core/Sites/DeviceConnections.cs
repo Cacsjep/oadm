@@ -31,8 +31,11 @@ public static class DeviceConnections
         return device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps;
     }
 
-    /// <summary>A managed device: its stored address, scheme, pinned certificate and route, with <paramref name="credentials"/>.</summary>
-    public static VapixConnectionOptions For(Device device, NetworkCredential? credentials = null, TimeSpan? timeout = null)
+    /// <summary>
+    /// A managed device: its stored address, scheme, pinned certificate and route, with <paramref name="credentials"/>.
+    /// <paramref name="allowBasicOverHttp"/> is the server setting <c>Devices.AllowBasicOverHttp</c> (on every route).
+    /// </summary>
+    public static VapixConnectionOptions For(Device device, NetworkCredential? credentials = null, TimeSpan? timeout = null, bool allowBasicOverHttp = false)
     {
         ArgumentNullException.ThrowIfNull(device);
         return new VapixConnectionOptions
@@ -43,16 +46,18 @@ public static class DeviceConnections
             PinnedCertificateFingerprint = device.CertFingerprintSha256,
             Timeout = timeout ?? DefaultTimeout,
             Route = RouteOf(device),
+            AllowBasicOverHttp = allowBasicOverHttp,
         };
     }
 
     /// <summary>
     /// A discovered device on the add page (not managed yet): its connect address and route on <paramref name="scheme"/>,
     /// trust on first use. <paramref name="allowBasicOverHttp"/> (the add page's login to a device that passed the Axis
-    /// check) is never honored through a site: Basic over plain HTTP never crosses a site node.
+    /// check) is honored through a site only when the server setting <c>Devices.AllowBasicOverHttp</c> is on
+    /// (<paramref name="basicOverHttpSetting"/>): without it Basic over plain HTTP never crosses a site node.
     /// </summary>
     public static VapixConnectionOptions For(DiscoveredDevice device, string scheme, TimeSpan timeout, NetworkCredential? credentials = null,
-        bool allowBasicOverHttp = false)
+        bool allowBasicOverHttp = false, bool basicOverHttpSetting = false)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
@@ -63,7 +68,7 @@ public static class DeviceConnections
             Credentials = credentials,
             Timeout = timeout,
             Route = device.Route,
-            AllowBasicOverHttp = allowBasicOverHttp && device.Route.IsLocal,
+            AllowBasicOverHttp = basicOverHttpSetting || (allowBasicOverHttp && device.Route.IsLocal),
         };
     }
 }

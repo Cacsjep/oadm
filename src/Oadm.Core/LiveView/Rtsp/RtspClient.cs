@@ -81,6 +81,7 @@ public sealed class RtspClient : IAsyncDisposable
     private readonly NetworkCredential? _credentials;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private DigestAuthenticator? _digest;
+    private string? _basic;
     private int _cseq;
     private readonly TimeProvider _time;
     private long _lastReceive;
@@ -96,6 +97,12 @@ public sealed class RtspClient : IAsyncDisposable
         _credentials = credentials;
         _reader = new BufferedByteReader(stream, 128 * 1024, 2 * 1024 * 1024);
     }
+
+    /// <summary>
+    /// Answer a camera that offers only Basic login on plain RTSP (the server setting Devices.AllowBasicOverHttp); Digest stays
+    /// preferred when offered. Without it such a camera fails with <see cref="Sdk.Devices.DeviceMessages.BasicOnlyOverHttp"/>.
+    /// </summary>
+    public bool AllowBasic { get; init; }
 
     /// <summary>Session id from the SETUP response (without the timeout parameter).</summary>
     public string? Session { get; private set; }
@@ -114,7 +121,7 @@ public sealed class RtspClient : IAsyncDisposable
     /// round trips on top.
     /// </summary>
     public static async Task<RtspClient> ConnectAsync(string host, int port, NetworkCredential? credentials, TimeSpan timeout, CancellationToken ct, TimeProvider? time = null,
-        DeviceRoute route = default, DeviceRouter? router = null)
+        DeviceRoute route = default, DeviceRouter? router = null, bool allowBasic = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         router ??= DeviceRouter.Local;
@@ -131,13 +138,13 @@ public sealed class RtspClient : IAsyncDisposable
             throw new LiveViewException(LiveViewError.Unreachable, $"RTSP port {port} on {host} is not reachable.", ex);
         }
 
-        return new RtspClient(stream, credentials, stream, time);
+        return new RtspClient(stream, credentials, stream, time) { AllowBasic = allowBasic };
     }
 
     /// <summary>Receive buffer of the RTSP socket on the server's own network (video bursts at keyframes).</summary>
     private const int ReceiveBufferBytes = 512 * 1024;
 
-    /// <summary>Sends a request and reads its response; answers a 401 once with Digest credentials.</summary>
+    /// <summary>Sends a request and reads its response; answers a 401 once with Digest (or Basic, see <see cref="AllowBasic"/>).</summary>
     public async Task<RtspResponse> SendAsync(string method, Uri url, IEnumerable<KeyValuePair<string, string>>? headers, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(url);
@@ -145,8 +152,23 @@ public sealed class RtspClient : IAsyncDisposable
         var response = await SendOnceAsync(method, url, extra, ct).ConfigureAwait(false);
         if (response.StatusCode == 401 && _credentials is not null)
         {
-            _digest = DigestAuthenticator.FromChallenges(response.HeaderValues("WWW-Authenticate"), _credentials)
-                ?? throw new LiveViewException(LiveViewError.Unauthorized, "The camera offers no Digest authentication for RTSP (Basic over plain RTSP is refused).");
+            var challenges = response.HeaderValues("WWW-Authenticate").ToList();
+            _digest = DigestAuthenticator.FromChallenges(challenges, _credentials);
+            if (_digest is null)
+            {
+                if (!challenges.Any(c => c.StartsWith("Basic", StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new LiveViewException(LiveViewError.Unauthorized, "The camera offers no Digest authentication for RTSP.");
+                }
+
+                if (!AllowBasic)
+                {
+                    throw new LiveViewException(LiveViewError.Unauthorized, Sdk.Devices.DeviceMessages.BasicOnlyOverHttp);
+                }
+
+                _basic = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(_credentials.UserName + ":" + _credentials.Password));
+            }
+
             response = await SendOnceAsync(method, url, extra, ct).ConfigureAwait(false);
         }
 
@@ -264,6 +286,10 @@ public sealed class RtspClient : IAsyncDisposable
             if (_digest is not null)
             {
                 sb.Append(CultureInfo.InvariantCulture, $"Authorization: {_digest.Authorize(method, uri)}\r\n");
+            }
+            else if (_basic is not null)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $"Authorization: {_basic}\r\n");
             }
 
             if (Session is not null)

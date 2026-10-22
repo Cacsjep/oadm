@@ -233,6 +233,17 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     [ObservableProperty] public partial string ServerName { get; set; } = "";
     [ObservableProperty] public partial string ListenUrl { get; set; } = "";
 
+    /// <summary>
+    /// Devices.AllowBasicOverHttp: devices that accept only Basic login get it over plain HTTP too (default off; Digest
+    /// stays preferred). Applies to the next request after saving.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AllowBasicOverHttpText))]
+    public partial bool AllowBasicOverHttp { get; set; }
+
+    /// <summary>"On" or "Off" for operators, who read the server settings as plain text.</summary>
+    public string AllowBasicOverHttpText => AllowBasicOverHttp ? "On" : "Off";
+
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
 
@@ -291,6 +302,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             ZeroConfSeconds = (int)(ZeroConfSeconds ?? 30),
             WaitingRetryMinutes = (int)(WaitingRetryMinutes ?? 15),
             MaxParallelTasksPerPlugin = (int)(MaxParallelTasksPerPlugin ?? DefaultParallelTasks),
+            AllowBasicOverHttp = AllowBasicOverHttp,
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
         };
@@ -323,6 +335,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         ZeroConfSeconds = settings.ZeroConfSeconds > 0 ? settings.ZeroConfSeconds : 30; // 0 = older server without the setting
         MaxParallelTasksPerPlugin = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : DefaultParallelTasks; // unset = older server
         WaitingRetryMinutes = settings.HasWaitingRetryMinutes ? settings.WaitingRetryMinutes : 15; // unset = older server
+        AllowBasicOverHttp = settings.HasAllowBasicOverHttp && settings.AllowBasicOverHttp; // unset = older server (off)
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
         ServerId = settings.ServerId;

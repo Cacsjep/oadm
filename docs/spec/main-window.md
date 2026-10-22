@@ -36,7 +36,11 @@ Layout, top to bottom:
    **Log in** (icon `key`) is shown only while the selection holds a device with status
    Credentials required (not Password not set: "Set password" below) and follows the status live; it
    applies to those devices of the selection. A rejected stored credential only shows as that status (polling), there
-   are no automatic retries. Dialog `Devices/DeviceLoginWindow` (`DeviceLoginViewModel`, single operation:
+   are no automatic retries. A device that offers only Basic login over plain HTTP while the server setting
+   `Devices.AllowBasicOverHttp` is off keeps the status Credentials required; the Status column reads "Basic login only" (`DeviceMessages.BasicLoginOnly`) and its
+   tooltip says `DeviceMessages.BasicOnlyOverHttp` (proto `Device.status_detail`, kept in server memory by `DeviceStatusNotes`, set and
+   cleared by the status check, never stored: a restart forgets it until the next check). Turning the setting on checks
+   these devices again at once (`DevicePollingService.QueueRefresh`). Dialog `Devices/DeviceLoginWindow` (`DeviceLoginViewModel`, single operation:
    `Border.dialogBody`, 460 px, no card): "10.0.0.48 (P3265-V) rejects the stored credentials." / "5 devices reject the
    stored credentials.", User name (prefilled with the stored one the devices share, `GetCredentialUserName`, else
    "root"), Password (`ui:PasswordBox`), "Save to credential list" (checked; administrators only, hidden for

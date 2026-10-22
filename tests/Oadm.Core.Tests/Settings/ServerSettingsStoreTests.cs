@@ -29,6 +29,8 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         Assert.Equal(30, settings.ZeroConfSeconds);
         Assert.Equal(16, settings.MaxParallelTasksPerPlugin);
         Assert.Equal(16, await _store.GetAsync<int>(SettingKeys.TasksMaxParallelPerPlugin, CancellationToken.None));
+        Assert.False(settings.AllowBasicOverHttp); // Basic goes only over HTTPS until an administrator allows it
+        Assert.Equal("false", await _store.GetJsonAsync(SettingKeys.DevicesAllowBasicOverHttp, CancellationToken.None));
         Assert.Equal("https://0.0.0.0:5080", settings.ListenUrl);
         Assert.Equal(ServerSettings.DefaultServerName(), settings.ServerName);
         Assert.False(string.IsNullOrWhiteSpace(settings.ServerName));
@@ -56,7 +58,8 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetServerSettingsWritesAll()
     {
-        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, ZeroConfSeconds: 120, MaxParallelTasksPerPlugin: 64);
+        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, ZeroConfSeconds: 120, MaxParallelTasksPerPlugin: 64,
+            AllowBasicOverHttp: true);
 
         await _store.SetServerSettingsAsync(wanted, CancellationToken.None);
 
@@ -75,6 +78,8 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "257")]
     [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "2.5")]
     [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "\"16\"")]
+    [InlineData(SettingKeys.DevicesAllowBasicOverHttp, "1")]
+    [InlineData(SettingKeys.DevicesAllowBasicOverHttp, "\"yes\"")]
     [InlineData("Any.Key", "{not json")]
     public async Task InvalidValuesAreRejected(string key, string json)
     {
@@ -122,6 +127,31 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         using var loaded = new Oadm.Core.Tasks.TaskParallelismSetting(_store);
         await loaded.LoadAsync(CancellationToken.None);
         Assert.Equal(3, loaded.Current);
+    }
+
+    [Fact]
+    public async Task BasicOverHttpSettingFollowsTheStore()
+    {
+        using var setting = new Oadm.Core.Vapix.BasicOverHttpSetting(_store);
+        var changes = 0;
+        setting.Changed += (_, _) => changes++;
+        Assert.False(setting.Current);
+
+        await _store.SetServerSettingsAsync((await _store.GetServerSettingsAsync(CancellationToken.None)) with { AllowBasicOverHttp = true }, CancellationToken.None);
+        Assert.True(setting.Current);
+        Assert.Equal(1, changes);
+
+        await _store.SetServerSettingsAsync((await _store.GetServerSettingsAsync(CancellationToken.None)) with { ServerName = "x" }, CancellationToken.None);
+        Assert.Equal(1, changes); // unchanged value: no event
+
+        await _store.ResetAsync(SettingKeys.DevicesAllowBasicOverHttp, CancellationToken.None);
+        Assert.False(setting.Current);
+        Assert.Equal(2, changes);
+
+        await _store.SetAsync(SettingKeys.DevicesAllowBasicOverHttp, true, CancellationToken.None);
+        using var loaded = new Oadm.Core.Vapix.BasicOverHttpSetting(_store);
+        await loaded.LoadAsync(CancellationToken.None);
+        Assert.True(loaded.Current);
     }
 
     [Fact]

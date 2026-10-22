@@ -34,7 +34,8 @@ public sealed class AxisLiveVideoSourceFactory(
     VapixClientFactory clients,
     ILoggerFactory? loggerFactory = null,
     Sdk.Devices.IDeviceEventStreams? ports = null,
-    DeviceRouter? router = null) : ILiveVideoSourceFactory
+    DeviceRouter? router = null,
+    BasicOverHttpSetting? basicOverHttp = null) : ILiveVideoSourceFactory
 {
     private readonly ILoggerFactory _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
 
@@ -58,6 +59,7 @@ public sealed class AxisLiveVideoSourceFactory(
                 Address = device.Address,
                 Port = port ?? RtspClient.DefaultPort,
                 Credentials = stored is null ? null : new NetworkCredential(stored.UserName, stored.Password),
+                AllowBasic = basicOverHttp?.Current ?? false,
                 Codec = key.Codec,
                 Size = key.Size,
                 Fps = key.Fps,

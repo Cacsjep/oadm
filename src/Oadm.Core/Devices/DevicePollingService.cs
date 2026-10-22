@@ -40,6 +40,7 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly VapixClientFactory _clients;
     private readonly ServerSettingsStore _settings;
     private readonly Sites.ISiteStates? _sites;
+    private readonly DeviceStatusNotes? _notes;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly Channel<Guid> _refreshQueue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = false });
@@ -58,8 +59,10 @@ public sealed partial class DevicePollingService : IDisposable
         ServerSettingsStore settings,
         TimeProvider? timeProvider = null,
         ILogger<DevicePollingService>? logger = null,
-        Sites.ISiteStates? sites = null)
+        Sites.ISiteStates? sites = null,
+        DeviceStatusNotes? notes = null)
     {
+        _notes = notes;
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(clients);
         ArgumentNullException.ThrowIfNull(settings);
@@ -447,7 +450,14 @@ public sealed partial class DevicePollingService : IDisposable
 
     private async Task<Device?> ApplyAsync(Device device, Observation observation, bool full, CancellationToken ct)
     {
+        // The note first, so a watcher that maps the status change already reads it.
+        var noteChanged = _notes?.Set(device.Id, observation.Status == DeviceStatus.CredentialsRequired ? observation.Note : null) ?? false;
         var updated = await _devices.UpdateAsync(device.Id, d => observation.ApplyTo(d), ct).ConfigureAwait(false);
+        if (updated is not null && noteChanged)
+        {
+            // The status may stay Credentials required: the watchers still get the device with its new note.
+            _devices.Changes.Publish(new DeviceChange(DeviceChangeKind.Updated, device.Id, updated));
+        }
 
         if (updated is not null)
         {
@@ -547,6 +557,12 @@ public sealed partial class DevicePollingService : IDisposable
             if (observation.Status is DeviceStatus.CredentialsRequired)
             {
                 observation.LastSeen = _time.GetUtcNow().UtcDateTime;
+                if (VapixAuthenticationException.Find(ex) is { BasicOnlyOverHttp: true })
+                {
+                    // The password was not sent: the device offers only Basic over HTTP and the server setting is off.
+                    observation.Note = Sdk.Devices.DeviceMessages.BasicOnlyOverHttp;
+                }
+
                 if (await IsFactoryDefaultAsync(client, ct).ConfigureAwait(false))
                 {
                     observation.Status = DeviceStatus.PasswordNotSet;
@@ -765,6 +781,9 @@ public sealed partial class DevicePollingService : IDisposable
 
         /// <summary>The site could not carry the request: nothing is applied, the device keeps its status.</summary>
         public bool SiteProblem { get; set; }
+
+        /// <summary>Why Credentials required (<see cref="DeviceStatusNotes"/>); null for a plain refusal.</summary>
+        public string? Note { get; set; }
 
         public string? Model { get; set; }
 

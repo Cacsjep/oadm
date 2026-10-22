@@ -142,7 +142,7 @@
               <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="150" SortMemberPath="Row.StatusText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
-                    <TextBlock Text="{Binding Row.StatusText}" />
+                    <TextBlock Text="{Binding Row.StatusText}" ToolTip.Tip="{Binding Row.StatusDetail}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>

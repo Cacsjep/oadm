@@ -21,8 +21,27 @@ public sealed class DeviceGrpcService(
     DeviceFirstPasswordService firstPasswords,
     CredentialListStore credentialList,
     AuditLog audit,
-    IHostApplicationLifetime lifetime) : Proto.DeviceService.DeviceServiceBase
+    IHostApplicationLifetime lifetime,
+    DeviceStatusNotes? notes = null) : Proto.DeviceService.DeviceServiceBase
 {
+    /// <summary>The device with its status note (kept in server memory, <see cref="DeviceStatusNotes"/>).</summary>
+    private Proto.Device WithNote(Proto.Device device)
+    {
+        if (notes is not null && device.Status == Proto.DeviceStatus.CredentialsRequired && Guid.TryParse(device.Id, out var id)
+            && notes.Get(id) is { } note)
+        {
+            device.StatusDetail = note;
+        }
+
+        return device;
+    }
+
+    private Proto.DeviceChanged WithNote(Proto.DeviceChanged change)
+    {
+        WithNote(change.Device);
+        return change;
+    }
+
     /// <summary>Devices read from the database at a time for a device list.</summary>
     public const int SnapshotPageSize = 1_000;
 
@@ -35,7 +54,7 @@ public sealed class DeviceGrpcService(
         while (true)
         {
             var page = await devices.ListDevicesPageAsync(after, SnapshotPageSize, ct).ConfigureAwait(false);
-            reply.Devices.AddRange(page.Select(device => Mappers.ToProto(device, withCredentials.Contains(device.Id))));
+            reply.Devices.AddRange(page.Select(device => WithNote(Mappers.ToProto(device, withCredentials.Contains(device.Id)))));
             if (page.Count < SnapshotPageSize)
             {
                 return reply;
@@ -67,7 +86,7 @@ public sealed class DeviceGrpcService(
                 foreach (var device in page)
                 {
                     var change = new DeviceChange(DeviceChangeKind.Added, device.Id, device);
-                    await responseStream.WriteAsync(Mappers.ToProto(change, withCredentials.Contains(device.Id)), ct).ConfigureAwait(false);
+                    await responseStream.WriteAsync(WithNote(Mappers.ToProto(change, withCredentials.Contains(device.Id))), ct).ConfigureAwait(false);
                 }
 
                 if (page.Count < SnapshotPageSize)
@@ -103,7 +122,7 @@ public sealed class DeviceGrpcService(
                     var hasCredentials = change.Kind != DeviceChangeKind.Removed
                         && (withCredentialsNow?.Contains(change.DeviceId)
                             ?? await credentials.HasCredentialsAsync(change.DeviceId, ct).ConfigureAwait(false));
-                    await responseStream.WriteAsync(Mappers.ToProto(change, hasCredentials), ct).ConfigureAwait(false);
+                    await responseStream.WriteAsync(WithNote(Mappers.ToProto(change, hasCredentials)), ct).ConfigureAwait(false);
                 }
             }
         }

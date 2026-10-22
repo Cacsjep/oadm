@@ -37,7 +37,8 @@ public sealed class VapixConnector(TrustAnchorRegistry? trustAnchors = null, Dev
 /// (address, scheme, pinned certificate fingerprint) and the <see cref="CredentialStore"/>.
 /// Clients are cached per device and reused while route, address, scheme, pin and credentials are
 /// unchanged; a change creates a new client and disposes the old one. Removing a device, or a change of its route or
-/// address, disposes its client. Devices without stored credentials get an anonymous client.
+/// address, disposes its client. Devices without stored credentials get an anonymous client. Every client follows the
+/// server setting <c>Devices.AllowBasicOverHttp</c> (<see cref="BasicOverHttpSetting"/>); a change drops every cached client.
 /// </summary>
 public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposable
 {
@@ -45,6 +46,7 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
     private readonly CredentialStore _credentials;
     private readonly IVapixConnector _connector;
     private readonly ILogger _logger;
+    private readonly BasicOverHttpSetting? _basicOverHttp;
     private readonly ConcurrentDictionary<Guid, Entry> _cache = new();
     private readonly Lock _sync = new();
     private bool _disposed;
@@ -53,7 +55,8 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         DeviceRepository devices,
         CredentialStore credentials,
         IVapixConnector? connector = null,
-        ILogger<VapixClientFactory>? logger = null)
+        ILogger<VapixClientFactory>? logger = null,
+        BasicOverHttpSetting? basicOverHttp = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(credentials);
@@ -62,7 +65,15 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         _connector = connector ?? new VapixConnector();
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         _devices.Changes.Changed += OnDeviceChanged;
+        _basicOverHttp = basicOverHttp;
+        if (_basicOverHttp is not null)
+        {
+            _basicOverHttp.Changed += OnBasicOverHttpChanged;
+        }
     }
+
+    /// <summary>The server setting <c>Devices.AllowBasicOverHttp</c> right now (false without a setting).</summary>
+    private bool AllowBasicOverHttp => _basicOverHttp?.Current ?? false;
 
     /// <summary>Request timeout of created clients.</summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
@@ -92,8 +103,9 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         var options = DeviceConnections.For(
             device,
             credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
-            RequestTimeout);
-        var key = CacheKey(options.Route, options.Address, options.Scheme, options.PinnedCertificateFingerprint, credentials);
+            RequestTimeout,
+            AllowBasicOverHttp);
+        var key = CacheKey(options.Route, options.Address, options.Scheme, options.PinnedCertificateFingerprint, credentials, options.AllowBasicOverHttp);
 
         VapixClient? stale = null;
         VapixClient client;
@@ -138,7 +150,8 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         var client = _connector.Connect(DeviceConnections.For(
             device,
             credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
-            RequestTimeout) with
+            RequestTimeout,
+            AllowBasicOverHttp) with
         {
             Address = address.Trim(),
             Route = route,
@@ -161,7 +174,8 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         var client = _connector.Connect(DeviceConnections.For(
             device,
             credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
-            RequestTimeout) with
+            RequestTimeout,
+            AllowBasicOverHttp) with
         {
             Address = address.Trim(),
             Scheme = scheme,
@@ -181,7 +195,7 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         ArgumentException.ThrowIfNullOrEmpty(userName);
         ArgumentNullException.ThrowIfNull(password);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var client = _connector.Connect(DeviceConnections.For(device, new NetworkCredential(userName, password), RequestTimeout));
+        var client = _connector.Connect(DeviceConnections.For(device, new NetworkCredential(userName, password), RequestTimeout, AllowBasicOverHttp));
         LogClientCreated(device.Id, client.BaseAddress, true);
         return client;
     }
@@ -208,11 +222,24 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         }
 
         _devices.Changes.Changed -= OnDeviceChanged;
+        if (_basicOverHttp is not null)
+        {
+            _basicOverHttp.Changed -= OnBasicOverHttpChanged;
+        }
+
+        InvalidateAll();
+    }
+
+    /// <summary>Drops and disposes every cached client (e.g. after the server setting for Basic over HTTP changed).</summary>
+    public void InvalidateAll()
+    {
         foreach (var id in _cache.Keys.ToArray())
         {
             Invalidate(id);
         }
     }
+
+    private void OnBasicOverHttpChanged(object? sender, EventArgs e) => InvalidateAll();
 
     private void OnDeviceChanged(object? sender, DeviceChange change)
     {
@@ -233,12 +260,12 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
     }
 
     /// <summary>Cache key; the password is only kept as a hash so it does not linger in another string.</summary>
-    private static string CacheKey(DeviceRoute route, string address, string scheme, string? pin, DeviceCredentials? credentials)
+    private static string CacheKey(DeviceRoute route, string address, string scheme, string? pin, DeviceCredentials? credentials, bool basicOverHttp)
     {
         var secret = credentials is null
             ? "-"
             : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credentials.UserName + "\n" + credentials.Password)));
-        return string.Join('|', route.ToString(), scheme, address, pin ?? "-", secret);
+        return string.Join('|', route.ToString(), scheme, address, pin ?? "-", secret, basicOverHttp ? "basic" : "-");
     }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "VAPIX client for device {DeviceId} at {BaseAddress} (credentials: {HasCredentials})")]

@@ -7,7 +7,9 @@ Server-side in `Setting`. Keys: `Polling.IntervalSeconds` (60, 5..86400),
 100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500,
 Settings page "Scan timeout (ms)": range scans and the first contact of imported lines), `Devices.WaitingRetryMinutes` (15,
 1..1440, Settings page "Try waiting devices every (min)", proto `optional int32 waiting_retry_minutes = 10`; see "Waiting
-list"),
+list"), `Devices.AllowBasicOverHttp` (false; Settings page card **Security**, label "Device login", check box "Allow Basic
+login over HTTP", hint "Sends passwords unencrypted. Only for devices without HTTPS.", operators read On / Off; proto
+`optional bool allow_basic_over_http = 11`; read live by every device connection, see `docs/spec/vapix.md`),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
 page "Discovery duration (s)"), `Server.Name` (hostname),
 `Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
@@ -20,8 +22,8 @@ time, read live by the task engine, plugin `MaxParallelDevices` can only lower i
 `optional int32 max_parallel_tasks_per_plugin = 9` so a partial `Set` keeps it; Settings page "Parallel
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
 firmware updates."). The former `Devices.UseHostName` is gone: the add page chooses DNS names or IP addresses
-per add (see "Add Devices Page"); proto `use_host_name = 7` is kept unused for its field number. Settings page in the client exposes them (four cards Polling, Discovery, Tasks, Server, saved
-together by Save and Reload in a row of their own below the four cards; operators see the values as plain text without Save and Reload). Rail page **Credentials** (Admin only, subtitle "Passwords OADM
+per add (see "Add Devices Page"); proto `use_host_name = 7` is kept unused for its field number. Settings page in the client exposes them (five cards Polling, Discovery, Tasks, Security, Server, saved
+together by Save and Reload in a row of their own below the five cards; operators see the values as plain text without Save and Reload). Rail page **Credentials** (Admin only, subtitle "Passwords OADM
 tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user

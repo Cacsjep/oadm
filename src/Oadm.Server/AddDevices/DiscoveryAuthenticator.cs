@@ -88,13 +88,16 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     private readonly ConcurrentDictionary<string, AuthSession> _sessions = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _parallel = new(Parallelism);
     private readonly CancellationTokenSource _stopping = new();
+    private readonly BasicOverHttpSetting? _basicOverHttp;
 
     public DiscoveryAuthenticator(
         CredentialListStore credentialList,
         IVapixConnector connector,
         TimeProvider time,
-        ILogger<DiscoveryAuthenticator> logger)
+        ILogger<DiscoveryAuthenticator> logger,
+        BasicOverHttpSetting? basicOverHttp = null)
     {
+        _basicOverHttp = basicOverHttp;
         _credentialList = credentialList;
         _connector = connector;
         _time = time;
@@ -246,9 +249,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
         else
         {
-            result = outcome.Kind == AttemptKind.Rejected
-                ? new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: "The user name or password is wrong.")
-                : new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail);
+            result = outcome.Kind switch
+            {
+                AttemptKind.Rejected => new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: "The user name or password is wrong."),
+                AttemptKind.BasicOnly => new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: outcome.Detail),
+                _ => new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail),
+            };
             if (outcome.Kind == AttemptKind.NotAxis)
             {
                 LogNotAxis(device.Serial, device.ConnectAddress);
@@ -491,6 +497,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                         return;
                     }
 
+                    if (outcome.Kind == AttemptKind.BasicOnly)
+                    {
+                        Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: outcome.Detail), null);
+                        return;
+                    }
+
                     if (outcome.Kind is AttemptKind.Unreachable or AttemptKind.NotAxis)
                     {
                         if (outcome.Kind == AttemptKind.NotAxis)
@@ -688,8 +700,10 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     {
         try
         {
-            // The device passed the Axis check on this scheme: Basic over plain HTTP is allowed (never through a site).
-            using var client = _connector.Connect(DeviceConnections.For(device, scheme, AttemptTimeout, new NetworkCredential(userName, password), allowBasicOverHttp: true));
+            // The device passed the Axis check on this scheme: Basic over plain HTTP is allowed (through a site only with the
+            // server setting Devices.AllowBasicOverHttp).
+            using var client = _connector.Connect(DeviceConnections.For(device, scheme, AttemptTimeout, new NetworkCredential(userName, password), allowBasicOverHttp: true,
+                basicOverHttpSetting: _basicOverHttp?.Current ?? false));
             var info = await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
             if (!string.Equals(info.SerialNumber, device.Serial, StringComparison.OrdinalIgnoreCase))
             {
@@ -702,6 +716,11 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             }
 
             return new Attempt(AttemptKind.Ok, null);
+        }
+        catch (VapixAuthenticationException ex) when (ex.BasicOnlyOverHttp)
+        {
+            // Through a site with the setting off: the password was not sent, another credential would not help.
+            return new Attempt(AttemptKind.BasicOnly, Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp);
         }
         catch (VapixAuthenticationException)
         {
@@ -783,6 +802,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         Ok,
         Rejected,
         Unreachable,
+
+        /// <summary>The device offers only Basic login over plain HTTP and OADM may not send it there.</summary>
+        BasicOnly,
 
         /// <summary>The device did not pass the anonymous Axis check: no credential was sent.</summary>
         NotAxis,

@@ -115,6 +115,30 @@ public class VapixClientTests
         Assert.Matches("^[0-9A-F]{12}$", ex.RealmSerial);
     }
 
+    [Theory]
+    [InlineData("401-http-basic-only-headers.txt", "http://10.0.0.12/", false, true)] // Basic only (AXIS OS set to Basic), setting off
+    [InlineData("401-http-basic-only-headers.txt", "http://10.0.0.12/", true, false)] // setting on: Basic was sent, so the password is wrong
+    [InlineData("401-http-headers.txt", "http://10.0.0.48/", false, false)] // Digest offered: a wrong password
+    [InlineData("401-https-headers.txt", "https://10.0.0.48/", false, false)] // HTTPS: Basic is always sent
+    public async Task A401OverHttpOfADeviceWithOnlyBasicSaysSo(string headers, string address, bool allowBasic, bool basicOnly)
+    {
+        var handler = new FakeHttpMessageHandler((_, _) => Fixtures.Unauthorized(headers));
+        using var client = new VapixClient(new Uri(address), handler) { Credentials = new NetworkCredential("root", "pass"), AllowsBasicOverHttp = allowBasic };
+
+        var ex = await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetBasicDeviceInfoAsync(CancellationToken.None));
+
+        Assert.Equal(basicOnly, ex.BasicOnlyOverHttp);
+        Assert.Same(ex, VapixAuthenticationException.Find(new InvalidOperationException("outer", ex)));
+    }
+
+    [Fact]
+    public void OnlyBasicMeansBasicWithoutDigest()
+    {
+        Assert.True(VapixClient.OffersOnlyBasic([new("Basic", "realm=\"AXIS_B8A44FCC135D\"")]));
+        Assert.False(VapixClient.OffersOnlyBasic([new("Basic", "realm=\"x\""), new("Digest", "realm=\"x\"")]));
+        Assert.False(VapixClient.OffersOnlyBasic([]));
+    }
+
     [Fact]
     public async Task ListParametersBuildsGroupList()
     {
@@ -293,6 +317,21 @@ public class VapixClientTests
         Assert.NotNull(httpsCache.GetCredential(secureTarget, "Basic"));
         Assert.NotNull(httpsCache.GetCredential(secureTarget, "Digest"));
         Assert.False(http.AllowAutoRedirect);
+    }
+
+    [Fact]
+    public void TheServerSettingGivesEveryManagedDeviceBasicOverHttp()
+    {
+        var device = new Oadm.Core.Devices.Device { Address = "10.0.0.12", Scheme = Oadm.Core.Devices.DeviceScheme.Http, SiteId = Guid.NewGuid() };
+        var credentials = new NetworkCredential("root", "pw");
+
+        Assert.False(Oadm.Core.Sites.DeviceConnections.For(device, credentials).AllowBasicOverHttp); // default: never
+        var options = Oadm.Core.Sites.DeviceConnections.For(device, credentials, allowBasicOverHttp: true);
+        Assert.True(options.AllowBasicOverHttp); // on every route, a site too: the administrator allowed it
+        using var handler = VapixClient.CreateHandler(new Uri("http://10.0.0.12/"), credentials, new CertificatePinning(), options.AllowBasicOverHttp, options.Route);
+        var target = new Uri("http://10.0.0.12/axis-cgi/basicdeviceinfo.cgi");
+        Assert.NotNull(handler.Credentials!.GetCredential(target, "Basic"));
+        Assert.NotNull(handler.Credentials!.GetCredential(target, "Digest")); // still preferred when offered
     }
 
     [Fact]

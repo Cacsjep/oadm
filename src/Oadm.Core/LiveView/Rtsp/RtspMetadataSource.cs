@@ -23,6 +23,9 @@ public sealed record RtspMetadataOptions
 
     public NetworkCredential? Credentials { get; init; }
 
+    /// <summary>Answer a Basic-only RTSP login (the server setting Devices.AllowBasicOverHttp).</summary>
+    public bool AllowBasic { get; init; }
+
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>The way to the device (docs/spec/sites.md); the connection opens through <see cref="Router"/>.</summary>
@@ -42,7 +45,7 @@ public sealed record RtspMetadataOptions
 
 /// <summary>
 /// Axis event stream <c>rtsp://host/axis-media/media.amp?video=0&amp;audio=0&amp;event=on</c>: RTSP/1.0 over TCP port 554,
-/// RTP interleaved, Digest authentication (Basic is never sent on plain RTSP), DESCRIBE / SETUP of the
+/// RTP interleaved, Digest authentication (Basic only with <see cref="RtspMetadataOptions.AllowBasic"/>), DESCRIBE / SETUP of the
 /// <c>vnd.onvif.metadata</c> media / PLAY, OPTIONS keep-alives on a timer (event streams can be silent for minutes),
 /// TEARDOWN on dispose. Yields one XML document per RTP marker (<see cref="MetadataDepacketizer"/>).
 /// </summary>
@@ -100,7 +103,7 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
         RtspClient client;
         try
         {
-            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time, options.Route, options.Router).ConfigureAwait(false);
+            client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, time, options.Route, options.Router, options.AllowBasic).ConfigureAwait(false);
         }
         catch (LiveViewException ex)
         {
@@ -234,7 +237,10 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
     /// <summary>The user text of a live view failure (start errors of the Metadata Monitor).</summary>
     internal static DeviceStreamException ToStreamException(LiveViewException ex) => ex.Error switch
     {
-        LiveViewError.Unauthorized => new DeviceStreamException(DeviceStreamError.Unauthorized, DeviceMessages.Unauthorized, ex),
+        LiveViewError.Unauthorized => new DeviceStreamException(
+            DeviceStreamError.Unauthorized,
+            ex.Message == DeviceMessages.BasicOnlyOverHttp ? DeviceMessages.BasicOnlyOverHttp : DeviceMessages.Unauthorized,
+            ex),
         LiveViewError.Unreachable => new DeviceStreamException(
             DeviceStreamError.Unreachable,
             DeviceMessages.Unreachable(ex.InnerException is SocketException socket ? socket.Message : ex.Message),

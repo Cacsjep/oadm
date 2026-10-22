@@ -134,7 +134,7 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
 
 - Camera: a button that names the chosen camera and opens the shared device picker for one device (search; the former drop-down could not hold 30,000 devices).
 - Rules that must hold: read-only for devices; the server opens the RTSP event stream with the stored credentials
-  (Digest, never Basic on plain RTSP; SDK `ICorePluginContext.EventStreams`), passwords never reach the client; events
+  (Digest; Basic on plain RTSP only with the server setting Devices.AllowBasicOverHttp; SDK `ICorePluginContext.EventStreams`), passwords never reach the client; events
   only (`media.amp?video=0&audio=0&event=on`), one camera at a time, nothing saved; refused statuses without a request;
   a stream ends with Stop, a page switch or 20 s without the page's keep-alive; the client keeps the newest 10,000
   messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port of a camera behind a port forward is set in the

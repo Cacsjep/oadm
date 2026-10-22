@@ -6,6 +6,19 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- Settings: **Allow Basic login over HTTP** (card **Security**, off by default) for devices without HTTPS that accept only
+  Basic login. OADM then sends their password unencrypted, also for live view and event streams.
+
+### Fixed
+
+- A device without HTTPS that accepts only Basic login says "The device accepts only Basic login over HTTP. Turn on HTTPS
+  on the device, or allow Basic login over HTTP in Settings." in Log in, on the add devices page, in live view and in the
+  device list (Status column tooltip) instead of "The user name or password is wrong."
+- Configure devices: a host name setting with several names separated by spaces (NTP servers such as
+  `10.0.0.17 ts1.univie.ac.at`) no longer fails the check.
+
 ## [4.0.0] - 2026-10-22
 
 ### Added

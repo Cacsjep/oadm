@@ -97,7 +97,10 @@ web UI.
   (`ImageSource.NbrOfSources=1`), 8 view areas, of which "View Area 1" (full frame) and
   "View Area 2" (cropped) are enabled.
 - Transport: the server opens RTSP/1.0 over TCP to port 554 with RTP interleaved on the same
-  connection, Digest authentication with the stored credentials (Basic is refused on plain RTSP;
+  connection, Digest authentication with the stored credentials (Basic on plain RTSP only while the server setting
+  `Devices.AllowBasicOverHttp` is on, `RtspClient.AllowBasic`, passed by `AxisLiveVideoSourceFactory` and
+  `DeviceEventStreams` (Metadata Monitor, Device triggers, Dashboards); Digest stays preferred when offered; with the
+  setting off a camera that offers only Basic fails with `DeviceMessages.BasicOnlyOverHttp` and no password is sent;
   credentials never reach the client), `Blocksize: 64000`, a keyframe every second
   (`videokeyframeinterval=fps`). Own RTSP client and depacketizers (H.264 RFC 6184, H.265 RFC 7798)
   in `Oadm.Core/LiveView`. Video itself is not encrypted on the camera link (RTSP over HTTPS is a

@@ -237,6 +237,14 @@ public sealed class MappersTests
         Assert.Equal(parallel, Mappers.FromProto(new Proto.ServerSettings { MaxParallelTasksPerPlugin = 64 }, current));
         Assert.Equal(parallel, Mappers.FromProto(new Proto.ServerSettings { ServerName = "srv" }, parallel));
         Assert.Equal(0, Mappers.FromProto(new Proto.ServerSettings { MaxParallelTasksPerPlugin = 0 }, current).MaxParallelTasksPerPlugin); // set: the store rejects it
+
+        // Devices.AllowBasicOverHttp: optional, unset keeps the stored value; false is a value of its own.
+        Assert.True(Mappers.ToProto(current).HasAllowBasicOverHttp);
+        Assert.False(Mappers.ToProto(current).AllowBasicOverHttp);
+        var basic = current with { AllowBasicOverHttp = true };
+        Assert.Equal(basic, Mappers.FromProto(new Proto.ServerSettings { AllowBasicOverHttp = true }, current));
+        Assert.Equal(basic, Mappers.FromProto(new Proto.ServerSettings { ServerName = "srv" }, basic));
+        Assert.Equal(current, Mappers.FromProto(new Proto.ServerSettings { AllowBasicOverHttp = false }, basic));
     }
 
     [Fact]

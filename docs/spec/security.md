@@ -155,7 +155,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   answers 401 there; then the realm `AXIS_<serial>` of the login challenge must name the discovered serial
   (`DiscoveryAuthenticator.JudgeRealm`, `VapixAuthenticationException.RealmSerial`). Then **HTTPS first** (Digest, then Basic), then HTTP (Digest, then Basic): such a
   verified device may get Basic over plain HTTP when it offers nothing else (`VapixConnectionOptions.AllowBasicOverHttp`,
-  set only there; `DiscoveryAuthenticator.Judge`, `LoginSchemes`). Known residual risk: a device that imitates the anonymous answer or the realm passes the check.
+  on the server's network only; `DiscoveryAuthenticator.Judge`, `LoginSchemes`). Outside this login Basic goes over plain
+  HTTP only while an administrator turned on the server setting **Allow Basic login over HTTP**
+  (`Devices.AllowBasicOverHttp`, default off, audited with the other settings as "Allow Basic login over HTTP Off -> On"):
+  then for every device connection on every route (`docs/spec/vapix.md`). Known residual risk: a device that imitates the anonymous answer or the realm passes the check.
 - "Save to credential list" of the login editor is shown to administrators only and the server ignores it for other
   roles (`RetryAuth`), like everywhere the credential list is written.
 - Candidates: the credential list and credentials typed on the page; passwords of managed devices are never tried on new

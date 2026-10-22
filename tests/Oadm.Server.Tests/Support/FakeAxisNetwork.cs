@@ -71,6 +71,15 @@ internal sealed class FakeAxisDevice
     /// <summary>Serves HTTP (80). False: plain HTTP connections are refused.</summary>
     public bool ServesHttp { get; set; } = true;
 
+    /// <summary>
+    /// Accepts only Basic login on HTTP (Network.HTTP.AuthenticationPolicy=basic): a login over HTTP counts only when the
+    /// client may send Basic there, and its 401 challenges only Basic (<c>WWW-Authenticate: Basic realm="AXIS_..."</c>, as
+    /// an AXIS OS device set to Basic answers).
+    /// </summary>
+    public bool BasicOnlyOverHttp { get; set; }
+
+    private bool _basicChallenge;
+
     /// <summary>Every request that carried credentials: URL scheme and user name, in order.</summary>
     public List<(string Scheme, string User)> CredentialRequests { get; } = [];
 
@@ -95,6 +104,7 @@ internal sealed class FakeAxisDevice
         }
 
         Interlocked.Exchange(ref _downRequests, 0);
+        _basicChallenge = BasicOnlyOverHttp && request.RequestUri!.Scheme == Uri.UriSchemeHttp;
         var path = request.RequestUri!.AbsolutePath.TrimStart('/');
         var query = request.RequestUri.Query;
         if (Password is not null && query.Contains(Password, StringComparison.Ordinal))
@@ -218,7 +228,9 @@ internal sealed class FakeAxisDevice
     private HttpResponseMessage Unauthorized(string? realm = null)
     {
         var response = new HttpResponseMessage(HttpStatusCode.Unauthorized);
-        response.Headers.WwwAuthenticate.ParseAdd($"Digest realm=\"{realm ?? "AXIS_" + Serial}\", nonce=\"abc\", algorithm=MD5, qop=\"auth\"");
+        response.Headers.WwwAuthenticate.ParseAdd(_basicChallenge
+            ? $"Basic realm=\"{realm ?? "AXIS_" + Serial}\""
+            : $"Digest realm=\"{realm ?? "AXIS_" + Serial}\", nonce=\"abc\", algorithm=MD5, qop=\"auth\"");
         return response;
     }
 
@@ -268,7 +280,8 @@ internal sealed class FakeAxisNetwork
     public FakeAxisDevice? Find(string host) => _devices.GetValueOrDefault(host.Trim('[', ']'));
 
     /// <summary>Anonymous handler (probes).</summary>
-    public HttpMessageHandler CreateHandler(NetworkCredential? credentials = null, CertificatePinning? pinning = null) => new Handler(this, credentials, pinning);
+    public HttpMessageHandler CreateHandler(NetworkCredential? credentials = null, CertificatePinning? pinning = null, bool allowBasicOverHttp = false) =>
+        new Handler(this, credentials, pinning, allowBasicOverHttp);
 
     /// <summary>DNS names of addresses (IP -> FQDN) for the discovery's DNS lookup; no real DNS in tests.</summary>
     public ConcurrentDictionary<string, string> DnsNames { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -301,7 +314,7 @@ internal sealed class FakeAxisNetwork
     /// <summary>Timeout of the probes and clients of the fake network: far above what a busy machine needs.</summary>
     public static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(30);
 
-    private sealed class Handler(FakeAxisNetwork network, NetworkCredential? credentials, CertificatePinning? pinning) : HttpMessageHandler
+    private sealed class Handler(FakeAxisNetwork network, NetworkCredential? credentials, CertificatePinning? pinning, bool allowBasicOverHttp) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -335,7 +348,9 @@ internal sealed class FakeAxisNetwork
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             lock (device)
             {
-                var response = device.Handle(request, body, credentials);
+                // A device with Basic only on HTTP never sees a login the client may not send as Basic there.
+                var sent = device.BasicOnlyOverHttp && uri.Scheme == Uri.UriSchemeHttp && !allowBasicOverHttp ? null : credentials;
+                var response = device.Handle(request, body, sent);
                 response.RequestMessage = request;
                 return response;
             }
@@ -348,9 +363,11 @@ internal sealed class FakeAxisNetwork
         {
             network.Connections.Enqueue(options);
             var pinning = options.Scheme == Uri.UriSchemeHttps ? new CertificatePinning(options.PinnedCertificateFingerprint) : null;
-            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.For(options.Route).CreateHandler(options.Credentials, pinning), pinning, AnswerTimeout)
+            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address),
+                network.For(options.Route).CreateHandler(options.Credentials, pinning, options.AllowBasicOverHttp), pinning, AnswerTimeout)
             {
                 Route = options.Route,
+                AllowsBasicOverHttp = options.AllowBasicOverHttp,
             };
         }
     }

@@ -30,9 +30,10 @@ public sealed record VapixConnectionOptions
     public TrustAnchorRegistry? TrustAnchors { get; init; }
 
     /// <summary>
-    /// Also offer Basic authentication over plain HTTP (Digest stays preferred when the device offers it).
-    /// Only the add page's automatic login sets this, and only for a device that passed the anonymous
-    /// Axis check (see "Security and access" in CLAUDE.md); everything else keeps Basic HTTPS only.
+    /// Also offer Basic authentication over plain HTTP (Digest stays preferred when the device offers it). Set by the
+    /// server setting Devices.AllowBasicOverHttp for every device connection, and without it only by the add page's
+    /// automatic login to a device that passed the anonymous Axis check (docs/spec/security.md); everything else keeps
+    /// Basic HTTPS only.
     /// </summary>
     public bool AllowBasicOverHttp { get; init; }
 
@@ -51,7 +52,8 @@ public sealed record VapixConnectionOptions
 /// Authentication: AXIS OS 12 offers Digest on HTTP and Basic on HTTPS by default
 /// (Network.HTTP.AuthenticationPolicy=recommended). The credential cache therefore offers
 /// Digest only for http:// and Basic or Digest for https://, so Basic never travels in clear text,
-/// except for the add page's login to a verified Axis device (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).
+/// except for the add page's login to a verified Axis device and when the server setting Devices.AllowBasicOverHttp is on
+/// (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).
 /// </remarks>
 [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The routed VAPIX client: its SocketsHttpHandler opens every connection through DeviceRouter, ClientWebSocket.ConnectAsync goes through that handler.")]
 public sealed partial class VapixClient : IVapixClient, IDisposable
@@ -120,6 +122,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
 
     public Uri BaseAddress { get; }
 
+    /// <summary>Basic login may go over plain HTTP (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).</summary>
+    public bool AllowsBasicOverHttp { get; init; }
+
     /// <summary>The way to the device; every timeout through a site gets the route's extra (<see cref="DeviceRouter.ExtraTimeout"/>).</summary>
     public DeviceRoute Route { get; init; }
 
@@ -153,7 +158,13 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
         var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
         var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp, options.Route, router, options.Timeout);
-        var client = new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials, Route = options.Route, Router = router };
+        var client = new VapixClient(baseAddress, handler, pinning, options.Timeout)
+        {
+            Credentials = options.Credentials,
+            Route = options.Route,
+            Router = router,
+            AllowsBasicOverHttp = options.AllowBasicOverHttp,
+        };
         if (!options.Route.IsLocal)
         {
             // The status reads get a pool of their own (docs/spec/sites.md: polls never wait behind an upload or a page).
@@ -172,8 +183,8 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     }
 
     /// <summary>
-    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>, never through a
-    /// site), Basic or Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the
+    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>; the options decide
+    /// it per route, see <see cref="Sites.DeviceConnections"/>), Basic or Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the
     /// handler answers the strongest challenge the device offers (Digest before Basic). Every connection opens on
     /// <paramref name="route"/> through <paramref name="router"/>; TLS, pinning and the login stay here, end to end.
     /// </summary>
@@ -198,7 +209,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             var cache = new CredentialCache();
             var prefix = new Uri(baseAddress.GetLeftPart(UriPartial.Authority) + "/");
             cache.Add(prefix, "Digest", credentials);
-            if (baseAddress.Scheme == Uri.UriSchemeHttps || (allowBasicOverHttp && route.IsLocal))
+            if (baseAddress.Scheme == Uri.UriSchemeHttps || allowBasicOverHttp)
             {
                 cache.Add(prefix, "Basic", credentials);
             }
@@ -934,6 +945,8 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             throw new VapixAuthenticationException($"{path}: HTTP {(int)response.StatusCode}", response.StatusCode)
             {
                 RealmSerial = Discovery.AxisRealm.TryGetSerial(response.Headers.WwwAuthenticate.Select(h => h.ToString())),
+                BasicOnlyOverHttp = response.StatusCode == HttpStatusCode.Unauthorized
+                    && BaseAddress.Scheme == Uri.UriSchemeHttp && !AllowsBasicOverHttp && OffersOnlyBasic(response.Headers.WwwAuthenticate),
             };
         }
 
@@ -943,6 +956,18 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
 
         return await ReadStringAsync(response.Content, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The 401 challenge offers Basic and no other scheme OADM answers (Digest): <c>WWW-Authenticate: Basic realm="AXIS_..."</c>
+    /// of a device set to Basic login only.
+    /// </summary>
+    public static bool OffersOnlyBasic(IEnumerable<System.Net.Http.Headers.AuthenticationHeaderValue> challenges)
+    {
+        ArgumentNullException.ThrowIfNull(challenges);
+        var schemes = challenges.Select(c => c.Scheme).ToList();
+        return schemes.Any(s => s.Equals("Basic", StringComparison.OrdinalIgnoreCase))
+            && !schemes.Any(s => s.Equals("Digest", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

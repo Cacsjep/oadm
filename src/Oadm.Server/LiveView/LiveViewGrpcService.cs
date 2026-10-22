@@ -394,6 +394,7 @@ public sealed class LiveViewGrpcService(
         KeyNotFoundException => GrpcGuard.NotFound(ex.Message),
         LiveViewException { Error: LiveViewError.Unauthorized } => new RpcException(new Status(StatusCode.PermissionDenied, ex.Message)),
         LiveViewException { Error: LiveViewError.NotSupported } => GrpcGuard.FailedPrecondition(ex.Message),
+        VapixAuthenticationException { BasicOnlyOverHttp: true } => new RpcException(new Status(StatusCode.PermissionDenied, DeviceMessages.BasicOnlyOverHttp)),
         VapixAuthenticationException => new RpcException(new Status(StatusCode.PermissionDenied, "The camera rejected the stored credentials.")),
         CertificateChangedException => GrpcGuard.FailedPrecondition(DeviceMessages.CertificateChanged),
         _ => new RpcException(new Status(StatusCode.Unavailable, ex.Message)),

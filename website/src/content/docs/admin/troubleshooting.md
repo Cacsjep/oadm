@@ -40,6 +40,17 @@ The server got a new certificate, for example after a reinstall with a new data 
 **Devices show Credentials required.**
 The device rejects the stored password. Right-click > **Log in** and enter the right one for all of them.
 
+**"The device accepts only Basic login over HTTP".**
+The device has HTTPS turned off and accepts only Basic login on HTTP. OADM does not send passwords unencrypted unless you
+allow it, so the device shows Credentials required even with the right password. Either:
+
+- turn on HTTPS on the device (recommended), or allow Digest login for HTTP there, or
+- turn on **Allow Basic login over HTTP** in [Settings](../settings/) > Security. OADM then logs in to such devices with
+  Basic over HTTP, for status checks, tasks, Log in, Web View and live view. Devices that offer Digest or HTTPS keep
+  using them.
+
+On the device, the login setting is the parameter `Network.HTTP.AuthenticationPolicy`.
+
 **Devices show Certificate changed.**
 The device presents another HTTPS certificate than when it was added. OADM sends nothing to it. Find out why, then
 remove the device and add it again.

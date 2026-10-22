@@ -224,7 +224,15 @@ public static partial class OadmServerHost
         services.AddSingleton(sp => new Core.Sites.DeviceRouter(sp.GetService<Core.Sites.ISiteTransport>(), sp.GetService<Core.Sites.ISiteStates>()));
         services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>(), sp.GetService<Core.Sites.ISiteNetwork>()));
         services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>(), sp.GetRequiredService<Core.Sites.DeviceRouter>()));
-        services.AddSingleton<VapixClientFactory>();
+        // Devices.AllowBasicOverHttp (server setting, default off, Settings page): read live by every device connection.
+        services.AddSingleton(sp => new BasicOverHttpSetting(sp.GetRequiredService<ServerSettingsStore>()));
+        services.AddSingleton<DeviceStatusNotes>(); // why a device has its status, in memory only (status_detail)
+        services.AddSingleton(sp => new VapixClientFactory(
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<Core.Security.CredentialStore>(),
+            sp.GetRequiredService<IVapixConnector>(),
+            sp.GetRequiredService<ILogger<VapixClientFactory>>(),
+            sp.GetRequiredService<BasicOverHttpSetting>()));
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
         services.AddSingleton(sp => new VapixProbe(TimeSpan.FromSeconds(3), router: sp.GetRequiredService<Core.Sites.DeviceRouter>()));
 
@@ -514,6 +522,19 @@ public static partial class OadmServerHost
         // 2c. A restore this start applied: its report (Settings page) and audit entry; every login session ends.
         sp.GetRequiredService<Backup.BackupManager>().RemovePartialFiles();
         await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
+
+        // 2c2. Basic login over HTTP (server setting) before the first device connection.
+        var basicOverHttp = sp.GetRequiredService<BasicOverHttpSetting>();
+        await basicOverHttp.LoadAsync(ct).ConfigureAwait(false);
+        basicOverHttp.Changed += (_, _) =>
+        {
+            // The devices that said "only Basic login over HTTP" are checked again at once (the clients were dropped).
+            var waiting = sp.GetRequiredService<DeviceStatusNotes>().DeviceIds;
+            if (waiting.Count > 0)
+            {
+                sp.GetRequiredService<DevicePollingService>().QueueRefresh(waiting);
+            }
+        };
 
         // 2d. Sites: the identity and the bound sites, each "starting" until its node settles (before the event rules and
         // the polling read site states); the site listener opens when Accept site nodes is on.

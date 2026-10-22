@@ -40,7 +40,7 @@
             </ui:FormField>
           </StackPanel>
         </Border>
-        <!-- Server settings in four cards; administrators edit them (saved together, Save below the last card), operators read
+        <!-- Server settings in five cards; administrators edit them (saved together, Save below the last card), operators read
              them as plain text. -->
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="Only administrators can change server settings." IsVisible="{Binding IsOperator}" />
         <Border Classes="card">
@@ -116,6 +116,19 @@
 
         <Border Classes="card">
           <StackPanel Classes="form">
+            <TextBlock Classes="sectionTitle" Text="Security" />
+            <ui:FormField Classes="wide" Label="Device login" IsVisible="{Binding IsAdmin}"
+                          Hint="Sends passwords unencrypted. Only for devices without HTTPS.">
+              <CheckBox IsChecked="{Binding AllowBasicOverHttp}" Content="Allow Basic login over HTTP" />
+            </ui:FormField>
+            <ui:FormField Label="Allow Basic login over HTTP" IsVisible="{Binding IsOperator}">
+              <TextBlock Text="{Binding AllowBasicOverHttpText}" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Classes="form">
             <TextBlock Classes="sectionTitle" Text="Server" />
             <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
               <ui:FormField Label="Server name">
@@ -144,13 +157,13 @@
           </StackPanel>
         </Border>
 
-        <!-- Saves the four server cards together, so it sits below them, outside every card -->
+        <!-- Saves the five server cards together, so it sits below them, outside every card -->
         <StackPanel Spacing="8">
           <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsAdmin}">
             <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
                     ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
             <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
-            <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="4,0,0,0" Text="Saves Polling, Discovery, Tasks and Server" />
+            <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="4,0,0,0" Text="Saves Polling, Discovery, Tasks, Security and Server" />
           </StackPanel>
           <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
                      TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

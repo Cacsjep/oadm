@@ -91,6 +91,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     /// <summary>The category for the shared <c>ui:DeviceIcon</c>.</summary>
     public Oadm.Sdk.Devices.DeviceCategory SdkCategory => DeviceCategoryInfo.ToSdk(Category);
     [ObservableProperty] public partial string StatusText { get; private set; } = "";
+
+    /// <summary>Why the device has its status, from the server (the Status column's tooltip); null when nothing more to say.</summary>
+    [ObservableProperty] public partial string? StatusDetail { get; private set; }
     [ObservableProperty] public partial PillKind StatusKind { get; private set; }
     [ObservableProperty] public partial bool HasCredentials { get; private set; }
     [ObservableProperty] public partial string Scheme { get; private set; } = "";
@@ -168,7 +171,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         SiteId = Guid.TryParse(device.SiteId, out var siteId) ? siteId : null;
         IsAtSite = SiteId is not null;
         SiteName = string.IsNullOrEmpty(device.SiteName) ? null : device.SiteName;
-        StatusText = DeviceStatusInfo.ToText(device.Status);
+        StatusDetail = string.IsNullOrEmpty(device.StatusDetail) ? null : device.StatusDetail;
+        // A Basic-only device says so in the list; its tooltip says what to do.
+        StatusText = StatusDetail == Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp
+            ? Oadm.Sdk.Devices.DeviceMessages.BasicLoginOnly
+            : DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
         HasCredentials = device.HasCredentials;
         Scheme = device.Scheme;

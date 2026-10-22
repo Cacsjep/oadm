@@ -44,6 +44,29 @@ public sealed class RtspMetadataSourceTests
     }
 
     [Fact]
+    public async Task ACameraWithOnlyBasicGetsBasicOnlyWithTheSetting()
+    {
+        await using (var server = new FakeEventRtspServer { BasicOnly = true })
+        {
+            var ex = await Assert.ThrowsAsync<DeviceStreamException>(() => RtspMetadataSource.OpenAsync(Options(server.Port, "secret"), CancellationToken.None));
+            Assert.Equal(DeviceStreamError.Unauthorized, ex.Error);
+            Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp, ex.Message);
+        }
+
+        await using (var server = new FakeEventRtspServer { BasicOnly = true })
+        {
+            await using var source = await RtspMetadataSource.OpenAsync(Options(server.Port, "secret") with { AllowBasic = true }, CancellationToken.None);
+            var documents = 0;
+            await foreach (var _ in source.ReadAsync(CancellationToken.None))
+            {
+                documents++;
+            }
+
+            Assert.Equal(129, documents);
+        }
+    }
+
+    [Fact]
     public async Task DeviceWithoutMetadataMediaHasNoEventStream()
     {
         await using var server = new FakeEventRtspServer { Sdp = RtpFixtures.Sdp("h264-640x360") };
@@ -158,6 +181,9 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
 
     public bool StayOpen { get; init; }
 
+    /// <summary>Challenges like an AXIS OS camera set to Basic login: <c>WWW-Authenticate: Basic realm="AXIS_B8A44FCC135D"</c>.</summary>
+    public bool BasicOnly { get; init; }
+
     public bool AnswerKeepAlives { get; init; } = true;
 
     public List<string> Methods { get; } = [];
@@ -249,9 +275,11 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
 
             var cseq = text.Split('\n').First(l => l.StartsWith("CSeq:", StringComparison.Ordinal))["CSeq:".Length..].Trim();
             var auth = text.Split('\n').FirstOrDefault(l => l.StartsWith("Authorization:", StringComparison.Ordinal));
-            if (!Authorized(auth, method))
+            if (BasicOnly ? auth?.Trim() != "Authorization: Basic cm9vdDpzZWNyZXQ=" : !Authorized(auth, method))
             {
-                await WriteAsync(stream, $"RTSP/1.0 401 Unauthorized\r\nCSeq: {cseq}\r\nWWW-Authenticate: Digest realm=\"AXIS_TEST\", nonce=\"{Nonce}\", qop=\"auth\"\r\n\r\n");
+                await WriteAsync(stream, BasicOnly
+                    ? $"RTSP/1.0 401 Unauthorized\r\nCSeq: {cseq}\r\nWWW-Authenticate: Basic realm=\"AXIS_B8A44FCC135D\"\r\n\r\n"
+                    : $"RTSP/1.0 401 Unauthorized\r\nCSeq: {cseq}\r\nWWW-Authenticate: Digest realm=\"AXIS_TEST\", nonce=\"{Nonce}\", qop=\"auth\"\r\n\r\n");
                 continue;
             }
 

@@ -6,9 +6,9 @@ using System.Text;
 namespace Oadm.Core.LiveView.Rtsp;
 
 /// <summary>
-/// HTTP Digest authentication (RFC 2617, MD5 and MD5-sess, qop=auth or none) for RTSP requests.
-/// Basic is deliberately not supported: RTSP runs over plain TCP and Basic would send the
-/// password in clear text.
+/// HTTP Digest authentication (RFC 2617, MD5 and MD5-sess, qop=auth or none) for RTSP requests. Basic would send the
+/// password in clear text over plain RTSP: <see cref="RtspClient"/> answers it only while the server setting
+/// Devices.AllowBasicOverHttp is on (<see cref="RtspClient.AllowBasic"/>).
 /// </summary>
 public sealed class DigestAuthenticator
 {

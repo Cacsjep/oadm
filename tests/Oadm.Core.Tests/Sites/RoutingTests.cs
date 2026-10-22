@@ -143,20 +143,25 @@ public sealed class RoutingTests
     }
 
     [Fact]
-    public void BasicOverPlainHttpNeverCrossesASite()
+    public void BasicOverPlainHttpCrossesASiteOnlyWithTheServerSetting()
     {
         var credentials = new NetworkCredential("root", "pass");
         var uri = new Uri("http://192.168.0.20/");
-        using var local = VapixClient.CreateHandler(uri, credentials, new CertificatePinning(), allowBasicOverHttp: true);
-        using var site = VapixClient.CreateHandler(uri, credentials, new CertificatePinning(), allowBasicOverHttp: true, route: DeviceRoute.ViaSite(Guid.NewGuid()));
+        var found = Discovered(DeviceRoute.ViaSite(Guid.NewGuid()));
 
-        Assert.NotNull(local.Credentials!.GetCredential(uri, "Basic"));
+        // The add page's login to a verified Axis device: on the server's network only.
+        var atSite = DeviceConnections.For(found, Uri.UriSchemeHttp, Generous, credentials, allowBasicOverHttp: true);
+        Assert.False(atSite.AllowBasicOverHttp);
+        Assert.True(DeviceConnections.For(found with { Route = DeviceRoute.Local }, Uri.UriSchemeHttp, Generous, credentials, allowBasicOverHttp: true).AllowBasicOverHttp);
+        using var site = VapixClient.CreateHandler(uri, credentials, new CertificatePinning(), atSite.AllowBasicOverHttp, atSite.Route);
         Assert.Null(site.Credentials!.GetCredential(uri, "Basic"));
         Assert.NotNull(site.Credentials!.GetCredential(uri, "Digest"));
 
-        var found = Discovered(DeviceRoute.ViaSite(Guid.NewGuid()));
-        Assert.False(DeviceConnections.For(found, Uri.UriSchemeHttp, Generous, credentials, allowBasicOverHttp: true).AllowBasicOverHttp);
-        Assert.True(DeviceConnections.For(found with { Route = DeviceRoute.Local }, Uri.UriSchemeHttp, Generous, credentials, allowBasicOverHttp: true).AllowBasicOverHttp);
+        // Devices.AllowBasicOverHttp on: every route.
+        var allowed = DeviceConnections.For(found, Uri.UriSchemeHttp, Generous, credentials, allowBasicOverHttp: true, basicOverHttpSetting: true);
+        Assert.True(allowed.AllowBasicOverHttp);
+        using var siteAllowed = VapixClient.CreateHandler(uri, credentials, new CertificatePinning(), allowed.AllowBasicOverHttp, allowed.Route);
+        Assert.NotNull(siteAllowed.Credentials!.GetCredential(uri, "Basic"));
     }
 
     [Fact]

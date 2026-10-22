@@ -175,7 +175,9 @@ device did not identify itself as an Axis device. No password was sent." (logged
 device allows anonymous access); 401 = next, a scheme that does not answer = the next scheme, no scheme
 answering = UNREACHABLE, another serial at the address = UNREACHABLE. A device that logged in over HTTP
 with Basic only is stored with scheme http and then needs Digest like every managed device (Basic stays
-HTTPS only outside the add page's login). At most 32 devices log
+HTTPS only outside the add page's login), unless the server setting `Devices.AllowBasicOverHttp` is on (then also through
+a site; with it off a site device that offers only Basic over HTTP ends LOGIN FAILED with `DeviceMessages.BasicOnlyOverHttp`,
+no further credential tried). At most 32 devices log
 in at the same time (`DiscoveryAuthenticator.Parallelism`; each device still gets one login after another). Results live per (session, serial) for 30 min after the last use together with
 the credential that worked (server memory); `Commit` stores that credential for the new device
 (explicit `credentials` in the request still win, legacy). Passwords never leave the server once

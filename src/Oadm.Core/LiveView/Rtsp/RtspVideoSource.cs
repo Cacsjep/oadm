@@ -29,6 +29,9 @@ public sealed record RtspSourceOptions
 
     public NetworkCredential? Credentials { get; init; }
 
+    /// <summary>Answer a Basic-only RTSP login (the server setting Devices.AllowBasicOverHttp).</summary>
+    public bool AllowBasic { get; init; }
+
     public required VideoCodecKind Codec { get; init; }
 
     public required ImageSize Size { get; init; }
@@ -103,7 +106,7 @@ public sealed partial class RtspVideoSource : ILiveVideoSource
         logger ??= NullLogger.Instance;
         var url = BuildUrl(options);
         var connectHost = VapixClient.BuildBaseAddress(Uri.UriSchemeHttp, options.Address).DnsSafeHost;
-        var client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, route: options.Route, router: options.Router).ConfigureAwait(false);
+        var client = await RtspClient.ConnectAsync(connectHost, options.Port, options.Credentials, options.ConnectTimeout, ct, route: options.Route, router: options.Router, allowBasic: options.AllowBasic).ConfigureAwait(false);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);

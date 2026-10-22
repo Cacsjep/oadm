@@ -53,6 +53,26 @@ public sealed class VapixAuthenticationException : VapixException
 
     /// <summary>The serial number in the 401 challenge's realm <c>AXIS_&lt;serial&gt;</c>, null when there is none.</summary>
     public string? RealmSerial { get; init; }
+
+    /// <summary>
+    /// The device refused a plain HTTP request and offers only Basic login, which OADM did not send there (the server setting
+    /// Devices.AllowBasicOverHttp is off): the password may be right (<see cref="Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp"/>).
+    /// </summary>
+    public bool BasicOnlyOverHttp { get; init; }
+
+    /// <summary>The first <see cref="VapixAuthenticationException"/> in <paramref name="exception"/> or its inner exceptions.</summary>
+    public static VapixAuthenticationException? Find(Exception? exception)
+    {
+        for (var e = exception; e is not null; e = e.InnerException)
+        {
+            if (e is VapixAuthenticationException auth)
+            {
+                return auth;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>

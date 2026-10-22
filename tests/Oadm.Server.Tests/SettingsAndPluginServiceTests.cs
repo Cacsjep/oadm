@@ -63,6 +63,20 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal("http://0.0.0.0:6000", reloaded.ListenUrl);
         Assert.Equal(45, reloaded.ZeroConfSeconds); // kept by the partial update
         Assert.Equal(48, reloaded.MaxParallelTasksPerPlugin); // kept by the partial update
+        Assert.False(reloaded.AllowBasicOverHttp);
+
+        var basic = await host.Settings.SetAsync(new Proto.ServerSettings { AllowBasicOverHttp = true });
+        Assert.True(basic.AllowBasicOverHttp);
+        Assert.True((await host.Settings.SetAsync(new Proto.ServerSettings { ServerName = "again" })).AllowBasicOverHttp); // kept
+    }
+
+    [Fact]
+    public void TheAuditNamesTheBasicLoginSetting()
+    {
+        var before = Core.Settings.ServerSettings.Defaults;
+
+        Assert.Equal("Allow Basic login over HTTP Off -> On",
+            Oadm.Server.Settings.SettingsGrpcService.Changes(before, before with { AllowBasicOverHttp = true }));
     }
 
     [Fact]
