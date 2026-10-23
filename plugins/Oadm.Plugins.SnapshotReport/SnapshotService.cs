@@ -58,6 +58,9 @@ public sealed partial class SnapshotService : IDisposable
     /// <summary>The repository the service was made with.</summary>
     internal IDeviceRepository DefaultDevices => _devices;
 
+    /// <summary>The text of a managed device without video (a speaker, an I/O module).</summary>
+    public const string NoVideo = "The device has no video";
+
     /// <summary>The factory the service was made with.</summary>
     internal IVapixClientFactory DefaultVapix => _vapix;
 
@@ -72,10 +75,17 @@ public sealed partial class SnapshotService : IDisposable
         _ = await FindAllAsync(DeviceAccess.Of(caller), deviceIds, ct).ConfigureAwait(false);
     }
 
+    /// <summary>The managed devices of <paramref name="deviceIds"/> (all for an empty list), with or without video.</summary>
+    internal static async Task<IReadOnlyList<IDeviceInfo>> GetDevicesAsync(DeviceAccess access, IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        return deviceIds.Count == 0 ? await access.Devices.ListAsync(ct).ConfigureAwait(false) : await FindAllAsync(access, deviceIds, ct).ConfigureAwait(false);
+    }
+
     internal static async Task<IReadOnlyList<IDeviceInfo>> GetVideoDevicesAsync(DeviceAccess access, IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
-        var devices = deviceIds.Count == 0 ? await access.Devices.ListAsync(ct).ConfigureAwait(false) : await FindAllAsync(access, deviceIds, ct).ConfigureAwait(false);
+        var devices = await GetDevicesAsync(access, deviceIds, ct).ConfigureAwait(false);
         return [.. devices.Where(d => d.HasVideo).OrderBy(d => d.Address, AddressComparer.Instance).ThenBy(d => d.Serial, StringComparer.Ordinal)];
     }
 
@@ -191,7 +201,7 @@ public sealed partial class SnapshotService : IDisposable
 
         if (!device.HasVideo)
         {
-            return Failed("The device has no video");
+            return Failed(NoVideo);
         }
 
         if (SnapshotRequests.StatusError(device) is { } statusError)

@@ -109,6 +109,9 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
         string? cleanNew = string.IsNullOrWhiteSpace(newName) ? null : TagNames.Clean(newName);
         TagUpdateResult result;
         List<Device> changed;
+        // The publish order of the devices is held from before the transaction (StoredDevicePublisher.HoldAsync): the rows
+        // written are published as they are, without reading them again.
+        using var lease = await StoredDevicePublisher.HoldAsync(changeFeed).ConfigureAwait(false);
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -166,7 +169,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
         }
 
         await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: device groups follow a rename at once
-        await PublishAsync(changed).ConfigureAwait(false);
+        Publish(lease, changed);
         RaiseDefinitionsChanged();
         return result;
     }
@@ -181,6 +184,9 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
         ArgumentNullException.ThrowIfNull(name);
         string deletedName;
         List<TagRewrite> changed;
+        // The publish order of the devices is held from before the transaction (StoredDevicePublisher.HoldAsync): the rows
+        // written are published as they are, without reading them again.
+        using var lease = await StoredDevicePublisher.HoldAsync(changeFeed).ConfigureAwait(false);
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -209,7 +215,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
         }
 
         await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: device groups follow the tag at once
-        await PublishAsync(changed).ConfigureAwait(false);
+        Publish(lease, changed);
         RaiseDefinitionsChanged();
         return new TagDeleteResult(deletedName, changed.Count, Changes(changed));
     }
@@ -243,6 +249,9 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
 
         var created = new List<TagDefinition>();
         List<TagRewrite> changed;
+        // The publish order of the devices is held from before the transaction (StoredDevicePublisher.HoldAsync): the rows
+        // written are published as they are, without reading them again.
+        using var lease = await StoredDevicePublisher.HoldAsync(changeFeed).ConfigureAwait(false);
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -300,7 +309,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
             await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: a device group sees the new tag at once
         }
 
-        await PublishAsync(changed).ConfigureAwait(false);
+        Publish(lease, changed);
         if (created.Count > 0)
         {
             RaiseDefinitionsChanged();
@@ -440,7 +449,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
     /// <summary>A device whose tags a write changed: the device after the write and its tags before.</summary>
     private sealed record TagRewrite(Device After, List<string> OldTags);
 
-    private Task PublishAsync(List<TagRewrite> changed) => PublishAsync(changed.ConvertAll(c => c.After));
+    private static void Publish(StoredDevicePublisher.Lease lease, List<TagRewrite> changed) => Publish(lease, changed.ConvertAll(c => c.After));
 
     private static List<string>? Replace(List<string> tags, string oldName, string newName) =>
         tags.Any(t => TagNames.Comparer.Equals(t, oldName))
@@ -452,9 +461,15 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
             ? tags.Where(t => !names.Contains(t, TagNames.Comparer)).ToList()
             : null;
 
-    /// <summary>The changed devices as stored now: the rows the write loaded may hold an older status or site of another writer.</summary>
-    private async Task PublishAsync(List<Device> changed) =>
-        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, changed.ConvertAll(d => d.Id)).ConfigureAwait(false);
+    /// <summary>
+    /// Publishes the changed devices as the transaction wrote them (read inside it, while the lease held every publish of
+    /// them: what the table holds) and releases the lease, before the definitions event.
+    /// </summary>
+    private static void Publish(StoredDevicePublisher.Lease lease, List<Device> changed)
+    {
+        lease.Publish(changed);
+        lease.Dispose();
+    }
 
     public void Dispose()
     {

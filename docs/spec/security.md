@@ -56,7 +56,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly. A new password or a disabled user
   ends the sessions; a new role applies to the next call (`AuthTokenStore.SetRole`). An expired session ends like a
   logout (`SessionsEnded` for its token, when its next use finds it expired or in the hourly cleanup): its streams, plugin
-  jobs and add page sessions end.
+  jobs and add page sessions end. An open stream counts as use (`CallerStreams` holds the session,
+  `AuthTokenStore.HoldWhileStreaming`; not the session stream alone): the hourly cleanup slides and stores the expiry of
+  a session with an open stream (a Live View wall without clicks stays logged in), and the lifetime runs again from the
+  moment its last stream closes. A cancelled call that finds its session expired still ends it.
 - **Roles and permissions.** Every user has one role (table `Roles`: Id, Name 1..64 unique case-insensitive,
   Description 0..200, Kind Administrator / Operator / Viewer / Custom, PermissionsJson = the granted keys, KnownJson = every
   key the role has seen, CreatedUtc, ChangedUtc; at most 50 custom roles). Built-in roles with fixed ids

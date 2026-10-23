@@ -60,15 +60,21 @@ public sealed class CredentialStore(
         ArgumentNullException.ThrowIfNull(password);
 
         var ids = deviceIds.Distinct().ToList();
+
+        // The publish order of the devices is held from before the transaction (StoredDevicePublisher.HoldAsync): the rows
+        // read inside it (BEGIN IMMEDIATE: no other writer until the commit) are what the table holds after the commit, and
+        // they are published without reading them again.
+        using var lease = await StoredDevicePublisher.HoldAsync(changeFeed).ConfigureAwait(false);
+        var devices = new List<Device>(ids.Count);
         await using (var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false))
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
             foreach (var chunk in ids.Chunk(500))
             {
-                var found = await db.Devices.AsNoTracking().Where(d => chunk.Contains(d.Id)).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
+                var found = await db.Devices.AsNoTracking().Where(d => chunk.Contains(d.Id)).ToListAsync(ct).ConfigureAwait(false);
                 if (found.Count != chunk.Length)
                 {
-                    var missing = chunk.First(id => !found.Contains(id));
+                    var missing = chunk.Except(found.Select(d => d.Id)).First();
                     throw new KeyNotFoundException($"Device {missing} not found.");
                 }
 
@@ -89,13 +95,13 @@ public sealed class CredentialStore(
                 }
 
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                devices.AddRange(found);
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
         }
 
-        // As stored after the write, never the rows read before it (another writer may have changed tags or site meanwhile).
-        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, ids).ConfigureAwait(false);
+        lease.Publish(devices);
     }
 
     /// <summary>Returns the decrypted credentials, or null if none are stored.</summary>

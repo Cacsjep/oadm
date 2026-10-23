@@ -4,6 +4,7 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.SnapshotReport.Report;
@@ -187,14 +188,14 @@ public sealed partial class ReportJobs : IDisposable
             byDevice.TryAdd(t.Device.DeviceId, t);
         }
 
-        var devices = (await SnapshotService.GetVideoDevicesAsync(access, ids, ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
+        var devices = (await SnapshotService.GetDevicesAsync(access, ids, ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
         var (maxWidth, maxHeight) = SnapshotSize(request);
         var entries = new ReportEntry[request.Items.Count];
         var done = 0;
         await _snapshots.ForEachBoundedAsync(entries.Length, async index =>
         {
             var item = request.Items[index];
-            var tile = Resolve(item, tiles, byDevice);
+            var tile = Resolve(item, tiles, byDevice, devices);
             var snapshot = tile.Error is { } error && tile.Device.DeviceId == Guid.Empty
                 ? new CapturedSnapshot(null, 0, 0, null, error)
                 : await _snapshots.TakeAsync(access.Vapix, devices.GetValueOrDefault(item.DeviceId), item.Camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
@@ -305,7 +306,7 @@ public sealed partial class ReportJobs : IDisposable
         return (cap, (int)Math.Round((double)request.MaxHeight * cap / request.MaxWidth));
     }
 
-    private static SnapshotTile Resolve(ReportItem item, Dictionary<(Guid, int), SnapshotTile> tiles, Dictionary<Guid, SnapshotTile> byDevice)
+    private static SnapshotTile Resolve(ReportItem item, Dictionary<(Guid, int), SnapshotTile> tiles, Dictionary<Guid, SnapshotTile> byDevice, Dictionary<Guid, IDeviceInfo> managed)
     {
         if (tiles.TryGetValue((item.DeviceId, item.Camera), out var tile))
         {
@@ -323,6 +324,18 @@ public sealed partial class ReportJobs : IDisposable
                 SourceLabel = device.SourceCount > 1 ? string.Create(CultureInfo.InvariantCulture, $"Camera {item.Camera}") : null,
                 Title = device.SourceCount > 1 ? string.Create(CultureInfo.InvariantCulture, $"{device.Device.Address} - Camera {item.Camera}") : device.Device.Address,
                 Error = device.Error,
+            };
+        }
+
+        if (managed.TryGetValue(item.DeviceId, out var found))
+        {
+            // Managed and in the user's devices, but no video (a speaker, an I/O module): the listing has no source of it.
+            return new SnapshotTile
+            {
+                Device = SnapshotService.ToFacts(found),
+                Camera = item.Camera,
+                Title = found.Address,
+                Error = found.HasVideo ? null : SnapshotService.NoVideo,
             };
         }
 

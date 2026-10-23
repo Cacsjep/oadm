@@ -85,6 +85,47 @@ public sealed class StoredDevicePublishTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task BatchWritesThatPublishTheirOwnRowsAndSingleWritesOfManyDevicesEndWithTheStoredDevices()
+    {
+        // Enough devices for every gate stripe; the batch writers (tags, credentials) publish the rows they wrote, the single
+        // writers read theirs again.
+        var devices = new List<Device>();
+        for (var i = 0; i < 3 * StoredDevicePublisher.Stripes; i++)
+        {
+            devices.Add(await AddDeviceAsync($"ACCC8E1{i:X5}"));
+        }
+
+        using var changes = Feed.Subscribe();
+        var view = await Views.System.GetAsync([.. devices.Select(d => d.Id)], Ct);
+        var credentials = Db.Get<CredentialStore>();
+        var writes = new List<Task>();
+        for (var round = 0; round < 6; round++)
+        {
+            var r = round;
+            writes.Add(Task.Run(() => Tags.SetDeviceTagsAsync(view, ["T" + r], [], Ct)));
+            writes.Add(Task.Run(() => credentials.SetManyAsync(view.Ids, "root", "pw" + r, Ct)));
+            writes.AddRange(devices.Where((_, i) => i % 6 == r).Select(d => Task.Run(() => Devices.UpdateAsync(d.Id, x => x.FirmwareVersion = "12.0." + r, Ct))));
+        }
+
+        await Task.WhenAll(writes);
+
+        var last = new Dictionary<Guid, Device>();
+        while (changes.Reader.TryRead(out var change))
+        {
+            if (change.Device is { } device)
+            {
+                last[change.DeviceId] = device;
+            }
+        }
+
+        foreach (var stored in await Devices.ListDevicesAsync(Ct))
+        {
+            Assert.Equal(stored.FirmwareVersion, last[stored.Id].FirmwareVersion);
+            Assert.Equal(stored.Tags, last[stored.Id].Tags);
+        }
+    }
+
+    [Fact]
     public async Task DevicesStoredBeforeTheStartAreKnownToTheFeedSoAStatusChangeMovesNoMembershipVersion()
     {
         var ids = new List<Guid>();

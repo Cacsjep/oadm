@@ -65,4 +65,22 @@ public sealed class CanaryTests
         Assert.DoesNotContain("removed", missing.Tile.Title, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(camera.Id, entries[0].Tile.Device.DeviceId);
     }
+
+    [Fact]
+    public async Task A_managed_device_without_video_says_so_in_the_report()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var speaker = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.50", Category = Oadm.Sdk.Devices.DeviceCategory.Speaker });
+        using var service = new SnapshotService(ctx.Devices, ctx.Vapix);
+        using var jobs = new ReportJobs(service);
+        var request = new ReportRequest { Site = "Site", Items = [new ReportItem { DeviceId = speaker.Id, Camera = 1 }] };
+
+        var entry = Assert.Single(await jobs.CollectAsync(request, null, CancellationToken.None));
+
+        Assert.Equal("The device has no video", entry.Tile.Error);
+        Assert.Equal("The device has no video", entry.Snapshot.Error);
+        Assert.Equal(speaker.Id, entry.Tile.Device.DeviceId);
+        Assert.Equal("10.0.0.50", entry.Tile.Title);
+        Assert.False(ctx.ClientsCreated.ContainsKey(speaker.Id));
+    }
 }

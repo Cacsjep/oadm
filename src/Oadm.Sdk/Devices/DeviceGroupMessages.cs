@@ -24,6 +24,9 @@ public static class DeviceGroupMessages
     /// <summary>A user whose device group has no site (tags or single devices only) cannot add devices.</summary>
     public const string CannotAdd = "Your device group has no site, so you cannot add devices.";
 
+    /// <summary>The refusal of a save by a user without devices (no group, or the group was deleted).</summary>
+    public const string NoDevicesRefusal = "Your account has no devices.";
+
     /// <summary>The note of a tag or site a group uses, before it is deleted: "Used by device group Building B".</summary>
     public static string UsedBy(IReadOnlyCollection<string> groupNames)
     {

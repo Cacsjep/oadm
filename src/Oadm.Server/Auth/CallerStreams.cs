@@ -9,7 +9,8 @@ namespace Oadm.Server.Auth;
 /// checked when it starts; when a role changes, the streams it no longer allows are ended (the client reconnects and is
 /// refused), and when a user gets another role or other devices (all devices, another group) all of that user's streams end
 /// and are checked again; when the rules of a device group change, the streams of its users end and reconnect with the new
-/// view. The session stream (AuthService.WatchSession) stays: it tells the client about the change.
+/// view. The session stream (AuthService.WatchSession) stays: it tells the client about the change. Every other open stream
+/// holds its session in use (<see cref="AuthTokenStore.HoldWhileStreaming"/>), so it does not expire while the stream runs.
 /// </summary>
 public sealed partial class CallerStreams : IDisposable
 {
@@ -51,7 +52,11 @@ public sealed partial class CallerStreams : IDisposable
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(abort);
         var id = Interlocked.Increment(ref _next);
-        _streams[id] = new OpenStream(caller.UserId, caller.UserName, caller.RoleId, caller.TokenHash, rule, method, abort, IsSessionStream(method), caller.DeviceGroupId);
+        var isSession = IsSessionStream(method);
+
+        // An open stream is use of its session (a Live View wall without clicks stays logged in); the session stream alone is not.
+        var hold = isSession || _tokens is null || string.IsNullOrEmpty(caller.TokenHash) ? null : _tokens.HoldWhileStreaming(caller.TokenHash);
+        _streams[id] = new OpenStream(caller.UserId, caller.UserName, caller.RoleId, caller.TokenHash, rule, method, abort, isSession, caller.DeviceGroupId, hold);
         return new Registration(this, id);
     }
 
@@ -134,6 +139,7 @@ public sealed partial class CallerStreams : IDisposable
     {
         if (_streams.TryRemove(id, out _))
         {
+            stream.Hold?.Dispose();
             LogEnded(stream.UserName, stream.Method);
             stream.Abort();
         }
@@ -145,10 +151,16 @@ public sealed partial class CallerStreams : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Checking open streams after a role change failed")]
     private partial void LogCheckFailed(Exception ex);
 
-    private sealed record OpenStream(Guid UserId, string UserName, Guid RoleId, string TokenHash, AccessRule Rule, string Method, Action Abort, bool IsSession, Guid? DeviceGroupId);
+    private sealed record OpenStream(Guid UserId, string UserName, Guid RoleId, string TokenHash, AccessRule Rule, string Method, Action Abort, bool IsSession, Guid? DeviceGroupId, IDisposable? Hold);
 
     private sealed class Registration(CallerStreams owner, long id) : IDisposable
     {
-        public void Dispose() => owner._streams.TryRemove(id, out _);
+        public void Dispose()
+        {
+            if (owner._streams.TryRemove(id, out var stream))
+            {
+                stream.Hold?.Dispose();
+            }
+        }
     }
 }

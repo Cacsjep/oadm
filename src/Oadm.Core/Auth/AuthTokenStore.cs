@@ -20,7 +20,8 @@ public sealed record AuthSession(string TokenHash, Guid UserId, string UserName,
 /// keeps only its SHA-256. Sliding expiry: 8 hours, 30 days with "Remember me"; every use moves the expiry forward
 /// (written to the database at most once per minute per token). Valid sessions are cached in memory, so a call costs
 /// no database read; disabling or deleting a user or a new password revokes its sessions (<see cref="RevokeUserAsync"/>),
-/// a new role is taken over by them (<see cref="SetRole"/>).
+/// a new role is taken over by them (<see cref="SetRole"/>). An open stream of a session counts as use
+/// (<see cref="HoldWhileStreaming"/>): the session does not expire while it has one (a Live View wall without clicks).
 /// </summary>
 public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, TimeProvider time)
 {
@@ -29,6 +30,9 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
     private static readonly TimeSpan PersistEvery = TimeSpan.FromMinutes(1);
 
     private readonly ConcurrentDictionary<string, Cached> _cache = new(StringComparer.Ordinal);
+
+    // Open streams per session (token hash); guarded by itself.
+    private readonly Dictionary<string, int> _streaming = new(StringComparer.Ordinal);
 
     // Counts revokes and role changes. A session read from the database while one happened may be stale: it is read again.
     private long _epoch;
@@ -122,16 +126,16 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
             }
         }
 
-        if (cached.ExpiresUtc <= now)
+        if (cached.ExpiresUtc <= now && !IsStreaming(hash))
         {
-            var ended = _cache.TryRemove(hash, out _);
-            await DeleteAsync(hash, ct).ConfigureAwait(false);
-            if (ended)
+            if (_cache.TryRemove(hash, out _))
             {
-                // Like a logout: what belongs to the session (its jobs, its add page sessions, its streams) ends too.
+                // Like a logout: what belongs to the session (its jobs, its add page sessions, its streams) ends too. Raised
+                // before the row goes, and the row goes whatever the call's token says: a cancelled call never skips the end.
                 CallerContext.Raise(SessionsEnded, this, new EndedSessions(null, hash));
             }
 
+            await DeleteAsync(hash, CancellationToken.None).ConfigureAwait(false);
             return (true, null);
         }
 
@@ -218,15 +222,25 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
 
     /// <summary>
     /// Deletes expired sessions (hourly). Each expired session that was in use since the server started raises
-    /// <see cref="SessionsEnded"/> (sessions not used since the start own nothing in memory).
+    /// <see cref="SessionsEnded"/> (sessions not used since the start own nothing in memory). A session with an open stream
+    /// is in use: its expiry slides and is stored instead, so a restart keeps it too.
     /// </summary>
     public async Task<int> DeleteExpiredAsync(CancellationToken ct)
     {
         var now = time.GetUtcNow().UtcDateTime;
         var ended = new List<string>();
-        foreach (var pair in _cache.Where(p => p.Value.ExpiresUtc <= now).ToList())
+        var slid = new List<(string Hash, DateTime Expires)>();
+        foreach (var pair in _cache.ToList())
         {
-            if (_cache.TryRemove(pair))
+            if (IsStreaming(pair.Key))
+            {
+                var expires = now + Lifetime(pair.Value.Remember);
+                if (_cache.TryUpdate(pair.Key, pair.Value with { ExpiresUtc = expires, PersistedExpiresUtc = expires }, pair.Value))
+                {
+                    slid.Add((pair.Key, expires));
+                }
+            }
+            else if (pair.Value.ExpiresUtc <= now && _cache.TryRemove(pair))
             {
                 ended.Add(pair.Key);
             }
@@ -238,9 +252,65 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        foreach (var (hash, expires) in slid)
+        {
+            // One row per session with an open stream (a few), once an hour.
+            await db.AuthTokens.Where(t => t.TokenHash == hash)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.ExpiresUtc, expires), ct).ConfigureAwait(false);
+        }
+
         // Sliding expiries newer than the stored value live in the cache; only rows expired in both are deleted.
         var live = _cache.Keys.ToList();
         return await db.AuthTokens.Where(t => t.ExpiresUtc <= now && !live.Contains(t.TokenHash)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// An open stream of the session of <paramref name="tokenHash"/> (<c>CallerStreams</c>): until the returned scope is
+    /// disposed the session counts as in use and does not expire; when its last stream closes, the expiry slides from then.
+    /// </summary>
+    public IDisposable HoldWhileStreaming(string tokenHash)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(tokenHash);
+        lock (_streaming)
+        {
+            _streaming[tokenHash] = _streaming.GetValueOrDefault(tokenHash) + 1;
+        }
+
+        return new StreamHold(this, tokenHash);
+    }
+
+    private bool IsStreaming(string hash)
+    {
+        lock (_streaming)
+        {
+            return _streaming.ContainsKey(hash);
+        }
+    }
+
+    private void ReleaseStream(string hash)
+    {
+        lock (_streaming)
+        {
+            var left = _streaming.GetValueOrDefault(hash) - 1;
+            if (left > 0)
+            {
+                _streaming[hash] = left;
+                return;
+            }
+
+            _streaming.Remove(hash);
+        }
+
+        // The stream was the last use: the session lives a full lifetime from now (in memory; stored on its next use).
+        var now = time.GetUtcNow().UtcDateTime;
+        while (_cache.TryGetValue(hash, out var current))
+        {
+            var expires = now + Lifetime(current.Remember);
+            if (expires <= current.ExpiresUtc || _cache.TryUpdate(hash, current with { ExpiresUtc = expires }, current))
+            {
+                return;
+            }
+        }
     }
 
     private static TimeSpan Lifetime(bool remember) => remember ? RememberLifetime : SessionLifetime;
@@ -251,6 +321,19 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         await db.AuthTokens.Where(t => t.TokenHash == hash).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
+    private sealed class StreamHold(AuthTokenStore owner, string hash) : IDisposable
+    {
+        private int _released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                owner.ReleaseStream(hash);
+            }
+        }
     }
 
     private sealed record Cached(Guid UserId, string UserName, Guid RoleId, DeviceScope DeviceAccess, bool Remember, DateTime ExpiresUtc, DateTime PersistedExpiresUtc);

@@ -132,6 +132,29 @@ public sealed class ComplianceOwnerTests
     }
 
     [Fact]
+    public async Task AUserWithoutDevicesSavesNoCheck()
+    {
+        await using var rig = await ComplianceRig.StartAsync();
+        var (group, _) = await GroupAsync(rig, "Lobby");
+        await rig.Groups.DeleteAsync(group, Ct);
+        var before = rig.Engine.ListChecks().Count;
+
+        foreach (var scope in new[] { DeviceScope.None, DeviceScope.Group(group) })
+        {
+            var view = await rig.Views.ForScopeAsync(scope, "operator", Ct);
+            var disabled = Reachable();
+            disabled.Enabled = false;
+            foreach (var check in new[] { Reachable(), disabled })
+            {
+                var refused = await Assert.ThrowsAsync<Sdk.Plugins.DeviceAccessRefusedException>(() => rig.Service.SaveAsync(check, view, null, false, Ct));
+                Assert.Equal("Your account has no devices.", refused.Message);
+            }
+        }
+
+        Assert.Equal(before, rig.Engine.ListChecks().Count);
+    }
+
+    [Fact]
     public async Task CheckNowOfAGroupUserRunsOnlyOnTheView()
     {
         await using var rig = await ComplianceRig.StartAsync();
