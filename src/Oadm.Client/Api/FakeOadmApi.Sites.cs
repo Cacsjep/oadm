@@ -278,15 +278,18 @@ public sealed partial class FakeOadmApi
     private SiteList SiteListLocked()
     {
         var list = new SiteList { Accept = _siteAccept, ListenAddress = "10.0.0.5:5081" };
-        foreach (var site in _sites.OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase))
+        // A user with a device group sees only the sites its rules name, with its own devices there (like the server).
+        DeviceGroupRules? rules = ViewRulesLocked();
+        foreach (var site in _sites.Where(s => rules is null || rules.SiteIds.Contains(s.Id)).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase))
         {
             var copy = site.Clone();
-            copy.DeviceCount = _devices.Count(d => d.SiteId == site.Id);
+            copy.DeviceCount = _devices.Count(d => d.SiteId == site.Id && InViewLocked(d));
+            copy.GroupNames.AddRange(GroupsUsingSiteLocked(site.Id));
             list.Sites.Add(copy);
         }
 
         // Nodes that connected wait only while the server accepts them.
-        if (_siteAccept)
+        if (_siteAccept && rules is null)
         {
             list.Sites.Add(_waitingNodes.Select(n => n.Clone()));
         }

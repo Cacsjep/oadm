@@ -51,8 +51,31 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         var button = new ToolbarButton { Text = "Add", IconKey = "add", IsPrimary = true, Name = "AddButton", Flyout = CreateMenu(ctx) };
-        ToolTip.SetTip(button, "Add devices: discovery, network range, manually or from a file");
+        FollowRefusal(button, ctx, Tooltip);
         return button;
+    }
+
+    public const string Tooltip = "Add devices: discovery, network range, manually or from a file";
+
+    /// <summary>
+    /// Disables an Add button while the user cannot add devices (a device group without a site), with the server's refusal
+    /// as its tooltip (<see cref="ToolbarContext.AddDevicesRefusal"/>); <paramref name="tooltip"/> otherwise. Follows the
+    /// session live.
+    /// </summary>
+    public static void FollowRefusal(Control button, IToolbarContext ctx, string? tooltip)
+    {
+        ArgumentNullException.ThrowIfNull(button);
+        ArgumentNullException.ThrowIfNull(ctx);
+        void Apply()
+        {
+            string? refusal = (ctx as ToolbarContext)?.AddDevicesRefusal;
+            button.IsEnabled = refusal is null;
+            ToolTip.SetTip(button, refusal ?? tooltip);
+            ToolTip.SetShowOnDisabled(button, true);
+        }
+
+        ctx.PermissionsChanged += (_, _) => Apply();
+        Apply();
     }
 }
 

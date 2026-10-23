@@ -25,6 +25,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups: users of a group tag only their devices and never add or remove a tag a group uses; compliance checks
   belong to a group and run only on its devices.
 - Device groups: event rules and the event log are only for users with all devices. Rules run on all devices as before.
+- Device groups: administrators choose the device group of a compliance check, and its card names it. Deleting a tag or
+  removing a site a group uses names the group first. Users with a group do not see Event rules, and Add is off when
+  their group has no site.
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
 - Device groups: users with a group see only plugin pages built for device groups, and plugin pages show them only

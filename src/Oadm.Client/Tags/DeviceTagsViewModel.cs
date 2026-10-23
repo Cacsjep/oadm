@@ -317,7 +317,10 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
         }, nameof(EditName)).ConfigureAwait(true);
     }
 
-    /// <summary>Administrators: deletes the tag after a confirmation ("Remove tag PTZ from 42 devices?").</summary>
+    /// <summary>
+    /// Administrators: deletes the tag after a confirmation ("Remove tag PTZ from 42 devices?"), which names the device groups
+    /// that use it ("Used by device group Building B.").
+    /// </summary>
     [RelayCommand(CanExecute = nameof(IsIdle))]
     private async Task DeleteAsync(TagChoiceViewModel? choice)
     {
@@ -329,6 +332,11 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
         string question = choice.DeviceCount == 0
             ? $"Delete the tag {choice.Name}?"
             : $"Remove tag {choice.Name} from {TagStore.DevicesText(choice.DeviceCount)}?";
+        if (choice.Tag.GroupNames.Count > 0)
+        {
+            question += " " + Settings.DeviceGroupWords.UsedBy(choice.Tag.GroupNames) + ".";
+        }
+
         if (!await _confirm("Delete tag", question, "Delete").ConfigureAwait(true))
         {
             return;
@@ -361,13 +369,14 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
 
         bool ok = await RunAsync(async () =>
         {
+            // A user with a device group may not add or remove a tag a group uses: the server's refusal shows below the list.
             SetDeviceTagsReply reply = await _api.SetDeviceTagsAsync(_devices.Select(d => d.Id).ToList(), add, remove, CancellationToken.None).ConfigureAwait(true);
             DevicesChanged = reply.DevicesChanged;
             foreach (DeviceTag created in reply.Created)
             {
                 _tags.Apply(created);
             }
-        }, null).ConfigureAwait(true);
+        }, null, serverRefusal: true).ConfigureAwait(true);
         if (ok)
         {
             CloseRequested?.Invoke(this, true);
@@ -417,8 +426,12 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
     /// <summary>Longest tag name (the server's TagNames.MaxLength).</summary>
     public const int MaxNameLength = 64;
 
-    /// <summary>Runs a server call: busy while it runs; a failure shows below its field (or below the list).</summary>
-    private async Task<bool> RunAsync(Func<Task> call, string? field)
+    /// <summary>
+    /// Runs a server call: busy while it runs; a failure shows below its field (or below the list). A refusal of the tag
+    /// administration says it is for administrators; <paramref name="serverRefusal"/> shows the server's own text instead
+    /// (tagging: "A device group uses the tag PTZ. ...").
+    /// </summary>
+    private async Task<bool> RunAsync(Func<Task> call, string? field, bool serverRefusal = false)
     {
         ErrorText = null;
         IsBusy = true;
@@ -436,7 +449,7 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
             }
             else
             {
-                ErrorText = ex.StatusCode == StatusCode.PermissionDenied ? "Only administrators can rename or delete tags." : message;
+                ErrorText = ex.StatusCode == StatusCode.PermissionDenied && !serverRefusal ? "Only administrators can rename or delete tags." : message;
             }
 
             return false;

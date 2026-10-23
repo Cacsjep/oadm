@@ -24,12 +24,13 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
-            device = _devices.Find(d => d.Id == deviceId);
+            device = _devices.Find(d => d.Id == deviceId && InViewLocked(d));
         }
 
         if (device is null)
         {
-            throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.NotFound, Oadm.Sdk.Devices.DeviceMessages.Removed));
+            // Like the server: a removed device and one outside the user's device group answer the same.
+            throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.NotFound, Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1)));
         }
 
         var refusal = device.Status switch

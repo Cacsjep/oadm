@@ -166,22 +166,25 @@ public sealed class DeviceGroupException : Exception
     public DeviceGroupError Error { get; } = DeviceGroupError.InvalidArgument;
 }
 
-/// <summary>The user texts of device groups (one phrase per concept, shared by the server, the client and the plugins).</summary>
+/// <summary>
+/// The user texts of device groups. The phrases the client and plugins share live in
+/// <see cref="Oadm.Sdk.Devices.DeviceGroupMessages"/>; these constants name them for the server.
+/// </summary>
 public static class DeviceGroupTexts
 {
     /// <summary>The name of "every device without a site" in the editor, summaries and Your role.</summary>
-    public const string ThisServer = "This server";
+    public const string ThisServer = Oadm.Sdk.Devices.DeviceGroupMessages.ThisServer;
 
     /// <summary>The choice "every device" of the user form and owners of shared objects.</summary>
-    public const string AllDevices = "All devices";
+    public const string AllDevices = Oadm.Sdk.Devices.DeviceGroupMessages.AllDevices;
 
     /// <summary>A user or an object without devices (its group was deleted).</summary>
-    public const string NoDevices = "No devices";
+    public const string NoDevices = Oadm.Sdk.Devices.DeviceGroupMessages.NoDevices;
 
     /// <summary>The refusal of a method only users with all devices may call.</summary>
-    public const string AllDevicesOnly = "Only users with all devices can do this.";
+    public const string AllDevicesOnly = Oadm.Sdk.Devices.DeviceGroupMessages.AllDevicesOnly;
 
-    public const string ChooseDevices = "Choose All devices or a device group.";
+    public const string ChooseDevices = Oadm.Sdk.Devices.DeviceGroupMessages.ChooseDevices;
     public const string UnknownGroup = "The device group does not exist (any more).";
     public const string EnterName = "Enter a name.";
     public const string TooManyRules = "A device group can have at most 100 sites, 500 tags and 30,000 single devices.";
@@ -197,11 +200,5 @@ public static class DeviceGroupTexts
     public static string BadSerial(string? serial) => $"{serial} is not a serial number (12 hex digits).";
 
     /// <summary>The note of a tag or site a group uses, before it is deleted: "Used by device group Building B".</summary>
-    public static string UsedBy(IReadOnlyCollection<string> groupNames)
-    {
-        ArgumentNullException.ThrowIfNull(groupNames);
-        return groupNames.Count == 1
-            ? "Used by device group " + groupNames.First()
-            : "Used by device groups " + string.Join(", ", groupNames);
-    }
+    public static string UsedBy(IReadOnlyCollection<string> groupNames) => Oadm.Sdk.Devices.DeviceGroupMessages.UsedBy(groupNames);
 }

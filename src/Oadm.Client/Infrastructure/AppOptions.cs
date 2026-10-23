@@ -6,6 +6,15 @@ public sealed record AppOptions
     /// <summary>Use the in-process <see cref="Api.FakeOadmApi"/> instead of a real server.</summary>
     public bool UseFake { get; init; }
 
+    /// <summary>
+    /// The sample user fake mode runs as (<c>--fake-user tech2</c>, or the environment variable <c>OADM_FAKE_USER</c>); null =
+    /// the administrator "admin". "tech2" has the device group Building B, "guard" the group Lobby (no site: cannot add).
+    /// </summary>
+    public string? FakeUser { get; init; }
+
+    /// <summary>The environment variable that sets <see cref="FakeUser"/> (the arguments win).</summary>
+    public const string FakeUserVariable = "OADM_FAKE_USER";
+
     /// <summary>Overrides the server address from the client settings for this run.</summary>
     public string? ServerAddress { get; init; }
 
@@ -27,16 +36,23 @@ public sealed record AppOptions
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oadm");
 
-    public static AppOptions Parse(IReadOnlyList<string> args)
+    /// <param name="args">The command line.</param>
+    /// <param name="environment">Reads an environment variable (tests); null = the process environment.</param>
+    public static AppOptions Parse(IReadOnlyList<string> args, Func<string, string?>? environment = null)
     {
         ArgumentNullException.ThrowIfNull(args);
-        var options = new AppOptions();
+        string? fakeUser = (environment ?? Environment.GetEnvironmentVariable)(FakeUserVariable);
+        var options = new AppOptions { FakeUser = string.IsNullOrWhiteSpace(fakeUser) ? null : fakeUser.Trim() };
         for (int i = 0; i < args.Count; i++)
         {
             string arg = args[i];
             if (string.Equals(arg, "--fake", StringComparison.OrdinalIgnoreCase))
             {
                 options = options with { UseFake = true };
+            }
+            else if (string.Equals(arg, "--fake-user", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
+            {
+                options = options with { FakeUser = args[++i] };
             }
             else if (string.Equals(arg, "--server", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
             {

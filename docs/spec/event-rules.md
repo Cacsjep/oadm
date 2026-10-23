@@ -102,7 +102,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   device safety like a rollout (cached API list, fresh one before a write). The event's values reach the command: a text field of the saved command whose value holds placeholders ("{carID}", "{port}", "{device}")
   is filled before the field checks and the send (`RunCommandAction.FillEventValues`; passwords never). Event type
   descriptions list their values one per line ("Values:" then "• {name}"), shown in the info icon of the rule dialog.
-- **Client**: rail page **Event rules** (key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
+- **Client**: rail page **Event rules** (only for users with all devices: `MainWindowViewModel.SyncEventRulesItem` hides it
+  for users with a device group, with the event log; key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
   that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
   page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
   Delete (red, confirmed); search on the right; grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem

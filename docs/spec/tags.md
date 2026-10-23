@@ -35,7 +35,9 @@ with the labels in the grid, the search, the export and the import; plugins read
   server and checked), the virtualized tag list (three-state check box: all / some / none of the selected devices, a
   click makes some or none all and all none; color dot, name in the tag color, "42 devices" = all devices with the tag;
   administrators also get Rename or recolor (inline editor below the list, saved at once) and Delete tag (confirmation in
-  `ui:MessageWindow`: "Remove tag X from 42 devices?"), a failed server call directly below the list, footer Cancel /
+  `ui:MessageWindow`: "Remove tag X from 42 devices?", plus "Used by device group Building B." from `TagInfo.GroupNames` =
+  `DeviceTag.group_names`), a failed server call directly below the list (OK shows the server's own refusal, e.g. the
+  device-group guard for a group user), footer Cancel /
   **OK**: the changed check boxes as one `SetDeviceTags` call for the whole selection; nothing changed = no call.
 - **Group mode** (toolbar "Group by tag", persisted per client): the grid shows a collapsible group per tag in tag
   name order and "No tag" last, header "● Building A · 42 devices" in the tag color (theme style

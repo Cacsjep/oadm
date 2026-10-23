@@ -135,6 +135,13 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
+            ThrowIfGroupTagLocked(add.Concat(remove));
+            int outside = deviceIds.Count(id => _devices.Find(d => d.Id == id) is not { } device || !InViewLocked(device));
+            if (outside > 0)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(outside)));
+            }
+
             var reply = new SetDeviceTagsReply();
             var names = new List<string>();
             foreach (string name in add)
@@ -198,7 +205,8 @@ public sealed partial class FakeOadmApi
         foreach (DeviceTag tag in _tagDefinitions.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
         {
             DeviceTag copy = tag.Clone();
-            copy.DeviceCount = _devices.Count(d => d.Tags.Contains(tag.Name, StringComparer.OrdinalIgnoreCase));
+            copy.DeviceCount = _devices.Count(d => d.Tags.Contains(tag.Name, StringComparer.OrdinalIgnoreCase) && InViewLocked(d));
+            copy.GroupNames.AddRange(GroupsUsingTagLocked(tag));
             list.Tags.Add(copy);
         }
 

@@ -220,9 +220,10 @@ public sealed partial class SiteFormViewModel : ValidatingViewModel
 
         return new SiteFormViewModel(api, SiteFormMode.Remove, site, "Remove site", "Remove site")
         {
-            Intro = site.DeviceCount == 1
+            Intro = (site.DeviceCount == 1
                 ? $"Remove site {site.Name}? It has 1 device."
-                : string.Create(CultureInfo.CurrentCulture, $"Remove site {site.Name}? It has {site.DeviceCount:N0} devices."),
+                : string.Create(CultureInfo.CurrentCulture, $"Remove site {site.Name}? It has {site.DeviceCount:N0} devices."))
+                + (site.GroupNames.Count > 0 ? " " + Settings.DeviceGroupWords.UsedBy([.. site.GroupNames]) + "." : string.Empty),
         };
     }
 

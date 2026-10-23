@@ -86,6 +86,9 @@ public sealed class ToolbarContext : IToolbarContext
     /// <summary>The user may reach every device (false for a user with a device group).</summary>
     public bool HasAllDevices => _session?.HasAllDevices ?? true;
 
+    /// <summary>Why the user cannot add devices (a device group without a site), or null (<see cref="Shell.UserSession.AddDevicesRefusal"/>).</summary>
+    public string? AddDevicesRefusal => _session?.AddDevicesRefusal;
+
     private void OnPermissionsChanged(object? sender, EventArgs e) => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
     public IReadOnlyList<IDeviceInfo> SelectedDevices => [.. _selection];

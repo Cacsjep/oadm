@@ -18,6 +18,7 @@ You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). Everything el
 ./manage.sh build                 # or .\manage.ps1 build on Windows
 ./manage.sh run dev               # server in the background, then the client
 ./manage.sh run client --fake     # client with built-in sample data, no server or cameras
+OADM_FAKE_USER=tech2 ./manage.sh run client --fake   # the same as tech2, a user with the device group Building B
 ./manage.sh test unit             # what CI runs; must pass before a pull request
 ```
 

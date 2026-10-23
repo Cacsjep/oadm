@@ -165,6 +165,8 @@ public sealed partial class FakeOadmApi
             }
 
             var stored = check.Clone();
+            DeviceOwner? before = _complianceChecks.Find(c => c.Summary.Id == stored.Summary.Id && stored.Summary.Id.Length > 0)?.Summary.Owner;
+            stored.Summary.Owner = ComplianceOwnerLocked(check.Summary.Owner, before, stored.Summary.Enabled);
             if (string.IsNullOrEmpty(stored.Summary.Id))
             {
                 stored.Summary.Id = Guid.NewGuid().ToString();
@@ -188,6 +190,36 @@ public sealed partial class FakeOadmApi
             RecomputeComplianceLocked();
             return Task.FromResult(ComplianceListLocked().Checks.First(c => c.Id == stored.Summary.Id));
         }
+    }
+
+    /// <summary>
+    /// Like the server: unset keeps the owner (a new check: the caller's devices), only administrators choose another one,
+    /// a check without an owner (its group was deleted) cannot be turned on.
+    /// </summary>
+    private DeviceOwner ComplianceOwnerLocked(DeviceOwner? requested, DeviceOwner? before, bool enabled)
+    {
+        DeviceOwner caller = ViewRulesLocked() is null
+            ? new DeviceOwner { AllDevices = true }
+            : new DeviceOwner { GroupId = _users.First(u => u.UserName == _currentUserName).DeviceGroupId };
+        DeviceOwner owner = (requested ?? before ?? caller).Clone();
+        if (requested is not null && !IsAdminUserLocked && !requested.Equals(before ?? caller))
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "Only administrators choose who owns it."));
+        }
+
+        if (!owner.AllDevices && owner.GroupId.Length > 0)
+        {
+            SeedGroupsLocked();
+            owner.GroupName = _groups.Find(g => g.Id == owner.GroupId)?.Name
+                ?? throw new RpcException(new Status(StatusCode.NotFound, "The device group does not exist (any more)."));
+        }
+
+        if (enabled && !owner.AllDevices && owner.GroupId.Length == 0)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, Oadm.Sdk.Devices.DeviceGroupMessages.ChooseDevices));
+        }
+
+        return owner;
     }
 
     public Task DeleteComplianceCheckAsync(string id, CancellationToken ct)

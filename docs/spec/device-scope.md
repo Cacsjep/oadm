@@ -316,6 +316,23 @@ an independent security review the same day). A user may be limited to part of t
   (tags, compliance, events: every EventService method refused for a group user, a deleted group changes no rule); the
   canary cases of TagService and ComplianceService.
 
+## Code (client2)
+
+- **Shared texts**: `Oadm.Sdk.Devices.DeviceGroupMessages` (This server, All devices, No devices, AllDevicesOnly,
+  ChooseDevices, CannotAdd, `UsedBy`); Core `DeviceGroupTexts`, Server `AddDeviceTexts.CannotAdd` and client
+  `Settings/DeviceGroupWords` forward to it.
+- **Client**: Event rules hidden for group users (`SyncEventRulesItem`); `UserSession.AddDevicesRefusal` from
+  `MyRole.devices` (`RefreshMyDevicesAsync` on connect and when the user's devices change) disables the Add button and
+  the empty page's Add devices (`AddToolbarPlugin.FollowRefusal`); the compliance check dialog's Owner field for
+  administrators (`ComplianceCheckEditorViewModel.OwnerChoices`, `Settings.DeviceAccessOption`) and the owner on the
+  cards (`ComplianceCardViewModel.OwnerText`); "Used by device group ..." in the tag delete and Remove site questions;
+  the tagging dialog shows the server's PERMISSION_DENIED text.
+- **Fake mode as a group user**: `--fake-user tech2` or `OADM_FAKE_USER=tech2` (`AppOptions.FakeUser`,
+  `FakeOadmApi.CurrentUserName`, `FakeOadmApi.GroupUser.cs`): the role's permissions, the group's devices (list and
+  Watch), Your role, the group's sites, the tag guard, the add refusal for "guard" (Lobby, single devices only); compliance
+  owners and a deleted group turning its checks off.
+- **Tests**: `tests/Oadm.Client.Tests/DeviceGroupActionsTests` (+ screenshots).
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered

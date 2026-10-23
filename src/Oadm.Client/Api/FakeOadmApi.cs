@@ -148,7 +148,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         lock (_gate)
         {
             ThrowIfOffline();
-            return Task.FromResult<IReadOnlyList<Device>>(_devices.Select(d => d.Clone()).ToList());
+            return Task.FromResult<IReadOnlyList<Device>>(_devices.Where(InViewLocked).Select(d => d.Clone()).ToList());
         }
     }
 
@@ -160,9 +160,11 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         {
             ThrowIfOffline();
             channel = _deviceEvents.Subscribe();
-            snapshot = _devices.Select(d => d.Clone()).ToList();
+            snapshot = _devices.Where(InViewLocked).Select(d => d.Clone()).ToList();
         }
 
+        // A user with a device group sees only its devices: a device that leaves the group becomes Removed, one that enters Added.
+        var sent = snapshot.Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
         try
         {
             foreach (Device device in snapshot)
@@ -174,13 +176,44 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
             await foreach (DeviceChanged change in channel.Reader.ReadAllAsync(ct))
             {
-                yield return change;
+                if (ViewedChange(change, sent) is { } viewed)
+                {
+                    yield return viewed;
+                }
             }
         }
         finally
         {
             _deviceEvents.Unsubscribe(channel);
         }
+    }
+
+    /// <summary>A change of the device feed as the current user sees it (null: outside the user's devices).</summary>
+    private DeviceChanged? ViewedChange(DeviceChanged change, HashSet<string> sent)
+    {
+        string? id = change.Device?.Id;
+        if (id is null)
+        {
+            return change;
+        }
+
+        bool inView;
+        lock (_gate)
+        {
+            if (IsAdminUserLocked)
+            {
+                return change;
+            }
+
+            inView = change.Kind != DeviceChanged.Types.Kind.Removed && InViewLocked(change.Device!);
+        }
+
+        if (!inView)
+        {
+            return sent.Remove(id) ? new DeviceChanged { Kind = DeviceChanged.Types.Kind.Removed, Device = change.Device } : null;
+        }
+
+        return sent.Add(id) ? new DeviceChanged { Kind = DeviceChanged.Types.Kind.Added, Device = change.Device } : change;
     }
 
     public Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct)
@@ -331,10 +364,23 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     // ---------------------------------------------------------------- discovery
 
-    public Task<string> StartZeroConfAsync(CancellationToken ct) => Task.FromResult(NewSession(FakeSessionKind.Scan, null, null, null));
+    public Task<string> StartZeroConfAsync(CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfCannotAddLocked();
+        }
+
+        return Task.FromResult(NewSession(FakeSessionKind.Scan, null, null, null));
+    }
 
     public Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct)
     {
+        lock (_gate)
+        {
+            ThrowIfCannotAddLocked();
+        }
+
         if (!IPAddress.TryParse(firstAddress, out IPAddress? first) || !IPAddress.TryParse(lastAddress, out IPAddress? last))
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "invalid address range"));
@@ -352,6 +398,11 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     /// <summary>Like the server: credentials of the line are tried first; an accepted password logs in as that user ("entered").</summary>
     public Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct)
     {
+        lock (_gate)
+        {
+            ThrowIfCannotAddLocked();
+        }
+
         string entered = (address ?? "").Trim();
         if (entered.Length == 0 || entered.Contains(' ', StringComparison.Ordinal) || entered.StartsWith("ftp:", StringComparison.OrdinalIgnoreCase))
         {

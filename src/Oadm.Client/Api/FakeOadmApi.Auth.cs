@@ -7,7 +7,8 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Fake mode has no login: every call runs as the administrator "admin". Users and audit entries are kept in memory
+/// Fake mode has no login: every call runs as the administrator "admin", or the user <see cref="CurrentUserName"/> names
+/// (FakeOadmApi.GroupUser.cs). Users and audit entries are kept in memory
 /// with the same rules as the server (last enabled administrator, own account, password length).
 /// </summary>
 public sealed partial class FakeOadmApi
@@ -49,10 +50,7 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             SeedAuthLocked();
-            UserInfo me = _users.First(u => u.UserName == FakeUserName).Clone();
-            me.AllPermissions = true;
-            me.StartPage = _roles.FirstOrDefault(r => r.Id == me.RoleId)?.StartPage ?? "";
-            return Task.FromResult(me);
+            return Task.FromResult(CurrentUserInfoLocked());
         }
     }
 

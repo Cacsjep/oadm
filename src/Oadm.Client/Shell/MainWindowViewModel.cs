@@ -155,6 +155,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         UpdateNavGroups();
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
+        session.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(UserSession.HasAllDevices) or nameof(UserSession.DeviceGroupName))
+            {
+                _ = RefreshMyDevicesAsync();
+            }
+        };
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
         if (pluginList is not null)
         {
@@ -453,6 +460,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private async Task OnConnectedAsync()
     {
+        _ = RefreshMyDevicesAsync();
         if (_packages is not null)
         {
             _loadingPackagesOnConnect = true;
@@ -490,6 +498,30 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             LogKeyNoticeFailed(_logger, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// A user with a device group: reads Your role's devices, so the Add entries know whether the group can add devices
+    /// (<see cref="UserSession.AddDevicesRefusal"/>). After every connect (a changed group ends the streams) and when the
+    /// user's devices change.
+    /// </summary>
+    internal async Task RefreshMyDevicesAsync()
+    {
+        if (!Session.IsLoggedIn || Session.HasAllDevices)
+        {
+            Session.ApplyDevices(null);
+            return;
+        }
+
+        try
+        {
+            MyRole role = await _api.GetMyRoleAsync(CancellationToken.None).ConfigureAwait(true);
+            Session.ApplyDevices(role.Devices);
+        }
+        catch (Exception ex)
+        {
+            LogMyDevicesFailed(_logger, ex.Message);
         }
     }
 
@@ -534,7 +566,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         UpdateNavGroups();
     }
 
-    /// <summary>The Event rules entry shows while the role may see event rules; a hidden page that was open falls back to Devices.</summary>
+    /// <summary>
+    /// The Event rules entry shows while the role may see event rules and the user has all devices (event rules, the event
+    /// log and Test are for users with all devices only, docs/spec/device-scope.md); a hidden page that was open falls back
+    /// to Devices.
+    /// </summary>
     private void SyncEventRulesItem()
     {
         if (_eventRulesItem is null)
@@ -542,7 +578,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        bool wanted = Session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsView);
+        bool wanted = Session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsView) && Session.HasAllDevices;
         bool shown = NavItems.Contains(_eventRulesItem);
         if (wanted && !shown)
         {
@@ -790,6 +826,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not list core plugins: {Reason}")]
     private static partial void LogCorePluginsFailed(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the user's devices failed: {Message}")]
+    private static partial void LogMyDevicesFailed(ILogger logger, string message);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not read the server settings: {Reason}")]
     private static partial void LogKeyNoticeFailed(ILogger logger, string reason);

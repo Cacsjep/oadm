@@ -87,7 +87,7 @@ public sealed partial class AppShell(
                 // with less would change the permissions twice and make the pages reload while the splash animates).
                 if (!session.IsLoggedIn)
                 {
-                    session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
+                    session.SignIn(api is FakeOadmApi fake ? fake.CurrentUser() : new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, api.ServerAddress);
                 }
             }
             else

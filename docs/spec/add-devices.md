@@ -190,7 +190,9 @@ background as before.
 discovers and adds only at the sites of the group (`DiscoveryRoutes`: zero-conf, the range scan and address probes on the
 server's own network only with "This server", sites outside the group are never asked) and only devices that land inside
 the group (an excepted serial is not added); a group of tags or single devices only cannot add ("Your device group has no
-site, so you cannot add devices.", `AddDeviceTexts.CannotAdd`, also for keeping devices waiting). Sessions belong to the
+site, so you cannot add devices.", `DeviceGroupMessages.CannotAdd` in `Oadm.Sdk.Devices`, also for keeping devices waiting;
+the client disables the toolbar's Add and the empty page's Add devices with this text as tooltip, from Your role's
+`MyRole.devices`: no "This server" and no site, `UserSession.AddDevicesRefusal`). Sessions belong to the
 user who started them (`DiscoverySessionOwners`, kept 30 minutes after the last use; `CoreDiscoveryBackend.FindDiscovered`
 finds only the session's own devices). The credential list is never tried for a group user (Retry and lines of a file use
 only what was typed; without anything typed: "No password was entered yet. Log in once."). A managed device outside the
