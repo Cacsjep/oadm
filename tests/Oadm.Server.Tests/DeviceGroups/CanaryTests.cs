@@ -23,7 +23,7 @@ namespace Oadm.Server.Tests.DeviceGroups;
 /// (recording network, video and event stream fakes). Methods without device data say why; Administrator
 /// and all-devices methods are covered by the access rule (a group user never reaches them).
 /// </summary>
-public sealed class CanaryTests
+public sealed partial class CanaryTests
 {
     private const string InsideSerial = "ACCC8E00C001";
     private const string OutsideSerial = "ACCC8E00C002";
@@ -402,7 +402,13 @@ public sealed class CanaryTests
             .ToList();
         var ids = manifests.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var minSdk = manifests.ToDictionary(m => m.Id, m => m.MinSdk, StringComparer.Ordinal);
+        var folders = manifests.ToDictionary(m => m.Id, m => m.Folder, StringComparer.Ordinal);
         Assert.All(PluginsConverted.Keys, id => Assert.Contains(id, ids));
+
+        // The exemptions hold only for packages without a core plugin: a later core plugin (with methods a group user
+        // calls) cannot hide behind them. The scan finds the core plugin of a converted package (it works).
+        Assert.True(DeclaresCorePlugin(folders["oadm.snapshot-report"]), "The scan finds no core plugin in SnapshotReport.");
+        Assert.All(PluginsConverted.Keys, id => Assert.False(DeclaresCorePlugin(folders[id]), $"{id} is exempted from the PluginCanary but declares an ICorePlugin."));
         foreach (var (id, folder) in manifests.Select(m => (m.Id, m.Folder)))
         {
             Assert.True(Core.Plugins.PluginLoader.IsAtLeast(minSdk[id], Sdk.Plugins.SdkInfo.CallContextVersion), $"{id} is converted but its plugin.json says minSdkVersion {minSdk[id]}.");
@@ -417,6 +423,44 @@ public sealed class CanaryTests
                 $"{id} is converted but {Path.GetFileName(tests)} runs no PluginCanary.");
         }
     }
+
+    /// <summary>
+    /// Whether the source of a plugin project (its folder without bin and obj, plus the files its csproj links in) declares
+    /// a type that implements <see cref="Sdk.Plugins.ICorePlugin"/>. The source, not the built assembly: this project builds
+    /// only the plugins it references.
+    /// </summary>
+    private static bool DeclaresCorePlugin(string folder)
+    {
+        static bool Built(string f) =>
+            f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+            || f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+
+        var files = Directory.EnumerateFiles(folder, "*.cs", SearchOption.AllDirectories).Where(f => !Built(f)).ToList();
+        foreach (var project in Directory.EnumerateFiles(folder, "*.csproj"))
+        {
+            foreach (System.Text.RegularExpressions.Match include in CompileInclude().Matches(File.ReadAllText(project)))
+            {
+                var path = Path.GetFullPath(Path.Combine(folder, include.Groups[1].Value.Replace('\\', Path.DirectorySeparatorChar)));
+                var directory = Path.GetDirectoryName(path)!;
+                var recursive = Path.GetFileName(directory) == "**";
+                directory = recursive ? Path.GetDirectoryName(directory)! : directory;
+                if (Directory.Exists(directory))
+                {
+                    files.AddRange(Directory.EnumerateFiles(directory, Path.GetFileName(path), recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly).Where(f => !Built(f)));
+                }
+            }
+        }
+
+        return files.Any(f => CorePluginDeclaration().IsMatch(File.ReadAllText(f)));
+    }
+
+    /// <summary>A class or record whose base list names ICorePlugin (not ICorePluginContext or ICorePluginDownloads).</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\b(?:class|record)\s+\w+[^{;]*:[^{;]*\bICorePlugin\b(?!\w)")]
+    private static partial System.Text.RegularExpressions.Regex CorePluginDeclaration();
+
+    /// <summary>A source file the csproj compiles in from outside its folder.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"<Compile\s+Include=""([^""]+\.cs)""")]
+    private static partial System.Text.RegularExpressions.Regex CompileInclude();
 
     [Fact]
     public async Task AnOutOfViewDeviceIsAnsweredLikeAnUnknownOneAndNeverContacted()
