@@ -36,7 +36,9 @@ behavior: plugin `README.md`.
   moves the record.
 - Device groups: `checkAddresses` of a user with a device group names only the group's devices; an address another
   managed device on the route has comes back "In use" (`AddressStatus.UsedByDevice`, from
-  `ITaskQueryContext.ManagedAddressesAsync`), never with its name or id.
+  `ITaskQueryContext.ManagedAddressesAsync`), never with its name or id. The tasks refuse such an address before the
+  first write for every user (`ITaskExecutionContext.ManagedAddressesAsync`, "Another device managed by OADM uses this
+  address. Nothing was changed.").
 
 ## Snapshot report (core plugin)
 

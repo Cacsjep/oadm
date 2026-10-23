@@ -200,8 +200,9 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
 
     /// <summary>
     /// Step "Check address is free": every new static address (IPv4, IPv6) this task writes is probed with
-    /// <see cref="IAddressProbe"/> (ping and TCP 80/443). An answer from anything but the device itself fails the
-    /// step and the task before the first write. Skipped when no static address is written (DHCP, kept).
+    /// <see cref="IAddressProbe"/> (ping and TCP 80/443) after asking the host whether another managed device on the route
+    /// uses it (<see cref="ITaskExecutionContext.ManagedAddressesAsync"/>). Either fails the step and the task before the
+    /// first write. Skipped when no static address is written (DHCP, kept).
     /// </summary>
     private async Task CheckAddressesFreeAsync(
         ITaskExecutionContext ctx,
@@ -234,6 +235,11 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
 
         using var step = ctx.BeginStep(StepCheckAddressFree);
         string?[] own = [device.Address, current.Ipv4.Address, .. current.Ipv6.Addresses];
+
+        // Another managed device on this route (also one outside the user's view) has the address: refused for everyone,
+        // without naming it. Taking its address would also break that device's record.
+        var managed = await ctx.ManagedAddressesAsync(
+            addresses.Where(a => !AddressCheck.IsOwnAddress(a, own)).ToList(), ct).ConfigureAwait(false);
         var details = new List<string>();
         for (var i = 0; i < addresses.Count; i++)
         {
@@ -249,6 +255,13 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
                 var outside = $"{address}: {Sdk.Sites.SiteTexts.OutsideSiteNetworks}. Nothing was changed.";
                 ctx.Log(TaskLogLevel.Error, outside);
                 throw new InvalidOperationException(outside);
+            }
+
+            if (managed.Contains(address))
+            {
+                var taken = $"{address}: {AddressCheck.UsedByOtherDevice} Nothing was changed.";
+                ctx.Log(TaskLogLevel.Error, taken);
+                throw new InvalidOperationException(taken);
             }
 
             step.ReportProgress(100 * i / addresses.Count, $"Probing {address}");

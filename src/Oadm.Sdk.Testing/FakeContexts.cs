@@ -90,6 +90,30 @@ public sealed class FakeTaskContext : ITaskExecutionContext
     /// <summary>The device's route (<see cref="Sites.IDeviceNetwork"/>): the server's own network unless a test sets a site's.</summary>
     public Sites.IDeviceNetwork? Network { get; init; } = new FakeDeviceNetwork();
 
+    /// <summary>
+    /// The addresses other managed devices on this task's route use (<see cref="ManagedAddressesAsync"/>, compared as IP
+    /// addresses); empty = none.
+    /// </summary>
+    public ISet<string> OtherDeviceAddresses { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(addresses);
+        if (addresses.Count > 256)
+        {
+            throw new ArgumentException("At most 256 addresses can be checked at once.", nameof(addresses));
+        }
+
+        var used = OtherDeviceAddresses.Select(ParseAddress).OfType<global::System.Net.IPAddress>().ToHashSet();
+        return Task.FromResult<IReadOnlySet<string>>(addresses
+            .Where(a => ParseAddress(a) is { } ip && used.Contains(ip))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static global::System.Net.IPAddress? ParseAddress(string? text) =>
+        global::System.Net.IPAddress.TryParse(text?.Trim().Trim('[', ']'), out var ip) ? ip : null;
+
     /// <inheritdoc />
     public void PlanSteps(params string[] names) => Steps.Plan(names);
 

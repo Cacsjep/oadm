@@ -291,7 +291,12 @@ an independent security review the same day). A user may be limited to part of t
   packages without a page through `tests/Shared/TaskPluginCanaryHost.cs` (tasks started through the call, actions run on
   one device of the call). `tests/Oadm.Plugins.Restart.Tests` is new for that.
 - Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
-  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use").
+  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). At run time
+  `ITaskExecutionContext.ManagedAddressesAsync` (host: the engine's execution context, every other device on the task's
+  route, `Core/Tasks/ManagedAddresses`): Network settings and Assign IP address refuse, for every user and before the
+  first write, a static address another managed device has ("Another device managed by OADM uses this address. Nothing
+  was changed."), so a group user never takes over the address of a device outside the group (whose polling would then
+  send that device's login to the new camera). Both checks take at most 256 addresses per call.
 - VAPIX Commander: devices, clients and tasks through the call; `save` / `delete` / `import` `RequiresAllDevices`; stored
   passwords of saved commands only with all devices (`ResolveAsync(..., allowSavedSecrets)`). Run VAPIX command and Set
   output are event rule actions and stay as they are (event rules are for users with all devices).

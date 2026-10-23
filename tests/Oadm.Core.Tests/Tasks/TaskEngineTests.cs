@@ -606,6 +606,27 @@ public sealed class TaskEngineTests : IAsyncLifetime
         await Assert.ThrowsAsync<ObjectDisposedException>(() => engine.RunAsync("t.forever", [_devices.Add()], null, "o", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ManagedAddressesAnswerOnlyOtherDevicesOnTheTasksRoute()
+    {
+        var site = Guid.NewGuid();
+        var self = _devices.Add(new Sdk.Testing.FakeDevice { Address = "10.0.0.48" });
+        _devices.Add(new Sdk.Testing.FakeDevice { Address = "10.0.0.60", Status = DeviceStatus.Unreachable }); // same route, outside any view
+        _devices.Add(new Sdk.Testing.FakeDevice { Address = "10.0.0.61", SiteId = site }); // another route: another network
+        IReadOnlySet<string>? used = null;
+        Exception? tooMany = null;
+        Register("t.addresses", async (ctx, _, ct) =>
+        {
+            used = await ctx.ManagedAddressesAsync(["10.0.0.48", "10.0.0.60", " 10.0.0.60", "10.0.0.61", "10.0.0.62", "bogus"], ct);
+            tooMany = await Record.ExceptionAsync(() => ctx.ManagedAddressesAsync([.. Enumerable.Range(0, 257).Select(i => $"10.1.{i / 256}.{i % 256}")], ct));
+        });
+
+        await WaitAllAsync(await Engine.RunAsync("t.addresses", [self], null, "o", CancellationToken.None));
+
+        Assert.True(used!.SetEquals(["10.0.0.60", " 10.0.0.60"]), string.Join(",", used)); // never the task's own device
+        Assert.IsType<ArgumentException>(tooMany);
+    }
+
     private void Register(string id, Func<ITaskExecutionContext, IDeviceInfo, CancellationToken, Task> execute, Func<IDeviceInfo, bool>? canRun = null)
     {
         Assert.True(_registry.RegisterTaskPlugin(new DelegateTaskPlugin(id, execute, canRun), new PluginOrigin("test", "1.0.0", null)));

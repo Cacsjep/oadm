@@ -526,7 +526,9 @@ for them, and it keeps working unchanged for users with all devices.
   for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`.
 - **Task plugins and actions**: a query reads devices other than the queried one only through `caller`; for an
   address-in-use check ask `ITaskQueryContext.ManagedAddressesAsync(candidates)` (every device on the route, never
-  named) and name only devices of `ctx.Devices` (Network settings `checkAddresses`). Secrets kept for everyone (a saved
+  named) and name only devices of `ctx.Devices` (Network settings `checkAddresses`). A task that sets a static address
+  asks `ITaskExecutionContext.ManagedAddressesAsync` again before the first write and refuses an address in use (at
+  most 256 addresses per call; `FakeTaskContext.OtherDeviceAddresses` in tests). Secrets kept for everyone (a saved
   command's passwords) only when `caller.HasAllDevices`. A package without a page tests with
   `tests/Shared/TaskPluginCanaryHost.cs` (its tasks started through the call, its actions run on one device of the call).
 

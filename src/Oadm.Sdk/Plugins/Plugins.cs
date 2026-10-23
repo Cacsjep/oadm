@@ -322,6 +322,17 @@ public interface ITaskExecutionContext
     /// devices than its own (a source device) goes through it. Null for tasks the system started and on older hosts.
     /// </summary>
     ICallContext? Caller => null;
+
+    /// <summary>
+    /// Which of <paramref name="addresses"/> another managed device on this task's route uses, also a device outside the
+    /// view of the user who started the task (SDK 0.4.0): the run-time twin of <see cref="ITaskQueryContext.ManagedAddressesAsync"/>,
+    /// for a task that sets a static address and must refuse one in use before the first write. Answers only "in use" and
+    /// never names that device; the task's own device does not count. Addresses are compared as IP addresses; the answer
+    /// holds the entries of <paramref name="addresses"/> as given. At most 256 addresses per call (more throw
+    /// <see cref="ArgumentException"/>). Default (older hosts): none.
+    /// </summary>
+    Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct) =>
+        Task.FromResult<IReadOnlySet<string>>(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 }
 
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>

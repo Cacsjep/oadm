@@ -117,6 +117,13 @@ internal sealed partial class TaskExecutionContext : ITaskExecutionContext
         Volatile.Write(ref _vapix, client);
     }
 
+    /// <summary>The address-in-use check over the other devices on this task's route; answers only "in use".</summary>
+    public Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct)
+    {
+        ManagedAddresses.ThrowIfTooMany(addresses);
+        return _sink.ManagedAddressesAsync(_deviceId, addresses, ct);
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task {TaskId}, device {DeviceId}: warning: {Message}")]
     private static partial void LogPluginWarning(ILogger logger, Guid taskId, Guid deviceId, string message);
 
@@ -149,4 +156,7 @@ internal interface ITaskExecutionSink
 
     /// <summary>Switches scheme and certificate pin after verifying the device; returns the client for the new connection.</summary>
     Task<IVapixClient> UpdateDeviceTlsAsync(Guid deviceId, string scheme, string? expectedFingerprintSha256, CancellationToken ct);
+
+    /// <summary>Which of the addresses another managed device on the device's route uses (never which one).</summary>
+    Task<IReadOnlySet<string>> ManagedAddressesAsync(Guid deviceId, IReadOnlyCollection<string> addresses, CancellationToken ct);
 }

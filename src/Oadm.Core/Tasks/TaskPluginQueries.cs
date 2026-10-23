@@ -189,39 +189,14 @@ public sealed partial class TaskPluginQueries
         public async Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(addresses);
-            var wanted = new Dictionary<System.Net.IPAddress, List<string>>();
-            foreach (var address in addresses)
+            if (addresses.Count == 0)
             {
-                if (ParseAddress(address) is { } ip)
-                {
-                    if (!wanted.TryGetValue(ip, out var texts))
-                    {
-                        wanted[ip] = texts = [];
-                    }
-
-                    texts.Add(address);
-                }
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             }
 
-            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (wanted.Count == 0)
-            {
-                return used;
-            }
-
-            foreach (var other in await system.ListAsync(ct).ConfigureAwait(false))
-            {
-                if (other.SiteId == device.SiteId && ParseAddress(other.Address) is { } ip && wanted.TryGetValue(ip, out var texts))
-                {
-                    used.UnionWith(texts);
-                }
-            }
-
-            return used;
+            ManagedAddresses.ThrowIfTooMany(addresses);
+            return ManagedAddresses.Match(await system.ListAsync(ct).ConfigureAwait(false), device.SiteId, null, addresses);
         }
-
-        private static System.Net.IPAddress? ParseAddress(string? text) =>
-            System.Net.IPAddress.TryParse(text?.Trim().Trim('[', ']'), out var ip) ? ip : null;
     }
 }
 

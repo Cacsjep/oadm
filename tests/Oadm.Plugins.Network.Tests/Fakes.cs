@@ -171,6 +171,18 @@ internal sealed class RecordingContext : ITaskExecutionContext, ITaskQueryContex
 
     public IUploadedFiles Files => throw new NotSupportedException();
 
+    /// <summary>Addresses another managed device on the route uses (ManagedAddressesAsync of the task and the query).</summary>
+    public HashSet<string> OtherDeviceAddresses { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Every list of addresses asked through ManagedAddressesAsync.</summary>
+    public List<IReadOnlyCollection<string>> ManagedAddressQueries { get; } = [];
+
+    public Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct)
+    {
+        ManagedAddressQueries.Add([.. addresses]);
+        return Task.FromResult<IReadOnlySet<string>>(addresses.Where(OtherDeviceAddresses.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase));
+    }
+
     public List<(int Percent, string? Message)> Progress { get; } = [];
 
     public List<string> Warnings { get; } = [];
