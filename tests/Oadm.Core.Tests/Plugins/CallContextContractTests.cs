@@ -120,6 +120,138 @@ public sealed class CallContextContractTests
         Assert.Null(core.FakeScopes.NameOf(key));
     }
 
+    [Fact]
+    public async Task TasksOfTheFakeStayActiveUntilEndedAndAGroupUserAsksOnlyAboutItsOwnLikeTheHost()
+    {
+        var core = new FakeCoreContext();
+        var inside = core.Add(new FakeDevice());
+        var outside = core.Add(new FakeDevice());
+        var anna = core.CallAsGroup([inside.Id], "anna");
+        var bob = core.CallAsGroup([inside.Id], "bob");
+        var all = core.CallAsAllDevices();
+
+        var annas = Assert.Single(await anna.Tasks.RunAsync("p", [inside.Id], null, "anna", CancellationToken.None));
+        var system = Assert.Single(await all.Tasks.RunAsync("p", [outside.Id], null, "admin", CancellationToken.None));
+        Assert.Equal([annas], core.TaskRuns[0].TaskIds);
+
+        // One by one only the own tasks; together the tasks of the group's devices; a device outside makes it unknown.
+        Assert.True(anna.Tasks.IsActive(annas));
+        Assert.Null(bob.Tasks.IsActive(annas));
+        Assert.False(bob.Tasks.Cancel(annas));
+        Assert.True(await bob.Tasks.AnyActiveAsync([annas], CancellationToken.None));
+        Assert.True(await anna.Tasks.AnyActiveAsync([system, annas], CancellationToken.None));
+        Assert.Null(await anna.Tasks.AnyActiveAsync([system], CancellationToken.None));
+        Assert.True(all.Tasks.IsActive(system));
+
+        Assert.True(anna.Tasks.Cancel(annas));
+        Assert.False(anna.Tasks.IsActive(annas));
+        Assert.False(await bob.Tasks.AnyActiveAsync([annas], CancellationToken.None));
+        Assert.True(core.EndTask(system));
+        Assert.False(core.EndTask(system));
+        Assert.Null(all.Tasks.IsActive(Guid.NewGuid()));
+
+        // The context's own runner is refused during a group user's call, every member.
+        var plugin = new TasksProbe();
+        await plugin.StartAsync(core, CancellationToken.None);
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => core.InvokeAsync(plugin, anna, "isActive", system.ToString()));
+        Assert.Equal(["Tasks"], core.RefusedAccesses);
+        Assert.Equal("False", await core.InvokeAsync(plugin, all, "isActive", system.ToString()));
+    }
+
+    [Fact]
+    public async Task AFakeCallOverATestsOwnFakesRefusesDevicesOutsideItsGroup()
+    {
+        var inside = new FakeDevice();
+        var outside = new FakeDevice();
+        var devices = new ListDevices([inside, outside]);
+        var vapix = new CountingVapix();
+        var call = FakeCallContext.OverGroup([inside.Id], devices, vapix, userName: "anna", groupId: "b");
+
+        Assert.Equal(("anna", "b", false), (call.UserName, call.DeviceScopeKey, call.HasAllDevices));
+        Assert.Equal([inside.Id], (await call.Devices.ListAsync(CancellationToken.None)).Select(d => d.Id));
+        Assert.Null(await call.Devices.FindAsync(outside.Id, CancellationToken.None));
+        await call.Vapix.CreateAsync(inside.Id, CancellationToken.None);
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => call.Vapix.CreateAsync(outside.Id, CancellationToken.None));
+        Assert.Equal([inside.Id], vapix.Created);
+        Assert.Equal(1, call.Refused);
+        await Assert.ThrowsAsync<NotSupportedException>(() => call.Tasks.RunAsync("p", [inside.Id], null, "anna", CancellationToken.None));
+
+        // Devices that left the test's list are gone for the call too; a call with all devices sees every device.
+        devices.Items.Remove(inside);
+        Assert.Null(await call.Devices.FindAsync(inside.Id, CancellationToken.None));
+        var all = FakeCallContext.Over(devices);
+        Assert.True(all.HasAllDevices);
+        Assert.Equal([outside.Id], (await all.Devices.ListAsync(CancellationToken.None)).Select(d => d.Id));
+        Assert.Null(all.EventStreams);
+    }
+
+    [Fact]
+    public void FakeDeviceScopesOverATestsOwnListCoverOnlyDevicesThatExist()
+    {
+        var device = new FakeDevice();
+        var list = new List<IDeviceInfo> { device };
+        var scopes = new FakeDeviceScopes(() => list);
+        var key = scopes.Add("Building B", [device.Id]);
+
+        Assert.True(scopes.Contains(key, device.Id));
+        Assert.True(scopes.Contains(ICallContext.AllDevicesScopeKey, device));
+        scopes.Add("Building B", [], key); // the group's rules changed
+        Assert.False(scopes.Contains(key, device.Id));
+        Assert.True(scopes.Exists(key));
+        list.Clear();
+        Assert.False(scopes.Contains(ICallContext.AllDevicesScopeKey, device.Id));
+    }
+
+    /// <summary>A plugin method that asks the context's own task runner.</summary>
+    private sealed class TasksProbe : ICorePlugin
+    {
+        private ICorePluginContext? _ctx;
+
+        public string Id => "test.tasks";
+
+        public string DisplayName => "Tasks";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+        public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
+        {
+            _ctx = ctx;
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => throw new InvalidOperationException("old overload");
+
+        public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+        {
+            await Task.Yield();
+            return _ctx!.Tasks.IsActive(Guid.Parse(payloadJson!))?.ToString();
+        }
+    }
+
+    private sealed class ListDevices(List<IDeviceInfo> items) : IDeviceRepository
+    {
+        public List<IDeviceInfo> Items { get; } = items;
+
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. Items]);
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.Find(d => d.Id == id));
+    }
+
+    private sealed class CountingVapix : Sdk.Vapix.IVapixClientFactory
+    {
+        public List<Guid> Created { get; } = [];
+
+        public Task<Sdk.Vapix.IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct)
+        {
+            Created.Add(deviceId);
+            return Task.FromResult<Sdk.Vapix.IVapixClient>(new FakeCamera());
+        }
+    }
+
     private sealed class CountingEvents : IPluginEvents
     {
         public int Count { get; private set; }

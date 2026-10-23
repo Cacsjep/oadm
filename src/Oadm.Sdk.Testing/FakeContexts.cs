@@ -170,7 +170,11 @@ public sealed class FakeActionContext(IVapixClient? vapix = null) : IActionConte
 }
 
 /// <summary>A task started through <see cref="FakeCoreContext"/>.</summary>
-public sealed record FakeTaskRun(string PluginId, IReadOnlyList<Guid> DeviceIds, string? PayloadJson, string Owner);
+public sealed record FakeTaskRun(string PluginId, IReadOnlyList<Guid> DeviceIds, string? PayloadJson, string Owner)
+{
+    /// <summary>The ids of the run's tasks, one per device in device order.</summary>
+    public IReadOnlyList<Guid> TaskIds { get; init; } = [];
+}
 
 /// <summary>An event a plugin published through <see cref="FakeCoreContext"/>, with its audience (the old publish: all devices).</summary>
 public sealed record FakePublishedEvent(string Topic, string? PayloadJson, PluginEventAudience Audience);
@@ -182,7 +186,8 @@ public sealed record FakePublishedEvent(string Topic, string? PayloadJson, Plugi
 /// Call methods like the host does with <see cref="InvokeAsync"/> / <see cref="OpenDownloadAsync"/> / <see cref="QueryAsync"/>:
 /// during the call of a user with a device group (<see cref="CallAsGroup"/>) the context's own <see cref="Devices"/>,
 /// <see cref="Vapix"/>, <see cref="Tasks"/> and <see cref="System"/> refuse with <see cref="DeviceAccessRefusedException"/>
-/// (also in work the plugin starts from the call and in that user's jobs), exactly like on the server.
+/// (also in work the plugin starts from the call and in that user's jobs), exactly like on the server. The tasks it starts
+/// stay active (<see cref="ITaskRunner.IsActive"/>) until they are cancelled or the test ends them with <see cref="EndTask"/>.
 /// </summary>
 public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVapixClientFactory, IPluginEvents, ITaskRunner
 {
@@ -200,6 +205,8 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
 
     /// <summary>Every task the plugin started.</summary>
     public List<FakeTaskRun> TaskRuns { get; } = [];
+
+    private readonly ConcurrentDictionary<Guid, FakeTask> _tasks = new();
 
     /// <summary>Adds a device with its camera and returns the device.</summary>
     public FakeDevice Add(FakeDevice device, FakeCamera? camera = null)
@@ -250,6 +257,9 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
 
     /// <inheritdoc />
     public string? DataDirectory { get; init; }
+
+    /// <inheritdoc />
+    public ISecretProtector? Secrets { get; init; }
 
     /// <inheritdoc />
     public IPluginLicense? License { get; init; }
@@ -343,6 +353,23 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         return Run(pluginId, deviceIds, payloadJson, owner);
     }
 
+    /// <summary>Cancels a task the plugin started: true when it was still active.</summary>
+    bool ITaskRunner.Cancel(Guid taskId)
+    {
+        Check("Tasks");
+        return EndTask(taskId);
+    }
+
+    /// <summary>True while a task the plugin started is active, false once it ended, null for an unknown task.</summary>
+    bool? ITaskRunner.IsActive(Guid taskId)
+    {
+        Check("Tasks");
+        return TaskActive(taskId);
+    }
+
+    /// <summary>Ends a task the plugin started (as if it finished): true when it was still active.</summary>
+    public bool EndTask(Guid taskId) => _tasks.TryGetValue(taskId, out var task) && Interlocked.Exchange(ref task.Ended, 1) == 0;
+
     /// <summary>
     /// Calls <paramref name="method"/> like the host: refuses a method the plugin keeps for users with all devices
     /// (<see cref="ICorePlugin.RequiresAllDevices"/>) for a group user before the plugin runs, and refuses the context's full
@@ -414,16 +441,39 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         return Task.FromResult<IVapixClient>(camera);
     }
 
-    /// <summary>Records a task run without the call checks.</summary>
-    internal Task<IReadOnlyList<Guid>> Run(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner)
+    /// <summary>Records a task run without the call checks; <paramref name="startedBy"/> is the user of a call, null for the context.</summary>
+    internal Task<IReadOnlyList<Guid>> Run(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, string? startedBy = null)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
-        lock (TaskRuns)
+        IReadOnlyList<Guid> ids = [.. deviceIds.Select(_ => Guid.NewGuid())];
+        for (var i = 0; i < ids.Count; i++)
         {
-            TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner));
+            _tasks[ids[i]] = new FakeTask(deviceIds[i], startedBy);
         }
 
-        return Task.FromResult<IReadOnlyList<Guid>>([.. deviceIds.Select(_ => Guid.NewGuid())]);
+        lock (TaskRuns)
+        {
+            TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner) { TaskIds = ids });
+        }
+
+        return Task.FromResult(ids);
+    }
+
+    /// <summary>The device of a task the plugin started and the user whose call started it, or null for an unknown task.</summary>
+    internal (Guid DeviceId, string? StartedBy)? TaskOf(Guid taskId) => _tasks.TryGetValue(taskId, out var task) ? (task.DeviceId, task.StartedBy) : null;
+
+    /// <summary>Whether a task is active without the call checks (null: unknown).</summary>
+    internal bool? TaskActive(Guid taskId) => _tasks.TryGetValue(taskId, out var task) ? Volatile.Read(ref task.Ended) == 0 : null;
+
+    private sealed class FakeTask(Guid deviceId, string? startedBy)
+    {
+#pragma warning disable SA1401, CA1051 // Interlocked needs the field.
+        public int Ended;
+#pragma warning restore SA1401, CA1051
+
+        public Guid DeviceId { get; } = deviceId;
+
+        public string? StartedBy { get; } = startedBy;
     }
 
     /// <summary>The server's refusal of the full accesses in a group user's call.</summary>

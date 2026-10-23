@@ -4,13 +4,24 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Sdk.Testing;
 
 /// <summary>
-/// The device groups of a <see cref="FakeCoreContext"/> (<see cref="IDeviceScopes"/>): <see cref="Add"/> a group with its
-/// devices, <see cref="Delete"/> it (its key then exists no more and covers nothing, like on the server).
+/// The device groups of a <see cref="FakeCoreContext"/> or of a test's own device list (<see cref="IDeviceScopes"/>):
+/// <see cref="Add"/> a group with its devices, <see cref="Delete"/> it (its key then exists no more and covers nothing,
+/// like on the server). A check by device id covers only devices that exist.
 /// </summary>
-public sealed class FakeDeviceScopes(FakeCoreContext core) : IDeviceScopes
+public sealed class FakeDeviceScopes : IDeviceScopes
 {
-    private readonly FakeCoreContext _owner = core;
+    private readonly Func<IReadOnlyList<IDeviceInfo>> _devices;
     private readonly Dictionary<string, (string Name, HashSet<Guid> Devices)> _groups = new(StringComparer.Ordinal);
+
+    /// <summary>The groups of <paramref name="core"/>'s devices.</summary>
+    public FakeDeviceScopes(FakeCoreContext core)
+    {
+        ArgumentNullException.ThrowIfNull(core);
+        _devices = () => core.DeviceList;
+    }
+
+    /// <summary>The groups of a test's own devices (the list is read on every check).</summary>
+    public FakeDeviceScopes(Func<IReadOnlyList<IDeviceInfo>> devices) => _devices = devices ?? throw new ArgumentNullException(nameof(devices));
 
     /// <inheritdoc />
     public event EventHandler<string>? Changed;
@@ -59,7 +70,7 @@ public sealed class FakeDeviceScopes(FakeCoreContext core) : IDeviceScopes
         ArgumentNullException.ThrowIfNull(device);
         if (scopeKey == ICallContext.AllDevicesScopeKey)
         {
-            return _owner.DeviceList.Exists(d => d.Id == device.Id);
+            return Exists(device.Id);
         }
 
         lock (_groups)
@@ -71,7 +82,7 @@ public sealed class FakeDeviceScopes(FakeCoreContext core) : IDeviceScopes
     /// <inheritdoc />
     public bool Contains(string scopeKey, Guid deviceId)
     {
-        if (!_owner.DeviceList.Exists(d => d.Id == deviceId))
+        if (!Exists(deviceId))
         {
             return false;
         }
@@ -114,12 +125,14 @@ public sealed class FakeDeviceScopes(FakeCoreContext core) : IDeviceScopes
         }
     }
 
+    private bool Exists(Guid id) => _devices().Any(d => d.Id == id);
+
     private sealed class Scoped(FakeDeviceScopes scopes, string key) : IDeviceRepository
     {
         public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. scopes._owner.DeviceList.Where(d => scopes.Contains(key, d))]);
+            Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. scopes._devices().Where(d => scopes.Contains(key, d))]);
 
         public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult(scopes._owner.DeviceList.Find(d => d.Id == id && scopes.Contains(key, d)));
+            Task.FromResult(scopes._devices().FirstOrDefault(d => d.Id == id && scopes.Contains(key, d)));
     }
 }

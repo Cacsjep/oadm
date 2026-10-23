@@ -50,6 +50,8 @@ version and date, and the release workflow copies it into the GitHub release.
   their own devices, reports and live updates.
 - Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
   user's group.
+- Plugin SDK 0.4.0: `Oadm.Sdk.Testing.FakeCallContext.Over` and `OverGroup` make a user's call over a test's own device
+  and VAPIX fakes; tasks a plugin starts through `FakeCoreContext` stay active until cancelled or `EndTask`.
 - Device groups: the task plugins and VAPIX Commander work for users with a group, on the devices of the
   group. Assign IP address and Network settings say only "In use" for an address of a device outside the group, and
   never set an address another device managed by OADM uses.

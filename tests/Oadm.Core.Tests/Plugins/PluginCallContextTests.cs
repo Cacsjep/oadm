@@ -13,6 +13,7 @@ using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Vapix;
+using Oadm.Tests.Shared;
 
 using Eventually = Oadm.Sdk.Testing.Eventually;
 
@@ -830,29 +831,5 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         }
 
         public bool Cancel(Guid taskId) => true;
-    }
-
-    private sealed class RecordingStreams : IDeviceEventStreams
-    {
-        public ConcurrentQueue<Guid> Opened { get; } = new();
-
-        public Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct)
-        {
-            Opened.Enqueue(deviceId);
-            return Task.FromResult<IDeviceEventSource>(new NoEvents());
-        }
-    }
-
-    private sealed class NoEvents : IDeviceEventSource
-    {
-        public int LostDocuments => 0;
-
-        public async IAsyncEnumerable<DeviceMetadataDocument> ReadAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

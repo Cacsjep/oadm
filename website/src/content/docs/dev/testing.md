@@ -74,6 +74,8 @@ what it shows after each answer and event.
 Call through the context to get the host's rules: `ctx.InvokeAsync(plugin, ctx.CallAsGroup([inside.Id]), method,
 payload)` calls as a user with a device group. Every plugin runs a `PluginCanary`: it calls each method with a device
 outside the user's group and fails when the method reaches it. See [Device groups](../device-groups/#test-it-the-canary).
+Tests with their own device and VAPIX fakes call with `FakeCallContext.Over(devices, vapix)` or
+`FakeCallContext.OverGroup(deviceIds, devices, vapix)`.
 
 ## Headless UI tests
 

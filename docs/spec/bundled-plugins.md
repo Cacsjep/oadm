@@ -15,7 +15,8 @@ Common to all: every device request and every wait is a named step; every succes
 - **Device groups** (SDK 0.4.0, docs/spec/device-scope.md): these task plugins, **Set output** (`oadm.outputs`) and the
   VAPIX Commander set `minSdkVersion` 0.4.0. Their tasks run only on devices of the user's view (the host refuses the
   whole run otherwise) and touch only their own device; their queries read only the queried device, which the host
-  checks. Each test project runs a `PluginCanary` (task-only packages through `tests/Shared/TaskPluginCanaryHost.cs`).
+  checks. Packages of task plugins and actions only run no `PluginCanary`: the host scopes their runs and queries
+  (server `CanaryTests.PluginsConverted`); plugins with a page run one.
   Set output is an event rule action; event rules are for users with all devices, so it switches the output of any
   device the rule names, as before.
 

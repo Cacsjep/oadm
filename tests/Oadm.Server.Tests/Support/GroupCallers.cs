@@ -1,19 +1,19 @@
 using Grpc.Core;
 
 using Oadm.Core.Devices;
-using Oadm.Server.Tests.Support;
 
 using Proto = Oadm.Contracts.V1;
 
-namespace Oadm.Server.Tests.DeviceGroups.SharedCore;
+namespace Oadm.Server.Tests.Support;
 
 /// <summary>A user of a device group (a role with every permission) and calls in its name.</summary>
-internal sealed record GroupCaller(CallInvoker Invoker, Guid GroupId, string UserName, Guid RoleId);
+internal sealed record GroupCaller(CallInvoker Invoker, Guid GroupId, string UserName, Guid RoleId, Guid UserId);
 
-/// <summary>Device groups and their users for the tests of tags, compliance and event rules.</summary>
+/// <summary>Device groups and their users for the server tests of device groups.</summary>
 internal static class GroupCallers
 {
     /// <summary>A role "Everything" (every permission except Administrator-only areas), created once per host.</summary>
+    /// <remarks>Call it after the plugins whose permissions the role needs are in the catalog.</remarks>
     public static async Task<Guid> EverythingRoleAsync(TestServerHost host)
     {
         var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);
@@ -46,13 +46,17 @@ internal static class GroupCallers
         return await UserAsync(host, userName, group);
     }
 
+    /// <summary>A new device group with <paramref name="rules"/> (named like the user) and a user of it.</summary>
+    public static async Task<GroupCaller> ForRulesAsync(TestServerHost host, string userName, Proto.DeviceGroupRules rules) =>
+        await UserAsync(host, userName, await GroupAsync(host, userName, rules));
+
     /// <summary>A user of <paramref name="groupId"/> with every permission and an invoker in that user's name.</summary>
     public static async Task<GroupCaller> UserAsync(TestServerHost host, string userName, Guid groupId)
     {
         var role = await EverythingRoleAsync(host);
-        await host.Users.AddAsync(new Proto.AddUserRequest { UserName = userName, Password = "pw", RoleId = role.ToString(), DeviceGroupId = groupId.ToString() });
+        var user = await host.Users.AddAsync(new Proto.AddUserRequest { UserName = userName, Password = "pw", RoleId = role.ToString(), DeviceGroupId = groupId.ToString() });
         var invoker = await host.InvokerForRoleAsync(userName, role);
-        return new GroupCaller(invoker, groupId, userName, role);
+        return new GroupCaller(invoker, groupId, userName, role, Guid.Parse(user.Id));
     }
 
     /// <summary>A user with all devices and every permission (not an administrator).</summary>

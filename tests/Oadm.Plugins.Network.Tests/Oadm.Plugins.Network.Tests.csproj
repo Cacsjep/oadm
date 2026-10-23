@@ -33,6 +33,5 @@
   <ItemGroup>
     <!-- Runs plugins against a step list the way the task engine does. -->
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
-    <Compile Include="..\Shared\TaskPluginCanaryHost.cs" Link="Shared\TaskPluginCanaryHost.cs" />
   </ItemGroup>
 </Project>

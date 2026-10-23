@@ -183,4 +183,4 @@ the next six years match "fourth" more often. POSIX strings follow the device's 
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query reads only the queried device, which the host checks. Test: `DeviceGroupTests` (`PluginCanary`).
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query reads only the queried device, which the host checks. Tests: the host scopes the run and the queried device (server `DeviceGroups/CanaryTests`, TaskService cases).

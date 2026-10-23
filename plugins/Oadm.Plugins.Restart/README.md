@@ -39,4 +39,4 @@ properties and the `OadmDeployPlugin` target from the `.csproj`.
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device. No dialog, no query. Test: `tests/Oadm.Plugins.Restart.Tests` (`PluginCanary` through `tests/Shared/TaskPluginCanaryHost.cs`).
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device. No dialog, no query. Tests: the host scopes the run and the queried device (server `DeviceGroups/CanaryTests`, TaskService cases).

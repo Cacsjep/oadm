@@ -32,7 +32,7 @@ public sealed class CanaryTests
     public async Task Another_users_stream_answers_like_an_unknown_one_and_keeps_running()
     {
         await using var rig = await new Rig().StartAsync();
-        var other = new TestCall(rig.Devices, rig.Streams) { UserName = "guard" };
+        var other = Testing.FakeCallContext.Over(rig.Devices, eventStreams: rig.Streams, userName: "guard");
         await using var log = new EventLog(rig.Hub, other.Watcher);
         var reply = await rig.StartStreamAsync();
 
@@ -54,7 +54,7 @@ public sealed class CanaryTests
     public async Task A_stream_ends_with_an_error_when_its_device_leaves_the_users_view()
     {
         await using var rig = await new Rig().StartAsync();
-        var group = new TestCall(rig.Devices, rig.Streams) { UserName = "tech2", AllDevices = false };
+        var group = Testing.FakeCallContext.OverGroup([rig.Camera.Id], rig.Devices, eventStreams: rig.Streams, userName: "tech2");
         await using var log = new EventLog(rig.Hub, group.Watcher);
         var reply = MetadataJson.Deserialize<StartReply>(await rig.Plugin.InvokeAsync(group, MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(rig.Camera.Id)), CancellationToken.None));
         Assert.NotNull(reply.StreamId);

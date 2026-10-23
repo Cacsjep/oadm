@@ -193,16 +193,20 @@ internal static class PageChoice
 /// <summary>UI fake: decodes nothing, records previews and exports.</summary>
 internal sealed class FakeUi : ISnapshotReportUi
 {
+    private int _decoded;
+
     public List<SnapshotTileViewModel> Previews { get; } = [];
     public List<ExportReportViewModel> Exports { get; } = [];
-    public int Decoded { get; private set; }
+
+    /// <summary>How many pictures were decoded. The page decodes several at once on pool threads: counted atomically.</summary>
+    public int Decoded => Volatile.Read(ref _decoded);
 
     public Func<ExportReportViewModel, Task>? OnExport { get; set; }
 
     public IImage? Decode(byte[] jpeg, int decodeWidth)
     {
         Assert.True(jpeg.Length > 100);
-        Decoded++;
+        Interlocked.Increment(ref _decoded);
         return null;
     }
 

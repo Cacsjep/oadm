@@ -89,7 +89,8 @@ an independent security review the same day). A user may be limited to part of t
 - **Built (plugin host):** the call per call, the refusals, jobs with owners, event audiences (plus `DeviceScope(key)` for
   state kept per group), `ctx.DeviceScopes`, the sweep per scope and the plugin canary (`PluginCanary`): see
   `docs/spec/plugins.md` "Host side of the call context". A converted bundled plugin sets `minSdkVersion` 0.4.0 in its
-  plugin.json and runs a `PluginCanary` in its tests (`CanaryTests.EveryBundledPluginIsConvertedOrListed`).
+  plugin.json and runs a `PluginCanary` in its tests, or `CanaryTests.PluginsConverted` gives the reason it needs none
+  (`CanaryTests.EveryBundledPluginIsConvertedOrListed`).
 
 ## Decisions
 
@@ -210,8 +211,7 @@ an independent security review the same day). A user may be limited to part of t
 - **Canary test over every method** of `AccessPolicy` and every bundled plugin method (opting out needs a written reason):
   the out-of-view id injected in every id field; NOT_FOUND, no state change, and no VAPIX, RTSP, task or event stream
   contact with that device (a recording client factory). Plugin methods take JSON, so each plugin's tests name the id
-  fields of its methods. The test starts in stage 1 with a list of methods not converted yet; the list shrinks each
-  stage and is empty when stage 4 ends.
+  fields of its methods. Every method is converted: the test has no list of methods left to convert.
 - **Security tests:** credential list never sent for a group user; deleting a group and restoring an old backup stay
   closed; races (group change during stream registration, view shrinking with queued tasks, group save during tagging);
   job, stream and download ids of user A refused for user B; every `EventService` method refused for a group user;
@@ -268,9 +268,9 @@ an independent security review the same day). A user may be limited to part of t
   whose rules changed; a stream whose devices changed between check and registration ends with UNAVAILABLE "Your
   devices changed. Connect again.".
 - **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/*`, `Persistence/DeviceGroupsMigrationTests`;
-  `tests/Oadm.Server.Tests/DeviceGroupServiceTests`, `DeviceGroups/ArchitectureTests` (allow-lists with the converting
-  package), `DeviceGroups/CanaryTests` (cases, not-converted methods and plugins per package, methods without devices,
-  Administrator and all-devices methods closed by the rule).
+  `tests/Oadm.Server.Tests/DeviceGroupServiceTests`, `DeviceGroups/ArchitectureTests` (no gRPC class takes the global
+  device access; service methods with raw ids on an allow-list with a reason), `DeviceGroups/CanaryTests` (cases,
+  methods without devices, plugins without a canary and why, Administrator and all-devices methods closed by the rule).
 
 ## Code (add devices)
 
@@ -371,9 +371,9 @@ an independent security review the same day). A user may be limited to part of t
 
 - Restart, Users, Date and time, Upgrade firmware, Applications, Network settings, Assign IP address, Device
   configuration, Set output and the VAPIX Commander set `minSdkVersion` 0.4.0. Their queries implement the call overload
-  and read only the queried device; tasks touch only their own device. Each test project runs a `PluginCanary`;
-  packages without a page through `tests/Shared/TaskPluginCanaryHost.cs` (tasks started through the call, actions run on
-  one device of the call). `tests/Oadm.Plugins.Restart.Tests` is new for that.
+  and read only the queried device; tasks touch only their own device. The host scopes their runs and
+  queries (server canary cases of TaskService); `CanaryTests.PluginsConverted` names these packages with that reason
+  (a `PluginCanary` over them would test only the fake host). The VAPIX Commander has a page and runs one.
 - Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
   `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). It probes addresses only
   on a route the caller's group names (`ICallContext.CoversRoute(siteId)`, SDK 0.4.0: the group's sites, the server's
