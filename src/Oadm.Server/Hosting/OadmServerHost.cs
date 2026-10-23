@@ -315,7 +315,11 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>(),
                 sp.GetRequiredService<ITaskDeviceCredentials>(),
-                sp.GetRequiredService<ITaskDeviceAddresses>());
+                sp.GetRequiredService<ITaskDeviceAddresses>())
+            {
+                // A queued task checks its owner's current view when it leaves the queue.
+                Views = sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
+            };
             // A raised limit starts queued tasks at once; a lowered one lets running tasks finish.
             sp.GetRequiredService<TaskParallelismSetting>().Changed += (_, _) => engine.RescheduleQueued();
             return engine;

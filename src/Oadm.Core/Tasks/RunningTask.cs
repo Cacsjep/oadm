@@ -63,6 +63,12 @@ internal sealed class RunningTask : IDisposable
 
     public string Owner { get; }
 
+    /// <summary>The user who started the task (in memory only); null for tasks the system started.</summary>
+    public TaskCaller? Caller { get; init; }
+
+    /// <summary>Reads the <see cref="Caller"/>'s current view when the task leaves the queue; null without a caller.</summary>
+    public DeviceGroups.DeviceViewFactory? Views { get; init; }
+
     public DateTimeOffset Created { get; }
 
     public IReadOnlyList<Guid> DeviceIds => _deviceOrder;

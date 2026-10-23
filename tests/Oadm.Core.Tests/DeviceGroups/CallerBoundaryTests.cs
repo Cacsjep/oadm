@@ -14,7 +14,7 @@ namespace Oadm.Core.Tests.DeviceGroups;
 public sealed class CallerBoundaryTests
 {
     private static AuthenticatedCaller Caller() =>
-        new(Guid.NewGuid(), "anna", BuiltInRoles.OperatorId, PermissionSet.All, "local", "pc", "hash");
+        new(Guid.NewGuid(), "anna", BuiltInRoles.OperatorId, PermissionSet.All, "local", "pc", "hash") { Devices = CallerDevices.All };
 
     [Fact]
     public async Task SuppressRunDetachedAndRaiseClearTheCaller()

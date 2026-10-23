@@ -43,8 +43,60 @@ public sealed partial class TaskPluginRunnableCache(
     private readonly HashSet<string> _reasonFailuresLogged = new(StringComparer.Ordinal);
     private Entry? _entry;
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Scoped> _scoped = new(StringComparer.Ordinal);
+
     /// <summary>Number of computations so far (tests and diagnostics).</summary>
     public int Computations { get; private set; }
+
+    /// <summary>
+    /// The runnable sets of <paramref name="view"/> (docs/spec/device-scope.md, Tasks): for a user with all devices the
+    /// cached sets as they are; for a user with a device group every set and every reason intersected with the view's
+    /// devices before anything is encoded, so no id outside the view leaves the server. Cached per group while neither the
+    /// sets nor the view's devices changed.
+    /// </summary>
+    public async Task<IReadOnlyList<TaskPluginRunnable>> GetAsync(Core.DeviceGroups.DeviceView view, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        var all = await GetAsync(ct).ConfigureAwait(false);
+        if (view.HasAllDevices)
+        {
+            return all;
+        }
+
+        var ids = await view.IdsAsync(ct).ConfigureAwait(false);
+        var key = view.ScopeKey;
+        if (_scoped.TryGetValue(key, out var cached) && ReferenceEquals(cached.Source, all) && ReferenceEquals(cached.Ids, ids))
+        {
+            return cached.Results;
+        }
+
+        IReadOnlyList<TaskPluginRunnable> results = [.. all.Select(entry => Within(entry, ids))];
+        _scoped[key] = new Scoped(all, ids, results);
+        return results;
+    }
+
+    /// <summary>The entry with only the devices of <paramref name="ids"/>; reasons keep "most devices first".</summary>
+    internal static TaskPluginRunnable Within(TaskPluginRunnable entry, IReadOnlySet<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(ids);
+        var runnable = entry.Runnable.Where(ids.Contains).ToList();
+        var reasons = entry.Reasons
+            .Select(r => new NotRunnableReason(r.Reason, [.. r.DeviceIds.Where(ids.Contains)]))
+            .Where(r => r.DeviceIds.Count > 0)
+            .OrderByDescending(r => r.DeviceIds.Count)
+            .ThenBy(r => r.Reason, StringComparer.Ordinal)
+            .ToList();
+        var notRunnable = new List<Guid>(reasons.Sum(r => r.DeviceIds.Count));
+        foreach (var reason in reasons)
+        {
+            notRunnable.AddRange(reason.DeviceIds);
+        }
+
+        return new TaskPluginRunnable(entry.Plugin, runnable, notRunnable, reasons);
+    }
+
+    private sealed record Scoped(IReadOnlyList<TaskPluginRunnable> Source, IReadOnlySet<Guid> Ids, IReadOnlyList<TaskPluginRunnable> Results);
 
     /// <summary>The runnable sets of every menu task plugin (ShowInMenus), cached.</summary>
     public async Task<IReadOnlyList<TaskPluginRunnable>> GetAsync(CancellationToken ct)

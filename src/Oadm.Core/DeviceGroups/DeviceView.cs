@@ -28,6 +28,9 @@ public sealed class DeviceView
 
     internal ViewKind Kind { get; }
 
+    /// <summary>The factory that made the view (the task engine reads the owner's current view through it).</summary>
+    internal DeviceViewFactory Factory => _factory;
+
     /// <summary>Every device: a user with all devices, an administrator, or <see cref="DeviceViewFactory.System"/>.</summary>
     public bool HasAllDevices => Kind is ViewKind.All or ViewKind.System;
 

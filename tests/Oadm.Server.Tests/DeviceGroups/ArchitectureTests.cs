@@ -43,6 +43,7 @@ public sealed partial class ArchitectureTests
     internal static readonly Dictionary<string, string> ServiceAllowList = new(StringComparer.Ordinal)
     {
         ["DeviceFirstPasswordService.ReadPoliciesAsync"] = "raw-id form kept for system work; GetPassphrasePolicies uses the ViewedDevices overload (converted)",
+        ["TaskEngine.RunAsync"] = "the raw-id form is the system ITaskRunner (ctx.System.Tasks, event rule actions; a group caller is refused outside the view); Run uses the ViewedDevices overload (converted in tasks)",
     };
 
     private static IEnumerable<Type> GrpcServiceClasses() =>
@@ -128,8 +129,6 @@ public sealed partial class ArchitectureTests
         ["VapixClientFactory.CreateAsync"] = "devices-core",
         ["VapixClientFactory.Invalidate"] = "devices-core",
         ["DeviceTagStore.SetDeviceTagsAsync"] = "shared-core",
-        ["TaskEngine.RunAsync"] = "tasks",
-        ["TaskPluginQueries.QueryAsync"] = "tasks",
         ["ActionRunner.TestAsync"] = "shared-core",
         ["ComplianceService.ListChoicesAsync"] = "shared-core",
         ["EventLog.Write"] = "shared-core",

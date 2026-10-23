@@ -87,14 +87,67 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     /// One task per device, all with a new shared batch id; the payload is shared in memory by the
     /// batch and never persisted. <paramref name="ct"/> only cancels the submission, not the tasks.
     /// Use <see cref="Cancel"/>. Throws <see cref="ArgumentException"/> for an unknown plugin id or an
-    /// empty device list. Inside an authenticated call the owner is the caller ("user@machine",
-    /// <see cref="Auth.CallerContext"/>), whatever <paramref name="owner"/> says.
+    /// empty device list. This is the system runner (<c>ctx.System.Tasks</c>, event rule actions). Inside an authenticated
+    /// call the owner is the caller ("user@machine", <see cref="Auth.CallerContext"/>), whatever <paramref name="owner"/>
+    /// says, and the backstop applies: a caller with a device group runs only on devices of the view (the whole run is
+    /// refused otherwise, <see cref="DevicesNotAvailableException"/>), never without <see cref="Views"/>.
     /// </remarks>
     public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
-        owner = Auth.CallerContext.Current?.Owner ?? owner;
         ArgumentNullException.ThrowIfNull(deviceIds);
+        var current = Auth.CallerContext.Current;
+        if (current is not null && !current.HasAllDevices)
+        {
+            // The backstop: a user with a device group never reaches the system runner's full device list.
+            var views = Views ?? throw new DevicesNotAvailableException(Math.Max(1, deviceIds.Distinct().Count()));
+            var view = await views.ForAsync(current, ct).ConfigureAwait(false);
+            return await RunAsync(pluginId, await view.GetAsync(deviceIds, ct).ConfigureAwait(false), payloadJson, TaskCaller.Of(current), ct).ConfigureAwait(false);
+        }
+
+        var caller = current is null ? null : TaskCaller.Of(current);
+        return await RunCoreAsync(pluginId, deviceIds, payloadJson, current?.Owner ?? owner, caller, caller is null ? null : Views, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs on devices of the caller's view (gRPC Run, <c>call.Tasks</c>): one task per device as above, owned by
+    /// <paramref name="caller"/>. Each task checks the caller's current view again when it leaves the queue: a device that
+    /// left it (or a user who lost it) fails with <see cref="DeviceMessages.NoLongerAvailable"/>, nothing is sent to it.
+    /// </summary>
+    public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, DeviceGroups.ViewedDevices devices, string? payloadJson, TaskCaller caller, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        ArgumentNullException.ThrowIfNull(devices);
+        ArgumentNullException.ThrowIfNull(caller);
+        return RunCoreAsync(pluginId, devices.Ids, payloadJson, caller.Owner, caller, devices.View.Factory, ct);
+    }
+
+    /// <summary>
+    /// The task runner of one user's view (<c>call.Tasks</c> of the user's call): a run with any device outside the view is
+    /// refused whole; tasks are owned by <paramref name="caller"/> and checked again when they leave the queue.
+    /// </summary>
+    public Sdk.Tasks.ITaskRunner ForView(DeviceGroups.DeviceView view, TaskCaller caller)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(caller);
+        return view.IsSystem ? this : new ViewTaskRunner(this, view, caller);
+    }
+
+    /// <summary>
+    /// The call of <paramref name="caller"/> with <paramref name="view"/> for task plugins (the task dialog's queries):
+    /// devices, VAPIX clients and task runs only of the view.
+    /// </summary>
+    public ICallContext CallFor(DeviceGroups.DeviceView view, TaskCaller caller) =>
+        new TaskCallContext(caller, view, _vapix, ForView(view, caller));
+
+    /// <summary>
+    /// Reads a task owner's current view when the task leaves the queue (set by the server). Without it, a call of a user
+    /// with a device group cannot run tasks through <see cref="RunAsync(string, IReadOnlyList{Guid}, string?, string, CancellationToken)"/>.
+    /// </summary>
+    public DeviceGroups.DeviceViewFactory? Views { get; init; }
+
+    private async Task<IReadOnlyList<Guid>> RunCoreAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, CancellationToken ct)
+    {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         var distinct = deviceIds.Distinct().ToArray();
@@ -110,37 +163,49 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         var batchId = Guid.NewGuid();
         var name = TaskNameFor(registration, payloadJson);
+        var start = new TaskStart(registration, batchId, payloadJson, owner, name, caller, caller is null ? null : views);
         if (distinct.Length == 1)
         {
-            return [await StartTaskAsync(registration, batchId, distinct[0], payloadJson, owner, name, ct).ConfigureAwait(false)];
+            return [await StartTaskAsync(start, distinct[0], ct).ConfigureAwait(false)];
         }
 
-        return await StartBatchAsync(registration, batchId, distinct, payloadJson, owner, name, ct).ConfigureAwait(false);
+        return await StartBatchAsync(start, distinct, ct).ConfigureAwait(false);
     }
+
+    /// <summary>What every task of one Run shares.</summary>
+    private sealed record TaskStart(RegisteredTaskPlugin Registration, Guid BatchId, string? PayloadJson, string Owner, string Name, TaskCaller? Caller, DeviceGroups.DeviceViewFactory? Views);
+
+    private RunningTask NewTask(TaskStart start, Guid deviceId, DateTimeOffset created) =>
+        new(
+            Guid.NewGuid(),
+            start.Registration,
+            [deviceId],
+            start.PayloadJson,
+            start.Owner ?? string.Empty,
+            created,
+            _shutdown.Token,
+            _options.MaxLogEntriesPerTask,
+            start.BatchId,
+            start.Name)
+        {
+            Caller = start.Caller,
+            Views = start.Views,
+        };
 
     /// <summary>
     /// Scale: a Run on 5,000 devices publishes 5,000 Added changes and writes all tasks in one store
     /// transaction (<see cref="ITaskStore.AddRangeAsync"/>) before any of them starts; the tasks then
     /// wait in Queued for a slot of their plugin.
     /// </summary>
-    private async Task<IReadOnlyList<Guid>> StartBatchAsync(RegisteredTaskPlugin registration, Guid batchId, Guid[] deviceIds, string? payloadJson, string owner, string name, CancellationToken ct)
+    private async Task<IReadOnlyList<Guid>> StartBatchAsync(TaskStart start, Guid[] deviceIds, CancellationToken ct)
     {
+        var (registration, batchId, owner) = (start.Registration, start.BatchId, start.Owner);
         var created = _time.GetUtcNow();
         var tasks = new List<RunningTask>(deviceIds.Length);
         var snapshots = new List<TaskRecord>(deviceIds.Length);
         foreach (var deviceId in deviceIds)
         {
-            var task = new RunningTask(
-                Guid.NewGuid(),
-                registration,
-                [deviceId],
-                payloadJson,
-                owner ?? string.Empty,
-                created,
-                _shutdown.Token,
-                _options.MaxLogEntriesPerTask,
-                batchId,
-                name);
+            var task = NewTask(start, deviceId, created);
             tasks.Add(task);
             _active[task.Id] = task;
             lock (task.PublishLock)
@@ -214,19 +279,10 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         return name;
     }
 
-    private async Task<Guid> StartTaskAsync(RegisteredTaskPlugin registration, Guid batchId, Guid deviceId, string? payloadJson, string owner, string name, CancellationToken ct)
+    private async Task<Guid> StartTaskAsync(TaskStart start, Guid deviceId, CancellationToken ct)
     {
-        var task = new RunningTask(
-            Guid.NewGuid(),
-            registration,
-            [deviceId],
-            payloadJson,
-            owner ?? string.Empty,
-            _time.GetUtcNow(),
-            _shutdown.Token,
-            _options.MaxLogEntriesPerTask,
-            batchId,
-            name);
+        var registration = start.Registration;
+        var task = NewTask(start, deviceId, _time.GetUtcNow());
 
         _active[task.Id] = task;
         try
@@ -327,6 +383,167 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
     /// <summary>Whether the task is queued or running.</summary>
     public bool? IsActive(Guid taskId) => _active.ContainsKey(taskId);
+
+    /// <summary>Cancels the task only when <paramref name="userId"/> started it (<c>call.Tasks</c> of a user with a device group).</summary>
+    internal bool CancelOwn(Guid taskId, Guid userId) =>
+        _active.TryGetValue(taskId, out var task) && task.Caller?.UserId == userId && task.Cancel();
+
+    /// <summary>Whether a task <paramref name="userId"/> started is queued or running; false for the tasks of others.</summary>
+    internal bool? IsActiveOwn(Guid taskId, Guid userId) =>
+        _active.TryGetValue(taskId, out var task) && task.Caller?.UserId == userId;
+
+    // ------------------------------------------------------------------ the caller's view (docs/spec/device-scope.md, Tasks)
+    // A user with all devices gets exactly the unfiltered answers. For a user with a device group, a task belongs to the view
+    // when its device is in it now: tasks of removed devices are for users with all devices only.
+
+    /// <summary>The task when it is in <paramref name="view"/>; null for an unknown task and for one outside (the same answer).</summary>
+    public async Task<TaskRecord?> GetAsync(DeviceGroups.DeviceView view, Guid taskId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        var record = await GetAsync(taskId, ct).ConfigureAwait(false);
+        return record is not null && await IsInViewAsync(view, record, ct).ConfigureAwait(false) ? record : null;
+    }
+
+    /// <summary><see cref="GetLogAsync(Guid, CancellationToken)"/> of a task in <paramref name="view"/>; null otherwise.</summary>
+    public async Task<IReadOnlyList<TaskLogEntry>?> GetLogAsync(DeviceGroups.DeviceView view, Guid taskId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return view.HasAllDevices || await GetAsync(view, taskId, ct).ConfigureAwait(false) is not null
+            ? await GetLogAsync(taskId, ct).ConfigureAwait(false)
+            : null;
+    }
+
+    /// <summary>
+    /// Requests the cancellation of a task in <paramref name="view"/>. False when the task is unknown or outside the view; true
+    /// when it is in the view (also when it is no longer active).
+    /// </summary>
+    public async Task<bool> CancelAsync(DeviceGroups.DeviceView view, Guid taskId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (view.HasAllDevices)
+        {
+            return Cancel(taskId) || await GetAsync(taskId, ct).ConfigureAwait(false) is not null;
+        }
+
+        if (await GetAsync(view, taskId, ct).ConfigureAwait(false) is null)
+        {
+            return false;
+        }
+
+        Cancel(taskId);
+        return true;
+    }
+
+    /// <summary><see cref="DeleteAsync(Guid, CancellationToken)"/> of a task in <paramref name="view"/>; false otherwise.</summary>
+    public async Task<bool> DeleteAsync(DeviceGroups.DeviceView view, Guid taskId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (!view.HasAllDevices && await GetAsync(view, taskId, ct).ConfigureAwait(false) is null)
+        {
+            return false;
+        }
+
+        return await DeleteAsync(taskId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary><see cref="ListPageAsync(int, int, CancellationToken)"/> of the tasks of <paramref name="view"/> (filtered in the query).</summary>
+    public async Task<TaskPage> ListPageAsync(DeviceGroups.DeviceView view, int offset, int limit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (view.HasAllDevices)
+        {
+            return await ListPageAsync(offset, limit, ct).ConfigureAwait(false);
+        }
+
+        var ids = await view.IdsAsync(ct).ConfigureAwait(false);
+        var page = await _store.ListPageAsync(ids, offset, limit, ct).ConfigureAwait(false);
+        return page with { Tasks = [.. page.Tasks.Select(Live)] };
+    }
+
+    /// <summary><see cref="ListAsync(CancellationToken)"/> of the tasks of <paramref name="view"/> (filtered in the query).</summary>
+    public async Task<IReadOnlyList<TaskRecord>> ListAsync(DeviceGroups.DeviceView view, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (view.HasAllDevices)
+        {
+            return await ListAsync(ct).ConfigureAwait(false);
+        }
+
+        var ids = await view.IdsAsync(ct).ConfigureAwait(false);
+        return await FilteredSnapshotAsync(ids, null, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <see cref="SubscribeWithSnapshotAsync(int?, CancellationToken)"/> for a watcher with <paramref name="view"/>: the
+    /// snapshot holds the active tasks and the newest <paramref name="limit"/> tasks of the view (the limit after the
+    /// filter, in the query), the subscription only the view's changes (<see cref="TaskViewSubscription"/>).
+    /// </summary>
+    public async Task<(IReadOnlyList<TaskRecord> Snapshot, TaskViewSubscription Subscription)> SubscribeWithSnapshotAsync(DeviceGroups.DeviceView view, int? limit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        var subscription = await TaskViewSubscription.CreateAsync(_feed.Subscribe(), view, ct).ConfigureAwait(false);
+        try
+        {
+            var snapshot = subscription.PassesEverything
+                ? await SnapshotAsync(limit, ct).ConfigureAwait(false)
+                : await FilteredSnapshotAsync(subscription.Ids, limit, ct).ConfigureAwait(false);
+            subscription.MarkSent(snapshot);
+            return (snapshot, subscription);
+        }
+        catch
+        {
+            subscription.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary><see cref="SnapshotAsync(int?, CancellationToken)"/> of a group's view: the device ids filter the query.</summary>
+    public async Task<IReadOnlyList<TaskRecord>> SnapshotAsync(DeviceGroups.DeviceView view, int? limit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return view.HasAllDevices
+            ? await SnapshotAsync(limit, ct).ConfigureAwait(false)
+            : await FilteredSnapshotAsync(await view.IdsAsync(ct).ConfigureAwait(false), limit, ct).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<TaskRecord>> FilteredSnapshotAsync(IReadOnlySet<Guid> ids, int? limit, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var recent = limit is { } take
+            ? (await _store.ListPageAsync(ids, 0, take, ct).ConfigureAwait(false)).Tasks
+            : await _store.ListAsync(ids, ct).ConfigureAwait(false);
+        var active = (await _store.ListActiveAsync(ct).ConfigureAwait(false)).Where(r => ids.Contains(r.DeviceId));
+        var seen = new HashSet<Guid>();
+        var result = new List<TaskRecord>(recent.Count);
+        foreach (var record in active.Concat(recent).OrderByDescending(r => r.CreatedUtc))
+        {
+            if (seen.Add(record.Id))
+            {
+                result.Add(Live(record));
+            }
+        }
+
+        // Tasks published but not stored yet (see ListAsync), of the view's devices only.
+        var unstored = _active.Values.Where(t => t.DeviceIds.Count > 0 && ids.Contains(t.DeviceIds[0]) && seen.Add(t.Id))
+            .Select(t => t.Snapshot()).OrderByDescending(t => t.CreatedUtc).ToList();
+        if (unstored.Count == 0)
+        {
+            return result;
+        }
+
+        unstored.AddRange(result);
+        return unstored;
+    }
+
+    private TaskRecord Live(TaskRecord record) => _active.TryGetValue(record.Id, out var live) ? live.Snapshot() : record;
+
+    /// <summary>Whether the task's device is in the view now (one device read; a removed device is in no group's view).</summary>
+    private static async Task<bool> IsInViewAsync(DeviceGroups.DeviceView view, TaskRecord record, CancellationToken ct) =>
+        view.HasAllDevices || (record.DeviceId != Guid.Empty && await view.FindAsync(record.DeviceId, ct).ConfigureAwait(false) is not null);
 
     /// <summary>Completes when the task has finished (immediately if it is not active).</summary>
     public Task WaitForCompletionAsync(Guid taskId, CancellationToken ct)
@@ -700,7 +917,22 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         try
         {
             var device = await _devices.FindAsync(deviceId, ct).ConfigureAwait(false);
-            var precondition = CheckPrecondition(device, task);
+            string? precondition = null;
+
+            // Leaving the queue: the owner's view as it is now (another group, fewer devices, a deleted user). A device that left
+            // it fails like an unknown one, before any request and before anything about its state is said.
+            DeviceGroups.DeviceView? ownerView = null;
+            if (device is not null && task.Caller is { } caller && task.Views is { } views)
+            {
+                ownerView = await views.ForUserAsync(caller.UserId, ct).ConfigureAwait(false);
+                if (!ownerView.Contains(device))
+                {
+                    precondition = DeviceMessages.NoLongerAvailable(1);
+                }
+            }
+
+            precondition ??= CheckPrecondition(device, task);
+
             if (precondition is not null)
             {
                 task.SetDevice(deviceId, TaskState.Failed, precondition, null);
@@ -722,6 +954,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     License = _plugins.Licenses?.LicenseOf(task.Registration.Origin.PackageId),
                     Pro = _plugins.Pro,
                     Network = (_options.Networks ?? Sites.DeviceNetworks.Local).For(device!),
+                    Caller = ownerView is not null && task.Caller is { } owner
+                        ? new TaskCallContext(owner, ownerView, _vapix, ForView(ownerView, owner))
+                        : null,
                 };
                 steps = context.Steps;
                 task.AttachSteps(steps);

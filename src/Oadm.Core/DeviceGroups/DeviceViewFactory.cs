@@ -45,6 +45,9 @@ public sealed class DeviceViewFactory
     /// <summary>The global device repository behind the views (system work only).</summary>
     internal DeviceRepository Devices { get; }
 
+    /// <summary>The device change feed behind the views (a task watcher follows its devices entering and leaving a view).</summary>
+    internal IDeviceChangeFeed Feed => _feed;
+
     /// <summary>The tag and site catalog the filters resolve against.</summary>
     public DeviceScopeCatalog Catalog => _catalog;
 

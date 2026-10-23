@@ -48,6 +48,24 @@ public interface ITaskStore
         return new TaskPage([.. all.Skip(Math.Max(0, offset)).Take(Math.Max(0, limit))], all.Count);
     }
 
+    /// <summary>
+    /// One page of the tasks of <paramref name="deviceIds"/> (the history of a device group's view), newest first, with their
+    /// number. Filtered in the query (<c>EfTaskStore</c>: one JSON parameter through <c>json_each</c>), never after the page.
+    /// </summary>
+    async Task<TaskPage> ListPageAsync(IReadOnlySet<Guid> deviceIds, int offset, int limit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        var all = (await ListAsync(ct).ConfigureAwait(false)).Where(t => deviceIds.Contains(t.DeviceId)).ToList();
+        return new TaskPage([.. all.Skip(Math.Max(0, offset)).Take(Math.Max(0, limit))], all.Count);
+    }
+
+    /// <summary>Every task of <paramref name="deviceIds"/>, newest first (filtered in the query like the page).</summary>
+    async Task<IReadOnlyList<TaskRecord>> ListAsync(IReadOnlySet<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        return [.. (await ListAsync(ct).ConfigureAwait(false)).Where(t => deviceIds.Contains(t.DeviceId))];
+    }
+
     /// <summary>Tasks that are not finished (Queued or Running), newest first.</summary>
     async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(CancellationToken ct) =>
         [.. (await ListAsync(ct).ConfigureAwait(false)).Where(t => !t.State.IsTerminal())];
