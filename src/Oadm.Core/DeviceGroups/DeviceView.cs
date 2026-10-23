@@ -60,6 +60,12 @@ public sealed class DeviceView
     /// <inheritdoc cref="Contains(IDeviceInfo)"/>
     public bool Contains(DeviceScopeRow row) => Filter.Contains(row);
 
+    /// <summary>
+    /// True when the view reaches the network of a route: all devices, a site the group names, or the server's own network
+    /// (<paramref name="siteId"/> null) when the group names "This server" (<c>ICallContext.CoversRoute</c>).
+    /// </summary>
+    public bool CoversRoute(Guid? siteId) => HasAllDevices || (siteId is { } site ? Filter.CoversSite(site) : Filter.ThisServer);
+
     /// <summary>Every device of the view, with its computed status (sorted by serial).</summary>
     public async Task<IReadOnlyList<Device>> ListAsync(CancellationToken ct)
     {

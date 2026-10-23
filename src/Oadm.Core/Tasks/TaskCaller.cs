@@ -69,6 +69,8 @@ public sealed class TaskCallContext : ICallContext
 
     public bool HasAllDevices => _view.HasAllDevices;
 
+    public bool CoversRoute(Guid? siteId) => _view.CoversRoute(siteId);
+
     public IDeviceRepository Devices { get; }
 
     public IVapixClientFactory Vapix { get; }

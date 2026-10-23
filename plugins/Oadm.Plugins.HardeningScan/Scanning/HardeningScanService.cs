@@ -220,7 +220,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
         return Begin(scope, request.Level, devices, null, job =>
         {
             var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var owned = jobs.Start(caller, "scan", async (owned, token) =>
+            var owned = jobs.StartShared(caller, "scan", async (owned, token) =>
             {
                 await ready.Task.ConfigureAwait(false);
                 using (token.Register(job.Cancel.Cancel))

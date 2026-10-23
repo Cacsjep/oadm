@@ -111,6 +111,8 @@ internal sealed class HostCallContext : ICallContext
 
     public bool Has(string permission) => Caller.Caller.Has(permission);
 
+    public bool CoversRoute(Guid? siteId) => Caller.View.CoversRoute(siteId);
+
     public bool Contains(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
