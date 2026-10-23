@@ -147,10 +147,17 @@ public sealed class FakeActionContext(IVapixClient? vapix = null) : IActionConte
 /// <summary>A task started through <see cref="FakeCoreContext"/>.</summary>
 public sealed record FakeTaskRun(string PluginId, IReadOnlyList<Guid> DeviceIds, string? PayloadJson, string Owner);
 
+/// <summary>An event a plugin published through <see cref="FakeCoreContext"/>, with its audience (the old publish: all devices).</summary>
+public sealed record FakePublishedEvent(string Topic, string? PayloadJson, PluginEventAudience Audience);
+
 /// <summary>
 /// The server's context of a core plugin: the devices (<see cref="DeviceList"/>), a camera per device
-/// (<see cref="Cameras"/>), the events the plugin publishes to its page (<see cref="Published"/>), its settings, the
-/// tasks it starts (<see cref="TaskRuns"/>) and an optional data folder.
+/// (<see cref="Cameras"/>), the events the plugin publishes to its page (<see cref="Published"/>, with their audience in
+/// <see cref="PublishedEvents"/>), its settings, the tasks it starts (<see cref="TaskRuns"/>) and an optional data folder.
+/// Call methods like the host does with <see cref="InvokeAsync"/> / <see cref="OpenDownloadAsync"/> / <see cref="QueryAsync"/>:
+/// during the call of a user with a device group (<see cref="CallAsGroup"/>) the context's own <see cref="Devices"/>,
+/// <see cref="Vapix"/>, <see cref="Tasks"/> and <see cref="System"/> refuse with <see cref="DeviceAccessRefusedException"/>
+/// (also in work the plugin starts from the call and in that user's jobs), exactly like on the server.
 /// </summary>
 public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVapixClientFactory, IPluginEvents, ITaskRunner
 {
@@ -186,6 +193,20 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
 
     /// <inheritdoc />
     public ITaskRunner Tasks => this;
+
+    /// <summary>Every device, guarded like the server: in a group user's call only for methods with a <see cref="ICorePlugin.SystemAccessReason"/>.</summary>
+    public ISystemAccess System => field ??= new FakeSystemAccess(this);
+
+    /// <summary>Every event published, with its audience, in order.</summary>
+    public ConcurrentQueue<FakePublishedEvent> PublishedEvents { get; } = new();
+
+    /// <summary>The full accesses the context refused during group users' calls ("Devices", "Vapix", "System.Devices", ...).</summary>
+    public ConcurrentQueue<string> RefusedAccesses { get; } = new();
+
+    /// <summary>How many VAPIX clients were handed out per device (through the context or a call).</summary>
+    public IReadOnlyDictionary<Guid, int> ClientsCreated => _clients;
+
+    private readonly ConcurrentDictionary<Guid, int> _clients = new();
 
     /// <inheritdoc />
     public IPluginSettings Settings => PluginSettings;
@@ -248,24 +269,190 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     public FakeCallContext CallAsGroup(IEnumerable<Guid> deviceIds, string userName = "operator") => FakeCallContext.WithGroup(this, deviceIds, userName);
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. DeviceList]);
+    public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
+    {
+        Check("Devices");
+        return Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. DeviceList]);
+    }
 
     /// <inheritdoc />
-    public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(DeviceList.Find(d => d.Id == id));
+    public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)
+    {
+        Check("Devices");
+        return Task.FromResult(DeviceList.Find(d => d.Id == id));
+    }
 
     /// <inheritdoc />
-    public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct) =>
-        Cameras.TryGetValue(deviceId, out var camera) ? Task.FromResult<IVapixClient>(camera) : throw new KeyNotFoundException($"No camera for device {deviceId}.");
+    public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct)
+    {
+        Check("Vapix");
+        return ClientFor(deviceId);
+    }
 
     /// <inheritdoc />
-    public void Publish(string topic, string? payloadJson) => Published.Writer.TryWrite(new PluginEvent(topic, payloadJson));
+    public void Publish(string topic, string? payloadJson) => Publish(topic, payloadJson, PluginEventAudience.AllDevices);
+
+    /// <inheritdoc />
+    public void Publish(string topic, string? payloadJson, PluginEventAudience audience)
+    {
+        ArgumentNullException.ThrowIfNull(audience);
+        PublishedEvents.Enqueue(new FakePublishedEvent(topic, payloadJson, audience));
+        Published.Writer.TryWrite(new PluginEvent(topic, payloadJson));
+    }
+
+    /// <summary>
+    /// The events published so far as the page of <paramref name="watcher"/> receives them on the server: only those whose
+    /// audience covers the watcher (the old publish: watchers with all devices), rows of a <see cref="PluginEventAudienceKind.DeviceRows"/>
+    /// event filtered to the watcher's devices.
+    /// </summary>
+    public IReadOnlyList<PluginEvent> EventsSeenBy(ICallContext watcher)
+    {
+        ArgumentNullException.ThrowIfNull(watcher);
+        return [.. PublishedEvents.Select(e => FakeHostRules.Deliver(this, e, watcher)).OfType<PluginEvent>()];
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
+        Check("Tasks");
+        return Run(pluginId, deviceIds, payloadJson, owner);
+    }
+
+    /// <summary>
+    /// Calls <paramref name="method"/> like the host: refuses a method the plugin keeps for users with all devices
+    /// (<see cref="ICorePlugin.RequiresAllDevices"/>) for a group user before the plugin runs, and refuses the context's full
+    /// accesses during the call of a group user (except <see cref="System"/> in methods with a
+    /// <see cref="ICorePlugin.SystemAccessReason"/>).
+    /// </summary>
+    public Task<string?> InvokeAsync(ICorePlugin plugin, ICallContext call, string method, string? payloadJson, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(plugin);
+        RequireOwn(call);
+        return FakeHostRules.CallAsync(plugin, call, method, () => plugin.InvokeAsync(call, method, payloadJson, ct));
+    }
+
+    /// <summary>Opens a download like the host (the rules of <see cref="InvokeAsync"/>).</summary>
+    public Task<PluginDownload> OpenDownloadAsync(ICorePlugin plugin, ICallContext call, string method, string? payloadJson, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(plugin);
+        RequireOwn(call);
+        if (plugin is not ICorePluginDownloads downloads)
+        {
+            throw new NotSupportedException($"The plugin '{plugin.Id}' has no downloads.");
+        }
+
+        return FakeHostRules.CallAsync(plugin, call, method, () => downloads.OpenDownloadAsync(call, method, payloadJson, ct));
+    }
+
+    /// <summary>
+    /// Runs a task plugin query like the host: <paramref name="device"/> must be in the call's devices (else
+    /// <see cref="DevicesNotAvailableException"/>, nothing sent), the query context's <c>Devices</c> are the call's devices,
+    /// its VAPIX client is the device's camera.
+    /// </summary>
+    public async Task<string?> QueryAsync(ITaskPluginQuery plugin, ICallContext call, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(plugin);
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(device);
+        if (!call.Contains(device))
+        {
+            throw new DevicesNotAvailableException();
+        }
+
+        var vapix = await ClientFor(device.Id).ConfigureAwait(false);
+        var context = new FakeQueryContext(vapix, Logger, call.Devices);
+        using (FakeHostRules.Use(new FakeHostRules.Mark(call.HasAllDevices, false)))
+        {
+            return await plugin.QueryAsync(context, call, device, method, payloadJson, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A call of another context would mix two servers: refused.</summary>
+    private void RequireOwn(ICallContext call)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        if (call is FakeCallContext fake && !ReferenceEquals(fake.Core, this))
+        {
+            throw new ArgumentException("The call belongs to another FakeCoreContext.", nameof(call));
+        }
+    }
+
+    /// <summary>The camera of a device without the call checks (calls and the system access).</summary>
+    internal Task<IVapixClient> ClientFor(Guid deviceId)
+    {
+        if (!Cameras.TryGetValue(deviceId, out var camera))
+        {
+            throw new KeyNotFoundException($"No camera for device {deviceId}.");
+        }
+
+        _clients.AddOrUpdate(deviceId, 1, (_, n) => n + 1);
+        return Task.FromResult<IVapixClient>(camera);
+    }
+
+    /// <summary>Records a task run without the call checks.</summary>
+    internal Task<IReadOnlyList<Guid>> Run(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner)
+    {
         ArgumentNullException.ThrowIfNull(deviceIds);
-        TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner));
+        lock (TaskRuns)
+        {
+            TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner));
+        }
+
         return Task.FromResult<IReadOnlyList<Guid>>([.. deviceIds.Select(_ => Guid.NewGuid())]);
+    }
+
+    /// <summary>The server's refusal of the full accesses in a group user's call.</summary>
+    internal void Check(string member, bool system = false)
+    {
+        if (FakeHostRules.Refuses(system))
+        {
+            RefusedAccesses.Enqueue(member);
+            throw new DeviceAccessRefusedException();
+        }
+    }
+
+    private sealed class FakeSystemAccess(FakeCoreContext core) : ISystemAccess, IDeviceRepository, IVapixClientFactory, ITaskRunner
+    {
+        public IDeviceRepository Devices => this;
+
+        public IVapixClientFactory Vapix => this;
+
+        public ITaskRunner Tasks => this;
+
+        public IDeviceEventStreams? EventStreams => null;
+
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
+        {
+            core.Check("System.Devices", system: true);
+            return Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. core.DeviceList]);
+        }
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)
+        {
+            core.Check("System.Devices", system: true);
+            return Task.FromResult(core.DeviceList.Find(d => d.Id == id));
+        }
+
+        public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct)
+        {
+            core.Check("System.Vapix", system: true);
+            return core.ClientFor(deviceId);
+        }
+
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+        {
+            core.Check("System.Tasks", system: true);
+            return core.Run(pluginId, deviceIds, payloadJson, owner);
+        }
+    }
+
+    private sealed class FakeQueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices) : ITaskQueryContext
+    {
+        public IVapixClient Vapix { get; } = vapix;
+
+        public ILogger Logger { get; } = logger;
+
+        public IDeviceRepository? Devices { get; } = devices;
     }
 }
 

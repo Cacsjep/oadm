@@ -37,6 +37,7 @@ public sealed partial class ArchitectureTests
     /// </summary>
     internal static readonly Dictionary<string, string> ServiceAllowList = new(StringComparer.Ordinal)
     {
+        ["TaskPluginQueries.QueryAsync"] = "the device id is resolved through the PluginCaller's view (outside = NOT_FOUND); the overload without a caller is system work and tests",
         ["TaskEngine.RunAsync"] = "the raw-id form is the system ITaskRunner (ctx.System.Tasks, event rule actions; a group caller is refused outside the view); Run uses the ViewedDevices overload (converted in tasks)",
     };
 

@@ -42,8 +42,9 @@ public sealed class CorePluginHostTests : IAsyncLifetime
 
         Assert.Equal(CorePluginState.Running, _host.GetStatus("core.a").State);
         Assert.NotNull(first.Context);
-        Assert.Same(_devices, first.Context.Devices);
-        Assert.Same(_engine, first.Context.Tasks);
+        // Outside a group user's call the context's accesses are the host's own (wrapped by the call guard).
+        Assert.Equal(await ((Sdk.Devices.IDeviceRepository)_devices).ListAsync(CancellationToken.None), await first.Context.Devices.ListAsync(CancellationToken.None));
+        Assert.NotNull(first.Context.Tasks);
         Assert.Equal("echo:hi", await _host.InvokeAsync("CORE.A", "echo", "hi", CancellationToken.None));
 
         await _host.StopAllAsync(CancellationToken.None);

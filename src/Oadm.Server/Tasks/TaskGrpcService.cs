@@ -54,15 +54,15 @@ public sealed partial class TaskGrpcService(
         }
 
         var view = await views.ForAsync(context).ConfigureAwait(false);
-        var device = await view.GetAsync([deviceId], context.CancellationToken).ConfigureAwait(false); // outside or unknown: NOT_FOUND
+        _ = await view.GetAsync([deviceId], context.CancellationToken).ConfigureAwait(false); // outside or unknown: NOT_FOUND
         try
         {
             var result = await queries.QueryAsync(
+                new PluginCaller(caller, view),
                 request.PluginId,
-                device,
+                deviceId,
                 request.Method,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
-                engine.CallFor(view, TaskCaller.Of(caller)),
                 context.CancellationToken).ConfigureAwait(false);
             return new Proto.TaskQueryReply { PayloadJson = result ?? string.Empty };
         }

@@ -73,10 +73,27 @@ public static class CallerContext
 {
     private static readonly AsyncLocal<AuthenticatedCaller?> CurrentCaller = new();
 
+    private static readonly AsyncLocal<Plugins.PluginCallMark?> CurrentPluginCall = new();
+
     public static AuthenticatedCaller? Current
     {
         get => CurrentCaller.Value;
         set => CurrentCaller.Value = value;
+    }
+
+    /// <summary>
+    /// The plugin call (or plugin job) running here: the core plugin host sets it around a user's call of a plugin method and
+    /// for the jobs it starts, so <c>ctx.Devices</c> and the other full accesses refuse in a group user's call and in every
+    /// task the plugin starts from it (<c>Task.Run</c> keeps it). <see cref="Suppress"/> clears it like the caller.
+    /// </summary>
+    public static Plugins.PluginCallMark? PluginCall => CurrentPluginCall.Value;
+
+    /// <summary>Sets <paramref name="call"/> until the returned scope is disposed (the core plugin host).</summary>
+    public static IDisposable UsePluginCall(Plugins.PluginCallMark? call)
+    {
+        var previous = CurrentPluginCall.Value;
+        CurrentPluginCall.Value = call;
+        return new PluginCallScope(previous);
     }
 
     /// <summary>Sets <paramref name="caller"/> until the returned scope is disposed (tests, background calls on behalf of a user).</summary>
@@ -92,7 +109,12 @@ public static class CallerContext
     /// (<c>Task.Run</c>, timers, event handlers that start work) captures no caller. Use it around event raises and where
     /// background work starts.
     /// </summary>
-    public static IDisposable Suppress() => Use(null);
+    public static IDisposable Suppress()
+    {
+        var caller = Use(null);
+        var plugin = UsePluginCall(null);
+        return new Both(plugin, caller);
+    }
 
     /// <summary>Starts <paramref name="work"/> on the thread pool without the caller (the background boundary).</summary>
     public static Task RunDetached(Func<Task> work)
@@ -145,5 +167,19 @@ public static class CallerContext
     private sealed class Scope(AuthenticatedCaller? previous) : IDisposable
     {
         public void Dispose() => CurrentCaller.Value = previous;
+    }
+
+    private sealed class PluginCallScope(Plugins.PluginCallMark? previous) : IDisposable
+    {
+        public void Dispose() => CurrentPluginCall.Value = previous;
+    }
+
+    private sealed class Both(IDisposable first, IDisposable second) : IDisposable
+    {
+        public void Dispose()
+        {
+            first.Dispose();
+            second.Dispose();
+        }
     }
 }

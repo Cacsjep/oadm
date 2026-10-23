@@ -1,0 +1,216 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using Oadm.Core.Auth;
+using Oadm.Sdk.Plugins;
+
+namespace Oadm.Core.Plugins;
+
+/// <summary>
+/// The jobs of the core plugins (<see cref="ICorePluginContext.Jobs"/>, docs/spec/device-scope.md, Plugins): work a method
+/// starts for its user (a report, a scan, an export, a monitor). A job belongs to the user who started it (user id, and
+/// the session it was started in); <see cref="IPluginJobs.Find"/> answers null for another user's id, exactly like for an
+/// unknown id. Jobs run detached (no caller: the background boundary) with the owner's call as their device access, and
+/// with the owner's plugin call mark, so a job of a user with a device group refuses <c>ctx.Devices</c> like the call.
+/// A job ends when its work ends, when it is cancelled, when its plugin stops and when its owner's devices, role or
+/// sessions change (<see cref="CancelOwner"/>). Each user keeps at most <see cref="MaxJobsPerUser"/> jobs per plugin.
+/// </summary>
+public sealed partial class PluginJobRegistry
+{
+    /// <summary>Jobs one user keeps per plugin (finished ones are dropped first, oldest first).</summary>
+    public const int MaxJobsPerUser = 50;
+
+    /// <summary>The refusal when a user's jobs of one plugin are all still running.</summary>
+    public const string TooManyJobs = "Wait until your earlier work has finished.";
+
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, Job>> _byPlugin = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ILogger _logger;
+    private long _sequence;
+
+    public PluginJobRegistry(ILogger<PluginJobRegistry>? logger = null)
+    {
+        _logger = (ILogger?)logger ?? NullLogger.Instance;
+    }
+
+    /// <summary>The registry a plugin gets as <see cref="ICorePluginContext.Jobs"/>.</summary>
+    public IPluginJobs For(string pluginId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        return new PluginJobs(this, pluginId);
+    }
+
+    /// <summary>The jobs of a plugin that still run (tests, diagnostics).</summary>
+    public int RunningCount(string pluginId) => Jobs(pluginId).Values.Count(j => !j.Completion.IsCompleted);
+
+    /// <summary>Cancels and forgets every job of a plugin (it stopped or was turned off).</summary>
+    public void CancelPlugin(string pluginId)
+    {
+        if (_byPlugin.TryRemove(pluginId, out var jobs))
+        {
+            foreach (var job in jobs.Values)
+            {
+                job.Cancel();
+            }
+        }
+    }
+
+    /// <summary>Cancels every job of a user (other devices, another role, the user was disabled or deleted).</summary>
+    public void CancelOwner(Guid userId)
+    {
+        foreach (var jobs in _byPlugin.Values)
+        {
+            foreach (var job in jobs.Values.Where(j => j.UserId == userId))
+            {
+                job.Cancel();
+            }
+        }
+    }
+
+    /// <summary>Cancels every job started in a session (the session ended).</summary>
+    public void CancelSession(string sessionId)
+    {
+        foreach (var jobs in _byPlugin.Values)
+        {
+            foreach (var job in jobs.Values.Where(j => j.Owner.SessionId == sessionId))
+            {
+                job.Cancel();
+            }
+        }
+    }
+
+    private ConcurrentDictionary<string, Job> Jobs(string pluginId) =>
+        _byPlugin.GetOrAdd(pluginId, _ => new ConcurrentDictionary<string, Job>(StringComparer.Ordinal));
+
+    private Job Start(string pluginId, ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        ArgumentNullException.ThrowIfNull(work);
+
+        // Only a call the host made has an owner the host can check later (fail closed for anything else).
+        if (owner is not HostCallContext call)
+        {
+            throw new ArgumentException("A job is started with the call the host passed to the method.", nameof(owner));
+        }
+
+        var jobs = Jobs(pluginId);
+        lock (jobs)
+        {
+            var mine = jobs.Values.Where(j => j.UserId == call.UserId).OrderBy(j => j.Sequence).ToList();
+            if (mine.Count >= MaxJobsPerUser)
+            {
+                var finished = mine.FirstOrDefault(j => j.Completion.IsCompleted) ?? throw new InvalidOperationException(TooManyJobs);
+                jobs.TryRemove(finished.Id, out _);
+            }
+
+            var mark = CallerContext.PluginCall;
+            var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence));
+            jobs[job.Id] = job;
+            var jobMark = new PluginCallMark(pluginId, "job:" + kind, call.HasAllDevices, mark is { SystemAllowed: true } && string.Equals(mark.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
+
+            // The background boundary: the job never carries the caller of the call that started it, only its own mark.
+            using (CallerContext.Suppress())
+            using (CallerContext.UsePluginCall(jobMark))
+            {
+                job.Run(work, ex => LogJobFailed(ex, pluginId, kind));
+            }
+
+            return job;
+        }
+    }
+
+    private Job? Find(string pluginId, ICallContext caller, string? jobId)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return jobId is not null && caller is HostCallContext call
+            && _byPlugin.TryGetValue(pluginId, out var jobs) && jobs.TryGetValue(jobId, out var job) && job.UserId == call.UserId
+            ? job
+            : null;
+    }
+
+    private IReadOnlyList<IPluginJob> List(string pluginId, ICallContext caller)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return caller is HostCallContext call && _byPlugin.TryGetValue(pluginId, out var jobs)
+            ? [.. jobs.Values.Where(j => j.UserId == call.UserId).OrderByDescending(j => j.Sequence)]
+            : [];
+    }
+
+    /// <summary>128 random bits, URL safe: never guessable.</summary>
+    private static string NewId() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {Kind} of core plugin {PluginId} failed")]
+    private partial void LogJobFailed(Exception ex, string pluginId, string kind);
+
+    private sealed class PluginJobs(PluginJobRegistry registry, string pluginId) : IPluginJobs
+    {
+        public IPluginJob Start(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work) =>
+            registry.Start(pluginId, owner, kind, work);
+
+        public IPluginJob? Find(ICallContext caller, string jobId) => registry.Find(pluginId, caller, jobId);
+
+        public IReadOnlyList<IPluginJob> List(ICallContext caller) => registry.List(pluginId, caller);
+    }
+
+    private sealed class Job(string id, string kind, HostCallContext owner, long sequence) : IPluginJob, IDisposable
+    {
+        private readonly CancellationTokenSource _cancel = new();
+
+        public string Id { get; } = id;
+
+        public string Kind { get; } = kind;
+
+        public ICallContext Owner => owner;
+
+        public Guid UserId => owner.UserId;
+
+        public long Sequence { get; } = sequence;
+
+        public Task Completion { get; private set; } = Task.CompletedTask;
+
+        public void Cancel()
+        {
+            try
+            {
+                _cancel.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ended meanwhile.
+            }
+        }
+
+        public void Dispose() => _cancel.Dispose();
+
+        public void Run(Func<IPluginJob, CancellationToken, Task> work, Action<Exception> failed)
+        {
+            var token = _cancel.Token;
+            Completion = Task.Run(
+                async () =>
+                {
+                    try
+                    {
+                        await work(this, token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        // Cancelled: an end like any other.
+                    }
+#pragma warning disable CA1031 // A failing job ends the job, never the plugin or the host.
+                    catch (Exception ex)
+#pragma warning restore CA1031
+                    {
+                        failed(ex);
+                    }
+                    finally
+                    {
+                        Dispose();
+                    }
+                },
+                CancellationToken.None);
+        }
+    }
+}

@@ -34,11 +34,14 @@ internal sealed record SweepSnapshot<TRow>(bool Running, int Done, int Total, Da
 /// plugin's publish callbacks every <see cref="DeviceSweepOptions.PublishInterval"/> (the page events), one batch at a time
 /// and in order. A read that started earlier never replaces the row of a read that started later (a sweep read and
 /// <see cref="ReadOneAsync"/> after a task). Shared by the table pages (Image Health Dashboard, Edge storage) as linked source.
+/// The sweep is background work: it never carries the caller of the call that started it (its reads run detached), and it
+/// reads the devices of its repository (the plugin's devices, or one device scope's: <see cref="DeviceSweeps{TRow}"/>).
 /// </summary>
 internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     where TRow : class
 {
     private readonly ICorePluginContext _ctx;
+    private readonly IDeviceRepository _devices;
     private readonly DeviceSweepOptions _options;
     private readonly Func<IDeviceInfo, bool> _include;
     private readonly Func<IDeviceInfo, TRow?, CancellationToken, Task<TRow?>> _read;
@@ -72,8 +75,23 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
         Func<TRow, string> address,
         Action<IReadOnlyList<TRow>, IReadOnlyList<Guid>> publishRows,
         Action publishState)
+        : this(ctx, (ctx ?? throw new ArgumentNullException(nameof(ctx))).Devices, options, include, read, address, publishRows, publishState)
+    {
+    }
+
+    /// <summary>A sweep of the devices of <paramref name="devices"/> (e.g. one device scope's, <c>ctx.DeviceScopes.Devices(key)</c>).</summary>
+    public DeviceSweep(
+        ICorePluginContext ctx,
+        IDeviceRepository devices,
+        DeviceSweepOptions options,
+        Func<IDeviceInfo, bool> include,
+        Func<IDeviceInfo, TRow?, CancellationToken, Task<TRow?>> read,
+        Func<TRow, string> address,
+        Action<IReadOnlyList<TRow>, IReadOnlyList<Guid>> publishRows,
+        Action publishState)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _include = include;
         _read = read;
@@ -81,7 +99,7 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
         _publishRows = publishRows;
         _publishState = publishState;
         var token = _stopping.Token;
-        _publishLoop = Task.Run(() => PublishLoopAsync(token), CancellationToken.None);
+        _publishLoop = Detached.Run(() => PublishLoopAsync(token));
     }
 
     /// <summary>Called after every sweep that read all its devices (the plugin's summary log).</summary>
@@ -172,17 +190,37 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
         _done = 0;
         _stateDirty = true;
         var token = _stopping.Token;
-        _sweep = Task.Run(() => SweepAsync(only, token), CancellationToken.None);
+        _sweep = Detached.Run(() => SweepAsync(only, token));
     }
 
-    /// <summary>Reads one device now, outside a sweep (e.g. after a task changed it).</summary>
-    public async Task ReadOneAsync(Guid deviceId, CancellationToken ct)
+    /// <summary>Reads one device now, outside a sweep (e.g. after a task changed it); detached like the sweep.</summary>
+    public Task ReadOneAsync(Guid deviceId, CancellationToken ct) => Detached.Run(async () =>
     {
-        if (await _ctx.Devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { } device && _include(device))
+        if (await _devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { } device && _include(device))
         {
             await ReadIntoRowAsync(device, ct).ConfigureAwait(false);
         }
-    }
+    });
+
+    /// <summary>
+    /// Drops the rows of devices that are no longer in the repository or no longer included (a group's rules changed), without
+    /// reading any device; detached like the sweep.
+    /// </summary>
+    public Task PruneAsync(CancellationToken ct) => Detached.Run(async () =>
+    {
+        var ids = (await _devices.ListAsync(ct).ConfigureAwait(false)).Where(_include).Select(d => d.Id).ToHashSet();
+        lock (_sync)
+        {
+            foreach (var gone in _rows.Keys.Where(id => !ids.Contains(id)).ToList())
+            {
+                Remove(gone);
+            }
+
+            _stateDirty = true;
+        }
+
+        Publish();
+    });
 
     public async ValueTask DisposeAsync()
     {
@@ -247,7 +285,7 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
         var completed = false;
         try
         {
-            var devices = (await _ctx.Devices.ListAsync(ct).ConfigureAwait(false)).Where(_include).ToList();
+            var devices = (await _devices.ListAsync(ct).ConfigureAwait(false)).Where(_include).ToList();
             var ids = devices.Select(d => d.Id).ToHashSet();
             lock (_sync)
             {
@@ -380,6 +418,177 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the devices of the page failed")]
     private static partial void LogSweepFailed(ILogger logger, Exception ex);
+}
+
+/// <summary>
+/// One <see cref="DeviceSweep{TRow}"/> per device scope (SDK 0.4.0, docs/spec/device-scope.md, Plugins: sweep state is kept
+/// per group, not per plugin): a user's call works on the sweep of its <see cref="ICallContext.DeviceScopeKey"/>, which
+/// reads only that scope's devices (<see cref="IDeviceScopes.Devices"/>; on hosts without groups every device). The
+/// callbacks get the scope key: publish rows and progress with <see cref="PluginEventAudience.DeviceScope"/>, so only the
+/// users of that scope receive them. A deleted group's sweep is dropped, a changed group's rows are pruned to its devices.
+/// </summary>
+internal sealed class DeviceSweeps<TRow> : IAsyncDisposable
+    where TRow : class
+{
+    private readonly ICorePluginContext _ctx;
+    private readonly Func<string, IDeviceRepository, DeviceSweep<TRow>> _create;
+    private readonly Dictionary<string, DeviceSweep<TRow>> _sweeps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _sync = new();
+    private bool _disposed;
+
+    /// <param name="ctx">The plugin's context.</param>
+    /// <param name="create">Makes the sweep of one scope over its devices (the key goes into the publish callbacks).</param>
+    public DeviceSweeps(ICorePluginContext ctx, Func<string, IDeviceRepository, DeviceSweep<TRow>> create)
+    {
+        _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _create = create ?? throw new ArgumentNullException(nameof(create));
+        if (ctx.DeviceScopes is { } scopes)
+        {
+            scopes.Changed += OnScopeChanged;
+        }
+    }
+
+    /// <summary>The same as <see cref="DeviceSweeps{TRow}(ICorePluginContext, Func{string, IDeviceRepository, DeviceSweep{TRow}})"/> from the usual parts.</summary>
+    public DeviceSweeps(
+        ICorePluginContext ctx,
+        DeviceSweepOptions options,
+        Func<IDeviceInfo, bool> include,
+        Func<IDeviceInfo, TRow?, CancellationToken, Task<TRow?>> read,
+        Func<TRow, string> address,
+        Action<string, IReadOnlyList<TRow>, IReadOnlyList<Guid>> publishRows,
+        Action<string> publishState)
+        : this(ctx, (key, devices) => new DeviceSweep<TRow>(ctx, devices, options, include, read, address, (rows, removed) => publishRows(key, rows, removed), () => publishState(key)))
+    {
+    }
+
+    /// <summary>The scope keys that have a sweep (tests).</summary>
+    public IReadOnlyList<string> Keys
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. _sweeps.Keys];
+            }
+        }
+    }
+
+    /// <summary>The sweep of the caller's devices.</summary>
+    public DeviceSweep<TRow>? For(ICallContext call)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        return For(call.DeviceScopeKey);
+    }
+
+    /// <summary>
+    /// The sweep of <paramref name="scopeKey"/>, made on first use; null for a scope that does not exist (a deleted group:
+    /// its users have no devices) and after <see cref="DisposeAsync"/>.
+    /// </summary>
+    public DeviceSweep<TRow>? For(string scopeKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scopeKey);
+        var scopes = _ctx.DeviceScopes;
+        if (scopes is null ? scopeKey != ICallContext.AllDevicesScopeKey : !scopes.Exists(scopeKey))
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return null;
+            }
+
+            if (!_sweeps.TryGetValue(scopeKey, out var sweep))
+            {
+                // Older hosts have no groups: the plugin's devices (the sweep runs detached, as background work).
+                var devices = scopes?.Devices(scopeKey) ?? _ctx.Devices;
+                sweep = _create(scopeKey, devices);
+                _sweeps[scopeKey] = sweep;
+            }
+
+            return sweep;
+        }
+    }
+
+    /// <summary>The sweep of a scope if it has one (no new sweep).</summary>
+    public DeviceSweep<TRow>? Existing(string scopeKey)
+    {
+        lock (_sync)
+        {
+            return _sweeps.GetValueOrDefault(scopeKey);
+        }
+    }
+
+    /// <summary>Every sweep (e.g. to read a device again after a task in each scope that has a row of it).</summary>
+    public IReadOnlyList<DeviceSweep<TRow>> All
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. _sweeps.Values];
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_ctx.DeviceScopes is { } scopes)
+        {
+            scopes.Changed -= OnScopeChanged;
+        }
+
+        List<DeviceSweep<TRow>> sweeps;
+        lock (_sync)
+        {
+            _disposed = true;
+            sweeps = [.. _sweeps.Values];
+            _sweeps.Clear();
+        }
+
+        foreach (var sweep in sweeps)
+        {
+            await sweep.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A group changed or was deleted: prune its rows to its devices, or drop its sweep.</summary>
+    private void OnScopeChanged(object? sender, string scopeKey)
+    {
+        DeviceSweep<TRow>? sweep;
+        var exists = _ctx.DeviceScopes?.Exists(scopeKey) ?? true;
+        lock (_sync)
+        {
+            if (!_sweeps.TryGetValue(scopeKey, out sweep))
+            {
+                return;
+            }
+
+            if (!exists)
+            {
+                _sweeps.Remove(scopeKey);
+            }
+        }
+
+        _ = exists ? sweep.PruneAsync(CancellationToken.None) : Detached.Run(async () => await sweep.DisposeAsync().ConfigureAwait(false));
+    }
+}
+
+/// <summary>
+/// Background work of a sweep started from a user's call: it runs without the call's context (the host refuses the plugin's
+/// full device access in the call of a user with a device group, and work started from the call keeps the call).
+/// </summary>
+internal static class Detached
+{
+    public static Task Run(Func<Task> work)
+    {
+        using (ExecutionContext.SuppressFlow())
+        {
+            return Task.Run(work, CancellationToken.None);
+        }
+    }
 }
 
 /// <summary>Sorts IPv4 addresses numerically, everything else after them by text.</summary>

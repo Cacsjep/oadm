@@ -38,12 +38,29 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
     /// <summary>Manifest <c>pro</c>: an OADM PRO plugin, on only with an active OADM PRO license.</summary>
     public bool Pro { get; init; }
 
+    /// <summary>
+    /// Manifest <c>minSdkVersion</c>; null when not known (counts as older than the call context: fail closed). A plugin
+    /// compiled into the host has the host's SDK.
+    /// </summary>
+    public string? MinSdkVersion { get; init; }
+
+    /// <summary>
+    /// The package is built for the call context (<c>minSdkVersion</c> at least <see cref="SdkInfo.CallContextVersion"/>):
+    /// users with a device group may call it (docs/spec/device-scope.md, Plugins). Older packages work for users with all
+    /// devices only.
+    /// </summary>
+    public bool SupportsCallContext => PluginLoader.IsAtLeast(MinSdkVersion, SdkInfo.CallContextVersion);
+
     /// <summary>A plugin compiled into the host (tests, built-in parts): it works wherever the host does.</summary>
     public static PluginOrigin FromAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
         var name = assembly.GetName();
-        return new PluginOrigin(name.Name ?? "builtin", name.Version?.ToString() ?? "0.0.0", null) { DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full };
+        return new PluginOrigin(name.Name ?? "builtin", name.Version?.ToString() ?? "0.0.0", null)
+        {
+            DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full,
+            MinSdkVersion = SdkInfo.Version,
+        };
     }
 }
 

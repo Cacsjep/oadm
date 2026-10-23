@@ -34,6 +34,8 @@ public sealed class CanaryTests
     {
         ["/oadm.v1.DeviceService/GetPassphrasePolicies"] = async (c, id) =>
             await new Proto.DeviceService.DeviceServiceClient(c.Invoker).GetPassphrasePoliciesAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.PluginService/Invoke"] = CanaryPlugin.InvokeAsync,
+        ["/oadm.v1.PluginService/Download"] = CanaryPlugin.DownloadAsync,
 
         // devices-core: the device list's actions, live view and the web interface relay.
         ["/oadm.v1.DeviceService/Remove"] = async (c, id) =>
@@ -217,9 +219,6 @@ public sealed class CanaryTests
         ["/oadm.v1.EventService/DuplicateRule"] = "shared-core",
         ["/oadm.v1.EventService/ListActionChoices"] = "shared-core",
         ["/oadm.v1.EventService/TestAction"] = "shared-core",
-        ["/oadm.v1.PluginService/Invoke"] = "plugin-host",
-        ["/oadm.v1.PluginService/Watch"] = "plugin-host",
-        ["/oadm.v1.PluginService/Download"] = "plugin-host",
     };
 
     /// <summary>
@@ -308,11 +307,16 @@ public sealed class CanaryTests
         ["/oadm.v1.FileService/Delete"] = "an upload by id; no device data",
         ["/oadm.v1.PluginService/ListCorePlugins"] = "the plugin pages the role may show",
         ["/oadm.v1.PluginService/ListPackages"] = "the plugin packages",
+        ["/oadm.v1.PluginService/Watch"] = "no device id; events reach a group user only through audiences that cover the user (PluginServiceGroupTests)",
         ["/oadm.v1.SettingsService/Get"] = "server settings, no device data",
         ["/oadm.v1.LicenseService/GetLicense"] = "the license (its device count is an accepted existence leak, docs/spec/device-scope.md)",
     };
 
-    /// <summary>The bundled plugins and the package that moves their methods to the call context (their tests name the id fields).</summary>
+    /// <summary>
+    /// The bundled plugins not converted yet and the package that moves their methods to the call context. A converted
+    /// plugin leaves the list: its plugin.json says minSdkVersion 0.4.0 or later and its test project runs a
+    /// <c>Oadm.Sdk.Testing.PluginCanary</c> that names every method and its id fields (plugins/README.md, "Call context").
+    /// </summary>
     internal static readonly Dictionary<string, string> PluginsNotConverted = new(StringComparer.Ordinal)
     {
         ["oadm.pki"] = "plugins-certs",
@@ -368,12 +372,23 @@ public sealed class CanaryTests
     [Fact]
     public void EveryBundledPluginIsConvertedOrListed()
     {
-        var ids = Directory.EnumerateFiles(TestRepository.Path("plugins"), "plugin.json", SearchOption.AllDirectories)
+        var manifests = Directory.EnumerateFiles(TestRepository.Path("plugins"), "plugin.json", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                 && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-            .Select(f => System.Text.Json.JsonDocument.Parse(File.ReadAllText(f)).RootElement.GetProperty("id").GetString()!)
-            .ToHashSet(StringComparer.Ordinal);
-        Assert.Equal(ids.Order(StringComparer.Ordinal), PluginsNotConverted.Keys.Order(StringComparer.Ordinal));
+            .Select(f => (Root: System.Text.Json.JsonDocument.Parse(File.ReadAllText(f)).RootElement, Folder: Path.GetDirectoryName(f)!))
+            .Select(m => (Id: m.Root.GetProperty("id").GetString()!, MinSdk: m.Root.GetProperty("minSdkVersion").GetString(), m.Folder))
+            .ToList();
+        var ids = manifests.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var minSdk = manifests.ToDictionary(m => m.Id, m => m.MinSdk, StringComparer.Ordinal);
+        Assert.All(PluginsNotConverted.Keys, id => Assert.Contains(id, ids));
+        foreach (var (id, folder) in manifests.Where(m => !PluginsNotConverted.ContainsKey(m.Id)).Select(m => (m.Id, m.Folder)))
+        {
+            Assert.True(Core.Plugins.PluginLoader.IsAtLeast(minSdk[id], Sdk.Plugins.SdkInfo.CallContextVersion), $"{id} is converted but its plugin.json says minSdkVersion {minSdk[id]}.");
+            var tests = TestRepository.Path("tests", Path.GetFileName(folder) + ".Tests");
+            Assert.True(
+                Directory.Exists(tests) && Directory.EnumerateFiles(tests, "*.cs", SearchOption.AllDirectories).Any(f => File.ReadAllText(f).Contains("new PluginCanary(", StringComparison.Ordinal)),
+                $"{id} is converted but {Path.GetFileName(tests)} runs no PluginCanary.");
+        }
     }
 
     [Fact]
@@ -567,7 +582,7 @@ public sealed class CanaryTests
         public static async Task RegisterAsync(TestServerHost host)
         {
             var registry = host.Get<Core.Plugins.PluginRegistry>();
-            registry.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(PluginId, "1.0.0", null));
+            registry.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(PluginId, "1.0.0", null) { MinSdkVersion = Sdk.Plugins.SdkInfo.Version });
             await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(registry), CancellationToken.None);
         }
     }
@@ -657,7 +672,7 @@ public sealed class CanaryTests
             // The role may open the web interface (DeviceWebService needs the Web View plugin's permission; the plugin is not loaded).
             var webView = new Core.Plugins.PluginRegistry();
             webView.RegisterCorePlugin(new WebViewPermission(), new Core.Plugins.PluginOrigin(WebViewPermission.PluginId, "1.0.0", null));
-            webView.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(CanaryTaskPlugin.PluginId, "1.0.0", null)); // one catalog: both permissions
+            webView.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(CanaryTaskPlugin.PluginId, "1.0.0", null) { MinSdkVersion = Sdk.Plugins.SdkInfo.Version }); // one catalog: both permissions
             await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(webView), CancellationToken.None);
 
             var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);

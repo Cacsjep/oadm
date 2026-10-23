@@ -486,6 +486,108 @@ lacks.
   `PermissionKeys.Of(pluginId, key)` and `PermissionKeys.Task(taskId, key)`; host keys are `HostPermissionKeys`.
   Hide actions the role lacks and lock inputs that only lead to them (the NTP server page: inputs read-only, no Save).
 
+### Call context (SDK 0.4.0, device groups)
+
+A user can be limited to a device group (docs/spec/device-scope.md). Every page method then gets the user's call,
+`ICallContext`, and reaches devices only through it. Set `minSdkVersion` 0.4.0 in plugin.json: users with a device
+group are refused every package below it ("Only users with all devices can use this plugin."), its pages are left out
+for them, and it keeps working unchanged for users with all devices.
+
+- **Implement the overloads with the call**: `InvokeAsync(ICallContext caller, method, payload, ct)`,
+  `ICorePluginDownloads.OpenDownloadAsync(caller, ...)`, `ITaskPluginQuery.QueryAsync(ctx, caller, device, ...)`. The
+  host calls these; keep the old ones (they may throw).
+- **`caller.Devices`, `caller.Vapix`, `caller.Tasks`, `caller.EventStreams`** see only the user's devices. An id outside
+  them answers like an unknown id: `Devices.FindAsync` null, the others `DevicesNotAvailableException` (NOT_FOUND "1
+  device is no longer available."), nothing is sent, a task batch is refused whole. Throw `DevicesNotAvailableException`
+  yourself for an id `FindAsync` did not find, before any request. "Empty means all" means `caller.Devices.ListAsync`.
+  `caller.Contains(device)`, `caller.Has(permission)`, `caller.UserName`, `caller.HasAllDevices`.
+- **`ctx.Devices`, `ctx.Vapix`, `ctx.Tasks`, `ctx.EventStreams`, `ctx.AutoAdd` and `ctx.System` refuse** in a group user's call
+  (`DeviceAccessRefusedException`, PERMISSION_DENIED "Only users with all devices can do this."), also in a `Task.Run` or
+  timer started from the call and in that user's jobs. They stay the full view for background work (sweeps, servers,
+  timers started in `StartAsync`). A method that must count or check every device without showing any declares
+  `SystemAccessReason(method)` (a short reason) and uses `ctx.System` there; keep that list short.
+- **Methods for users with all devices** (saves of server-wide services: NTP, DHCP, PKI settings, a shared library):
+  answer true from `RequiresAllDevices(method)`. The host refuses them for group users before the plugin runs; downloads
+  are asked too.
+- **Jobs** (`ctx.Jobs`): work that outlives the call (a report, a scan, an export, a monitor) starts with
+  `ctx.Jobs.Start(caller, "report", async (job, ct) => ...)` and reaches devices through `job.Owner` (the owner's view).
+  It runs detached, ends with its work, on `job.Cancel()`, when the plugin stops and when the owner's devices, role or
+  session change. Every method and download that takes a job id looks it up with `ctx.Jobs.Find(caller, id)` and throws
+  the same `KeyNotFoundException` for null as for an unknown id: another user's id answers NOT_FOUND. Never keep your own
+  id table.
+- **Events**: `ctx.Events.Publish(topic, json, audience)`. `PluginEventAudience.Device(id)` (users who see the device),
+  `DeviceRows(ids)` (a JSON array with one element per id: each watcher gets its own elements, in order),
+  `User(name)`, `Session(caller.SessionId)` or `Of(caller)` (the page that started the work), `DeviceScope(key)` (state
+  kept per group), `AllDevices` (server-wide state). The old `Publish(topic, json)` reaches only users with all devices.
+- **Objects kept per group** (dashboards, saved views, triggers, sweeps): store `caller.DeviceScopeKey` ("all" or the
+  group id) with the object and run it on `ctx.DeviceScopes.Devices(key)`; `Exists(key)` is false for a deleted group
+  (its objects are off), `Changed` tells about changed and deleted groups. Table pages use
+  `DeviceSweeps<TRow>` (plugins/Shared/DeviceSweep.cs): `sweeps.For(caller)` is the sweep of the caller's scope (null
+  for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`.
+
+A converted method:
+
+```csharp
+public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+{
+    switch (method)
+    {
+        case "read":
+            var request = Json.Read<ReadRequest>(payloadJson);
+            var devices = request.DeviceIds.Count == 0
+                ? await caller.Devices.ListAsync(ct) // "all" = the user's devices
+                : [.. await Task.WhenAll(request.DeviceIds.Select(async id =>
+                    await caller.Devices.FindAsync(id, ct) ?? throw new DevicesNotAvailableException()))];
+            var job = _ctx.Jobs!.Start(caller, "read", async (job, token) =>
+            {
+                foreach (var device in devices)
+                {
+                    var client = await job.Owner.Vapix.CreateAsync(device.Id, token);
+                    _ctx.Events!.Publish("row", Json.Write(await ReadRowAsync(client, token)), PluginEventAudience.Of(job.Owner));
+                }
+            });
+            return Json.Write(new { id = job.Id });
+        case "status":
+            var found = _ctx.Jobs!.Find(caller, Json.Read<JobRef>(payloadJson).Id)
+                ?? throw new KeyNotFoundException("The report is no longer available.");
+            return Json.Write(new { done = found.Completion.IsCompleted });
+        default:
+            throw new ArgumentException($"Unknown method {method}.");
+    }
+}
+```
+
+**Tests.** `FakeCoreContext` applies the host's rules when you call through it: `ctx.InvokeAsync(plugin, call, method,
+payload)`, `ctx.OpenDownloadAsync(...)`, `ctx.QueryAsync(query, call, device, ...)` with `ctx.CallAsGroup([ids])` or
+`ctx.CallAsAllDevices()`. `ctx.RefusedAccesses` lists the full accesses a group call used, `ctx.EventsSeenBy(call)` the
+events as that user's page gets them. Every converted plugin runs a **canary** that names each method and its id fields
+(the server's `CanaryTests` checks that a plugin removed from its not-converted list has one):
+
+```csharp
+[Fact]
+public async Task NoMethodReachesADeviceOutsideTheUsersGroup()
+{
+    var ctx = new FakeCoreContext();
+    var inside = ctx.Add(new FakeDevice());
+    var outside = ctx.Add(new FakeDevice());
+    var plugin = new ReportPlugin();
+    await plugin.StartAsync(ctx, CancellationToken.None);
+    await new PluginCanary(ctx, plugin, inside, outside)
+        .Method("read", """{"deviceIds":["{inside}","{device}"]}""")   // {device}: outside, unknown, inside in turn
+        .Download("export", """{"deviceId":"{device}"}""")
+        .Job("status", """{"id":"{job}"}""", async owner => JobId(await ctx.InvokeAsync(plugin, owner, "read", "{}")))
+        .Query(plugin.TaskPlugins.OfType<ITaskPluginQuery>().Single(), "list", """{"sourceId":"{device}"}""")
+        .WithoutDevices("settings", "server settings, no device data")
+        .AllDevicesOnly("saveSettings")
+        .RunAsync();
+}
+```
+
+The canary calls each case as a group user that holds `inside`: with the outside device and with an unknown id it must
+answer `DevicesNotAvailableException` with the same text, hand out no VAPIX client for the outside device, send it no
+request, start no task on it and change no setting or record; with the inside device it must not be refused. Job cases
+compare another user's job id with an unknown one. Any use of `ctx.*` in a group call fails the case with the access named.
+
 ### Samples
 
 Each plugin has a short entry in `docs/spec/bundled-plugins.md` and its own `README.md` with the details (decisions, page and dialog, steps
@@ -735,7 +837,7 @@ scan, Snapshot report, Action Rule Editor.
 A page with one row per device that the server reads when the page asks (Image Health Dashboard, Edge storage) uses the
 linked sources in `plugins/Shared/`: `DeviceSweep<TRow>` on the server (one sweep at a time, `Parallelism` devices at once,
 a timeout per device, rows by device id, changed and removed rows pushed in batches through the plugin's callbacks;
-`Failure(ex)` is the usual text of a failed read) and `SweepRows<TRow, TVm>` on the page (view models by id, updated in
+`Failure(ex)` is the usual text of a failed read; reads run detached; `DeviceSweeps<TRow>` keeps one sweep per device scope, see "Call context") and `SweepRows<TRow, TVm>` on the page (view models by id, updated in
 place, search and new rows with one reset; `AddressSortKeys.Of`). Link them with
 `<Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />`. Refuse devices with
 `DeviceMessages.Refusal(device, refuseUnreachable: true)` before any request (it also refuses a device whose site is offline), and watch the page events with
