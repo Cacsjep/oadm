@@ -129,6 +129,53 @@ public sealed class DeviceGroupActionsTests
         Assert.Null(session.AddDevicesRefusal);
     }
 
+    /// <summary>
+    /// A change of the group's rules keeps the group's name, so the session says nothing; the server ends the user's device
+    /// stream instead (docs/spec/device-scope.md, Sessions). Its reconnect (a new snapshot, <see cref="ServerConnection.Connected"/>)
+    /// reads Your role again, so Add follows the new rules.
+    /// </summary>
+    [Fact]
+    public async Task Add_follows_a_change_of_the_groups_rules_after_the_device_stream_reconnects()
+    {
+        UserSession session = GroupUser();
+        using var f = new DevicesFixture(session: session);
+        var watches = 0;
+        using var hang = new CancellationTokenSource();
+        f.Api.WatchDevicesAsync(Arg.Any<CancellationToken>()).Returns(_ => Interlocked.Increment(ref watches) == 1 ? EndsAfterSnapshot() : StaysAfterSnapshot(hang.Token));
+        var mine = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SingleDeviceCount = 2, DeviceCount = 2 } };
+        f.Api.GetMyRoleAsync(Arg.Any<CancellationToken>()).Returns(_ => mine);
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel shell = Shell(f, connection, session);
+        var connects = 0;
+        connection.Connected += (_, _) => Interlocked.Increment(ref connects);
+
+        connection.Start();
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => Volatile.Read(ref connects) >= 1 && session.AddDevicesRefusal == DeviceGroupMessages.CannotAdd, "the first connect read Your role");
+
+        // An administrator gives the group a site: same name, new rules. The server ends the stream; the client reconnects.
+        mine = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SiteNames = { "Building B" } } };
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => Volatile.Read(ref watches) >= 2 && Volatile.Read(ref connects) >= 2, "the device stream reconnected");
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => session.AddDevicesRefusal is null, "Add follows the new rules");
+        Assert.Equal("Lobby", session.DeviceGroupName);
+        connection.Stop();
+        await hang.CancelAsync();
+        GC.KeepAlive(shell);
+
+        static async IAsyncEnumerable<DeviceChanged> EndsAfterSnapshot()
+        {
+            await Task.Yield();
+            yield return new DeviceChanged { Kind = DeviceChanged.Types.Kind.SnapshotEnd };
+            throw new RpcException(new Status(StatusCode.Unavailable, "Your devices changed. Connect again."));
+        }
+
+        static async IAsyncEnumerable<DeviceChanged> StaysAfterSnapshot([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Yield();
+            yield return new DeviceChanged { Kind = DeviceChanged.Types.Kind.SnapshotEnd };
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        }
+    }
+
     [Fact]
     public async Task A_server_before_device_groups_gives_the_check_form_no_owner_field()
     {

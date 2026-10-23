@@ -182,7 +182,9 @@ an independent security review the same day). A user may be limited to part of t
   changes); every role change below Administrator sends the Devices choice the form shows.
 - Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
   `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
-  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md);
+  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md),
+  `MainWindowViewModel.RefreshMyDevicesAsync` (Your role's devices for Add, read again after every device stream connect:
+  a change of the group's rules keeps its name but ends the stream);
   fake mode (`FakeOadmApi.DeviceGroups`) has Building B, Building A, Head office and Lobby, tech2 in Building B and
   guard in Lobby. Tests `DeviceGroupsTests`, `Perf/DeviceGroupEditorScaleTests`.
 - Audit: created, changed (rules), deleted groups; a user's group changed.
