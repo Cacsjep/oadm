@@ -45,6 +45,23 @@ public sealed class TaskQueryCallTests : DeviceGroupTestBase
         Assert.Equal("2 root", await queries.QueryAsync(root, "q.new", outside.Id, "count", null, Ct));
     }
 
+    [Fact]
+    public async Task TheAddressCheckSeesEveryDeviceOnTheRouteWithoutNamingIt()
+    {
+        var b = Sites.Add("Building B");
+        var inside = await AddDeviceAsync("ACCC8E000011", siteId: b);
+        await AddDeviceAsync("ACCC8E000012", siteId: b); // outside the group, same network
+        await AddDeviceAsync("ACCC8E000013"); // this server: another network
+        var group = (await SaveGroupAsync("One", serials: ["ACCC8E000011"])).Group;
+        var registry = new PluginRegistry();
+        Assert.True(registry.RegisterTaskPlugin(new QueryPlugin("q.new"), new PluginOrigin("new", "1.0.0", null) { MinSdkVersion = "0.4.0", DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full }));
+        var queries = new TaskPluginQueries(registry, Devices, new CountingVapix());
+        var anna = await CallerAsync("anna", DeviceScope.Group(group.Id));
+
+        Assert.Equal("1 anna", await queries.QueryAsync(anna, "q.new", inside.Id, "count", null, Ct));
+        Assert.Equal("10.0.0.11,10.0.0.12", await queries.QueryAsync(anna, "q.new", inside.Id, "addresses", "10.0.0.11,10.0.0.12,10.0.0.13,10.0.0.14,bogus", Ct));
+    }
+
     private async Task<PluginCaller> CallerAsync(string name, DeviceScope scope)
     {
         var user = await Users.AddAsync(name, "pw", BuiltInRoles.OperatorId, scope, Ct);
@@ -73,6 +90,12 @@ public sealed class TaskQueryCallTests : DeviceGroupTestBase
 
         public async Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
         {
+            if (method == "addresses")
+            {
+                var used = await ctx.ManagedAddressesAsync(payloadJson!.Split(','), ct);
+                return string.Join(",", used.Order(StringComparer.Ordinal));
+            }
+
             if (method == "source")
             {
                 await caller.Vapix.CreateAsync(Guid.Parse(payloadJson!), ct);

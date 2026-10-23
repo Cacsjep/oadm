@@ -113,14 +113,14 @@ public sealed partial class TaskPluginQueries
             var network = (Networks ?? Sites.DeviceNetworks.Local).For(device);
             if (caller is null)
             {
-                return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network), device, method, payloadJson, token).ConfigureAwait(false);
+                return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network, _devices, device), device, method, payloadJson, token).ConfigureAwait(false);
             }
 
             var call = PluginCallRules.CreateCall(caller, _vapix, NoTasks.Instance, null);
             var devices = caller.HasAllDevices ? _devices : call.Devices;
             using (Auth.CallerContext.UsePluginCall(PluginCallRules.MarkOf(caller, registration.Id, method)))
             {
-                return await query.QueryAsync(new QueryContext(vapix, logger, devices, network), call, device, method, payloadJson, token).ConfigureAwait(false);
+                return await query.QueryAsync(new QueryContext(vapix, logger, devices, network, _devices, device), call, device, method, payloadJson, token).ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is TaskQueryException or DevicesNotAvailableException or DeviceAccessRefusedException)
@@ -172,7 +172,10 @@ public sealed partial class TaskPluginQueries
             throw new NotSupportedException("A query never starts tasks.");
     }
 
-    private sealed class QueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices, Sdk.Sites.IDeviceNetwork network) : ITaskQueryContext
+    /// <param name="system">Every managed device: only for <see cref="ManagedAddressesAsync"/>, which never names one.</param>
+    /// <param name="device">The queried device (its route).</param>
+    private sealed class QueryContext(
+        IVapixClient vapix, ILogger logger, IDeviceRepository devices, Sdk.Sites.IDeviceNetwork network, IDeviceRepository system, IDeviceInfo device) : ITaskQueryContext
     {
         public IVapixClient Vapix { get; } = vapix;
 
@@ -181,6 +184,44 @@ public sealed partial class TaskPluginQueries
         public IDeviceRepository? Devices { get; } = devices;
 
         public Sdk.Sites.IDeviceNetwork? Network { get; } = network;
+
+        /// <summary>The address-in-use check over every device on the queried device's route (docs/spec/device-scope.md, Small leaks closed).</summary>
+        public async Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(addresses);
+            var wanted = new Dictionary<System.Net.IPAddress, List<string>>();
+            foreach (var address in addresses)
+            {
+                if (ParseAddress(address) is { } ip)
+                {
+                    if (!wanted.TryGetValue(ip, out var texts))
+                    {
+                        wanted[ip] = texts = [];
+                    }
+
+                    texts.Add(address);
+                }
+            }
+
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (wanted.Count == 0)
+            {
+                return used;
+            }
+
+            foreach (var other in await system.ListAsync(ct).ConfigureAwait(false))
+            {
+                if (other.SiteId == device.SiteId && ParseAddress(other.Address) is { } ip && wanted.TryGetValue(ip, out var texts))
+                {
+                    used.UnionWith(texts);
+                }
+            }
+
+            return used;
+        }
+
+        private static System.Net.IPAddress? ParseAddress(string? text) =>
+            System.Net.IPAddress.TryParse(text?.Trim().Trim('[', ']'), out var ip) ? ip : null;
     }
 }
 

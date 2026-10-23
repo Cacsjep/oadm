@@ -137,6 +137,9 @@ public sealed class FakeActionContext(IVapixClient? vapix = null) : IActionConte
     public IPluginLicense? License { get; init; }
 
     /// <inheritdoc />
+    public bool RuleHasAllDevices { get; init; } = true;
+
+    /// <inheritdoc />
     public void Log(string message) => Lines.Add(message);
 
     /// <inheritdoc />
@@ -360,7 +363,7 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         }
 
         var vapix = await ClientFor(device.Id).ConfigureAwait(false);
-        var context = new FakeQueryContext(vapix, Logger, call.Devices);
+        var context = new FakeQueryContext(vapix, Logger, call.Devices, this, device);
         using (FakeHostRules.Use(new FakeHostRules.Mark(call.HasAllDevices, false)))
         {
             return await plugin.QueryAsync(context, call, device, method, payloadJson, ct).ConfigureAwait(false);
@@ -446,13 +449,30 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         }
     }
 
-    private sealed class FakeQueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices) : ITaskQueryContext
+    private sealed class FakeQueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices, FakeCoreContext core, IDeviceInfo device) : ITaskQueryContext
     {
         public IVapixClient Vapix { get; } = vapix;
 
         public ILogger Logger { get; } = logger;
 
         public IDeviceRepository? Devices { get; } = devices;
+
+        /// <summary>Like the server: every managed device on the queried device's route, also outside the call's devices.</summary>
+        public Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(addresses);
+            var used = core.DeviceList
+                .Where(d => d.SiteId == device.SiteId)
+                .Select(d => ParseAddress(d.Address))
+                .OfType<global::System.Net.IPAddress>()
+                .ToHashSet();
+            return Task.FromResult<IReadOnlySet<string>>(addresses
+                .Where(a => ParseAddress(a) is { } ip && used.Contains(ip))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static global::System.Net.IPAddress? ParseAddress(string? text) =>
+            global::System.Net.IPAddress.TryParse(text?.Trim().Trim('[', ']'), out var ip) ? ip : null;
     }
 }
 
