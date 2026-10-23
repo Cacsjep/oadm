@@ -110,14 +110,26 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     public ImageHealthState Snapshot(bool withRows) => Snapshot(ICallContext.AllDevicesScopeKey, withRows);
 
     /// <summary>Current counts and, with <paramref name="withRows"/>, every row of the scope's table sorted by address.</summary>
-    public ImageHealthState Snapshot(string scopeKey, bool withRows)
-    {
-        if ((_ctx.DeviceScopes is { } scopes && !scopes.Exists(scopeKey)) || _sweeps.Existing(scopeKey) is not { } sweep)
-        {
-            return Empty;
-        }
+    public ImageHealthState Snapshot(string scopeKey, bool withRows) =>
+        (_ctx.DeviceScopes is { } scopes && !scopes.Exists(scopeKey)) || _sweeps.Existing(scopeKey) is not { } sweep
+            ? Empty
+            : Snapshot(scopeKey, sweep, sweep.Snapshot(), withRows);
 
-        var now = sweep.Snapshot();
+    /// <summary>
+    /// The counts and rows of the caller's table, only of cameras the caller sees now (a camera that left the group drops out
+    /// at once, before the group's rows are pruned).
+    /// </summary>
+    public async Task<ImageHealthState> SnapshotAsync(ICallContext caller, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var scopeKey = caller.DeviceScopeKey;
+        return (_ctx.DeviceScopes is { } scopes && !scopes.Exists(scopeKey)) || _sweeps.Existing(scopeKey) is not { } sweep
+            ? Empty
+            : Snapshot(scopeKey, sweep, await sweep.SnapshotAsync(caller, ct).ConfigureAwait(false), withRows: true);
+    }
+
+    private ImageHealthState Snapshot(string scopeKey, DeviceSweep<ImageHealthRow> sweep, SweepSnapshot<ImageHealthRow> now, bool withRows)
+    {
         var counts = _counts.GetOrAdd(scopeKey, _ => new ScopeCounts());
         int withoutApp;
         lock (counts)

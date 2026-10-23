@@ -296,6 +296,7 @@ public sealed class RobustnessTests : IAsyncLifetime
 
     private async Task<RecordingContext> UndoAsync(RuleCamera camera, Guid runId)
     {
+        await _plugin.Undo.TryMarkUndoneAsync(runId, true, CancellationToken.None); // like the page: marked before its tasks start
         var ctx = new RecordingContext(camera);
         var task = (RuleTaskPlugin)_plugin.TaskPlugins[0];
         try

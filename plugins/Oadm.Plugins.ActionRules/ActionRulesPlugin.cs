@@ -79,6 +79,15 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         _ => null,
     };
 
+    /// <summary>
+    /// Undo asks the task engine whether every task of the run ended (a task cancelled while queued never reports). The tasks
+    /// of a run may belong to another user of the same group, which the caller's task runner does not answer for, so this
+    /// one read-only check goes through <see cref="ICorePluginContext.System"/>; it shows nothing about any device.
+    /// </summary>
+    public string? SystemAccessReason(string method) => method == ActionRulesMethods.Undo
+        ? "checks that the tasks of the change ended, shows no device"
+        : null;
+
     /// <summary>Every run is in the audit log.</summary>
     public bool IsAudited(string method) => RequiredPermission(method) is ActionRulesMethods.ManagePermission or ActionRulesMethods.DeletePermission;
 
@@ -124,11 +133,11 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
                 }
 
                 sweeps.For(caller)?.Start(readIds);
-                return ActionRulesJson.Serialize(State(caller.DeviceScopeKey));
+                return ActionRulesJson.Serialize(await StateAsync(caller, ct).ConfigureAwait(false));
             case ActionRulesMethods.GetState:
-                return ActionRulesJson.Serialize(State(caller.DeviceScopeKey));
+                return ActionRulesJson.Serialize(await StateAsync(caller, ct).ConfigureAwait(false));
             case ActionRulesMethods.GetProgress:
-                return ActionRulesJson.Serialize(State(caller.DeviceScopeKey) with { Rows = [] });
+                return ActionRulesJson.Serialize(await StateAsync(caller, ct).ConfigureAwait(false) with { Rows = [] });
             case ActionRulesMethods.Templates:
                 var ids = ActionRulesJson.Deserialize<TemplatesRequest>(payloadJson).Ids ?? [];
                 return ActionRulesJson.Serialize(ids.Select(id => _templateSets.TryGetValue(id, out var set) ? set : null).OfType<TemplateSet>().ToList());
@@ -166,7 +175,10 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     /// <summary>One change at a time per device: tasks of two quick runs never write the same device together.</summary>
     internal SemaphoreSlim DeviceGate(Guid deviceId) => _deviceGates.GetOrAdd(deviceId, _ => new SemaphoreSlim(1, 1));
 
-    /// <summary>A task of a run ended (whatever its result).</summary>
+    /// <summary>
+    /// A task of a run ended (whatever its result). Runs whose tasks all ended without reporting (cancelled while queued)
+    /// are forgotten here, on the task's side (no user's call), never in a user's call.
+    /// </summary>
     internal void TaskEnded(Guid runId)
     {
         while (_running.TryGetValue(runId, out var r))
@@ -178,15 +190,18 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
                     _runTasks.TryRemove(runId, out _);
                 }
 
-                return;
+                break;
             }
         }
+
+        ForgetEndedRuns();
     }
 
     /// <summary>
     /// Whether tasks of the run may still write. Tasks that were cancelled while queued never report: the task engine says
-    /// whether any task of the run is still queued or running; a host that cannot tell counts the run as done after
-    /// <see cref="RunningLimit"/>; after a server restart nothing runs.
+    /// whether any task of the run is still queued or running (<see cref="ICorePluginContext.System"/>: in a group user's call
+    /// only from Undo, which declares it in <see cref="SystemAccessReason"/>); a host that cannot tell counts the run as done
+    /// after <see cref="RunningLimit"/>; after a server restart nothing runs.
     /// </summary>
     internal bool IsRunning(Guid runId)
     {
@@ -195,7 +210,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             return false;
         }
 
-        if (_ctx?.Tasks is { } tasks && _runTasks.TryGetValue(runId, out var ids) && ids.Count > 0
+        if (_ctx?.System.Tasks is { } tasks && _runTasks.TryGetValue(runId, out var ids) && ids.Count > 0
             && ids.All(id => tasks.IsActive(id) == false))
         {
             _running.TryRemove(runId, out _);
@@ -208,17 +223,36 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
 
     internal static readonly TimeSpan RunningLimit = TimeSpan.FromHours(6);
 
-    /// <summary>Runs whose tasks ended without reporting (cancelled while queued) or that passed the limit are forgotten.</summary>
+    /// <summary>Runs past <see cref="RunningLimit"/> are forgotten (the task engine is not asked: safe in any user's call).</summary>
     private void ForgetOldRuns()
     {
-        foreach (var runId in _running.Keys)
+        var now = _options.Time.GetUtcNow();
+        foreach (var (runId, r) in _running)
         {
-            IsRunning(runId); // removes runs whose tasks all ended
-            if (_running.TryGetValue(runId, out var r) && _options.Time.GetUtcNow() - r.Started >= RunningLimit)
+            if (now - r.Started >= RunningLimit)
             {
                 _running.TryRemove(runId, out _);
                 _runTasks.TryRemove(runId, out _);
             }
+        }
+    }
+
+    /// <summary>
+    /// Runs whose tasks all ended without reporting (cancelled while queued) or that passed the limit are forgotten. Called
+    /// when a task ends (no user's call); a refusal of the host leaves the run to <see cref="IsRunning"/> and the limit.
+    /// </summary>
+    private void ForgetEndedRuns()
+    {
+        ForgetOldRuns();
+        try
+        {
+            foreach (var runId in _running.Keys)
+            {
+                IsRunning(runId); // removes runs whose tasks all ended
+            }
+        }
+        catch (DeviceAccessRefusedException)
+        {
         }
     }
 
@@ -228,6 +262,26 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     /// </summary>
     private static bool Sees(ICallContext caller, UndoRun run) =>
         caller.HasAllDevices || string.Equals(run.Scope ?? ICallContext.AllDevicesScopeKey, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Binds a task to its run before it reads or writes anything: a task started by hand through the task service could name
+    /// any run id. The run must be one the task's user sees (<see cref="Sees"/>; a task the system started counts as all
+    /// devices), and an undo task needs a run that Undo marked. Null when the task may go on, else the refusal.
+    /// </summary>
+    internal async Task<string?> RunRefusalAsync(ICallContext? caller, RuleTaskPayload payload, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        if (!Undo.IsAvailable)
+        {
+            return null; // nothing is saved for undo on this server: no run to bind to
+        }
+
+        var undo = payload.Action == RuleTaskActions.Undo;
+        var run = await Undo.FindAsync(undo ? payload.UndoOf!.Value : payload.RunId, ct).ConfigureAwait(false);
+        return run is null || (caller is not null && !Sees(caller, run)) || (undo && !run.Undone)
+            ? (undo ? RuleTexts.CannotUndo : RuleTexts.CannotSaveForUndo)
+            : null;
+    }
 
     /// <summary>Reads one device again (after a task on it), in every table that has a row of it.</summary>
     internal async Task RefreshRowAsync(Guid deviceId)
@@ -636,15 +690,18 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     private static string RunDescription(string name, int devices) =>
         name + (devices == 1 ? " on 1 device" : string.Create(CultureInfo.InvariantCulture, $" on {devices:N0} devices"));
 
-    /// <summary>The state of a scope's table; a deleted group has none (empty).</summary>
-    private RulesState State(string scopeKey)
+    /// <summary>
+    /// The state of the caller's table with only the rows of devices the caller sees now (a device that left the group drops
+    /// out at once); a deleted group has none (empty).
+    /// </summary>
+    private async Task<RulesState> StateAsync(ICallContext caller, CancellationToken ct)
     {
-        if (_sweeps?.For(scopeKey) is not { } sweep)
+        if (_sweeps?.For(caller) is not { } sweep)
         {
             return new RulesState(false, 0, 0, null, []);
         }
 
-        var now = sweep.Snapshot();
+        var now = await sweep.SnapshotAsync(caller, ct).ConfigureAwait(false);
         return new RulesState(now.Running, now.Done, now.Total, now.FinishedUtc, sweep.Sorted(now.Rows));
     }
 

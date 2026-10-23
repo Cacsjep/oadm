@@ -80,9 +80,10 @@ public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
                     await CallDevices.RequireAsync(caller, ids, ct).ConfigureAwait(false);
                 }
 
-                return ImageHealthJson.Serialize(monitor.StartCheck(caller.DeviceScopeKey, ids));
+                monitor.StartCheck(caller.DeviceScopeKey, ids);
+                return ImageHealthJson.Serialize(await monitor.SnapshotAsync(caller, ct).ConfigureAwait(false));
             case ImageHealthMethods.GetState:
-                return ImageHealthJson.Serialize(monitor.Snapshot(caller.DeviceScopeKey, withRows: true));
+                return ImageHealthJson.Serialize(await monitor.SnapshotAsync(caller, ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
