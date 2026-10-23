@@ -157,6 +157,42 @@ certificate").
 - **Server certificate:** issued by the OADM CA (PKI) for the server, names = the listen addresses and the server's host
   name, renewed automatically 30 days before it expires; the cameras trust it through the PKI task "IEEE 802.1X".
 
+## Parsing and RFC compliance
+
+Switches differ; the server assumes nothing a switch may leave out and is strict about what the RFCs require.
+
+- **RADIUS packets (RFC 2865):** 20..4,096 bytes; the length field must equal the datagram (extra bytes after it are
+  ignored as the RFC says, a shorter datagram is dropped); every attribute length 2..255 and within the packet; unknown
+  attributes and vendor attributes (type 26) are skipped, never an error; a malformed packet is **silently dropped**
+  (RFC 2865 3), logged at debug with the switch and the reason, counted on the switch row. Attributes may come in any
+  order; repeated ones are kept in order.
+- **Required in each Access-Request:** EAP-Message (else not ours: Access-Reject "Only EAP-TLS is supported", never a
+  password check), Message-Authenticator (RFC 3579 3.2, checked before anything else). User-Name, NAS-IP-Address /
+  NAS-IPv6-Address / NAS-Identifier, NAS-Port, NAS-Port-Id, NAS-Port-Type, Calling-Station-Id, Called-Station-Id,
+  Framed-MTU and State are **optional**: every column that needs one shows it empty when missing.
+- **Answers:** the Response Authenticator (RFC 2865 3), Message-Authenticator first; **Proxy-State** attributes copied
+  unchanged and in order into the answer (RFC 2865 5.33); State sent in every Access-Challenge and checked on the next
+  request (unknown State: Access-Reject, "Session not found or expired").
+- **EAP (RFC 3748):** EAP-Message attributes concatenated in order (RFC 3579 3.1); the EAP length must match the joined
+  bytes; Identifier tracked per session (a repeated Identifier is a retransmission); a NAK (type 3) to EAP-TLS ends the
+  session: "The device does not support EAP-TLS (it asked for <method>)"; EAP types other than Identity, NAK and EAP-TLS
+  (13) are refused.
+- **EAP-TLS (RFC 5216 / 9190):** flags L, M, S checked; the L length only on the first fragment and at most 64 KB; the
+  fragments must add up to it; an acknowledgement is an EAP-TLS message with no data; reserved flag bits ignored.
+- **Port:** NAS-Port-Id (text, e.g. "GigabitEthernet1/0/5") when sent, else NAS-Port (number), else empty;
+  NAS-Port-Type shown as Ethernet, Wireless and so on when sent.
+- **MAC address** (Calling-Station-Id, RFC 3580 3.21 recommends `AC-CC-8E-12-34-56`): accepted with `-`, `:`, `.` or no
+  separators, upper or lower case, in groups of 2 or 4 (`accc.8e12.3456`), with surrounding spaces or quotes; a suffix
+  after the 12 digits (`…:SSID`, wireless) ignored; anything that is not 12 hex digits after that is shown as sent, never
+  matched to a device.
+- **Switch name and address:** the switch row is found by the packet's source address, never by NAS-Identifier or
+  NAS-IP-Address (both are shown in the log, not trusted).
+- **Text attributes** decoded as UTF-8; invalid bytes shown as replacement characters; control characters removed before
+  they reach the UI or a log.
+- **Fixtures:** recorded conversations of real switches (Cisco IOS / IOS-XE, HPE Aruba, Juniper, Netgear, Ubiquiti,
+  Zyxel, MikroTik as available) under `tests/.../Fixtures/Radius`, each replayed in a test; new switch quirks become a
+  fixture first.
+
 ## Who passes
 
 - The client certificate: a chain to the OADM CA or a root of the PKI trusted root store, valid now, extended key usage
@@ -191,7 +227,11 @@ and reason, never secrets or key material.
 
 ## Tests
 
-- RADIUS packets and the authenticators from the RFC test vectors; Message-Authenticator required; duplicates.
+- RADIUS packets and the authenticators from the RFC test vectors; Message-Authenticator required; duplicates;
+  Proxy-State echoed; every optional attribute missing; every malformed case of "Parsing and RFC compliance" dropped.
+- Fuzz tests of the RADIUS, EAP and EAP-TLS parsers (random and mutated packets from the fixtures): never an exception
+  outside the parser, never a hang, never more memory than the limits.
+- The recorded switch fixtures replayed; the MAC formats of every vendor normalized.
 - Full EAP-TLS conversations with a BouncyCastle TLS client as the camera through an in-memory switch: TLS 1.2 and 1.3,
   fragment sizes 500..1400 and small `Framed-MTU`, every state of the table, every refusal (unknown CA, expired, an
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
