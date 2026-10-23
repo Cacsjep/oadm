@@ -149,7 +149,7 @@ replaced, test references pointed at `plugins/`, a `Directory.Build.props` / `.t
 imports the plugin project SDK from source (`src/Oadm.Plugin.Sdk/targets/Oadm.Plugin.Repo.*`), and adds the projects to
 Oadm.sln (with the dotnet the script found); existing folders are never overwritten; names that would clash in code (Task,
 Plugin, ...) are refused. `Oadm.NewPlugin --templates <folder> --version <v>` (`Templates.cs`) writes the content of the
-template package from the same samples. Tests `tests/Oadm.NewPlugin.Tests` (`ScaffoldTests`, `PluginSdkTests`: the
+template package from the same samples. Tests `tests/Oadm.NewPlugin.Tests` (in Oadm.sln, so CI runs them; `ScaffoldTests`, `PluginSdkTests`: the
 templates, and `Oadm.Plugin.Versions.props` against `SdkInfo.Version` and `Oadm.Client.csproj`). A change of a sample
 changes its tutorial, what `manage new` creates and the templates: keep the tutorial text in line.
 
