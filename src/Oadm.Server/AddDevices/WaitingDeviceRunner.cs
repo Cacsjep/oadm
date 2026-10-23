@@ -60,6 +60,7 @@ public sealed partial class WaitingDeviceRunner(
     DeviceRepository devices,
     DeviceAdder adder,
     DeviceTagStore tags,
+    Core.DeviceGroups.DeviceViewFactory views,
     ServerSettingsStore settings,
     DevicePollingService polling,
     AuditLog audit,
@@ -496,7 +497,9 @@ public sealed partial class WaitingDeviceRunner(
         {
             try
             {
-                await tags.SetDeviceTagsAsync([device.Id], [.. entry.Tags], [], ct).ConfigureAwait(false);
+                // add-devices: the queuing user's current view (WaitingTry carries no user yet); the system view keeps today's behaviour.
+                var viewed = await views.System.GetAsync([device.Id], ct).ConfigureAwait(false);
+                await tags.SetDeviceTagsAsync(viewed, [.. entry.Tags], [], ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is TagNameException or TagLimitException)
             {

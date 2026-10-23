@@ -127,7 +127,6 @@ public sealed partial class ArchitectureTests
         ["DevicePollingService.QueueRefresh"] = "devices-core",
         ["VapixClientFactory.CreateAsync"] = "devices-core",
         ["VapixClientFactory.Invalidate"] = "devices-core",
-        ["DeviceTagStore.SetDeviceTagsAsync"] = "shared-core",
         ["TaskEngine.RunAsync"] = "tasks",
         ["TaskPluginQueries.QueryAsync"] = "tasks",
         ["ActionRunner.TestAsync"] = "shared-core",

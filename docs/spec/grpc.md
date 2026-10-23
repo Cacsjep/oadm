@@ -179,15 +179,18 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `snapshot_end`, then changes; `checking` while a result was asked for), `SetEnabled` (compliance on / off, off by default;
   `ComplianceCheckList.enabled`).
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
-  `device_count`, then names used on devices without a definition, `defined = false`), `Watch` (the whole `TagList` on
+  `device_count` in the caller's view and, for users with all devices, the `group_names` that use it; then names used on
+  devices of the view without a definition, `defined = false`), `Watch` (the whole `TagList` on
   subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
   (ALREADY_EXISTS, INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 500 definitions; `TAG_COLOR_UNSPECIFIED` = next palette
   color), `Update(name, new_name, color)` (Admin; rename and / or recolor, empty / UNSPECIFIED keep; a rename rewrites
   every device's tag in one transaction; an undefined name gets a definition), `Delete(name)` (Admin; removes the tag
   from every device in one transaction, reply `devices_changed`), `SetDeviceTags(device_ids, add, remove)` (one call
   and one transaction for the whole selection, names in `add` without a definition are created with the next palette
-  color, unknown ids ignored, RESOURCE_EXHAUSTED when a device would get more than 20 tags; reply `devices_changed`,
-  `created`). Every write publishes one Updated device change per changed device.
+  color, unknown or outside ids refuse the call with NOT_FOUND, PERMISSION_DENIED for a user with a device group who adds
+  or removes a tag a device group uses, RESOURCE_EXHAUSTED when a device would get more than 20 tags; reply
+  `devices_changed`, `created`). Every write publishes one Updated device change per changed device; moves into or out of
+  device groups are audited per group.
 - `LicenseService` (`license.proto`, see `docs/spec/licensing.md`): `GetLicense` (every signed-in user), `ImportLicense`
   and `RemoveLicense` (Admin, audited; INVALID_ARGUMENT with the reason).
 - `SupportService` (`support.proto`, see `docs/spec/settings-backup.md` "Support report"): `CreateReport` (Admin, audited

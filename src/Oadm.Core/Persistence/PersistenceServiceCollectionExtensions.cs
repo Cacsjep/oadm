@@ -73,6 +73,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<DeviceGroups.DeviceGroupStore>();
         services.AddSingleton<DeviceGroups.DeviceScopeCatalog>();
         services.AddSingleton<DeviceGroups.DeviceViewFactory>();
+        services.AddSingleton<DeviceGroups.DeviceMembershipAudit>();
 
         services.AddSingleton<DatabaseInitializer>();
         return services;

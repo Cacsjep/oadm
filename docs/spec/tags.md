@@ -11,6 +11,19 @@ with the labels in the grid, the search, the export and the import; plugins read
   a definition, e.g. older data). A tag created without a color gets the next palette color (definition count modulo 8).
   Server: `TagDefinition` / `DeviceTagStore`, gRPC `TagService` (see "gRPC services"). Roles: operators tag devices and
   create tags; rename, recolor and delete are Admin only. Every change is audited.
+- **Device groups** (`docs/spec/device-scope.md`): `DeviceTagStore` is the only writer of device tags and holds the guard:
+  `SetDeviceTagsAsync` takes `ViewedDevices` (the ids come from the caller's view; an unknown or outside id refuses the
+  call, NOT_FOUND, for every user); for a view of a group no added or removed name may be a tag a device group uses
+  (`TagInUseByGroupException`, PERMISSION_DENIED "A device group uses the tag X. Only users with all devices can add or
+  remove it. Nothing was changed."). The guard reads the groups inside the write transaction, which holds SQLite's write
+  lock from its start (BEGIN IMMEDIATE), so a group saved during the tagging commits after it. Rename, recolor and delete
+  need all devices (`AccessRule.AllDevices`); a rename keeps the tag in its groups (groups name tags by id), a delete takes
+  it out of them. `List` / `Watch` count only the devices of the caller's view and fill `DeviceTag.group_names` (the
+  groups that use the tag) only for users with all devices; the client asks before deleting such a tag ("Used by device
+  group Building B"). Every move of a device into or out of a group by tagging or deleting a tag is audited per group
+  ("Devices left device group" / "Devices entered device group", target the group, detail "3 devices (serials): +PTZ"):
+  `DeviceMembershipAudit` (`CaptureAsync` before the write, `WriteAsync` with the changed devices after it; shared by every
+  writer that moves devices).
 - **Client store**: `Tags/TagStore` (fed by `TagService.Watch` in `ServerConnection`, owned by `DeviceStore.Tags`) keeps
   one shared `TagInfo` per name (case-insensitive); device rows hold `TagChips` of those shared objects, so a recolor
   updates every chip and group header without touching 5,000 rows. `DeviceRowViewModel.Tags` / `TagsText`
@@ -43,6 +56,7 @@ with the labels in the grid, the search, the export and the import; plugins read
   problem of the line. In the grid a chip is at most 200 px wide and ends with "…"; the tooltip names every tag.
 - **Fake mode**: Building A (blue), Building C (green), PTZ (amber), Outdoor (teal) on the sample devices; every
   `TagService` call works in memory (`FakeOadmApi.Tags.cs`).
-- **Tests**: `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename
+- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TagGuardTests` (guard, group save during tagging, membership audit),
+  `tests/Oadm.Server.Tests/DeviceGroups/SharedCore/TagScopeTests`, `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename
   2.2 s, delete 2.0 s, list 35 ms); `tests/Oadm.Client.Tests/DeviceTagsTests`, `DeviceTagsHeadlessTests`, Perf
   `TagGroupScaleTests`.
