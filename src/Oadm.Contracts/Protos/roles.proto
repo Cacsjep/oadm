@@ -2,6 +2,7 @@ syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
+import "Protos/device_groups.proto";
 
 // Roles and their permissions (the permission matrix of the Users page). Administrator only, except Mine.
 // INVALID_ARGUMENT for names, descriptions and too many roles; NOT_FOUND; FAILED_PRECONDITION for a change of the
@@ -74,4 +75,5 @@ message MyRole {
   string role_name = 1;
   bool all_permissions = 2;
   repeated PermissionInfo permissions = 3;   // what the role allows, in matrix order
+  MyDevices devices = 4;                     // the devices the caller may reach (Your role); unset from older servers
 }

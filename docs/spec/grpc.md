@@ -15,6 +15,30 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `role`), `Update` (optional `role_id` / `role` / disabled, new password; a password or disabling ends the user's
   sessions, a role applies to the next call), `Delete`; FAILED_PRECONDITION for the own account or the last enabled
   administrator. `AuditService` (Admin): `List(limit, offset)` newest first + `total_count` (limit 0 = 10,000).
+  Devices of a user (`docs/spec/device-scope.md`): `UserInfo.all_devices = 12` (optional: unset only from servers before
+  device groups; always true for the Administrator role), `device_group_id = 13`, `device_group_name = 14`;
+  `AddUserRequest.all_devices = 5` / `device_group_id = 6` (neither: all devices, older clients; `all_devices` false
+  without a group: INVALID_ARGUMENT "Choose All devices or a device group."); `UpdateUserRequest.all_devices = 6` /
+  `device_group_id = 7` (unset = keep; audited "devices Building B"; ends the user's streams like a new role).
+- `DeviceGroupService` (`device_groups.proto`, Admin): `List` (`DeviceGroupInfo` {id, name, description, rules, revision,
+  device_count, user_names, summary "Site Building B, tag PTZ, 3 devices, except 1", created, changed} sorted by name +
+  `total_devices`), `Get`, `Save(SaveDeviceGroupRequest {id empty = new, name, description, rules, revision})` (audited
+  "Created device group" / "Changed device group"; INVALID_ARGUMENT, ALREADY_EXISTS name, NOT_FOUND, FAILED_PRECONDITION
+  older revision "Another administrator changed this device group meanwhile. ...", RESOURCE_EXHAUSTED over 200),
+  `Delete` (reply `user_names` who have no devices now, `disabled` "3 event rules"; audited "Deleted device group"),
+  `Preview(rules, group_id)` (`device_count`, `total_devices`: the editor's live count). `DeviceGroupRules` {this_server,
+  site_ids, tag_ids, serials, except_serials}. Shared messages: `DeviceOwner` {all_devices, group_id, group_name}
+  (`RuleSummary.owner = 11`, `SaveRuleRequest.owner = 2`, `ComplianceCheckSummary.owner = 19`; unset in a save = the
+  caller's devices for a new object, keep for a changed one; only administrators change it), `MyDevices`
+  (`MyRole.devices = 4`: all devices or the group's name, summary without excepted devices, site and tag names, single
+  device count, device_count of the own view). `DeviceTag.group_names = 6` and `Site.group_names = 20` (the groups that
+  use a tag or site, for users with all devices), `ServerSettings.action_destinations = 12` (`ActionDestinationList`:
+  where rules of device groups may send). Wave 1 packages fill these fields; the foundation fills the user fields,
+  `MyRole.devices` and the group service.
+- Device ids outside the caller's view answer like unknown ids: NOT_FOUND `DeviceMessages.NoLongerAvailable` ("3 devices
+  are no longer available."), the whole request refused (`DevicesNotAvailableException`, mapped by `AuthInterceptor`).
+  Methods for users with all devices only (`AccessRule.AllDevices`) answer PERMISSION_DENIED "Only users with all
+  devices can do this." for users with a device group.
 - `RoleService` (`roles.proto`, Admin except `Mine`): `GetMatrix` (every `PermissionInfo` {key, name, description, group,
   icon_key, operator_default, viewer_default, full_device_control, available} in matrix order and every `RoleInfo` {id,
   name, description, kind, permissions, user_count, version, start_page}), `SaveRoles(roles)` (create = empty id, change; one transaction; `RoleChange.start_page` unset = keep, INVALID_ARGUMENT "Choose a start page from the list." for anything but a start page, the only change the Administrator role accepts;
@@ -48,7 +72,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   request; the devices that took it get root + password stored in one transaction, their client dropped and a full refresh
   queued; reply `results` {device_id, ok, message} in request order; audit "First password set" {"root", "3 devices, 2
   set"}, never the password; INVALID_ARGUMENT without devices or for a password that is not 1-64 printable ASCII),
-  `GetPassphrasePolicies(DeviceIds)` (anonymous systemready per device: `policies` {device_id, policy none / length /
+  `GetPassphrasePolicies(DeviceIds)` (only devices of the caller's view, else NOT_FOUND before any device is asked; anonymous systemready per device: `policies` {device_id, policy none / length /
   complex, empty when unreadable}; the dialog's hint).
 - `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address, user_name = 2,
   password = 3, expected_serial = 4)` (one entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or

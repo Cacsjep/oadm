@@ -11,6 +11,7 @@ using Oadm.Core.Settings;
 using Oadm.Core.Tasks;
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Discovery;
 using Oadm.Server.Mapping;
@@ -93,7 +94,7 @@ public sealed partial class AddDevicesGrpcService(
         try
         {
             var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password,
-                request.SaveToCredentialList && CallerContext.Current is not { IsAdmin: false }, // the credential list is Administrator only
+                request.SaveToCredentialList && AuthInterceptor.CallerOf(context).IsAdmin, // the credential list is Administrator only
                 request.RelatedSessionIds, ct).ConfigureAwait(false);
             var message = Mappers.ToProto(found, false, 100, result);
             Mappers.AddRoutes(message, found, id => states?.NameOf(id));

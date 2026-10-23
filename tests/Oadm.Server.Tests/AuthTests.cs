@@ -96,6 +96,7 @@ public sealed class AuthTests
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
             Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor,
             Proto.ComplianceService.Descriptor, Proto.SiteService.Descriptor, Proto.LicenseService.Descriptor, Proto.SupportService.Descriptor,
+            Proto.DeviceGroupService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
         // Both ways: no made-up entry, and no method that falls back to Administrator only by accident.
@@ -122,9 +123,18 @@ public sealed class AuthTests
         Assert.Equal(AccessRule.Needs(HostPermissions.ComplianceManage), AccessPolicy.For("/oadm.v1.ComplianceService/SaveCheck"));
         Assert.Equal(AccessRule.SignedIn, AccessPolicy.For("/oadm.v1.TagService/List"));
         Assert.Equal(AccessRule.Needs(HostPermissions.TagsAssign), AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags"));
-        Assert.Equal(AccessRule.Needs(HostPermissions.TagsManage), AccessPolicy.For("/oadm.v1.TagService/Delete"));
         Assert.Equal(AccessRule.InCall, AccessPolicy.For("/oadm.v1.TaskService/Run"));
         Assert.Equal(AccessRule.Needs(AccessPolicy.WebViewOpen), AccessPolicy.For("/oadm.v1.DeviceWebService/Open"));
+
+        // Device groups: Administrator only; the methods only users with all devices may call carry the marker.
+        Assert.All(Proto.DeviceGroupService.Descriptor.Methods, m => Assert.Equal(AccessRule.Admin, AccessPolicy.For($"/oadm.v1.DeviceGroupService/{m.Name}")));
+        Assert.Equal(
+            ["/oadm.v1.ComplianceService/SetEnabled", "/oadm.v1.EventService/ClearLog", "/oadm.v1.ServerLogService/List", "/oadm.v1.SettingsService/AddCredential",
+                "/oadm.v1.SettingsService/ListCredentials", "/oadm.v1.SettingsService/RemoveCredential", "/oadm.v1.SettingsService/RevealCredential", "/oadm.v1.SettingsService/Set",
+                "/oadm.v1.TagService/Delete", "/oadm.v1.TagService/Update", "/oadm.v1.TaskService/DeleteAll"],
+            methods.Where(m => AccessPolicy.For(m).AllDevices).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(AccessRule.Needs(HostPermissions.TagsManage).ForAllDevices(), AccessPolicy.For("/oadm.v1.TagService/Delete"));
+        Assert.False(AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags").AllDevices);
     }
 
     [Fact]

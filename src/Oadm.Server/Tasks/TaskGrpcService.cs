@@ -39,7 +39,7 @@ public sealed partial class TaskGrpcService(
         var deviceId = GrpcGuard.ParseId(request.DeviceId, "device id");
 
         // The dialog's reads: any permission of the task (a role that may run some of its choices opens the dialog).
-        if (registry.TryGetTaskPlugin(request.PluginId, out var plugin) && CallerContext.Current is { } caller
+        if (registry.TryGetTaskPlugin(request.PluginId, out var plugin) && AuthInterceptor.CallerOf(context) is var caller
             && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(plugin.Plugin)))
         {
             throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(PermissionCatalog.TaskKeys(plugin.Plugin)[0], roles.Catalog)));
@@ -80,11 +80,11 @@ public sealed partial class TaskGrpcService(
     /// </summary>
     public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.ListTaskPluginsRequest request, ServerCallContext context)
     {
-        var caller = CallerContext.Current;
+        var caller = AuthInterceptor.CallerOf(context); // fail closed: never "no caller = every plugin"
         var reply = new Proto.TaskPluginList();
         foreach (var entry in await runnable.GetAsync(context.CancellationToken).ConfigureAwait(false))
         {
-            if (caller is not null && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(entry.Plugin.Plugin)))
+            if (!caller.Permissions.HasAny(PermissionCatalog.TaskKeys(entry.Plugin.Plugin)))
             {
                 continue;
             }

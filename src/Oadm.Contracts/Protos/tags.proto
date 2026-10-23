@@ -43,6 +43,9 @@ message DeviceTag {
   TagColor color = 3;     // UNSPECIFIED when not defined
   int32 device_count = 4;
   bool defined = 5;
+  // The device groups whose rules use the tag (deleting asks first: "Used by device group Building B"); only for users
+  // with all devices, else empty.
+  repeated string group_names = 6;
 }
 
 message TagList { repeated DeviceTag tags = 1; }

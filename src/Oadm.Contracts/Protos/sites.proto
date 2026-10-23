@@ -54,6 +54,8 @@ message Site {
   google.protobuf.Timestamp bound = 17;
   string message = 18;             // plain text of the state ("Site node too old. Update it.")
   string node_fingerprint = 19;    // hex SHA-256 of the node's key
+  // The device groups whose rules use the site (removing asks first); only for users with all devices, else empty.
+  repeated string group_names = 20;
 }
 
 message SiteList {

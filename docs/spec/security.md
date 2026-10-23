@@ -41,7 +41,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 `Settings/UsersCardView` + `RolesCardView`, `Logging/AuditLogViewModel`.
 
 - Table `Users`: Id, UserName (unique case-insensitive, 1..64), PasswordHash (PBKDF2-SHA256, 210,000 iterations, 16-byte
-  salt), RoleId (table `Roles`), Disabled, CreatedUtc, LastLoginUtc. Passwords have no strength rule, only not empty.
+  salt), RoleId (table `Roles`), Disabled, CreatedUtc, LastLoginUtc, AllDevices + DeviceGroupId (the devices, migration
+  `DeviceGroups`, see "Device groups" below). Passwords have no strength rule, only not empty.
 - **First administrator**: while no user exists, the login window offers "Create the first administrator"; the server
   accepts it from a loopback client, or from a remote client with the one-time setup code the server writes to
   `<datafolder>/setup-code.txt` (admin-only file) and logs at startup.
@@ -77,10 +78,20 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   settings import; event rules, tag management and Delete all stay off as before. `RolesUpgradeNotice` records what
   operators lost at the first start of an installation that had users; administrators see it as a banner with "Check
   roles" until they dismiss it (per client).
+- **Device groups** (`docs/spec/device-scope.md`): every user has "All devices" or a device group (`Users.AllDevices`,
+  `DeviceGroupId`; Administrator always all devices). The interceptor puts the caller with its devices
+  (`AuthenticatedCaller.Devices`, the group's revision) into the call's `UserState` (`AuthInterceptor.CallerOf`); services
+  get their devices from `DeviceViewFactory.ForAsync(context)`, never by id from the repository. `AccessRule.AllDevices`
+  marks methods only users with all devices may call (PERMISSION_DENIED "Only users with all devices can do this.").
+  `CallerContext` is a backstop only and never flows into background work (`CallerContext.Suppress`, `RunDetached`,
+  `Raise`: task runs, event handlers, detached work, timers). A deleted group leaves its users with no devices (fail
+  closed). Audit: "Created device group", "Changed device group" (what changed), "Deleted device group" (who has no devices
+  now, what was turned off), a user's devices in "Changed user" ("devices Building B") and "Added user" (only for a group: "Role Operator, devices Building B").
 - **Open streams**: `CallerStreams` registers every streaming call and the interceptor checks the session and the role
   once more right after the registration (a change in between never leaves a stream with old rights); a role change ends
   the streams the role no longer allows (the HTTP request is aborted, the client reconnects and is refused), a user with
-  another role gets all streams ended. `AuthService.WatchSession` (not ended by role changes) sends the user with role and
+  another role or other devices gets all streams ended, so do the users of a group whose rules changed (a stream whose
+  devices changed between check and registration ends with UNAVAILABLE "Your devices changed. Connect again."). `AuthService.WatchSession` (not ended by role changes) sends the user with role and
   permissions after every change. A logout, a new password, a disabled or deleted user end every stream of those sessions,
   the session stream too (`AuthTokenStore.SessionsEnded`); revoking deletes the token rows before the cache entry, so a call
   in between cannot bring the session back.

@@ -12,7 +12,7 @@ namespace Oadm.Server.Auth;
 /// gRPC RoleService: the permission matrix of the Users page (Administrator only) and the caller's own rights (Mine,
 /// every user). Every change goes to the audit log per role ("+Web View: Open devices -Restart").
 /// </summary>
-public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, AuditLog audit) : Proto.RoleService.RoleServiceBase
+public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, AuditLog audit, Core.DeviceGroups.DeviceGroupStore groups, Core.DeviceGroups.DeviceViewFactory views) : Proto.RoleService.RoleServiceBase
 {
     public override async Task<Proto.RoleMatrix> GetMatrix(Proto.Empty request, ServerCallContext context) =>
         await MatrixAsync(context.CancellationToken).ConfigureAwait(false);
@@ -67,7 +67,35 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
             AllPermissions = caller.Permissions.IsAll,
         };
         reply.Permissions.AddRange(roles.Catalog.Entries.Where(e => caller.Has(e.Key)).Select(ToProto));
+        reply.Devices = await MyDevicesAsync(caller, context).ConfigureAwait(false);
         return reply;
+    }
+
+    /// <summary>Your role's devices: all devices, or the group with its sites, tags and single devices (never the excepted ones).</summary>
+    private async Task<Proto.MyDevices> MyDevicesAsync(Core.Auth.AuthenticatedCaller caller, ServerCallContext context)
+    {
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var devices = new Proto.MyDevices { AllDevices = view.HasAllDevices, DeviceCount = await view.CountAsync(context.CancellationToken).ConfigureAwait(false) };
+        if (view.HasAllDevices)
+        {
+            devices.Summary = Core.DeviceGroups.DeviceGroupTexts.AllDevices;
+            return devices;
+        }
+
+        if (caller.DeviceGroupId is not { } groupId || await groups.GetAsync(groupId, context.CancellationToken).ConfigureAwait(false) is not { } group)
+        {
+            devices.Summary = Core.DeviceGroups.DeviceGroupTexts.NoDevices;
+            return devices;
+        }
+
+        devices.GroupId = group.Id.ToString();
+        devices.GroupName = group.Name;
+        devices.Summary = Core.DeviceGroups.DeviceGroupSummary.Text(group.Rules, views.Catalog, withExcept: false);
+        devices.ThisServer = group.ThisServer;
+        devices.SiteNames.AddRange(Core.DeviceGroups.DeviceGroupSummary.SiteNames(group.Rules, views.Catalog));
+        devices.TagNames.AddRange(Core.DeviceGroups.DeviceGroupSummary.TagNamesOf(group.Rules, views.Catalog));
+        devices.SingleDeviceCount = group.Serials.Count;
+        return devices;
     }
 
     /// <summary>

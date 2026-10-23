@@ -2,6 +2,7 @@ syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
+import "Protos/device_groups.proto";
 import "Protos/events.proto";
 
 // Compliance checks: per check a type (from the host or a plugin), its settings, its devices, Problem or Warning, and
@@ -91,6 +92,9 @@ message ComplianceCheckSummary {
   int32 could_not_check = 16;
   string problem = 17;           // "Not available: Edge storage is turned off"
   bool reads_devices = 18;
+  // The owner (docs/spec/device-scope.md, Shared objects); in SaveCheck unset = the caller's devices for a new check, keep
+  // for a changed one (only administrators change it). No owner (its group was deleted): the check is off.
+  DeviceOwner owner = 19;
 }
 
 message ComplianceCheckList {

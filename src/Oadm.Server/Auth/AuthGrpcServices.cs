@@ -5,6 +5,7 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Settings;
 using Oadm.Sdk.Plugins;
 using Oadm.Server.Common;
@@ -30,8 +31,10 @@ internal static class AuthMapping
         ex.Message));
 
     /// <summary>A user with its role (id, name and the two-value role older clients know).</summary>
-    public static async Task<Proto.UserInfo> ToProtoAsync(UserRecord user, RoleStore roles, CancellationToken ct)
+    public static async Task<Proto.UserInfo> ToProtoAsync(UserRecord user, RoleStore roles, DeviceGroupStore groups, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(groups);
         var info = new Proto.UserInfo
         {
             Id = user.Id.ToString(),
@@ -41,19 +44,47 @@ internal static class AuthMapping
             Created = Timestamp.FromDateTime(DateTime.SpecifyKind(user.CreatedUtc, DateTimeKind.Utc)),
             RoleId = user.RoleId.ToString(),
             RoleName = await roles.NameOfAsync(user.RoleId, ct).ConfigureAwait(false),
+            AllDevices = user.HasAllDevices,
         };
         if (user.LastLoginUtc is { } last)
         {
             info.LastLogin = Timestamp.FromDateTime(DateTime.SpecifyKind(last, DateTimeKind.Utc));
         }
 
+        if (user.DeviceAccess.EffectiveGroupId is { } groupId)
+        {
+            info.DeviceGroupId = groupId.ToString();
+            info.DeviceGroupName = (await groups.GetAsync(groupId, ct).ConfigureAwait(false))?.Name ?? string.Empty;
+        }
+
         return info;
     }
 
-    /// <summary>The caller's own user: <see cref="ToProtoAsync"/> plus what the role allows.</summary>
-    public static async Task<Proto.UserInfo> SelfAsync(UserRecord user, RoleStore roles, CancellationToken ct)
+    /// <summary>
+    /// The devices of a request: all devices, a group, or (<paramref name="neither"/> allowed) null when the request says
+    /// nothing. "All devices = false" without a group is refused: a user never gets no devices by choice.
+    /// </summary>
+    public static DeviceScope? ScopeOf(bool hasAllDevices, bool allDevices, bool hasGroup, string? groupId, bool neither)
     {
-        var info = await ToProtoAsync(user, roles, ct).ConfigureAwait(false);
+        if (hasAllDevices && allDevices)
+        {
+            return DeviceScope.All;
+        }
+
+        if (hasGroup && !string.IsNullOrEmpty(groupId))
+        {
+            return Guid.TryParse(groupId, out var id) ? DeviceScope.Group(id) : throw new AuthException(AuthError.InvalidArgument, DeviceGroupTexts.UnknownGroup);
+        }
+
+        return hasAllDevices || hasGroup || !neither
+            ? throw new AuthException(AuthError.InvalidArgument, DeviceGroupTexts.ChooseDevices)
+            : null;
+    }
+
+    /// <summary>The caller's own user: <see cref="ToProtoAsync"/> plus what the role allows.</summary>
+    public static async Task<Proto.UserInfo> SelfAsync(UserRecord user, RoleStore roles, DeviceGroupStore groups, CancellationToken ct)
+    {
+        var info = await ToProtoAsync(user, roles, groups, ct).ConfigureAwait(false);
         var permissions = await roles.PermissionsOfAsync(user.RoleId, ct).ConfigureAwait(false);
         info.AllPermissions = permissions.IsAll;
         info.StartPage = await roles.StartPageOfAsync(user.RoleId, ct).ConfigureAwait(false);
@@ -78,7 +109,7 @@ internal static class AuthMapping
 }
 
 /// <summary>gRPC AuthService: status, login, logout and the first administrator.</summary>
-public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings) : Proto.AuthService.AuthServiceBase
+public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings, DeviceGroupStore groups) : Proto.AuthService.AuthServiceBase
 {
     private static readonly string Version =
         typeof(AuthGrpcService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "?";
@@ -101,7 +132,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
         try
         {
             var result = await auth.LoginAsync(request.UserName, request.Password, request.Remember, AuthInterceptor.ClientAddressOf(context), context.CancellationToken).ConfigureAwait(false);
-            return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, context.CancellationToken).ConfigureAwait(false) };
+            return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, groups, context.CancellationToken).ConfigureAwait(false) };
         }
         catch (AuthException ex)
         {
@@ -115,7 +146,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
         {
             var result = await auth.CreateFirstAdminAsync(request.UserName, request.Password, request.SetupCode,
                 AuthInterceptor.IsLoopback(context), request.Remember, AuthInterceptor.ClientAddressOf(context), context.CancellationToken).ConfigureAwait(false);
-            return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, context.CancellationToken).ConfigureAwait(false) };
+            return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, groups, context.CancellationToken).ConfigureAwait(false) };
         }
         catch (AuthException ex)
         {
@@ -152,8 +183,10 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
         });
         void OnRoles(object? sender, IReadOnlyCollection<Guid> ids) => signal.Writer.TryWrite(true);
         void OnUsers(object? sender, EventArgs e) => signal.Writer.TryWrite(true);
+        void OnGroup(object? sender, Guid id) => signal.Writer.TryWrite(true);
         roles.Changed += OnRoles;
         users.Changed += OnUsers;
+        groups.Changed += OnGroup;
         try
         {
             string? last = null;
@@ -178,6 +211,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
         {
             roles.Changed -= OnRoles;
             users.Changed -= OnUsers;
+            groups.Changed -= OnGroup;
         }
     }
 
@@ -187,19 +221,19 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
     private async Task<Proto.UserInfo?> SelfAsync(AuthenticatedCaller caller, CancellationToken ct)
     {
         var user = await users.FindByNameAsync(caller.UserName, ct).ConfigureAwait(false);
-        return user is null || user.Disabled || user.Id != caller.UserId ? null : await AuthMapping.SelfAsync(UserRecord.From(user), roles, ct).ConfigureAwait(false);
+        return user is null || user.Disabled || user.Id != caller.UserId ? null : await AuthMapping.SelfAsync(UserRecord.From(user), roles, groups, ct).ConfigureAwait(false);
     }
 }
 
 /// <summary>gRPC UserService (Admin only, see <see cref="AccessPolicy"/>). Every change goes to the audit log.</summary>
-public sealed class UserGrpcService(UserStore users, RoleStore roles, AuditLog audit) : Proto.UserService.UserServiceBase
+public sealed class UserGrpcService(UserStore users, RoleStore roles, AuditLog audit, DeviceGroupStore groups) : Proto.UserService.UserServiceBase
 {
     public override async Task<Proto.UserList> List(Proto.Empty request, ServerCallContext context)
     {
         var reply = new Proto.UserList();
         foreach (var user in await users.ListAsync(context.CancellationToken).ConfigureAwait(false))
         {
-            reply.Users.Add(await AuthMapping.ToProtoAsync(user, roles, context.CancellationToken).ConfigureAwait(false));
+            reply.Users.Add(await AuthMapping.ToProtoAsync(user, roles, groups, context.CancellationToken).ConfigureAwait(false));
         }
 
         return reply;
@@ -210,9 +244,12 @@ public sealed class UserGrpcService(UserStore users, RoleStore roles, AuditLog a
         try
         {
             var roleId = AuthMapping.RoleIdOf(request.RoleId, request.Role);
-            var user = await users.AddAsync(request.UserName, request.Password, roleId, context.CancellationToken).ConfigureAwait(false);
-            var info = await AuthMapping.ToProtoAsync(user, roles, context.CancellationToken).ConfigureAwait(false);
-            await audit.WriteAsync(AuditActions.UserAdded, user.UserName, "Role " + info.RoleName, context.CancellationToken).ConfigureAwait(false);
+            var scope = AuthMapping.ScopeOf(request.HasAllDevices, request.AllDevices, !string.IsNullOrEmpty(request.DeviceGroupId), request.DeviceGroupId, neither: true)
+                ?? DeviceScope.All; // older clients do not choose: all devices, as before device groups
+            var user = await users.AddAsync(request.UserName, request.Password, roleId, scope, context.CancellationToken).ConfigureAwait(false);
+            var info = await AuthMapping.ToProtoAsync(user, roles, groups, context.CancellationToken).ConfigureAwait(false);
+            var devices = info.AllDevices ? string.Empty : ", devices " + info.DeviceGroupName; // all devices: as before groups
+            await audit.WriteAsync(AuditActions.UserAdded, user.UserName, "Role " + info.RoleName + devices, context.CancellationToken).ConfigureAwait(false);
             return info;
         }
         catch (AuthException ex)
@@ -234,6 +271,7 @@ public sealed class UserGrpcService(UserStore users, RoleStore roles, AuditLog a
                 roleId,
                 request.HasDisabled ? request.Disabled : null,
                 string.IsNullOrEmpty(request.NewPassword) ? null : request.NewPassword,
+                AuthMapping.ScopeOf(request.HasAllDevices, request.AllDevices, request.HasDeviceGroupId, request.DeviceGroupId, neither: true),
                 AuthInterceptor.RequireCaller().UserId,
                 context.CancellationToken).ConfigureAwait(false);
             if (changes.Length > 0)
@@ -241,7 +279,7 @@ public sealed class UserGrpcService(UserStore users, RoleStore roles, AuditLog a
                 await audit.WriteAsync(AuditActions.UserChanged, user.UserName, changes, context.CancellationToken).ConfigureAwait(false);
             }
 
-            return await AuthMapping.ToProtoAsync(user, roles, context.CancellationToken).ConfigureAwait(false);
+            return await AuthMapping.ToProtoAsync(user, roles, groups, context.CancellationToken).ConfigureAwait(false);
         }
         catch (AuthException ex)
         {

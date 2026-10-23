@@ -1,0 +1,94 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// Device groups (docs/spec/device-scope.md): a user may be limited to part of the devices. Administrator only.
+// INVALID_ARGUMENT for names, descriptions, serials and too many rules; ALREADY_EXISTS for a name in use; NOT_FOUND;
+// FAILED_PRECONDITION for a save made on an older revision; RESOURCE_EXHAUSTED over 200 groups.
+service DeviceGroupService {
+  // Every group sorted by name, with its device count and users.
+  rpc List (Empty) returns (DeviceGroupList);
+  rpc Get (DeviceGroupIdRequest) returns (DeviceGroupInfo);
+  // Creates (empty id) or changes a group; reply: the stored group. Audited "Created device group" / "Changed device group".
+  rpc Save (SaveDeviceGroupRequest) returns (DeviceGroupInfo);
+  // Deletes a group: its users have no devices and what it owned is off, in one transaction. Audited "Deleted device group".
+  rpc Delete (DeviceGroupIdRequest) returns (DeleteDeviceGroupReply);
+  // How many devices the rules cover now (the editor's live count "412 of 4,812 devices").
+  rpc Preview (PreviewDeviceGroupRequest) returns (DeviceGroupPreview);
+}
+
+// The rules of a group: a device is in it when this_server, a site, a tag or a serial covers it and its serial is not in
+// except_serials.
+message DeviceGroupRules {
+  bool this_server = 1;                 // every device without a site
+  repeated string site_ids = 2;         // Guids of sites
+  repeated string tag_ids = 3;          // Guids of tag definitions (DeviceTag.id); a renamed tag stays in the group
+  repeated string serials = 4;          // single devices by serial number (12 hex digits, any notation)
+  repeated string except_serials = 5;   // never these devices
+}
+
+message DeviceGroupInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  DeviceGroupRules rules = 4;
+  int64 revision = 5;                   // send it back with Save; a save of an older revision is refused
+  int32 device_count = 6;               // devices in the group now
+  repeated string user_names = 7;       // users with this group (Delete says who loses their devices)
+  string summary = 8;                   // "Site Building B, tag PTZ, 3 devices, except 1"
+  google.protobuf.Timestamp created = 9;
+  google.protobuf.Timestamp changed = 10;
+}
+
+message DeviceGroupList {
+  repeated DeviceGroupInfo groups = 1;
+  int32 total_devices = 2;              // every device of the server ("412 of 4,812 devices")
+}
+
+message DeviceGroupIdRequest { string id = 1; }
+
+message SaveDeviceGroupRequest {
+  string id = 1;                        // empty: a new group
+  string name = 2;                      // 1..64 characters, unique case-insensitive
+  string description = 3;               // optional, at most 200 characters
+  DeviceGroupRules rules = 4;
+  int64 revision = 5;                   // DeviceGroupInfo.revision the change was made on; 0 = no check
+}
+
+message DeleteDeviceGroupReply {
+  repeated string user_names = 1;       // users who have no devices now
+  repeated string disabled = 2;         // what the group owned and is off now ("3 event rules")
+}
+
+message PreviewDeviceGroupRequest {
+  DeviceGroupRules rules = 1;
+  string group_id = 2;                  // the group being edited (its own single devices count); empty for a new group
+}
+
+message DeviceGroupPreview {
+  int32 device_count = 1;
+  int32 total_devices = 2;
+}
+
+// The devices of a user or the owner of a shared object (event rule, compliance check, plugin objects): all devices or a
+// group, never "empty = all devices". Neither: no devices (its group was deleted; an object is then off).
+message DeviceOwner {
+  bool all_devices = 1;
+  string group_id = 2;                  // when all_devices is false
+  string group_name = 3;                // read only
+}
+
+// Your role: the caller's devices (MyRole.devices). Excepted devices are never listed.
+message MyDevices {
+  bool all_devices = 1;
+  string group_id = 2;
+  string group_name = 3;
+  string summary = 4;                   // "Site Building B, tag PTZ, 3 devices" (no excepted devices)
+  bool this_server = 5;
+  repeated string site_names = 6;
+  repeated string tag_names = 7;
+  int32 single_device_count = 8;
+  int32 device_count = 9;               // devices the caller sees now
+}

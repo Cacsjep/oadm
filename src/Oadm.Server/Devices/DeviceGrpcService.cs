@@ -1,9 +1,11 @@
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
 using Oadm.Core.Vapix;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
 
@@ -22,6 +24,7 @@ public sealed class DeviceGrpcService(
     CredentialListStore credentialList,
     AuditLog audit,
     IHostApplicationLifetime lifetime,
+    DeviceViewFactory views,
     DeviceStatusNotes? notes = null) : Proto.DeviceService.DeviceServiceBase
 {
     /// <summary>The device with its status note (kept in server memory, <see cref="DeviceStatusNotes"/>).</summary>
@@ -229,7 +232,7 @@ public sealed class DeviceGrpcService(
         var okCount = results.Count(r => r.Ok);
 
         // The credential list is Admin only: an operator's request to save is ignored (the client hides the option).
-        if (request.SaveToCredentialList && okCount > 0 && CallerContext.Current is not { IsAdmin: false })
+        if (request.SaveToCredentialList && okCount > 0 && AuthInterceptor.CallerOf(context).IsAdmin)
         {
             try
             {
@@ -299,7 +302,9 @@ public sealed class DeviceGrpcService(
     {
         var ids = GrpcGuard.ParseIds(request.Ids, "device id");
         var reply = new Proto.PassphrasePoliciesReply();
-        foreach (var policy in await firstPasswords.ReadPoliciesAsync(ids, context.CancellationToken).ConfigureAwait(false))
+        // Only devices of the caller's view; any other id refuses the whole request (NOT_FOUND) before a device is asked.
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        foreach (var policy in await firstPasswords.ReadPoliciesAsync(viewed, context.CancellationToken).ConfigureAwait(false))
         {
             reply.Policies.Add(new Proto.DevicePassphrasePolicy { DeviceId = policy.DeviceId.ToString(), Policy = policy.Policy ?? string.Empty });
         }

@@ -176,10 +176,10 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
     public override Task<Proto.CorePluginList> ListCorePlugins(Proto.Empty request, ServerCallContext context)
     {
         // A page the caller's role may not show is left out (no rail entry); plugins without a page stay (toolbar parts).
-        var caller = CallerContext.Current;
+        var caller = Auth.AuthInterceptor.CallerOf(context); // fail closed: never "no caller = every page"
         var reply = new Proto.CorePluginList();
         reply.Plugins.AddRange(registry.CorePlugins
-            .Where(p => caller is null || host.ShowPermissionOf(p.Id) is not { } show || caller.Has(show))
+            .Where(p => host.ShowPermissionOf(p.Id) is not { } show || caller.Has(show))
             .Select(Mappers.ToProto));
         return Task.FromResult(reply);
     }

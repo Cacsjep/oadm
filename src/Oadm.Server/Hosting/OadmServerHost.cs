@@ -124,6 +124,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<UserGrpcService>();
         app.MapGrpcService<RoleGrpcService>();
         app.MapGrpcService<AuditGrpcService>();
+        app.MapGrpcService<DeviceGroupGrpcService>();
         app.MapGrpcService<DeviceGrpcService>();
         app.MapGrpcService<TagGrpcService>();
         app.MapGrpcService<WaitingDeviceGrpcService>();

@@ -43,6 +43,9 @@ message ServerSettings {
   // Devices.AllowBasicOverHttp: devices that accept only Basic login get it over plain HTTP too (Digest stays preferred).
   // Default false; optional so a partial Set without it keeps the stored value.
   optional bool allow_basic_over_http = 11;
+  // Event rules of a device group may send (Send HTTP request, Send TCP message) only to these addresses ("vms.example.com",
+  // "10.0.0.5:8080"; a host without a port allows every port). Administrators only; unset in a Set keeps the list.
+  ActionDestinationList action_destinations = 12;
   // Read only (Get and Set replies), production hardening 3: set after the server had to replace its master key.
   // Clients show it as a banner until the user dismisses it (remembered per client by id). Field number kept high
   // on purpose (other settings use the low numbers).
@@ -86,3 +89,8 @@ message AddCredentialRequest {
 }
 
 message CredentialEntryId { string id = 1; }
+
+// The addresses event rules of device groups may send to (ServerSettings.action_destinations).
+message ActionDestinationList {
+  repeated string entries = 1;   // "host" or "host:port", at most 100
+}

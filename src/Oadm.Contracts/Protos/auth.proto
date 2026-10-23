@@ -86,6 +86,12 @@ message UserInfo {
   bool all_permissions = 10;
   // Only for the caller's own user: the role's start page (RoleInfo.start_page; empty = Devices).
   string start_page = 11;
+  // The devices of the user (docs/spec/device-scope.md): all devices, or the devices of device_group_id. Unset only from
+  // servers before device groups (= all devices). False without a group: no devices (the group was deleted). For the
+  // Administrator role always true (a group on an administrator is ignored; device_group_id still says what is stored).
+  optional bool all_devices = 12;
+  string device_group_id = 13;
+  string device_group_name = 14;
 }
 
 message UserList { repeated UserInfo users = 1; }
@@ -95,6 +101,10 @@ message AddUserRequest {
   string password = 2;
   UserRole role = 3;          // older clients; role_id wins when set
   string role_id = 4;
+  // The devices: all_devices true, or a device_group_id. Neither set (older clients): all devices. all_devices false
+  // without a group: INVALID_ARGUMENT "Choose All devices or a device group.".
+  optional bool all_devices = 5;
+  string device_group_id = 6;
 }
 
 // Partial update: unset fields keep their value; an empty new_password keeps the password. A changed password or a
@@ -105,6 +115,10 @@ message UpdateUserRequest {
   optional bool disabled = 3;
   string new_password = 4;
   optional string role_id = 5;
+  // Unset: keep. all_devices true = all devices; false = the group device_group_id (must exist). A change applies to the
+  // user's next call and ends the user's open streams, like a new role.
+  optional bool all_devices = 6;
+  optional string device_group_id = 7;
 }
 
 message UserIdRequest { string id = 1; }

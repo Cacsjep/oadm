@@ -91,8 +91,14 @@ internal sealed class FakeAxisDevice
     /// <summary>After a restart the device refuses this many requests, then answers again.</summary>
     public int RestartDownRequests { get; set; } = 2;
 
+    /// <summary>Every request that reached the device (also refused ones): the canary tests check that nothing did.</summary>
+    public int Requests => Volatile.Read(ref _requests);
+
+    private int _requests;
+
     public HttpResponseMessage Handle(HttpRequestMessage request, string body, NetworkCredential? credentials)
     {
+        Interlocked.Increment(ref _requests);
         if (Offline)
         {
             throw Refused();

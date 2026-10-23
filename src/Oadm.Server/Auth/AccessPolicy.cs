@@ -24,7 +24,11 @@ public enum Access
     Admin,
 }
 
-/// <summary>The rule of one gRPC method.</summary>
+/// <summary>
+/// The rule of one gRPC method. <see cref="AllDevices"/> marks methods only users with all devices may call (tag rename and
+/// delete, Delete all of tasks, Clear of the event log, the server log, server-wide switches), whatever the role allows:
+/// the interceptor refuses them for users with a device group (PERMISSION_DENIED "Only users with all devices can do this.").
+/// </summary>
 public readonly record struct AccessRule(Access Access, string? Permission = null)
 {
     public static AccessRule Open => new(Access.Open);
@@ -36,6 +40,12 @@ public readonly record struct AccessRule(Access Access, string? Permission = nul
     public static AccessRule Admin => new(Access.Admin);
 
     public static AccessRule Needs(string permission) => new(Access.Permission, permission);
+
+    /// <summary>Only users with all devices (administrators always have them).</summary>
+    public bool AllDevices { get; init; }
+
+    /// <summary>This rule, for users with all devices only.</summary>
+    public AccessRule ForAllDevices() => this with { AllDevices = true };
 }
 
 /// <summary>
@@ -61,6 +71,11 @@ public static class AccessPolicy
         ["/oadm.v1.UserService/Update"] = AccessRule.Admin,
         ["/oadm.v1.UserService/Delete"] = AccessRule.Admin,
         ["/oadm.v1.AuditService/List"] = AccessRule.Admin,
+        ["/oadm.v1.DeviceGroupService/List"] = AccessRule.Admin,
+        ["/oadm.v1.DeviceGroupService/Get"] = AccessRule.Admin,
+        ["/oadm.v1.DeviceGroupService/Save"] = AccessRule.Admin,
+        ["/oadm.v1.DeviceGroupService/Delete"] = AccessRule.Admin,
+        ["/oadm.v1.DeviceGroupService/Preview"] = AccessRule.Admin,
         ["/oadm.v1.RoleService/GetMatrix"] = AccessRule.Admin,
         ["/oadm.v1.RoleService/SaveRoles"] = AccessRule.Admin,
         ["/oadm.v1.RoleService/DeleteRole"] = AccessRule.Admin,
@@ -109,8 +124,8 @@ public static class AccessPolicy
         ["/oadm.v1.TagService/Watch"] = AccessRule.SignedIn,
         ["/oadm.v1.TagService/Create"] = AccessRule.Needs(HostPermissions.TagsAssign),
         ["/oadm.v1.TagService/SetDeviceTags"] = AccessRule.Needs(HostPermissions.TagsAssign),
-        ["/oadm.v1.TagService/Update"] = AccessRule.Needs(HostPermissions.TagsManage),
-        ["/oadm.v1.TagService/Delete"] = AccessRule.Needs(HostPermissions.TagsManage),
+        ["/oadm.v1.TagService/Update"] = AccessRule.Needs(HostPermissions.TagsManage).ForAllDevices(),
+        ["/oadm.v1.TagService/Delete"] = AccessRule.Needs(HostPermissions.TagsManage).ForAllDevices(),
 
         // Tasks: every role sees the task list; running and the dialog's reads depend on the task plugin.
         ["/oadm.v1.TaskService/ListTaskPlugins"] = AccessRule.SignedIn,
@@ -121,7 +136,7 @@ public static class AccessPolicy
         ["/oadm.v1.TaskService/Query"] = AccessRule.InCall,
         ["/oadm.v1.TaskService/Cancel"] = AccessRule.Needs(HostPermissions.TasksCancel),
         ["/oadm.v1.TaskService/Delete"] = AccessRule.Needs(HostPermissions.TasksDelete),
-        ["/oadm.v1.TaskService/DeleteAll"] = AccessRule.Needs(HostPermissions.TasksDeleteAll),
+        ["/oadm.v1.TaskService/DeleteAll"] = AccessRule.Needs(HostPermissions.TasksDeleteAll).ForAllDevices(),
 
         // Uploads feed task dialogs (firmware, applications, configuration files); size and quota limit them.
         ["/oadm.v1.FileService/Upload"] = AccessRule.SignedIn,
@@ -138,7 +153,7 @@ public static class AccessPolicy
         ["/oadm.v1.ComplianceService/DeleteCheck"] = AccessRule.Needs(HostPermissions.ComplianceManage),
         ["/oadm.v1.ComplianceService/SetCheckEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage),
         ["/oadm.v1.ComplianceService/ListChoices"] = AccessRule.Needs(HostPermissions.ComplianceManage),
-        ["/oadm.v1.ComplianceService/SetEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage),
+        ["/oadm.v1.ComplianceService/SetEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage).ForAllDevices(), // server-wide switch
 
         // Event rules.
         ["/oadm.v1.EventService/GetCatalog"] = AccessRule.Needs(HostPermissions.EventsView),
@@ -153,8 +168,8 @@ public static class AccessPolicy
         ["/oadm.v1.EventService/DuplicateRule"] = AccessRule.Needs(HostPermissions.EventsManage),
         ["/oadm.v1.EventService/ListActionChoices"] = AccessRule.Needs(HostPermissions.EventsManage),
         ["/oadm.v1.EventService/TestAction"] = AccessRule.Needs(HostPermissions.EventsManage),
-        ["/oadm.v1.EventService/ClearLog"] = AccessRule.Needs(HostPermissions.EventsClearLog),
-        ["/oadm.v1.ServerLogService/List"] = AccessRule.Needs(HostPermissions.LogsServer),
+        ["/oadm.v1.EventService/ClearLog"] = AccessRule.Needs(HostPermissions.EventsClearLog).ForAllDevices(),
+        ["/oadm.v1.ServerLogService/List"] = AccessRule.Needs(HostPermissions.LogsServer).ForAllDevices(), // its text names devices
 
         // Plugins: pages per plugin (in the call); turning packages on or off is Administrator only.
         ["/oadm.v1.PluginService/ListCorePlugins"] = AccessRule.SignedIn,
@@ -168,11 +183,11 @@ public static class AccessPolicy
 
         // Server settings and the credential list are Administrator only; every role reads the settings (About, read-only page).
         ["/oadm.v1.SettingsService/Get"] = AccessRule.SignedIn,
-        ["/oadm.v1.SettingsService/Set"] = AccessRule.Admin,
-        ["/oadm.v1.SettingsService/ListCredentials"] = AccessRule.Admin,
-        ["/oadm.v1.SettingsService/AddCredential"] = AccessRule.Admin,
-        ["/oadm.v1.SettingsService/RemoveCredential"] = AccessRule.Admin,
-        ["/oadm.v1.SettingsService/RevealCredential"] = AccessRule.Admin,
+        ["/oadm.v1.SettingsService/Set"] = AccessRule.Admin.ForAllDevices(),
+        ["/oadm.v1.SettingsService/ListCredentials"] = AccessRule.Admin.ForAllDevices(), // never for users with a group
+        ["/oadm.v1.SettingsService/AddCredential"] = AccessRule.Admin.ForAllDevices(),
+        ["/oadm.v1.SettingsService/RemoveCredential"] = AccessRule.Admin.ForAllDevices(),
+        ["/oadm.v1.SettingsService/RevealCredential"] = AccessRule.Admin.ForAllDevices(),
         ["/oadm.v1.LicenseService/GetLicense"] = AccessRule.SignedIn,
         ["/oadm.v1.LicenseService/ImportLicense"] = AccessRule.Admin,
         ["/oadm.v1.LicenseService/RemoveLicense"] = AccessRule.Admin,
@@ -205,8 +220,15 @@ public static class AccessPolicy
         return Methods.TryGetValue(method, out var rule) ? rule : AccessRule.Admin;
     }
 
-    /// <summary>True when <paramref name="caller"/> may make a call with <paramref name="rule"/> (InCall: only the login).</summary>
-    public static bool Allows(AccessRule rule, AuthenticatedCaller caller)
+    /// <summary>
+    /// True when <paramref name="caller"/> may make a call with <paramref name="rule"/>: the role (InCall: only the login)
+    /// and, for <see cref="AccessRule.AllDevices"/>, all devices.
+    /// </summary>
+    public static bool Allows(AccessRule rule, AuthenticatedCaller caller) =>
+        AllowsRole(rule, caller) && (!rule.AllDevices || caller.HasAllDevices);
+
+    /// <summary>The role part of <see cref="Allows"/>.</summary>
+    public static bool AllowsRole(AccessRule rule, AuthenticatedCaller caller)
     {
         ArgumentNullException.ThrowIfNull(caller);
         return rule.Access switch
@@ -215,6 +237,13 @@ public static class AccessPolicy
             Access.Permission => caller.Has(rule.Permission!),
             _ => caller.IsAdmin,
         };
+    }
+
+    /// <summary>The text of PERMISSION_DENIED for <paramref name="caller"/>: what the role lacks, else that the method needs all devices.</summary>
+    public static string DeniedMessage(AccessRule rule, PermissionCatalog catalog, AuthenticatedCaller caller)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return AllowsRole(rule, caller) ? Core.DeviceGroups.DeviceGroupTexts.AllDevicesOnly : DeniedMessage(rule, catalog);
     }
 
     /// <summary>

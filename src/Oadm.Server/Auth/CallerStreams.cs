@@ -7,8 +7,9 @@ namespace Oadm.Server.Auth;
 /// <summary>
 /// The streaming calls that are open (device and task feeds, live view, plugin events, Web View requests). A stream is
 /// checked when it starts; when a role changes, the streams it no longer allows are ended (the client reconnects and is
-/// refused), and when a user gets another role all of that user's streams end and are checked again. The session stream
-/// (AuthService.WatchSession) stays: it tells the client about the change.
+/// refused), and when a user gets another role or other devices (all devices, another group) all of that user's streams end
+/// and are checked again; when the rules of a device group change, the streams of its users end and reconnect with the new
+/// view. The session stream (AuthService.WatchSession) stays: it tells the client about the change.
 /// </summary>
 public sealed partial class CallerStreams : IDisposable
 {
@@ -16,10 +17,11 @@ public sealed partial class CallerStreams : IDisposable
     private readonly RoleStore _roles;
     private readonly UserStore _users;
     private readonly AuthTokenStore? _tokens;
+    private readonly Core.DeviceGroups.DeviceGroupStore? _groups;
     private readonly ILogger<CallerStreams> _logger;
     private long _next;
 
-    public CallerStreams(RoleStore roles, UserStore users, ILogger<CallerStreams> logger, AuthTokenStore? tokens = null)
+    public CallerStreams(RoleStore roles, UserStore users, ILogger<CallerStreams> logger, AuthTokenStore? tokens = null, Core.DeviceGroups.DeviceGroupStore? groups = null)
     {
         _roles = roles;
         _users = users;
@@ -27,6 +29,12 @@ public sealed partial class CallerStreams : IDisposable
         _logger = logger;
         _roles.Changed += OnRolesChanged;
         _users.UserRoleChanged += OnUserRoleChanged;
+        _users.UserDeviceAccessChanged += OnUserRoleChanged; // other devices: like another role, every stream ends
+        _groups = groups;
+        if (_groups is not null)
+        {
+            _groups.Changed += OnGroupChanged;
+        }
         if (_tokens is not null)
         {
             _tokens.SessionsEnded += OnSessionsEnded;
@@ -43,7 +51,7 @@ public sealed partial class CallerStreams : IDisposable
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(abort);
         var id = Interlocked.Increment(ref _next);
-        _streams[id] = new OpenStream(caller.UserId, caller.UserName, caller.RoleId, caller.TokenHash, rule, method, abort, IsSessionStream(method));
+        _streams[id] = new OpenStream(caller.UserId, caller.UserName, caller.RoleId, caller.TokenHash, rule, method, abort, IsSessionStream(method), caller.DeviceGroupId);
         return new Registration(this, id);
     }
 
@@ -54,6 +62,11 @@ public sealed partial class CallerStreams : IDisposable
     {
         _roles.Changed -= OnRolesChanged;
         _users.UserRoleChanged -= OnUserRoleChanged;
+        _users.UserDeviceAccessChanged -= OnUserRoleChanged;
+        if (_groups is not null)
+        {
+            _groups.Changed -= OnGroupChanged;
+        }
         if (_tokens is not null)
         {
             _tokens.SessionsEnded -= OnSessionsEnded;
@@ -105,6 +118,18 @@ public sealed partial class CallerStreams : IDisposable
         }
     }
 
+    /// <summary>
+    /// The rules of a device group changed: every stream that carries devices of its users ends and reconnects with the new
+    /// view (docs/spec/device-scope.md, Group changes). The session stream stays.
+    /// </summary>
+    private void OnGroupChanged(object? sender, Guid groupId)
+    {
+        foreach (var (id, stream) in _streams.Where(s => !s.Value.IsSession && s.Value.DeviceGroupId == groupId).ToList())
+        {
+            End(id, stream);
+        }
+    }
+
     private void End(long id, OpenStream stream)
     {
         if (_streams.TryRemove(id, out _))
@@ -120,7 +145,7 @@ public sealed partial class CallerStreams : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Checking open streams after a role change failed")]
     private partial void LogCheckFailed(Exception ex);
 
-    private sealed record OpenStream(Guid UserId, string UserName, Guid RoleId, string TokenHash, AccessRule Rule, string Method, Action Abort, bool IsSession);
+    private sealed record OpenStream(Guid UserId, string UserName, Guid RoleId, string TokenHash, AccessRule Rule, string Method, Action Abort, bool IsSession, Guid? DeviceGroupId);
 
     private sealed class Registration(CallerStreams owner, long id) : IDisposable
     {
