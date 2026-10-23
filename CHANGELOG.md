@@ -74,6 +74,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Remove, Refresh, Check now, tagging, the RTSP port, the first password, the queries of task dialogs and the other
   device actions do nothing when a chosen device was removed meanwhile and say "1 device is no longer available."
   (before, Remove and Refresh skipped it).
+- Add devices: a search whose page was closed or lost its connection stops on the server 30 minutes after its last use,
+  with the passwords typed for it; logging out or getting other devices stops it at once.
 
 ## [4.1.0] - 2026-10-23
 

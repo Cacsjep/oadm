@@ -268,12 +268,17 @@ an independent security review the same day). A user may be limited to part of t
   route)` (on a route of the user and inside the group), `Waiting` (`WaitingScope`). `DeviceGroupFilter.ThisServer` and
   `Sites` expose the compiled rules.
 - Core discovery sessions take `DiscoveryRoutes` (zero-conf, range scan, address probes); `CoreDiscoveryBackend` passes
-  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session, kept while the
-  session exists (`IDiscoveryBackend.IsActive`) or a watch of it is open (`Hold`), else 30 minutes after its last use, so
-  Add and Retry work however long the page stays idle.
+  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user, login session and group
+  of each add-page session; the session lives while a watch of it is open (`Hold`), so Add and Retry work however long the
+  page stays open, then 30 minutes after its last use; then a timer stops it on the server and forgets the owner entry and
+  its logins (`DiscoveryAuthenticator.Forget`). `SessionsEnded` (logout, expiry, password, disabled), `UserRoleChanged`,
+  `UserDeviceAccessChanged`, `DeviceGroupStore.Changed` and `Deleted` stop the affected users' sessions at once; the change
+  is recorded in `AccessEpochs` first and `Register` checks it after adding the entry, so a start whose call began before
+  the change is stopped and refused (PERMISSION_DENIED "Your devices changed. Connect again.").
 - `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed); the login
-  session of a discovery session that still exists never expires, so it keeps that permission, the expected device and the
-  typed passwords (a session made again after it expired tries only typed passwords).
+  session of a discovery session that still exists does not expire by itself, so it keeps that permission, the expected
+  device and the typed passwords until `DiscoverySessionOwners` stops the session (a session made again after it expired
+  tries only typed passwords).
 - `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
   waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;

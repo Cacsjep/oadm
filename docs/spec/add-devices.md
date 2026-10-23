@@ -178,7 +178,7 @@ with Basic only is stored with scheme http and then needs Digest like every mana
 HTTPS only outside the add page's login), unless the server setting `Devices.AllowBasicOverHttp` is on (then also through
 a site; with it off a site device that offers only Basic over HTTP ends LOGIN FAILED with `DeviceMessages.BasicOnlyOverHttp`,
 no further credential tried). At most 32 devices log
-in at the same time (`DiscoveryAuthenticator.Parallelism`; each device still gets one login after another). Results live per (session, serial) for 30 min after the last use together with
+in at the same time (`DiscoveryAuthenticator.Parallelism`; each device still gets one login after another). Results live per (session, serial) as long as the session (below) together with
 the credential that worked (server memory); `Commit` stores that credential for the new device
 (explicit `credentials` in the request still win, legacy). Passwords never leave the server once
 stored; RetryAuth credentials travel only client -> server and are kept in server memory (or the
@@ -193,8 +193,12 @@ the group (an excepted serial is not added); a group of tags or single devices o
 site, so you cannot add devices.", `DeviceGroupMessages.CannotAdd` in `Oadm.Sdk.Devices`, also for keeping devices waiting;
 the client disables the toolbar's Add and the empty page's Add devices with this text as tooltip, from Your role's
 `MyRole.devices`: no "This server" and no site, `UserSession.AddDevicesRefusal`). Sessions belong to the
-user who started them (`DiscoverySessionOwners`, kept 30 minutes after the last use; `CoreDiscoveryBackend.FindDiscovered`
-finds only the session's own devices). The credential list is never tried for a group user (Retry and lines of a file use
+user who started them (`DiscoverySessionOwners`; `CoreDiscoveryBackend.FindDiscovered` finds only the session's own
+devices). A session lives while a watch of it is open and then 30 minutes after its last use (Stop of the page keeps it
+that long, so Add still works); then the server stops it and forgets its owner and its logins (typed passwords, the
+credential list): a client that crashed leaves nothing behind. A user's sessions stop at once on a logout or an expired
+login, a new role or other devices, and new rules or the deletion of the user's group; a session started by a call that
+began before such a change is stopped and refused ("Your devices changed. Connect again."). The credential list is never tried for a group user (Retry and lines of a file use
 only what was typed; without anything typed: "No password was entered yet. Log in once."). A managed device outside the
 caller's devices is only "already added" (no model, address or names). Every new device stores who added it
 (`Device.AddedByAllDevices`, `AddedByGroupId`: Commit, the waiting list, the automatic add of core plugins as all
