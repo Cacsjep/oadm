@@ -335,6 +335,73 @@ public sealed class AuthTests
     }
 
     [Fact]
+    public async Task AnExpiredSessionEndsEvenWhenTheCallThatFoundItIsCancelled()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var tokens = new AuthTokenStore(host.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Core.Persistence.OadmDbContext>>(), time);
+        var ended = new System.Collections.Concurrent.ConcurrentQueue<EndedSessions>();
+        tokens.SessionsEnded += (_, e) => ended.Enqueue(e);
+        var user = (await host.Get<UserStore>().FindByNameAsync(TestServerHost.AdminUserName, CancellationToken.None))!;
+        var token = await tokens.CreateAsync(user, remember: false, "test", CancellationToken.None);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        time.Advance(AuthTokenStore.SessionLifetime + TimeSpan.FromMinutes(1));
+        Assert.Null(await tokens.ValidateAsync(token, cancelled.Token));
+
+        Assert.Equal([new EndedSessions(null, AuthTokenStore.HashOf(token))], ended);
+        await using var db = await host.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Core.Persistence.OadmDbContext>>().CreateDbContextAsync();
+        Assert.False(db.AuthTokens.Any(t => t.TokenHash == AuthTokenStore.HashOf(token))); // the row went with it
+    }
+
+    [Fact]
+    public async Task AnOpenStreamKeepsItsSessionInUseUntilItCloses()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var tokens = new AuthTokenStore(host.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Core.Persistence.OadmDbContext>>(), time);
+        using var streams = new CallerStreams(host.Get<RoleStore>(), host.Get<UserStore>(), Microsoft.Extensions.Logging.Abstractions.NullLogger<CallerStreams>.Instance, tokens);
+        var ended = new System.Collections.Concurrent.ConcurrentQueue<EndedSessions>();
+        tokens.SessionsEnded += (_, e) => ended.Enqueue(e);
+        var user = (await host.Get<UserStore>().FindByNameAsync(TestServerHost.AdminUserName, CancellationToken.None))!;
+        var wall = await tokens.CreateAsync(user, remember: false, "wall", CancellationToken.None);
+        var idle = await tokens.CreateAsync(user, remember: false, "idle", CancellationToken.None);
+        AuthenticatedCaller CallerOf(string token) => new(user.Id, user.UserName, user.RoleId, PermissionSet.All, "local", "", AuthTokenStore.HashOf(token));
+        var aborted = 0;
+        var live = streams.Open(CallerOf(wall), AccessRule.SignedIn, "/oadm.v1.LiveViewService/Watch", () => Interlocked.Increment(ref aborted));
+        var idleSession = streams.Open(CallerOf(idle), AccessRule.SignedIn, "/oadm.v1.AuthService/WatchSession", () => { });
+
+        // A day without a single call: the hourly cleanups keep the session of the open stream; the session stream alone keeps nothing.
+        for (var hour = 0; hour < 24; hour++)
+        {
+            time.Advance(TimeSpan.FromHours(1));
+            await tokens.DeleteExpiredAsync(CancellationToken.None);
+        }
+
+        Assert.Equal([new EndedSessions(null, AuthTokenStore.HashOf(idle))], ended);
+        Assert.Equal(0, aborted);
+        Assert.NotNull(await tokens.ValidateAsync(wall, CancellationToken.None));
+        Assert.Null(await tokens.ValidateAsync(idle, CancellationToken.None));
+
+        // The slid expiry is stored: a restart keeps the session.
+        var restarted = new AuthTokenStore(host.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Core.Persistence.OadmDbContext>>(), time);
+        time.Advance(AuthTokenStore.SessionLifetime - TimeSpan.FromMinutes(1));
+        Assert.NotNull(await restarted.ValidateAsync(wall, CancellationToken.None));
+
+        // Closed: from then on the usual lifetime, and it ends like any idle session.
+        live.Dispose();
+        idleSession.Dispose();
+        time.Advance(AuthTokenStore.SessionLifetime - TimeSpan.FromMinutes(1));
+        await tokens.DeleteExpiredAsync(CancellationToken.None);
+        Assert.Single(ended);
+        time.Advance(TimeSpan.FromMinutes(2));
+        await tokens.DeleteExpiredAsync(CancellationToken.None);
+        Assert.Equal([new EndedSessions(null, AuthTokenStore.HashOf(idle)), new EndedSessions(null, AuthTokenStore.HashOf(wall))], ended);
+        Assert.Null(await tokens.ValidateAsync(wall, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task UserRulesProtectTheLastAdministratorAndTheOwnAccount()
     {
         await using var host = await TestServerHost.StartAsync();

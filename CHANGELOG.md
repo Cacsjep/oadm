@@ -78,6 +78,8 @@ version and date, and the release workflow copies it into the GitHub release.
   (before, Remove and Refresh skipped it).
 - Add devices: a search whose page was closed or lost its connection stops on the server 30 minutes after its last use,
   with the passwords typed for it; logging out or getting other devices stops it at once.
+- A client that stays connected keeps its login, also without clicks (a Live View wall). A closed client is logged out
+  8 hours after its last use, as before.
 
 ## [4.1.0] - 2026-10-23
 
