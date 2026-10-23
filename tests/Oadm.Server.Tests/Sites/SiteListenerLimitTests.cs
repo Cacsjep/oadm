@@ -27,7 +27,8 @@ public sealed class SiteListenerLimitTests
     {
         using var identity = SiteTls.CreateIdentity("server");
         var handedOver = 0;
-        var listener = new SiteListener("127.0.0.1:0", () => identity, maxHandshakes: 64, _ => Interlocked.Increment(ref handedOver), NullLogger.Instance, maxHandshakesPerAddress: 2);
+        var loopback = PrivateLoopback();
+        var listener = new SiteListener(new IPEndPoint(loopback, 0).ToString(), () => identity, maxHandshakes: 64, _ => Interlocked.Increment(ref handedOver), NullLogger.Instance, maxHandshakesPerAddress: 2);
         listener.Start();
         var clients = new List<TcpClient>();
         try
@@ -37,7 +38,7 @@ public sealed class SiteListenerLimitTests
             {
                 var client = new TcpClient();
                 clients.Add(client);
-                await client.ConnectAsync(IPAddress.Loopback, listener.Port);
+                await client.ConnectAsync(loopback, listener.Port);
             }
 
             await Eventually.TrueAsync(() => listener.RefusedPerAddress == 1 && listener.HandshakesRunning == 2, "two handshakes, the third refused");
@@ -161,6 +162,23 @@ public sealed class SiteListenerLimitTests
 
         Assert.Equal(["close OADM Server (Site nodes, TCP 5081)"], firewall.CallList);
         Assert.False(server.Manager.Accept);
+    }
+
+    // The site nodes of other tests keep dialing the 127.0.0.1 port their server had; the OS may hand that port to this
+    // listener, and such a node would take a place of this address or even be handed over. IPv6 loopback is a port space
+    // no site test uses; 127.0.0.1 only where the system has no IPv6 loopback.
+    private static IPAddress PrivateLoopback()
+    {
+        try
+        {
+            using var probe = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            probe.Bind(new IPEndPoint(IPAddress.IPv6Loopback, 0));
+            return IPAddress.IPv6Loopback;
+        }
+        catch (SocketException)
+        {
+            return IPAddress.Loopback;
+        }
     }
 
     private static int Waiting(Proto.SiteList list) => list.Sites.Count(s => s.Id.Length == 0);
