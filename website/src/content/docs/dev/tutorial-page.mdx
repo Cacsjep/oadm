@@ -78,12 +78,13 @@ sequenceDiagram
         Plugin->>Devices: basicdeviceinfo
         Devices-->>Plugin: AXIS OS version
     end
-    Plugin-->>Page: Events.Publish("state", json), to every page that watches
+    Plugin-->>Page: Events.Publish("state", json), to the pages of the user's devices
 ```
 
-- The page calls **methods** of the server part by name, with JSON in and out (`InvokeAsync`).
-- The server part pushes **events** to every page that shows it (`Events.Publish`). Several users, or several windows
-  of one user, all see the same table.
+- The page calls **methods** of the server part by name, with JSON in and out (`InvokeAsync`). Every call carries the
+  user: `caller`.
+- The server part pushes **events** to the pages that show it (`Events.Publish`). Users with the same devices (all
+  devices, or one device group) and several windows of one user all see the same table.
 - Events can be lost when the connection drops. So the page always **subscribes, reads the whole state, then applies
   events**, and starts over after a drop. A version number in the state lets the page ignore anything older than what
   it shows.
@@ -119,26 +120,33 @@ them in one file of the server project means a typo cannot break the page.
   Maintenance).
 - **`StartAsync`** runs when the server starts and when an administrator turns the plugin on. Keep the context and
   return at once; never wait for devices here.
-- **`InvokeAsync`** is the page's backend. Throw `ArgumentException` for bad input and `InvalidOperationException` for
-  a wrong state: the page gets the message.
-- **`refresh`** checks the request first: the page sends "all" or the chosen ids, never nothing. A server can manage
-  30,000 devices, so a page never reads every device by itself.
+- **`InvokeAsync(caller, ...)`** is the page's backend. `caller` is the user of the call: a user may be limited to a
+  [device group](../device-groups/), and `caller.Devices` and `caller.Vapix` reach only that user's devices. Throw
+  `ArgumentException` for bad input and `InvalidOperationException` for a wrong state: the page gets the message. The
+  overload without `caller` stays only because the interface needs it.
+- **One table per group**: the state is kept by `caller.DeviceScopeKey` ("all" or the group's id), so users of one
+  group share a table and never see another group's devices.
+- **`refresh`** checks the request first: the page sends "all" or the chosen ids, never nothing. "All" is
+  `caller.Devices.ListAsync`, the user's devices. An id the user cannot see is refused like an unknown one
+  (`DevicesNotAvailableException`), before any request. A server can manage 30,000 devices, so a page never reads every
+  device by itself.
+- **`ctx.Jobs.Start`** runs the read after the call returns. The job reaches the devices through `job.Owner`, the user
+  who started it; OADM ends it when the plugin stops or that user's devices change.
 - **`ReadAsync`** reads the chosen devices with at most 16 at a time and 5 seconds each: never one by one, and never
   all at once.
 - **`DeviceMessages.Refusal`** skips devices OADM must not contact: a changed certificate, a rejected password, no
   password yet, or not answering. The row says why, in the same words as the rest of OADM.
-- **`ctx.Vapix.CreateAsync`** gives a client that is already logged in to the device. The server keeps it; never
+- **`owner.Vapix.CreateAsync`** gives a client that is already logged in to the device. The server keeps it; never
   dispose it.
-- **`Publish`** stores the new state with the next version and sends it to every page.
-- The sample reads devices through `ctx`, so it serves users with all devices. A user limited to a device group gets
-  "Only users with all devices can do this." from it. To serve them too, implement `InvokeAsync(caller, ...)` and read
-  through `caller.Devices` and `caller.Vapix`: see [Device groups](../device-groups/).
+- **`Publish`** stores the new state with the next version and sends it to the pages of that group
+  (`PluginEventAudience.DeviceScope`). When an administrator changes or deletes a group, `DeviceScopes.Changed` empties
+  its table.
 
 <Code code={template(plugin)} lang="csharp" title="MyCoolPagePlugin.cs" />
 
 The context offers more: `Settings` (stored JSON of the plugin, e.g. its configuration), `Secrets` (encrypt passwords you
-store), `DataDirectory` (a private folder for files), `Tasks` (start tasks on devices, which show in the tasks pane) and
-`Logger` (the server log).
+store), `DataDirectory` (a private folder for files) and `Logger` (the server log). The call offers `caller.Tasks` (start
+tasks on the user's devices, which show in the tasks pane) and `caller.Has(permission)`.
 
 ## 6. The page
 
@@ -177,13 +185,17 @@ the **Access** page. The server checks every call; the page asks `ctx.Has(...)` 
 ## 7. The tests
 
 `FakeCoreContext` of the package `Oadm.Sdk.Testing` stands in for the server: a device list, a `FakeCamera` per device,
-and a channel that collects the published events. `FakePageContext` connects the page straight to the service, so the
-page test runs the whole round trip without a network.
+and a channel that collects the published events. `server.InvokeAsync(plugin, call, ...)` calls the service like OADM
+does, as `server.CallAsAllDevices()` or `server.CallAsGroup([ids])`. `FakePageContext` connects the page straight to the
+service, so the page test runs the whole round trip without a network.
 
 <Code code={template(fakes)} lang="csharp" title="Fakes.cs" />
 
 Test the read of the chosen devices, "all" and a request without devices, the devices that must not be contacted, a bad
-method, that the page reads nothing before a choice and that it ignores older states:
+method, that the page reads nothing before a choice, that it ignores older states, and what a user with a device group
+reads and sees. The **canary** (`PluginCanary`) calls every method as a user whose group holds one device, with a device
+outside the group and an unknown id in every id field: name each method once, see
+[Device groups](../device-groups/#test-it-the-canary).
 
 <Code code={template(tests)} lang="csharp" title="MyCoolPageTests.cs" />
 
@@ -203,7 +215,8 @@ the server reads, then the table fills in. Open the page in a second window from
 
 1. **The rail entry**: `DisplayName`, `IconKey`, `Group`.
 2. **The state**: the row and state records, and what `ReadAsync` reads per device.
-3. **The methods**: one constant per method, one case in `InvokeAsync`, one command in the view model.
+3. **The methods**: one constant per method, one case in `InvokeAsync`, one command in the view model, one line in
+   the canary.
 4. **The view**: columns, buttons, a card layout of your own (set `HasOwnCards` in the page class).
 5. **Settings that stay**: store them with `ctx.Settings.SetAsync("config", json, ct)` and read them in `StartAsync`.
 6. **The tests**: one per method and per kind of device answer.

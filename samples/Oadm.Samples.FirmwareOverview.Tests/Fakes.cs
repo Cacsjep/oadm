@@ -15,7 +15,9 @@ internal sealed class FakePageContext(FirmwareOverviewPlugin plugin, FakeCoreCon
     /// <summary>The Devices page selection: the page's device choice starts with it.</summary>
     public IReadOnlyList<IDeviceInfo> SelectedDevices { get; set; } = [];
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => plugin.InvokeAsync(method, payloadJson, ct);
+    /// <summary>Calls the server part like OADM does, as a user with all devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        server.InvokeAsync(plugin, server.CallAsAllDevices(), method, payloadJson, ct);
 
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {

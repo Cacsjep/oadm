@@ -43,6 +43,20 @@ public sealed class VirtualInputActionTests
         Assert.Equal("Virtual input 7", _action.Describe(settings.RootElement));
     }
 
+    /// <summary>The action switches only the device it runs on, through that device's client.</summary>
+    [Fact]
+    public async Task No_run_reaches_a_device_outside_the_users_group()
+    {
+        var server = new FakeCoreContext();
+        var inside = server.Add(new FakeDevice());
+        var outside = server.Add(new FakeDevice());
+
+        await new PluginCanary(server, new TaskPluginCanaryHost([], [_action]), inside, outside)
+            .Method(TaskPluginCanaryHost.Action, $$$"""{"actionId":"{{{VirtualInputAction.ActionId}}}","deviceId":"{device}","settings":{"port":3}}""")
+            .RunAsync();
+        Assert.Empty(server.Cameras[outside.Id].Requests);
+    }
+
     private static ActionInvocation Run(ActionEdge edge, string settingsJson) => new(
         Guid.NewGuid(),
         "Door open",

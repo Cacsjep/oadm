@@ -76,13 +76,18 @@ public sealed class UpnpNameTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    // Read-only: the dialog shows the current name of the first selected device.
-    public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+    // Read-only: the dialog shows the current name of the first selected device. OADM checks that the user sees the
+    // device and logs ctx.Vapix in to it; any other device would be read through caller.
+    public async Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
         method switch
         {
             "current" => JsonSerializer.Serialize(new UpnpNamePayload(await ReadNameAsync(ctx.Vapix, ct)), UpnpName.Json),
             _ => throw new ArgumentException("Unknown query " + method),
         };
+
+    // OADM calls the query above, with the user's call.
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("The query needs the user's call.");
 
     private static async Task<string> ReadNameAsync(IVapixClient vapix, CancellationToken ct)
     {

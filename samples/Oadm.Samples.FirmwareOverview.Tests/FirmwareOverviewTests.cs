@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using Oadm.Samples.FirmwareOverview.Client;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
 
 namespace Oadm.Samples.FirmwareOverview.Tests;
@@ -14,7 +15,7 @@ public sealed class FirmwareOverviewTests
         var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"), ("10.0.0.50", DeviceStatus.Ok, "10.12.1"));
         var chosen = server.DeviceList.Take(2).Select(d => d.Id).ToList();
 
-        await plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(false, chosen)), CancellationToken.None);
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(false, chosen));
         var state = await NextStateAsync(server, s => !s.Reading);
 
         Assert.Equal(["10.0.0.48 12.11.77", "10.0.0.49 11.11.124"], state.Rows.Select(r => $"{r.Address} {r.Version}"));
@@ -27,12 +28,12 @@ public sealed class FirmwareOverviewTests
     {
         var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
 
-        await plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(true, [])), CancellationToken.None);
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, []));
         Assert.Equal(2, (await NextStateAsync(server, s => !s.Reading)).Rows.Count);
 
-        var refused = await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(false, [])), CancellationToken.None));
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(false, [])));
         Assert.Equal(FirmwareOverview.NothingChosen, refused.Message);
-        await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync(FirmwareOverview.Refresh, null, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => CallAsync(server, plugin, FirmwareOverview.Refresh, null));
     }
 
     [Fact]
@@ -40,7 +41,7 @@ public sealed class FirmwareOverviewTests
     {
         var (plugin, server) = await StartAsync(("10.0.0.50", DeviceStatus.CredentialsRequired, "12.11.77"));
 
-        await plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(true, [])), CancellationToken.None);
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, []));
         var row = Assert.Single((await NextStateAsync(server, s => !s.Reading)).Rows);
 
         Assert.Equal(DeviceMessages.CredentialsRequired, row.Error);
@@ -50,8 +51,8 @@ public sealed class FirmwareOverviewTests
     [Fact]
     public async Task An_unknown_method_is_refused()
     {
-        var (plugin, _) = await StartAsync();
-        await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync("format", null, CancellationToken.None));
+        var (plugin, server) = await StartAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => CallAsync(server, plugin, "format", null));
     }
 
     [Fact]
@@ -83,6 +84,32 @@ public sealed class FirmwareOverviewTests
         Assert.False(page.IsReading);
     }
 
+    [Fact]
+    public async Task A_user_with_a_device_group_reads_and_sees_only_its_devices()
+    {
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
+        var operatorB = server.CallAsGroup([server.DeviceList[0].Id]);
+
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, []), operatorB);
+        var state = await NextStateAsync(server, s => !s.Reading);
+
+        Assert.Equal("10.0.0.48", Assert.Single(state.Rows).Address); // "all" = the user's devices
+        Assert.Equal(0, server.Cameras[server.DeviceList[1].Id].Reads);
+        Assert.Empty(server.EventsSeenBy(server.CallAsAllDevices())); // the table of the group goes to its users only
+    }
+
+    /// <summary>The canary: a user whose group holds only "inside" calls every method with "outside" and with an unknown id.</summary>
+    [Fact]
+    public async Task No_method_reaches_a_device_outside_the_users_group()
+    {
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
+
+        await new PluginCanary(server, plugin, inside: server.DeviceList[0], outside: server.DeviceList[1])
+            .Method(FirmwareOverview.Refresh, """{"all":false,"deviceIds":["{inside}","{device}"]}""")
+            .WithoutDevices(FirmwareOverview.GetState, "the table of the user's devices")
+            .RunAsync();
+    }
+
     private static async Task<(FirmwareOverviewPlugin Plugin, FakeCoreContext Server)> StartAsync(params (string Address, DeviceStatus Status, string Version)[] devices)
     {
         var server = new FakeCoreContext();
@@ -98,7 +125,9 @@ public sealed class FirmwareOverviewTests
         return (plugin, server);
     }
 
-    private static string Request(RefreshRequest request) => JsonSerializer.Serialize(request, FirmwareOverview.Json);
+    /// <summary>Calls the server part like OADM does: as <paramref name="user"/>, else as a user with all devices.</summary>
+    private static Task<string?> CallAsync(FakeCoreContext server, FirmwareOverviewPlugin plugin, string method, RefreshRequest? request, ICallContext? user = null) =>
+        server.InvokeAsync(plugin, user ?? server.CallAsAllDevices(), method, request is null ? null : JsonSerializer.Serialize(request, FirmwareOverview.Json));
 
     /// <summary>The next published state that matches, within 30 s (a busy test machine may be slow).</summary>
     private static async Task<FirmwareState> NextStateAsync(FakeCoreContext server, Func<FirmwareState, bool> match)

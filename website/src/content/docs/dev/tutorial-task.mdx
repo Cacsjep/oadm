@@ -123,7 +123,11 @@ This is the heart of the plugin. Read it from top to bottom:
   4. before the first write it asks the device for its API list again and stops with "Nothing was changed" when the
      API is missing;
   5. it reads the value back after writing and warns when the device did not take it.
-- **`QueryAsync`** answers the dialog. It only reads; changing a device here is not allowed.
+- **`QueryAsync(ctx, caller, device, ...)`** answers the dialog. It only reads; changing a device here is not allowed.
+  OADM checks that the user sees `device` and logs `ctx.Vapix` in to it. A user may be limited to a
+  [device group](../device-groups/): a query that reads another device goes through `caller.Devices` and
+  `caller.Vapix`. The overload without `caller` stays only because the interface needs it.
+- The task itself touches only its own device, through `ctx.Vapix`.
 
 <Code code={template(task)} lang="csharp" title="MyCoolPluginTaskPlugin.cs" />
 
@@ -160,8 +164,11 @@ The tests need no camera. The package `Oadm.Sdk.Testing` has what they use: `Fak
 writes and the API list, `FakeDevice` is the device as OADM knows it, `FakeTaskContext` records the steps, and `StepRun`
 ends the task the way the server does (it adds the final step **Completed** on success).
 
-Test the normal run step by step, a value that is already set, a device without the API, invalid input, and what the
-menu shows:
+Test the normal run step by step, a value that is already set, a device without the API, invalid input, what the
+menu shows and the dialog's query. `FakeCoreContext` runs the query like OADM, as `CallAsGroup([ids])` or
+`CallAsAllDevices()`. The **canary** (`PluginCanary` with `TaskPluginCanaryHost`) starts the task as a user whose group
+holds one device and checks that a device outside the group is refused like an unknown one
+([Device groups](../device-groups/#test-it-the-canary)):
 
 <Code code={template(tests)} lang="csharp" title="MyCoolPluginTaskPluginTests.cs" />
 
