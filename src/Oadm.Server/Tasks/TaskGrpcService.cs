@@ -1,6 +1,7 @@
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Plugins;
 using Oadm.Core.Tasks;
 using Oadm.Server.Auth;
@@ -11,12 +12,18 @@ using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Tasks;
 
-/// <summary>gRPC TaskService over the <see cref="TaskEngine"/> and the <see cref="PluginRegistry"/>.</summary>
+/// <summary>
+/// gRPC TaskService over the <see cref="TaskEngine"/> and the <see cref="PluginRegistry"/>. Every method works on the
+/// caller's <see cref="DeviceView"/> (docs/spec/device-scope.md, Tasks): a user with all devices gets the unfiltered
+/// answers; a user with a device group sees, runs and changes only the tasks of devices in the view, and a task outside it
+/// is answered like an unknown task.
+/// </summary>
 public sealed partial class TaskGrpcService(
     TaskEngine engine,
     TaskPluginRunnableCache runnable,
     TaskPluginQueries queries,
     PluginRegistry registry,
+    DeviceViewFactory views,
     AuditLog audit,
     RoleStore roles,
     IHostApplicationLifetime lifetime,
@@ -26,32 +33,36 @@ public sealed partial class TaskGrpcService(
     public override async Task<Proto.TaskLog> GetLog(Proto.TaskIdRequest request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.TaskId, "task id");
-        var log = await engine.GetLogAsync(id, context.CancellationToken).ConfigureAwait(false)
-            ?? throw GrpcGuard.NotFound($"Task {id} not found.");
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var log = await engine.GetLogAsync(view, id, context.CancellationToken).ConfigureAwait(false)
+            ?? throw TaskNotFound(id);
         var reply = new Proto.TaskLog();
         reply.Entries.AddRange(log.Select(Mappers.ToProto));
         return reply;
     }
 
-    /// <summary>Read-only plugin query for a task dialog. Errors carry the message for the user.</summary>
+    /// <summary>Read-only plugin query for a task dialog, on a device of the caller's view. Errors carry the message for the user.</summary>
     public override async Task<Proto.TaskQueryReply> Query(Proto.TaskQueryRequest request, ServerCallContext context)
     {
         var deviceId = GrpcGuard.ParseId(request.DeviceId, "device id");
+        var caller = AuthInterceptor.CallerOf(context); // fail closed: never "no caller = any device"
 
         // The dialog's reads: any permission of the task (a role that may run some of its choices opens the dialog).
-        if (registry.TryGetTaskPlugin(request.PluginId, out var plugin) && AuthInterceptor.CallerOf(context) is var caller
-            && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(plugin.Plugin)))
+        if (registry.TryGetTaskPlugin(request.PluginId, out var plugin) && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(plugin.Plugin)))
         {
             throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(PermissionCatalog.TaskKeys(plugin.Plugin)[0], roles.Catalog)));
         }
 
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var device = await view.GetAsync([deviceId], context.CancellationToken).ConfigureAwait(false); // outside or unknown: NOT_FOUND
         try
         {
             var result = await queries.QueryAsync(
                 request.PluginId,
-                deviceId,
+                device,
                 request.Method,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
+                engine.CallFor(view, TaskCaller.Of(caller)),
                 context.CancellationToken).ConfigureAwait(false);
             return new Proto.TaskQueryReply { PayloadJson = result ?? string.Empty };
         }
@@ -74,15 +85,16 @@ public sealed partial class TaskGrpcService(
 
     /// <summary>
     /// Context-menu entries incl. core-plugin contributions, with the devices each one can run on.
-    /// The runnable sets come from the <see cref="TaskPluginRunnableCache"/>; with <c>compact</c> each
-    /// plugin carries the shorter of the runnable or the not-runnable ids. A task the caller's role cannot run (none of
-    /// its permissions) is left out: the client shows no entry for it.
+    /// The runnable sets come from the <see cref="TaskPluginRunnableCache"/>, intersected with the caller's view before they
+    /// are encoded; with <c>compact</c> each plugin carries the shorter of the runnable or the not-runnable ids. A task the
+    /// caller's role cannot run (none of its permissions) is left out: the client shows no entry for it.
     /// </summary>
     public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.ListTaskPluginsRequest request, ServerCallContext context)
     {
         var caller = AuthInterceptor.CallerOf(context); // fail closed: never "no caller = every plugin"
+        var view = await views.ForAsync(context).ConfigureAwait(false);
         var reply = new Proto.TaskPluginList();
-        foreach (var entry in await runnable.GetAsync(context.CancellationToken).ConfigureAwait(false))
+        foreach (var entry in await runnable.GetAsync(view, context.CancellationToken).ConfigureAwait(false))
         {
             if (!caller.Permissions.HasAny(PermissionCatalog.TaskKeys(entry.Plugin.Plugin)))
             {
@@ -104,10 +116,12 @@ public sealed partial class TaskGrpcService(
         return reply;
     }
 
+    /// <summary>One task per device of the caller's view; any device outside it (or unknown) refuses the whole run.</summary>
     public override async Task<Proto.RunTaskReply> Run(Proto.RunTaskRequest request, ServerCallContext context)
     {
         var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
         var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
+        var caller = AuthInterceptor.CallerOf(context);
 
         // Every permission this run needs (from its payload), before any task is created.
         if (registry.TryGetTaskPlugin(request.PluginId, out var task))
@@ -118,14 +132,11 @@ public sealed partial class TaskGrpcService(
             }
         }
 
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var devices = await view.GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
         try
         {
-            var taskIds = await engine.RunAsync(
-                request.PluginId,
-                ids,
-                string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
-                GrpcGuard.Owner(context, request.Owner),
-                context.CancellationToken).ConfigureAwait(false);
+            var taskIds = await engine.RunAsync(request.PluginId, devices, payload, TaskCaller.Of(caller), context.CancellationToken).ConfigureAwait(false);
             await audit.WriteAsync(
                 AuditActions.TaskRun,
                 registry.TryGetTaskPlugin(request.PluginId, out var plugin) ? plugin.DisplayName : request.PluginId,
@@ -144,28 +155,29 @@ public sealed partial class TaskGrpcService(
         }
     }
 
-    /// <summary>Newest first; a page with <c>limit</c> (store paging), every task without.</summary>
+    /// <summary>Newest first; a page with <c>limit</c> (store paging), every task without. Only the tasks of the caller's view.</summary>
     public override async Task<Proto.TaskList> List(Proto.ListTasksRequest request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
+        var view = await views.ForAsync(context).ConfigureAwait(false);
         var reply = new Proto.TaskList();
         if (request.Limit > 0)
         {
-            var page = await engine.ListPageAsync(Math.Max(0, request.Offset), request.Limit, ct).ConfigureAwait(false);
+            var page = await engine.ListPageAsync(view, Math.Max(0, request.Offset), request.Limit, ct).ConfigureAwait(false);
             reply.Tasks.AddRange(page.Tasks.Select(Mappers.ToProto));
             reply.TotalCount = page.TotalCount;
             return reply;
         }
 
-        var all = await engine.ListAsync(ct).ConfigureAwait(false);
+        var all = await engine.ListAsync(view, ct).ConfigureAwait(false);
         reply.Tasks.AddRange(all.Skip(Math.Max(0, request.Offset)).Select(Mappers.ToProto));
         reply.TotalCount = all.Count;
         return reply;
     }
 
     /// <summary>
-    /// Snapshot (one ADDED per task: every active task plus the newest <c>snapshot_limit</c>, 0 = all),
-    /// SNAPSHOT_END when asked for, then live changes.
+    /// Snapshot (one ADDED per task: every active task plus the newest <c>snapshot_limit</c>, 0 = all, of the caller's view;
+    /// the limit counts after the filter), SNAPSHOT_END when asked for, then the live changes of the view.
     /// </summary>
     public override async Task Watch(Proto.WatchTasksRequest request, IServerStreamWriter<Proto.TaskChanged> responseStream, ServerCallContext context)
     {
@@ -173,8 +185,9 @@ public sealed partial class TaskGrpcService(
         var ct = linked.Token;
         try
         {
+            var view = await views.ForAsync(context).ConfigureAwait(false);
             var (snapshot, subscription) = await engine.SubscribeWithSnapshotAsync(
-                request.SnapshotLimit > 0 ? request.SnapshotLimit : null, ct).ConfigureAwait(false);
+                view, request.SnapshotLimit > 0 ? request.SnapshotLimit : null, ct).ConfigureAwait(false);
             using (subscription)
             {
                 foreach (var record in snapshot)
@@ -187,7 +200,7 @@ public sealed partial class TaskGrpcService(
                     await responseStream.WriteAsync(new Proto.TaskChanged { Kind = Proto.TaskChanged.Types.Kind.SnapshotEnd }, ct).ConfigureAwait(false);
                 }
 
-                await foreach (var change in subscription.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                await foreach (var change in subscription.ReadAllAsync(ct).ConfigureAwait(false))
                 {
                     await responseStream.WriteAsync(Mappers.ToProto(change), ct).ConfigureAwait(false);
                 }
@@ -202,9 +215,10 @@ public sealed partial class TaskGrpcService(
     public override async Task<Proto.Empty> Cancel(Proto.TaskIdRequest request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.TaskId, "task id");
-        if (!engine.Cancel(id) && await engine.GetAsync(id, context.CancellationToken).ConfigureAwait(false) is null)
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        if (!await engine.CancelAsync(view, id, context.CancellationToken).ConfigureAwait(false))
         {
-            throw GrpcGuard.NotFound($"Task {id} not found.");
+            throw TaskNotFound(id);
         }
 
         return new Proto.Empty();
@@ -213,22 +227,30 @@ public sealed partial class TaskGrpcService(
     public override async Task<Proto.Empty> Delete(Proto.TaskIdRequest request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.TaskId, "task id");
-        if (!await engine.DeleteAsync(id, context.CancellationToken).ConfigureAwait(false))
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        if (!await engine.DeleteAsync(view, id, context.CancellationToken).ConfigureAwait(false))
         {
-            throw GrpcGuard.NotFound($"Task {id} not found.");
+            throw TaskNotFound(id);
         }
 
         return new Proto.Empty();
     }
 
-    /// <summary>Clears the task history: cancels every active task, waits for them, then one bulk delete.</summary>
+    /// <summary>
+    /// Clears the task history: cancels every active task, waits for them, then one bulk delete. Users with all devices only
+    /// (<c>AccessRule.AllDevices</c>, checked here again): it deletes the history of every group and of removed devices.
+    /// </summary>
     public override async Task<Proto.DeleteAllReply> DeleteAll(Proto.Empty request, ServerCallContext context)
     {
+        AuthInterceptor.RequireAllDevices(AuthInterceptor.CallerOf(context));
         var deleted = await engine.DeleteAllAsync(context.CancellationToken).ConfigureAwait(false);
         LogDeletedAll(deleted);
         await audit.WriteAsync(AuditActions.TasksDeletedAll, "Task history", deleted == 1 ? "1 task" : $"{deleted} tasks", context.CancellationToken).ConfigureAwait(false);
         return new Proto.DeleteAllReply { Deleted = deleted };
     }
+
+    /// <summary>The answer for an unknown task and for a task outside the caller's view (the same).</summary>
+    internal static RpcException TaskNotFound(Guid id) => GrpcGuard.NotFound($"Task {id} not found.");
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId} could not be described")]
     private partial void LogPluginInfoFailed(Exception ex, string pluginId);

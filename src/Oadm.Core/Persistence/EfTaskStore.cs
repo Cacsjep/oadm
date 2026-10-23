@@ -155,6 +155,79 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
         return new TaskPage([.. entities.Select(ToRecord)], total);
     }
 
+    /// <summary>One page of the tasks of <paramref name="deviceIds"/> (a device group's view), filtered in the query, newest first.</summary>
+    public async Task<TaskPage> ListPageAsync(IReadOnlySet<Guid> deviceIds, int offset, int limit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        if (deviceIds.Count == 0)
+        {
+            return new TaskPage([], 0);
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var json = DeviceIdsJson(deviceIds);
+        var total = await OfDevices(db, json).CountAsync(ct).ConfigureAwait(false);
+        if (limit <= 0)
+        {
+            return new TaskPage([], total);
+        }
+
+        // The page's ids in one filtered query, then the rows by id: the filter runs twice, not once per included table.
+        var pageIds = await OfDevices(db, json).AsNoTracking()
+            .OrderByDescending(t => t.CreatedUtc).ThenByDescending(t => t.Id)
+            .Skip(Math.Max(0, offset)).Take(limit)
+            .Select(t => t.Id)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return new TaskPage(await LoadInOrderAsync(db, pageIds, ct).ConfigureAwait(false), total);
+    }
+
+    /// <summary>The tasks of <paramref name="ids"/> with results and steps, in the order of the ids (chunks of ids per query).</summary>
+    private static async Task<IReadOnlyList<TaskRecord>> LoadInOrderAsync(OadmDbContext db, List<Guid> ids, CancellationToken ct)
+    {
+        var loaded = new Dictionary<Guid, TaskEntity>(ids.Count);
+        foreach (var chunk in ids.Chunk(IdChunk))
+        {
+            var rows = await db.Tasks.AsNoTracking().Include(t => t.Results).Include(t => t.Steps)
+                .Where(t => chunk.Contains(t.Id))
+                .AsSplitQuery()
+                .ToListAsync(ct).ConfigureAwait(false);
+            foreach (var row in rows)
+            {
+                loaded[row.Id] = row;
+            }
+        }
+
+        return [.. ids.Where(loaded.ContainsKey).Select(id => ToRecord(loaded[id]))];
+    }
+
+    /// <summary>Every task of <paramref name="deviceIds"/>, filtered in the query, newest first.</summary>
+    public async Task<IReadOnlyList<TaskRecord>> ListAsync(IReadOnlySet<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        if (deviceIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var ids = await OfDevices(db, DeviceIdsJson(deviceIds)).AsNoTracking()
+            .OrderByDescending(t => t.CreatedUtc).ThenByDescending(t => t.Id)
+            .Select(t => t.Id)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return await LoadInOrderAsync(db, ids, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The tasks whose device is in the JSON array <paramref name="deviceIdsJson"/>: one text parameter read with
+    /// <c>json_each</c>, so a view of 30,000 devices is one parameter (SQLite limits their number), filtered before any page.
+    /// </summary>
+    private static IQueryable<TaskEntity> OfDevices(OadmDbContext db, string deviceIdsJson) =>
+        db.Tasks.FromSql($"""SELECT * FROM "Tasks" WHERE "Id" IN (SELECT "r"."TaskId" FROM json_each({deviceIdsJson}) AS "j" JOIN "TaskDeviceResults" AS "r" ON "r"."DeviceId" = "j"."value")""");
+
+    /// <summary>The ids as EF Core stores a <see cref="Guid"/> in SQLite: upper-case text.</summary>
+    private static string DeviceIdsJson(IReadOnlySet<Guid> deviceIds) =>
+        System.Text.Json.JsonSerializer.Serialize(deviceIds.Select(id => id.ToString("D").ToUpperInvariant()));
+
     /// <summary>Queued and Running tasks (Status index), newest first.</summary>
     public async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(CancellationToken ct)
     {

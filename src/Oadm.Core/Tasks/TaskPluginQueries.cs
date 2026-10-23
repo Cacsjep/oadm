@@ -44,7 +44,29 @@ public sealed partial class TaskPluginQueries
     /// <summary>The routes of the devices for <c>ITaskQueryContext.Network</c>; null = the server's own network only.</summary>
     public Sites.DeviceNetworks? Networks { get; init; }
 
-    public async Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct)
+    /// <summary>
+    /// The query of a user's task dialog: <paramref name="device"/> (exactly one) comes from the caller's view, the plugin gets
+    /// the caller's call (<see cref="ITaskPluginQuery.QueryAsync(ITaskQueryContext, ICallContext, IDeviceInfo, string, string?, CancellationToken)"/>)
+    /// and, for a user with a device group, <see cref="ITaskQueryContext.Devices"/> holds only the devices of the view.
+    /// </summary>
+    public Task<string?> QueryAsync(string pluginId, DeviceGroups.ViewedDevices device, string method, string? payloadJson, ICallContext caller, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(caller);
+        if (device.Count != 1)
+        {
+            throw new ArgumentException("A query reads exactly one device.", nameof(device));
+        }
+
+        var found = device[0];
+        return QueryCoreAsync(pluginId, found.Id, _ => Task.FromResult<IDeviceInfo?>(found), method, payloadJson, caller, ct);
+    }
+
+    /// <summary>A query without a user (tests, system work): the device by id from the full repository.</summary>
+    internal Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct) =>
+        QueryCoreAsync(pluginId, deviceId, token => _devices.FindAsync(deviceId, token), method, payloadJson, null, ct);
+
+    private async Task<string?> QueryCoreAsync(string pluginId, Guid deviceId, Func<CancellationToken, Task<IDeviceInfo?>> find, string method, string? payloadJson, ICallContext? caller, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(method))
         {
@@ -66,7 +88,7 @@ public sealed partial class TaskPluginQueries
         var token = timeout.Token;
         try
         {
-            var device = await _devices.FindAsync(deviceId, token).ConfigureAwait(false)
+            var device = await find(token).ConfigureAwait(false)
                 ?? throw new TaskQueryException(TaskQueryError.NotFound, DeviceMessages.Removed);
             if (device.Status == DeviceStatus.CertificateChanged)
             {
@@ -86,7 +108,14 @@ public sealed partial class TaskPluginQueries
             var vapix = await _vapix.CreateAsync(deviceId, token).ConfigureAwait(false);
             var logger = _loggerFactory.CreateLogger("Oadm.Plugins." + registration.Id);
             var network = (Networks ?? Sites.DeviceNetworks.Local).For(device);
-            return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network), device, method, payloadJson, token).ConfigureAwait(false);
+            if (caller is null)
+            {
+                return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network), device, method, payloadJson, token).ConfigureAwait(false);
+            }
+
+            // A user with a device group: the dialog's reads of other devices stay inside the view.
+            var devices = caller.HasAllDevices ? _devices : caller.Devices;
+            return await query.QueryAsync(new QueryContext(vapix, logger, devices, network), caller, device, method, payloadJson, token).ConfigureAwait(false);
         }
         catch (TaskQueryException)
         {

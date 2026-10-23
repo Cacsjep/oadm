@@ -233,6 +233,29 @@ an independent security review the same day). A user may be limited to part of t
   `Filtered` (List, Watch, ListSites, WatchSites: the reply never shows the outside device), perf
   `DeviceGroupWatchScaleTests` (3,000 of 30,000 devices: snapshot, a burst over every device, 1,000 in and 1,000 out).
 
+## Code (tasks)
+
+- **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` and calls `TaskEngine.RunAsync(pluginId, ViewedDevices,
+  payload, TaskCaller)`; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
+  refuse the run; cancel and the active check only for the user's own tasks when the user has a group). The raw-id
+  `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
+  (backstop, never without `TaskEngine.Views`).
+- **Queue check**: each task keeps its `TaskCaller` in memory; leaving the queue it reads the owner's current view
+  (`ForUserAsync`) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
+  or group), before the device's state is read out or any request is sent. The plugin gets `ITaskExecutionContext.Caller`
+  (`TaskCallContext` over that view; event streams not offered there yet).
+- **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
+  CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
+  (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
+  `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules).
+  A task is in the view while its device is: tasks of removed devices only for users with all devices.
+- **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the
+  sets and the view's ids are the same objects).
+- **Query**: `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
+  call and, for a group, `ITaskQueryContext.Devices` of the view.
+- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch, backstop),
+  `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks), the canary cases of TaskService.
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered

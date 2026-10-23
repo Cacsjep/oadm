@@ -84,6 +84,19 @@ public sealed class CanaryTests
             await Live(c).GetRtspPortAsync(new Proto.RtspPortRequest { DeviceIds = { c.Inside.ToString(), id.ToString() } }),
         ["/oadm.v1.LiveViewService/SetRtspPort"] = (c, id) => Inside(c, id, async () =>
             await Live(c).SetRtspPortAsync(new Proto.SetRtspPortRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, Port = 554 })),
+        ["/oadm.v1.TaskService/Run"] = async (c, id) =>
+            await new Proto.TaskService.TaskServiceClient(c.Invoker).RunAsync(new Proto.RunTaskRequest
+            {
+                PluginId = CanaryTaskPlugin.PluginId,
+                DeviceIds = { id == c.Inside ? new[] { id.ToString() } : new[] { c.Inside.ToString(), id.ToString() } },
+            }),
+        ["/oadm.v1.TaskService/Query"] = async (c, id) =>
+            await new Proto.TaskService.TaskServiceClient(c.Invoker).QueryAsync(new Proto.TaskQueryRequest
+            {
+                PluginId = CanaryTaskPlugin.PluginId,
+                DeviceId = id.ToString(),
+                Method = "read",
+            }),
     };
 
     private static Proto.DeviceService.DeviceServiceClient Devices(Canary c) => new(c.Invoker);
@@ -138,17 +151,46 @@ public sealed class CanaryTests
         },
     };
 
+    /// <summary>
+    /// The converted methods that take a task id (tasks package): a task of the device outside the view, a task of a removed
+    /// device (history only for users with all devices) and an unknown id get the same NOT_FOUND "Task … not found.".
+    /// </summary>
+    private static readonly Dictionary<string, Func<Canary, Guid, Task>> TaskIdCases = new(StringComparer.Ordinal)
+    {
+        ["/oadm.v1.TaskService/GetLog"] = async (c, id) =>
+            await new Proto.TaskService.TaskServiceClient(c.Invoker).GetLogAsync(new Proto.TaskIdRequest { TaskId = id.ToString() }),
+        ["/oadm.v1.TaskService/Cancel"] = async (c, id) =>
+            await new Proto.TaskService.TaskServiceClient(c.Invoker).CancelAsync(new Proto.TaskIdRequest { TaskId = id.ToString() }),
+        ["/oadm.v1.TaskService/Delete"] = async (c, id) =>
+            await new Proto.TaskService.TaskServiceClient(c.Invoker).DeleteAsync(new Proto.TaskIdRequest { TaskId = id.ToString() }),
+    };
+
+    /// <summary>
+    /// The converted methods that list device data without an id field (tasks package): the answer as text; it must name the
+    /// inside device's task and nothing of the device outside the view or of a removed device.
+    /// </summary>
+    private static readonly Dictionary<string, Func<Canary, Task<string>>> ListCases = new(StringComparer.Ordinal)
+    {
+        ["/oadm.v1.TaskService/List"] = async c =>
+        {
+            var client = new Proto.TaskService.TaskServiceClient(c.Invoker);
+            var page = await client.ListAsync(new Proto.ListTasksRequest { Limit = 100 });
+            var all = await client.ListAsync(new Proto.ListTasksRequest());
+            return $"{page} total {page.TotalCount} | {all} total {all.TotalCount}";
+        },
+        ["/oadm.v1.TaskService/Watch"] = WatchTextAsync,
+        ["/oadm.v1.TaskService/ListTaskPlugins"] = async c =>
+        {
+            var client = new Proto.TaskService.TaskServiceClient(c.Invoker);
+            var full = await client.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest());
+            var compact = await client.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest { Compact = true });
+            return $"{full} | {compact}";
+        },
+    };
+
     /// <summary>Methods that take device ids or deliver device data and are not converted yet: method → package.</summary>
     internal static readonly Dictionary<string, string> NotConverted = new(StringComparer.Ordinal)
     {
-        ["/oadm.v1.TaskService/ListTaskPlugins"] = "tasks",
-        ["/oadm.v1.TaskService/List"] = "tasks",
-        ["/oadm.v1.TaskService/Watch"] = "tasks",
-        ["/oadm.v1.TaskService/GetLog"] = "tasks",
-        ["/oadm.v1.TaskService/Run"] = "tasks",
-        ["/oadm.v1.TaskService/Query"] = "tasks",
-        ["/oadm.v1.TaskService/Cancel"] = "tasks",
-        ["/oadm.v1.TaskService/Delete"] = "tasks",
         ["/oadm.v1.DiscoveryService/StartZeroConf"] = "add-devices",
         ["/oadm.v1.DiscoveryService/StartRangeScan"] = "add-devices",
         ["/oadm.v1.DiscoveryService/ProbeAddress"] = "add-devices",
@@ -255,11 +297,11 @@ public sealed class CanaryTests
     {
         foreach (var method in AccessPolicy.ListedMethods)
         {
-            var places = new[] { Cases.ContainsKey(method), Filtered.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
+            var places = new[] { Cases.ContainsKey(method) || TaskIdCases.ContainsKey(method) || ListCases.ContainsKey(method), Filtered.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
             Assert.True(places == 1, $"{method} is in {places} canary lists (a case, filtered, not converted, without devices, closed by the rule); it must be in exactly one.");
         }
 
-        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(Filtered.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
+        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(TaskIdCases.Keys).Concat(ListCases.Keys).Concat(Filtered.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
         Assert.All(NotConverted.Values.Concat(PluginsNotConverted.Values), p => Assert.Contains(p, Packages));
         Assert.All(WithoutDevices.Values, reason => Assert.False(string.IsNullOrWhiteSpace(reason)));
     }
@@ -320,6 +362,135 @@ public sealed class CanaryTests
         Assert.All(closed, m => Assert.False(AccessPolicy.Allows(AccessPolicy.For(m), canary.Caller)));
     }
 
+    // ------------------------------------------------------------------ tasks package: task ids and lists
+
+    [Fact]
+    public async Task AnOutOfViewTaskIsAnsweredLikeAnUnknownOneAndNeverChanged()
+    {
+        await using var canary = await Canary.StartAsync();
+        foreach (var (method, call) in TaskIdCases)
+        {
+            var outside = await AddFinishedTaskAsync(canary, canary.Outside);
+            var removed = await AddFinishedTaskAsync(canary, Guid.NewGuid());
+            foreach (var taskId in new[] { outside, removed, Guid.NewGuid() })
+            {
+                var before = await TaskSnapshotAsync(canary);
+                var refused = await Assert.ThrowsAsync<RpcException>(() => call(canary, taskId));
+                Assert.True(refused.StatusCode == StatusCode.NotFound, $"{method}: {refused.StatusCode} {refused.Status.Detail}");
+                Assert.Equal($"Task {taskId} not found.", refused.Status.Detail);
+                Assert.True(before == await TaskSnapshotAsync(canary), $"{method} changed a task outside the view");
+            }
+
+            // The same call on a task of the view works.
+            await call(canary, await AddFinishedTaskAsync(canary, canary.Inside));
+        }
+    }
+
+    [Fact]
+    public async Task TheTaskListsCarryNothingOfDevicesOutsideTheView()
+    {
+        await using var canary = await Canary.StartAsync();
+        var inside = await AddFinishedTaskAsync(canary, canary.Inside);
+        var outside = await AddFinishedTaskAsync(canary, canary.Outside);
+        var removedDevice = Guid.NewGuid();
+        var removed = await AddFinishedTaskAsync(canary, removedDevice);
+        foreach (var (method, call) in ListCases)
+        {
+            var text = await call(canary);
+            Assert.True(text.Contains(method.EndsWith("ListTaskPlugins", StringComparison.Ordinal) ? canary.Inside.ToString() : inside.ToString(), StringComparison.Ordinal), $"{method} misses the view's data: {text}");
+            foreach (var hidden in new[] { canary.Outside, outside, removedDevice, removed })
+            {
+                Assert.False(text.Contains(hidden.ToString(), StringComparison.Ordinal), $"{method} names {hidden} outside the view: {text}");
+            }
+        }
+
+        // The administrator (all devices) still sees all of it.
+        var admin = await canary.Host.Tasks.ListAsync(new Proto.ListTasksRequest());
+        Assert.Contains(admin.Tasks, t => t.Id == outside.ToString());
+        Assert.Contains(admin.Tasks, t => t.Id == removed.ToString());
+    }
+
+    /// <summary>The Watch snapshot and the live changes: an outside task started before an inside one is never delivered.</summary>
+    private static async Task<string> WatchTextAsync(Canary c)
+    {
+        using var cts = new CancellationTokenSource(TestHelpers.DefaultTimeout);
+        using var watch = new Proto.TaskService.TaskServiceClient(c.Invoker).Watch(new Proto.WatchTasksRequest { SnapshotEndMarker = true, SnapshotLimit = 100 }, cancellationToken: cts.Token);
+        var seen = new System.Text.StringBuilder();
+        while (await watch.ResponseStream.MoveNext(cts.Token) && watch.ResponseStream.Current.Kind != Proto.TaskChanged.Types.Kind.SnapshotEnd)
+        {
+            seen.Append(watch.ResponseStream.Current).Append(' ');
+        }
+
+        var engine = c.Host.Get<Core.Tasks.TaskEngine>();
+        await engine.RunAsync(CanaryTaskPlugin.PluginId, [c.Outside], null, "system", CancellationToken.None);
+        var insideRun = await engine.RunAsync(CanaryTaskPlugin.PluginId, [c.Inside], null, "system", CancellationToken.None);
+        while (await watch.ResponseStream.MoveNext(cts.Token))
+        {
+            var change = watch.ResponseStream.Current;
+            seen.Append(change).Append(' ');
+            if (change.Task.Id == insideRun[0].ToString() && change.Task.State == Proto.TaskState.Done)
+            {
+                break;
+            }
+        }
+
+        // The outside task ran first (the feed had it before the inside one): none of its changes may be in the text.
+        return seen.ToString();
+    }
+
+    private static async Task<Guid> AddFinishedTaskAsync(Canary c, Guid deviceId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var record = new Core.Tasks.TaskRecord(Guid.NewGuid(), CanaryTaskPlugin.PluginId, "Canary", Core.Tasks.TaskState.Done, "tester@pc", now, now, now, 100, null,
+            [new Core.Tasks.TaskDeviceRecord(deviceId, Core.Tasks.TaskState.Done, null, 100)]);
+        await c.Host.Get<Core.Tasks.ITaskStore>().AddAsync(record, CancellationToken.None);
+        await c.Host.Get<Core.Tasks.ITaskStore>().AppendLogAsync(record.Id, [new Core.Tasks.TaskLogEntry(now, deviceId, Sdk.Plugins.TaskLogLevel.Info, "Done.")], CancellationToken.None);
+        return record.Id;
+    }
+
+    /// <summary>Every stored task with its state and log size: a refused call changes none of them.</summary>
+    private static async Task<string> TaskSnapshotAsync(Canary c)
+    {
+        var store = c.Host.Get<Core.Tasks.ITaskStore>();
+        var parts = new List<string> { await c.SnapshotAsync() };
+        foreach (var task in await store.ListAsync(CancellationToken.None))
+        {
+            parts.Add($"{task.Id}:{task.State}:{(await store.GetLogAsync(task.Id, CancellationToken.None)).Count}");
+        }
+
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>A task plugin that runs and answers on every device without contacting it.</summary>
+    internal sealed class CanaryTaskPlugin : Sdk.Plugins.ITaskPlugin, Sdk.Plugins.ITaskPluginQuery
+    {
+        public const string PluginId = "test.canary";
+
+        public string Id => PluginId;
+
+        public string DisplayName => "Canary";
+
+        public string? IconKey => null;
+
+        public bool ShowInToolbar => false;
+
+        public bool RequiresDialog => false;
+
+        public bool CanRun(Sdk.Devices.IDeviceInfo device) => true;
+
+        public Task ExecuteAsync(Sdk.Plugins.ITaskExecutionContext ctx, Sdk.Devices.IDeviceInfo device, string? payloadJson, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> QueryAsync(Sdk.Plugins.ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+            Task.FromResult<string?>("{}");
+
+        public static async Task RegisterAsync(TestServerHost host)
+        {
+            var registry = host.Get<Core.Plugins.PluginRegistry>();
+            registry.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(PluginId, "1.0.0", null));
+            await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(registry), CancellationToken.None);
+        }
+    }
+
     /// <summary>
     /// The server with two devices on the fake network: one in the group user's view (tag "Inside"), one outside. Recording
     /// fakes count every request to a device, every opened video and event stream, and the tasks.
@@ -365,6 +536,7 @@ public sealed class CanaryTests
                 s.RemoveAll<Sdk.Devices.IDeviceEventStreams>();
                 s.AddSingleton<Sdk.Devices.IDeviceEventStreams>(streams);
             });
+            await CanaryTaskPlugin.RegisterAsync(host); // before the role takes every permission
             var repo = host.Get<DeviceRepository>();
             var inside = await repo.AddAsync(new Device { Serial = InsideSerial, Address = "10.9.0.1", AddedByAllDevices = true }, CancellationToken.None);
             var outside = await repo.AddAsync(new Device { Serial = OutsideSerial, Address = "10.9.0.2", AddedByAllDevices = true }, CancellationToken.None);
@@ -374,6 +546,7 @@ public sealed class CanaryTests
             // The role may open the web interface (DeviceWebService needs the Web View plugin's permission; the plugin is not loaded).
             var webView = new Core.Plugins.PluginRegistry();
             webView.RegisterCorePlugin(new WebViewPermission(), new Core.Plugins.PluginOrigin(WebViewPermission.PluginId, "1.0.0", null));
+            webView.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(CanaryTaskPlugin.PluginId, "1.0.0", null)); // one catalog: both permissions
             await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(webView), CancellationToken.None);
 
             var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);

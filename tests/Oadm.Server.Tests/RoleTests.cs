@@ -73,7 +73,7 @@ public sealed class RoleTests
         await using var host = await TestServerHost.StartAsync();
         await AddPluginsAsync(host);
         var op = new Proto.TaskService.TaskServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
-        var device = Guid.NewGuid().ToString();
+        var device = (await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1)).Id.ToString(); // a Run refuses unknown devices (device groups)
         Proto.RunTaskRequest Run(string part) => new() { PluginId = PartsTask.PluginId, PayloadJson = part, DeviceIds = { device } };
 
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await op.RunAsync(Run("a"))));
