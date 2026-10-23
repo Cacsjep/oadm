@@ -480,7 +480,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             return new RolloutReply { NeedsConfirmation = true };
         }
 
-        var rollout = Rollouts.Get(payload.RolloutId, payload.StopOnFirstError);
+        var rollout = Rollouts.Get(payload.RolloutId, payload.StopOnFirstError, caller?.UserName);
         var tasks = caller?.Tasks ?? Context.Tasks;
         var taskIds = await tasks.RunAsync(
             RolloutTaskPlugin.PluginId,

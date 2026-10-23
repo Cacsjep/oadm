@@ -225,7 +225,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
                 await ready.Task.ConfigureAwait(false);
                 using (token.Register(job.Cancel.Cancel))
                 {
-                    await RunAsync(job, devices, owned.Owner.Vapix).ConfigureAwait(false);
+                    await RunAsync(job, devices, owned.Owner.Vapix, caller.HasAllDevices ? null : owned.Owner.Devices).ConfigureAwait(false);
                 }
             });
             return (owned, ready);
@@ -447,7 +447,11 @@ public sealed partial class HardeningScanService : IAsyncDisposable
         return job.Status();
     }
 
-    private async Task RunAsync(Job job, IReadOnlyList<IDeviceInfo> devices, IVapixClientFactory vapix)
+    /// <summary>
+    /// Scans <paramref name="devices"/>. With <paramref name="view"/> (a group user's scan) a device that left the user's devices
+    /// during the scan gets no row: its result is neither stored nor published (also not the error of the refused read).
+    /// </summary>
+    private async Task RunAsync(Job job, IReadOnlyList<IDeviceInfo> devices, IVapixClientFactory vapix, IDeviceRepository? view = null)
     {
         var token = job.Cancel.Token;
         using var publish = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
@@ -463,6 +467,12 @@ public sealed partial class HardeningScanService : IAsyncDisposable
                 if (detail is null)
                 {
                     return;
+                }
+
+                if (view is not null && !await StillInViewAsync(view, devices[i].Id, token).ConfigureAwait(false))
+                {
+                    job.Completed(failed: true);
+                    continue;
                 }
 
                 _store.Set(detail);
@@ -497,6 +507,18 @@ public sealed partial class HardeningScanService : IAsyncDisposable
         await FlushAsync(CancellationToken.None).ConfigureAwait(false);
         var status = job.Status();
         LogScanEnded(_logger, status.State, status.Done, status.Total, status.Failed);
+    }
+
+    private static async Task<bool> StillInViewAsync(IDeviceRepository view, Guid id, CancellationToken ct)
+    {
+        try
+        {
+            return await view.FindAsync(id, ct).ConfigureAwait(false) is not null;
+        }
+        catch (Exception ex) when (ex is DevicesNotAvailableException or DeviceAccessRefusedException)
+        {
+            return false;
+        }
     }
 
     private async Task PublishLoopAsync(Job job, CancellationToken ct)

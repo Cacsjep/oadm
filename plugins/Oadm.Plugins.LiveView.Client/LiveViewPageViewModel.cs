@@ -244,6 +244,10 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
             tab.IsEditing = false;
             tab.ApplySaved(saved);
             Upsert(saved);
+            if (saved.Dropped > 0)
+            {
+                tab.Error = ViewRules.DroppedText(saved.Dropped);
+            }
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested)
         {

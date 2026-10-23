@@ -351,6 +351,28 @@ an independent security review the same day). A user may be limited to part of t
   owners and a deleted group turning its checks off.
 - **Tests**: `tests/Oadm.Client.Tests/DeviceGroupActionsTests` (+ screenshots).
 
+## Code (page plugins after the security review)
+
+- **Sweep tables** (Action Rule Editor, Edge storage, Image Health Dashboard): `DeviceSweep.SnapshotAsync(caller)` answers
+  only rows of devices the caller sees now and drops the others from the table (a tag or site change, before any prune);
+  `ReadOneAsync` removes the row of a device no longer in the scope; no rows when the caller's devices cannot be listed.
+- **Action Rule Editor**: user calls never use the guarded `ctx.Tasks`; Undo declares `SystemAccessReason` for the
+  read-only "did the run's tasks end" check (`ctx.System.Tasks.IsActive`); ended runs are forgotten when a task ends. A
+  task is bound to its run before it reads the device: the run of its user's scope, an undo task only for a run Undo
+  marked.
+- **VAPIX Commander**: a rollout belongs to the user who started it; a task of another user naming its id is refused.
+- **Dashboards**: group users see device events with a device list of their devices, OADM's own device status events and
+  the site events of their sites; events without a device list from other sources (compliance checks, which carry no
+  owner) are hidden, also as watch keys. Every push checks the group's devices now; a renewal naming a device that left
+  ends the old watch.
+- **Saved objects** (`OwnerScope.LeftOwnerAsync`): a user with all devices who saves a group's view or dashboard whose
+  devices left the group gets the save without them (`Dropped` in the answer, never stored); devices the save adds outside
+  the group and every outside id of a group user stay NOT_FOUND.
+- **Device triggers**: tags are not checked on save (the SDK has no tag catalog); a group's tag covers only the group's
+  devices.
+- **Edge Recording Export**: a group user's export stream checks the camera's membership every 5 s and ends when it left.
+- **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row.
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered

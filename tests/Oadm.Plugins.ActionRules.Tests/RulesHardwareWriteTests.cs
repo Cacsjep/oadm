@@ -513,9 +513,9 @@ public sealed class RulesHardwareWriteTests(ITestOutputHelper output) : IAsyncLi
 
     private async Task RunUndoAsync(VapixClient vapix, Guid runId)
     {
+        await _plugin.Undo.TryMarkUndoneAsync(runId, true, CancellationToken.None); // like the page: marked before its tasks start
         var ctx = await ExecuteAsync(vapix, new RuleTaskPayload(RuleTaskActions.Undo, Guid.NewGuid(), "Undo", [], null, runId));
         Assert.All(StepRun.Lines(ctx.Steps), l => Assert.Matches(": (Done|Skipped)$", l));
-        await _plugin.Undo.TryMarkUndoneAsync(runId, true, CancellationToken.None);
     }
 
     private async Task<RecordingContext> ExecuteAsync(VapixClient vapix, RuleTaskPayload payload)

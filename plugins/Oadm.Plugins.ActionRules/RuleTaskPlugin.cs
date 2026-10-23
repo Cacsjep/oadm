@@ -79,6 +79,11 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
         try
         {
             ctx.PlanSteps(ReadStep, SaveStep);
+            if (_owner is not null && await _owner.RunRefusalAsync(ctx.Caller, payload, ct).ConfigureAwait(false) is { } refusal)
+            {
+                throw new ArgumentException(refusal); // before the device is read or written
+            }
+
             if (gate is not null)
             {
                 await gate.WaitAsync(ct).ConfigureAwait(false); // one change per device at a time; read after waiting
@@ -587,4 +592,10 @@ public static class RuleTexts
     public const string RecipientChangedSinceRead = "The recipient changed since it was read. Read the rules again.";
     public const string ScheduleChangedSinceRead = "The schedule changed since it was read. Read the rules again.";
     public const string AlreadyThere = "Already on the device.";
+
+    /// <summary>Undo of a change that is gone, of another device group, or not started from the page.</summary>
+    public const string CannotUndo = "This change can no longer be undone. Nothing was changed.";
+
+    /// <summary>A task whose change is not saved for undo (or belongs to another device group).</summary>
+    public const string CannotSaveForUndo = "The change cannot be saved for undo. Nothing was changed.";
 }

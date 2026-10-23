@@ -138,6 +138,43 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Progress and the rows <paramref name="caller"/> may see: rows of devices that left the caller's devices (a tag or site
+    /// change moved them out of the group, or they were removed) are dropped from the table first, and their removal goes out
+    /// with the next batch, so such a device shows nothing even before the group's rows are pruned. The caller's devices are
+    /// the sweep's scope (<see cref="DeviceSweeps{TRow}.For(ICallContext)"/>).
+    /// </summary>
+    public async Task<SweepSnapshot<TRow>> SnapshotAsync(ICallContext caller, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        HashSet<Guid> ids;
+        try
+        {
+            ids = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+        }
+#pragma warning disable CA1031 // Fail closed: when the caller's devices cannot be listed, the progress shows without rows.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogListFailed(_ctx.Logger, ex);
+            lock (_sync)
+            {
+                return new SweepSnapshot<TRow>(_running, _done, _total, _finishedUtc, []);
+            }
+        }
+
+        lock (_sync)
+        {
+            foreach (var gone in _rows.Keys.Where(id => !ids.Contains(id)).ToList())
+            {
+                Remove(gone);
+                _stateDirty = true;
+            }
+
+            return new SweepSnapshot<TRow>(_running, _done, _total, _finishedUtc, [.. _rows.Values]);
+        }
+    }
+
     /// <summary>Rows sorted by address (IPv4 numerically).</summary>
     public IReadOnlyList<TRow> Sorted(IEnumerable<TRow> rows) => [.. rows.OrderBy(_address, AddressComparer.Instance)];
 
@@ -193,12 +230,25 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
         _sweep = Detached.Run(() => SweepAsync(only, token));
     }
 
-    /// <summary>Reads one device now, outside a sweep (e.g. after a task changed it); detached like the sweep.</summary>
+    /// <summary>
+    /// Reads one device now, outside a sweep (e.g. after a task changed it); detached like the sweep. A device that is no
+    /// longer in the sweep's devices (it left the group) or no longer included loses its row instead.
+    /// </summary>
     public Task ReadOneAsync(Guid deviceId, CancellationToken ct) => Detached.Run(async () =>
     {
         if (await _devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { } device && _include(device))
         {
             await ReadIntoRowAsync(device, ct).ConfigureAwait(false);
+            return;
+        }
+
+        lock (_sync)
+        {
+            if (_rows.ContainsKey(deviceId))
+            {
+                Remove(deviceId);
+                _stateDirty = true;
+            }
         }
     });
 
@@ -418,6 +468,9 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the devices of the page failed")]
     private static partial void LogSweepFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Listing the devices of the page failed: the table is shown without rows")]
+    private static partial void LogListFailed(ILogger logger, Exception ex);
 }
 
 /// <summary>

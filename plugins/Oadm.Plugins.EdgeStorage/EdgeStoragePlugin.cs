@@ -118,9 +118,9 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
                 }
 
                 sweeps.For(caller)?.Start(ids);
-                return EdgeStorageJson.Serialize(State(caller.DeviceScopeKey, withRows: true));
+                return EdgeStorageJson.Serialize(await StateAsync(caller, ct).ConfigureAwait(false));
             case EdgeStorageMethods.GetState:
-                return EdgeStorageJson.Serialize(State(caller.DeviceScopeKey, withRows: true));
+                return EdgeStorageJson.Serialize(await StateAsync(caller, ct).ConfigureAwait(false));
             case EdgeStorageMethods.Change or EdgeStorageMethods.Format:
                 return EdgeStorageJson.Serialize(await RunAsync(caller, method, EdgeStorageJson.Deserialize<RunRequest>(payloadJson), ct).ConfigureAwait(false));
             default:
@@ -253,17 +253,20 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     }
 
     /// <summary>The state of the table of all devices (tests).</summary>
-    internal StorageState State(bool withRows) => State(ICallContext.AllDevicesScopeKey, withRows);
+    internal StorageState State(bool withRows) =>
+        _sweeps?.For(ICallContext.AllDevicesScopeKey) is { } sweep ? State(sweep, sweep.Snapshot(), withRows) : EmptyState;
 
-    /// <summary>The state of a scope's table; a deleted group has none (empty).</summary>
-    private StorageState State(string scopeKey, bool withRows)
+    private static readonly StorageState EmptyState = new(false, 0, 0, 0, 0, 0, 0, 0, null, []);
+
+    /// <summary>
+    /// The state of the caller's table with only the rows of cameras the caller sees now (a camera that left the group drops
+    /// out at once); a deleted group has none (empty).
+    /// </summary>
+    private async Task<StorageState> StateAsync(ICallContext caller, CancellationToken ct) =>
+        _sweeps?.For(caller) is { } sweep ? State(sweep, await sweep.SnapshotAsync(caller, ct).ConfigureAwait(false), withRows: true) : EmptyState;
+
+    private static StorageState State(DeviceSweep<StorageRow> sweep, SweepSnapshot<StorageRow> now, bool withRows)
     {
-        if (_sweeps?.For(scopeKey) is not { } sweep)
-        {
-            return new StorageState(false, 0, 0, 0, 0, 0, 0, 0, null, []);
-        }
-
-        var now = sweep.Snapshot();
         int Count(string state) => now.Rows.Count(r => r.State == state);
         return new StorageState(
             now.Running,
@@ -298,8 +301,13 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
-    private void PublishState(string scopeKey) =>
-        _ctx?.Events?.Publish(EdgeStorageMethods.StateTopic, EdgeStorageJson.Serialize(State(scopeKey, withRows: false)), PluginEventAudience.DeviceScope(scopeKey));
+    private void PublishState(string scopeKey)
+    {
+        if (_sweeps?.Existing(scopeKey) is { } sweep && _ctx?.Events is { } events)
+        {
+            events.Publish(EdgeStorageMethods.StateTopic, EdgeStorageJson.Serialize(State(sweep, sweep.Snapshot(), withRows: false)), PluginEventAudience.DeviceScope(scopeKey));
+        }
+    }
 
     /// <summary>A read that may fail without failing the row (health and alert levels are extras).</summary>
     private static async Task<T?> Optional<T>(Func<Task<T>> read, CancellationToken ct)

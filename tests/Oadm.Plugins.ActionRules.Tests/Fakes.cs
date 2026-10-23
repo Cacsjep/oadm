@@ -43,6 +43,9 @@ internal sealed class RecordingContext : ITaskExecutionContext
     public ICorePlugin? Owner => null;
     public IUploadedFiles Files => throw new NotSupportedException("No uploads in this plugin.");
 
+    /// <summary>The user who started the task (null: the system).</summary>
+    public ICallContext? Caller { get; init; }
+
     public void ReportProgress(int percent, string? message = null)
     {
     }

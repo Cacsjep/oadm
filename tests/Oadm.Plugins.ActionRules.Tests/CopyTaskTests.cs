@@ -238,8 +238,11 @@ public sealed class CopyTaskTests : IAsyncLifetime
     }
 
     /// <summary>Undoes the run of <paramref name="run"/>; returns the undo's context.</summary>
-    private Task<RecordingContext> UndoAsync(RuleCamera camera, RecordingContext run) =>
-        ExecuteAsync(camera, new RuleTaskPayload(RuleTaskActions.Undo, Guid.NewGuid(), "Undo", [], null, _runs[run]));
+    private async Task<RecordingContext> UndoAsync(RuleCamera camera, RecordingContext run)
+    {
+        await _plugin.Undo.TryMarkUndoneAsync(_runs[run], true, CancellationToken.None); // like the page: marked before its tasks start
+        return await ExecuteAsync(camera, new RuleTaskPayload(RuleTaskActions.Undo, Guid.NewGuid(), "Undo", [], null, _runs[run]));
+    }
 
     private async Task<RecordingContext> ExecuteAsync(RuleCamera camera, RuleTaskPayload payload)
     {

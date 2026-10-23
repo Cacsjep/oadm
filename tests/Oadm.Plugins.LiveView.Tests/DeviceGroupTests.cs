@@ -78,6 +78,32 @@ public sealed class DeviceGroupTests
         Assert.Null(adopted.Owner);
     }
 
+    [Fact]
+    public async Task An_administrator_saves_a_groups_view_whose_camera_left_the_group()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var b = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var c = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.3" });
+        var keyA = ctx.FakeScopes.Add("Building A", [a.Id, b.Id]);
+        using var plugin = new LiveViewPlugin();
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var admin = ctx.CallAsAllDevices();
+        var hall = Save(await ctx.InvokeAsync(plugin, Testing.FakeCallContext.WithGroup(ctx, [a.Id, b.Id], "anna", keyA), "save", Request(null, "Hall", 0, a.Id, b.Id)));
+
+        ctx.FakeScopes.Add("Building A", [a.Id], keyA); // b left the group
+        var saved = Save(await ctx.InvokeAsync(plugin, admin, "save", Request(hall.Id, "Hall 2", hall.Version, a.Id, b.Id)));
+        Assert.Equal(1, saved.Dropped);
+        Assert.Equal([a.Id], saved.Tiles.Select(t => t.DeviceId));
+        Assert.Equal(keyA, saved.Owner);
+        Assert.Equal(0, Assert.Single(await ListAsync(plugin, ctx, admin)).Dropped); // only in the answer
+
+        // A camera the administrator adds that is not in the group, and the group's own users, are still refused.
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ctx.InvokeAsync(plugin, admin, "save", Request(hall.Id, "Hall 3", saved.Version, a.Id, c.Id)));
+        var anna = Testing.FakeCallContext.WithGroup(ctx, [a.Id], "anna", keyA);
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ctx.InvokeAsync(plugin, anna, "save", Request(hall.Id, "Hall 3", saved.Version, a.Id, b.Id)));
+    }
+
     private static async Task<IReadOnlyList<SavedView>> ListAsync(LiveViewPlugin plugin, Testing.FakeCoreContext ctx, Testing.FakeCallContext call) =>
         JsonSerializer.Deserialize<ViewList>((await ctx.InvokeAsync(plugin, call, "list", null))!, LiveViewPluginInfo.Json)!.Views;
 

@@ -159,6 +159,7 @@ public sealed class RuleTaskTests : IAsyncLifetime
         var camera = new RuleCamera();
         var id = AddTcp(camera);
         var payload = await PayloadAsync(camera, RuleTaskActions.Edit, new RulePatch { Name = "Renamed" }, id);
+        await _plugin.Undo.StartRunAsync(new UndoRun(payload.RunId, DateTimeOffset.UtcNow, "test", payload.Action, 1, false), CancellationToken.None);
         camera.Rules[id] = camera.Rules[id] with { Name = "Changed in the web interface" };
 
         var ctx = await ExecuteAsync(camera, payload);
@@ -265,8 +266,8 @@ public sealed class RuleTaskTests : IAsyncLifetime
 
     private async Task UndoAsync(RuleCamera camera, Guid runId)
     {
+        await _plugin.Undo.TryMarkUndoneAsync(runId, true, CancellationToken.None); // like the page: marked before its tasks start
         await ExecuteAsync(camera, new RuleTaskPayload(RuleTaskActions.Undo, Guid.NewGuid(), "Undo", [], null, runId));
-        await _plugin.Undo.TryMarkUndoneAsync(runId, true, CancellationToken.None);
     }
 
     private async Task<RuleTaskPayload> PayloadAsync(RuleCamera camera, string action, RulePatch? patch, params string[] ids)

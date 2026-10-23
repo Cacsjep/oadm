@@ -100,6 +100,129 @@ public sealed class DeviceGroupTests
         Assert.Contains(fake.EventsSeenBy(admin), e => e.Topic == DashboardsMethods.ValuesTopic && e.PayloadJson!.Contains(b.Id.ToString(), StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Group_users_never_see_events_of_other_owners_without_a_device_list()
+    {
+        var (fake, feed, plugin, a, _, keyA, _) = await StartAsync();
+        using var _ = plugin;
+        feed.TypeList.AddRange(
+        [
+            new(new EventTypeInfo("oadm.device.unreachable", "Device unreachable", "Device status", EventKind.Stateful), "oadm.device", "Built in", true),
+            new(new EventTypeInfo("oadm.compliance.check.1", "Compliance: Vault cameras of Building B", "Compliance", EventKind.Stateful), "oadm.compliance", "Compliance", true),
+            new(new EventTypeInfo("acme.any", "Anything", "Acme", EventKind.Stateful), "acme", "Acme", true),
+        ]);
+        feed.ChangeTypes(_ => { });
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+
+        var catalog = Read<CatalogReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Catalog, null, CancellationToken.None));
+        Assert.Contains(catalog.Events, e => e.TypeId == "oadm.device.unreachable");
+        Assert.DoesNotContain(catalog.Events, e => e.TypeId is "oadm.compliance.check.1" or "acme.any");
+        Assert.Equal([], Read<DevicesReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Devices, Json(new DevicesRequest("oadm.compliance.check.1")), CancellationToken.None)).DeviceIds!);
+
+        // A watch of another owner's check on the group's own device is left out.
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey("oadm.compliance.check.1", a.Id), new ValueKey("oadm.device.unreachable", a.Id)])), CancellationToken.None);
+        Assert.Equal(1, plugin.WatchedCount);
+        Assert.Equal(5, Read<CatalogReply>(await plugin.InvokeAsync(fake.CallAsAllDevices(), DashboardsMethods.Catalog, null, CancellationToken.None)).Events.Count(e => e.TypeId != ServerFlag));
+    }
+
+    [Fact]
+    public async Task Values_stop_at_once_when_a_device_leaves_the_group()
+    {
+        var (fake, feed, plugin, a, b, keyA, time) = await StartAsync();
+        using var _ = plugin;
+        fake.FakeScopes.Add("Building A", [a.Id, b.Id], keyA);
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id, b.Id], "anna", keyA);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id), new ValueKey(OtherTrigger, b.Id)])), CancellationToken.None);
+
+        // A tag change moves b out of the group; the page has not renewed its watch yet.
+        fake.FakeScopes.Add("Building A", [a.Id], keyA);
+        feed.Publish(OtherTrigger, b.Id, PublishedEventKind.On);
+        feed.Publish(Trigger, a.Id, PublishedEventKind.On);
+        time.Advance(DashboardsPluginInfo.PushInterval);
+        await Testing.Eventually.TrueAsync(() => fake.EventsSeenBy(anna).Any(e => e.Topic == DashboardsMethods.ValuesTopic), "the push after the change");
+        var seen = fake.EventsSeenBy(anna).Where(e => e.Topic == DashboardsMethods.ValuesTopic).SelectMany(e => Read<ValuesReply>(e.PayloadJson).Values).ToList();
+        Assert.All(seen, v => Assert.Equal(a.Id, v.DeviceId));
+
+        // The renewal names the device that left: refused, and the old watch is gone.
+        var now = new SameSession(Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA), anna.SessionId);
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(now, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id), new ValueKey(OtherTrigger, b.Id)])), CancellationToken.None));
+        Assert.Equal(0, plugin.WatchedCount);
+    }
+
+    [Fact]
+    public async Task An_administrator_saves_a_groups_dashboard_whose_device_left_the_group()
+    {
+        var (fake, _, plugin, a, b, keyA, _) = await StartAsync();
+        using var _ = plugin;
+        var c = fake.Add(new Testing.FakeDevice { Address = "10.0.0.3" });
+        fake.FakeScopes.Add("Building A", [a.Id, b.Id], keyA);
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id, b.Id], "anna", keyA);
+        var admin = fake.CallAsAllDevices();
+        var doors = Read<Dashboard>(await plugin.InvokeAsync(anna, DashboardsMethods.Save, Json(new SaveDashboardRequest(null, "Doors", 0, [Widget(a.Id), Widget(b.Id) with { Id = "2", X = 4 }])), CancellationToken.None));
+
+        fake.FakeScopes.Add("Building A", [a.Id], keyA); // b left the group
+        var saved = Read<Dashboard>(await plugin.InvokeAsync(admin, DashboardsMethods.Save, Json(new SaveDashboardRequest(doors.Id, "Doors 2", doors.Version, doors.Widgets)), CancellationToken.None));
+        Assert.Equal(1, saved.Dropped);
+        Assert.Equal([a.Id], saved.Widgets.Select(w => w.DeviceId));
+        Assert.Equal(keyA, saved.Owner);
+        Assert.DoesNotContain("dropped", fake.PluginSettings.Values.Values.First(), StringComparison.OrdinalIgnoreCase); // never stored
+
+        // A device the administrator adds that is not in the group, and the group's own users, are still refused.
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(admin, DashboardsMethods.Save, Json(new SaveDashboardRequest(doors.Id, "Doors 3", saved.Version, [.. saved.Widgets, Widget(c.Id) with { Id = "3", X = 8 }])), CancellationToken.None));
+        var now = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(now, DashboardsMethods.Save, Json(new SaveDashboardRequest(doors.Id, "Doors 3", saved.Version, [.. saved.Widgets, Widget(b.Id) with { Id = "2", X = 4 }])), CancellationToken.None));
+    }
+
+    /// <summary>The plugin over a fake host with two devices (a in Building A at a site, b outside) and their triggers.</summary>
+    private static async Task<(Testing.FakeCoreContext Fake, FakeEventSubscriptions Feed, DashboardsPlugin Plugin, Testing.FakeDevice A, Testing.FakeDevice B, string KeyA, FakeTimeProvider Time)> StartAsync()
+    {
+        var fake = new Testing.FakeCoreContext();
+        var site = Guid.NewGuid();
+        var a = fake.Add(new Testing.FakeDevice { Address = "10.0.0.1", SiteId = site });
+        var b = fake.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var keyA = fake.FakeScopes.Add("Building A", [a.Id]);
+        var feed = new FakeEventSubscriptions();
+        feed.TypeList.AddRange(
+        [
+            new(new EventTypeInfo(Trigger, "Door", "Device triggers", EventKind.Stateful) { DeviceIds = [a.Id] }, DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true),
+            new(new EventTypeInfo(OtherTrigger, "Vault", "Device triggers", EventKind.Stateful) { DeviceIds = [b.Id] }, DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true),
+        ]);
+        var time = new FakeTimeProvider();
+        var ctx = Substitute.For<ICorePluginContext>();
+        ctx.Settings.Returns(fake.PluginSettings);
+        ctx.Events.Returns(fake);
+        ctx.Logger.Returns(NullLogger.Instance);
+        ctx.EventSubscriptions.Returns(feed);
+        ctx.DeviceScopes.Returns(fake.FakeScopes);
+        var plugin = new DashboardsPlugin(time);
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        return (fake, feed, plugin, a, b, keyA, time);
+    }
+
+    /// <summary>A call of the same login session with the user's devices as they are now.</summary>
+    private sealed class SameSession(ICallContext inner, string sessionId) : ICallContext
+    {
+        public string UserName => inner.UserName;
+
+        public string SessionId => sessionId;
+
+        public string DeviceScopeKey => inner.DeviceScopeKey;
+
+        public bool HasAllDevices => inner.HasAllDevices;
+
+        public IDeviceRepository Devices => inner.Devices;
+
+        public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => inner.Vapix;
+
+        public Oadm.Sdk.Tasks.ITaskRunner Tasks => inner.Tasks;
+
+        public IDeviceEventStreams? EventStreams => inner.EventStreams;
+
+        public bool Has(string permission) => inner.Has(permission);
+
+        public bool Contains(IDeviceInfo device) => inner.Contains(device);
+    }
+
     private static Widget Widget(Guid device) => new() { Id = "1", Kind = WidgetKind.OnOff, TypeId = Trigger, Field = DashboardsPluginInfo.ActiveField, DeviceId = device };
 
     private static string Json<T>(T value) => JsonSerializer.Serialize(value, DashboardsPluginInfo.Json);

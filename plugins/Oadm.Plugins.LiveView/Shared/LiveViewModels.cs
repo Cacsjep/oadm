@@ -66,6 +66,13 @@ public sealed record SavedView(string Id, string Name, long Version, IReadOnlyLi
     /// every view saved before device groups). Set by the server, never taken from a page.
     /// </summary>
     public string? Owner { get; init; }
+
+    /// <summary>
+    /// Only in the answer of a save: tiles the save dropped because their cameras are no longer in the owner's devices (a
+    /// user with all devices changed a group's view). Never stored.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Dropped { get; init; }
 }
 
 /// <summary>Every view, sorted by name (method "list" and the event "views").</summary>
@@ -81,6 +88,11 @@ public sealed record DeleteViewRequest(string Id);
 public static class ViewRules
 {
     public const string NameMissing = "Enter a name.";
+
+    /// <summary>The answer of a save that dropped tiles (<see cref="SavedView.Dropped"/>).</summary>
+    public static string DroppedText(int tiles) => tiles == 1
+        ? "Saved without 1 camera that is no longer in the device group."
+        : string.Create(CultureInfo.InvariantCulture, $"Saved without {tiles:N0} cameras that are no longer in the device group.");
 
     public static readonly string NameTooLong = $"Use at most {LiveViewPluginInfo.MaxNameLength} characters.";
 

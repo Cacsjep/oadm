@@ -79,7 +79,7 @@ public sealed class UndoStore(string? folder, ISecretProtector? secrets, TimePro
         {
             if (!File.Exists(Path.Combine(RunFolder(runId), RunFile)))
             {
-                throw new InvalidOperationException("The change cannot be saved for undo. Nothing was changed.");
+                throw new InvalidOperationException(RuleTexts.CannotSaveForUndo);
             }
 
             await WriteAsync(Path.Combine(RunFolder(runId), undo.DeviceId.ToString("N") + ".json"), stored, ct).ConfigureAwait(false);

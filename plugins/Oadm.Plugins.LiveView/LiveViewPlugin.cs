@@ -151,6 +151,15 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
             }
 
             var owner = OwnerScope.ForSave(Context, caller, index >= 0 ? views[index].Owner : null, isNew);
+
+            // A user with all devices editing a group's view: cameras of it that left the group are dropped (the answer counts them).
+            var left = await OwnerScope.LeftOwnerAsync(Context, caller, owner, tiles.Select(t => t.DeviceId), index >= 0 ? views[index].Tiles.Select(t => t.DeviceId) : [], ct).ConfigureAwait(false);
+            var dropped = left.Count == 0 ? 0 : tiles.Count(t => left.Contains(t.DeviceId));
+            if (dropped > 0)
+            {
+                tiles = [.. tiles.Where(t => !left.Contains(t.DeviceId))];
+            }
+
             await OwnerScope.RequireDevicesAsync(Context, caller, owner, tiles.Select(t => t.DeviceId), ct).ConfigureAwait(false);
 
             if (index >= 0 && request.Version != 0 && request.Version != views[index].Version)
@@ -183,7 +192,7 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
             }
 
             await StoreAsync(next, owner, ct).ConfigureAwait(false);
-            return saved;
+            return dropped == 0 ? saved : saved with { Dropped = dropped };
         }
         finally
         {
