@@ -43,7 +43,7 @@ public sealed class SystemReportServerTests
         }
 
         Assert.Equal((JobStates.Done, 1), (status.State, status.Failed));
-        Assert.Equal("The device was removed from OADM.", status.Devices.Single().Error);
+        Assert.Equal("1 device is no longer available.", status.Devices.Single().Error); // one phrase for a device the user cannot reach
         var chunk = SystemReportJson.Deserialize<ReportChunk>((await op.InvokeAsync(new Proto.InvokeRequest
         {
             PluginId = SystemReportPluginInfo.PluginId,
