@@ -66,7 +66,10 @@ an independent security review the same day). A user may be limited to part of t
   `Publish(topic, json)` goes only to watchers with all devices. Sweep state (ActionRules, EdgeStorage, ImageHealth) is
   kept per group, not per plugin.
 - **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
-  scan, export and monitor ids); every id-taking method and download checks it; ids of another user answer NOT_FOUND.
+  scan, export and monitor ids); every id-taking method and download checks it; ids of another user or session answer
+  NOT_FOUND, and an ended session forgets its jobs, finished ones too. A shared job (`IPluginJobs.StartShared`, one scan
+  per scope) is found and stopped by every user with its device scope. A job started in a call whose user's devices, role
+  or session changed after the call began is refused ("Your devices changed. Connect again.").
   When the owner's devices change (another group, new rules of the group, another role) the owner's jobs end and are
   forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
   of the group (tag, site, add, remove; the coalesced `HostDeviceScopes.Changed`) the finished jobs of its users are
@@ -215,7 +218,7 @@ an independent security review the same day). A user may be limited to part of t
   `AddedByAllDevices` or `AddedByGroupId` is the group.
 - **Views**: `DeviceViewFactory.ForAsync(caller)` (throws without a caller), `ForScopeAsync(scope, user)`,
   `ForUserAsync(userId)`, `System` (background work), `CountAsync(rules)`, `CountGroupsAsync`; `DeviceView.ListAsync`,
-  `AllAsync`, `GetAsync(ids)` / `GetOrAllAsync(ids)` (any unknown or outside id: `DevicesNotAvailableException`, NOT_FOUND
+  `AllAsync`, `GetAsync(ids)` / `GetOrAllAsync(ids)` (in the order of the request; any unknown or outside id: `DevicesNotAvailableException`, NOT_FOUND
   `DeviceMessages.NoLongerAvailable(n)`), `FindAsync`, `Contains`, `IdsAsync` (cached per group revision, catalog key and
   `DeviceChangeFeed.Version`), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
   `views.ForAsync(ServerCallContext)` (`Oadm.Server.Auth.CallerViews`, the caller from the call's `UserState`,
@@ -288,8 +291,11 @@ an independent security review the same day). A user may be limited to part of t
 
 ## Code (tasks)
 
-- **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` and calls `TaskEngine.RunAsync(pluginId, ViewedDevices,
-  payload, TaskCaller)`; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
+- **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` (the devices in the order of the request: the client pairs
+  the task ids with its device ids) and calls `TaskEngine.RunAsync(pluginId, ViewedDevices, payload, TaskCaller)`; for a
+  group user a task of a package below SDK 0.4.0 is refused whole (`PluginNeedsAllDevices`, also through `call.Tasks`
+  and again when a queued task leaves the queue) and left out of `ListTaskPlugins`; a group owner's task runs under a
+  `PluginCallMark` without all devices, so the package's `ctx.*` refuses inside it like in the owner's call; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
   refuse the run; cancel and the active check only for the user's own tasks when the user has a group, another user's
   active task answers null, "cannot tell"; `AnyActiveAsync` answers for the tasks of the view's devices). The raw-id
   `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view

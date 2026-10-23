@@ -113,12 +113,17 @@ tell"; `AnyActiveAsync` answers for every task of the user's devices, null when 
   `ITaskExecutionContext.ManagedAddressesAsync(addresses)`: the same for a running task, the task's own device excluded;
   both at most 256 addresses per call).
   **Jobs**: `PluginJobRegistry` (`ctx.Jobs`): random 128-bit ids, owner
-  = the host's call (user id + session); `Find` / `List` answer only the owner's jobs and only while the caller has the
-  job's device scope; a job runs detached
+  = the host's call (user id + session); `Find` / `List` answer only the owner in the owner's session and only while the
+  caller has the job's device scope; a shared job (`StartShared`, SDK 0.4.0: one scan per scope) answers every caller
+  with the job's device scope, so users of the same group (or all users with all devices) follow and stop it; it still
+  runs with its owner's call and ends like the owner's other jobs. A job started in a call whose user's access, session or
+  group changed after the call began is refused ("Your devices changed. Connect again.", `AccessEpochs`: the interceptor
+  captures the epoch before it reads the session, `CancelOwner`, `CancelGroup` and `CancelSession` record the change
+  before they look, the new job is registered before it is checked); a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
   the owner's devices or role change, the rules of the owner's group change (`CancelGroup` on `DeviceGroupStore.Changed`
   and `Deleted`; a new name or description raises only `Updated`) or the session or the user's sessions end; for a change
-  of devices, role or group the job is also forgotten (a finished report of the old devices answers NOT_FOUND). When
+  of devices, role, group or session the job is also forgotten (a finished report of the old devices answers NOT_FOUND). When
   devices move into or out of the owner's group (`HostDeviceScopes.Changed`, the coalesced membership signal:
   `ScopeDevicesChanged`) its finished jobs are forgotten at once and its running ones when they end; at most 50 per user and plugin (finished
   ones dropped first, else "Wait until your earlier work has finished."). **Events**: `PluginEventHub.WatchAsync(pluginId,

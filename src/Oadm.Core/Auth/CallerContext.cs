@@ -39,6 +39,12 @@ public sealed record AuthenticatedCaller(Guid UserId, string UserName, Guid Role
     /// </summary>
     public CallerDevices Devices { get; init; } = CallerDevices.None;
 
+    /// <summary>
+    /// <see cref="AccessEpochs.Capture"/> before the interceptor read the session: jobs started in this call are refused when
+    /// the user's access changed after it. 0 (a caller built elsewhere) counts as the oldest (fail closed).
+    /// </summary>
+    public long AccessEpoch { get; init; }
+
     /// <summary>The caller may reach every device: the Administrator role, or a user with "All devices".</summary>
     public bool HasAllDevices => IsAdmin || Devices.Access.AllDevices;
 

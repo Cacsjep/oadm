@@ -185,6 +185,9 @@ public static class DeviceGroupTexts
     public const string AllDevicesOnly = Oadm.Sdk.Devices.DeviceGroupMessages.AllDevicesOnly;
 
     public const string ChooseDevices = Oadm.Sdk.Devices.DeviceGroupMessages.ChooseDevices;
+
+    /// <summary>The caller's devices or role changed during the call (a stream, a job): the client connects again.</summary>
+    public const string DevicesChanged = "Your devices changed. Connect again.";
     public const string UnknownGroup = "The device group does not exist (any more).";
     public const string EnterName = "Enter a name.";
     public const string TooManyRules = "A device group can have at most 100 sites, 500 tags and 30,000 single devices.";
