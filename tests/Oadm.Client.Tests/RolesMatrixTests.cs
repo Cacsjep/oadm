@@ -27,6 +27,16 @@ public sealed class RolesMatrixTests
         return (new RolesViewModel(api, dialogs, session), api, dialogs);
     }
 
+    /// <summary>Loads the matrix and opens every group (groups start collapsed).</summary>
+    private static async Task LoadOpenAsync(RolesViewModel vm)
+    {
+        await vm.LoadAsync();
+        foreach (var group in vm.Rows.Where(r => r.IsGroup && !r.IsExpanded).ToList())
+        {
+            vm.ToggleGroupCommand.Execute(group);
+        }
+    }
+
     private static PermissionRowViewModel Row(RolesViewModel vm, string key) => vm.Rows.Single(r => r.Key == key);
 
     private static RoleColumnViewModel Column(RolesViewModel vm, string name) => vm.Columns.Single(c => c.Name == name);
@@ -35,7 +45,7 @@ public sealed class RolesMatrixTests
     public async Task The_matrix_lists_groups_permissions_and_roles()
     {
         var (vm, _, _) = Create();
-        await vm.LoadAsync();
+        await LoadOpenAsync(vm);
 
         Assert.Equal(["Administrator", "Operator", "Viewer", "Contractor"], vm.Columns.Select(c => c.Name));
         Assert.Equal(["Everything", "2 users", "1 user", "1 user"], vm.Columns.Select(c => c.Subtitle));
@@ -58,7 +68,7 @@ public sealed class RolesMatrixTests
     public async Task Every_role_has_a_start_page_even_the_administrator_role()
     {
         var (vm, api, _) = Create();
-        await vm.LoadAsync();
+        await LoadOpenAsync(vm);
         Assert.All(vm.Columns, c => Assert.Equal("Starts on Devices", c.StartPageText));
 
         // The Administrator role: only the start page, name and description stay.
@@ -93,7 +103,7 @@ public sealed class RolesMatrixTests
     public async Task Checking_a_group_gives_all_and_the_changes_are_saved_together()
     {
         var (vm, api, dialogs) = Create();
-        await vm.LoadAsync();
+        await LoadOpenAsync(vm);
         var viewer = Column(vm, "Viewer");
 
         var devices = vm.Rows[0];
@@ -125,7 +135,7 @@ public sealed class RolesMatrixTests
     public async Task Discard_reset_and_a_refused_confirmation_keep_the_server_unchanged()
     {
         var (vm, api, _) = Create(confirm: false);
-        await vm.LoadAsync();
+        await LoadOpenAsync(vm);
         Row(vm, "tags.manage").Cells[1].IsChecked = true;
         await vm.SaveCommand.ExecuteAsync(null);
         Assert.True(vm.IsDirty); // not confirmed: nothing saved
@@ -149,7 +159,7 @@ public sealed class RolesMatrixTests
     public async Task A_new_role_or_a_copy_is_a_column_until_saved_and_names_are_unique()
     {
         var (vm, api, _) = Create();
-        await vm.LoadAsync();
+        await LoadOpenAsync(vm);
 
         vm.NewRoleCommand.Execute(null);
         Assert.True(vm.IsNewEditor);
@@ -196,9 +206,10 @@ public sealed class RolesMatrixTests
 
         vm.SearchText = "";
         Assert.Equal(all, vm.Rows.Count);
+        Assert.All(vm.Rows, r => Assert.True(r.IsGroup)); // groups start collapsed
         vm.ToggleGroupCommand.Execute(vm.Rows[0]);
         Assert.Equal("Devices", vm.Rows[0].Title);
-        Assert.True(vm.Rows[1].IsGroup); // the Devices rows are hidden
+        Assert.False(vm.Rows[1].IsGroup); // the Devices rows are shown
     }
 
     [Fact]
@@ -235,7 +246,7 @@ public sealed class RolesMatrixTests
         bool done = await HeadlessSession.Shared.Dispatch(async () =>
         {
             var (vm, _, _) = Create();
-            await vm.LoadAsync();
+            await LoadOpenAsync(vm);
             Row(vm, "task:oadm.users:remove").Cells[1].IsChecked = true;
             vm.ToggleGroupCommand.Execute(vm.Rows.Single(r => r.IsGroup && r.Title == "Devices"));
             var window = new Window { Width = 1300, Height = 760, Content = new RolesCardView { DataContext = vm, Margin = new Avalonia.Thickness(16) } };

@@ -511,7 +511,7 @@ public sealed class LoginTests
             List<string> pageTexts = usersWindow.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("Who can log in, which devices they reach and what each role may do.", pageTexts);
             Assert.Contains("Contractor", pageTexts); // a role column of the matrix
-            Assert.Contains("Rename and delete tags", pageTexts);
+            Assert.DoesNotContain("Rename and delete tags", pageTexts); // the permission groups start collapsed
             // The page title only, no card title repeating it.
             Assert.Equal(1, usersWindow.GetVisualDescendants().OfType<TextBlock>()
                 .Count(t => t.Text == "Access" && !t.GetVisualAncestors().OfType<DataGrid>().Any()));

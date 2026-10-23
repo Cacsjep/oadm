@@ -228,7 +228,7 @@ public sealed partial class PermissionRowViewModel : ObservableObject
     public bool IsUnavailable => Permission is { Available: false };
 
     [ObservableProperty]
-    public partial bool IsExpanded { get; set; } = true;
+    public partial bool IsExpanded { get; set; }
 
     /// <summary>One cell per role, in column order.</summary>
     public List<PermissionCellViewModel> Cells { get; } = [];
@@ -696,14 +696,16 @@ public sealed partial class RolesViewModel : ValidatingViewModel
             _byKey[p.Key] = p;
         }
 
-        // Rows: a group header before the first permission of each group, in the server's order.
+        // Rows: a group header before the first permission of each group, in the server's order. Groups start collapsed;
+        // a group the user opened stays open when the matrix is shown again (after a save or a reload).
+        var expanded = _allRows.Where(r => r.IsGroup && r.IsExpanded).Select(r => r.Group).ToHashSet(StringComparer.Ordinal);
         _allRows.Clear();
         PermissionRowViewModel? group = null;
         foreach (var p in matrix.Permissions)
         {
             if (group is null || group.Group != p.Group)
             {
-                group = new PermissionRowViewModel(p.Group, string.IsNullOrEmpty(p.IconKey) ? null : p.IconKey);
+                group = new PermissionRowViewModel(p.Group, string.IsNullOrEmpty(p.IconKey) ? null : p.IconKey) { IsExpanded = expanded.Contains(p.Group) };
                 _allRows.Add(group);
             }
 

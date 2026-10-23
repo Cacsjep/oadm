@@ -134,12 +134,12 @@ public sealed partial class RolesCardView : UserControl
         return panel;
     }
 
-    /// <summary>The role's column header: the name and its menu (the description as tooltip).</summary>
-    private Grid RoleHeader(RoleColumnViewModel role)
+    /// <summary>The role's column header: the name, its menu centered below it (the description as tooltip).</summary>
+    private StackPanel RoleHeader(RoleColumnViewModel role)
     {
-        var text = new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Name)), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        var text = new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Name)), TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center };
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), DataContext = role };
+        var grid = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center, DataContext = role };
         ToolTip.SetTip(grid, role.DescriptionTip);
         grid.Children.Add(text);
         if (!role.IsAdministrator && _vm is { } vm)
@@ -158,14 +158,13 @@ public sealed partial class RolesCardView : UserControl
                 menu.Items.Add(new MenuItem { Header = "Delete", Command = vm.DeleteRoleCommand, CommandParameter = role });
             }
 
-            var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, VerticalAlignment = VerticalAlignment.Center };
+            var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, HorizontalAlignment = HorizontalAlignment.Center };
             ToolTip.SetTip(button, "Role actions");
             if (Icon("more") is { } more)
             {
                 button.Content = new OadmIcon { Data = more };
             }
 
-            Grid.SetColumn(button, 1);
             grid.Children.Add(button);
         }
         else if (_vm is { } admin)
@@ -173,14 +172,13 @@ public sealed partial class RolesCardView : UserControl
             var menu = new MenuFlyout();
             menu.Items.Add(new MenuItem { Header = "Edit", Command = admin.EditRoleCommand, CommandParameter = role });
             menu.Items.Add(new MenuItem { Header = "Copy", Command = admin.CopyRoleCommand, CommandParameter = role });
-            var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, VerticalAlignment = VerticalAlignment.Center };
+            var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, HorizontalAlignment = HorizontalAlignment.Center };
             ToolTip.SetTip(button, "Role actions");
             if (Icon("more") is { } more)
             {
                 button.Content = new OadmIcon { Data = more };
             }
 
-            Grid.SetColumn(button, 1);
             grid.Children.Add(button);
         }
 
