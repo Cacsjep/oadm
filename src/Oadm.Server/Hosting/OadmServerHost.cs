@@ -384,6 +384,11 @@ public static partial class OadmServerHost
             var users = sp.GetRequiredService<Core.Auth.UserStore>();
             users.UserDeviceAccessChanged += (_, userId) => jobs.CancelOwner(userId);
             users.UserRoleChanged += (_, userId) => jobs.CancelOwner(userId);
+
+            // A group's new rules or its deletion: the jobs of its users end and are forgotten (results of the old devices).
+            var groups = sp.GetRequiredService<Core.DeviceGroups.DeviceGroupStore>();
+            groups.Changed += (_, groupId) => jobs.CancelGroup(groupId);
+            groups.Deleted += (_, deleted) => jobs.CancelGroup(deleted.Id);
             sp.GetRequiredService<Core.Auth.AuthTokenStore>().SessionsEnded += (_, ended) =>
             {
                 if (ended.UserId is { } userId)

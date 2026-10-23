@@ -18,6 +18,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups: device triggers, Live View views and dashboards belong to the group of the user who made them; a user
   with a group sees and changes only these, with the devices of the group. Image Health Dashboard, Edge storage and the
   Action Rule Editor show each group its own table.
+- Device groups: a file you upload for a task (firmware, an application, a backup) can be used only by you, in the same
+  login. Reports and other results of plugins are gone once your devices change.
 - Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
   single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
 - Device groups: the device list, live video, the web interface and the Sites page show only the devices and sites of

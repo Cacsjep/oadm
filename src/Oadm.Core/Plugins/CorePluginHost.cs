@@ -190,7 +190,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
                     System = new HostSystemAccess(guard, _devices, entry.CallVapix, _tasks, entry.CallEventStreams),
                     Jobs = Jobs.For(registered.Id),
-                    DeviceScopes = _deviceScopes,
+                    DeviceScopes = guard.DeviceScopes(_deviceScopes), // only the caller's own scope in a group user's call
                 };
                 try
                 {
@@ -434,7 +434,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         }
 
         var call = new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _viewWatcher, _taskOwners);
-        return (call, new PluginCallMark(registered.Id, method, caller.HasAllDevices, systemAllowed));
+        return (call, new PluginCallMark(registered.Id, method, caller.HasAllDevices, systemAllowed) { ScopeKey = caller.View.ScopeKey });
     }
 
     /// <summary>The plugin's answer, or <paramref name="fallback"/> when it throws (fail closed).</summary>

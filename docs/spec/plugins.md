@@ -91,31 +91,43 @@ returns null or throws `NotSupportedException`.
   true); then they call the plugin's call overload inside a `PluginCallMark` (`CallerContext.PluginCall`, cleared by
   `CallerContext.Suppress`). The call (`HostCallContext`) reads devices from the view, refuses VAPIX clients, task runs
   (whole batch) and event streams (`ViewedEventStreams`: they end when the device leaves the view) outside it with
-  `DevicesNotAvailableException`, and lets a group user cancel only tasks started through its own calls. The context's
+  `DevicesNotAvailableException`, and lets a group user cancel only tasks started through its own calls. Its `Tasks` is
+  `TaskEngine.ForView(view, TaskCaller.Of(caller))`, also in the user's jobs: the caller owns the tasks (the owner text is
+  the caller's "user@machine", never what the plugin passes), each task checks the caller's view again when it leaves the
+  queue and gets `ITaskExecutionContext.Caller`. The context's
   `Devices`, `Vapix`, `Tasks`, `EventStreams`, `AutoAdd` and `System` are wrapped by `PluginCallGuard`: they refuse
   (`DeviceAccessRefusedException`, PERMISSION_DENIED "Only users with all devices can do this.", logged once per plugin,
   method and member) while the mark or the caller is a user without all devices; `System` works there only in methods
   with a `SystemAccessReason`. A `Task.Run` or timer started in the call keeps the mark and is refused too.
+  `ctx.DeviceScopes` is wrapped the same way: in a group user's call (and its jobs) every member refuses a key other than
+  the caller's own (`PluginCallMark.ScopeKey`; a repository from `Devices(key)` checks again when read); methods with a
+  `SystemAccessReason` reach every scope.
   `CorePluginHost.InvokeAsync(pluginId, ...)` without a caller stays for in-process host work and tests (no user,
   background). Task plugin queries: `TaskPluginQueries.QueryAsync(caller, ...)` (the device through the view, the query
   context's `Devices` = the view, the 0.4.0 rule; `ITaskQueryContext.ManagedAddressesAsync(addresses)`: which candidates a
   managed device on the queried device's route has, over every device, never naming one, for address-in-use checks).
   **Jobs**: `PluginJobRegistry` (`ctx.Jobs`): random 128-bit ids, owner
-  = the host's call (user id + session); `Find` / `List` answer only the owner's jobs; a job runs detached
+  = the host's call (user id + session); `Find` / `List` answer only the owner's jobs and only while the caller has the
+  job's device scope; a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
-  the owner's devices or role change or the session or the user's sessions end; at most 50 per user and plugin (finished
+  the owner's devices or role change, the rules of the owner's group change (`CancelGroup` on `DeviceGroupStore.Changed`
+  and `Deleted`) or the session or the user's sessions end; for a change of devices, role or group the job is also
+  forgotten (a finished report of the old devices answers NOT_FOUND); at most 50 per user and plugin (finished
   ones dropped first, else "Wait until your earlier work has finished."). **Events**: `PluginEventHub.WatchAsync(pluginId,
   PluginWatcher, ct)`; the old `Publish(topic, json)` = `PluginEventAudience.AllDevices`; `Device` / `DeviceRows` are
   checked against the watcher's view ids in the watcher's own loop (rows filtered in order; a payload that is not an array
   of one element per id is dropped for group watchers and logged); `User` (name, case-insensitive), `Session`,
   `DeviceScope` (scope key, SDK 0.4.0 addition for state kept per group). **Device scopes**: `HostDeviceScopes`
   (`ctx.DeviceScopes`, over `DeviceGroupStore` + the factory's filters; unknown and deleted keys cover nothing;
-  `Changed` without a caller). Shared sweeps: `plugins/Shared/DeviceSweep.cs` runs its reads detached and has
+  `Changed` without a caller: at once for new rules and a deleted group, and coalesced over one second
+  (`HostDeviceScopes.CoalesceWindow`, a `TimeProvider` timer) for the groups whose devices may have changed: the tag and site
+  catalog, devices added, removed, moved or tagged; it keeps each device's `DeviceScopeRow`, so an update that changes none
+  of those fields (polling) costs one comparison; perf `HostDeviceScopesScaleTests`). Shared sweeps: `plugins/Shared/DeviceSweep.cs` runs its reads detached and has
   `DeviceSweeps<TRow>` (one sweep per scope key, publish with `DeviceScope(key)`, a deleted group's sweep dropped, a
   changed one pruned). Fakes: `FakeCoreContext.InvokeAsync` / `OpenDownloadAsync` / `QueryAsync` apply the same rules
   (`RefusedAccesses`, `ClientsCreated`, `PublishedEvents`, `EventsSeenBy(watcher)`), `PluginCanary` runs every method of a
   plugin with the outside device (plugins/README.md "Call context"). Tests: `tests/Oadm.Core.Tests/Plugins/
-  PluginCallContextTests`, `PluginEventAudienceTests`, `TaskQueryCallTests`, `PluginCanaryTests`,
+  PluginCallContextTests`, `HostDeviceScopesTests`, `PluginEventAudienceTests`, `TaskQueryCallTests`, `PluginCanaryTests`,
   `tests/Oadm.Server.Tests/DeviceGroups/PluginServiceGroupTests`, `tests/Oadm.Plugins.EdgeStorage.Tests/DeviceSweepsTests`.
 - Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource` (see "Event
   rules").
