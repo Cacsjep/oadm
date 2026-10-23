@@ -87,7 +87,9 @@ returns null or throws `NotSupportedException`.
   `ICorePluginClientContext`, `ITaskDialogContext`, `IToolbarContext` (default true). `SdkInfo.Version` 0.4.0,
   `SdkInfo.CallContextVersion`: users with a device group may call only packages whose `minSdkVersion` is at least
   0.4.0; older packages keep working for users with all devices. Test fakes: `Oadm.Sdk.Testing.FakeCallContext`
-  (`AllDevices`, `WithGroup`, `Refused`), `FakePluginJobs`, `FakeDeviceScopes`, `FakeCoreContext.CallAsGroup` /
+  (`AllDevices`, `WithGroup`, `Refused`; `Over`, `OverGroup` over a test's own device and VAPIX fakes; task
+  `IsActive` / `Cancel` / `AnyActiveAsync` like the host), `FakePluginJobs`, `FakeDeviceScopes` (also over a test's own
+  device list), `FakeCoreContext.EndTask` (its tasks stay active until then), `FakeCoreContext.CallAsGroup` /
   `CallAsAllDevices`.
 - **Host side of the call context** (`src/Oadm.Core/Plugins/PluginCalls.cs`, `CorePluginHost`, `PluginGrpcService`):
   `PluginService` makes a `PluginCaller` (authenticated caller + `DeviceView`) per call; `CorePluginHost.InvokeAsync(caller,
