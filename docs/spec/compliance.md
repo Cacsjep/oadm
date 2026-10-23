@@ -29,7 +29,11 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   (the result text next to the icon, on by default, toggle; several detail lines on one line: "1 setting differs: X: 60Hz
   (file: 50Hz)"; the tooltip over the whole cell), Group by tag, Choose columns (per client), New check, Check now
   (a spinning "Checking..." per device and check until the result is in); right: Turn off compliance, Export. Dialog `ComplianceCheckWindow` (single
-  operation: Name, Devices, Kind of check, its settings through the shared `SettingsFormView` of the event rules).
+  operation: Name, Owner (administrators only: All devices or a device group from `DeviceGroupService.List`, sent as
+  `ComplianceCheckSummary.owner`; a check whose group was deleted shows none and "Choose All devices or a device group."
+  below the field; a refusal of the server below the form), Devices, Kind of check, its settings through the shared
+  `SettingsFormView` of the event rules). For users with all devices the card names a group that owns its check after the
+  result ("failed · Building B", "No devices" without an owner).
   **Devices grid**: the Compliance column (off by default) or, while it is on, one column per check (toggle, per client).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
 - **Device groups** (`docs/spec/device-scope.md`, Shared objects): every check has an owner (`ComplianceCheck.Owner`,

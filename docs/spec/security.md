@@ -143,7 +143,11 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   Server tab of the Logs page, turning compliance on or off; the client SDK contexts (`IToolbarContext`,
   `ICorePluginClientContext`, `ITaskDialogContext`) answer `HasAllDevices` from it. **Your role** shows the devices on
   top: "Devices: All devices", "Devices: Building B (412 devices)" with the group's rules below (`MyRole.devices`, never
-  the excepted devices), or "Devices: No devices".
+  the excepted devices), or "Devices: No devices". For users with a group the client also hides the Event rules page
+  (with the event log) and reads Your role after every connect (`MainWindowViewModel.RefreshMyDevicesAsync`,
+  `UserSession.ApplyDevices`): a group without "This server" and without a site gets the Add entries disabled with
+  "Your device group has no site, so you cannot add devices." as tooltip. The shared group texts live in
+  `Oadm.Sdk.Devices.DeviceGroupMessages` (Core `DeviceGroupTexts` and client `DeviceGroupWords` name them).
 - **Users page** (Admin only, subtitle "Who can log in to this server and what each role may do."; `Settings/UsersPageView`
   = the users card on top at the height it needs and the roles card filling the rest, with a splitter): **New user** (secondary button) above the list, then users with role
   (plain text), last login, state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
