@@ -52,7 +52,7 @@ public abstract class DeviceGroupTestBase : IAsyncLifetime
         }, Ct);
         if (tags is { Length: > 0 })
         {
-            await Tags.SetDeviceTagsAsync([device.Id], tags, [], Ct);
+            await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([device.Id], Ct), tags, [], Ct);
         }
 
         return (await Devices.GetAsync(device.Id, Ct))!;

@@ -59,6 +59,9 @@ internal sealed record PkiFakeDevice(Guid Id, string Address = "10.0.0.48", stri
     public bool HasVideo => true;
 
     public IReadOnlyList<DeviceApi> Apis { get; init; } = PkiFixture.Apis;
+
+    /// <summary>False: a user limited to a device group added it (no host names in its certificates).</summary>
+    public bool AddedByAllDevices { get; init; } = true;
 }
 
 /// <summary>One request the fake received.</summary>

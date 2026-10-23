@@ -26,6 +26,7 @@ public sealed class ServerTests : IAsyncLifetime
     private readonly Devices _devices = new();
     private readonly FakePublisher _publisher = new();
     private readonly FakeSites _sites = new();
+    private readonly FakeCoreContext _events = new();
     private X509Certificate2 _intermediate = null!;
     private X509Certificate2 _deviceId = null!;
     private EstService _service = null!;
@@ -43,6 +44,7 @@ public sealed class ServerTests : IAsyncLifetime
             HostName = "oadm-server",
             Publisher = _publisher,
             Sites = _sites,
+            Events = _events,
         });
         await _service.StartAsync(CancellationToken.None);
     }
@@ -235,6 +237,27 @@ public sealed class ServerTests : IAsyncLifetime
         using var own = Leaf(_ca.Certificate, "cam-entrance", "axis-" + Serial.ToLowerInvariant() + ".local");
         Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", own, Body(csr))).Status);
         Assert.DoesNotContain(DeviceRequests(), r => r.DnsNames.Contains("axis-accc8e000099.local"));
+    }
+
+    [Fact]
+    public async Task A_camera_a_group_user_added_gets_no_host_name_and_its_enrollment_reaches_only_pages_that_see_it()
+    {
+        var device = new FakeDevice { Serial = Serial, Address = "10.0.0.48", HostName = "cam-entrance", AddedByAllDevices = false };
+        _devices.List[0] = device;
+        _events.DeviceList.Add(device);
+        var (csr, key) = TestPki.Request("CN=cam-entrance");
+        using var _ = key;
+
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+
+        var request = Assert.Single(DeviceRequests());
+        Assert.Equal("10.0.0.48", request.CommonName);
+        Assert.Equal(["10.0.0.48"], request.IpAddresses);
+        Assert.Equal(["axis-b8a44f631339.local"], request.DnsNames); // no cam-entrance
+        bool Sees(Oadm.Sdk.Plugins.ICallContext watcher) => _events.EventsSeenBy(watcher).Any(e => e.Topic == EstMethods.EnrollmentsTopic);
+        Assert.True(Sees(_events.CallAsGroup([device.Id])));
+        Assert.True(Sees(_events.CallAsAllDevices()));
+        Assert.False(Sees(_events.CallAsGroup([Guid.NewGuid()])));
     }
 
     [Fact]

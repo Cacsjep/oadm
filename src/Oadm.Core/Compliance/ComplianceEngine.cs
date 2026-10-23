@@ -51,7 +51,7 @@ public sealed record ComplianceCheckState(
 /// in memory, writes changes in batches, streams them to the pages and publishes one stateful event per check ("on" while
 /// the check fails on a device). Devices the server must not contact (status not Ok) are not read.
 /// </summary>
-public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposable
+public sealed partial class ComplianceEngine : IHostEventSource, Events.IEventTypeOwners, IAsyncDisposable
 {
     /// <summary>The event source of the compliance checks in the event rules.</summary>
     public const string EventSourceId = "oadm.compliance";
@@ -71,6 +71,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     private readonly ComplianceEngineOptions _options;
     private readonly ILogger<ComplianceEngine> _logger;
     private readonly Func<IEventPublisher>? _publisher;
+    private readonly DeviceGroups.OwnerScopes? _owners;
     private readonly Lock _sync = new();
     private readonly Dictionary<Guid, CheckRuntime> _checks = [];
     private readonly Dictionary<Guid, Device> _deviceRows = [];
@@ -99,7 +100,8 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         TimeProvider time,
         ComplianceEngineOptions options,
         ILogger<ComplianceEngine> logger,
-        Func<IEventPublisher>? publisher = null)
+        Func<IEventPublisher>? publisher = null,
+        DeviceGroups.OwnerScopes? owners = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -110,8 +112,14 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _publisher = publisher;
+        _owners = owners;
         _slots = new SemaphoreSlim(Math.Max(1, options.Parallelism));
         _catalog.Changed += (_, _) => OnCatalogChanged();
+        if (_owners is not null)
+        {
+            _owners.Changed += OnOwnersChanged;
+            _owners.GroupDeleted += OnGroupDeleted;
+        }
     }
 
     public ComplianceCatalog Catalog => _catalog;
@@ -156,6 +164,11 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     /// <summary>Loads checks, devices and results (before the event rules start, so the check events are known).</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        if (_owners is not null)
+        {
+            await _owners.LoadAsync(ct).ConfigureAwait(false);
+        }
+
         await _store.EnsureDefaultsAsync(ct).ConfigureAwait(false);
         var enabled = await _store.GetEnabledAsync(ct).ConfigureAwait(false);
         var checks = await _store.ListChecksAsync(ct).ConfigureAwait(false);
@@ -282,6 +295,15 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
                 .OrderByDescending(c => c.Check.BuiltIn)
                 .ThenBy(c => c.Check.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(StateOf)];
+        }
+    }
+
+    /// <summary>The owner of a check, null for an unknown check (cheap: the results watch asks per change).</summary>
+    public Auth.DeviceScope? OwnerOf(Guid checkId)
+    {
+        lock (_sync)
+        {
+            return _checks.TryGetValue(checkId, out var runtime) ? runtime.Check.Owner : null;
         }
     }
 
@@ -451,6 +473,12 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             return; // stopped by the host, then disposed by the container
         }
 
+        if (_owners is not null)
+        {
+            _owners.Changed -= OnOwnersChanged;
+            _owners.GroupDeleted -= OnGroupDeleted;
+        }
+
         await _stopping.CancelAsync().ConfigureAwait(false);
         _subscription?.Dispose();
         try
@@ -492,16 +520,100 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
 
     private bool IsCached(CheckRuntime runtime) => _catalog.Find(runtime.Check.TypeId)?.Type is { UsesCachedDataOnly: true };
 
-    /// <summary>Whether the device is one of the check's devices: O(its tags) through the runtime's sets.</summary>
-    private static bool InScope(CheckRuntime runtime, Device device) => runtime.InScope(device);
+    /// <summary>
+    /// Whether the device is one of the check's devices: O(its tags) through the runtime's sets, and one of its owner's
+    /// (docs/spec/device-scope.md, Shared objects: "All devices" and the chosen devices of a group's check are the group's).
+    /// </summary>
+    private bool InScope(CheckRuntime runtime, Device device) => runtime.InScope(device) && OwnerFilter(runtime).Contains(device);
+
+    /// <summary>The owner's devices now (without the owner scopes: all devices for all devices, nothing for a group).</summary>
+    private DeviceGroups.DeviceGroupFilter OwnerFilter(CheckRuntime runtime) =>
+        _owners?.FilterOf(runtime.Check.Owner)
+        ?? (runtime.Check.Owner.AllDevices ? DeviceGroups.DeviceGroupFilter.Everything : DeviceGroups.DeviceGroupFilter.Nothing);
+
+    /// <summary>The owner of a check's event type ("Compliance: name"), null for a type that is not a check's.</summary>
+    public Auth.DeviceScope? OwnerOfEventType(string typeId)
+    {
+        if (typeId is null || !typeId.StartsWith(EventTypePrefix, StringComparison.Ordinal) || !Guid.TryParseExact(typeId[EventTypePrefix.Length..], "N", out var id))
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            return _checks.TryGetValue(id, out var runtime) ? runtime.Check.Owner : Auth.DeviceScope.None;
+        }
+    }
+
+    /// <summary>A group's rules or the tag and site catalog changed: the checks of groups follow their devices again.</summary>
+    private void OnOwnersChanged(object? sender, EventArgs e)
+    {
+        var changes = new List<ComplianceResultModel>();
+        List<(Guid Check, List<Guid> Entered)> recheck = [];
+        lock (_sync)
+        {
+            if (!_started || !_enabled)
+            {
+                return;
+            }
+
+            foreach (var runtime in _checks.Values.Where(c => !c.Check.Owner.AllDevices))
+            {
+                var before = runtime.Results.Keys.ToHashSet();
+                Reconcile(runtime, changes);
+                var entered = runtime.Results.Keys.Where(id => !before.Contains(id)).ToList();
+                if (entered.Count > 0)
+                {
+                    recheck.Add((runtime.Check.Id, entered)); // only the devices that came in are evaluated
+                }
+            }
+        }
+
+        Publish(changes);
+        foreach (var (id, entered) in recheck)
+        {
+            _ = EvaluateCachedAsync(id, entered, _stopping.Token);
+        }
+
+        Wake();
+        Oadm.Core.Auth.CallerContext.Raise(ChecksChanged, this, EventArgs.Empty);
+    }
+
+    /// <summary>A group was deleted: its checks are off and have no owner in the store; read them again.</summary>
+    private async void OnGroupDeleted(object? sender, Guid groupId)
+    {
+        try
+        {
+            List<Guid> owned;
+            lock (_sync)
+            {
+                owned = [.. _checks.Values.Where(c => c.Check.Owner.EffectiveGroupId == groupId).Select(c => c.Check.Id)];
+            }
+
+            foreach (var id in owned)
+            {
+                if (await _store.GetCheckAsync(id, _stopping.Token).ConfigureAwait(false) is { } stored)
+                {
+                    ApplySaved(stored);
+                }
+            }
+        }
+#pragma warning disable CA1031 // An event handler must not throw; the next start reads the checks anyway.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogWriteFailed(ex);
+        }
+    }
 
     /// <summary>Gives every device of the check a result (Not checked yet, or why it is not contacted) and drops the others.</summary>
     private void Reconcile(CheckRuntime runtime, List<ComplianceResultModel> changes)
     {
         var cached = IsCached(runtime);
+        var owner = OwnerFilter(runtime);
         foreach (var device in _deviceRows.Values)
         {
-            ReconcileDevice(runtime, device, cached, changes);
+            ReconcileDevice(runtime, device, cached, changes, owner);
         }
 
         foreach (var deviceId in runtime.Results.Keys.Where(id => !_deviceRows.ContainsKey(id)).ToList())
@@ -510,9 +622,9 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
     }
 
-    private void ReconcileDevice(CheckRuntime runtime, Device device, bool cached, List<ComplianceResultModel> changes)
+    private void ReconcileDevice(CheckRuntime runtime, Device device, bool cached, List<ComplianceResultModel> changes, DeviceGroups.DeviceGroupFilter? owner = null)
     {
-        if (!InScope(runtime, device))
+        if (!runtime.InScope(device) || !(owner ?? OwnerFilter(runtime)).Contains(device))
         {
             if (runtime.Results.ContainsKey(device.Id))
             {

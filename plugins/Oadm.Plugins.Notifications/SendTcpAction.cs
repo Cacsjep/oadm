@@ -95,6 +95,13 @@ public sealed class SendTcpAction : IActionPlugin
         return string.Create(CultureInfo.InvariantCulture, $"TCP to {invocation.Get("host")}:{invocation.GetInt("port", 8000)}");
     }
 
+    /// <summary>The host and port as written (a host with placeholders is no address of the list).</summary>
+    public IReadOnlyList<ActionDestination> Destinations(JsonElement settings)
+    {
+        var invocation = Settings(settings);
+        return [new ActionDestination((invocation.Get("host") ?? string.Empty).Trim(), Math.Clamp(invocation.GetInt("port", 8000), 1, 65535))];
+    }
+
     public bool RunsOn(ActionEdge edge, JsonElement settings) =>
         edge != ActionEdge.TurnedOff || (settings.ValueKind == JsonValueKind.Object && settings.TryGetProperty("onOff", out var on) && on.ValueKind == JsonValueKind.True);
 
@@ -115,6 +122,12 @@ public sealed class SendTcpAction : IActionPlugin
         }
 
         var port = Math.Clamp(invocation.GetInt("port", 8000), 1, 65535);
+        if (!ctx.IsDestinationAllowed(host, port))
+        {
+            // Checked with the host after its placeholders: rules of device groups send only to the administrator's addresses.
+            throw new InvalidOperationException(ActionDestination.NotAllowedText + " " + host + " was not contacted.");
+        }
+
         var bytes = Message(ctx, invocation);
         var seconds = Math.Clamp(invocation.GetInt("timeout", 10), 1, 120);
         var target = string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");

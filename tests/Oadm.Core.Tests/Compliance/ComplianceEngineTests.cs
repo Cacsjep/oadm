@@ -40,9 +40,9 @@ public sealed class ComplianceEngineTests
     public async Task TheDefaultChecksAreOrdinaryChecksAndAreCreatedOnlyOnce()
     {
         await using var rig = await ComplianceRig.StartAsync();
-        await rig.Service.SetEnabledAsync(LoginWorks, false, CancellationToken.None);
+        await rig.Service.SetEnabledAsync(LoginWorks, false, rig.AllView, CancellationToken.None);
         Assert.False(rig.Engine.GetCheck(LoginWorks)!.Enabled);
-        await rig.Service.DeleteAsync(Reachable, CancellationToken.None);
+        await rig.Service.DeleteAsync(Reachable, rig.AllView, CancellationToken.None);
         Assert.Null(rig.Engine.GetCheck(Reachable));
 
         // A restart does not bring a deleted default check back; New check adds it again.
