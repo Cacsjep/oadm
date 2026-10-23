@@ -67,6 +67,9 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   (`ctx.Jobs`): it takes the snapshots through the user's view, and `reportStatus`, `readReport` and `deleteReport` answer
   another user's id like an unknown one ("The report no longer exists; create it again."). The overload without a call
   (in-process callers) uses the plugin's context, which refuses in a group user's call.
+- A report item of a managed device without video gets a tile with its facts and "The device has no video"
+  (`SnapshotService.NoVideo`, the snapshot's text); an item of a device not in the user's devices (removed, or outside
+  the group) "1 device is no longer available.".
 - Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (the device-group canary `CanaryTests`, source expansion, request and error mapping, PDF parsed
   back with PDFsharp: pages, cover text via ToUnicode, DCT images; view models; headless screenshots
   `snapshot-report-page.png`, `-preview.png`, `-export.png`; hardware test through the in-process server
