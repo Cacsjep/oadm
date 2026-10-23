@@ -27,10 +27,12 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   their ports."
   - **General** (card, left): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Log entries
     kept** (1,000..50,000, default 5,000). **Advanced** (collapsed, the defaults fit almost every network):
-    **Minimum TLS version** (TLS 1.2 default, or TLS 1.3; 1.0 and 1.1 are never offered, RFC 8996), **Cipher suites**
-    (check boxes, the secure default set checked, **Reset to default**; TLS 1.3 suites and TLS 1.2 ECDHE suites with
-    AES-GCM or ChaCha20-Poly1305 only, nothing with CBC, RSA key exchange, RC4, 3DES or SHA-1 MACs; at least one must stay
-    checked), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
+    **Minimum TLS version** (one select: TLS 1.0, TLS 1.1, **TLS 1.2** (default), TLS 1.3; for 1.0 or 1.1 the hint below
+    the field says "Only for old devices: TLS 1.0 and 1.1 are no longer considered secure."), **Cipher suites** (check
+    boxes, the secure default set checked, **Reset to default**: TLS 1.3 suites and TLS 1.2 ECDHE suites with AES-GCM or
+    ChaCha20-Poly1305; with a minimum of 1.0 or 1.1 the list also shows the old ECDHE suites with AES-CBC and SHA-1, which
+    those versions need, checked when the minimum is lowered; never RC4, 3DES, NULL, export or RSA key exchange; at least
+    one usable suite for the chosen versions must stay checked), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
     status left of Save: "Running on port 1812", "OADM PRO is not active.", "The PKI has no
     certificate authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available".
   - **Switches** (card, right): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
@@ -138,7 +140,7 @@ certificate").
 - **Duplicates:** a retransmission (same switch, port, identifier, authenticator) gets the cached answer, never a second
   step. At most 4,096 cached answers, 30 s each.
 - **EAP-TLS** (RFC 5216, TLS 1.2; RFC 9190, TLS 1.3 with the one-byte commitment message, no resumption, no tickets).
-  TLS 1.2 and 1.3 by default (Minimum TLS version in Advanced); TLS 1.0/1.1 never.
+  TLS 1.2 and 1.3 by default; TLS 1.0 and 1.1 only when Advanced lowers the minimum (RFC 8996 deprecates them; SSL never).
 - **Fragmentation** (RFC 5216 2.1.5), both directions: the first fragment carries the L flag and the total length, M on
   every fragment but the last, each fragment acknowledged by an empty EAP-TLS message. Fragment size = **Largest
   fragment** (Advanced), at most the switch's `Framed-MTU` minus the EAP and RADIUS overhead. Incoming total at most 64 KB (refused above, "Message
