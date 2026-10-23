@@ -25,9 +25,13 @@ the RFCs below.
   and **Activate** as EST. When the license ends, the server stops answering (switches fall back to their own rule).
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
   their ports."
-  - **General** (card, left): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Largest fragment**
-    (bytes, 500..1400, default 1000; smaller when the switch asks for less), **Log entries kept** (1,000..50,000,
-    default 5,000). The status left of Save: "Running on port 1812", "OADM PRO is not active.", "The PKI has no
+  - **General** (card, left): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Log entries
+    kept** (1,000..50,000, default 5,000). **Advanced** (collapsed, the defaults fit almost every network):
+    **Minimum TLS version** (TLS 1.2 default, or TLS 1.3; 1.0 and 1.1 are never offered, RFC 8996), **Cipher suites**
+    (check boxes, the secure default set checked, **Reset to default**; TLS 1.3 suites and TLS 1.2 ECDHE suites with
+    AES-GCM or ChaCha20-Poly1305 only, nothing with CBC, RSA key exchange, RC4, 3DES or SHA-1 MACs; at least one must stay
+    checked), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
+    status left of Save: "Running on port 1812", "OADM PRO is not active.", "The PKI has no
     certificate authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available".
   - **Switches** (card, right): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
     last request; **Add switch**, Edit, Delete (red). The dialog: Name, Address, **Shared secret** (`ui:PasswordBox`,
@@ -120,17 +124,22 @@ certificate").
 - **Duplicates:** a retransmission (same switch, port, identifier, authenticator) gets the cached answer, never a second
   step. At most 4,096 cached answers, 30 s each.
 - **EAP-TLS** (RFC 5216, TLS 1.2; RFC 9190, TLS 1.3 with the one-byte commitment message, no resumption, no tickets).
-  TLS 1.2 and 1.3 offered; TLS 1.0/1.1 never.
+  TLS 1.2 and 1.3 by default (Minimum TLS version in Advanced); TLS 1.0/1.1 never.
 - **Fragmentation** (RFC 5216 2.1.5), both directions: the first fragment carries the L flag and the total length, M on
-  every fragment but the last, each fragment acknowledged by an empty EAP-TLS message. Fragment size = the setting, at
-  most the switch's `Framed-MTU` minus the EAP and RADIUS overhead. Incoming total at most 64 KB (refused above, "Message
+  every fragment but the last, each fragment acknowledged by an empty EAP-TLS message. Fragment size = **Largest
+  fragment** (Advanced), at most the switch's `Framed-MTU` minus the EAP and RADIUS overhead. Incoming total at most 64 KB (refused above, "Message
   too large"), at most 60 round trips per session.
 - **Keys:** the MSK from the TLS key material (TLS 1.2: PRF "client EAP encryption"; TLS 1.3: exporter
   "EXPORTER_EAP_TLS_Key_Material"), sent as MS-MPPE-Recv-Key / MS-MPPE-Send-Key (RFC 2548) in the Access-Accept, encrypted
   with the shared secret.
 - **VLAN** (RFC 3580): Tunnel-Type = VLAN (13), Tunnel-Medium-Type = 802 (6), Tunnel-Private-Group-ID = the VLAN ID.
-- **TLS library:** BouncyCastle TLS (already a dependency): record-level control for fragmentation, the alerts in both
-  directions and the key export, which `SslStream` does not offer on all three systems.
+- **TLS library:** BouncyCastle TLS (already a dependency) in its **non-blocking mode**: one `TlsServerProtocol` per
+  session without a stream; the bytes of each incoming EAP-TLS message go in with `OfferInput`, the bytes to send come
+  out with `ReadOutput` and are cut into fragments; the handshake lives in memory only, no socket. `TlsServer` overrides
+  give the minimum version and the cipher suites of Advanced, `NotifyAlertReceived` / `NotifyAlertRaised` the alert
+  numbers in both directions, `TlsContext.ExportKeyingMaterial` the MSK. `SslStream` offers neither the key export nor the
+  alert numbers on all three systems. Stage 1 starts with a proof: a full EAP-TLS exchange with a BouncyCastle client in a
+  unit test.
 - **Server certificate:** issued by the OADM CA (PKI) for the server, names = the listen addresses and the server's host
   name, renewed automatically 30 days before it expires; the cameras trust it through the PKI task "IEEE 802.1X".
 
@@ -172,7 +181,8 @@ and reason, never secrets or key material.
 - Full EAP-TLS conversations with a BouncyCastle TLS client as the camera through an in-memory switch: TLS 1.2 and 1.3,
   fragment sizes 500..1400 and small `Framed-MTU`, every state of the table, every refusal (unknown CA, expired, an
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
-- Switches added, changed and removed while sessions run (the decision).
+- Switches added, changed and removed while sessions run (the decision); Advanced: minimum version 1.3 refuses a 1.2
+  client with the alert text, an unchecked cipher suite is not offered.
 - Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
 - Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with an OADM CA certificate on a real switch.
 
