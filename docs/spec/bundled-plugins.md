@@ -361,6 +361,8 @@ cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: 
   stored, logged or in a URL; retention 0..7,000 days (0 = no age limit).
 - Roles: "show" (Operator, Viewer), "Change storage settings" (`manage`, Operator yes), "Format and encrypt storage"
   (`format`, full device control, Operator no); both run methods audited.
+- Device groups: one table per device scope; a group user reads and runs the tools only on the group's cameras (ids
+  outside it refuse the whole request, NOT_FOUND).
 - Shared code (no copies): the disk list `EdgeDisk` / `EdgeDisks` (also Edge Recording Export and Hardening scan), the
   on-request table `plugins/Shared/DeviceSweep.cs` + `SweepRows.cs` (also Image Health Dashboard), `DeviceMessages.Refusal`
   (SDK) and `PluginEventWatch.RunAsync` (client SDK).

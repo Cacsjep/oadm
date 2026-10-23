@@ -24,8 +24,9 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
 
     private readonly DeviceSweepOptions _options;
     private readonly StorageTaskPlugin _task;
+    private const string NotRunning = "The Edge storage plugin is not running.";
     private ICorePluginContext? _ctx;
-    private DeviceSweep<StorageRow>? _sweep;
+    private DeviceSweeps<StorageRow>? _sweeps;
 
     public EdgeStoragePlugin()
         : this(new DeviceSweepOptions { DeviceTimeout = TimeSpan.FromSeconds(6) })
@@ -71,39 +72,57 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     /// <summary>Every run is in the audit log (the method: change or format).</summary>
     public bool IsAudited(string method) => method is EdgeStorageMethods.Change or EdgeStorageMethods.Format;
 
-    /// <summary>The table while the plugin runs (tests).</summary>
-    internal DeviceSweep<StorageRow>? Sweep => _sweep;
+    /// <summary>The table of all devices while the plugin runs (tests).</summary>
+    internal DeviceSweep<StorageRow>? Sweep => _sweeps?.For(ICallContext.AllDevicesScopeKey);
+
+    /// <summary>The tables per device scope while the plugin runs (tests).</summary>
+    internal DeviceSweeps<StorageRow>? Sweeps => _sweeps;
 
     public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
         _ctx = ctx;
-        // Every read replaces the row (the previous one is not needed).
-        _sweep = new DeviceSweep<StorageRow>(ctx, _options, HasSlot, async (d, _, t) => await ReadAsync(d, t).ConfigureAwait(false), r => r.Address, PublishRows, PublishState);
+        // One table per device scope; every read replaces the row (the previous one is not needed).
+        _sweeps = new DeviceSweeps<StorageRow>(ctx, _options, HasSlot, async (d, _, t) => await ReadAsync(d, t).ConfigureAwait(false), r => r.Address, PublishRows, PublishState);
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
-        if (_sweep is { } sweep)
+        if (_sweeps is { } sweeps)
         {
-            _sweep = null;
-            await sweep.DisposeAsync().ConfigureAwait(false);
+            _sweeps = null;
+            await sweeps.DisposeAsync().ConfigureAwait(false);
         }
     }
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>In-process calls without a user (the host itself, tests): the table of all devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
+
+    /// <summary>
+    /// The page's calls: the table of the caller's devices (one per device group); chosen cameras and the cameras of a run
+    /// must all be in the caller's view (else NOT_FOUND, nothing read or started).
+    /// </summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
-        var sweep = _sweep ?? throw new InvalidOperationException("The Edge storage plugin is not running.");
+        ArgumentNullException.ThrowIfNull(caller);
+        var sweeps = _sweeps ?? throw new InvalidOperationException(NotRunning);
         switch (method)
         {
             case EdgeStorageMethods.Read:
-                sweep.Start(ReadIds(payloadJson));
-                return EdgeStorageJson.Serialize(State(withRows: true));
+                var ids = ReadIds(payloadJson);
+                if (ids is not null)
+                {
+                    await CallDevices.RequireAsync(caller, ids, ct).ConfigureAwait(false);
+                }
+
+                sweeps.For(caller)?.Start(ids);
+                return EdgeStorageJson.Serialize(State(caller.DeviceScopeKey, withRows: true));
             case EdgeStorageMethods.GetState:
-                return EdgeStorageJson.Serialize(State(withRows: true));
+                return EdgeStorageJson.Serialize(State(caller.DeviceScopeKey, withRows: true));
             case EdgeStorageMethods.Change or EdgeStorageMethods.Format:
-                return EdgeStorageJson.Serialize(await RunAsync(method, EdgeStorageJson.Deserialize<RunRequest>(payloadJson), ct).ConfigureAwait(false));
+                return EdgeStorageJson.Serialize(await RunAsync(caller, method, EdgeStorageJson.Deserialize<RunRequest>(payloadJson), ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
@@ -111,11 +130,16 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
-    /// <summary>Reads one camera's card again (after a task on it).</summary>
+    /// <summary>Reads one camera's card again (after a task on it), in every table that has a row of it.</summary>
     internal async Task RefreshRowAsync(Guid deviceId)
     {
-        if (_sweep is { } sweep)
+        foreach (var sweep in _sweeps?.All ?? [])
         {
+            if (sweep.Snapshot().Rows.All(r => r.DeviceId != deviceId))
+            {
+                continue;
+            }
+
             try
             {
                 await sweep.ReadOneAsync(deviceId, CancellationToken.None).ConfigureAwait(false);
@@ -133,9 +157,9 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     }
 
     /// <summary>Starts one task per device; the rights of the method cover the action (checked before any task starts).</summary>
-    private async Task<IReadOnlyList<Guid>> RunAsync(string method, RunRequest request, CancellationToken ct)
+    private async Task<IReadOnlyList<Guid>> RunAsync(ICallContext caller, string method, RunRequest request, CancellationToken ct)
     {
-        var ctx = _ctx ?? throw new InvalidOperationException("The Edge storage plugin is not running.");
+        var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
         var payload = StorageTaskPlugin.Validate(new TaskPayload(request.Action, request.RetentionDays, request.Passphrase));
         if (StorageActions.IsChange(request.Action) != (method == EdgeStorageMethods.Change))
         {
@@ -149,7 +173,8 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
 
         var owner = string.IsNullOrWhiteSpace(request.Owner) ? EdgeStorageInfo.DisplayName : request.Owner;
         LogRun(ctx.Logger, request.Action, request.DeviceIds.Count); // the task engine records the real caller as owner
-        return await ctx.Tasks.RunAsync(EdgeStorageInfo.TaskPluginId, [.. request.DeviceIds.Distinct()], EdgeStorageJson.Serialize(payload), owner, ct).ConfigureAwait(false);
+        // The caller's runner: a camera outside the caller's devices refuses the whole run before any task starts.
+        return await caller.Tasks.RunAsync(EdgeStorageInfo.TaskPluginId, [.. request.DeviceIds.Distinct()], EdgeStorageJson.Serialize(payload), owner, ct).ConfigureAwait(false);
     }
 
     /// <summary>The cameras a read covers: the page's choice (1 to 30,000), or every camera for an older page without one.</summary>
@@ -196,9 +221,18 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            return row with { Text = ex is FormatException ? StorageTexts.Unreadable : _sweep?.Failure(ex) ?? ex.Message };
+            return row with { Text = ex is FormatException ? StorageTexts.Unreadable : Failure(ex) };
         }
     }
+
+    /// <summary>The usual text when a camera cannot be read (as <see cref="DeviceSweep{TRow}.Failure"/>).</summary>
+    private string Failure(Exception ex) => ex switch
+    {
+        OperationCanceledException => DeviceMessages.Timeout(_options.DeviceTimeout),
+        HttpRequestException { InnerException: System.Net.Sockets.SocketException socket } => DeviceMessages.Unreachable(socket.Message),
+        HttpRequestException http => DeviceMessages.Unreachable(http.Message),
+        _ => ex.Message,
+    };
 
     /// <summary>The row of a present card: Problem when the camera cannot use it, Warning when worn past its alert level.</summary>
     internal static StorageRow Classify(StorageRow row, EdgeDisk card, int? wear, int wearAlert)
@@ -218,9 +252,13 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
             : filled with { State = CardStates.Ok, Text = null };
     }
 
-    private StorageState State(bool withRows)
+    /// <summary>The state of the table of all devices (tests).</summary>
+    internal StorageState State(bool withRows) => State(ICallContext.AllDevicesScopeKey, withRows);
+
+    /// <summary>The state of a scope's table; a deleted group has none (empty).</summary>
+    private StorageState State(string scopeKey, bool withRows)
     {
-        if (_sweep is not { } sweep)
+        if (_sweeps?.For(scopeKey) is not { } sweep)
         {
             return new StorageState(false, 0, 0, 0, 0, 0, 0, 0, null, []);
         }
@@ -240,25 +278,28 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
             withRows ? sweep.Sorted(now.Rows) : []);
     }
 
-    private void PublishRows(IReadOnlyList<StorageRow> rows, IReadOnlyList<Guid> removed)
+    /// <summary>Rows and progress of a scope's table go only to the users of that scope.</summary>
+    private void PublishRows(string scopeKey, IReadOnlyList<StorageRow> rows, IReadOnlyList<Guid> removed)
     {
         if (_ctx?.Events is not { } events)
         {
             return;
         }
 
+        var audience = PluginEventAudience.DeviceScope(scopeKey);
         foreach (var chunk in rows.Chunk(EdgeStorageInfo.MaxRowsPerEvent))
         {
-            events.Publish(EdgeStorageMethods.RowsTopic, EdgeStorageJson.Serialize(new RowsEvent(chunk, [])));
+            events.Publish(EdgeStorageMethods.RowsTopic, EdgeStorageJson.Serialize(new RowsEvent(chunk, [])), audience);
         }
 
         if (removed.Count > 0)
         {
-            events.Publish(EdgeStorageMethods.RowsTopic, EdgeStorageJson.Serialize(new RowsEvent([], removed)));
+            events.Publish(EdgeStorageMethods.RowsTopic, EdgeStorageJson.Serialize(new RowsEvent([], removed)), audience);
         }
     }
 
-    private void PublishState() => _ctx?.Events?.Publish(EdgeStorageMethods.StateTopic, EdgeStorageJson.Serialize(State(withRows: false)));
+    private void PublishState(string scopeKey) =>
+        _ctx?.Events?.Publish(EdgeStorageMethods.StateTopic, EdgeStorageJson.Serialize(State(scopeKey, withRows: false)), PluginEventAudience.DeviceScope(scopeKey));
 
     /// <summary>A read that may fail without failing the row (health and alert levels are extras).</summary>
     private static async Task<T?> Optional<T>(Func<Task<T>> read, CancellationToken ct)
