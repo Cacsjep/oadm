@@ -56,6 +56,15 @@ public interface ICallContext
 
     /// <summary>True when <paramref name="device"/> is in the user's view (a few hash lookups, no request).</summary>
     bool Contains(IDeviceInfo device);
+
+    /// <summary>
+    /// True when the user may reach the network of a route (SDK 0.4.0): <paramref name="siteId"/> a site, null the server's own
+    /// network ("This server"). Users with all devices reach every route; a user with a device group only the sites the group
+    /// names and the server's network only when the group has "This server" (a device in the group through a tag or a single
+    /// device does not open its network). For probes of addresses that are not devices (an address check). Fail closed: the
+    /// default answers false for a user with a group.
+    /// </summary>
+    bool CoversRoute(Guid? siteId) => HasAllDevices;
 }
 
 /// <summary>

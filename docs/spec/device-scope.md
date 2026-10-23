@@ -323,7 +323,10 @@ an independent security review the same day). A user may be limited to part of t
   packages without a page through `tests/Shared/TaskPluginCanaryHost.cs` (tasks started through the call, actions run on
   one device of the call). `tests/Oadm.Plugins.Restart.Tests` is new for that.
 - Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
-  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). At run time
+  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). It probes addresses only
+  on a route the caller's group names (`ICallContext.CoversRoute(siteId)`, SDK 0.4.0: the group's sites, the server's
+  network only with "This server"; a device in the group through a tag or a serial does not open its network); otherwise
+  it answers from the managed devices only, as without probes. At run time
   `ITaskExecutionContext.ManagedAddressesAsync` (host: the engine's execution context, every other device on the task's
   route, `Core/Tasks/ManagedAddresses`): Network settings and Assign IP address refuse, for every user and before the
   first write, a static address another managed device has ("Another device managed by OADM uses this address. Nothing

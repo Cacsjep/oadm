@@ -31,14 +31,16 @@ public static class AddressCheck
     /// </summary>
     /// <param name="probe">The probe; null = on the route of the query's device (<see cref="ITaskQueryContext.Network"/>).</param>
     public static Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, CancellationToken ct) =>
-        QueryAsync(ctx, device, payloadJson, probe, outsideView: false, ct);
+        QueryAsync(ctx, device, payloadJson, probe, outsideView: false, mayProbe: true, ct);
 
     /// <summary>
     /// The query of a user's dialog. <paramref name="outsideView"/> (a user with a device group, whose
     /// <see cref="ITaskQueryContext.Devices"/> are the group's): a candidate that a device outside the group has comes back
     /// in use (<see cref="AddressStatus.UsedByDevice"/>), without naming that device (docs/spec/device-scope.md).
+    /// <paramref name="mayProbe"/> false (a group without the route of the device, <see cref="ICallContext.CoversRoute"/>):
+    /// nothing is probed, the answer comes from the managed devices only, as for a request without probes.
     /// </summary>
-    public static async Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, bool outsideView, CancellationToken ct)
+    public static async Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, bool outsideView, bool mayProbe, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         var request = AddressCheckRequest.Parse(payloadJson);
@@ -69,7 +71,7 @@ public static class AddressCheck
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var probed = new AddressStatus[addresses.Count];
-        if (request.Probe)
+        if (request.Probe && mayProbe)
         {
             var used = probe ?? NetworkAddressProbe.For(ctx.Network);
             await Parallel.ForEachAsync(

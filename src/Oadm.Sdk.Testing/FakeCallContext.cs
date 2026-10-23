@@ -64,6 +64,15 @@ public sealed class FakeCallContext : ICallContext
     /// <inheritdoc />
     public bool HasAllDevices => _group is null;
 
+    /// <summary>The group names "This server" (<see cref="CoversRoute"/>); false by default.</summary>
+    public bool ThisServer { get; set; }
+
+    /// <summary>The sites the group names (<see cref="CoversRoute"/>); none by default.</summary>
+    public IReadOnlySet<Guid> Sites { get; set; } = new HashSet<Guid>();
+
+    /// <inheritdoc />
+    public bool CoversRoute(Guid? siteId) => HasAllDevices || (siteId is { } site ? Sites.Contains(site) : ThisServer);
+
     /// <inheritdoc />
     public IDeviceRepository Devices { get; }
 

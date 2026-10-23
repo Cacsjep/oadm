@@ -98,7 +98,7 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        return NetworkSettingsTaskPlugin.RunQueryAsync(ctx, device, method, payloadJson, _probe, outsideView: !caller.HasAllDevices, ct);
+        return NetworkSettingsTaskPlugin.RunQueryAsync(ctx, device, method, payloadJson, _probe, outsideView: !caller.HasAllDevices, mayProbe: caller.HasAllDevices || caller.CoversRoute(device.SiteId), ct);
     }
 
     /// <summary>"Assign IP 10.0.0.60" (one device), "Assign IP addresses" (several), "Assign IP via DHCP".</summary>
