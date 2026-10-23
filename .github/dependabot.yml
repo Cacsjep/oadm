@@ -41,6 +41,10 @@ updates:
     directory: /website
     schedule:
       interval: weekly
+    # astro-mermaid 2.1 takes mermaid 10 or 11 only (npm ci refuses 12).
+    ignore:
+      - dependency-name: "mermaid"
+        versions: [">= 12.0.0"]
     groups:
       website:
         patterns: ["*"]
