@@ -88,6 +88,71 @@ public sealed class CanaryTests
         Assert.Contains(ctx.EventsSeenBy(group), e => e.PayloadJson?.Contains(stays.Id.ToString(), StringComparison.OrdinalIgnoreCase) == true);
     }
 
+    [Fact]
+    public async Task Every_user_of_the_scope_may_stop_its_scan_and_no_other_user()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var camera = new HoldingCamera();
+        var inside = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.48" }, camera);
+        var outside = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.49" });
+        var key = ctx.FakeScopes.Add("Building B", [inside.Id]);
+        await using var plugin = Plugin();
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var tech2 = Testing.FakeCallContext.WithGroup(ctx, [inside.Id], "tech2", key);
+        var tech3 = Testing.FakeCallContext.WithGroup(ctx, [inside.Id], "tech3", key);
+        var guard = ctx.CallAsGroup([outside.Id], "guard");
+
+        var started = HardeningJson.Deserialize<ScanJobStatus>(await ctx.InvokeAsync(plugin, tech2, HardeningMethods.StartScan, """{"level":"Basic"}"""));
+        await camera.Reached.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // The same scope's scan for the second user (one per scope); another group's user cannot stop it.
+        Assert.Equal(started.JobId, HardeningJson.Deserialize<ScanJobStatus>(await ctx.InvokeAsync(plugin, tech3, HardeningMethods.StartScan, """{"level":"Basic"}""")).JobId);
+        var refused = await Assert.ThrowsAsync<KeyNotFoundException>(() => ctx.InvokeAsync(plugin, guard, HardeningMethods.CancelScan, $$"""{"jobId":"{{started.JobId}}"}"""));
+        Assert.Equal(HardeningScanService.NotYours, refused.Message);
+        Assert.Equal(ScanJobStates.Running, plugin.Service!.JobOf(key)!.State);
+
+        // tech3 did not start it and stops it.
+        await ctx.InvokeAsync(plugin, tech3, HardeningMethods.CancelScan, $$"""{"jobId":"{{started.JobId}}"}""");
+        await plugin.Service.WaitAsync();
+        Assert.Equal(ScanJobStates.Cancelled, plugin.Service.JobOf(key)!.State);
+    }
+
+    /// <summary>A camera whose requests wait until the scan is stopped.</summary>
+    private sealed class HoldingCamera : Testing.FakeCamera
+    {
+        public TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Oadm.Sdk.Vapix.BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)
+        {
+            await HoldAsync(ct);
+            return await base.GetBasicDeviceInfoAsync(ct);
+        }
+
+        public override async Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct)
+        {
+            await HoldAsync(ct);
+            return await base.ListParametersAsync(groups, ct);
+        }
+
+        public override async Task<IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi>> GetApiListAsync(CancellationToken ct)
+        {
+            await HoldAsync(ct);
+            return await base.GetApiListAsync(ct);
+        }
+
+        public override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await HoldAsync(ct);
+            return await base.SendAsync(request, ct);
+        }
+
+        private Task HoldAsync(CancellationToken ct)
+        {
+            Reached.TrySetResult();
+            return Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        }
+    }
+
     /// <summary>A camera whose device leaves on the first request.</summary>
     private sealed class LeavingCamera(Action leave) : Testing.FakeCamera
     {

@@ -40,7 +40,7 @@ public sealed class HardeningScanOptions
 /// timeout per request and per device, results streamed to the pages of the scope (<see cref="HardeningMethods.ResultsTopic"/>)
 /// and kept per device and level. Read-only for the devices (<see cref="DeviceFactsReader"/>). Device groups (SDK 0.4.0): the
 /// methods with an <see cref="ICallContext"/> work on the user's view (a device outside a group answers like an unknown one,
-/// <see cref="DevicesNotAvailableException"/>), a scan is a job of its user (<see cref="IPluginJobs"/>: only that user can
+/// <see cref="DevicesNotAvailableException"/>), a scan is a job of its user (<see cref="IPluginJobs"/>; every user of its device scope may
 /// stop it) that reads through the user's view; the methods without one use the plugin's context (in-process callers).
 /// </summary>
 public sealed partial class HardeningScanService : IAsyncDisposable
@@ -248,8 +248,11 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Stops the user's scan (<paramref name="jobId"/>, or the scan of the user's scope when null). A scan id the user does
-    /// not have, also another user's, answers <see cref="NotYours"/> (<see cref="KeyNotFoundException"/>).
+    /// Stops the scan of the user's device scope (<paramref name="jobId"/>, or that scan when null). There is one scan per
+    /// scope and the scope's users share it (they see its progress and results), so any user with the same devices may stop
+    /// it, whoever started it (decision 2026-10-23). A scan id of another scope, an ended scan and an unknown id answer
+    /// <see cref="NotYours"/> (<see cref="KeyNotFoundException"/>). The scan is looked up by the caller's scope key, which only
+    /// the host sets, never by the id alone.
     /// </summary>
     public ScanJobStatus Cancel(ICallContext caller, IPluginJobs jobs, string? jobId)
     {
@@ -259,7 +262,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
         {
             var job = _jobs.GetValueOrDefault(caller.DeviceScopeKey);
             jobId ??= job?.Id;
-            if (job is null || jobId is null || !string.Equals(jobId, job.Id, StringComparison.Ordinal) || jobs.Find(caller, jobId) is null)
+            if (job is null || jobId is null || !string.Equals(jobId, job.Id, StringComparison.Ordinal) || (!job.IsRunning && jobs.Find(caller, jobId) is null))
             {
                 throw new KeyNotFoundException(NotYours);
             }

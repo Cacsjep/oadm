@@ -406,7 +406,9 @@ an independent security review the same day). A user may be limited to part of t
   group's trigger whose devices left the group gets the save without them (`SaveReply.Dropped`, `LeftOwnerAsync`). Its
   event types carry the trigger's owner (`OwnerScopeKey`).
 - **Edge Recording Export**: a group user's export stream checks the camera's membership every 5 s and ends when it left.
-- **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row.
+- **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row. One
+  scan per device scope, shared by the scope's users: any of them may stop it, whoever started it (found by the caller's
+  scope key; a scan of another scope answers like an unknown id).
 - **I/O Monitor**: the reading of a device starts detached from the first page's call (it carries no user) and reads
   through the call of one of its pages.
 
