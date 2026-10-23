@@ -400,6 +400,35 @@ public sealed class ConversationTests
         Assert.DoesNotContain(changes, c => c.State == EapSessionState.CheckingClientCertificate);
     }
 
+    [Theory]
+    [InlineData(12)]
+    [InlineData(13)]
+    public void ACertificateWithoutItsKeyFailsTheSignatureCheck(int version)
+    {
+        // A copied certificate: the chain passes the validator, but the device cannot sign with its key (CertificateVerify).
+        var (processor, _) = Processor();
+        var copied = TestPki.CameraCertificate with { Pkcs8 = TestPki.ForeignCameraCertificate.Pkcs8 };
+        var camera = new TestSupplicant(new SupplicantOptions { Versions = Only(version), Certificate = copied });
+
+        var conversation = new TestSwitch(processor).Run(camera);
+
+        Assert.Equal(RadiusCode.AccessReject, conversation.Final);
+        Assert.Equal("Signature check failed (TLS alert 51, decrypt error)", conversation.Session!.Reason);
+        Assert.Null(conversation.MskFromAccept);
+    }
+
+    [Fact]
+    public void ADeviceFlightInTwoMessagesShowsWaitingForClientFinished()
+    {
+        var (processor, changes) = Processor();
+        var camera = new TestSupplicant(new SupplicantOptions { Versions = Only(12), SplitFlightAfterFirstRecord = true });
+
+        AssertAuthenticated(new TestSwitch(processor).Run(camera), camera);
+        var waiting = changes.First(c => c.State == EapSessionState.WaitingForClientFinished);
+        Assert.Equal("Waiting for client finished", waiting.Text);
+        Assert.True(changes.IndexOf(waiting) > changes.FindIndex(c => c.State == EapSessionState.CheckingClientCertificate));
+    }
+
     [Fact]
     public void ANakEndsTheSessionWithTheMethodTheDeviceAskedFor()
     {

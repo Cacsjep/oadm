@@ -329,6 +329,11 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   `ExpireSessions()` (call every second) give the server part the Sessions tab and the log; `EapSessionSnapshot` (states,
   fragment n of m, reason, alert, port, port type, MAC, EAP identity, NAS identity, TLS version and suite, client
   certificates, VLAN, warning, tag; never keys) and `EapSessionTexts` (the plain words and the refusal texts).
+- **When each state shows**: Receiving client hello = the device's fragments before TLS started; Sending server
+  certificate = OADM's last (or only) fragment of its flight is out; Waiting for acknowledgement = an earlier fragment is
+  out; Receiving client certificate = the device's fragments after that; Checking client certificate = the validator runs;
+  Waiting for client finished = the certificate passed and TLS needs more of the device's flight (it came in parts);
+  Sending result = OADM's last flight (TLS 1.2 Finished, TLS 1.3 commitment) or its refusal alert is out.
 - **First message**: EAP-Start (empty EAP-Message) → Identity request; Identity → EAP-TLS Start; a NAK without EAP-TLS fails;
   anything else the switch started → Identity request (RFC 3579 2.1, Appendix A). An EAP-Request from the switch: Access-
   Reject with EAP-Response/Nak (RFC 3579 2.6.2). An unreadable EAP packet: Access-Reject with EAP-Failure (RFC 3579 2.2).

@@ -32,6 +32,9 @@ public sealed record SupplicantOptions
 
     /// <summary>Answer an EAP-TLS Start with a NAK asking for these methods instead.</summary>
     public byte[]? NakWith { get; init; }
+
+    /// <summary>Send the second flight in two unfragmented messages: its first TLS record, then the rest when asked.</summary>
+    public bool SplitFlightAfterFirstRecord { get; init; }
 }
 
 /// <summary>
@@ -47,6 +50,8 @@ public sealed class TestSupplicant
     private int _incomingLength;
     private byte[]? _outgoing;
     private int _outgoingOffset;
+    private byte[]? _rest;
+    private bool _split;
 
     public TestSupplicant(SupplicantOptions? options = null)
     {
@@ -159,6 +164,12 @@ public sealed class TestSupplicant
 
         if (data.Length == 0)
         {
+            if (_rest is { } rest)
+            {
+                _rest = null;
+                return SendFlight(identifier, rest);
+            }
+
             return Ack(identifier);
         }
 
@@ -190,6 +201,18 @@ public sealed class TestSupplicant
         }
 
         var output = Drain();
+        if (output.Length > 0 && _options.SplitFlightAfterFirstRecord && !_split && output.Length > 5)
+        {
+            // The first TLS record now, the rest when OADM asks for more with an empty request.
+            _split = true;
+            var first = 5 + ((output[3] << 8) | output[4]);
+            if (first < output.Length)
+            {
+                _rest = output[first..];
+                output = output[..first];
+            }
+        }
+
         return output.Length == 0 ? Ack(identifier) : SendFlight(identifier, output);
     }
 

@@ -465,11 +465,6 @@ internal sealed class EapTlsSession
         return _validator.Validate(new ClientCertificateCheck(Client, Id, chain, version, _snapshot.EapIdentity, _snapshot.Mac));
     }
 
-    /// <summary>
-    /// MSK = Key_Material(0, 63) (RFC 5216 2.3, RFC 9190 2.3): TLS 1.3 TLS-Exporter("EXPORTER_EAP_TLS_Key_Material", 0x0D,
-    /// 128); TLS 1.2 and earlier TLS-PRF-128(master_secret, "client EAP encryption", client.random || server.random), which is
-    /// the RFC 5705 exporter without context.
-    /// </summary>
     private void UpdateTlsDetails()
     {
         if (_server?.Context?.SecurityParameters is not { } parameters)
