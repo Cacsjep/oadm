@@ -26,6 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Est.Tests" />
   </ItemGroup>
 

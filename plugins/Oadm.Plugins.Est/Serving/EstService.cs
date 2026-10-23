@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Plugins.Est.DeviceId;
 using Oadm.Plugins.Est.Protocol;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
@@ -34,6 +35,9 @@ public sealed record EstHost(
     public IPluginRecords? Records { get; init; }
 
     public Sdk.Events.IEventPublisher? Publisher { get; init; }
+
+    /// <summary>The device groups: pages of users limited to a group get the rows of their own devices; null on older hosts.</summary>
+    public IDeviceScopes? Scopes { get; init; }
 
     public ILogger Logger { get; init; } = NullLogger.Instance;
 
@@ -108,6 +112,7 @@ public sealed partial class EstService : IAsyncDisposable
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _logger = host.Logger;
+        Viewers = new ViewerScopes(host.Scopes);
         _store = new EstStore(host.Settings, host.Records, host.Time) { Logger = host.Logger };
         _certificates = new ServerCertificates(host.Authority, host.Time);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
@@ -116,6 +121,9 @@ public sealed partial class EstService : IAsyncDisposable
     }
 
     public EstStore Store => _store;
+
+    /// <summary>The device groups whose users read the page (state and list events per group).</summary>
+    internal ViewerScopes Viewers { get; }
 
     /// <summary>The OADM CA now (null without PKI).</summary>
     public IDeviceCertificateAuthority? Authority => _host.Authority();
@@ -384,6 +392,36 @@ public sealed partial class EstService : IAsyncDisposable
         {
             Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount, Interfaces = ListInterfaces(),
         };
+    }
+
+    /// <summary>
+    /// The state for a user limited to a device group (<paramref name="view"/>; null: every device): the listeners of the
+    /// server's own network and of the sites where the group has devices, the certificates of its devices.
+    /// </summary>
+    internal EstState GetState(ViewedSet? view)
+    {
+        var state = GetState();
+        return view is null ? state : state with
+        {
+            Listeners = [.. state.Listeners.Where(l => view.CoversSite(l.SiteId))],
+            CertificateCount = _store.CountCertificates(view.Contains),
+        };
+    }
+
+    /// <summary>The enrollments of the devices of <paramref name="view"/> (null: all; refusals of cameras OADM does not manage only then).</summary>
+    internal IReadOnlyList<Enrollment> Enrollments(ViewedSet? view) =>
+        view is null ? _store.Enrollments() : [.. _store.Enrollments().Where(e => view.Contains(e.DeviceId))];
+
+    /// <summary>The certificate a listed enrollment of the devices of <paramref name="view"/> issued; null when gone or outside the view.</summary>
+    internal async Task<byte[]?> IssuedAsync(string serialNumber, ViewedSet? view, CancellationToken ct)
+    {
+        if (view is not null && !_store.Enrollments().Any(e => view.Contains(e.DeviceId)
+                && string.Equals(e.SerialNumber, serialNumber, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null; // answered like a certificate OADM no longer keeps
+        }
+
+        return await _store.IssuedAsync(serialNumber, ct).ConfigureAwait(false);
     }
 
     /// <summary>"Listen on": All interfaces first, then every interface that is up and has an address.</summary>
@@ -854,7 +892,9 @@ public sealed partial class EstService : IAsyncDisposable
         }
 
         _store.AddEnrollment(enrollment, result.IssuedDer);
-        _host.Events?.Publish(EstMethods.EnrollmentsTopic, EstJson.Serialize(new EnrollmentList([enrollment])));
+        // Only the pages that see the device; a refused camera OADM does not manage only for users with all devices.
+        _host.Events?.Publish(EstMethods.EnrollmentsTopic, EstJson.Serialize(new EnrollmentList([enrollment])),
+            enrollment.DeviceId is { } shownFor ? PluginEventAudience.Device(shownFor) : PluginEventAudience.AllDevices);
         if (enrollment.DeviceId is { } deviceId && _host.Publisher is { } publisher)
         {
             var data = new Dictionary<string, string>
@@ -929,7 +969,7 @@ public sealed partial class EstService : IAsyncDisposable
 
             if (flagged > 0)
             {
-                _host.Events?.Publish(EstMethods.CertificatesTopic, "{}");
+                PublishToEveryPage(EstMethods.CertificatesTopic, "{}"); // a signal: each page reads its own list again
             }
         }
         catch (OperationCanceledException)
@@ -953,7 +993,22 @@ public sealed partial class EstService : IAsyncDisposable
     {
         _store.ClearEnrollments();
         LogEnrollmentsCleared();
-        _host.Events?.Publish(EstMethods.EnrollmentsClearedTopic, "{}");
+        PublishToEveryPage(EstMethods.EnrollmentsClearedTopic, "{}");
+    }
+
+    /// <summary>An event without device data for every page: users with all devices and each group that reads the page.</summary>
+    private void PublishToEveryPage(string topic, string payloadJson)
+    {
+        if (_host.Events is not { } events)
+        {
+            return;
+        }
+
+        events.Publish(topic, payloadJson, PluginEventAudience.AllDevices);
+        foreach (var key in Viewers.Keys())
+        {
+            events.Publish(topic, payloadJson, PluginEventAudience.DeviceScope(key));
+        }
     }
 
     /// <summary>
@@ -1038,7 +1093,39 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
-    private void PublishState() => _host.Events?.Publish(EstMethods.StateTopic, EstJson.Serialize(GetState()));
+    private void PublishState()
+    {
+        if (_host.Events is not { } events)
+        {
+            return;
+        }
+
+        events.Publish(EstMethods.StateTopic, EstJson.Serialize(GetState()), PluginEventAudience.AllDevices);
+        if (Viewers.Keys() is { Count: > 0 } keys)
+        {
+            _ = PublishScopedStateAsync(events, keys);
+        }
+    }
+
+    /// <summary>The state of each group that reads the page, with its own listeners and certificates (best effort).</summary>
+    private async Task PublishScopedStateAsync(IPluginEvents events, IReadOnlyList<string> keys)
+    {
+        try
+        {
+            await Task.Yield();
+            foreach (var key in keys)
+            {
+                var view = await ViewedSet.OfScopeAsync(Viewers.Scopes, key, CancellationToken.None).ConfigureAwait(false);
+                events.Publish(EstMethods.StateTopic, EstJson.Serialize(GetState(view)), PluginEventAudience.DeviceScope(key));
+            }
+        }
+#pragma warning disable CA1031 // Events are best effort; the pages read the state again when they reconnect.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogScopedStateFailed(ex);
+        }
+    }
 
     /// <summary>The managed device with this serial; the index is read again when older than 30 s or on a miss (at most every 30 s).</summary>
     private async Task<IDeviceInfo?> FindBySerialAsync(string serial, CancellationToken ct)
@@ -1121,6 +1208,9 @@ public sealed partial class EstService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST: {Device} did not renew its {Profile} certificate (valid until {NotAfter:yyyy-MM-dd HH:mm} UTC)")]
     private partial void LogNotRenewed(string device, string profile, DateTime notAfter);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "EST: publishing the state to the device groups failed")]
+    private partial void LogScopedStateFailed(Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST: {Count} more certificates were not renewed in time (the EST server page lists them)")]
     private partial void LogMoreNotRenewed(int count);
