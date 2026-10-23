@@ -1,7 +1,7 @@
 {
   "id": "oadm.dashboards",
   "version": "0.1.0",
-  "minSdkVersion": "0.1.0",
+  "minSdkVersion": "0.4.0",
   "displayName": "Dashboards",
   "description": "Live values of device triggers and live video on dashboards.",
   "enabledByDefault": false,

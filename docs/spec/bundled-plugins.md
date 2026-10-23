@@ -315,7 +315,10 @@ Gauge, Live video; a gauge has the Number settings plus Min, Max and the line wi
   dashboards live on the server like Live View's views (plugin setting `dashboards`, every change pushed, an older version
   refused), the grid is the shared `ui:TileGrid` (20 x 20, at least 2 x 2, never overlapping), at most 50 widgets of them
   16 live videos and 200 dashboards; colors and icons are theme names; the server checks every rule again
-  (`DashboardRules`).
+  (`DashboardRules`). Device groups: each dashboard belongs to the group of the user who made it (none = all devices);
+  group users see and change only their group's dashboards with the group's devices, get only the events of their devices
+  and sites and only the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps
+  the owner.
 - Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete audited);
   video needs "Live view".
 - Page: left card Dashboards and Events (the events with values, device triggers first); right card the tabs, while

@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
 
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
@@ -13,7 +14,10 @@ namespace Oadm.Plugins.Dashboards;
 /// video. The server part keeps the dashboards in the plugin settings (shared by every user, like Live View's views),
 /// subscribes to every event the server handles and keeps the latest value per event and device in memory
 /// (<see cref="ValueStore"/>), and pushes the values of the widgets of the open tabs to the pages, at most 4 times a
-/// second each. It never talks to a device.
+/// second each. It never talks to a device. Device groups (docs/spec/device-scope.md, Shared objects): every dashboard
+/// belongs to the device scope of the user who made it (<see cref="Dashboard.Owner"/>); users of a group see and change only
+/// their group's dashboards with the group's devices, get only the events of their devices and sites, and only the values
+/// their own page watches.
 /// </summary>
 public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 {
@@ -37,7 +41,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private readonly Lock _gate = new();
     private readonly TimeProvider _time;
     private readonly ValueStore _values;
-    private readonly Dictionary<string, Watcher> _watchers = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Session, string Watch), Watcher> _watchers = [];
     private readonly HashSet<ValueKey> _watched = [];
     private readonly HashSet<ValueKey> _dirty = [];
     private readonly Dictionary<Guid, Dictionary<string, string>> _deviceProblems = [];
@@ -104,7 +108,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             _subscription = _subscriptions.Subscribe(OnEvent); // starts with every event that is on now
         }
 
-        _timer = _time.CreateTimer(_ => Tick(), null, DashboardsPluginInfo.PushInterval, DashboardsPluginInfo.PushInterval);
+        _timer = _time.CreateTimer(_ => _ = TickAsync(), null, DashboardsPluginInfo.PushInterval, DashboardsPluginInfo.PushInterval);
         return Task.CompletedTask;
     }
 
@@ -147,25 +151,29 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         _dashboards = null;
     }
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>In-process calls without a user (the host itself, tests): every dashboard and event, owned by all devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => InvokeAsync(System, method, payloadJson, ct);
+
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         switch (method)
         {
             case DashboardsMethods.List:
-                return Serialize(await ListAsync(ct).ConfigureAwait(false));
+                return Serialize(await ListAsync(caller, ct).ConfigureAwait(false));
             case DashboardsMethods.Save:
-                return Serialize(await SaveAsync(Read<SaveDashboardRequest>(payloadJson), ct).ConfigureAwait(false));
+                return Serialize(await SaveAsync(caller, Read<SaveDashboardRequest>(payloadJson), ct).ConfigureAwait(false));
             case DashboardsMethods.Delete:
-                await DeleteAsync(Read<DeleteDashboardRequest>(payloadJson).Id, ct).ConfigureAwait(false);
+                await DeleteAsync(caller, Read<DeleteDashboardRequest>(payloadJson).Id, ct).ConfigureAwait(false);
                 return null;
             case DashboardsMethods.Catalog:
-                return Serialize(Catalog());
+                return Serialize(Catalog(await ReachOfAsync(caller, ct).ConfigureAwait(false)));
             case DashboardsMethods.Devices:
-                return Serialize(new DevicesReply(Types().GetValueOrDefault(Read<DevicesRequest>(payloadJson).TypeId ?? string.Empty)?.Info.DeviceIds));
+                return Serialize(await DevicesAsync(caller, Read<DevicesRequest>(payloadJson).TypeId ?? string.Empty, ct).ConfigureAwait(false));
             case DashboardsMethods.Watch:
-                return Serialize(Watch(Read<WatchRequest>(payloadJson)));
+                return Serialize(await WatchAsync(caller, Read<WatchRequest>(payloadJson), ct).ConfigureAwait(false));
             case DashboardsMethods.Unwatch:
-                Unwatch(Read<UnwatchRequest>(payloadJson).WatchId);
+                Unwatch(caller, Read<UnwatchRequest>(payloadJson).WatchId);
                 return null;
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
@@ -174,23 +182,52 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     // ------------------------------------------------------------------ dashboards
 
-    /// <summary>Every dashboard, sorted by name.</summary>
-    internal async Task<DashboardList> ListAsync(CancellationToken ct)
+    /// <summary>Every dashboard (tests: a user with all devices).</summary>
+    internal Task<DashboardList> ListAsync(CancellationToken ct) => ListAsync(System, ct);
+
+    /// <summary>
+    /// The caller's dashboards sorted by name: users with all devices every dashboard, users of a group their group's
+    /// dashboards with only the widgets of devices the group has now (and of server events).
+    /// </summary>
+    internal async Task<DashboardList> ListAsync(ICallContext caller, CancellationToken ct)
     {
+        List<Dashboard> dashboards;
         await _storeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return new DashboardList([.. Sorted(await LoadAsync(ct).ConfigureAwait(false))]);
+            dashboards = await LoadAsync(ct).ConfigureAwait(false);
         }
         finally
         {
             _storeGate.Release();
         }
+
+        if (caller.HasAllDevices)
+        {
+            return new DashboardList([.. Sorted(dashboards)]);
+        }
+
+        var mine = dashboards.Where(d => OwnerScope.Sees(caller, d.Owner)).ToList();
+        if (mine.Count == 0)
+        {
+            return new DashboardList([]);
+        }
+
+        var devices = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+        return new DashboardList([.. Sorted(mine.Select(d => Within(d, devices)))]);
     }
 
-    /// <summary>Creates or changes a dashboard after checking its name, widgets, version and the limits.</summary>
-    internal async Task<Dashboard> SaveAsync(SaveDashboardRequest request, CancellationToken ct)
+    /// <summary>Creates or changes a dashboard (tests: a user with all devices).</summary>
+    internal Task<Dashboard> SaveAsync(SaveDashboardRequest request, CancellationToken ct) => SaveAsync(System, request, ct);
+
+    /// <summary>
+    /// Creates or changes a dashboard after checking its name, widgets, version and the limits. A new one belongs to the
+    /// caller's devices; a change keeps the owner (another group's dashboard answers like a deleted one). Every device of a
+    /// widget must be in the owner's devices (else NOT_FOUND, nothing stored); names are unique among the owner's dashboards.
+    /// </summary>
+    internal async Task<Dashboard> SaveAsync(ICallContext caller, SaveDashboardRequest request, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(request);
         var name = request.Name?.Trim() ?? string.Empty;
         if (DashboardRules.NameProblem(name) is { } nameProblem)
@@ -209,18 +246,21 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         {
             var dashboards = await LoadAsync(ct).ConfigureAwait(false);
             var isNew = string.IsNullOrEmpty(request.Id);
-            var index = isNew ? -1 : dashboards.FindIndex(d => d.Id == request.Id);
+            var index = isNew ? -1 : dashboards.FindIndex(d => d.Id == request.Id && OwnerScope.Sees(caller, d.Owner));
             if (!isNew && index < 0)
             {
                 throw new ArgumentException(DashboardRules.Gone);
             }
+
+            var owner = OwnerScope.ForSave(Context, caller, index >= 0 ? dashboards[index].Owner : null, isNew);
+            await OwnerScope.RequireDevicesAsync(Context, caller, owner, widgets.Select(w => w.DeviceId).OfType<Guid>(), ct).ConfigureAwait(false);
 
             if (index >= 0 && request.Version != 0 && request.Version != dashboards[index].Version)
             {
                 throw new ArgumentException(DashboardRules.ChangedMeanwhile(dashboards[index].Name));
             }
 
-            if (dashboards.Where((d, i) => i != index).Any(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
+            if (dashboards.Where((d, i) => i != index && OwnerScope.Of(d.Owner) == owner).Any(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new ArgumentException(DashboardRules.NameTaken(name));
             }
@@ -230,7 +270,10 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 throw new ArgumentException(DashboardRules.TooManyDashboards);
             }
 
-            var saved = new Dashboard(isNew ? Guid.NewGuid().ToString("N") : request.Id!, name, index >= 0 ? dashboards[index].Version + 1 : 1, [.. widgets]);
+            var saved = new Dashboard(isNew ? Guid.NewGuid().ToString("N") : request.Id!, name, index >= 0 ? dashboards[index].Version + 1 : 1, [.. widgets])
+            {
+                Owner = owner == ICallContext.AllDevicesScopeKey ? null : owner,
+            };
             var next = new List<Dashboard>(dashboards);
             if (index >= 0)
             {
@@ -241,7 +284,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 next.Add(saved);
             }
 
-            await StoreAsync(next).ConfigureAwait(false);
+            await StoreAsync(next, owner).ConfigureAwait(false);
             return saved;
         }
         finally
@@ -250,16 +293,20 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         }
     }
 
-    /// <summary>Deletes a dashboard; an unknown id is nothing to do.</summary>
-    internal async Task DeleteAsync(string id, CancellationToken ct)
+    /// <summary>Deletes a dashboard (tests: a user with all devices).</summary>
+    internal Task DeleteAsync(string id, CancellationToken ct) => DeleteAsync(System, id, ct);
+
+    /// <summary>Deletes a dashboard of the caller's devices; an unknown id (or another group's dashboard) is nothing to do.</summary>
+    internal async Task DeleteAsync(ICallContext caller, string id, CancellationToken ct)
     {
         await _storeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             var dashboards = await LoadAsync(ct).ConfigureAwait(false);
-            if (dashboards.RemoveAll(d => d.Id == id) > 0)
+            if (dashboards.Find(d => d.Id == id && OwnerScope.Sees(caller, d.Owner)) is { } gone)
             {
-                await StoreAsync([.. dashboards]).ConfigureAwait(false);
+                dashboards.Remove(gone);
+                await StoreAsync([.. dashboards], OwnerScope.Of(gone.Owner)).ConfigureAwait(false);
             }
         }
         finally
@@ -295,14 +342,35 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         return [.. dashboards];
     }
 
-    private async Task StoreAsync(List<Dashboard> dashboards)
+    /// <summary>
+    /// Stores the dashboards, then tells the open pages: users with all devices get every dashboard, the users of the
+    /// changed dashboard's group their group's dashboards with the group's devices.
+    /// </summary>
+    private async Task StoreAsync(List<Dashboard> dashboards, string changedOwner)
     {
         var ctx = Context;
         // Once the write started it finishes: a cancelled caller never leaves the cache and the stored list apart.
         await ctx.Settings.SetAsync(DashboardsKey, JsonSerializer.Serialize(dashboards, DashboardsPluginInfo.Json), CancellationToken.None).ConfigureAwait(false);
         _dashboards = dashboards;
-        ctx.Events?.Publish(DashboardsMethods.DashboardsTopic, Serialize(new DashboardList([.. Sorted(dashboards)])));
+        if (ctx.Events is not { } events)
+        {
+            return;
+        }
+
+        events.Publish(DashboardsMethods.DashboardsTopic, Serialize(new DashboardList([.. Sorted(dashboards)])), PluginEventAudience.AllDevices);
+        if (changedOwner != ICallContext.AllDevicesScopeKey && ctx.DeviceScopes is { } scopes && scopes.Exists(changedOwner))
+        {
+            var devices = (await scopes.Devices(changedOwner).ListAsync(CancellationToken.None).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+            var group = dashboards.Where(d => OwnerScope.Of(d.Owner) == changedOwner).Select(d => Within(d, devices));
+            events.Publish(DashboardsMethods.DashboardsTopic, Serialize(new DashboardList([.. Sorted(group)])), PluginEventAudience.DeviceScope(changedOwner));
+        }
     }
+
+    /// <summary>A dashboard with only the widgets of server events and of <paramref name="devices"/>.</summary>
+    private static Dashboard Within(Dashboard dashboard, HashSet<Guid> devices) =>
+        dashboard.Widgets.All(w => w.DeviceId is not { } id || devices.Contains(id))
+            ? dashboard
+            : dashboard with { Widgets = [.. dashboard.Widgets.Where(w => w.DeviceId is not { } id || devices.Contains(id))] };
 
     private static IEnumerable<Dashboard> Sorted(IEnumerable<Dashboard> dashboards) =>
         dashboards.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase);
@@ -525,13 +593,25 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     // ------------------------------------------------------------------ catalog
 
-    /// <summary>The events with the fields seen so far: Device triggers first, then OADM's own events, then the others.</summary>
-    internal CatalogReply Catalog()
+    /// <summary>Every event (tests: a user with all devices).</summary>
+    internal CatalogReply Catalog() => Catalog(null);
+
+    /// <summary>
+    /// The events with the fields seen so far: Device triggers first, then OADM's own events, then the others. A user of a
+    /// device group (<paramref name="reach"/>) gets the device events that can come from the group's devices and the site
+    /// events of the group's sites, no other server events.
+    /// </summary>
+    internal CatalogReply Catalog(Reach? reach)
     {
         var events = new List<CatalogEvent>();
         foreach (var type in Types().Values)
         {
             var info = type.Info;
+            if (reach is not null && !reach.Sees(info))
+            {
+                continue;
+            }
+
             var declared = info.DataFields.ToDictionary(f => f.Name, StringComparer.Ordinal);
             var fields = new List<CatalogField>();
             if (info.Kind == EventKind.Stateful)
@@ -563,10 +643,65 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             .ThenBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase)]);
     }
 
+    /// <summary>The devices that can send an event; for a group user only those of the group (none for an event the user does not see).</summary>
+    private async Task<DevicesReply> DevicesAsync(ICallContext caller, string typeId, CancellationToken ct)
+    {
+        var type = Types().GetValueOrDefault(typeId);
+        if (caller.HasAllDevices || type is null)
+        {
+            return new DevicesReply(type?.Info.DeviceIds);
+        }
+
+        var reach = await ReachOfAsync(caller, ct).ConfigureAwait(false);
+        if (!reach!.Sees(type.Info))
+        {
+            return new DevicesReply([]);
+        }
+
+        return new DevicesReply(type.Info.DeviceIds is { } ids ? [.. ids.Where(reach.Devices.Contains)] : null);
+    }
+
+    /// <summary>What a group user may see (null: every device, every event).</summary>
+    private static async Task<Reach?> ReachOfAsync(ICallContext caller, CancellationToken ct) =>
+        caller.HasAllDevices ? null : Reach.Of(await caller.Devices.ListAsync(ct).ConfigureAwait(false));
+
+    /// <summary>The devices and sites of a device scope (the background push of a group's catalog).</summary>
+    private async Task<Reach?> ReachOfAsync(string scopeKey, CancellationToken ct) =>
+        scopeKey == ICallContext.AllDevicesScopeKey ? null
+        : Reach.Of(_ctx?.DeviceScopes is { } scopes && scopes.Exists(scopeKey) ? await scopes.Devices(scopeKey).ListAsync(ct).ConfigureAwait(false) : []);
+
     // ------------------------------------------------------------------ watching
 
-    /// <summary>A page's open tabs: these values now, then every change pushed (the page renews it every 10 s).</summary>
-    internal ValuesReply Watch(WatchRequest request)
+    /// <summary>A page's open tabs (tests: a user with all devices).</summary>
+    internal ValuesReply Watch(WatchRequest request) => Register(System, request, KeysOf(request));
+
+    /// <summary>
+    /// A page's open tabs: these values now, then every change pushed (the page renews it every 10 s). The watch belongs to
+    /// the caller's session (another session's watch id is another watch). A group user's keys must name devices of the
+    /// group (else NOT_FOUND, like an unknown device) and server events the user sees; the values reach only that session.
+    /// </summary>
+    internal async Task<ValuesReply> WatchAsync(ICallContext caller, WatchRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var keys = KeysOf(request);
+        if (!caller.HasAllDevices && keys.Count > 0)
+        {
+            var reach = (await ReachOfAsync(caller, ct).ConfigureAwait(false))!;
+            var missing = keys.Where(k => k.DeviceId is { } id && !reach.Devices.Contains(id)).Select(k => k.DeviceId).Distinct().Count();
+            if (missing > 0)
+            {
+                throw new DevicesNotAvailableException(missing);
+            }
+
+            var types = Types();
+            keys.RemoveWhere(k => k.DeviceId is null && !(types.TryGetValue(k.TypeId, out var type) && reach.Sees(type.Info)));
+        }
+
+        return Register(caller, request, keys);
+    }
+
+    /// <summary>The keys of a watch request, checked (id and count).</summary>
+    private static HashSet<ValueKey> KeysOf(WatchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (string.IsNullOrWhiteSpace(request.WatchId) || request.WatchId.Length > 64)
@@ -575,29 +710,36 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         }
 
         var keys = (request.Keys ?? []).Where(k => k is not null && !string.IsNullOrWhiteSpace(k.TypeId)).ToHashSet();
-        if (keys.Count > DashboardsPluginInfo.MaxWatchedKeys)
-        {
-            throw new ArgumentException(DashboardTexts.TooManyOpen);
-        }
+        return keys.Count > DashboardsPluginInfo.MaxWatchedKeys ? throw new ArgumentException(DashboardTexts.TooManyOpen) : keys;
+    }
+
+    /// <summary>Keeps the watch of the caller's session and answers the values now.</summary>
+    private ValuesReply Register(ICallContext caller, WatchRequest request, HashSet<ValueKey> keys)
+    {
         lock (_gate)
         {
-            if (!_watchers.ContainsKey(request.WatchId) && _watchers.Count >= 1_000)
+            var id = (caller.SessionId, request.WatchId);
+            if (!_watchers.ContainsKey(id) && _watchers.Count >= 1_000)
             {
                 throw new InvalidOperationException("Too many pages watch the dashboards.");
             }
 
-            _watchers[request.WatchId] = new Watcher(keys, _time.GetUtcNow());
+            _watchers[id] = new Watcher(keys, _time.GetUtcNow(), caller.SessionId, caller.HasAllDevices ? ICallContext.AllDevicesScopeKey : caller.DeviceScopeKey, caller.HasAllDevices);
             RebuildWatched();
         }
 
         return new ValuesReply([.. keys.Select(Snapshot)]);
     }
 
-    internal void Unwatch(string watchId)
+    /// <summary>Ends a page's watch (tests: a user with all devices).</summary>
+    internal void Unwatch(string watchId) => Unwatch(System, watchId);
+
+    /// <summary>Ends a watch of the caller's session; another session's watch id is nothing to do.</summary>
+    internal void Unwatch(ICallContext caller, string watchId)
     {
         lock (_gate)
         {
-            if (_watchers.Remove(watchId ?? string.Empty))
+            if (_watchers.Remove((caller.SessionId, watchId ?? string.Empty)))
             {
                 RebuildWatched();
             }
@@ -627,8 +769,12 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         _dirty.IntersectWith(_watched);
     }
 
-    /// <summary>Every 250 ms: forget pages that went away, push the changed values, and the catalog at most once a second.</summary>
-    internal void Tick()
+    /// <summary>
+    /// Every 250 ms: forget pages that went away, push the changed values, and the catalog at most once a second. Users with
+    /// all devices get every changed value and the whole catalog, as before device groups; each session of a group user only
+    /// the changed values its pages watch, and each group its own catalog.
+    /// </summary>
+    internal async Task TickAsync()
     {
         if (Interlocked.Exchange(ref _ticking, 1) == 1)
         {
@@ -640,6 +786,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             var now = _time.GetUtcNow();
             List<ValueKey> changed;
             bool catalog;
+            List<Watcher> groupWatchers;
             lock (_gate)
             {
                 var expired = _watchers.Where(w => now - w.Value.LastSeen > DashboardsPluginInfo.WatchLifetime).Select(w => w.Key).ToList();
@@ -661,6 +808,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                     _catalogDirty = false;
                     _catalogSent = now;
                 }
+
+                groupWatchers = [.. _watchers.Values.Where(w => !w.HasAllDevices)];
             }
 
             var events = _ctx?.Events;
@@ -671,12 +820,26 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
             if (changed.Count > 0)
             {
-                events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply([.. changed.Select(Snapshot)])));
+                var snapshots = changed.ToDictionary(k => k, Snapshot);
+                events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply([.. snapshots.Values])), PluginEventAudience.AllDevices);
+                foreach (var session in groupWatchers.GroupBy(w => w.SessionId, StringComparer.Ordinal))
+                {
+                    var mine = session.SelectMany(w => w.Keys).Where(snapshots.ContainsKey).Distinct().Select(k => snapshots[k]).ToList();
+                    if (mine.Count > 0)
+                    {
+                        events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply(mine)), PluginEventAudience.Session(session.Key));
+                    }
+                }
             }
 
             if (catalog)
             {
-                events.Publish(DashboardsMethods.CatalogTopic, Serialize(Catalog()));
+                events.Publish(DashboardsMethods.CatalogTopic, Serialize(Catalog()), PluginEventAudience.AllDevices);
+                foreach (var scope in groupWatchers.Select(w => w.ScopeKey).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    var reach = await ReachOfAsync(scope, CancellationToken.None).ConfigureAwait(false);
+                    events.Publish(DashboardsMethods.CatalogTopic, Serialize(Catalog(reach)), PluginEventAudience.DeviceScope(scope));
+                }
             }
         }
 #pragma warning disable CA1031 // A failed push must never stop the timer; the next tick tries again.
@@ -693,6 +856,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     private ICorePluginContext Context => _ctx ?? throw new InvalidOperationException("The Dashboards plugin is not running.");
 
+    /// <summary>The call of in-process work without a user (all devices).</summary>
+    private ContextCall System => new(Context);
+
     private static string Serialize<T>(T value) => JsonSerializer.Serialize(value, DashboardsPluginInfo.Json);
 
     private static T Read<T>(string? json)
@@ -707,7 +873,41 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         }
     }
 
-    private sealed record Watcher(HashSet<ValueKey> Keys, DateTimeOffset LastSeen);
+    private sealed record Watcher(HashSet<ValueKey> Keys, DateTimeOffset LastSeen, string SessionId, string ScopeKey, bool HasAllDevices);
+
+    /// <summary>
+    /// What a user of a device group sees: the group's devices, the device events that can come from them (an event with a
+    /// device list needs one of them) and the site events of the group's sites; no other server events.
+    /// </summary>
+    internal sealed class Reach
+    {
+        private Reach(HashSet<Guid> devices, HashSet<Guid> sites)
+        {
+            Devices = devices;
+            Sites = sites;
+        }
+
+        public HashSet<Guid> Devices { get; }
+
+        public HashSet<Guid> Sites { get; }
+
+        public static Reach Of(IEnumerable<IDeviceInfo> devices)
+        {
+            var list = devices.ToList();
+            return new Reach([.. list.Select(d => d.Id)], [.. list.Select(d => d.SiteId).OfType<Guid>()]);
+        }
+
+        public bool Sees(EventTypeInfo info)
+        {
+            ArgumentNullException.ThrowIfNull(info);
+            if (info.Scope == EventScope.Device)
+            {
+                return info.DeviceIds is not { } ids || ids.Any(Devices.Contains);
+            }
+
+            return SiteOf(info.Id) is { } site && Sites.Contains(site);
+        }
+    }
 }
 
 /// <summary>Texts of the server part and the page (one phrase per concept).</summary>
