@@ -272,3 +272,10 @@ internal sealed class RolloutPayloadCommand
 
     public Dictionary<string, JsonElement> Values { get; set; } = [];
 }
+
+/// <summary>Texts of the VAPIX Commander shared by the server, the action and the page.</summary>
+public static class CommanderTexts
+{
+    /// <summary>A user with a device group (or a rule of a group) ran a saved command whose stored passwords it would use.</summary>
+    public const string SavedPasswordsRefused = "Only users with all devices can use the saved passwords. Enter the passwords.";
+}
