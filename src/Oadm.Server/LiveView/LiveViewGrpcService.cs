@@ -4,10 +4,12 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Core.LiveView;
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Core.Vapix;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -20,16 +22,15 @@ namespace Oadm.Server.LiveView;
 /// gRPC LiveViewService: relays encoded access units of a device's camera stream. The camera
 /// connection (RTSP with the stored credentials) is owned by the <see cref="LiveViewHub"/> and
 /// shared between viewers; this call only reads its viewer queue. Also the camera's zoom and focus
-/// (<see cref="IDeviceOptics"/>) and the RTSP port OADM uses per device (stored in OADM only).
+/// (<see cref="IDeviceOptics"/>) and the RTSP port OADM uses per device (stored in OADM only). Every call takes its devices
+/// from the caller's view (an id that is unknown or outside it: NOT_FOUND, the camera is never contacted), and a video
+/// stream ends when its device leaves the view (docs/spec/device-scope.md, Streams).
 /// </summary>
 public sealed class LiveViewGrpcService(
-    DeviceRepository devices,
-    LiveViewHub hub,
-    ILiveVideoSourceFactory sources,
+    DeviceViewFactory views,
+    LiveViewAccess live,
+    DeviceViewWatcher watcher,
     IHostApplicationLifetime lifetime,
-    IDeviceOptics optics,
-    IDevicePtz ptz,
-    IDeviceEventStreams ports,
     AuditLog audit) : Proto.LiveViewService.LiveViewServiceBase
 {
     /// <summary>Most RTSP port requests name one device; a selection is capped like other device lists.</summary>
@@ -38,15 +39,15 @@ public sealed class LiveViewGrpcService(
     /// <summary>Zoom and focus of a device. Read-only; a device without them, or one OADM cannot log in to, is "not supported".</summary>
     public override async Task<Proto.OpticsState> GetOptics(Proto.OpticsRequest request, ServerCallContext context)
     {
-        var device = await RequireDeviceAsync(request.DeviceId, context.CancellationToken).ConfigureAwait(false);
-        if (TaskSupportReasons.ForStatus(device.Status) is not null)
+        var device = await RequireDeviceAsync(request.DeviceId, context).ConfigureAwait(false);
+        if (TaskSupportReasons.ForStatus(device[0].Status) is not null)
         {
             return new Proto.OpticsState();
         }
 
         try
         {
-            return ToProto(await optics.GetAsync(device.Id, Math.Max(0, request.Sensor), context.CancellationToken).ConfigureAwait(false));
+            return ToProto(await live.GetOpticsAsync(device, Math.Max(0, request.Sensor), context.CancellationToken).ConfigureAwait(false));
         }
         catch (Exception ex) when (ex is VapixException or HttpRequestException or IOException or TaskCanceledException && !context.CancellationToken.IsCancellationRequested)
         {
@@ -58,7 +59,8 @@ public sealed class LiveViewGrpcService(
     /// <summary>One zoom or focus change ("Optics Control"); audited, the reply is the state read again.</summary>
     public override async Task<Proto.OpticsState> SetOptics(Proto.SetOpticsRequest request, ServerCallContext context)
     {
-        var device = await RequireDeviceAsync(request.DeviceId, context.CancellationToken).ConfigureAwait(false);
+        var viewed = await RequireDeviceAsync(request.DeviceId, context).ConfigureAwait(false);
+        var device = viewed[0];
         if (TaskSupportReasons.ForStatus(device) is { } refused)
         {
             throw GrpcGuard.FailedPrecondition(refused + ".");
@@ -88,7 +90,7 @@ public sealed class LiveViewGrpcService(
         Core.Vapix.OpticsState state;
         try
         {
-            state = await optics.SetAsync(device.Id, Math.Max(0, request.Sensor), change, context.CancellationToken).ConfigureAwait(false);
+            state = await live.SetOpticsAsync(viewed, Math.Max(0, request.Sensor), change, context.CancellationToken).ConfigureAwait(false);
         }
         catch (OpticsException ex)
         {
@@ -114,15 +116,15 @@ public sealed class LiveViewGrpcService(
     /// <summary>What a PTZ camera offers on a channel. Read-only; a camera without PTZ, or one OADM cannot log in to, is "not supported".</summary>
     public override async Task<Proto.PtzState> GetPtz(Proto.PtzRequest request, ServerCallContext context)
     {
-        var device = await RequireDeviceAsync(request.DeviceId, context.CancellationToken).ConfigureAwait(false);
-        if (TaskSupportReasons.ForStatus(device.Status) is not null)
+        var device = await RequireDeviceAsync(request.DeviceId, context).ConfigureAwait(false);
+        if (TaskSupportReasons.ForStatus(device[0].Status) is not null)
         {
             return new Proto.PtzState();
         }
 
         try
         {
-            var state = await ptz.GetAsync(device.Id, Math.Max(1, request.Camera), context.CancellationToken).ConfigureAwait(false);
+            var state = await live.GetPtzAsync(device, Math.Max(1, request.Camera), context.CancellationToken).ConfigureAwait(false);
             var reply = new Proto.PtzState
             {
                 Supported = state.IsSupported,
@@ -144,8 +146,8 @@ public sealed class LiveViewGrpcService(
     /// <summary>One PTZ command ("Optics Control"). Not audited: a drag sends several moves a second.</summary>
     public override async Task<Proto.Empty> MovePtz(Proto.MovePtzRequest request, ServerCallContext context)
     {
-        var device = await RequireDeviceAsync(request.DeviceId, context.CancellationToken).ConfigureAwait(false);
-        if (TaskSupportReasons.ForStatus(device) is { } refused)
+        var device = await RequireDeviceAsync(request.DeviceId, context).ConfigureAwait(false);
+        if (TaskSupportReasons.ForStatus(device[0]) is { } refused)
         {
             throw GrpcGuard.FailedPrecondition(refused + ".");
         }
@@ -168,7 +170,7 @@ public sealed class LiveViewGrpcService(
         };
         try
         {
-            await ptz.SendAsync(device.Id, Math.Max(1, request.Camera), new PtzCommand(kind, request.X, request.Y, request.Value, request.Preset), context.CancellationToken).ConfigureAwait(false);
+            await live.SendPtzAsync(device, Math.Max(1, request.Camera), new PtzCommand(kind, request.X, request.Y, request.Value, request.Preset), context.CancellationToken).ConfigureAwait(false);
         }
         catch (PtzException ex)
         {
@@ -194,8 +196,9 @@ public sealed class LiveViewGrpcService(
     public override async Task<Proto.RtspPortReply> GetRtspPort(Proto.RtspPortRequest request, ServerCallContext context)
     {
         var ids = PortDevices(request.DeviceIds);
-        var stored = await ports.GetRtspPortsAsync(ids, context.CancellationToken).ConfigureAwait(false);
-        var found = ids.Select(id => stored.TryGetValue(id, out var port) ? port : RtspClient.DefaultPort).ToHashSet();
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        var stored = await live.GetRtspPortsAsync(viewed, context.CancellationToken).ConfigureAwait(false);
+        var found = viewed.Ids.Select(id => stored.TryGetValue(id, out var port) ? port : RtspClient.DefaultPort).ToHashSet();
 
         return new Proto.RtspPortReply { Port = found.Count == 1 ? found.First() : RtspClient.DefaultPort, Mixed = found.Count > 1 };
     }
@@ -210,24 +213,12 @@ public sealed class LiveViewGrpcService(
         }
 
         int? port = request.Port is 0 or RtspClient.DefaultPort ? null : request.Port;
-        // One read of the device ids and one write for the whole selection; ports of removed devices go in the same write.
-        var managed = await devices.ListDeviceIdsAsync(context.CancellationToken).ConfigureAwait(false);
-        var managedSet = managed.ToHashSet();
-        var known = ids.Where(managedSet.Contains).ToList();
-        if (known.Count == 0)
-        {
-            throw GrpcGuard.NotFound("The devices were not found.");
-        }
+        // Every device must be in the caller's view (else NOT_FOUND, nothing stored); one write for the whole selection.
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
 
         // The port is stored only in OADM: devices of an offline site take it like every other device.
-        await ports.SetRtspPortsAsync(known, port, managed, context.CancellationToken).ConfigureAwait(false);
-        foreach (var id in known)
-        {
-            hub.Invalidate(id);
-        }
-
-        var single = known.Count == 1 ? await devices.GetAsync(known[0], CancellationToken.None).ConfigureAwait(false) : null;
-        var target = single is not null ? $"{single.Address} ({single.Serial})" : $"{known.Count} devices";
+        await live.SetRtspPortsAsync(viewed, port, context.CancellationToken).ConfigureAwait(false);
+        var target = viewed.Count == 1 ? $"{viewed[0].Address} ({viewed[0].Serial})" : $"{viewed.Count} devices";
         // Written after the change is stored, whatever the caller does meanwhile.
         await audit.WriteAsync(AuditActions.RtspPortChanged, target, port is null ? "554 (default)" : port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), CancellationToken.None).ConfigureAwait(false);
         return new Proto.RtspPortReply { Port = port ?? RtspClient.DefaultPort };
@@ -244,10 +235,11 @@ public sealed class LiveViewGrpcService(
         return ids;
     }
 
-    private async Task<Device> RequireDeviceAsync(string rawId, CancellationToken ct)
+    /// <summary>The one device of the caller's view, else NOT_FOUND (unknown and outside the view answer the same).</summary>
+    private async Task<ViewedDevices> RequireDeviceAsync(string rawId, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(rawId, "device id");
-        return await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound($"Device {id} not found.");
+        return await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync([id], context.CancellationToken).ConfigureAwait(false);
     }
 
     internal static Proto.OpticsState ToProto(Core.Vapix.OpticsState state)
@@ -274,9 +266,8 @@ public sealed class LiveViewGrpcService(
     /// <summary>Video sources (view areas, sensors, encoder channels) of a device. Read-only on the camera.</summary>
     public override async Task<Proto.LiveViewSources> ListSources(Proto.LiveViewSourcesRequest request, ServerCallContext context)
     {
-        var id = GrpcGuard.ParseId(request.DeviceId, "device id");
-        var device = await devices.GetAsync(id, context.CancellationToken).ConfigureAwait(false)
-            ?? throw GrpcGuard.NotFound($"Device {id} not found.");
+        var viewed = await RequireDeviceAsync(request.DeviceId, context).ConfigureAwait(false);
+        var device = viewed[0];
         if (device.Status == DeviceStatus.SiteOffline)
         {
             throw GrpcGuard.FailedPrecondition(Sdk.Sites.SiteTexts.SiteOffline(device.SiteName));
@@ -284,7 +275,7 @@ public sealed class LiveViewGrpcService(
         LiveViewCapabilities capabilities;
         try
         {
-            capabilities = await sources.GetCapabilitiesAsync(id, context.CancellationToken).ConfigureAwait(false);
+            capabilities = await live.GetCapabilitiesAsync(viewed, context.CancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -317,9 +308,14 @@ public sealed class LiveViewGrpcService(
         // Encoded video does not compress; skip the server-wide gzip for these frames.
         context.WriteOptions = new WriteOptions(WriteFlags.NoCompress);
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
-        var ct = linked.Token;
-        var device = await devices.GetAsync(id, ct).ConfigureAwait(false)
-            ?? throw GrpcGuard.NotFound($"Device {id} not found.");
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var viewed = await view.GetAsync([id], linked.Token).ConfigureAwait(false);
+        var device = viewed[0];
+
+        // The stream ends when the device leaves the caller's view (removed, another tag or site); never for all devices.
+        using var lease = await watcher.WatchAsync(viewed, linked.Token).ConfigureAwait(false);
+        using var bound = CancellationTokenSource.CreateLinkedTokenSource(linked.Token, lease.Left);
+        var ct = bound.Token;
         if (device.Status == DeviceStatus.CertificateChanged)
         {
             throw GrpcGuard.FailedPrecondition(DeviceMessages.CertificateChanged);
@@ -334,11 +330,15 @@ public sealed class LiveViewGrpcService(
         LiveViewSubscription subscription;
         try
         {
-            subscription = await hub.SubscribeAsync(id, request.MaxWidth, request.MaxHeight, request.Fps, codecs, ct, request.Camera).ConfigureAwait(false);
+            subscription = await live.SubscribeAsync(viewed, request.MaxWidth, request.MaxHeight, request.Fps, codecs, request.Camera, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             throw ToRpc(ex);
+        }
+        catch (OperationCanceledException) when (lease.HasLeft && !linked.Token.IsCancellationRequested)
+        {
+            throw Left();
         }
 
         await using (subscription.ConfigureAwait(false))
@@ -351,6 +351,10 @@ public sealed class LiveViewGrpcService(
                     message.Camera = subscription.Key.Camera;
                     await responseStream.WriteAsync(message, ct).ConfigureAwait(false);
                 }
+            }
+            catch (OperationCanceledException) when (lease.HasLeft && !linked.Token.IsCancellationRequested)
+            {
+                throw Left();
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -387,6 +391,9 @@ public sealed class LiveViewGrpcService(
         Proto.VideoCodec.H265 => VideoCodecKind.H265,
         _ => null,
     };
+
+    /// <summary>The device left the caller's view while its video ran: the answer of a device that is gone.</summary>
+    private static RpcException Left() => new(new Status(StatusCode.NotFound, DeviceMessages.NoLongerAvailable(1)));
 
     private static RpcException ToRpc(Exception ex) => ex switch
     {

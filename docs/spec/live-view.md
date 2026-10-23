@@ -115,7 +115,9 @@ web UI.
   (60 frames) is dropped and the viewer resumes at the next keyframe. Packet loss drops access
   units until the next keyframe.
 - gRPC: each `LiveViewFrame` carries one Annex B access unit, the keyframe flag, parameter sets
-  on keyframes, RTP timestamp, resolution and camera. Client channel max message size 32 MB.
+  on keyframes, RTP timestamp, resolution and camera. Client channel max message size 32 MB. A user with a device group
+  watches only devices of the group; the video ends ("1 device is no longer available.") when the device leaves it
+  (`DeviceViewWatcher`, `docs/spec/device-scope.md`).
 - Client: FFmpeg decode on a background thread (low delay, slice threads), swscale to BGRA into a
   new `WriteableBitmap` (through `BgraConversion`: swscale writes into FFmpeg's own row-padded picture, then the rows are
   copied; straight into the bitmap it wrote 8 to 32 bytes past the buffer for widths not a multiple of 16, test

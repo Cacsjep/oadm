@@ -34,32 +34,113 @@ public sealed class CanaryTests
     {
         ["/oadm.v1.DeviceService/GetPassphrasePolicies"] = async (c, id) =>
             await new Proto.DeviceService.DeviceServiceClient(c.Invoker).GetPassphrasePoliciesAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
+
+        // devices-core: the device list's actions, live view and the web interface relay.
+        ["/oadm.v1.DeviceService/Remove"] = async (c, id) =>
+        {
+            // Inside the view a spare device is removed (the inside device stays for the other cases).
+            Guid[] ids = id == c.Inside ? [await c.AddSpareAsync()] : [c.Inside, id];
+            await Devices(c).RemoveAsync(new Proto.DeviceIds { Ids = { ids.Select(i => i.ToString()) } });
+        },
+        ["/oadm.v1.DeviceService/Refresh"] = async (c, id) =>
+            await Devices(c).RefreshAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.DeviceService/SetCredentials"] = async (c, id) =>
+            await Devices(c).SetCredentialsAsync(new Proto.SetCredentialsRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, UserName = "root", Password = "pass" }),
+        ["/oadm.v1.DeviceService/LogIn"] = async (c, id) =>
+            await Devices(c).LogInAsync(new Proto.DeviceLogInRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, UserName = "root", Password = "pass" }),
+        ["/oadm.v1.DeviceService/GetCredentialUserName"] = async (c, id) =>
+            await Devices(c).GetCredentialUserNameAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.DeviceService/SetFirstPassword"] = async (c, id) =>
+            await Devices(c).SetFirstPasswordAsync(new Proto.SetFirstPasswordRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, Password = "Secret123" }),
+        ["/oadm.v1.DeviceService/GetWebUiUrl"] = async (c, id) =>
+            await Devices(c).GetWebUiUrlAsync(new Proto.DeviceId { Id = id.ToString() }),
+        ["/oadm.v1.DeviceWebService/Open"] = async (c, id) =>
+            await new Proto.DeviceWebService.DeviceWebServiceClient(c.Invoker).OpenAsync(new Proto.OpenDeviceWebRequest { DeviceId = id.ToString() }),
+        ["/oadm.v1.DeviceWebService/Exchange"] = (c, id) => Inside(c, id, async () =>
+        {
+            using var call = new Proto.DeviceWebService.DeviceWebServiceClient(c.Invoker).Exchange(deadline: DateTime.UtcNow.AddSeconds(30));
+            await call.RequestStream.WriteAsync(new Proto.DeviceWebFrame { Request = new Proto.DeviceWebRequestHead { DeviceId = id.ToString(), Method = "GET", PathAndQuery = "/" } });
+            await call.RequestStream.CompleteAsync();
+            while (await call.ResponseStream.MoveNext(CancellationToken.None))
+            {
+            }
+        }),
+        ["/oadm.v1.LiveViewService/Watch"] = (c, id) => Inside(c, id, async () =>
+        {
+            using var call = Live(c).Watch(new Proto.LiveViewRequest { DeviceId = id.ToString() }, deadline: DateTime.UtcNow.AddSeconds(30));
+            await call.ResponseStream.MoveNext(CancellationToken.None);
+        }),
+        ["/oadm.v1.LiveViewService/ListSources"] = (c, id) => Inside(c, id, async () =>
+            await Live(c).ListSourcesAsync(new Proto.LiveViewSourcesRequest { DeviceId = id.ToString() })),
+        ["/oadm.v1.LiveViewService/GetOptics"] = async (c, id) =>
+            await Live(c).GetOpticsAsync(new Proto.OpticsRequest { DeviceId = id.ToString() }),
+        ["/oadm.v1.LiveViewService/SetOptics"] = (c, id) => Inside(c, id, async () =>
+            await Live(c).SetOpticsAsync(new Proto.SetOpticsRequest { DeviceId = id.ToString(), Autofocus = true })),
+        ["/oadm.v1.LiveViewService/GetPtz"] = async (c, id) =>
+            await Live(c).GetPtzAsync(new Proto.PtzRequest { DeviceId = id.ToString() }),
+        ["/oadm.v1.LiveViewService/MovePtz"] = (c, id) => Inside(c, id, async () =>
+            await Live(c).MovePtzAsync(new Proto.MovePtzRequest { DeviceId = id.ToString(), Move = Proto.PtzMove.Stop })),
+        ["/oadm.v1.LiveViewService/GetRtspPort"] = async (c, id) =>
+            await Live(c).GetRtspPortAsync(new Proto.RtspPortRequest { DeviceIds = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.LiveViewService/SetRtspPort"] = (c, id) => Inside(c, id, async () =>
+            await Live(c).SetRtspPortAsync(new Proto.SetRtspPortRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, Port = 554 })),
+    };
+
+    private static Proto.DeviceService.DeviceServiceClient Devices(Canary c) => new(c.Invoker);
+
+    private static Proto.LiveViewService.LiveViewServiceClient Live(Canary c) => new(c.Invoker);
+
+    /// <summary>
+    /// The call inside the view may fail for reasons of the fake device (no video, no PTZ, no login), never with the
+    /// refusal of the view; outside ids pass every answer to the test.
+    /// </summary>
+    private static async Task Inside(Canary c, Guid id, Func<Task> call)
+    {
+        try
+        {
+            await call();
+        }
+        catch (RpcException ex) when (id == c.Inside && ex.Status.Detail != DeviceMessages.NoLongerAvailable(1))
+        {
+        }
+    }
+
+    /// <summary>
+    /// Methods without an id field that deliver device data: the reply as text, which must never show the device outside
+    /// the view (its id, serial or address). The delegates check that the inside device is there where it belongs.
+    /// </summary>
+    private static readonly Dictionary<string, Func<Canary, Task<string>>> Filtered = new(StringComparer.Ordinal)
+    {
+        ["/oadm.v1.DeviceService/List"] = async c =>
+        {
+            var reply = await Devices(c).ListAsync(new Proto.Empty());
+            Assert.Contains(reply.Devices, d => d.Id == c.Inside.ToString());
+            return reply.ToString();
+        },
+        ["/oadm.v1.DeviceService/Watch"] = async c =>
+        {
+            using var call = Devices(c).Watch(new Proto.WatchDevicesRequest { SnapshotEndMarker = true }, deadline: DateTime.UtcNow.AddSeconds(30));
+            var text = new System.Text.StringBuilder();
+            while (await call.ResponseStream.MoveNext(CancellationToken.None) && call.ResponseStream.Current.Kind != Proto.DeviceChanged.Types.Kind.SnapshotEnd)
+            {
+                text.Append(call.ResponseStream.Current);
+            }
+
+            Assert.Contains(c.Inside.ToString(), text.ToString(), StringComparison.Ordinal);
+            return text.ToString();
+        },
+        ["/oadm.v1.SiteService/ListSites"] = async c => (await new Proto.SiteService.SiteServiceClient(c.Invoker).ListSitesAsync(new Proto.Empty())).ToString(),
+        ["/oadm.v1.SiteService/WatchSites"] = async c =>
+        {
+            using var call = new Proto.SiteService.SiteServiceClient(c.Invoker).WatchSites(new Proto.Empty(), deadline: DateTime.UtcNow.AddSeconds(30));
+            Assert.True(await call.ResponseStream.MoveNext(CancellationToken.None));
+            return call.ResponseStream.Current.ToString();
+        },
     };
 
     /// <summary>Methods that take device ids or deliver device data and are not converted yet: method → package.</summary>
     internal static readonly Dictionary<string, string> NotConverted = new(StringComparer.Ordinal)
     {
-        ["/oadm.v1.DeviceService/List"] = "devices-core",
-        ["/oadm.v1.DeviceService/Watch"] = "devices-core",
-        ["/oadm.v1.DeviceService/Remove"] = "devices-core",
-        ["/oadm.v1.DeviceService/Refresh"] = "devices-core",
-        ["/oadm.v1.DeviceService/SetCredentials"] = "devices-core",
-        ["/oadm.v1.DeviceService/LogIn"] = "devices-core",
-        ["/oadm.v1.DeviceService/GetCredentialUserName"] = "devices-core",
-        ["/oadm.v1.DeviceService/SetFirstPassword"] = "devices-core",
-        ["/oadm.v1.DeviceService/GetWebUiUrl"] = "devices-core",
-        ["/oadm.v1.DeviceWebService/Open"] = "devices-core",
-        ["/oadm.v1.DeviceWebService/Exchange"] = "devices-core",
-        ["/oadm.v1.LiveViewService/Watch"] = "devices-core",
-        ["/oadm.v1.LiveViewService/ListSources"] = "devices-core",
-        ["/oadm.v1.LiveViewService/GetOptics"] = "devices-core",
-        ["/oadm.v1.LiveViewService/SetOptics"] = "devices-core",
-        ["/oadm.v1.LiveViewService/GetRtspPort"] = "devices-core",
-        ["/oadm.v1.LiveViewService/GetPtz"] = "devices-core",
-        ["/oadm.v1.LiveViewService/MovePtz"] = "devices-core",
-        ["/oadm.v1.LiveViewService/SetRtspPort"] = "devices-core",
-        ["/oadm.v1.SiteService/ListSites"] = "devices-core",
-        ["/oadm.v1.SiteService/WatchSites"] = "devices-core",
         ["/oadm.v1.TaskService/ListTaskPlugins"] = "tasks",
         ["/oadm.v1.TaskService/List"] = "tasks",
         ["/oadm.v1.TaskService/Watch"] = "tasks",
@@ -174,11 +255,11 @@ public sealed class CanaryTests
     {
         foreach (var method in AccessPolicy.ListedMethods)
         {
-            var places = new[] { Cases.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
-            Assert.True(places == 1, $"{method} is in {places} canary lists (a case, not converted, without devices, closed by the rule); it must be in exactly one.");
+            var places = new[] { Cases.ContainsKey(method), Filtered.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
+            Assert.True(places == 1, $"{method} is in {places} canary lists (a case, filtered, not converted, without devices, closed by the rule); it must be in exactly one.");
         }
 
-        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
+        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(Filtered.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
         Assert.All(NotConverted.Values.Concat(PluginsNotConverted.Values), p => Assert.Contains(p, Packages));
         Assert.All(WithoutDevices.Values, reason => Assert.False(string.IsNullOrWhiteSpace(reason)));
     }
@@ -212,6 +293,21 @@ public sealed class CanaryTests
 
             // The same call inside the view works (the case calls what it should).
             await call(canary, canary.Inside);
+        }
+    }
+
+    [Fact]
+    public async Task AFilteredListNeverShowsTheDeviceOutsideTheView()
+    {
+        await using var canary = await Canary.StartAsync();
+        foreach (var (method, call) in Filtered)
+        {
+            var before = await canary.SnapshotAsync();
+            var text = await call(canary);
+            Assert.False(text.Contains(canary.Outside.ToString(), StringComparison.OrdinalIgnoreCase), $"{method} showed the device outside the view.");
+            Assert.False(text.Contains(OutsideSerial, StringComparison.OrdinalIgnoreCase), $"{method} showed the serial outside the view.");
+            Assert.False(text.Contains("10.9.0.2", StringComparison.Ordinal), $"{method} showed the address outside the view.");
+            Assert.Equal(before, await canary.SnapshotAsync());
         }
     }
 
@@ -275,6 +371,11 @@ public sealed class CanaryTests
             await host.Tags.SetDeviceTagsAsync(new Proto.SetDeviceTagsRequest { DeviceIds = { inside.Id.ToString() }, Add = { "Inside" } });
             var tag = (await host.Tags.ListAsync(new Proto.Empty())).Tags.Single(t => t.Name == "Inside").Id;
 
+            // The role may open the web interface (DeviceWebService needs the Web View plugin's permission; the plugin is not loaded).
+            var webView = new Core.Plugins.PluginRegistry();
+            webView.RegisterCorePlugin(new WebViewPermission(), new Core.Plugins.PluginOrigin(WebViewPermission.PluginId, "1.0.0", null));
+            await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(webView), CancellationToken.None);
+
             var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);
             var keys = (await roles.GetMatrixAsync(new Proto.Empty())).Permissions.Select(p => p.Key);
             var role = (await roles.SaveRolesAsync(new Proto.SaveRolesRequest { Roles = { new Proto.RoleChange { Name = "Everything", Permissions = { keys } } } }))
@@ -293,6 +394,14 @@ public sealed class CanaryTests
             return new Canary(host, invoker, caller, inside.Id, outside.Id, outsideDevice, streams);
         }
 
+        /// <summary>Adds one more device inside the view (calls that remove the device they get).</summary>
+        public async Task<Guid> AddSpareAsync()
+        {
+            var serial = "ACCC8E00C" + Random.Shared.Next(0x100, 0xFFF).ToString("X3", System.Globalization.CultureInfo.InvariantCulture);
+            var spare = await Host.Get<DeviceRepository>().AddAsync(new Device { Serial = serial, Address = "10.9.0.9", AddedByAllDevices = true, Tags = ["Inside"] }, CancellationToken.None);
+            return spare.Id;
+        }
+
         /// <summary>What a call must not change for the outside device: its requests, streams, tasks and the device row.</summary>
         public async Task<string> SnapshotAsync()
         {
@@ -303,6 +412,30 @@ public sealed class CanaryTests
         }
 
         public ValueTask DisposeAsync() => Host.DisposeAsync();
+    }
+
+    /// <summary>Only the permission of the Web View plugin, for the role of the canary user.</summary>
+    private sealed class WebViewPermission : Sdk.Plugins.ICorePlugin
+    {
+        public const string PluginId = "oadm.web-view";
+
+        public string Id => PluginId;
+
+        public string DisplayName => "Web View";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<Sdk.Plugins.ITaskPlugin> TaskPlugins => [];
+
+        public IReadOnlyList<Sdk.Plugins.PermissionDefinition> Permissions => [new("open", "Open devices", "Open devices.")];
+
+        public Task StartAsync(Sdk.Plugins.ICorePluginContext ctx, CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
+
+        public Sdk.Plugins.UserRole RequiredRole(string method) => Sdk.Plugins.UserRole.Operator;
     }
 
     /// <summary>Video and event streams that only count who asked; they never deliver anything.</summary>
