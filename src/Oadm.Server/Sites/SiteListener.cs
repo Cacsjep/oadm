@@ -34,6 +34,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
     private readonly Dictionary<string, int> _perAddress = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _running = new();
     private int _refusedPerAddress;
+    private int _handshakesRunning;
     private int _disposed;
     private Task _loop = Task.CompletedTask;
 
@@ -66,8 +67,8 @@ internal sealed partial class SiteListener : IAsyncDisposable
 
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
-    /// <summary>Handshakes in progress (tests).</summary>
-    internal int HandshakesRunning => _running.Count;
+    /// <summary>Handshakes in progress (tests); 0 once <see cref="DisposeAsync"/> returned.</summary>
+    internal int HandshakesRunning => Volatile.Read(ref _handshakesRunning);
 
     /// <summary>Connections refused because their address had too many handshakes in progress (tests).</summary>
     internal int RefusedPerAddress => Volatile.Read(ref _refusedPerAddress);
@@ -150,6 +151,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
                 continue;
             }
 
+            Interlocked.Increment(ref _handshakesRunning);
             var handshake = Task.Run(() => HandshakeAsync(socket, key), CancellationToken.None);
             _running.TryAdd(handshake, 0);
             _ = handshake.ContinueWith(t => _running.TryRemove(t, out _), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
@@ -221,6 +223,10 @@ internal sealed partial class SiteListener : IAsyncDisposable
             {
                 await Close(socket, tls).ConfigureAwait(false);
             }
+
+            // Last, inside the task itself: once DisposeAsync awaited the task, the count is down. The removal from _running
+            // runs in a continuation, which may still be pending then.
+            Interlocked.Decrement(ref _handshakesRunning);
         }
     }
 
