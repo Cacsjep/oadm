@@ -59,7 +59,14 @@ public sealed record ViewTile(Guid DeviceId, int Camera, int X, int Y, int Width
 }
 
 /// <summary>A saved view. <see cref="Version"/> grows with every save; a save of an older version is refused.</summary>
-public sealed record SavedView(string Id, string Name, long Version, IReadOnlyList<ViewTile> Tiles);
+public sealed record SavedView(string Id, string Name, long Version, IReadOnlyList<ViewTile> Tiles)
+{
+    /// <summary>
+    /// The device group that owns it (its users see and change it, with the group's cameras only); null = all devices (also
+    /// every view saved before device groups). Set by the server, never taken from a page.
+    /// </summary>
+    public string? Owner { get; init; }
+}
 
 /// <summary>Every view, sorted by name (method "list" and the event "views").</summary>
 public sealed record ViewList(IReadOnlyList<SavedView> Views);

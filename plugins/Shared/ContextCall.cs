@@ -33,6 +33,101 @@ internal sealed class ContextCall(ICorePluginContext ctx) : ICallContext
     public bool Contains(IDeviceInfo device) => true;
 }
 
+/// <summary>
+/// Objects a plugin keeps for a device scope (docs/spec/device-scope.md, Shared objects: device triggers, Live View views,
+/// dashboards): each stores the <see cref="ICallContext.DeviceScopeKey"/> of the user who made it; objects stored before
+/// device groups have none and belong to all devices. Users with a group see and change only their group's objects, users
+/// with all devices every object; an edit keeps the owner; an object of a deleted group is off.
+/// </summary>
+internal static class OwnerScope
+{
+    /// <summary>The owner of a stored object (none = all devices, objects from before device groups).</summary>
+    public static string Of(string? stored) => string.IsNullOrWhiteSpace(stored) ? ICallContext.AllDevicesScopeKey : stored;
+
+    /// <summary>Whether <paramref name="caller"/> sees and may change an object of <paramref name="owner"/>.</summary>
+    public static bool Sees(ICallContext caller, string? owner)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return caller.HasAllDevices || string.Equals(Of(owner), caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Whether the owner still exists (false for a deleted group: its objects are off). Hosts without groups: only all devices.</summary>
+    public static bool Exists(ICorePluginContext ctx, string? owner)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        var key = Of(owner);
+        return ctx.DeviceScopes?.Exists(key) ?? key == ICallContext.AllDevicesScopeKey;
+    }
+
+    /// <summary>
+    /// The owner a saved object gets: a new one the caller's scope; a changed one keeps its owner, except that a user with
+    /// all devices who saves an object of a deleted group gives it to all devices (it runs again).
+    /// </summary>
+    public static string ForSave(ICorePluginContext ctx, ICallContext caller, string? stored, bool isNew)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        if (isNew)
+        {
+            return caller.DeviceScopeKey;
+        }
+
+        var owner = Of(stored);
+        return !Exists(ctx, owner) && caller.HasAllDevices ? ICallContext.AllDevicesScopeKey : owner;
+    }
+
+    /// <summary>
+    /// The devices of an object's owner, for the checks of a save: the caller's own devices when the caller is of that scope,
+    /// else (a user with all devices changing a group's object) the group's devices; none for a deleted group.
+    /// </summary>
+    public static IDeviceRepository DevicesOf(ICorePluginContext ctx, ICallContext caller, string owner)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(caller);
+        if (string.Equals(owner, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return caller.Devices;
+        }
+
+        return ctx.DeviceScopes?.Devices(owner) ?? (owner == ICallContext.AllDevicesScopeKey ? caller.Devices : NoDevices.Instance);
+    }
+
+    /// <summary>
+    /// Refuses device ids outside the owner's devices before a save (<see cref="DevicesNotAvailableException"/>, the same
+    /// as for unknown ids). Objects of all devices keep removed devices as they did before device groups (their tiles say
+    /// "Removed device"); objects of a group take only devices the group has now.
+    /// </summary>
+    public static async Task RequireDevicesAsync(ICorePluginContext ctx, ICallContext caller, string owner, IEnumerable<Guid> ids, CancellationToken ct)
+    {
+        if (owner == ICallContext.AllDevicesScopeKey && caller.HasAllDevices)
+        {
+            return;
+        }
+
+        var repository = DevicesOf(ctx, caller, owner);
+        var wanted = ids.Distinct().ToList();
+        if (wanted.Count == 0)
+        {
+            return;
+        }
+
+        var known = (await repository.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+        var missing = wanted.Count(id => !known.Contains(id));
+        if (missing > 0)
+        {
+            throw new DevicesNotAvailableException(missing);
+        }
+    }
+
+    private sealed class NoDevices : IDeviceRepository
+    {
+        public static readonly NoDevices Instance = new();
+
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([]);
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult<IDeviceInfo?>(null);
+    }
+}
+
 /// <summary>Device id checks of the converted page methods (SDK 0.4.0).</summary>
 internal static class CallDevices
 {

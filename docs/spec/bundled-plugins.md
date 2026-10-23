@@ -283,8 +283,10 @@ login. Decisions, the relay and tests: plugin `README.md`.
 **off by default**, switchable. Saved views of several cameras at once, like a VMS: a view is a grid of cameras, opened in a
 tab. Decisions, methods and tests: plugin `README.md`.
 
-- Rules that must hold: views live on the server, shared by every user (plugin setting `views`), every change pushed to
-  every open page; a save of an older version is refused (two users); the grid is 20 x 20 cells and always fills the tab,
+- Rules that must hold: views live on the server, shared by the users of the same devices (plugin setting `views`; each
+  view belongs to the device group of the user who made it, none = all devices; group users see and change only their
+  group's views with the group's cameras, saving refuses cameras outside the owner's devices, an edit keeps the owner),
+  every change pushed to the open pages that see it; a save of an older version is refused (two users); the grid is 20 x 20 cells and always fills the tab,
   a camera at least 2 x 2, never overlapping, at most 16 cameras per view and 200 views; the server checks every rule
   again (`ViewRules`, shared with the page; the grid is the shared `ui:TileGrid` with `LiveViewPluginInfo.Layout`). Roles: "show" (Operator and Viewer), "Change views" (`manage`, Operator yes,
   Viewer no; save and delete audited); the pictures need "Live view". Every camera is the host's live video component
