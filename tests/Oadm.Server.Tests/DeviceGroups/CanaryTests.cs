@@ -366,7 +366,18 @@ public sealed class CanaryTests
     internal static readonly Dictionary<string, string> PluginsConverted = new(StringComparer.Ordinal)
     {
         ["oadm.notifications"] = "no methods and no devices; its actions run only in event rules, which are for users with all devices",
+        ["oadm.outputs"] = "no methods; its action runs only in event rules, which are for users with all devices (EventService closed by the rule)",
+        ["oadm.acap"] = TaskPluginOnly,
+        ["oadm.datetime"] = TaskPluginOnly,
+        ["oadm.device-config"] = TaskPluginOnly,
+        ["oadm.firmware"] = TaskPluginOnly,
+        ["oadm.network"] = TaskPluginOnly + "; the address check: Oadm.Plugins.Network.Tests DeviceGroupTests",
+        ["oadm.restart"] = TaskPluginOnly,
+        ["oadm.users"] = TaskPluginOnly,
     };
+
+    /// <summary>A package of task plugins only: the host scopes the run and the queried device.</summary>
+    private const string TaskPluginOnly = "task plugin: the host scopes Run and Query (the TaskService/Run and TaskService/Query canary cases, TaskViewTests)";
 
     /// <summary>
     /// The bundled plugins not converted yet and the package that moves their methods to the call context. A converted

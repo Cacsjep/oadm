@@ -185,4 +185,4 @@ Operator default: upgrade only.
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query `status` reads only the queried device, which the host checks; uploads are read by their id for the run. Test: `DeviceGroupTests` (`PluginCanary`).
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query `status` reads only the queried device, which the host checks; uploads are read by their id for the run. Tests: the host scopes the run and the queried device (server `DeviceGroups/CanaryTests`, TaskService cases).

@@ -1,32 +1,15 @@
 using Oadm.Plugins.Network.Model;
-using Oadm.Tests.Shared;
 
-using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using SdkTesting = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Network.Tests;
 
-/// <summary>Network settings and Assign IP address for users with a device group (docs/spec/device-scope.md).</summary>
+/// <summary>
+/// The address check of Assign IP address for users with a device group (docs/spec/device-scope.md). The tasks start
+/// through the user's call, which the host scopes (server <c>CanaryTests</c>, case TaskService/Run).
+/// </summary>
 public sealed class DeviceGroupTests
 {
-    [Fact]
-    public async Task NoMethodReachesADeviceOutsideTheUsersGroup()
-    {
-        var ctx = new SdkTesting.FakeCoreContext();
-        var inside = ctx.Add(new SdkTesting.FakeDevice { Address = "10.0.0.48" });
-        var outside = ctx.Add(new SdkTesting.FakeDevice { Address = "10.0.0.49" });
-        var settings = new NetworkSettingsTaskPlugin(ReachabilityOptions.Default, TimeProvider.System, new FakeAddressProbe());
-        var assign = new AssignIpTaskPlugin(ReachabilityOptions.Default, TimeProvider.System, new FakeAddressProbe());
-        var host = new TaskPluginCanaryHost([settings, assign]);
-
-        // The tasks start through the user's call; the queries read only the queried device (the host checks it) and take
-        // no device ids: their group cases are below.
-        await new PluginCanary(ctx, host, inside, outside)
-            .Method(TaskPluginCanaryHost.Run, $$"""{"pluginId":"{{settings.Id}}","deviceIds":["{inside}","{device}"]}""")
-            .Method(TaskPluginCanaryHost.Run, $$"""{"pluginId":"{{assign.Id}}","deviceIds":["{inside}","{device}"]}""")
-            .RunAsync();
-    }
-
     [Fact]
     public async Task The_address_check_of_a_group_user_says_only_in_use_for_a_device_outside_the_group()
     {

@@ -131,4 +131,4 @@ from device"). Read only: one `applications/list.cgi` per device and run (shared
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the queries read only the queried device, which the host checks. Test: `DeviceGroupTests` (`PluginCanary`).
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the queries read only the queried device, which the host checks. Tests: the host scopes the run and the queried device (server `DeviceGroups/CanaryTests`, TaskService cases).

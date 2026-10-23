@@ -89,7 +89,8 @@ an independent security review the same day). A user may be limited to part of t
 - **Built (plugin host):** the call per call, the refusals, jobs with owners, event audiences (plus `DeviceScope(key)` for
   state kept per group), `ctx.DeviceScopes`, the sweep per scope and the plugin canary (`PluginCanary`): see
   `docs/spec/plugins.md` "Host side of the call context". A converted bundled plugin sets `minSdkVersion` 0.4.0 in its
-  plugin.json and runs a `PluginCanary` in its tests (`CanaryTests.EveryBundledPluginIsConvertedOrListed`).
+  plugin.json and runs a `PluginCanary` in its tests, or `CanaryTests.PluginsConverted` gives the reason it needs none
+  (`CanaryTests.EveryBundledPluginIsConvertedOrListed`).
 
 ## Decisions
 
@@ -371,9 +372,9 @@ an independent security review the same day). A user may be limited to part of t
 
 - Restart, Users, Date and time, Upgrade firmware, Applications, Network settings, Assign IP address, Device
   configuration, Set output and the VAPIX Commander set `minSdkVersion` 0.4.0. Their queries implement the call overload
-  and read only the queried device; tasks touch only their own device. Each test project runs a `PluginCanary`;
-  packages without a page through `tests/Shared/TaskPluginCanaryHost.cs` (tasks started through the call, actions run on
-  one device of the call). `tests/Oadm.Plugins.Restart.Tests` is new for that.
+  and read only the queried device; tasks touch only their own device. The host scopes their runs and
+  queries (server canary cases of TaskService); `CanaryTests.PluginsConverted` names these packages with that reason
+  (a `PluginCanary` over them would test only the fake host). The VAPIX Commander has a page and runs one.
 - Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
   `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). It probes addresses only
   on a route the caller's group names (`ICallContext.CoversRoute(siteId)`, SDK 0.4.0: the group's sites, the server's
