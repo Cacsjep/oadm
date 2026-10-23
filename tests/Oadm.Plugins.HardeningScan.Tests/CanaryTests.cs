@@ -67,4 +67,62 @@ public sealed class CanaryTests
         Assert.DoesNotContain(ctx.EventsSeenBy(other), e => e.PayloadJson?.Contains(inside.Id.ToString(), StringComparison.OrdinalIgnoreCase) == true);
         Assert.Contains(ctx.EventsSeenBy(group), e => e.Topic == HardeningMethods.ProgressTopic);
     }
+
+    [Fact]
+    public async Task A_device_that_leaves_the_group_during_a_scan_gets_no_row()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var stays = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.48" });
+        var leaves = new Testing.FakeDevice { Address = "10.0.0.49" };
+        ctx.Add(leaves, new LeavingCamera(() => ctx.DeviceList.Remove(leaves))); // gone while it is read
+        await using var plugin = new HardeningScanPlugin(new HardeningScanOptions { Time = new FakeTimeProvider(), Parallelism = 1 });
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var group = ctx.CallAsGroup([stays.Id, leaves.Id], "tech2");
+
+        await ctx.InvokeAsync(plugin, group, HardeningMethods.StartScan, """{"level":"Basic"}""");
+        await plugin.Service!.WaitAsync();
+
+        Assert.Contains(plugin.Service.Store.All(), d => d.DeviceId == stays.Id);
+        Assert.DoesNotContain(plugin.Service.Store.All(), d => d.DeviceId == leaves.Id);
+        Assert.DoesNotContain(ctx.EventsSeenBy(group), e => e.PayloadJson?.Contains(leaves.Id.ToString(), StringComparison.OrdinalIgnoreCase) == true);
+        Assert.Contains(ctx.EventsSeenBy(group), e => e.PayloadJson?.Contains(stays.Id.ToString(), StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    /// <summary>A camera whose device leaves on the first request.</summary>
+    private sealed class LeavingCamera(Action leave) : Testing.FakeCamera
+    {
+        private int _left;
+
+        public override Task<Oadm.Sdk.Vapix.BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)
+        {
+            Leave();
+            return base.GetBasicDeviceInfoAsync(ct);
+        }
+
+        public override Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct)
+        {
+            Leave();
+            return base.ListParametersAsync(groups, ct);
+        }
+
+        public override Task<IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi>> GetApiListAsync(CancellationToken ct)
+        {
+            Leave();
+            return base.GetApiListAsync(ct);
+        }
+
+        public override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Leave();
+            return base.SendAsync(request, ct);
+        }
+
+        private void Leave()
+        {
+            if (Interlocked.Exchange(ref _left, 1) == 0)
+            {
+                leave();
+            }
+        }
+    }
 }
