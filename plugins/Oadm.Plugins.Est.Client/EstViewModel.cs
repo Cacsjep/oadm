@@ -4,7 +4,9 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Network;
 using Oadm.Sdk.Client.Validation;
@@ -228,7 +230,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     public partial EnrollmentRow? SelectedEnrollment { get; set; }
 
     /// <summary>The view opens the details window (<see cref="EstCertificateWindow"/>) with this.</summary>
-    public event EventHandler<EstCertificateViewModel>? CertificateRequested;
+    public event EventHandler<CertificateDetails>? CertificateRequested;
 
     private bool CanViewCertificate => SelectedEnrollment is { HasCertificate: true };
 
@@ -244,7 +246,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         try
         {
             var json = await _ctx.InvokeAsync(EstMethods.GetCertificate, EstJson.Serialize(new CertificateQuery(row.Source.SerialNumber!)), CancellationToken.None).ConfigureAwait(true);
-            CertificateRequested?.Invoke(this, new EstCertificateViewModel(EstJson.Deserialize<CertificateDescription>(json), row, DateTime.UtcNow));
+            CertificateRequested?.Invoke(this, new CertificateDetails(EstJson.Deserialize<CertificateDescription>(json), $"Certificate · {row.Device} · {row.Profile}", DateTime.UtcNow));
         }
 #pragma warning disable CA1031 // Shown to the user.
         catch (Exception ex)

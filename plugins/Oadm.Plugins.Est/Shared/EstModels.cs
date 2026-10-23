@@ -101,6 +101,16 @@ public sealed record EstProfile(string Name, ProfileUse Use, int ValidityDays = 
     /// <summary>Server certificates for HTTPS and RTSPS, client certificates for IEEE 802.1X and MQTT.</summary>
     [JsonIgnore]
     public DeviceCertificateUse CertificateUse => Use is ProfileUse.Dot1x or ProfileUse.Mqtt ? DeviceCertificateUse.Client : DeviceCertificateUse.Server;
+
+    /// <summary>The use in PKI's list of issued certificates (<see cref="DeviceCertificatePurposes"/>).</summary>
+    [JsonIgnore]
+    public string Purpose => Use switch
+    {
+        ProfileUse.Dot1x => DeviceCertificatePurposes.Dot1x,
+        ProfileUse.Mqtt => DeviceCertificatePurposes.Mqtt,
+        ProfileUse.Rtsps => DeviceCertificatePurposes.Rtsps,
+        _ => DeviceCertificatePurposes.Https,
+    };
 }
 
 /// <summary>Plugin setting <c>config</c>.</summary>
@@ -156,42 +166,6 @@ public sealed record Enrollment
 
     /// <summary>The certificate it issued (upper hex; <see cref="EstMethods.GetCertificate"/>); null for a refusal and older entries.</summary>
     public string? SerialNumber { get; init; }
-}
-
-/// <summary>A name and its value as the certificate details show it ("Common name", "10.0.0.48").</summary>
-public sealed record NameValue(string Name, string Value);
-
-/// <summary>A certificate EST issued, described for the page (<see cref="EstMethods.GetCertificate"/>).</summary>
-public sealed record CertificateDescription
-{
-    /// <summary>"7D FD 05 49 ...".</summary>
-    public string SerialNumber { get; init; } = string.Empty;
-
-    /// <summary>The subject's parts in the certificate's order ("Common name" = "10.0.0.48").</summary>
-    public IReadOnlyList<NameValue> Subject { get; init; } = [];
-
-    public IReadOnlyList<NameValue> Issuer { get; init; } = [];
-
-    public DateTime NotBeforeUtc { get; init; }
-
-    public DateTime NotAfterUtc { get; init; }
-
-    /// <summary>"ECC P-256", "RSA 2048".</summary>
-    public string Key { get; init; } = string.Empty;
-
-    /// <summary>"SHA-256 with ECDSA".</summary>
-    public string Signature { get; init; } = string.Empty;
-
-    public int Version { get; init; }
-
-    /// <summary>What it may be used for ("Digital signature", "Server authentication").</summary>
-    public IReadOnlyList<string> Uses { get; init; } = [];
-
-    /// <summary>The names in it ("IP 10.0.0.48", "DNS axis-b8a44f631339.local").</summary>
-    public IReadOnlyList<string> Names { get; init; } = [];
-
-    /// <summary>SHA-256 of the certificate, upper hex in pairs.</summary>
-    public string Fingerprint { get; init; } = string.Empty;
 }
 
 /// <summary>The payload of <see cref="EstMethods.GetCertificate"/>.</summary>

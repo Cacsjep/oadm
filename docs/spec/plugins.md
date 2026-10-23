@@ -315,7 +315,13 @@ is always on.
   time and never keep the result. Offered today: `Oadm.Sdk.Certificates.IDeviceCertificateAuthority` by PKI (the OADM
   CA: `IsReady`, `Chain`, `Changed`, `SignAsync`; OADM's names, never the request's; SHA-1/MD5 requests and weak keys
   refused with `CertificateRequestRefusedException`; device certificates go into PKI's issued registry with their
-  `Source`). Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
+  `Source`). SDK 0.4.0 adds default members for the list of issued certificates and the revocation list (PKI implements
+  them; docs/spec/radius-server.md "Certificates and revocation"): `IsRevoked(serial)` (a hash lookup, any notation of
+  the serial, `CertificateSerials.Normalize`), `FindRevocation`, `Revocations`, event `RevocationChanged` (it belongs to the
+  offer: subscribe again when `Find` returns another instance), `ListIssuedAsync(IssuedCertificateQuery)`,
+  `GetIssuedCertificateAsync(serial)` (DER), `RevokeAsync(serials, RevocationReason, userName)`; the request's `Purpose`
+  (`DeviceCertificatePurposes`). `CertificateDescriber` (SDK) and the client SDK's `CertificateWindow` show a certificate
+  in plain names. Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
   (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
   set); `AllTaskPlugins` / `AllCorePlugins` / `Packages` (`PluginPackageState`: origin, enabled, has page, menu task

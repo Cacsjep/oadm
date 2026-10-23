@@ -34,6 +34,12 @@ public sealed record DeviceCertificateRequest(
 
     /// <summary>Who asked for it, for the CA's list ("EST"); null = the CA's own tasks.</summary>
     public string? Source { get; init; }
+
+    /// <summary>
+    /// The use in the list of issued certificates (SDK 0.4.0, one of <see cref="DeviceCertificatePurposes"/>: HTTPS, IEEE
+    /// 802.1X, MQTT, RTSPS); null = from <see cref="Use"/> (HTTPS for a server, IEEE 802.1X for a client certificate).
+    /// </summary>
+    public string? Purpose { get; init; }
 }
 
 /// <summary>A signed certificate.</summary>
@@ -79,6 +85,48 @@ public interface IDeviceCertificateAuthority
     /// <summary>Raised after the CA was generated, imported or replaced. Runs on a server thread; keep it short.</summary>
     event EventHandler? Changed;
 
-    /// <summary>Signs a request. Throws <see cref="CertificateRequestRefusedException"/> with a plain reason.</summary>
+    /// <summary>
+    /// Signs a request. Throws <see cref="CertificateRequestRefusedException"/> with a plain reason. A certificate with a
+    /// <see cref="DeviceCertificateRequest.DeviceId"/> goes into the list of issued certificates.
+    /// </summary>
     Task<IssuedDeviceCertificate> SignAsync(DeviceCertificateRequest request, CancellationToken ct);
+
+    // ------------------------------------------------------------------ SDK 0.4.0: issued certificates and revocation
+
+    /// <summary>
+    /// True when the certificate with <paramref name="serialNumber"/> is on the revocation list (any notation, see
+    /// <see cref="CertificateSerials.Normalize"/>). A hash lookup in memory: ask it for every authentication or renewal.
+    /// Default (a CA without a list): false.
+    /// </summary>
+    bool IsRevoked(string serialNumber) => false;
+
+    /// <summary>The revocation of <paramref name="serialNumber"/>, null when it is not revoked (for the refusal's text).</summary>
+    CertificateRevocation? FindRevocation(string serialNumber) => null;
+
+    /// <summary>The revocation list: revoked certificates that could still be valid, newest first.</summary>
+    IReadOnlyList<CertificateRevocation> Revocations => [];
+
+    /// <summary>
+    /// Raised after certificates were revoked or left the revocation list. Runs on a server thread; keep it short. The event
+    /// belongs to this offer: subscribe again when <see cref="Plugins.IPluginServices.Find{T}"/> returns another instance
+    /// (PKI restarted), and ask <see cref="IsRevoked"/> of the current offer.
+    /// </summary>
+    event EventHandler? RevocationChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>One page of the list of issued certificates (filters, search, newest first). Default: an empty page.</summary>
+    Task<IssuedCertificatePage> ListIssuedAsync(IssuedCertificateQuery query, CancellationToken ct) => Task.FromResult(IssuedCertificatePage.Empty);
+
+    /// <summary>The certificate (DER) with <paramref name="serialNumber"/> when the list holds it; null otherwise.</summary>
+    Task<byte[]?> GetIssuedCertificateAsync(string serialNumber, CancellationToken ct) => Task.FromResult<byte[]?>(null);
+
+    /// <summary>
+    /// Puts the certificates on the revocation list (no undo; only for users with all devices: the caller checks). Unknown
+    /// and expired serials are counted, never added. Raises <see cref="RevocationChanged"/> once. Default: not supported.
+    /// </summary>
+    Task<RevokeResult> RevokeAsync(IReadOnlyCollection<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct) =>
+        throw new NotSupportedException("This certificate authority keeps no revocation list.");
 }
