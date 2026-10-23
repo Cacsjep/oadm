@@ -113,16 +113,43 @@ public sealed class DevicePickerWindow : Window
 
         AcceptButton = new Button { Content = "OK", IsDefault = true };
         AcceptButton.Classes.Add("primary");
+        var footer = new DialogFooter();
         AcceptButton.Click += async (_, _) =>
         {
-            if (Accept is null || await Accept().ConfigureAwait(true))
+            if (Accept is null)
+            {
+                Close(true);
+                return;
+            }
+
+            if (IsAccepting)
+            {
+                return;
+            }
+
+            // While the host saves, Cancel, Escape and the X wait: a save that lands after the window closed would look
+            // cancelled.
+            IsAccepting = true;
+            footer.CancelButton.IsEnabled = false;
+            bool accepted;
+            try
+            {
+                accepted = await Accept().ConfigureAwait(true);
+            }
+            finally
+            {
+                IsAccepting = false;
+                footer.CancelButton.IsEnabled = true;
+            }
+
+            if (accepted)
             {
                 Close(true);
             }
         };
-        var footer = new DialogFooter();
         footer.CancelButton.Click += (_, _) => Close(false);
         footer.Actions.Add(AcceptButton);
+        Closing += (_, e) => e.Cancel |= IsAccepting;
 
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         Grid.SetRow(card, 1);
@@ -133,6 +160,9 @@ public sealed class DevicePickerWindow : Window
 
     /// <summary>Its view model.</summary>
     public DevicePickerViewModel ViewModel { get; }
+
+    /// <summary><see cref="Accept"/> runs (the host saves): the window cannot be cancelled or closed meanwhile.</summary>
+    public bool IsAccepting { get; private set; }
 
     /// <summary>The main button of the footer ("OK"): the host may change its text and bind it (e.g. "Save", disabled with a reason).</summary>
     public Button AcceptButton { get; }

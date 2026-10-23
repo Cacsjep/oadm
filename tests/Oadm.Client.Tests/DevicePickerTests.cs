@@ -35,6 +35,34 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task While_the_host_saves_the_window_cannot_be_cancelled_or_closed()
+    {
+        await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var vm = new DevicePickerViewModel([new PickDevice("10.0.0.48", "AXIS P3265-V")], [], _ => null);
+            var saving = new TaskCompletionSource<bool>();
+            var window = new DevicePickerWindow(vm) { Accept = () => saving.Task };
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Avalonia.Controls.Button cancel = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<DialogFooter>().Single().CancelButton;
+
+            window.AcceptButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Assert.True(window.IsAccepting);
+            Assert.False(cancel.IsEnabled);
+            window.Close(); // Escape or the X
+            Assert.True(window.IsVisible);
+
+            // The server refused: the window stays, Cancel works again.
+            saving.SetResult(false);
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !window.IsAccepting, "the save ended");
+            Assert.True(cancel.IsEnabled);
+            Assert.True(window.IsVisible);
+            cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Assert.False(window.IsVisible);
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public void In_single_mode_choosing_a_device_unchooses_the_one_before()
     {
         var a = new PickDevice("10.0.0.48", "AXIS P3265-V");
