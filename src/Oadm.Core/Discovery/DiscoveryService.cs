@@ -70,12 +70,12 @@ public sealed class DiscoveryService : IAsyncDisposable
     /// <summary>Devices a site's range scan found that are probed through the site at the same time (per site).</summary>
     public const int SiteProbeParallelism = 16;
 
-    /// <summary>The online sites now (none without sites).</summary>
-    private IReadOnlyList<Guid> OnlineSites()
+    /// <summary>The online sites now that <paramref name="routes"/> allows (none without sites).</summary>
+    private IReadOnlyList<Guid> OnlineSites(DiscoveryRoutes routes)
     {
         try
         {
-            return _sites?.OnlineSites() ?? [];
+            return [.. (_sites?.OnlineSites() ?? []).Where(routes.Allows)];
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -96,14 +96,17 @@ public sealed class DiscoveryService : IAsyncDisposable
     /// <see cref="StopScan"/>) the probes already started finish, then watchers get a final event with
     /// <see cref="DiscoveryEvent.Finished"/> = true and the devices stay until <see cref="StopAsync"/>.
     /// </summary>
-    public DiscoverySession StartZeroConf(MdnsBrowseOptions? options = null, TimeSpan? duration = null)
+    /// <param name="options">mDNS options.</param>
+    /// <param name="duration">The time limit; null = until stopped.</param>
+    /// <param name="routes">Where to look (docs/spec/device-scope.md, "New devices"); null = everywhere.</param>
+    public DiscoverySession StartZeroConf(MdnsBrowseOptions? options = null, TimeSpan? duration = null, DiscoveryRoutes? routes = null)
     {
         if (duration is { } d && d <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(duration), "The duration must be positive.");
         }
 
-        var session = CreateSession(DiscoverySessionKind.ZeroConf);
+        var session = CreateSession(DiscoverySessionKind.ZeroConf, routes);
         if (duration is { } limit)
         {
             session.LimitScan(limit, _time);
@@ -138,10 +141,13 @@ public sealed class DiscoveryService : IAsyncDisposable
         => StartRangeScan(Ipv4Range.Create(from, to), options);
 
     /// <inheritdoc cref="StartRangeScan(IPAddress, IPAddress, RangeScanOptions?)"/>
-    public DiscoverySession StartRangeScan(Ipv4Range range, RangeScanOptions? options = null)
+    /// <param name="range">The addresses.</param>
+    /// <param name="options">Parallelism and timeout.</param>
+    /// <param name="routes">Where to scan (docs/spec/device-scope.md, "New devices"); null = everywhere.</param>
+    public DiscoverySession StartRangeScan(Ipv4Range range, RangeScanOptions? options = null, DiscoveryRoutes? routes = null)
     {
         ArgumentNullException.ThrowIfNull(range);
-        var session = CreateSession(DiscoverySessionKind.RangeScan);
+        var session = CreateSession(DiscoverySessionKind.RangeScan, routes);
         session.Run = Auth.CallerContext.RunDetached(() => RunRangeScanAsync(session, range, options, session.Scan.Token, session.Stop.Token));
         return session.Handle;
     }
@@ -165,12 +171,17 @@ public sealed class DiscoveryService : IAsyncDisposable
     /// <paramref name="expectedSerial"/> (a line of an export of AXIS Device Manager) only the route where that device
     /// answers counts: other devices are shown only when it answered nowhere.
     /// </summary>
-    public DiscoverySession StartAddressProbe(string enteredAddress, IReadOnlyList<RouteProbe> probes, string? expectedSerial = null)
+    /// <param name="enteredAddress">The address as entered.</param>
+    /// <param name="probes">The probe per route.</param>
+    /// <param name="expectedSerial">Only the route where this device answers counts.</param>
+    /// <param name="routes">The routes that may be probed (others are dropped); null = every route given.</param>
+    public DiscoverySession StartAddressProbe(string enteredAddress, IReadOnlyList<RouteProbe> probes, string? expectedSerial = null, DiscoveryRoutes? routes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(enteredAddress);
         ArgumentNullException.ThrowIfNull(probes);
-        var session = CreateSession(DiscoverySessionKind.Manual);
-        session.Run = Auth.CallerContext.RunDetached(() => RunAddressProbeAsync(session, enteredAddress, probes, expectedSerial, session.Scan.Token, session.Stop.Token));
+        var session = CreateSession(DiscoverySessionKind.Manual, routes);
+        var allowed = probes.Where(p => session.Routes.Allows(p.Route)).ToList();
+        session.Run = Auth.CallerContext.RunDetached(() => RunAddressProbeAsync(session, enteredAddress, allowed, expectedSerial, session.Scan.Token, session.Stop.Token));
         return session.Handle;
     }
 
@@ -234,9 +245,9 @@ public sealed class DiscoveryService : IAsyncDisposable
         _dnsLimit.Dispose();
     }
 
-    private Session CreateSession(DiscoverySessionKind kind)
+    private Session CreateSession(DiscoverySessionKind kind, DiscoveryRoutes? routes)
     {
-        var session = new Session(new DiscoverySession(Guid.NewGuid().ToString("N"), kind));
+        var session = new Session(new DiscoverySession(Guid.NewGuid().ToString("N"), kind)) { Routes = routes ?? DiscoveryRoutes.All };
         _sessions[session.Handle.Id] = session;
         DiscoveryLog.SessionStarted(_logger, session.Handle.Id, kind);
         return session;
@@ -267,8 +278,13 @@ public sealed class DiscoveryService : IAsyncDisposable
             }
         }
 
-        var browsers = new List<Task> { BrowseLocalAsync(session, options, Seen, scan) };
-        browsers.AddRange(OnlineSites().Select(site => Task.Run(() => BrowseSiteAsync(session, site, Seen, scan), CancellationToken.None)));
+        var browsers = new List<Task>();
+        if (session.Routes.Local)
+        {
+            browsers.Add(BrowseLocalAsync(session, options, Seen, scan));
+        }
+
+        browsers.AddRange(OnlineSites(session.Routes).Select(site => Task.Run(() => BrowseSiteAsync(session, site, Seen, scan), CancellationToken.None)));
         try
         {
             await Task.WhenAll(browsers).ConfigureAwait(false);
@@ -422,7 +438,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     private async Task RunRangeScanAsync(Session session, Ipv4Range range, RangeScanOptions? options, CancellationToken scan, CancellationToken ct)
     {
         // The server's own network and every online site that reaches the range: one progress over all of them.
-        var sites = OnlineSites().Where(site => Reaches(site, range)).ToList();
+        var sites = OnlineSites(session.Routes).Where(site => Reaches(site, range)).ToList();
         var parts = new int[1 + sites.Count];
         var progressLock = new Lock();
         void Report(int part, int percent)
@@ -451,7 +467,8 @@ public sealed class DiscoveryService : IAsyncDisposable
             }
         }
 
-        var scans = new List<Task> { ScanLocalAsync(session, range, options, p => Report(0, p), scan) };
+        // The server's own network only when the session may look there (else its part is done at once).
+        var scans = new List<Task> { session.Routes.Local ? ScanLocalAsync(session, range, options, p => Report(0, p), scan) : Task.Run(() => Report(0, 100), CancellationToken.None) };
         scans.AddRange(sites.Select((site, i) => ScanSiteAsync(session, site, range, options ?? new RangeScanOptions(), p => Report(i + 1, p), scan)));
         try
         {
@@ -800,6 +817,9 @@ public sealed class DiscoveryService : IAsyncDisposable
         private bool _completed;
 
         public DiscoverySession Handle { get; } = handle;
+
+        /// <summary>Where the session may look.</summary>
+        public DiscoveryRoutes Routes { get; init; } = DiscoveryRoutes.All;
 
         private CancellationTokenSource? _limit;
 

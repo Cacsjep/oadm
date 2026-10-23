@@ -13,6 +13,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the
   upgrade every user keeps all devices. Such a user sees and runs tasks only on the devices of the group; a queued task
   whose device left the group fails before it starts.
+- Device groups: a user with a group finds and adds devices only at the sites of the group, and only with the passwords
+  they enter (never the credential list). The waiting list shows each user the devices of their sites.
 - Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
   single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
 - Device groups: the device list, live video, the web interface and the Sites page show only the devices and sites of

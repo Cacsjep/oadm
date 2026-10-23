@@ -185,6 +185,29 @@ stored; RetryAuth credentials travel only client -> server and are kept in serve
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
 background as before.
 
+**Device groups** (docs/spec/device-scope.md, Decisions "New devices"): the server builds an `AddReach` from the caller
+(`Oadm.Server.AddDevices.AddReach`): a user with all devices adds everywhere as before; a user with a device group
+discovers and adds only at the sites of the group (`DiscoveryRoutes`: zero-conf, the range scan and address probes on the
+server's own network only with "This server", sites outside the group are never asked) and only devices that land inside
+the group (an excepted serial is not added); a group of tags or single devices only cannot add ("Your device group has no
+site, so you cannot add devices.", `AddDeviceTexts.CannotAdd`, also for keeping devices waiting). Sessions belong to the
+user who started them (`DiscoverySessionOwners`, kept 30 minutes after the last use; `CoreDiscoveryBackend.FindDiscovered`
+finds only the session's own devices). The credential list is never tried for a group user (Retry and lines of a file use
+only what was typed; without anything typed: "No password was entered yet. Log in once."). A managed device outside the
+caller's devices is only "already added" (no model, address or names). Every new device stores who added it
+(`Device.AddedByAllDevices`, `AddedByGroupId`: Commit, the waiting list, the automatic add of core plugins as all
+devices); the groups it entered are audited "Entered device group" (target the group, detail "3 devices (added): ...",
+`DeviceGroupMembership`, one entry per group), a device that moves to another route "Left device group" / "Entered device
+group" ("moved"). The waiting list is scoped by site (`WaitingScope`: the group's sites, the entries for everywhere with
+"This server" and the user's own entries for everywhere; ids outside: NOT_FOUND "Some of these devices are no longer
+waiting.", a line of another site: NOT_FOUND; a line without a site of a group with one site and without "This server"
+waits for that site). Each entry stores who kept it (`QueuedByUserId`); a round tries it as that user is now (routes,
+no credential list for a group, inside the group, tags any group uses left out), an entry whose user cannot add there any
+more is not tried and nothing is sent ("Not added: the user who kept it cannot add devices here.", held until Try now);
+an entry kept before device groups (no user id) is tried as before. Tests `AddDevicesScopeTests`, `CanaryTests`,
+`WaitingDeviceStoreTests` (+ Perf 30,000 entries per scope), `DeviceGroupMembershipTests` (+ Perf 30,000 devices x 200
+groups), `DiscoverySitesTests`.
+
 **Device limit**: one server manages at most 30,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
 `TooManyDevicesText`). `DeviceRepository.AddAsync` refuses an add over it (`DeviceLimitException`; adds are serialized), so
 every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored; the add page

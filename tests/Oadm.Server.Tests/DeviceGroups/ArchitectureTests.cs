@@ -29,8 +29,6 @@ public sealed partial class ArchitectureTests
     /// </summary>
     internal static readonly Dictionary<string, string> GrpcAllowList = new(StringComparer.Ordinal)
     {
-        ["AddDevicesGrpcService(DeviceRepository)"] = "converted in add-devices",
-        ["DiscoveryGrpcService(DeviceRepository)"] = "converted in add-devices",
     };
 
     /// <summary>
@@ -115,15 +113,10 @@ public sealed partial class ArchitectureTests
     /// <summary>Service methods with raw device ids that a later package converts (type.method → package).</summary>
     internal static readonly Dictionary<string, string> NotConvertedServiceMethods = new(StringComparer.Ordinal)
     {
-        ["DevicePollingService.QueueRefresh"] = "add-devices",
         ["DeviceTagStore.SetDeviceTagsAsync"] = "shared-core",
         ["ActionRunner.TestAsync"] = "shared-core",
         ["ComplianceService.ListChoicesAsync"] = "shared-core",
         ["EventLog.Write"] = "shared-core",
-        ["DevicePollingService.IsRefreshQueued"] = "add-devices",
-        ["DevicePollingService.LastFullRefresh"] = "add-devices",
-        ["DevicePollingService.PollAsync"] = "add-devices",
-        ["DevicePollingService.RefreshAsync"] = "add-devices",
     };
 
     private static bool IsRawDeviceIds(ParameterInfo parameter)

@@ -467,6 +467,7 @@ public static partial class OadmServerHost
             sp.GetService<Core.Sites.ISiteNetwork>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
         services.AddSingleton<DiscoveryAuthenticator>();
+        services.AddSingleton<DiscoverySessionOwners>(); // add page sessions belong to the user who started them
         // Adding devices: the add page's Commit and the automatic add of core plugins (DHCP server) share DeviceAdder.
         services.AddSingleton<DeviceAdder>();
         services.AddSingleton<DeviceAutoAddService>();

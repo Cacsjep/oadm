@@ -75,6 +75,38 @@ public sealed class WaitingDevice
     public override string ToString() => $"WaitingDevice {Id} ({Address})";
 }
 
+/// <summary>
+/// The entries of the waiting list a user sees and changes (docs/spec/device-scope.md, Decisions "New devices": the waiting
+/// list is scoped by site). A user with all devices: every entry. A user with a device group: the entries of the group's
+/// sites, the entries for everywhere when the group has "This server", and the entries for everywhere the user kept.
+/// </summary>
+/// <param name="All">Every entry.</param>
+/// <param name="Local">The group has "This server".</param>
+/// <param name="Sites">The group's sites.</param>
+/// <param name="UserId">The user (their own entries for everywhere).</param>
+public sealed record WaitingScope(bool All, bool Local, IReadOnlySet<Guid> Sites, Guid? UserId)
+{
+    /// <summary>Every entry (users with all devices).</summary>
+    public static WaitingScope Everything { get; } = new(true, true, new HashSet<Guid>(), null);
+
+    /// <summary>True when the entry of <paramref name="siteId"/> kept by <paramref name="queuedBy"/> is in the scope.</summary>
+    public bool Covers(Guid? siteId, Guid? queuedBy) =>
+        All || (siteId is { } site ? Sites.Contains(site) : Local || (UserId is { } user && queuedBy == user));
+
+    internal IQueryable<WaitingDevice> Apply(IQueryable<WaitingDevice> query)
+    {
+        if (All)
+        {
+            return query;
+        }
+
+        var sites = Sites.Select(s => (Guid?)s).ToList();
+        var local = Local;
+        var user = UserId;
+        return query.Where(w => w.SiteId == null ? local || (user != null && w.QueuedByUserId == user) : sites.Contains(w.SiteId));
+    }
+}
+
 /// <summary>A line to keep waiting; the password stays in server memory until it is stored encrypted.</summary>
 /// <param name="SiteId">The import's Site column: only tried through this site; null = everywhere.</param>
 public sealed record WaitingLine(string Address, string? ExpectedSerial, string? UserName, string? Password, IReadOnlyList<string> Tags, Guid? SiteId = null)
@@ -113,7 +145,8 @@ public sealed record WaitingTry(
     string Source,
     string AddedBy,
     DateTime Kept,
-    Guid? SiteId = null)
+    Guid? SiteId = null,
+    Guid? QueuedByUserId = null)
 {
     public override string ToString() => $"WaitingTry {{ Id = {Id}, Address = {Address}, Login = {(Login is null ? "none" : "***")} }}";
 }
@@ -196,7 +229,16 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
     /// as new (login failed cleared, kept time renewed). One transaction.
     /// </summary>
     /// <exception cref="WaitingListFullException">The list would hold more than <see cref="MaxEntries"/>; nothing was stored.</exception>
-    public async Task<WaitingAddResult> AddAsync(IReadOnlyList<WaitingLine> lines, string source, string addedBy, CancellationToken ct)
+    public Task<WaitingAddResult> AddAsync(IReadOnlyList<WaitingLine> lines, string source, string addedBy, CancellationToken ct) =>
+        AddAsync(lines, source, addedBy, null, ct);
+
+    /// <inheritdoc cref="AddAsync(IReadOnlyList{WaitingLine}, string, string, CancellationToken)"/>
+    /// <param name="lines">The lines.</param>
+    /// <param name="source">Where they came from.</param>
+    /// <param name="addedBy">The name of the user who keeps them.</param>
+    /// <param name="queuedBy">The id of that user: a try checks the devices of that user at the time of the try.</param>
+    /// <param name="ct">Cancellation.</param>
+    public async Task<WaitingAddResult> AddAsync(IReadOnlyList<WaitingLine> lines, string source, string addedBy, Guid? queuedBy, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(lines);
         var now = time.GetUtcNow().UtcDateTime;
@@ -247,6 +289,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
                 row.Tags = [.. line.Tags];
                 row.Source = source;
                 row.AddedBy = Cut(addedBy, 64);
+                row.QueuedByUserId = queuedBy;
                 row.LoginFailed = false;
                 row.Held = false;
                 row.Tries = 0;
@@ -272,23 +315,59 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
     }
 
     /// <summary>How many there are and how many wait for a login (not tried by themselves).</summary>
-    public async Task<(int Count, int LoginFailed)> CountsAsync(CancellationToken ct)
+    public Task<(int Count, int LoginFailed)> CountsAsync(CancellationToken ct) => CountsAsync(WaitingScope.Everything, ct);
+
+    /// <summary>How many entries of <paramref name="scope"/> there are and how many of them wait for a login.</summary>
+    public async Task<(int Count, int LoginFailed)> CountsAsync(WaitingScope scope, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(scope);
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var count = await db.WaitingDevices.CountAsync(ct).ConfigureAwait(false);
-        var failed = await db.WaitingDevices.CountAsync(w => w.LoginFailed, ct).ConfigureAwait(false);
+        var rows = scope.Apply(db.WaitingDevices.AsNoTracking());
+        var count = await rows.CountAsync(ct).ConfigureAwait(false);
+        var failed = await rows.CountAsync(w => w.LoginFailed, ct).ConfigureAwait(false);
         return (count, failed);
+    }
+
+    /// <summary>The ids of <paramref name="ids"/> that exist and are in <paramref name="scope"/> (one query per 500 ids).</summary>
+    public async Task<IReadOnlySet<Guid>> InScopeAsync(IReadOnlyCollection<Guid> ids, WaitingScope scope, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(scope);
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var found = new HashSet<Guid>();
+        foreach (var chunk in ids.Distinct().Chunk(500))
+        {
+            found.UnionWith(await scope.Apply(db.WaitingDevices.AsNoTracking()).Where(w => chunk.Contains(w.Id)).Select(w => w.Id).ToListAsync(ct).ConfigureAwait(false));
+        }
+
+        return found;
+    }
+
+    /// <summary>The ids of every entry of <paramref name="scope"/>.</summary>
+    public async Task<IReadOnlyList<Guid>> IdsAsync(WaitingScope scope, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await scope.Apply(db.WaitingDevices.AsNoTracking()).Select(w => w.Id).ToListAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// A page in address order, after the address <paramref name="after"/> (null: from the start). A cursor, not an offset:
     /// entries removed while the client reads the pages (a round adds devices) never make it skip or repeat one.
     /// </summary>
-    public async Task<WaitingPage> ListAsync(string? after, int limit, CancellationToken ct)
+    public Task<WaitingPage> ListAsync(string? after, int limit, CancellationToken ct) => ListAsync(after, limit, WaitingScope.Everything, ct);
+
+    /// <inheritdoc cref="ListAsync(string?, int, CancellationToken)"/>
+    /// <param name="after">The cursor.</param>
+    /// <param name="limit">The page size (0: every entry).</param>
+    /// <param name="scope">Only the entries of this scope (the total too).</param>
+    /// <param name="ct">Cancellation.</param>
+    public async Task<WaitingPage> ListAsync(string? after, int limit, WaitingScope scope, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(scope);
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var total = await db.WaitingDevices.CountAsync(ct).ConfigureAwait(false);
-        var query = db.WaitingDevices.AsNoTracking();
+        var query = scope.Apply(db.WaitingDevices.AsNoTracking());
+        var total = await query.CountAsync(ct).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(after))
         {
 #pragma warning disable CA1309 // translated to SQL: SQLite compares TEXT byte by byte (ordinal)
@@ -335,7 +414,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         }
 
         return rows.OrderBy(r => r.LastTryUtc ?? DateTime.MinValue).ThenBy(r => r.CreatedUtc)
-            .Select(r => new WaitingTry(r.Id, r.Address, r.ExpectedSerial, Decrypt(r), r.Tags, r.Source, r.AddedBy, r.CreatedUtc, r.SiteId)).ToList();
+            .Select(r => new WaitingTry(r.Id, r.Address, r.ExpectedSerial, Decrypt(r), r.Tags, r.Source, r.AddedBy, r.CreatedUtc, r.SiteId, r.QueuedByUserId)).ToList();
     }
 
     /// <summary>Whether the entry still exists as a try read it (not removed, not kept again since).</summary>
@@ -393,9 +472,16 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
     }
 
     /// <summary>Removes entries (<paramref name="all"/>: every entry). Returns how many were removed.</summary>
-    public async Task<int> RemoveAsync(IReadOnlyCollection<Guid> ids, bool all, CancellationToken ct)
+    public Task<int> RemoveAsync(IReadOnlyCollection<Guid> ids, bool all, CancellationToken ct) => RemoveAsync(ids, all, WaitingScope.Everything, ct);
+
+    /// <summary>
+    /// Removes entries of <paramref name="scope"/> (<paramref name="all"/>: every entry of it; ids outside it are left alone,
+    /// the caller refuses them first). Returns how many were removed.
+    /// </summary>
+    public async Task<int> RemoveAsync(IReadOnlyCollection<Guid> ids, bool all, WaitingScope scope, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(scope);
         int removed;
         await _write.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -403,14 +489,14 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             if (all)
             {
-                removed = await db.WaitingDevices.ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                removed = await scope.Apply(db.WaitingDevices).ExecuteDeleteAsync(ct).ConfigureAwait(false);
             }
             else
             {
                 removed = 0;
                 foreach (var chunk in ids.Distinct().Chunk(500))
                 {
-                    removed += await db.WaitingDevices.Where(w => chunk.Contains(w.Id)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                    removed += await scope.Apply(db.WaitingDevices).Where(w => chunk.Contains(w.Id)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
                 }
             }
         }

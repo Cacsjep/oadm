@@ -69,6 +69,9 @@ public sealed record DeviceAuthResult(
 /// (sessions expire <see cref="SessionLifetime"/> after their last use) together with the
 /// credential that worked, which <see cref="AddDevicesGrpcService.Commit"/> stores for the new
 /// device. Passwords stay in server memory and the database; results carry only user names.
+/// <para>The credential list is tried only in sessions that allow it (<see cref="AllowCredentialList"/>: a user with all
+/// devices, the server itself); a session of a user with a device group tries only the credentials typed for it
+/// (docs/spec/device-scope.md, Decisions "Credential list"). Fail closed: a session allows nothing by itself.</para>
 /// </summary>
 public sealed partial class DiscoveryAuthenticator : IDisposable
 {
@@ -306,6 +309,15 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     }
 
     /// <summary>
+    /// The automatic login of the session may try the credential list (a user with all devices, the server itself). Call it
+    /// before the first device of the session is seen; without it the session tries only credentials typed for it.
+    /// </summary>
+    public void AllowCredentialList(string sessionId) => Session(sessionId).UsesCredentialList = true;
+
+    /// <summary>Whether the session may try the credential list.</summary>
+    public bool UsesCredentialList(string sessionId) => _sessions.TryGetValue(sessionId, out var session) && session.UsesCredentialList;
+
+    /// <summary>
     /// The device a probe session expects (the MAC address of an AXIS Device Manager export line): a device with another
     /// serial is not logged in to at all, so neither the line's password nor the credential list reaches it.
     /// </summary>
@@ -367,6 +379,11 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// <summary>Entered credentials first (they just worked on a device of the page), then the known ones.</summary>
     private async Task<IReadOnlyList<Candidate>> AllCandidatesAsync(AuthSession session)
     {
+        if (!session.UsesCredentialList)
+        {
+            return session.Entered(); // a user with a device group: only what was typed for this session
+        }
+
         var known = await session.CandidatesAsync(LoadCandidatesAsync).ConfigureAwait(false);
         return [.. session.Entered(), .. known];
     }
@@ -443,7 +460,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// <summary>A credential was added to (or removed from) the list: reload it and try new ones on failed devices.</summary>
     private void OnCredentialListChanged(object? sender, EventArgs e)
     {
-        foreach (var session in _sessions.Values)
+        foreach (var session in _sessions.Values.Where(s => s.UsesCredentialList))
         {
             session.ResetCandidates();
             session.Track(Core.Auth.CallerContext.RunDetached(() => StartFollowUpsAsync(session)));
@@ -480,6 +497,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                     {
                         var detail = entry.Attempts switch
                         {
+                            0 when !session.UsesCredentialList => NoTypedCredentialsText,
                             0 => "No known credentials. Log in once, or add credentials on the Credentials page.",
                             1 => "The known credential did not work.",
                             _ => string.Create(CultureInfo.InvariantCulture, $"None of the {entry.Attempts} known credentials worked."),
@@ -797,6 +815,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
 
     private const string NotAxisText = "The device did not identify itself as an Axis device. No password was sent.";
 
+    /// <summary>A session without the credential list (a user with a device group) and nothing typed yet.</summary>
+    public const string NoTypedCredentialsText = "No password was entered yet. Log in once.";
+
     private enum AttemptKind
     {
         Ok,
@@ -877,6 +898,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
 
         /// <summary>The only device that may get a password in this session (an export line's MAC address); null = any.</summary>
         public string? ExpectedSerial { get; set; }
+
+        /// <summary>The credential list may be tried (a user with all devices, the server); false = only typed credentials.</summary>
+        public bool UsesCredentialList { get; set; }
 
         public event Action<string>? Changed;
 

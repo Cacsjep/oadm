@@ -93,7 +93,13 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   scan_finished and the stream ends once every login of the session finished; watching a finished
   session again replays its devices with their current login result, then streams the logins still
   running), `StopScan` (ends the scan early, the session and its devices stay; unknown ids ignored),
-  `Stop` (forgets the session; the add page calls it on close).
+  `Stop` (forgets the session; the add page calls it on close). Through the caller (docs/spec/device-scope.md): a session
+  belongs to the user who started it (`DiscoverySessionOwners`; another user's id: NOT_FOUND for Watch, ignored by StopScan
+  and Stop); a user with a device group looks only at the group's sites (the server's own network only with "This
+  server", `DiscoveryRoutes`), an import's Site column outside the group is "There is no site named X.", a group of tags or
+  single devices only gets PERMISSION_DENIED "Your device group has no site, so you cannot add devices."
+  (`AddDeviceTexts.CannotAdd`); a managed device outside the caller's devices is sent with only its id, entered address
+  and ALREADY_ADDED.
 - `AddDevicesService`: `RetryAuth(session_id, discovered_id, user_name, password,
   save_to_credential_list, related_session_ids = 6)` (returns the updated DiscoveredDevice, also pushed
   to the stream; on success the credential is tried on the failed devices of the session and of the
@@ -102,7 +108,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `Commit(session_id, discovered_ids, initial_passwords map = 6, initial_root_password, use_host_name = 3)` (the page's
   "Use DNS names instead of IP addresses"; reply:
   `device_ids`, `results = 3` with discovered_id, device_id, status), `Prepare` (legacy, unused).
-  See "Add Devices Page".
+  All three take only the caller's own sessions and devices on the caller's routes (else NOT_FOUND), refuse a group of
+  tags or single devices only (PERMISSION_DENIED); `related_session_ids` of other users are left out; Commit adds for a
+  user with a device group only devices that land inside the group (an excepted serial: no device id in its result) and
+  stores who added them (`AddedByAllDevices`, `AddedByGroupId`). See "Add Devices Page".
 - `TaskService`: `ListTaskPlugins(ListTaskPluginsRequest)` (context-menu entries incl. those contributed by Core
   plugins; `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty; runnable sets
   cached by `TaskPluginRunnableCache` per device-table version, at most 10 s old; with `compact = 1` a
