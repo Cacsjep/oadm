@@ -155,7 +155,8 @@ has the app, with five count cards (Good, Detected, Pending, Detection off, Erro
   credentials); only on request and for the chosen cameras (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
   cameras at a time, 3 s each; a stopped app stays as **Not running**; a detection turned off is no problem (the camera
-  counts as Good); refused statuses without a request. Methods `check` and `getState` are Operator.
+  counts as Good); refused statuses without a request. Methods `check` and `getState` are Operator. One table per device
+  scope: a group user checks and sees only the group's cameras, chosen ids outside it are refused whole (NOT_FOUND).
 - Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (+ read-only hardware test `ImageHealthHardwareTests`). Not in fake mode.
 
 ## I/O Monitor (core plugin)

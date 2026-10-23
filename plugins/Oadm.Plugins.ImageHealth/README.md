@@ -50,8 +50,14 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
   network text of `DeviceMessages`); 404 = without the app (counted, row removed); devices removed from OADM leave.
   `ChangedUtc` = when a detection changed between two answers of the running app. Events (500 ms): `rows`
   ({rows, removed}) and `state` (checking, checked, total, running, notRunning, withoutApp, failed, checkedUtc).
-  `withoutApp` counts the cameras of the last check only. The rows are shared by every page; a page keeps the rows of its
-  own cameras (`SweepRows.Scope`).
+  `withoutApp` counts the cameras of the last check only. The rows are shared by every page of the same device scope; a
+  page keeps the rows of its own cameras (`SweepRows.Scope`).
+- **Device groups** (SDK 0.4.0, `minSdkVersion` 0.4.0): one table per device scope (`DeviceSweeps<ImageHealthRow>`):
+  the users of a device group share the table of their group's cameras, users with all devices the table of every
+  camera. `check` refuses the whole choice when any id is outside the caller's devices (NOT_FOUND "1 device is no longer
+  available.", the same as an unknown id, nothing read); no payload = the caller's video devices. `rows` and `state` go
+  only to the users of that scope (`PluginEventAudience.DeviceScope`). A deleted group has no table (empty state). The
+  reads are background work of the sweep (the context's VAPIX clients over the scope's devices).
 - **Page** (`HasOwnCards`, subtitle "AXIS Image Health Analytics on the chosen cameras."): a row of five count cards
   (`ui:StatCard`): **Good** (ok, "of 12 cameras"), **Detected** (error), **Pending** (warning),
   **Detection off** (neutral), each with "Blur 2 · Block 1", and **Errors** (error, "1 not running · 2 could not be
@@ -65,7 +71,7 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
   App (Running ok, Not running red, Checking accent, error text red). Empty: "No camera has AXIS Image Health
   Analytics." Rows updated in place by device id; search, new and removed rows one reset (O(n), 5,000 tested).
 - Not in fake mode yet.
-- Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (the three recorded answers, disabled / unsuitable / other values,
+- Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (`DeviceGroupTests`: the plugin canary, one table per group; the three recorded answers, disabled / unsuitable / other values,
   check lifecycle: no request without a check, only the chosen cameras (first check, Refresh and Auto refresh; nothing
   before a choice; the choice remembered), Not running, removed app, changes timed, one check at a time, 24 at a
   time with 200 cameras, failures; view model: one check on show, Auto refresh off by default and only while shown,
