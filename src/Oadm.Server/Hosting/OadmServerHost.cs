@@ -364,8 +364,33 @@ public static partial class OadmServerHost
                 sp.GetService<Core.Sites.ISiteRelays>(),
                 sp.GetService<Sdk.Network.IFirewallRules>(),
                 sp.GetRequiredService<TimeProvider>()),
-            services: sp.GetRequiredService<PluginServiceRegistry>()));
+            services: sp.GetRequiredService<PluginServiceRegistry>(),
+            jobs: sp.GetRequiredService<PluginJobRegistry>(),
+            deviceScopes: sp.GetRequiredService<HostDeviceScopes>()));
         services.AddSingleton<PluginServiceRegistry>();
+        services.AddSingleton<HostDeviceScopes>();
+        services.AddSingleton(sp =>
+        {
+            // Jobs belong to their user's session and access: they end when the user's devices or role change, when the
+            // session ends (logout) and when the user's sessions end (disabled, deleted, new password).
+            var jobs = new PluginJobRegistry(sp.GetRequiredService<ILogger<PluginJobRegistry>>());
+            var users = sp.GetRequiredService<Core.Auth.UserStore>();
+            users.UserDeviceAccessChanged += (_, userId) => jobs.CancelOwner(userId);
+            users.UserRoleChanged += (_, userId) => jobs.CancelOwner(userId);
+            sp.GetRequiredService<Core.Auth.AuthTokenStore>().SessionsEnded += (_, ended) =>
+            {
+                if (ended.UserId is { } userId)
+                {
+                    jobs.CancelOwner(userId);
+                }
+
+                if (ended.TokenHash is { } hash)
+                {
+                    jobs.CancelSession(Core.Auth.SessionIds.Of(hash));
+                }
+            };
+            return jobs;
+        });
 
         // Compliance checks (host and plugin types); their events go to the event rules.
         services.AddSingleton<Core.Compliance.ComplianceCatalog>();

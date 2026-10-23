@@ -1,8 +1,11 @@
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Plugins;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
 
@@ -15,10 +18,17 @@ namespace Oadm.Server.Plugins;
 /// the method (<see cref="CorePluginHost.AccessOf"/>, PERMISSION_DENIED) and writes audited calls to the audit log;
 /// Download (<see cref="ICorePluginDownloads"/>) checks and audits like Invoke and streams the file uncompressed;
 /// Watch and ListCorePlugins follow the page's "show" permission. ListPackages / SetPackageEnabled: the Plugins page
-/// (<see cref="PluginActivation"/>).
+/// (<see cref="PluginActivation"/>). Invoke, Download and Watch run with the caller's call (<see cref="PluginCaller"/>: the
+/// user and the user's device view, docs/spec/device-scope.md, Plugins): a user with a device group reaches only packages
+/// built for the call context, never the methods a plugin keeps for users with all devices, and receives only the events
+/// whose audience covers the user.
 /// </summary>
-public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses) : Proto.PluginService.PluginServiceBase
+public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views) : Proto.PluginService.PluginServiceBase
 {
+    /// <summary>The caller of the call with the caller's device view.</summary>
+    private async Task<PluginCaller> CallerAsync(ServerCallContext context) =>
+        new(Auth.AuthInterceptor.CallerOf(context), await views.ForAsync(context).ConfigureAwait(false));
+
     public override async Task<Proto.PluginPackageList> SetPackageLicense(Proto.SetPackageLicenseRequest request, ServerCallContext context)
     {
         if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.License))
@@ -176,10 +186,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
     public override Task<Proto.CorePluginList> ListCorePlugins(Proto.Empty request, ServerCallContext context)
     {
         // A page the caller's role may not show is left out (no rail entry); plugins without a page stay (toolbar parts).
+        // A user with a device group gets no page of a package older than the call context (its methods are refused).
         var caller = Auth.AuthInterceptor.CallerOf(context); // fail closed: never "no caller = every page"
         var reply = new Proto.CorePluginList();
         reply.Plugins.AddRange(registry.CorePlugins
             .Where(p => host.ShowPermissionOf(p.Id) is not { } show || caller.Has(show))
+            .Where(p => caller.HasAllDevices || p.Origin.SupportsCallContext)
             .Select(Mappers.ToProto));
         return Task.FromResult(reply);
     }
@@ -202,9 +214,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             Auth.AuthInterceptor.Require(show, roles.Catalog);
         }
 
+        var caller = await CallerAsync(context).ConfigureAwait(false);
+        PluginCallRules.RequireCallable(caller, registered.Origin);
+        var watcher = PluginWatcher.Of(caller);
         try
         {
-            await foreach (var item in host.Events.WatchAsync(registered.Id, context.CancellationToken).ConfigureAwait(false))
+            await foreach (var item in host.Events.WatchAsync(registered.Id, watcher, context.CancellationToken).ConfigureAwait(false))
             {
                 await responseStream.WriteAsync(new Proto.PluginEvent
                 {
@@ -231,10 +246,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         }
 
         var access = Authorize(request);
+        var caller = await CallerAsync(context).ConfigureAwait(false);
         PluginDownload download;
         try
         {
             download = await host.OpenDownloadAsync(
+                caller,
                 request.PluginId,
                 request.Method,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
@@ -316,6 +333,8 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
 
     private static RpcException ToRpc(string pluginId, Exception ex) => ex switch
     {
+        DevicesNotAvailableException notAvailable => Auth.AuthInterceptor.NotAvailable(notAvailable),
+        DeviceAccessRefusedException refused => Auth.AuthInterceptor.Refused(refused),
         KeyNotFoundException => GrpcGuard.NotFound(ex.Message),
         InvalidOperationException => GrpcGuard.FailedPrecondition(ex.Message),
         ArgumentException => GrpcGuard.InvalidArgument(ex.Message),
@@ -330,9 +349,11 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         }
 
         var access = Authorize(request);
+        var caller = await CallerAsync(context).ConfigureAwait(false);
         try
         {
             var result = await host.InvokeAsync(
+                caller,
                 request.PluginId,
                 request.Method,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,

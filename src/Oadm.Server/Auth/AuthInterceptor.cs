@@ -17,7 +17,8 @@ namespace Oadm.Server.Auth;
 /// <see cref="ServerCallContext.UserState"/> (<see cref="CallerOf"/>, the explicit way) and in <see cref="CallerContext"/>
 /// (the backstop). Streaming calls are registered in <see cref="CallerStreams"/>, which ends them when a role or device
 /// change no longer allows them. A <see cref="DevicesNotAvailableException"/> of any service answers NOT_FOUND with its
-/// message ("3 devices are no longer available.").
+/// message ("3 devices are no longer available."), a <see cref="Sdk.Plugins.DeviceAccessRefusedException"/> (plugin code a
+/// user with a device group may not reach) PERMISSION_DENIED.
 /// </summary>
 public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore roles, CallerStreams streams, DeviceViewFactory views, ILogger<AuthInterceptor> logger) : Interceptor
 {
@@ -46,6 +47,10 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         {
             throw NotAvailable(ex);
         }
+        catch (Sdk.Plugins.DeviceAccessRefusedException ex)
+        {
+            throw Refused(ex);
+        }
     }
 
     public override async Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream, ServerCallContext context, ClientStreamingServerMethod<TRequest, TResponse> continuation)
@@ -61,6 +66,10 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         catch (DevicesNotAvailableException ex)
         {
             throw NotAvailable(ex);
+        }
+        catch (Sdk.Plugins.DeviceAccessRefusedException ex)
+        {
+            throw Refused(ex);
         }
     }
 
@@ -78,6 +87,10 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         {
             throw NotAvailable(ex);
         }
+        catch (Sdk.Plugins.DeviceAccessRefusedException ex)
+        {
+            throw Refused(ex);
+        }
     }
 
     public override async Task DuplexStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream, IServerStreamWriter<TResponse> responseStream, ServerCallContext context, DuplexStreamingServerMethod<TRequest, TResponse> continuation)
@@ -94,6 +107,10 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         {
             throw NotAvailable(ex);
         }
+        catch (Sdk.Plugins.DeviceAccessRefusedException ex)
+        {
+            throw Refused(ex);
+        }
     }
 
     /// <summary>NOT_FOUND with the shared text: the answer for unknown devices and for devices outside the caller's view.</summary>
@@ -101,6 +118,13 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
     {
         ArgumentNullException.ThrowIfNull(ex);
         return new RpcException(new Status(StatusCode.NotFound, ex.Message));
+    }
+
+    /// <summary>PERMISSION_DENIED with the refusal's text: plugin code a user with a device group may not reach.</summary>
+    public static RpcException Refused(Sdk.Plugins.DeviceAccessRefusedException ex)
+    {
+        ArgumentNullException.ThrowIfNull(ex);
+        return new RpcException(new Status(StatusCode.PermissionDenied, ex.Message));
     }
 
     /// <summary>

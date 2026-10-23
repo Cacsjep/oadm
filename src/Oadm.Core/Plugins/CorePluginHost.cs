@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
@@ -55,6 +56,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly Func<string, Sdk.Events.IEventSubscriptions>? _eventSubscriptions;
     private readonly Func<Sites.PluginNetworkScope>? _networks;
     private readonly PluginServiceRegistry? _services;
+    private readonly HostDeviceScopes? _deviceScopes;
+    private readonly CallTaskOwners _taskOwners = new();
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -78,7 +81,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         Func<string, Sdk.Events.IEventPublisher>? eventPublishers = null,
         Func<string, Sdk.Events.IEventSubscriptions>? eventSubscriptions = null,
         Func<Sites.PluginNetworkScope>? networks = null,
-        PluginServiceRegistry? services = null)
+        PluginServiceRegistry? services = null,
+        PluginJobRegistry? jobs = null,
+        HostDeviceScopes? deviceScopes = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -100,6 +105,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _eventSubscriptions = eventSubscriptions;
         _networks = networks;
         _services = services;
+        _deviceScopes = deviceScopes;
+        Jobs = jobs ?? new PluginJobRegistry();
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -107,6 +114,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
     /// <summary>Live events of the core plugins for their pages (<see cref="ICorePluginContext.Events"/>).</summary>
     public PluginEventHub Events { get; }
+
+    /// <summary>The jobs the core plugins started for their users (<see cref="ICorePluginContext.Jobs"/>).</summary>
+    public PluginJobRegistry Jobs { get; }
 
     public IReadOnlyList<CorePluginStatus> Statuses =>
         [.. _registry.CorePlugins.Select(c => GetStatus(c.Id))];
@@ -121,6 +131,11 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     /// <summary>Starts every registered core plugin that is not running yet, in registration order.</summary>
     public async Task StartAllAsync(CancellationToken ct)
     {
+        if (_deviceScopes is not null)
+        {
+            await _deviceScopes.LoadAsync(ct).ConfigureAwait(false);
+        }
+
         await _lifecycle.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -141,17 +156,22 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 await DisposeNetworkAsync(entry).ConfigureAwait(false);
                 entry.Network = _networks?.Invoke();
                 var siteSupport = registered.Origin.SiteSupport;
+                var guard = new PluginCallGuard(registered.Id, _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id));
+                entry.CallVapix = SiteSupportGuard.Guard(_vapix, _devices, siteSupport);
+                entry.CallEventStreams = SiteSupportGuard.Guard(_eventStreams, _devices, siteSupport);
+
+                // The context's full accesses refuse during the calls of users with a device group (PluginCallGuard).
                 var context = new CorePluginContext(
-                    _devices,
-                    SiteSupportGuard.Guard(_vapix, _devices, siteSupport),
-                    _tasks,
+                    guard.Devices(_devices),
+                    guard.Vapix(entry.CallVapix),
+                    guard.Tasks(_tasks),
                     _settings.GetSettings(registered.Id),
                     _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id),
                     registered.Origin.Directory,
                     _secrets,
                     Events.For(registered.Id),
                     _trustAnchors?.For(registered.Id),
-                    SiteSupportGuard.Guard(_eventStreams, _devices, siteSupport),
+                    guard.EventStreams(entry.CallEventStreams),
                     _firewall,
                     _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
                     _autoAdd,
@@ -165,6 +185,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     Services = _services?.For(registered.Id),
                     Records = _settings.GetRecords(registered.Id),
                     Sites = siteSupport == Sdk.Sites.SiteSupport.Full ? entry.Network?.Sites : null,
+                    System = new HostSystemAccess(guard, _devices, entry.CallVapix, _tasks, entry.CallEventStreams),
+                    Jobs = Jobs.For(registered.Id),
+                    DeviceScopes = _deviceScopes,
                 };
                 try
                 {
@@ -259,6 +282,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         entry.State = CorePluginState.Stopping;
         _services?.RemoveOwner(id); // nobody reaches a stopping plugin's services
+        Jobs.CancelPlugin(id); // a stopping plugin's jobs end
         try
         {
             await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
@@ -299,18 +323,48 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Routes a UI-page call to a running core plugin.
-    /// Throws <see cref="KeyNotFoundException"/> for an unknown plugin and
-    /// <see cref="InvalidOperationException"/> when it is not running. Exceptions thrown by the
-    /// plugin are logged and rethrown so the gRPC layer can map them to an error status.
+    /// Routes a user's page call to a running core plugin with the user's call (<see cref="ICallContext"/>,
+    /// docs/spec/device-scope.md, Plugins). Throws <see cref="KeyNotFoundException"/> for an unknown plugin and
+    /// <see cref="InvalidOperationException"/> when it is not running; for a user with a device group
+    /// <see cref="DeviceAccessRefusedException"/> before the plugin runs when the package is older than the call context or
+    /// the method is for users with all devices only (<see cref="ICorePlugin.RequiresAllDevices"/>). During the call the
+    /// context's full accesses refuse for such a user. Exceptions thrown by the plugin are logged and rethrown so the gRPC
+    /// layer can map them to an error status.
+    /// </summary>
+    public async Task<string?> InvokeAsync(PluginCaller caller, string pluginId, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        var (registered, entry) = RunningEntry(pluginId);
+        var (call, mark) = Prepare(caller, registered, entry, method);
+        try
+        {
+            using (CallerContext.UsePluginCall(mark))
+            {
+                return await registered.Plugin.InvokeAsync(call, method, payloadJson, ct).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not DeviceAccessRefusedException and not DevicesNotAvailableException)
+        {
+            LogInvokeFailed(ex, pluginId, method);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// A call without a user: in-process work of the host itself and tests (background work: the plugin's old overload, the
+    /// context's full accesses work). Never for a user's call; <c>PluginService</c> always passes the caller.
     /// </summary>
     public async Task<string?> InvokeAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
-        var plugin = RunningPlugin(pluginId);
+        var (registered, _) = RunningEntry(pluginId);
         try
         {
-            return await plugin.InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+            using (CallerContext.Suppress())
+            {
+                return await registered.Plugin.InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -320,30 +374,84 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Opens a file of a running core plugin (<see cref="ICorePluginDownloads"/>, gRPC PluginService.Download). Throws
-    /// like <see cref="InvokeAsync"/>; <see cref="NotSupportedException"/> for a plugin without downloads.
+    /// Opens a file of a running core plugin (<see cref="ICorePluginDownloads"/>, gRPC PluginService.Download) with the
+    /// user's call. Throws like <see cref="InvokeAsync"/>; <see cref="NotSupportedException"/> for a plugin without downloads.
     /// </summary>
-    public async Task<PluginDownload> OpenDownloadAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
+    public async Task<PluginDownload> OpenDownloadAsync(PluginCaller caller, string pluginId, string method, string? payloadJson, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
-        if (RunningPlugin(pluginId) is not ICorePluginDownloads downloads)
+        var (registered, entry) = RunningEntry(pluginId);
+        if (registered.Plugin is not ICorePluginDownloads downloads)
         {
             throw new NotSupportedException($"The plugin '{pluginId}' has no downloads.");
         }
 
+        var (call, mark) = Prepare(caller, registered, entry, method);
         try
         {
-            return await downloads.OpenDownloadAsync(method, payloadJson, ct).ConfigureAwait(false);
+            using (CallerContext.UsePluginCall(mark))
+            {
+                return await downloads.OpenDownloadAsync(call, method, payloadJson, ct).ConfigureAwait(false);
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not DeviceAccessRefusedException and not DevicesNotAvailableException)
         {
             LogInvokeFailed(ex, pluginId, method);
             throw;
         }
     }
 
+    /// <summary>
+    /// Whether <paramref name="caller"/> may use the plugin at all: always with all devices; with a device group only when
+    /// its package is built for the call context (<see cref="PluginOrigin.SupportsCallContext"/>). False for an unknown plugin.
+    /// </summary>
+    public bool IsCallable(PluginCaller caller, string pluginId)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return _registry.TryGetCorePlugin(pluginId, out var registered) && PluginCallRules.IsCallable(caller, registered.Origin);
+    }
+
+    /// <summary>
+    /// The user's call for the plugin and the mark of the call: refuses (before the plugin runs) what a user with a device
+    /// group may not call.
+    /// </summary>
+    private (ICallContext Call, PluginCallMark Mark) Prepare(PluginCaller caller, RegisteredCorePlugin registered, Entry entry, string method)
+    {
+        PluginCallRules.RequireCallable(caller, registered.Origin);
+        var systemAllowed = false;
+        if (!caller.HasAllDevices)
+        {
+            if (Answer(registered, method, p => p.RequiresAllDevices(method), fallback: true))
+            {
+                throw new DeviceAccessRefusedException(DeviceAccessRefusedException.AllDevicesOnly);
+            }
+
+            systemAllowed = !string.IsNullOrWhiteSpace(Answer(registered, method, p => p.SystemAccessReason(method), fallback: null));
+        }
+
+        var call = new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _taskOwners);
+        return (call, new PluginCallMark(registered.Id, method, caller.HasAllDevices, systemAllowed));
+    }
+
+    /// <summary>The plugin's answer, or <paramref name="fallback"/> when it throws (fail closed).</summary>
+    private T Answer<T>(RegisteredCorePlugin registered, string method, Func<ICorePlugin, T> ask, T fallback)
+    {
+        try
+        {
+            return ask(registered.Plugin);
+        }
+#pragma warning disable CA1031 // A broken plugin answer must not open the method.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogInvokeFailed(ex, registered.Id, method);
+            return fallback;
+        }
+    }
+
     /// <summary>The running plugin of <paramref name="pluginId"/>; KeyNotFound for an unknown one, InvalidOperation when off or stopped.</summary>
-    private ICorePlugin RunningPlugin(string pluginId)
+    private (RegisteredCorePlugin Registered, Entry Entry) RunningEntry(string pluginId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         if (!_registry.TryGetCorePlugin(pluginId, out var registered))
@@ -361,7 +469,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             throw new InvalidOperationException($"Core plugin '{pluginId}' is not running.");
         }
 
-        return entry.Plugin;
+        return (registered, entry);
     }
 
     /// <summary>
@@ -475,6 +583,12 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         /// <summary>The OADM PRO license of the current run; its handlers are dropped when the plugin stops or fails.</summary>
         public PluginProLicense? Pro;
+
+        /// <summary>The plugin's VAPIX factory without the guard (site rules applied): what the call contexts scope.</summary>
+        public IVapixClientFactory? CallVapix;
+
+        /// <summary>The plugin's event streams without the guard (site rules applied).</summary>
+        public IDeviceEventStreams? CallEventStreams;
     }
 }
 
@@ -545,6 +659,12 @@ internal sealed class CorePluginContext(
     public IPluginServices? Services { get; init; }
 
     public Sdk.Sites.ISites? Sites { get; init; }
+
+    public ISystemAccess System { get; init; } = null!;
+
+    public IPluginJobs? Jobs { get; init; }
+
+    public IDeviceScopes? DeviceScopes { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

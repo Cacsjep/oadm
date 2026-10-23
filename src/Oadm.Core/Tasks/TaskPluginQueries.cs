@@ -44,7 +44,24 @@ public sealed partial class TaskPluginQueries
     /// <summary>The routes of the devices for <c>ITaskQueryContext.Network</c>; null = the server's own network only.</summary>
     public Sites.DeviceNetworks? Networks { get; init; }
 
-    public async Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct)
+    /// <summary>A query without a user's call (system work, older callers): every managed device.</summary>
+    public Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct) =>
+        QueryCoreAsync(null, pluginId, deviceId, method, payloadJson, ct);
+
+    /// <summary>
+    /// A user's query (docs/spec/device-scope.md, Plugins): the device must be in the caller's view (unknown and outside
+    /// answer the same: NOT_FOUND "1 device is no longer available."), a user with a device group may query only packages
+    /// built for the call context (<see cref="DeviceAccessRefusedException"/>), and the plugin gets the call
+    /// (<see cref="ITaskPluginQuery.QueryAsync(ITaskQueryContext, ICallContext, IDeviceInfo, string, string?, CancellationToken)"/>)
+    /// with <see cref="ITaskQueryContext.Devices"/> limited to the view.
+    /// </summary>
+    public Task<string?> QueryAsync(PluginCaller caller, string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return QueryCoreAsync(caller, pluginId, deviceId, method, payloadJson, ct);
+    }
+
+    private async Task<string?> QueryCoreAsync(PluginCaller? caller, string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(method))
         {
@@ -61,13 +78,21 @@ public sealed partial class TaskPluginQueries
             throw new TaskQueryException(TaskQueryError.NotSupported, $"Task plugin '{pluginId}' does not support queries.");
         }
 
+        if (caller is not null)
+        {
+            PluginCallRules.RequireCallable(caller, registration.Origin);
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(Timeout);
         var token = timeout.Token;
         try
         {
-            var device = await _devices.FindAsync(deviceId, token).ConfigureAwait(false)
-                ?? throw new TaskQueryException(TaskQueryError.NotFound, DeviceMessages.Removed);
+            var device = caller is null
+                ? await _devices.FindAsync(deviceId, token).ConfigureAwait(false)
+                    ?? throw new TaskQueryException(TaskQueryError.NotFound, DeviceMessages.Removed)
+                : await caller.View.FindAsync(deviceId, token).ConfigureAwait(false)
+                    ?? throw new DevicesNotAvailableException();
             if (device.Status == DeviceStatus.CertificateChanged)
             {
                 throw new TaskQueryException(TaskQueryError.FailedPrecondition, DeviceMessages.CertificateChanged);
@@ -86,9 +111,19 @@ public sealed partial class TaskPluginQueries
             var vapix = await _vapix.CreateAsync(deviceId, token).ConfigureAwait(false);
             var logger = _loggerFactory.CreateLogger("Oadm.Plugins." + registration.Id);
             var network = (Networks ?? Sites.DeviceNetworks.Local).For(device);
-            return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network), device, method, payloadJson, token).ConfigureAwait(false);
+            if (caller is null)
+            {
+                return await query.QueryAsync(new QueryContext(vapix, logger, _devices, network), device, method, payloadJson, token).ConfigureAwait(false);
+            }
+
+            var call = PluginCallRules.CreateCall(caller, _vapix, NoTasks.Instance, null);
+            var devices = caller.HasAllDevices ? _devices : call.Devices;
+            using (Auth.CallerContext.UsePluginCall(PluginCallRules.MarkOf(caller, registration.Id, method)))
+            {
+                return await query.QueryAsync(new QueryContext(vapix, logger, devices, network), call, device, method, payloadJson, token).ConfigureAwait(false);
+            }
         }
-        catch (TaskQueryException)
+        catch (Exception ex) when (ex is TaskQueryException or DevicesNotAvailableException or DeviceAccessRefusedException)
         {
             throw;
         }
@@ -127,6 +162,15 @@ public sealed partial class TaskPluginQueries
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Query {Method} of task plugin {PluginId} failed for device {DeviceId}")]
     private partial void LogQueryFailed(Exception ex, string pluginId, string method, Guid deviceId);
+
+    /// <summary>A query reads; it never starts tasks.</summary>
+    private sealed class NoTasks : Sdk.Tasks.ITaskRunner
+    {
+        public static readonly NoTasks Instance = new();
+
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct) =>
+            throw new NotSupportedException("A query never starts tasks.");
+    }
 
     private sealed class QueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices, Sdk.Sites.IDeviceNetwork network) : ITaskQueryContext
     {

@@ -151,6 +151,7 @@ public sealed partial class PluginLoader
             var origin = new PluginOrigin(manifest.Id, manifest.Version, directory)
             {
                 DisplayName = string.IsNullOrWhiteSpace(manifest.DisplayName) ? manifest.Id : manifest.DisplayName.Trim(),
+                MinSdkVersion = manifest.MinSdkVersion,
                 EnabledByDefault = manifest.EnabledByDefault,
                 AlwaysOn = manifest.AlwaysOn,
                 Description = string.IsNullOrWhiteSpace(manifest.Description) ? null : manifest.Description.Trim(),
@@ -238,6 +239,15 @@ public sealed partial class PluginLoader
         var required = TryParseVersion(minSdkVersion);
         var host = TryParseVersion(SdkInfo.Version);
         return required is not null && host is not null && host >= required;
+    }
+
+    /// <summary>True when <paramref name="version"/> is a version and at least <paramref name="minimum"/>; false otherwise.</summary>
+    public static bool IsAtLeast(string? version, string minimum)
+    {
+        static Version? Full(Version? v) => v is null ? null : new Version(v.Major, v.Minor, Math.Max(0, v.Build), Math.Max(0, v.Revision));
+        var have = Full(TryParseVersion(version));
+        var need = Full(TryParseVersion(minimum));
+        return have is not null && need is not null && have >= need;
     }
 
     private static Version? TryParseVersion(string? value)
