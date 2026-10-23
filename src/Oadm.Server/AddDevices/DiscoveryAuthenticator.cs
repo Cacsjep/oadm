@@ -164,10 +164,10 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         switch (device.Status)
         {
             case DiscoveredDeviceStatus.PasswordNotSet:
-                session.Track(Task.Run(() => ReadPolicyAsync(session, device, version, _stopping.Token)));
+                session.Track(Core.Auth.CallerContext.RunDetached(() => ReadPolicyAsync(session, device, version, _stopping.Token)));
                 break;
             case DiscoveredDeviceStatus.CredentialsRequired or DiscoveredDeviceStatus.AnonymousAccess:
-                session.Track(Task.Run(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
+                session.Track(Core.Auth.CallerContext.RunDetached(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
                 break;
         }
     }
@@ -355,7 +355,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         foreach (var (device, version) in claimed)
         {
             session.Notify(device.Serial);
-            session.Track(Task.Run(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
+            session.Track(Core.Auth.CallerContext.RunDetached(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
         }
 
         if (claimed.Count > 0)
@@ -446,7 +446,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         foreach (var session in _sessions.Values)
         {
             session.ResetCandidates();
-            session.Track(Task.Run(() => StartFollowUpsAsync(session)));
+            session.Track(Core.Auth.CallerContext.RunDetached(() => StartFollowUpsAsync(session)));
         }
     }
 

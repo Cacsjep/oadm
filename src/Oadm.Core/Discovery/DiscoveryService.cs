@@ -111,7 +111,7 @@ public sealed class DiscoveryService : IAsyncDisposable
 
         session.Duration = duration;
 
-        session.Run = Task.Run(() => RunZeroConfAsync(session, options, session.Scan.Token, session.Stop.Token), CancellationToken.None);
+        session.Run = Auth.CallerContext.RunDetached(() => RunZeroConfAsync(session, options, session.Scan.Token, session.Stop.Token));
         return session.Handle;
     }
 
@@ -142,7 +142,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(range);
         var session = CreateSession(DiscoverySessionKind.RangeScan);
-        session.Run = Task.Run(() => RunRangeScanAsync(session, range, options, session.Scan.Token, session.Stop.Token), CancellationToken.None);
+        session.Run = Auth.CallerContext.RunDetached(() => RunRangeScanAsync(session, range, options, session.Scan.Token, session.Stop.Token));
         return session.Handle;
     }
 
@@ -170,7 +170,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(enteredAddress);
         ArgumentNullException.ThrowIfNull(probes);
         var session = CreateSession(DiscoverySessionKind.Manual);
-        session.Run = Task.Run(() => RunAddressProbeAsync(session, enteredAddress, probes, expectedSerial, session.Scan.Token, session.Stop.Token), CancellationToken.None);
+        session.Run = Auth.CallerContext.RunDetached(() => RunAddressProbeAsync(session, enteredAddress, probes, expectedSerial, session.Scan.Token, session.Stop.Token));
         return session.Handle;
     }
 

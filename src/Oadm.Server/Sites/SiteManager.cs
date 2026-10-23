@@ -1087,11 +1087,11 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
     private void Raise(IReadOnlyCollection<Guid> siteIds)
     {
-        Changed?.Invoke(this, new SiteStatesChangedEventArgs(siteIds));
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, new SiteStatesChangedEventArgs(siteIds));
         RaiseList();
     }
 
-    internal void RaiseList() => ListChanged?.Invoke(this, EventArgs.Empty);
+    internal void RaiseList() => Oadm.Core.Auth.CallerContext.Raise(ListChanged, this, EventArgs.Empty);
 
     private async Task RecordSeenAsync(Guid siteId, NodeLink link)
     {

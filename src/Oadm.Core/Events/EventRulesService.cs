@@ -63,7 +63,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         var (saved, previous) = await store.SaveAsync(rule, action => RuleStore.PasswordFields(Catalog, action.ActionId), ct).ConfigureAwait(false);
         await Engine.ApplyRuleChangeAsync(previous, saved, ct).ConfigureAwait(false);
         var result = await GetAsync(saved.Definition.Id, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException("The rule no longer exists.");
-        Changed?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         return (result.Definition, result.Summary, previous is null);
     }
 
@@ -76,7 +76,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         }
 
         await Engine.ApplyRuleChangeAsync(done.Previous, done.Rule, ct).ConfigureAwait(false);
-        Changed?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         return (await GetAsync(id, ct).ConfigureAwait(false))?.Summary;
     }
 
@@ -86,7 +86,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         if (removed is not null)
         {
             await Engine.ApplyRuleChangeAsync(removed, null, ct).ConfigureAwait(false);
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         }
 
         return removed;
@@ -97,7 +97,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         var copy = await store.DuplicateAsync(id, ct).ConfigureAwait(false);
         if (copy is not null)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         }
 
         return copy is null ? null : await GetAsync(copy.Definition.Id, ct).ConfigureAwait(false);

@@ -144,7 +144,7 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
             Write(delivered);
         }
 
-        Changed?.Invoke(this, delivered);
+        Auth.CallerContext.Raise(Changed, this, delivered);
     }
 
     /// <summary>One batch: the version moves once, every subscriber gets the changes in order.</summary>
@@ -181,9 +181,13 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
             }
         }
 
-        foreach (var change in delivered)
+        // The background boundary: the handlers (event rules, compliance, sites) never see the user whose call published.
+        using (Auth.CallerContext.Suppress())
         {
-            Changed?.Invoke(this, change);
+            foreach (var change in delivered)
+            {
+                Changed?.Invoke(this, change);
+            }
         }
 
         return delivered.Count;

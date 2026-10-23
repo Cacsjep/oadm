@@ -461,7 +461,7 @@ public sealed partial class DevicePollingService : IDisposable
 
         if (updated is not null)
         {
-            DeviceUpdated?.Invoke(this, updated);
+            Oadm.Core.Auth.CallerContext.Raise(DeviceUpdated, this, updated);
             if (!full && device.Status != DeviceStatus.Ok && updated.Status == DeviceStatus.Ok)
             {
                 LogBackOnline(device.Id, device.Status);

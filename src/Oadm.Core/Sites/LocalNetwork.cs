@@ -292,7 +292,7 @@ public abstract class LocalListener : IRelay
             _state = state;
             if (state != RelayState.Running)
             {
-                _retry ??= _time.CreateTimer(_ => Retry(), null, RetryInterval, RetryInterval);
+                _retry ??= Auth.CallerContext.Detached(() => _time.CreateTimer(_ => Retry(), null, RetryInterval, RetryInterval));
             }
             else
             {
@@ -369,7 +369,7 @@ public abstract class LocalListener : IRelay
 
             _sockets = [];
             _state = RelayState.PortInUse;
-            _retry ??= _time.CreateTimer(_ => Retry(), null, RetryInterval, RetryInterval);
+            _retry ??= Auth.CallerContext.Detached(() => _time.CreateTimer(_ => Retry(), null, RetryInterval, RetryInterval));
         }
 
         PluginEvents.Raise(StateChanged, this);

@@ -262,7 +262,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
 
         Publish(changes);
-        EventTypesChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(EventTypesChanged, this, EventArgs.Empty);
         if (enabled)
         {
             ReportAllEvents();
@@ -270,7 +270,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             Wake();
         }
 
-        ChecksChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(ChecksChanged, this, EventArgs.Empty);
     }
 
     /// <summary>Every check with its counts, sorted by name (the default checks first).</summary>
@@ -366,13 +366,13 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         Publish(changes);
         if (typesChanged)
         {
-            EventTypesChanged?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(EventTypesChanged, this, EventArgs.Empty);
         }
 
         ReportEvent(check.Id);
         _ = EvaluateCachedAsync(check.Id, null, _stopping.Token);
         Wake();
-        ChecksChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(ChecksChanged, this, EventArgs.Empty);
     }
 
     /// <summary>A check was deleted: its results and its event go.</summary>
@@ -397,8 +397,8 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         }
 
         Publish(changes);
-        EventTypesChanged?.Invoke(this, EventArgs.Empty);
-        ChecksChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(EventTypesChanged, this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(ChecksChanged, this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -1229,7 +1229,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
             ReportEvent(checkId);
         }
 
-        ChecksChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(ChecksChanged, this, EventArgs.Empty);
     }
 
     private void OnCatalogChanged()
@@ -1252,7 +1252,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         ReportAllEvents();
         _ = EvaluateCachedAsync(null, null, _stopping.Token);
         Wake();
-        ChecksChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(ChecksChanged, this, EventArgs.Empty);
     }
 
     private void ReportAllEvents()

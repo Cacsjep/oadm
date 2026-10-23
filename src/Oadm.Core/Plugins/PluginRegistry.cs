@@ -260,7 +260,7 @@ public sealed partial class PluginRegistry
             }
         }
 
-        EnabledChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(EnabledChanged, this, EventArgs.Empty);
     }
 
     /// <summary>Turns a package on or off. Returns every choice to store (package id -> on).</summary>
@@ -284,7 +284,7 @@ public sealed partial class PluginRegistry
             snapshot = new Dictionary<string, bool>(_enabledOverrides, StringComparer.OrdinalIgnoreCase);
         }
 
-        EnabledChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(EnabledChanged, this, EventArgs.Empty);
         return snapshot;
     }
 
@@ -312,7 +312,7 @@ public sealed partial class PluginRegistry
             }
         }
 
-        EnabledChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(EnabledChanged, this, EventArgs.Empty);
     }
 
     /// <summary>A task plugin of an enabled package.</summary>
@@ -348,7 +348,7 @@ public sealed partial class PluginRegistry
         || ((_enabledOverrides.TryGetValue(origin.PackageId, out var enabled) ? enabled : origin.EnabledByDefault) && (!origin.Pro || ProActive));
 
     /// <summary>The OADM PRO license changed: PRO packages may have turned on or off. Raises <see cref="EnabledChanged"/>.</summary>
-    public void ProChanged() => EnabledChanged?.Invoke(this, EventArgs.Empty);
+    public void ProChanged() => Oadm.Core.Auth.CallerContext.Raise(EnabledChanged, this, EventArgs.Empty);
 
     private static bool SamePackage(PluginOrigin a, PluginOrigin b) =>
         string.Equals(a.PackageId, b.PackageId, StringComparison.OrdinalIgnoreCase);

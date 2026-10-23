@@ -300,7 +300,7 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
 
         LogMoved(device.Serial, oldRoute, old, route, address, reason);
         _queueRefresh(device.Id);
-        Moved?.Invoke(this, new Move(device.Serial, oldRoute, old, route, address));
+        Oadm.Core.Auth.CallerContext.Raise(Moved, this, new Move(device.Serial, oldRoute, old, route, address));
         return DeviceAddressChangeResult.Updated;
     }
 

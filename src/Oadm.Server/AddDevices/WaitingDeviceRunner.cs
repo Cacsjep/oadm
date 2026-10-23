@@ -134,7 +134,7 @@ public sealed partial class WaitingDeviceRunner(
             }
         }
 
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(StateChanged, this, EventArgs.Empty);
         _wake.Release();
     }
 
@@ -191,7 +191,7 @@ public sealed partial class WaitingDeviceRunner(
                 _nextTry = due;
             }
 
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(StateChanged, this, EventArgs.Empty);
             var left = due - time.GetUtcNow();
             if (left <= TimeSpan.Zero)
             {
@@ -212,7 +212,7 @@ public sealed partial class WaitingDeviceRunner(
     public async Task<int> RunRoundAsync(IReadOnlyCollection<Guid>? ids, bool includeLoginFailed, CancellationToken ct)
     {
         _trying = true;
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(StateChanged, this, EventArgs.Empty);
         try
         {
             var entries = await store.ToTryAsync(ids, includeLoginFailed, ct).ConfigureAwait(false);
@@ -238,7 +238,7 @@ public sealed partial class WaitingDeviceRunner(
             }
 
             _checkingAll = false;
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(StateChanged, this, EventArgs.Empty);
             if (entries.Count == 0)
             {
                 return 0;
@@ -321,7 +321,7 @@ public sealed partial class WaitingDeviceRunner(
             }
 
             _trying = false;
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(StateChanged, this, EventArgs.Empty);
         }
     }
 

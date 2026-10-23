@@ -40,7 +40,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
 
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         await SettingRows.WriteAsync(db, key, valueJson, ct).ConfigureAwait(false);
-        Changed?.Invoke(this, new SettingChangedEventArgs(key, valueJson));
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, new SettingChangedEventArgs(key, valueJson));
     }
 
     public async Task<T?> GetAsync<T>(string key, CancellationToken ct)
@@ -112,7 +112,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
 
         foreach (var (key, json) in values)
         {
-            Changed?.Invoke(this, new SettingChangedEventArgs(key, json));
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, new SettingChangedEventArgs(key, json));
         }
 
         return settings;

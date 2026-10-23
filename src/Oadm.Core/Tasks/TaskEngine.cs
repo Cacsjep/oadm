@@ -173,7 +173,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         {
             // The slot is requested here, in the order of the run (FIFO per plugin), not on the pool thread.
             var slot = RequestSlot(task);
-            _ = Task.Run(() => ExecuteTaskAsync(task, slot), CancellationToken.None);
+            _ = Auth.CallerContext.RunDetached(() => ExecuteTaskAsync(task, slot)); // the background boundary: no caller in task runs
         }
 
         return [.. tasks.Select(t => t.Id)];
@@ -249,7 +249,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         LogTaskQueued(task.Id, registration.Id, deviceId, task.Owner);
         var slot = RequestSlot(task);
-        _ = Task.Run(() => ExecuteTaskAsync(task, slot), CancellationToken.None);
+        _ = Auth.CallerContext.RunDetached(() => ExecuteTaskAsync(task, slot)); // the background boundary: no caller in task runs
         return task.Id;
     }
 

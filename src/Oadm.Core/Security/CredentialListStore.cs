@@ -94,7 +94,7 @@ public sealed class CredentialListStore(IDbContextFactory<OadmDbContext> dbFacto
         };
         db.CredentialListEntries.Add(entry);
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        Changed?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         return new CredentialListItem(entry.Id, entry.UserName, entry.CreatedUtc);
     }
 
@@ -105,7 +105,7 @@ public sealed class CredentialListStore(IDbContextFactory<OadmDbContext> dbFacto
         var removed = await db.CredentialListEntries.Where(e => e.Id == id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
         if (removed > 0)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         }
 
         return removed > 0;

@@ -64,7 +64,7 @@ public sealed partial class TaskChangeFeed
 
         try
         {
-            Changed?.Invoke(this, change);
+            Auth.CallerContext.Raise(Changed, this, change);
         }
 #pragma warning disable CA1031 // A faulty subscriber must not break task execution.
         catch (Exception ex)
