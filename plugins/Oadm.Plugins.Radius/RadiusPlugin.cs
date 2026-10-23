@@ -33,6 +33,12 @@ public sealed class RadiusPlugin : ICorePlugin
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 
+    /// <summary>The page backend. So far one read: <see cref="GetStateMethod"/> (server-wide, no device data).</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
-        throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+        method == GetStateMethod
+            ? Task.FromResult<string?>("""{"running":false}""")
+            : throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+
+    /// <summary>The server's state for the page (the server part fills it).</summary>
+    public const string GetStateMethod = "getState";
 }
