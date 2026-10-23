@@ -133,7 +133,14 @@ unchecks the one before, no Select all / none) returns one id; with
 list (the devices of a chosen tag show checked with "Tag <name>"), `ShowChoiceAsync` / `DevicePickerViewModel.Choice`
 return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}; with tags it lists the devices' tags, every
 tag of the initial choice and `DevicePickerOptions.TagNames` (the rule editor passes the defined tags), count 0 when no
-device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ...") and
+device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ..."; the device group editor,
+`DevicePickerOptions.Group` / `DeviceGroupPickerOptions`: left **Sites** ("This server" first) and **Tags** with device
+counts, the devices a chosen site or tag covers checked and locked with "Site Building B" / "Tag PTZ" / "This server",
+single devices tickable, a row link **Except** / **Include** (an excepted device shows "Excepted from Site Building B"),
+the live count "412 of 4,812 devices", search also over the site name, result `DeviceGroupChoice` (serials of devices
+not listed are kept); the window's constructor takes a form shown on top of the card, `AcceptButton` and `Accept` (the
+window closes only when it returns true), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
+list; 30,000 devices tested) and
 `PageDeviceChoice` (the device choice of every page that reads many devices: the purple "Selected devices" button text,
 All devices / tags / chosen devices resolved now, the Devices page selection to start with, the last choice kept on this
 computer; Action Rule Editor, Edge storage, Image Health Dashboard, Hardening scan, Snapshot report) and
