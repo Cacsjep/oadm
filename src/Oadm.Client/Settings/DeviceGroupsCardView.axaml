@@ -14,6 +14,7 @@
           <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New device group" />
         </Button>
       </StackPanel>
+      <ui:ProgressRow Text="Reading the device groups" IsVisible="{Binding IsLoading}" />
       <ui:ProgressRow Text="Opening the device group" IsVisible="{Binding IsOpening}" />
       <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding IsEmpty}"
                  Text="No device groups yet. Create one to limit users to part of the devices." />

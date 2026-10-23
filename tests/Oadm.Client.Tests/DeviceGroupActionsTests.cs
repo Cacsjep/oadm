@@ -315,6 +315,15 @@ public sealed class DeviceGroupActionsTests
             Assert.Equal(["Building B"], fixture.Store.Tags.Find("PTZ")!.GroupNames);
             Assert.Empty(fixture.Store.Tags.Find("Outdoor")!.GroupNames);
 
+            // An answer of the server replaces the names, also with none (a tag the groups no longer use).
+            var store = new Oadm.Client.Tags.TagStore();
+            store.Apply(new DeviceTag { Name = "Dome", Defined = true, GroupNames = { "Lobby" } });
+            Assert.Equal(["Lobby"], store.Find("Dome")!.GroupNames);
+            store.Apply(new DeviceTag { Name = "Dome", Defined = true });
+            Assert.Empty(store.Find("Dome")!.GroupNames);
+            store.Apply(new DeviceTag { Name = "Dome 2", Defined = true, GroupNames = { "Lobby" } }, previousName: "Dome"); // a rename
+            Assert.Equal(["Lobby"], store.Find("Dome 2")!.GroupNames);
+
             string? question = null;
             var dialog = new DeviceTagsViewModel(api, fixture.Store.Tags, fixture.Store.Devices.Take(1).ToList(), fixture.Store.Devices, isAdmin: true,
                 (_, text, _) => { question = text; return Task.FromResult(false); });

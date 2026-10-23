@@ -422,6 +422,34 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public async Task The_card_shows_that_it_reads_the_groups()
+    {
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var api = Substitute.For<IOadmApi>();
+            var reply = new TaskCompletionSource<DeviceGroupList>();
+            api.ListDeviceGroupsAsync(Arg.Any<CancellationToken>()).Returns(reply.Task);
+            var groups = new DeviceGroupsViewModel(api, Substitute.For<IDialogService>(), Admin());
+            var window = new Window { Width = 800, Height = 400, Content = new DeviceGroupsCardView { DataContext = groups } };
+            window.Show();
+            Task load = groups.LoadAsync();
+            Dispatcher.UIThread.RunJobs();
+            ProgressRow row = window.GetVisualDescendants().OfType<ProgressRow>().Single(r => r.Text == "Reading the device groups");
+            Assert.True(row.IsVisible);
+            Assert.False(groups.IsEmpty); // no "No device groups yet" while reading
+
+            reply.SetResult(new DeviceGroupList());
+            await load;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(row.IsVisible);
+            Assert.True(groups.IsEmpty);
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
     public async Task Screenshots_of_the_card_the_editor_and_the_user_form()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
