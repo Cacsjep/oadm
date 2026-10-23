@@ -63,7 +63,18 @@ public sealed partial class SystemReportJobs : IDisposable
     /// <summary>Validates the request, looks up the devices and starts the job; the status lists every device.</summary>
     public async Task<JobStatus> StartAsync(StartRequest request, CancellationToken ct)
     {
+        var devices = await PrepareAsync(request, _devices, ct).ConfigureAwait(false);
+        return Begin(Guid.NewGuid().ToString("N"), devices);
+    }
+
+    /// <summary>
+    /// Validates the request and looks up its devices in <paramref name="devices"/> (the caller's view) before anything starts:
+    /// one entry per requested id, null for a device that is not there.
+    /// </summary>
+    public async Task<IReadOnlyList<(Guid Id, IDeviceInfo? Device)>> PrepareAsync(StartRequest request, IDeviceRepository devices, CancellationToken ct)
+    {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(devices);
         var ids = request.DeviceIds.Where(id => id != Guid.Empty).Distinct().ToList();
         if (ids.Count == 0)
         {
@@ -76,17 +87,27 @@ public sealed partial class SystemReportJobs : IDisposable
         }
 
         DropExpired();
-        var found = await FindAsync(ids, ct).ConfigureAwait(false);
-        var id = Guid.NewGuid().ToString("N");
+        var found = await FindAsync(devices, ids, ct).ConfigureAwait(false);
+        return [.. ids.Select(id => (id, found.GetValueOrDefault(id)))];
+    }
+
+    /// <summary>
+    /// Starts the downloads of a prepared request as job <paramref name="id"/> (the user's job id of <c>ctx.Jobs</c>, or an id
+    /// of its own); the status lists every device.
+    /// </summary>
+    public JobStatus Begin(string id, IReadOnlyList<(Guid Id, IDeviceInfo? Device)> devices)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        ArgumentNullException.ThrowIfNull(devices);
         var folder = Path.Combine(_root, id);
         Directory.CreateDirectory(folder);
-        var items = new Item[ids.Count];
-        for (var i = 0; i < ids.Count; i++)
+        var items = new Item[devices.Count];
+        for (var i = 0; i < devices.Count; i++)
         {
-            var device = found.GetValueOrDefault(ids[i]);
+            var device = devices[i].Device;
             items[i] = new Item(device, new DeviceReportStatus
             {
-                DeviceId = ids[i],
+                DeviceId = devices[i].Id,
                 Address = device?.Address ?? string.Empty,
                 Serial = device?.Serial ?? string.Empty,
                 Model = device?.Model,
@@ -140,6 +161,12 @@ public sealed partial class SystemReportJobs : IDisposable
         };
     }
 
+    /// <summary>
+    /// Ends when the job is deleted (<see cref="Delete"/>, 30 minutes after its last use, the plugin stopping); at once for an
+    /// unknown id. The user's job of <c>ctx.Jobs</c> waits on it, so the host's end of that job deletes the files.
+    /// </summary>
+    public Task Gone(string jobId) => _jobs.TryGetValue(jobId ?? string.Empty, out var job) ? job.Gone.Task : Task.CompletedTask;
+
     /// <summary>Cancels a job, forgets it and deletes its files (once the downloads ended).</summary>
     public void Delete(string jobId)
     {
@@ -148,6 +175,7 @@ public sealed partial class SystemReportJobs : IDisposable
             return;
         }
 
+        job.Gone.TrySetResult();
         job.Cancel.Cancel();
         var worker = job.Worker ?? Task.CompletedTask;
         _ = worker.ContinueWith(_ =>
@@ -176,6 +204,7 @@ public sealed partial class SystemReportJobs : IDisposable
 
         foreach (var job in _jobs.Values)
         {
+            job.Gone.TrySetResult();
             job.Cancel.Dispose();
         }
 
@@ -184,18 +213,18 @@ public sealed partial class SystemReportJobs : IDisposable
         _shutdown.Dispose();
     }
 
-    private async Task<Dictionary<Guid, IDeviceInfo>> FindAsync(List<Guid> ids, CancellationToken ct)
+    private static async Task<Dictionary<Guid, IDeviceInfo>> FindAsync(IDeviceRepository devices, List<Guid> ids, CancellationToken ct)
     {
         if (ids.Count > FindOneByOneLimit)
         {
             var wanted = ids.ToHashSet();
-            return (await _devices.ListAsync(ct).ConfigureAwait(false)).Where(d => wanted.Contains(d.Id)).ToDictionary(d => d.Id);
+            return (await devices.ListAsync(ct).ConfigureAwait(false)).Where(d => wanted.Contains(d.Id)).ToDictionary(d => d.Id);
         }
 
         var found = new Dictionary<Guid, IDeviceInfo>();
         foreach (var id in ids)
         {
-            if (await _devices.FindAsync(id, ct).ConfigureAwait(false) is { } device)
+            if (await devices.FindAsync(id, ct).ConfigureAwait(false) is { } device)
             {
                 found[id] = device;
             }
@@ -293,7 +322,7 @@ public sealed partial class SystemReportJobs : IDisposable
         DropExpired();
         if (!_jobs.TryGetValue(jobId ?? string.Empty, out var job))
         {
-            throw new KeyNotFoundException("The system report job no longer exists; start it again.");
+            throw new KeyNotFoundException(SystemReportPlugin.JobGone);
         }
 
         job.LastUsed = _time.GetUtcNow();
@@ -363,6 +392,7 @@ public sealed partial class SystemReportJobs : IDisposable
         public string Folder { get; } = folder;
         public Item[] Items { get; } = items;
         public CancellationTokenSource Cancel { get; } = cancel;
+        public TaskCompletionSource Gone { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public DateTimeOffset LastUsed { get; set; } = created;
         public Task? Worker { get; set; }
         public string? BundlePath { get; set; }

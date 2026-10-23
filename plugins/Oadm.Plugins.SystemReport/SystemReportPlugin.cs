@@ -13,6 +13,7 @@ namespace Oadm.Plugins.SystemReport;
 public sealed class SystemReportPlugin : ICorePlugin, IDisposable
 {
     private SystemReportJobs? _jobs;
+    private ICorePluginContext? _ctx;
 
     public string Id => SystemReportPluginInfo.PluginId;
 
@@ -57,6 +58,7 @@ public sealed class SystemReportPlugin : ICorePlugin, IDisposable
             ? Path.Combine(data, "jobs")
             : Path.Combine(Path.GetTempPath(), "oadm-system-report-" + Guid.NewGuid().ToString("N"));
         _jobs = new SystemReportJobs(ctx.Devices, new ServerReportDownloader(ctx.Vapix, DeviceTimeout), root, HostVersion, Time, ctx.Logger);
+        _ctx = ctx;
         return Task.CompletedTask;
     }
 
@@ -83,12 +85,84 @@ public sealed class SystemReportPlugin : ICorePlugin, IDisposable
     /// </summary>
     public bool RequiresAllDevices(string method) => true;
 
-    /// <summary>Only users with all devices reach it (<see cref="RequiresAllDevices"/>); a group user's call is refused here too.</summary>
-    public Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    /// <summary>The answer for a job id the caller does not have (ended, unknown, or another user's or session's).</summary>
+    public const string JobGone = "The system report job no longer exists; start it again.";
+
+    /// <summary>
+    /// Only users with all devices reach it (<see cref="RequiresAllDevices"/>); a group user's call is refused here too. A
+    /// report is a job of its user and session (<see cref="ICorePluginContext.Jobs"/>): every method that takes a job id looks
+    /// it up with <see cref="IPluginJobs.Find"/>, so another user's or session's id answers like an unknown one. The job
+    /// lasts until the report is deleted (Delete, 30 minutes unused) or the host ends it (the session ended): then its files go.
+    /// </summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        return caller.HasAllDevices ? InvokeAsync(method, payloadJson, ct) : throw new DeviceAccessRefusedException();
+        if (!caller.HasAllDevices)
+        {
+            throw new DeviceAccessRefusedException();
+        }
+
+        var jobs = _jobs ?? throw new InvalidOperationException("The system report plugin is not running.");
+        var owned = _ctx?.Jobs ?? throw new InvalidOperationException("This OADM server cannot run system reports.");
+        switch (method)
+        {
+            case SystemReportMethods.Start:
+            {
+                var devices = await jobs.PrepareAsync(SystemReportJson.Deserialize<StartRequest>(payloadJson), caller.Devices, ct).ConfigureAwait(false);
+                var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var job = owned.Start(caller, "report", async (job, token) =>
+                {
+                    await ready.Task.ConfigureAwait(false);
+                    try
+                    {
+                        await jobs.Gone(job.Id).WaitAsync(token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        jobs.Delete(job.Id); // the host ended the job (session ended, plugin stopping): its files go
+                    }
+                });
+                try
+                {
+                    return SystemReportJson.Serialize(jobs.Begin(job.Id, devices));
+                }
+                finally
+                {
+                    ready.TrySetResult();
+                }
+            }
+
+            case SystemReportMethods.Status:
+            {
+                var request = SystemReportJson.Deserialize<StatusRequest>(payloadJson);
+                return SystemReportJson.Serialize(jobs.Status(Owned(owned, caller, request.JobId), request.SinceVersion));
+            }
+
+            case SystemReportMethods.Read:
+            {
+                var request = SystemReportJson.Deserialize<ReadRequest>(payloadJson);
+                return SystemReportJson.Serialize(await jobs.ReadAsync(Owned(owned, caller, request.JobId), request.Offset, ct).ConfigureAwait(false));
+            }
+
+            case SystemReportMethods.Delete:
+            {
+                // Another user's id is nothing to delete, like an unknown one.
+                var id = SystemReportJson.Deserialize<JobRequest>(payloadJson).JobId;
+                if (id is not null && owned.Find(caller, id) is not null)
+                {
+                    jobs.Delete(id);
+                }
+
+                return null;
+            }
+
+            default:
+                throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+        }
     }
+
+    private static string Owned(IPluginJobs owned, ICallContext caller, string? jobId) =>
+        jobId is not null && owned.Find(caller, jobId) is not null ? jobId : throw new KeyNotFoundException(JobGone);
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
@@ -125,5 +199,6 @@ public sealed class SystemReportPlugin : ICorePlugin, IDisposable
     {
         _jobs?.Dispose();
         _jobs = null;
+        _ctx = null;
     }
 }

@@ -23,7 +23,12 @@ client saves one ZIP for Axis support. Read-only for devices.
   chunks; `delete`. All Operator; `start` is audited ("Plugin action", "System report", "start").
 - Device groups (SDK 0.4.0): like backups and the audit log, system reports stay with users who have all devices. Every
   method answers true from `RequiresAllDevices` (the host refuses users with a device group before the plugin runs) and
-  the toolbar button is hidden for them (`IToolbarContext.HasAllDevices`, updated on `PermissionsChanged`).
+  the toolbar button is hidden for them (`IToolbarContext.HasAllDevices`, updated on `PermissionsChanged`). A report is
+  a job of its user and session (`ctx.Jobs.Start`, the job id is the report id): `status`, `read` and `delete` look it up
+  with `ctx.Jobs.Find(caller, id)`, so another user's or session's id answers like an unknown one ("The system report job
+  no longer exists; start it again.", `delete` does nothing). The job lasts until the report is deleted (`delete`, 30
+  minutes unused, the plugin stopping); when the host ends it (the session ended) the report and its files are deleted.
+  The devices are looked up in the caller's view.
 - Client (`SystemReportToolbarPlugin`, group Tasks, order 100, `ui:ToolbarButton` "System report" with text, icon `file`,
   enabled with a selection, tooltip "System report: download the system reports of the selected devices for Axis support,
   in one ZIP file"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
