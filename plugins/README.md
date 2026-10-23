@@ -524,6 +524,11 @@ for them, and it keeps working unchanged for users with all devices.
   (its objects are off), `Changed` tells about changed and deleted groups. Table pages use
   `DeviceSweeps<TRow>` (plugins/Shared/DeviceSweep.cs): `sweeps.For(caller)` is the sweep of the caller's scope (null
   for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`.
+- **Rows and saved objects after a device left**: the group's `Changed` can come later than the device's move, so answer
+  table rows with `DeviceSweep.SnapshotAsync(caller)` (only devices the caller sees now) and let a user with all devices
+  save a group's object whose devices left with `OwnerScope.LeftOwnerAsync` (drop them, say how many). Bind ids that a task
+  payload carries (a run, a rollout) to the task's `ITaskExecutionContext.Caller`: a task started by hand through the task
+  service can name any id.
 - **Task plugins and actions**: a query reads devices other than the queried one only through `caller`; for an
   address-in-use check ask `ITaskQueryContext.ManagedAddressesAsync(candidates)` (every device on the route, never
   named) and name only devices of `ctx.Devices` (Network settings `checkAddresses`). Secrets kept for everyone (a saved

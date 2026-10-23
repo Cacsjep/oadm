@@ -57,7 +57,9 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
   camera. `check` refuses the whole choice when any id is outside the caller's devices (NOT_FOUND "1 device is no longer
   available.", the same as an unknown id, nothing read); no payload = the caller's video devices. `rows` and `state` go
   only to the users of that scope (`PluginEventAudience.DeviceScope`). A deleted group has no table (empty state). The
-  reads are background work of the sweep (the context's VAPIX clients over the scope's devices).
+  reads are background work of the sweep (the context's VAPIX clients over the scope's devices). `check` and `getState`
+  answer only rows of cameras the caller sees now (`DeviceSweep.SnapshotAsync`): a camera that left the group drops out
+  at once, before the group's rows are pruned, and its removal goes out with the next batch.
 - **Page** (`HasOwnCards`, subtitle "AXIS Image Health Analytics on the chosen cameras."): a row of five count cards
   (`ui:StatCard`): **Good** (ok, "of 12 cameras"), **Detected** (error), **Pending** (warning),
   **Detection off** (neutral), each with "Blur 2 · Block 1", and **Errors** (error, "1 not running · 2 could not be

@@ -185,5 +185,9 @@ SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md). Page methods get t
   passwords."); typed passwords work. The action **Run VAPIX command** is unchanged: event rules are for users with
   all devices.
 - The owner of rollout tasks and saved commands is the caller's user name, never a name the page sends.
+- A rollout belongs to the user who started it (`RolloutRegistry.Rollout.OwnerName`). A task started by hand through the
+  task service that names another user's rollout id is refused before any step ("This rollout was started by another
+  user. Nothing was changed."), so it can never stop that rollout with a failure. Tasks the host starts without a user
+  join as before.
 - Tests: `DeviceGroupTests` (`PluginCanary` naming every method and its id fields, the owner, stored passwords, the
   page).

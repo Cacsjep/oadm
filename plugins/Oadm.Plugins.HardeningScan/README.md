@@ -137,7 +137,9 @@ of the level is Warn or Fail.
   group a device outside the group answers like an unknown one (NOT_FOUND, the whole request is refused), an empty list
   means the user's view, `getState` returns only the results of the user's devices (removed devices are dropped only by a
   view of every device). `progress` and `results` go to the pages of the scan's scope (`DeviceScope`; the rows of a
-  group's scan also to users with all devices). The overload without a call (in-process callers) uses the plugin's context.
+  group's scan also to users with all devices). A device that leaves a group user's devices during the scan gets no row:
+  its result (also the error of the refused read) is neither stored nor published. The overload without a call
+  (in-process callers) uses the plugin's context.
 
 ## Page
 
