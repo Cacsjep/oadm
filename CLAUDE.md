@@ -188,6 +188,9 @@ must never break.
 - **[Device groups](docs/spec/device-scope.md)** (in work for 4.2): a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
+- **[802.1X server](docs/spec/radius-server.md)** (in work on branch feature/radius-server, OADM PRO `oadm.radius`): RADIUS on UDP 1812 with EAP-TLS for
+  the switch ports, only devices OADM manages with a certificate of the OADM CA pass, fragmentation both ways, a deep
+  session state and plain TLS alert texts, switches changed while it runs, VLANs per rule off by default.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
