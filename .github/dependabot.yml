@@ -22,6 +22,9 @@ updates:
         versions: [">= 9.0.0"]
       - dependency-name: "WixToolset.*"
         versions: [">= 7.0.0"]
+      # 6.5 refuses to create a PDF without a license it loads ("The loaded license is not valid"): stay on 6.2.
+      - dependency-name: "PDFsharp-MigraDoc"
+        versions: [">= 6.3.0"]
     groups:
       avalonia:
         patterns: ["Avalonia*", "AvaloniaUI.*"]
