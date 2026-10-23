@@ -103,7 +103,12 @@ public sealed class PluginServiceGroupTests
 
         var groups = canary.Host.Get<Core.DeviceGroups.DeviceGroupStore>();
         var saved = groups.Loaded![canary.Caller.DeviceGroupId!.Value];
-        await groups.SaveAsync(saved.Id, saved.Name, "changed", saved.Rules, saved.Revision, CancellationToken.None);
+
+        // A new description alone keeps the job.
+        saved = (await groups.SaveAsync(saved.Id, saved.Name, "changed", saved.Rules, saved.Revision, CancellationToken.None)).Group;
+        Assert.Equal("found", (await group.InvokeAsync(Request(CanaryPlugin.Id, "job.find", job))).PayloadJson);
+
+        await groups.SaveAsync(saved.Id, saved.Name, "changed", saved.Rules with { ExceptSerials = [.. saved.Rules.ExceptSerials, "ACCC8E00FFFF"] }, saved.Revision, CancellationToken.None);
 
         var gone = await Assert.ThrowsAsync<RpcException>(() => group.InvokeAsync(Request(CanaryPlugin.Id, "job.find", job)).ResponseAsync);
         Assert.Equal(StatusCode.NotFound, gone.StatusCode);
