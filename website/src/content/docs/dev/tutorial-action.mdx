@@ -103,7 +103,9 @@ into such a body with `ctx.Text(text, PlaceholderEscape.Json)` so an event value
 
 The tests need no camera and no rules. From the package `Oadm.Sdk.Testing`, `FakeCamera` records the requests and
 `FakeActionContext` records the event log lines and fills the placeholders you give it (`{rule}`). Each test builds the
-invocation a rule would send.
+invocation a rule would send. The **canary** (`PluginCanary` with `TaskPluginCanaryHost`) runs the action on one
+device of a user with a [device group](../device-groups/#test-it-the-canary) and checks that no other device gets a
+request.
 
 <Code code={template(tests)} lang="csharp" title="MyCoolActionActionTests.cs" />
 

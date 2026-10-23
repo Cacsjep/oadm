@@ -80,4 +80,28 @@ public sealed class UpnpNameTaskPluginTests
     [Fact]
     public void The_task_name_says_what_happens() =>
         Assert.Equal("Set UPnP name Entrance", _plugin.GetTaskName("""{"name":"Entrance"}"""));
+
+    [Fact]
+    public async Task The_dialog_reads_the_current_name()
+    {
+        var server = new FakeCoreContext();
+        var device = server.Add(Device(), Camera());
+
+        var answer = await server.QueryAsync(_plugin, server.CallAsGroup([device.Id]), device, "current", null);
+
+        Assert.Equal("""{"name":"AXIS P3265-V - B8A44F631339"}""", answer);
+    }
+
+    /// <summary>A user limited to a device group that holds only "inside" can start the task only there.</summary>
+    [Fact]
+    public async Task No_call_reaches_a_device_outside_the_users_group()
+    {
+        var server = new FakeCoreContext();
+        var inside = server.Add(Device(), Camera());
+        var outside = server.Add(Device(), Camera());
+
+        await new PluginCanary(server, new TaskPluginCanaryHost([_plugin]), inside, outside)
+            .Method(TaskPluginCanaryHost.Run, $$"""{"pluginId":"{{UpnpName.PluginId}}","deviceIds":["{inside}","{device}"]}""")
+            .RunAsync();
+    }
 }
