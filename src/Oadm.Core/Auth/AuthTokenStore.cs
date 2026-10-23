@@ -10,7 +10,7 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Core.Auth;
 
 /// <summary>A valid session: the user behind a token.</summary>
-public sealed record AuthSession(string TokenHash, Guid UserId, string UserName, Guid RoleId, DateTime ExpiresUtc)
+public sealed record AuthSession(string TokenHash, Guid UserId, string UserName, Guid RoleId, DateTime ExpiresUtc, DeviceScope DeviceAccess)
 {
     public UserRole Role => BuiltInRoles.IsAdministrator(RoleId) ? UserRole.Admin : UserRole.Operator;
 }
@@ -57,7 +57,7 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
         }
 
-        _cache[entity.TokenHash] = new Cached(user.Id, user.UserName, user.RoleId, remember, entity.ExpiresUtc, entity.ExpiresUtc);
+        _cache[entity.TokenHash] = new Cached(user.Id, user.UserName, user.RoleId, user.DeviceAccess, remember, entity.ExpiresUtc, entity.ExpiresUtc);
         return token;
     }
 
@@ -107,13 +107,13 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
             var row = await (from t in db.AuthTokens.AsNoTracking()
                              join u in db.Users.AsNoTracking() on t.UserId equals u.Id
                              where t.TokenHash == hash && !u.Disabled
-                             select new { t.Remember, t.ExpiresUtc, u.Id, u.UserName, u.RoleId }).FirstOrDefaultAsync(ct).ConfigureAwait(false);
+                             select new { t.Remember, t.ExpiresUtc, u.Id, u.UserName, u.RoleId, u.AllDevices, u.DeviceGroupId }).FirstOrDefaultAsync(ct).ConfigureAwait(false);
             if (row is null)
             {
                 return (true, null);
             }
 
-            cached = new Cached(row.Id, row.UserName, row.RoleId, row.Remember, row.ExpiresUtc, row.ExpiresUtc);
+            cached = new Cached(row.Id, row.UserName, row.RoleId, new DeviceScope(row.AllDevices, row.DeviceGroupId), row.Remember, row.ExpiresUtc, row.ExpiresUtc);
             _cache[hash] = cached;
             if (Interlocked.Read(ref _epoch) != epoch)
             {
@@ -147,7 +147,7 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
             return (false, null);
         }
 
-        return (true, new AuthSession(hash, cached.UserId, cached.UserName, cached.RoleId, expires));
+        return (true, new AuthSession(hash, cached.UserId, cached.UserName, cached.RoleId, expires, cached.DeviceAccess));
     }
 
     /// <summary>Sessions ended: one token (logout) or every session of a user (password, disabled, deleted).</summary>
@@ -160,7 +160,7 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         await DeleteAsync(tokenHash, ct).ConfigureAwait(false);
         Interlocked.Increment(ref _epoch);
         _cache.TryRemove(tokenHash, out _);
-        SessionsEnded?.Invoke(this, new EndedSessions(null, tokenHash));
+        CallerContext.Raise(SessionsEnded, this, new EndedSessions(null, tokenHash));
     }
 
     /// <summary>The user's sessions take over a new role (sessions not cached read it from the database).</summary>
@@ -172,6 +172,19 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
             // A validation may replace the entry at the same moment (sliding expiry): try again until the role is in.
             while (_cache.TryGetValue(key, out var current) && current.RoleId != roleId
                 && !_cache.TryUpdate(key, current with { RoleId = roleId }, current))
+            {
+            }
+        }
+    }
+
+    /// <summary>The user's sessions take over new devices (all devices, another group, none after a deleted group).</summary>
+    public void SetDeviceAccess(Guid userId, DeviceScope access)
+    {
+        Interlocked.Increment(ref _epoch);
+        foreach (var key in _cache.Where(p => p.Value.UserId == userId).Select(p => p.Key).ToList())
+        {
+            while (_cache.TryGetValue(key, out var current) && current.DeviceAccess != access
+                && !_cache.TryUpdate(key, current with { DeviceAccess = access }, current))
             {
             }
         }
@@ -191,7 +204,7 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
             _cache.TryRemove(pair.Key, out _);
         }
 
-        SessionsEnded?.Invoke(this, new EndedSessions(userId, null));
+        CallerContext.Raise(SessionsEnded, this, new EndedSessions(userId, null));
     }
 
     /// <summary>Deletes expired sessions (hourly).</summary>
@@ -219,7 +232,7 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         await db.AuthTokens.Where(t => t.TokenHash == hash).ExecuteDeleteAsync(ct).ConfigureAwait(false);
     }
 
-    private sealed record Cached(Guid UserId, string UserName, Guid RoleId, bool Remember, DateTime ExpiresUtc, DateTime PersistedExpiresUtc);
+    private sealed record Cached(Guid UserId, string UserName, Guid RoleId, DeviceScope DeviceAccess, bool Remember, DateTime ExpiresUtc, DateTime PersistedExpiresUtc);
 }
 
 /// <summary>Which sessions ended: every session of <see cref="UserId"/>, or the one of <see cref="TokenHash"/>.</summary>

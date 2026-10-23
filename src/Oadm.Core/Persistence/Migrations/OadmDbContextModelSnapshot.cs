@@ -145,7 +145,13 @@ namespace Oadm.Core.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AllDevices")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DeviceGroupId")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Disabled")
@@ -173,6 +179,8 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DeviceGroupId");
 
                     b.HasIndex("NormalizedName")
                         .IsUnique();
@@ -211,6 +219,12 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("OwnerAllDevices")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("OwnerGroupId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SettingsJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -227,6 +241,8 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OwnerGroupId");
 
                     b.ToTable("ComplianceChecks", (string)null);
                 });
@@ -260,10 +276,73 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("ComplianceResults", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.DeviceGroups.DeviceGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExceptSerials")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Serials")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SiteIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TagIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ThisServer")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("DeviceGroups", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.Devices.Device", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AddedByAllDevices")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("AddedByGroupId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Address")
@@ -464,6 +543,9 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("QueuedByUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("SiteId")
                         .HasColumnType("TEXT");
 
@@ -568,10 +650,18 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("OwnerAllDevices")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("OwnerGroupId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OwnerGroupId");
 
                     b.ToTable("EventRules", (string)null);
                 });
@@ -916,11 +1006,24 @@ namespace Oadm.Core.Persistence.Migrations
 
             modelBuilder.Entity("Oadm.Core.Auth.UserEntity", b =>
                 {
+                    b.HasOne("Oadm.Core.DeviceGroups.DeviceGroup", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Oadm.Core.Auth.RoleEntity", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Oadm.Core.Compliance.ComplianceCheckEntity", b =>
+                {
+                    b.HasOne("Oadm.Core.DeviceGroups.DeviceGroup", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Oadm.Core.Compliance.ComplianceResultEntity", b =>
@@ -930,6 +1033,14 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasForeignKey("CheckId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Oadm.Core.Events.EventRuleEntity", b =>
+                {
+                    b.HasOne("Oadm.Core.DeviceGroups.DeviceGroup", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Oadm.Core.Events.EventRuleStateEntity", b =>

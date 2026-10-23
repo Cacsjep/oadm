@@ -167,6 +167,49 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         return device;
     }
 
+    /// <summary>
+    /// The devices of <paramref name="ids"/> that exist, with <see cref="Device.CredentialUserName"/> filled (read 500 ids at
+    /// a time; unknown ids are left out, so a caller compares the counts). Order: by serial.
+    /// </summary>
+    public async Task<IReadOnlyList<Device>> GetManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<Device>(ids.Count);
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        foreach (var chunk in ids.Distinct().Chunk(500))
+        {
+            var devices = await db.Devices.AsNoTracking().Where(d => chunk.Contains(d.Id)).ToListAsync(ct).ConfigureAwait(false);
+            var users = await db.DeviceCredentials.AsNoTracking().Where(c => chunk.Contains(c.DeviceId))
+                .ToDictionaryAsync(c => c.DeviceId, c => c.UserName, ct).ConfigureAwait(false);
+            foreach (var device in devices)
+            {
+                device.CredentialUserName = users.GetValueOrDefault(device.Id);
+                result.Add(Shown(device));
+            }
+        }
+
+        result.Sort((a, b) => string.CompareOrdinal(a.Serial, b.Serial));
+        return result;
+    }
+
+    /// <summary>
+    /// What device groups need of every device (id, serial, site, tags, who added it), without loading the rows: the
+    /// allowed ids of a view and the counts of the group editor.
+    /// </summary>
+    public async Task<IReadOnlyList<DeviceScopeRow>> ListScopeRowsAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.Devices.AsNoTracking()
+            .Select(d => new { d.Id, d.Serial, d.SiteId, d.Tags, d.AddedByAllDevices, d.AddedByGroupId })
+            .ToListAsync(ct).ConfigureAwait(false);
+        return [.. rows.Select(r => new DeviceScopeRow(r.Id, r.Serial, r.SiteId, r.Tags, r.AddedByAllDevices, r.AddedByGroupId))];
+    }
+
     /// <summary>Finds a device by serial; the argument is normalized first (any MAC notation is accepted).</summary>
     public async Task<Device?> FindBySerialAsync(string serial, CancellationToken ct)
     {

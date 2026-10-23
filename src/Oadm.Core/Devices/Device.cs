@@ -119,6 +119,16 @@ public sealed class Device : IDeviceInfo
     /// </summary>
     public bool SiteRemoved { get; set; }
 
+    /// <summary>
+    /// A user with all devices (or the system) added the device (migration <c>DeviceGroups</c>: true for every device that
+    /// existed before). Only then may names it was added with be trusted (PKI and EST put its host name into certificates),
+    /// and only then does a single-device serial of any group cover it. Default false (fail closed): the add path sets it.
+    /// </summary>
+    public bool AddedByAllDevices { get; set; }
+
+    /// <summary>The device group of the user who added it (null for users with all devices): its own single serials cover it.</summary>
+    public Guid? AddedByGroupId { get; set; }
+
     /// <summary>Detached deep copy, safe to hand to other threads.</summary>
     public Device Clone()
     {

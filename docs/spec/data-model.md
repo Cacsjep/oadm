@@ -21,7 +21,15 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   Apis (JSON column `[{id, version, name, status}]` from `apidiscovery.cgi getApiList`, written on
   every full refresh incl. the first one after add; proto `repeated DeviceApi apis = 28`),
   CredentialUserName (not stored: user name of the DeviceCredential, filled by repository reads
-  for plugins; never the password).
+  for plugins; never the password),
+  AddedByAllDevices (a user with all devices or the system added it; migration `DeviceGroups`: true for existing rows)
+  and AddedByGroupId (the adding user's device group, no foreign key): the serial rule of device groups and the host
+  names of PKI and EST read them (`docs/spec/device-scope.md`; SDK `IDeviceInfo.AddedByAllDevices`).
+- `DeviceGroup` (table DeviceGroups, migration `DeviceGroups`): Id, Name (1..64, unique case-insensitive via
+  NormalizedName), Description (0..200), ThisServer, SiteIds, TagIds (JSON arrays of Guids), Serials, ExceptSerials (JSON
+  arrays of normalized serials), Revision (from 1, concurrency token), CreatedUtc, ChangedUtc; at most 200. Referenced
+  (delete restricted) by `Users.DeviceGroupId`, `EventRules.OwnerGroupId` and `ComplianceChecks.OwnerGroupId`;
+  `DeviceGroupStore.DeleteAsync` clears them in the same transaction. See `docs/spec/device-scope.md`.
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
 - `TagDefinition` (table TagDefinitions, migration `DeviceTags`): Id (Guid), Name (1..64, trimmed, no ";" or control
   characters), NormalizedName (upper invariant, unique: names are unique case-insensitive), Color (Blue, Green, Teal,
@@ -30,7 +38,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   column and load just the changed rows), `TagNames` the rules.
 - Plugin licenses: no table; settings `Server.Id` (the server ID, a random GUID made at the first start, in backups),
   `Plugins.Licenses` (package id -> license text) and `Plugins.TrialStarted` (package id -> first day), see "Plugin licenses".
-- `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see "Waiting list".
+- `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see "Waiting list";
+  QueuedByUserId (migration `DeviceGroups`): the user who queued it (a try checks that user's current devices).
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),
   UserName (max 64), EncryptedPassword (AES-GCM with the entry id as associated data), CreatedUtc.
   The technician's credential list (Credentials page), at most 20 entries, tried in the order added.
@@ -52,7 +61,9 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   (nullable = task level), TimeUtc, Level (Info, Warning, Error), Message (max 2000 chars).
   At most 1000 entries per task; the 1000th says that later entries were dropped.
 - `ComplianceCheckEntity` / `ComplianceResultEntity` (tables ComplianceChecks, ComplianceResults, migration
-  `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance".
+  `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance". Compliance
+  checks and event rules (EventRules) have an owner, OwnerAllDevices + OwnerGroupId (migration `DeviceGroups`: all
+  devices for existing rows; no owner = off, `docs/spec/device-scope.md`).
 - `Setting`: Key, ValueJson.
 - `PluginRecord` (table PluginRecords, migration `PluginRecords`): key (PluginId max 128, Collection max 64, Key max 255),
   ValueJson (valid JSON). A plugin's records (`IPluginRecords`, `DbPluginRecords`): one row per record, a plugin sees

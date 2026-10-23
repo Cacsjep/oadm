@@ -40,6 +40,12 @@ public sealed class WaitingDevice
     /// <summary>The user who imported it.</summary>
     public string AddedBy { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The id of the user who queued the entry (null for entries from before device groups and the system): a try checks
+    /// that user's current devices, never the caller's (docs/spec/device-scope.md, Decisions).
+    /// </summary>
+    public Guid? QueuedByUserId { get; set; }
+
     /// <summary>When the line was kept, renewed when it is kept again: a try started before that writes nothing back.</summary>
     public DateTime CreatedUtc { get; set; }
 
@@ -250,7 +256,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
 
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             await transaction.CommitAsync(ct).ConfigureAwait(false);
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
             return new WaitingAddResult(added, distinct.Count - added, count + added);
         }
         finally
@@ -383,7 +389,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
             _write.Release();
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
     }
 
     /// <summary>Removes entries (<paramref name="all"/>: every entry). Returns how many were removed.</summary>
@@ -415,7 +421,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
 
         if (removed > 0)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         }
 
         return removed;
@@ -438,7 +444,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
 
         if (removed > 0)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         }
 
         return removed;
@@ -487,7 +493,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
 
         if (moved > 0)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
         }
 
         return moved;

@@ -68,6 +68,12 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<AuditLog>();
         services.AddSingleton<AuthManager>();
 
+        // Device groups (docs/spec/device-scope.md): the groups, the tag and site catalog, the views of callers.
+        services.AddSingleton<DeviceGroups.IDeviceGroupOwnedObjects, DeviceGroups.CoreOwnedObjects>();
+        services.AddSingleton<DeviceGroups.DeviceGroupStore>();
+        services.AddSingleton<DeviceGroups.DeviceScopeCatalog>();
+        services.AddSingleton<DeviceGroups.DeviceViewFactory>();
+
         services.AddSingleton<DatabaseInitializer>();
         return services;
     }

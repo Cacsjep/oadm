@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
@@ -37,6 +38,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<Events.EventLogEntryEntity> EventLogEntries => Set<Events.EventLogEntryEntity>();
     public DbSet<Compliance.ComplianceCheckEntity> ComplianceChecks => Set<Compliance.ComplianceCheckEntity>();
     public DbSet<Compliance.ComplianceResultEntity> ComplianceResults => Set<Compliance.ComplianceResultEntity>();
+    public DbSet<DeviceGroup> DeviceGroups => Set<DeviceGroup>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
         new(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
@@ -50,6 +52,17 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
         new(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>());
+
+    private static readonly ValueConverter<List<Guid>, string> GuidsConverter =
+        new(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<List<Guid>>(v, (JsonSerializerOptions?)null) ?? new List<Guid>());
+
+    private static readonly ValueComparer<List<Guid>> GuidsComparer =
+        new(
+            (a, b) => (a == null && b == null) || (a != null && b != null && a.SequenceEqual(b)),
+            v => v.Aggregate(0, (hash, id) => HashCode.Combine(hash, id.GetHashCode())),
+            v => v.ToList());
 
     private static readonly ValueComparer<List<string>> TagsComparer =
         new(
@@ -103,6 +116,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Ignore(d => d.StoredStatus);
             e.Ignore(d => d.SiteRemoved);
             e.HasIndex(d => d.SiteId);
+            // Not a foreign key: a deleted group leaves the serial rule dormant (docs/spec/device-scope.md, Membership).
         });
 
         modelBuilder.Entity<DeviceCredential>(e =>
@@ -206,6 +220,9 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Ignore(u => u.Role);
             e.HasIndex(u => u.RoleId);
             e.HasOne<RoleEntity>().WithMany().HasForeignKey(u => u.RoleId).OnDelete(DeleteBehavior.Restrict);
+            e.Ignore(u => u.DeviceAccess);
+            e.HasIndex(u => u.DeviceGroupId);
+            e.HasOne<DeviceGroup>().WithMany().HasForeignKey(u => u.DeviceGroupId).OnDelete(DeleteBehavior.Restrict);
             e.Property(u => u.CreatedUtc).HasConversion(UtcConverter);
             e.Property(u => u.LastLoginUtc).HasConversion(NullableUtcConverter);
         });
@@ -303,6 +320,9 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(r => r.CreatedUtc).HasConversion(UtcConverter);
             e.Property(r => r.UpdatedUtc).HasConversion(UtcConverter);
             e.Property(r => r.LastFiredUtc).HasConversion(NullableUtcConverter);
+            e.Ignore(r => r.Owner);
+            e.HasIndex(r => r.OwnerGroupId);
+            e.HasOne<DeviceGroup>().WithMany().HasForeignKey(r => r.OwnerGroupId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Events.EventRuleStateEntity>(e =>
@@ -340,6 +360,9 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(c => c.DevicesJson).IsRequired();
             e.Property(c => c.CreatedUtc).HasConversion(UtcConverter);
             e.Property(c => c.ChangedUtc).HasConversion(UtcConverter);
+            e.Ignore(c => c.Owner);
+            e.HasIndex(c => c.OwnerGroupId);
+            e.HasOne<DeviceGroup>().WithMany().HasForeignKey(c => c.OwnerGroupId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Compliance.ComplianceResultEntity>(e =>
@@ -351,6 +374,25 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(r => r.SinceUtc).HasConversion(UtcConverter);
             e.HasOne<Compliance.ComplianceCheckEntity>().WithMany().HasForeignKey(r => r.CheckId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(r => r.DeviceId);
+        });
+
+        modelBuilder.Entity<DeviceGroup>(e =>
+        {
+            e.ToTable("DeviceGroups");
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Id).ValueGeneratedNever();
+            e.Property(g => g.Name).IsRequired().HasMaxLength(DeviceGroup.MaxNameLength);
+            e.Property(g => g.NormalizedName).IsRequired().HasMaxLength(DeviceGroup.MaxNameLength);
+            e.HasIndex(g => g.NormalizedName).IsUnique();
+            e.Property(g => g.Description).IsRequired().HasMaxLength(DeviceGroup.MaxDescriptionLength);
+            e.Property(g => g.SiteIds).HasConversion(GuidsConverter, GuidsComparer).IsRequired();
+            e.Property(g => g.TagIds).HasConversion(GuidsConverter, GuidsComparer).IsRequired();
+            e.Property(g => g.Serials).HasConversion(TagsConverter, TagsComparer).IsRequired();
+            e.Property(g => g.ExceptSerials).HasConversion(TagsConverter, TagsComparer).IsRequired();
+            e.Property(g => g.Revision).IsConcurrencyToken();
+            e.Property(g => g.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(g => g.ChangedUtc).HasConversion(UtcConverter);
+            e.Ignore(g => g.Rules);
         });
 
         modelBuilder.Entity<Setting>(e =>

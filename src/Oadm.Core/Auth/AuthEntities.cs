@@ -29,6 +29,18 @@ public sealed class UserEntity
 
     public DateTime? LastLoginUtc { get; set; }
 
+    /// <summary>
+    /// The user may reach every device (migration <c>DeviceGroups</c>: true for every user that existed before). False:
+    /// the devices of <see cref="DeviceGroupId"/>, or none without a group. Administrators always have all devices.
+    /// </summary>
+    public bool AllDevices { get; set; }
+
+    /// <summary>The user's device group (table DeviceGroups, delete restricted: deleting a group clears it first).</summary>
+    public Guid? DeviceGroupId { get; set; }
+
+    /// <summary>The stored device access.</summary>
+    public DeviceScope DeviceAccess => new(AllDevices, DeviceGroupId);
+
     public override string ToString() => $"User {UserName}";
 }
 

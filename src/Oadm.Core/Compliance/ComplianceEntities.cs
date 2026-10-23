@@ -31,6 +31,19 @@ public sealed class ComplianceCheckEntity
     /// <summary>Raised by every save; a save of an older version is refused (two users).</summary>
     public int Version { get; set; }
 
+    /// <summary>
+    /// The owner sees every device (migration <c>DeviceGroups</c>: true for everything that existed before). False: the
+    /// owner is <see cref="OwnerGroupId"/>; without one (its group was deleted) the object is off until an administrator
+    /// gives it another owner (docs/spec/device-scope.md, Shared objects).
+    /// </summary>
+    public bool OwnerAllDevices { get; set; }
+
+    /// <summary>The owning device group (FK to DeviceGroups, delete restricted: deleting a group clears it and turns the object off).</summary>
+    public Guid? OwnerGroupId { get; set; }
+
+    /// <summary>The owner as one value.</summary>
+    public Auth.DeviceScope Owner => new(OwnerAllDevices, OwnerAllDevices ? null : OwnerGroupId);
+
     public DateTime CreatedUtc { get; set; }
 
     public DateTime ChangedUtc { get; set; }

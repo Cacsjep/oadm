@@ -198,7 +198,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
             _snapshot = Snapshot.From(roles);
             if (changed.Count > 0)
             {
-                Changed?.Invoke(this, changed);
+                Oadm.Core.Auth.CallerContext.Raise(Changed, this, changed);
             }
 
             return new CatalogSyncResult(operatorFirstSync, operatorWithheld);
@@ -349,7 +349,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
 
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             _snapshot = Snapshot.From(roles);
-            Changed?.Invoke(this, changedIds);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, changedIds);
             return diffs;
         }
         finally
@@ -383,7 +383,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
             db.Roles.Remove(role);
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             _snapshot = Snapshot.From(await db.Roles.AsNoTracking().ToListAsync(ct).ConfigureAwait(false));
-            Changed?.Invoke(this, [id]);
+            Oadm.Core.Auth.CallerContext.Raise(Changed, this, [id]);
             return role.Name;
         }
         finally

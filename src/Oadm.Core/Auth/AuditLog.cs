@@ -72,6 +72,9 @@ public static class AuditActions
     public const string BackupScheduleChanged = "Changed automatic backups";
     public const string RestoreStarted = "Started restore";
     public const string RestoreApplied = "Restored backup";
+    public const string DeviceGroupCreated = "Created device group";
+    public const string DeviceGroupChanged = "Changed device group";
+    public const string DeviceGroupDeleted = "Deleted device group";
 }
 
 /// <summary>

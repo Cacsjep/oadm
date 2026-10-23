@@ -125,6 +125,13 @@ public sealed partial class DeviceFirstPasswordService
     }
 
     /// <summary>The passphrase policy of every device (anonymous systemready, bounded parallelism); null where unreadable.</summary>
+    public Task<IReadOnlyList<DevicePassphrasePolicy>> ReadPoliciesAsync(DeviceGroups.ViewedDevices devices, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        return ReadPoliciesAsync(devices.Ids, ct);
+    }
+
+    /// <summary>The raw-id form (system work and the services not converted yet; gRPC calls use the <see cref="DeviceGroups.ViewedDevices"/> overload).</summary>
     public async Task<IReadOnlyList<DevicePassphrasePolicy>> ReadPoliciesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);

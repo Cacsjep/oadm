@@ -80,6 +80,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             _writeLock.Release();
         }
 
+        await ReloadNamesAsync().ConfigureAwait(false);
         RaiseDefinitionsChanged();
         return created.Clone();
     }
@@ -151,6 +152,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             _writeLock.Release();
         }
 
+        await ReloadNamesAsync().ConfigureAwait(false); // before the devices: device groups follow a rename at once
         Publish(changed);
         RaiseDefinitionsChanged();
         return result;
@@ -190,6 +192,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             _writeLock.Release();
         }
 
+        await ReloadNamesAsync().ConfigureAwait(false); // before the devices: device groups follow the tag at once
         Publish(changed);
         RaiseDefinitionsChanged();
         return (deletedName, changed.Count);
@@ -263,6 +266,11 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
         finally
         {
             _writeLock.Release();
+        }
+
+        if (created.Count > 0)
+        {
+            await ReloadNamesAsync().ConfigureAwait(false); // before the devices: a device group sees the new tag at once
         }
 
         Publish(changed);
@@ -377,11 +385,52 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
         }
     }
 
-    public void Dispose() => _writeLock.Dispose();
-
-    private void RaiseDefinitionsChanged()
+    public void Dispose()
     {
-        Interlocked.Increment(ref _version);
-        DefinitionsChanged?.Invoke(this, EventArgs.Empty);
+        _writeLock.Dispose();
+        _namesLock.Dispose();
+    }
+
+    private void RaiseDefinitionsChanged() => Auth.CallerContext.Raise(DefinitionsChanged, this, EventArgs.Empty);
+
+    /// <summary>
+    /// The names of the definitions by id, as committed (null until <see cref="DefinitionNamesAsync"/> first read them).
+    /// Updated after every write that changed definitions, before its device changes are published and before
+    /// <see cref="Version"/> moves, so device groups (tags by id) resolve a renamed or new tag at once.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, string>? DefinitionNames => Volatile.Read(ref _names);
+
+    /// <summary><see cref="DefinitionNames"/>, read from the database the first time.</summary>
+    public async ValueTask<IReadOnlyDictionary<Guid, string>> DefinitionNamesAsync(CancellationToken ct)
+    {
+        if (Volatile.Read(ref _names) is { } names)
+        {
+            return names;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var loaded = await db.TagDefinitions.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name, ct).ConfigureAwait(false);
+        Interlocked.CompareExchange(ref _names, loaded, null);
+        return Volatile.Read(ref _names)!;
+    }
+
+    private IReadOnlyDictionary<Guid, string>? _names;
+    private readonly SemaphoreSlim _namesLock = new(1, 1);
+
+    /// <summary>Reads the committed definitions again (after a write, never cancelled) and moves <see cref="Version"/>.</summary>
+    private async Task ReloadNamesAsync()
+    {
+        await _namesLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
+            var loaded = await db.TagDefinitions.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name, CancellationToken.None).ConfigureAwait(false);
+            Volatile.Write(ref _names, loaded);
+            Interlocked.Increment(ref _version);
+        }
+        finally
+        {
+            _namesLock.Release();
+        }
     }
 }
