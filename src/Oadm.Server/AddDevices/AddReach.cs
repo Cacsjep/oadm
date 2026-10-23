@@ -114,7 +114,7 @@ public sealed class AddReach
 public static class AddDeviceTexts
 {
     /// <summary>A group of tags or single devices only.</summary>
-    public const string CannotAdd = "Your device group has no site, so you cannot add devices.";
+    public const string CannotAdd = Oadm.Sdk.Devices.DeviceGroupMessages.CannotAdd;
 
     /// <summary>A waiting device whose user can no longer add it there (another group, no devices, removed).</summary>
     public const string KeeperCannotAdd = "Not added: the user who kept it cannot add devices here.";
