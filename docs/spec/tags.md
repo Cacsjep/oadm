@@ -21,9 +21,10 @@ with the labels in the grid, the search, the export and the import; plugins read
   it out of them. `List` / `Watch` count only the devices of the caller's view and fill `DeviceTag.group_names` (the
   groups that use the tag) only for users with all devices; the client asks before deleting such a tag ("Used by device
   group Building B"). Every move of a device into or out of a group by tagging or deleting a tag is audited per group
-  ("Devices left device group" / "Devices entered device group", target the group, detail "3 devices (serials): +PTZ"):
-  `DeviceMembershipAudit` (`CaptureAsync` before the write, `WriteAsync` with the changed devices after it; shared by every
-  writer that moves devices).
+  ("Left device group" / "Entered device group", target the group, detail "3 devices (+PTZ): serials"):
+  `DeviceGroupMembership` (`CaptureAsync` before the write, so a deleted tag still resolves for the devices that left;
+  `ChangesAsync` with the devices before and after; `WriteAsync`). The waiting list tags an added device through the queuing
+  user's view, so the guard applies to file imports too.
 - **Client store**: `Tags/TagStore` (fed by `TagService.Watch` in `ServerConnection`, owned by `DeviceStore.Tags`) keeps
   one shared `TagInfo` per name (case-insensitive); device rows hold `TagChips` of those shared objects, so a recolor
   updates every chip and group header without touching 5,000 rows. `DeviceRowViewModel.Tags` / `TagsText`

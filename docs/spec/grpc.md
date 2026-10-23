@@ -166,7 +166,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, or a PRO plugin without an active license; reply:
   the whole list), see "Plugins on and off".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
-  `server_version = 21` in both replies for the About page),
+  `server_version = 21` in both replies for the About page; `action_destinations = 12`: in the replies only for users with
+  all devices, in a `Set` unset keeps the list, set replaces it, INVALID_ARGUMENT for an entry that is not "host" or
+  "host:port" or over 100 entries, nothing changed then),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
   entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND), `RevealCredential(id)` (reply `RevealedCredential { password = 1 }`:
@@ -186,7 +188,14 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   FAILED_PRECONDITION "The camera refused: <camera text>"). Every method only for devices of the caller's view (NOT_FOUND
   "1 device is no longer available." like an unknown device, the camera is never asked; the RTSP port methods refuse the
   whole selection); `Watch` ends with that NOT_FOUND when its device leaves the view. See "Live view".
-- `EventService` (`events.proto`, event rules, see "Event rules").
+- `EventService` (`events.proto`, event rules, see "Event rules"). Device groups: every method works on the caller's view;
+  `RuleSummary.owner = 11` (all devices or the group, with its name); `SaveRuleRequest.owner = 2` (unset: a new rule belongs
+  to the caller's devices, a changed one keeps its owner; only administrators set another one, else PERMISSION_DENIED);
+  rules of another owner, devices outside the owner and events the owner does not have answer NOT_FOUND; an address outside
+  the allowed list INVALID_ARGUMENT "Rules of a device group can send only to the addresses an administrator allowed in
+  Settings."; a rule without an owner cannot be turned on (FAILED_PRECONDITION). `GetCatalog` lists for a group only its
+  sites' events, its checks and device triggers of its devices; `ListLog` / `WatchLog` only lines of the group's rules and
+  of its devices; `TestAction` takes only a device of the view.
 - `ServerLogService` (`logs.proto`, permission `logs.server`): `List` (the server's log files, a page newest first), see
   "Logs page".
 - `DeviceWebService` (`deviceweb.proto`, the Web View relay, see "Web View"): `Open(device_id)` (Operator; refuses
@@ -202,7 +211,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - `ComplianceService` (`compliance.proto`, see "Compliance"): `GetCatalog`, `ListChecks`, `WatchChecks`, `GetCheck`,
   `SaveCheck`, `DeleteCheck`, `SetCheckEnabled`, `ListChoices`, `CheckNow`, `WatchResults` (snapshot in batches of 5,000 with
   `snapshot_end`, then changes; `checking` while a result was asked for), `SetEnabled` (compliance on / off, off by default;
-  `ComplianceCheckList.enabled`).
+  `ComplianceCheckList.enabled`). Device groups: `ComplianceCheckSummary.owner = 19` (like `RuleSummary.owner`); users of a
+  group see and change only their group's checks and their results (others NOT_FOUND); `CheckNow` and `ListChoices` take
+  only devices of the view, empty lists = the view.
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
   `device_count` in the caller's view and, for users with all devices, the `group_names` that use it; then names used on
   devices of the view without a definition, `defined = false`), `Watch` (the whole `TagList` on

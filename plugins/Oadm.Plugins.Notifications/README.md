@@ -13,6 +13,17 @@ turns off (`RunsOn`).
 | Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`, administrators, audited). |
 | Sites | `siteSupport: full`: the actions need no device, so rules about devices at a site use them like any other. They send on the server's own network (the user's own servers); a "Send through site" option can come later. Their sockets are the reviewed exceptions of the banned-API analyzer. |
 
+## Device groups
+
+Rules of a device group may send only to the addresses an administrator allowed (Settings, `Events.ActionDestinations`).
+Both actions declare their address (`IActionPlugin.Destinations`: the URL's host and port, the TCP host and port, as
+written) so the server refuses a rule on save, and check it with `IActionContext.IsDestinationAllowed` right before they
+connect, after the placeholders were filled: "Rules of a device group can send only to the addresses an administrator
+allowed in Settings. <host> was not contacted." Send HTTP request follows redirects itself (at most 10; never from https to
+http; a 301 / 302 after a POST and a 303 become a GET without the body; the login header only to the first address) and
+checks every address. Rules of users with all devices are not limited. Send email is not limited (its mail server is part
+of the action). `minSdkVersion` 0.4.0.
+
 ## Send HTTP request (`oadm.notifications.http`)
 
 - Method GET, POST, PUT, PATCH, DELETE; URL (http or https); query parameters and headers as name / value rows.

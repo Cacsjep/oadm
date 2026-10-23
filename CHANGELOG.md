@@ -19,6 +19,9 @@ version and date, and the release workflow copies it into the GitHub release.
   single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
 - Device groups: the device list, live video, the web interface and the Sites page show only the devices and sites of
   the user's group; live video stops when its device leaves the group.
+- Device groups: users of a group tag only their devices and never add or remove a tag a group uses; compliance checks and
+  event rules belong to a group and run only on its devices; the event log shows them only their rules and devices.
+- Settings: the addresses event rules of device groups may send to (Send HTTP request, Send TCP message).
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
 

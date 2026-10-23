@@ -274,6 +274,27 @@ an independent security review the same day). A user may be limited to part of t
 - **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch, backstop),
   `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks), the canary cases of TaskService.
 
+## Code (shared-core)
+
+- **Tags**: `DeviceTagStore.SetDeviceTagsAsync(ViewedDevices, ...)`: the guard (`TagInUseByGroupException`) reads the groups
+  inside the BEGIN IMMEDIATE write transaction (a group save during the tagging waits for it); `ListAsync(view)` counts the
+  view; `TagService` fills `group_names` for users with all devices and audits membership moves (`DeviceGroupMembership`
+  with the rules captured before the write).
+- **Owners**: `OwnerScopes` (the owner's compiled filter, its sites, `Changed` / `GroupDeleted`, `Sees`, `OwnerOf`),
+  `OwnerRules` (only administrators choose the owner; tags of a group's object), `RuleOwners` (event types an owner may use,
+  the allowed addresses), `IEventTypeOwners` (the compliance engine: owners of the check events), `DeviceViewRepository`
+  (plugin choices list only the caller's view), `Mapping/OwnerMapping` (`DeviceOwner`).
+- **Compliance**: `ComplianceCheck.Owner`, the engine intersects every check with its owner and re-reconciles the checks of
+  groups on `OwnerScopes.Changed` (only devices that came in are evaluated), `ComplianceService` takes the caller's view.
+- **Event rules**: `StoredRule.Owner`, `RuleEngine` (owner filter in `Selects` and `StateOf`: group counts of "Any
+  device" and "Any site offline"), `ActionRunner` (`RuleEdgeJob.Owner`, targets intersected, `IsDestinationAllowed`),
+  `EventRulesService` (the view on every method, save checks), `EventLog.ListAsync(scope)` / `EventLogScope`,
+  `Core.Settings.ActionDestinations`.
+- **Tests**: `Oadm.Core.Tests/DeviceGroups/TagGuardTests`, `Compliance/ComplianceOwnerTests`, `Events/RuleOwnerTests`, Perf
+  `Compliance/ComplianceOwnerScaleTests`, `DeviceGroups/SharedCoreScaleTests`; `Oadm.Server.Tests/DeviceGroups/SharedCore/*`
+  (tags, compliance, events, settings, server log); `Oadm.Plugins.Notifications.Tests/DestinationTests`; the canary cases of
+  TagService, ComplianceService and EventService.
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered
