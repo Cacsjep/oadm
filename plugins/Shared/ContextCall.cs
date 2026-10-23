@@ -118,6 +118,35 @@ internal static class OwnerScope
         }
     }
 
+    /// <summary>
+    /// A user with all devices who saves an object another scope owns (a group's view or dashboard): the device ids the
+    /// stored object already had (<paramref name="stored"/>) that are not in the owner's devices now (they left the group or
+    /// were removed). The save drops them from the object and says how many, so the group never gets a device outside it and
+    /// the edit still succeeds. A device the save adds keeps the refusal of <see cref="RequireDevicesAsync"/> (NOT_FOUND), and
+    /// so does every id of a caller of the owner's scope.
+    /// </summary>
+    public static async Task<IReadOnlySet<Guid>> LeftOwnerAsync(ICorePluginContext ctx, ICallContext caller, string owner, IEnumerable<Guid> ids, IEnumerable<Guid> stored, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(stored);
+        if (!caller.HasAllDevices || string.Equals(owner, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return new HashSet<Guid>();
+        }
+
+        var wanted = ids.ToHashSet();
+        wanted.IntersectWith(stored);
+        if (wanted.Count == 0)
+        {
+            return wanted;
+        }
+
+        var known = (await DevicesOf(ctx, caller, owner).ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+        wanted.ExceptWith(known);
+        return wanted;
+    }
+
     private sealed class NoDevices : IDeviceRepository
     {
         public static readonly NoDevices Instance = new();

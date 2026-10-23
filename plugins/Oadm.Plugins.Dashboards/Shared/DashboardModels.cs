@@ -232,6 +232,13 @@ public sealed record Dashboard(string Id, string Name, long Version, IReadOnlyLi
     /// every dashboard saved before device groups). Set by the server, never taken from a page.
     /// </summary>
     public string? Owner { get; init; }
+
+    /// <summary>
+    /// Only in the answer of a save: widgets the save dropped because their devices are no longer in the owner's devices (a
+    /// user with all devices changed a group's dashboard). Never stored.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public int Dropped { get; init; }
 }
 
 /// <summary>Every dashboard, sorted by name (method "list" and the event "dashboards").</summary>
@@ -577,6 +584,11 @@ public static class WidgetIcons
 public static class DashboardRules
 {
     public const string NameMissing = "Enter a name.";
+
+    /// <summary>The answer of a save that dropped widgets (<see cref="Dashboard.Dropped"/>).</summary>
+    public static string DroppedText(int widgets) => widgets == 1
+        ? "Saved without 1 widget of a device that is no longer in the device group."
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Saved without {widgets:N0} widgets of devices that are no longer in the device group.");
 
     public static readonly string NameTooLong = $"Use at most {DashboardsPluginInfo.MaxNameLength} characters on one line.";
 

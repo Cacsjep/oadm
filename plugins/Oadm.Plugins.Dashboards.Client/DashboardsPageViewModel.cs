@@ -271,6 +271,10 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
             tab.EndEditing();
             tab.ApplySaved(saved);
             Upsert(saved);
+            if (saved.Dropped > 0)
+            {
+                tab.Error = DashboardRules.DroppedText(saved.Dropped);
+            }
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested)
         {

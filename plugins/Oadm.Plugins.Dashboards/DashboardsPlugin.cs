@@ -253,6 +253,16 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             }
 
             var owner = OwnerScope.ForSave(Context, caller, index >= 0 ? dashboards[index].Owner : null, isNew);
+
+            // A user with all devices editing a group's dashboard: its widgets of devices that left the group are dropped (counted).
+            var left = await OwnerScope.LeftOwnerAsync(Context, caller, owner, widgets.Select(w => w.DeviceId).OfType<Guid>(),
+                index >= 0 ? dashboards[index].Widgets.Select(w => w.DeviceId).OfType<Guid>() : [], ct).ConfigureAwait(false);
+            var dropped = left.Count == 0 ? 0 : widgets.Count(w => w.DeviceId is { } id && left.Contains(id));
+            if (dropped > 0)
+            {
+                widgets = [.. widgets.Where(w => w.DeviceId is not { } id || !left.Contains(id))];
+            }
+
             await OwnerScope.RequireDevicesAsync(Context, caller, owner, widgets.Select(w => w.DeviceId).OfType<Guid>(), ct).ConfigureAwait(false);
 
             if (index >= 0 && request.Version != 0 && request.Version != dashboards[index].Version)
@@ -285,7 +295,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             }
 
             await StoreAsync(next, owner).ConfigureAwait(false);
-            return saved;
+            return dropped == 0 ? saved : saved with { Dropped = dropped };
         }
         finally
         {
@@ -607,7 +617,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         foreach (var type in Types().Values)
         {
             var info = type.Info;
-            if (reach is not null && !reach.Sees(info))
+            if (reach is not null && !reach.Sees(type))
             {
                 continue;
             }
@@ -653,7 +663,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         }
 
         var reach = await ReachOfAsync(caller, ct).ConfigureAwait(false);
-        if (!reach!.Sees(type.Info))
+        if (!reach!.Sees(type))
         {
             return new DevicesReply([]);
         }
@@ -690,11 +700,14 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             var missing = keys.Where(k => k.DeviceId is { } id && !reach.Devices.Contains(id)).Select(k => k.DeviceId).Distinct().Count();
             if (missing > 0)
             {
+                Unwatch(caller, request.WatchId); // a device left the user's devices: the old watch gets no more values
                 throw new DevicesNotAvailableException(missing);
             }
 
             var types = Types();
-            keys.RemoveWhere(k => k.DeviceId is null && !(types.TryGetValue(k.TypeId, out var type) && reach.Sees(type.Info)));
+            // Server events the user does not see, and events of the user's devices whose type the user does not see (a
+            // compliance check of another group): left out. Keys of an event that is gone stay ("Event no longer exists").
+            keys.RemoveWhere(k => types.TryGetValue(k.TypeId, out var type) ? !reach.Sees(type) : k.DeviceId is null);
         }
 
         return Register(caller, request, keys);
@@ -822,9 +835,19 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             {
                 var snapshots = changed.ToDictionary(k => k, Snapshot);
                 events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply([.. snapshots.Values])), PluginEventAudience.AllDevices);
+
+                // The devices each group has now: a device that left a group gets no more values there, also before the
+                // page renews its watch.
+                var reaches = new Dictionary<string, Reach?>(StringComparer.OrdinalIgnoreCase);
+                foreach (var scope in groupWatchers.Select(w => w.ScopeKey).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    reaches[scope] = await ReachOfAsync(scope, CancellationToken.None).ConfigureAwait(false);
+                }
+
                 foreach (var session in groupWatchers.GroupBy(w => w.SessionId, StringComparer.Ordinal))
                 {
-                    var mine = session.SelectMany(w => w.Keys).Where(snapshots.ContainsKey).Distinct().Select(k => snapshots[k]).ToList();
+                    var mine = session.SelectMany(w => w.Keys.Where(k => k.DeviceId is not { } id || reaches[w.ScopeKey]?.Devices.Contains(id) != false))
+                        .Where(snapshots.ContainsKey).Distinct().Select(k => snapshots[k]).ToList();
                     if (mine.Count > 0)
                     {
                         events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply(mine)), PluginEventAudience.Session(session.Key));
@@ -877,7 +900,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     /// <summary>
     /// What a user of a device group sees: the group's devices, the device events that can come from them (an event with a
-    /// device list needs one of them) and the site events of the group's sites; no other server events.
+    /// device list needs one of them; without a list only OADM's own device status events, never another source's such as
+    /// the compliance checks, whose names belong to their owners) and the site events of the group's sites; no other server
+    /// events.
     /// </summary>
     internal sealed class Reach
     {
@@ -897,12 +922,13 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             return new Reach([.. list.Select(d => d.Id)], [.. list.Select(d => d.SiteId).OfType<Guid>()]);
         }
 
-        public bool Sees(EventTypeInfo info)
+        public bool Sees(SubscribedEventType type)
         {
-            ArgumentNullException.ThrowIfNull(info);
+            ArgumentNullException.ThrowIfNull(type);
+            var info = type.Info;
             if (info.Scope == EventScope.Device)
             {
-                return info.DeviceIds is not { } ids || ids.Any(Devices.Contains);
+                return info.DeviceIds is { } ids ? ids.Any(Devices.Contains) : type.SourceId == BuiltInSource;
             }
 
             return SiteOf(info.Id) is { } site && Sites.Contains(site);
