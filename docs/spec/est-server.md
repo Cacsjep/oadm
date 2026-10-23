@@ -35,7 +35,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   - **Not renewed** (only while there are any): device, profile, valid until, state (Not renewed, Expired), 500 at most
     with "Showing 500 of ...". No list of every certificate: the certificates are on the cameras (PKI page, device
     details). No Revoke (decision 2026-10-22): without a revocation list it only stopped renewals, which **Remove**
-    in the Certificate enrollment dialog and removing the device already do; real revocation (a CRL the RADIUS servers of IEEE 802.1X
+    in the Certificate enrollment dialog and removing the device already do; revocation (planned with the 802.1X server, `docs/spec/radius-server.md` "Certificates and revocation": PKI keeps the issued certificates and a revocation list, EST refuses renewing a revoked certificate; a CRL the RADIUS servers of IEEE 802.1X
     check) is a later feature of PKI.
 - **Task "Certificate enrollment"** (device context menu, Security; one task per device), its dialog like the
   Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set

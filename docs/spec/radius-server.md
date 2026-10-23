@@ -210,13 +210,38 @@ Switches differ; the server assumes nothing a switch may leave out and is strict
   Zyxel, MikroTik as available) under `tests/.../Fixtures/Radius`, each replayed in a test; new switch quirks become a
   fixture first.
 
+## Certificates and revocation (PKI)
+
+Decision 2026-10-23: **PKI owns the list of issued certificates and the revocation list**; EST and the 802.1X server read
+it. One list, so a revoked certificate can neither authenticate nor renew. Built in stage 1 of this feature (PKI part).
+
+- **PKI page, new tab "Certificates":** every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X,
+  Renew) or by EST: device, use (HTTPS, IEEE 802.1X, MQTT, RTSPS), issued by (Task, EST), valid from, valid until,
+  serial number, state chip (Valid, Expires soon (30 days), Expired, Replaced (a newer one of the same device and use
+  exists), Revoked). Filters (state, use, issued by) and search (device, serial, address); virtualized, paged from the
+  server (30,000 devices with several certificates each); **View certificate** (the shared certificate window).
+- **Revoke** (red, toolbar; one or several rows, confirmed, a reason: Key compromised, Device replaced, Device removed,
+  Other): the serials go into the revocation list with time and reason; **Revoke all of this device** in the device's
+  row menu. No undo (a revoked certificate stays revoked; the device gets a new one by Enable 802.1X or EST setup).
+  Users with all devices only (`RequiresAllDevices`), audited.
+- **Kept:** every issued certificate's serial, device, use, source, validity and DER, in the PKI's records; a
+  certificate expired more than 1 year ago leaves the list (revoked ones stay while they could still be valid).
+  Existing certificates from before this feature: read once from the devices by the next full refresh where the PKI can
+  see them (the device's certificate list), else they appear when renewed.
+- **EST:** `simplereenroll` with a revoked certificate is refused ("Certificate revoked"), listed in Enrollments.
+- **802.1X server:** a revoked client certificate fails "Certificate revoked on 2026-11-02 (Key compromised)"; the check
+  is a hash lookup of the serial, the list is kept in memory and replaced when PKI changes it.
+- **802.1X page, tab "Revoked":** the revoked certificates (from PKI's list) and **Revoke**, which opens the PKI
+  certificate list as a picker (search, filters) and revokes the chosen ones. A second door to the same list.
+- **Later:** PKI publishes a CRL (and maybe OCSP) for RADIUS servers of other vendors.
+
 ## Who passes
 
 - The client certificate: a chain to the OADM CA or a root of the PKI trusted root store, valid now, extended key usage
   client authentication (or none), and it names **exactly one managed device**: the DNS name `axis-<serial>.local` the
   OADM CA puts into every device certificate, or the serial of the factory **Axis device ID** (checked against the Axis
   device ID roots EST ships). At a site: a device of that site.
-- No revocation list yet (a later feature of PKI); removing a device from OADM refuses it at its next authentication.
+- Not revoked (PKI's revocation list, above); removing a device from OADM refuses it at its next authentication.
 - The EAP identity (sent before TLS, unprotected) is shown and logged, never trusted.
 
 ## Limits and load
