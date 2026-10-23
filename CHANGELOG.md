@@ -55,13 +55,21 @@ version and date, and the release workflow copies it into the GitHub release.
   their own devices. Snapshot report, Hardening scan, Edge Recording Export, I/O Monitor, Metadata Monitor and Web View
   work only on their devices; a monitor stops when its device leaves the group. System report is for users with all
   devices.
+- Device groups: a task waiting in the queue fails when the user who started it was disabled or deleted, or no longer
+  has the device. A device on the waiting list whose user was deleted waits for Try now.
+- Device groups: plugins made for an older OADM work only for users with all devices; for other users their tasks are
+  not in the menu.
+- Device groups: the users of the same devices share one hardening scan, and any of them can stop it. Reports, exports
+  and other results of plugins belong to the login that started them. A user runs at most 50 of them per plugin at a
+  time.
 
 ### Changed
 
 - The **Users** page is now **Permissions**: users and device groups side by side, the roles below. The user list no longer
   shows the last login.
-- Remove, Refresh and the other device actions do nothing when a chosen device was removed meanwhile and say "1 device
-  is no longer available." (before, Remove and Refresh skipped it).
+- Remove, Refresh, Check now, tagging, the RTSP port, the first password, the queries of task dialogs and the other
+  device actions do nothing when a chosen device was removed meanwhile and say "1 device is no longer available."
+  (before, Remove and Refresh skipped it).
 
 ## [4.1.0] - 2026-10-23
 
