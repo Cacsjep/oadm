@@ -50,7 +50,7 @@ public sealed class IoMonitorHardwareTests
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (inputs, outputs, error) = await session.Dispatch(async () =>
         {
-            var vm = new IoMonitorViewModel(new PluginPageContext(plugin, hub, devices.Items));
+            var vm = new IoMonitorViewModel(new PluginPageContext(plugin, hub, devices.Items, new TestCall(devices, new Factory(vapix))));
             var window = Headless.Host(new IoMonitorView { DataContext = vm });
             window.Show();
             vm.SelectedDevice = IoDeviceOption.Of(device);

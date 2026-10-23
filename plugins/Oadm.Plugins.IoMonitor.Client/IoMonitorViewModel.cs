@@ -365,6 +365,7 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
             {
                 await Task.Delay(KeepAliveInterval, ct).ConfigureAwait(true);
                 string? json;
+                var ended = false;
                 try
                 {
                     json = await _ctx.InvokeAsync(IoMonitorMethods.KeepAlive, IoMonitorJson.Serialize(new StreamRequest(streamId)), ct).ConfigureAwait(true);
@@ -374,15 +375,22 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
                     return;
                 }
 #pragma warning disable CA1031 // A missed keep-alive is retried with the next one.
-                catch (Exception)
+                catch (Exception ex)
 #pragma warning restore CA1031
                 {
-                    continue;
+                    if (Message(ex) != IoMonitorMethods.StreamEnded)
+                    {
+                        continue;
+                    }
+
+                    json = null;
+                    ended = true; // the server does not know the stream (it restarted): start again below
                 }
 
                 // the server no longer reads for this stream (it expired or the server restarted): start again, so the
                 // page never shows old states; an empty answer (older server, fake mode) means it still runs
-                if (!string.IsNullOrEmpty(json) && !IoMonitorJson.Deserialize<KeepAliveReply>(json).Running && !ct.IsCancellationRequested && _streamId == streamId)
+                var running = !ended && (string.IsNullOrEmpty(json) || IoMonitorJson.Deserialize<KeepAliveReply>(json).Running);
+                if (!running && !ct.IsCancellationRequested && _streamId == streamId)
                 {
                     _ = SwitchAsync(SelectedDevice);
                     return;

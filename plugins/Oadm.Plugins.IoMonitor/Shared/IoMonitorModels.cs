@@ -30,9 +30,13 @@ public static class IoMonitorMethods
 
     /// <summary>
     /// <see cref="StreamRequest"/> -> <see cref="KeepAliveReply"/>: every 5 s while the page shows the device; without it the
-    /// server stops after 20 s. An unknown stream (expired, server restarted) answers <c>running: false</c>: the page starts again.
+    /// server stops after 20 s. A stream of the user that no longer runs (expired) answers <c>running: false</c>, an unknown
+    /// one (server restarted, another user's) fails with <see cref="StreamEnded"/>: the page starts again.
     /// </summary>
     public const string KeepAlive = "keepAlive";
+
+    /// <summary>The answer to <see cref="Stop"/> and <see cref="KeepAlive"/> for a stream id the user does not have.</summary>
+    public const string StreamEnded = "The live reading has ended.";
 
     /// <summary>Event: <see cref="PortsEvent"/> when a port or the read result changed.</summary>
     public const string PortsTopic = "ports";

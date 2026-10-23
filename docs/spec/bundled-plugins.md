@@ -51,6 +51,8 @@ plugin `README.md`.
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
   tile without a request; error texts from the shared `DeviceMessages`; report jobs live in server memory (30 minutes
   after last use), the PDF is read in 2 MB chunks.
+- Device groups (SDK 0.4.0): only cameras of the user's view ("All" = the view); reports are jobs of their user, another
+  user's report id answers like an unknown one.
 - Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (PDF parsed back with PDFsharp); hardware test through the in-process
   server writing the PDF to `OADM_SCREENSHOT_DIR`.
 
@@ -98,6 +100,8 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   2 s, one Kiss-o'-Death RATE a minute) and 2,000 requests/s overall; a failed bind is retried every 30 s; status texts
   in plain words (`NtpStatusTexts`: port in use, permission, interface missing, upstream not answering).
 - Roles: `save` is Admin and audited. The Windows service opens UDP 123 in the firewall while enabled.
+- Device groups (SDK 0.4.0): `save` only for users with all devices (the form is read-only for the others); users with a
+  group see the requests and sites of their own devices, live through their group's scope.
 - Tests: `tests/Oadm.Plugins.NtpServer.Tests` (loopback with random ports, never port 123 on a real interface).
 
 ## DHCP server (core plugin)
@@ -115,6 +119,8 @@ setup and the manual test plan: plugin `README.md`.
   and follows managed devices to their new address also when it is off; tests never send DHCP on a real interface.
 - Roles: `save`, `saveStatic`, `deleteStatic`, `makeStatic`, `release` are Admin and audited. The Windows service opens
   UDP 67 in the firewall while enabled.
+- Device groups (SDK 0.4.0): every change only for users with all devices; users with a group see the leases of their
+  own devices (by MAC address = serial, or address), live through their group's scope.
 - Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (in-memory network and loopback with random ports).
 
 ## PKI (core plugin)
@@ -161,6 +167,8 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
   a stream ends with Stop, a page switch or 20 s without the page's keep-alive; the client keeps the newest 10,000
   messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port of a camera behind a port forward is set in the
   device list (**OADM > RTSP port**); Start never changes it (an older client's port is ignored).
+- Device groups (SDK 0.4.0): streams are jobs of their user (another user's id answers like an unknown one), opened
+  through the user's call, sent to the page's session only, ended with Error when the camera leaves the user's view.
 - Tests: `tests/Oadm.Plugins.MetadataMonitor.Tests` (+ Perf `ScaleTests`, hardware `MetadataHardwareTests`); Core
   `MetadataDepacketizerTests`, `RtspMetadataSourceTests`, `DeviceEventStreamsTests`.
 
@@ -190,6 +198,8 @@ no events, no actions, no switching. Details: plugin `README.md`.
   per request, 1 s pause after a failure); one reading per device shared by every page; stopped after 20 s without the
   page's keep-alive; at most 20 devices at once; refused statuses without a request; the VAPIX client always from the
   factory, never kept or disposed.
+- Device groups (SDK 0.4.0): streams are jobs of their user (another user's id answers like an unknown one), ports go
+  to the page's session only, a reading is shared within one device scope and ends when the device leaves its view.
 - Tests: `tests/Oadm.Plugins.IoMonitor.Tests` (+ read-only hardware test `IoMonitorHardwareTests`).
 
 ## Device triggers (core plugin)
@@ -264,6 +274,8 @@ one ZIP for Axis support. Details: plugin `README.md`.
   signature, at most 256 MB and 5 minutes per device, at most 4 devices at a time for all jobs; refused statuses without
   a request; jobs live 30 minutes after their last use, their files are deleted then, on `delete` and when the plugin
   stops; 1..50 devices per job (the toolbar button is disabled above 50: "Choose at most 50 devices."), status polls carry only the changed devices; methods are Operator, `start` is audited.
+- Device groups (SDK 0.4.0): every method is for users with all devices (`RequiresAllDevices`, like backups and the
+  audit log); the toolbar button is hidden for users with a device group.
 - Tests: `tests/Oadm.Plugins.SystemReport.Tests` (+ read-only hardware test `SystemReportHardwareTests`),
   `tests/Oadm.Server.Tests/SystemReportServerTests`.
 
@@ -279,6 +291,8 @@ decisions: plugin `README.md`.
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
   information only; every method is Operator and not audited; results kept per device and level (at most 10,000).
+- Device groups (SDK 0.4.0): one scan at a time per device scope, a job of its user (only that user stops it), results
+  and devices of the user's view only.
 - Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (+ read-only hardware test).
 
 ## Web View (core plugin)
@@ -293,6 +307,9 @@ login. Decisions, the relay and tests: plugin `README.md`.
   address gets its session cookie (others 403, another Host 400); requests stay on the device; refused statuses are not
   contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
   off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
+- Device groups (SDK 0.4.0): no page methods; the tree lists only the user's devices and `DeviceWebService` takes the
+  device from the user's view, so a tab's requests end when its device leaves the view (its tab closes like a removed
+  device's). Canary: `tests/Oadm.Plugins.WebView.Tests/CanaryTests`.
 - Page: left card: the page select (Web interface, Overlays, Privacy masks, Image Health Analytics, Object Analytics, License Plate Verifier,
   Custom with a path field, error below it; it shows the active tab's page, changing it opens the page in the active tab,
   new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no
@@ -370,6 +387,8 @@ and tests: plugin `README.md`.
   estimated from at most 40 recordings per camera.
 - Roles: "show" (Operator and Viewer: search), "Export recordings" (`export`, Operator yes, Viewer no); every downloaded
   recording is audited with the camera and the times.
+- Device groups (SDK 0.4.0): search and export take the camera from the user's call; a camera outside the user's group
+  answers like an unknown one and is never contacted.
 - Tests: `tests/Oadm.Plugins.EdgeRecordingExport.Tests` (+ Perf 5,000 cameras, read-only hardware test that searches and
   downloads the last two minutes of the dev cameras through the in-process server).
 

@@ -332,6 +332,11 @@ internal sealed class PluginPageContext(NtpServerPlugin plugin, PluginEventHub h
 
     public Func<string, string?, Task<string?>>? Intercept { get; set; }
 
+    /// <summary>False: a user with a device group.</summary>
+    public bool AllDevices { get; set; } = true;
+
+    public bool HasAllDevices => AllDevices;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         if (Intercept is { } intercept)

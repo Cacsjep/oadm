@@ -432,6 +432,11 @@ internal sealed class PluginPageContext(DhcpServerPlugin plugin, PluginEventHub 
 
     public Func<string, string, bool> Confirm { get; set; } = (_, _) => true;
 
+    /// <summary>False: a user with a device group.</summary>
+    public bool AllDevices { get; set; } = true;
+
+    public bool HasAllDevices => AllDevices;
+
     public List<(string Title, string Message)> Confirmations { get; } = [];
 
     public List<string> Messages { get; } = [];

@@ -7,7 +7,9 @@ namespace Oadm.Plugins.NtpServer;
 /// Core plugin "NTP server" ("NTP server" in CLAUDE.md): an RFC 5905 server-mode responder on the selected
 /// interface, answering from the server clock (stratum 10, "LOCL") or an optional upstream (stratum + 1). Settings are
 /// stored server side and restored on start. Contributes the task "Use OADM as NTP server".
-/// Page backend methods: <see cref="NtpServerMethods"/>; live events: state and request log.
+/// Page backend methods: <see cref="NtpServerMethods"/>; live events: state and request log. Device groups (SDK 0.4.0): the
+/// server is server-wide, so Save is for users with all devices; users with a group see the page with the requests and
+/// sites of their devices only.
 /// </summary>
 public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
 {
@@ -41,7 +43,7 @@ public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var service = new NtpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.Network, ctx.Sites);
+        var service = new NtpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.Network, ctx.Sites, ctx.DeviceScopes);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
     }
@@ -63,6 +65,32 @@ public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
     [
         new(PermissionKeys.Manage, "Change the NTP server", "Turn the NTP server on or off and choose its network and time source.") { OperatorDefault = false },
     ];
+
+    /// <summary>The NTP server serves every device: changing it is for users with all devices.</summary>
+    public bool RequiresAllDevices(string method) => method == NtpServerMethods.Save;
+
+    /// <summary>A user's call: users with a device group read the state of their devices (requests, sites).</summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var service = _service ?? throw new InvalidOperationException("The NTP server plugin is not running.");
+        if (caller.HasAllDevices)
+        {
+            return await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+        }
+
+        switch (method)
+        {
+            case NtpServerMethods.GetState:
+                service.Viewers.Seen(caller);
+                var view = Serving.NtpGroupView.From(await caller.Devices.ListAsync(ct).ConfigureAwait(false));
+                return NtpJson.Serialize(service.GetState(view));
+            case NtpServerMethods.Save:
+                throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices)
+            default:
+                throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+        }
+    }
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {

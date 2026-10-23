@@ -61,7 +61,13 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
 - Fake mode (`FakeOadmApi.SnapshotReport.cs`): the core plugin is listed, tiles come from the fake live
   view sources (P3265-V two view areas, P3727-PLE four sensors + quad view, error tiles for the devices
   with a bad status), pictures are generated JPEGs, the PDF is a one-page placeholder.
-- Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (source expansion, request and error mapping, PDF parsed
+- Device groups (SDK 0.4.0): every method takes the cameras from the user's call. For a user with a device group a
+  camera outside the group answers like an unknown one (NOT_FOUND "1 device is no longer available.", the whole list or
+  report is refused, nothing is read); an empty list means the cameras of the user's view. A report is a job of its user
+  (`ctx.Jobs`): it takes the snapshots through the user's view, and `reportStatus`, `readReport` and `deleteReport` answer
+  another user's id like an unknown one ("The report no longer exists; create it again."). The overload without a call
+  (in-process callers) uses the plugin's context, which refuses in a group user's call.
+- Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (the device-group canary `CanaryTests`, source expansion, request and error mapping, PDF parsed
   back with PDFsharp: pages, cover text via ToUnicode, DCT images; view models; headless screenshots
   `snapshot-report-page.png`, `-preview.png`, `-export.png`; hardware test through the in-process server
   writing `snapshot-report-<camera>.pdf` to `OADM_SCREENSHOT_DIR`).

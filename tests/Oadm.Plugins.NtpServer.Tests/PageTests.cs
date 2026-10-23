@@ -30,6 +30,17 @@ public sealed class PageViewModelTests : IAsyncLifetime
     public async Task DisposeAsync() => await _plugin.DisposeAsync();
 
     [Fact]
+    public void A_user_with_a_device_group_sees_the_form_read_only_without_Save()
+    {
+        using var vm = new NtpServerViewModel(_ctx);
+        Assert.True(vm.MayManage);
+        _ctx.AllDevices = false;
+        using var group = new NtpServerViewModel(_ctx);
+        Assert.False(group.MayManage);
+        Assert.False(group.SaveCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void Serve_at_sites_is_a_select_of_all_sites_chosen_sites_or_none()
     {
         var b = Guid.NewGuid();

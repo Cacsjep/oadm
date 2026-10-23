@@ -55,6 +55,12 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
 - **Fake mode** (`FakeOadmApi.DeviceWeb.cs`): every device answers with a small page naming it and the path; WebSockets
   echo.
 
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion`). The plugin has no page methods. The tree shows the user's devices (the host's device list),
+and `DeviceWebService` takes every device from the user's view: when a device leaves the view, its relay requests end
+with "1 device is no longer available." and its tab closes like the tab of a removed device.
+
 ## Tests
 
 - `tests/Oadm.Server.Tests/DeviceWebTests`: Open (refusals, audit), a request with body and headers through the fake
@@ -66,7 +72,7 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
 - `tests/Oadm.Client.Tests/DeviceWebRelayTests`: cookie and token, 403 / 400 for others, bodies with a length and chunked,
   WebSocket both ways, dispose, refusals.
 - `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, missing
-  runtime, 5,000 devices, the shared device icon; headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
+  runtime, 5,000 devices, the shared device icon, the device-group canary (`CanaryTests`); headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
   (the native browser needs a real window: a stand-in shows where the page goes).
 
 ## Permissions

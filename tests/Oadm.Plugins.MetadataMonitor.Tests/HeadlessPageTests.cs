@@ -38,7 +38,7 @@ public sealed class HeadlessPageTests
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         await using var rig = await new Rig().StartAsync();
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Call);
         ctx.DeviceList.Add(rig.Camera);
         ctx.DeviceList.Add(new TestDevice("10.0.0.60", "M3106-L Mk II"));
         var settings = new MetadataClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-mm-tests", Guid.NewGuid().ToString("N"), "client.json"));

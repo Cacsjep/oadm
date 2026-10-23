@@ -24,6 +24,7 @@
          (Avalonia, the WebView, CommunityToolkit, SDK) the plugin projects compile against only. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.WebView\Oadm.Plugins.WebView.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.WebView.Client\Oadm.Plugins.WebView.Client.csproj" />
   </ItemGroup>
 </Project>

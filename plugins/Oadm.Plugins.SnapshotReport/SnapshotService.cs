@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.SnapshotReport;
@@ -18,7 +19,10 @@ public sealed record CapturedSnapshot(byte[]? Jpeg, int Width, int Height, DateT
 /// Lists the video sources of managed devices (one tile per source, live view discovery via
 /// <see cref="IVapixClient.GetVideoSourcesAsync"/>) and takes JPEG snapshots with the stored credentials.
 /// Read-only for the devices. At most <see cref="SnapshotReportPluginInfo.Parallelism"/> device requests run
-/// at the same time, each bounded by the timeout.
+/// at the same time, each bounded by the timeout. Device groups (SDK 0.4.0): the methods with an <see cref="ICallContext"/>
+/// reach only the devices of the user's view; for a user with a device group a device id outside the view answers like an
+/// unknown one (<see cref="DevicesNotAvailableException"/>, nothing is sent). The methods without one use the repository and
+/// factory the service was made with (the plugin's context: in-process and background callers).
 /// </summary>
 public sealed partial class SnapshotService : IDisposable
 {
@@ -48,36 +52,61 @@ public sealed partial class SnapshotService : IDisposable
     /// <summary>Time one device request may take.</summary>
     public TimeSpan Timeout { get; }
 
+    /// <summary>The devices and clients the service was made with (the plugin's context).</summary>
+    private DeviceAccess Default => new(_devices, _vapix, Strict: false);
+
+    /// <summary>The repository the service was made with.</summary>
+    internal IDeviceRepository DefaultDevices => _devices;
+
+    /// <summary>The factory the service was made with.</summary>
+    internal IVapixClientFactory DefaultVapix => _vapix;
+
     /// <summary>The managed video devices (all for an empty list), as facts in address order.</summary>
-    public async Task<IReadOnlyList<IDeviceInfo>> GetVideoDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    public Task<IReadOnlyList<IDeviceInfo>> GetVideoDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct) =>
+        GetVideoDevicesAsync(Default, deviceIds, ct);
+
+    /// <summary>For a user with a device group: throws <see cref="DevicesNotAvailableException"/> when any id is outside the view.</summary>
+    public static async Task RequireAsync(ICallContext caller, IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
-        IEnumerable<IDeviceInfo> devices;
-        if (deviceIds.Count == 0)
-        {
-            devices = await _devices.ListAsync(ct).ConfigureAwait(false);
-        }
-        else if (deviceIds.Count > FindOneByOneLimit)
+        _ = await FindAllAsync(DeviceAccess.Of(caller), deviceIds, ct).ConfigureAwait(false);
+    }
+
+    internal static async Task<IReadOnlyList<IDeviceInfo>> GetVideoDevicesAsync(DeviceAccess access, IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        var devices = deviceIds.Count == 0 ? await access.Devices.ListAsync(ct).ConfigureAwait(false) : await FindAllAsync(access, deviceIds, ct).ConfigureAwait(false);
+        return [.. devices.Where(d => d.HasVideo).OrderBy(d => d.Address, AddressComparer.Instance).ThenBy(d => d.Serial, StringComparer.Ordinal)];
+    }
+
+    /// <summary>The devices of <paramref name="deviceIds"/>; a strict access (a device group) refuses the whole list when one is missing.</summary>
+    private static async Task<IReadOnlyList<IDeviceInfo>> FindAllAsync(DeviceAccess access, IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    {
+        List<IDeviceInfo> found;
+        var wanted = deviceIds as IReadOnlySet<Guid> ?? deviceIds.ToHashSet();
+        if (wanted.Count > FindOneByOneLimit)
         {
             // Thousands of ids (a report of a large site): one list call and a set lookup, not one lookup per id.
-            var wanted = deviceIds as IReadOnlySet<Guid> ?? deviceIds.ToHashSet();
-            devices = (await _devices.ListAsync(ct).ConfigureAwait(false)).Where(d => wanted.Contains(d.Id));
+            found = [.. (await access.Devices.ListAsync(ct).ConfigureAwait(false)).Where(d => wanted.Contains(d.Id))];
         }
         else
         {
-            var found = new List<IDeviceInfo>();
-            foreach (var id in deviceIds.Distinct())
+            found = [];
+            foreach (var id in wanted)
             {
-                if (await _devices.FindAsync(id, ct).ConfigureAwait(false) is { } device)
+                if (await access.Devices.FindAsync(id, ct).ConfigureAwait(false) is { } device)
                 {
                     found.Add(device);
                 }
             }
-
-            devices = found;
         }
 
-        return [.. devices.Where(d => d.HasVideo).OrderBy(d => d.Address, AddressComparer.Instance).ThenBy(d => d.Serial, StringComparer.Ordinal)];
+        if (access.Strict && found.Count < wanted.Count)
+        {
+            throw new DevicesNotAvailableException(wanted.Count - found.Count);
+        }
+
+        return found;
     }
 
     /// <summary>
@@ -85,12 +114,19 @@ public sealed partial class SnapshotService : IDisposable
     /// (<paramref name="refreshSources"/> true) reads the sources again; a report uses the sources read in the last
     /// minutes. Bounded fan-out: <see cref="SnapshotReportPluginInfo.Parallelism"/> workers, never one task per device.
     /// </summary>
-    public async Task<ListSourcesResult> ListSourcesAsync(ListSourcesRequest request, CancellationToken ct, bool refreshSources = true)
+    public Task<ListSourcesResult> ListSourcesAsync(ListSourcesRequest request, CancellationToken ct, bool refreshSources = true) =>
+        ListSourcesAsync(Default, request, refreshSources, ct);
+
+    /// <summary><see cref="ListSourcesAsync(ListSourcesRequest, CancellationToken, bool)"/> for the devices of the user's view.</summary>
+    public Task<ListSourcesResult> ListSourcesAsync(ICallContext caller, ListSourcesRequest request, CancellationToken ct, bool refreshSources = true) =>
+        ListSourcesAsync(DeviceAccess.Of(caller), request, refreshSources, ct);
+
+    internal async Task<ListSourcesResult> ListSourcesAsync(DeviceAccess access, ListSourcesRequest request, bool refreshSources, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var devices = await GetVideoDevicesAsync(request.DeviceIds, ct).ConfigureAwait(false);
+        var devices = await GetVideoDevicesAsync(access, request.DeviceIds, ct).ConfigureAwait(false);
         var perDevice = new IReadOnlyList<SnapshotTile>[devices.Count];
-        await ForEachBoundedAsync(devices.Count, async i => perDevice[i] = await ListDeviceAsync(devices[i], refreshSources, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+        await ForEachBoundedAsync(devices.Count, async i => perDevice[i] = await ListDeviceAsync(access.Vapix, devices[i], refreshSources, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
         return new ListSourcesResult { Tiles = [.. perDevice.SelectMany(t => t)] };
     }
 
@@ -120,11 +156,32 @@ public sealed partial class SnapshotService : IDisposable
 
     /// <summary>Takes one snapshot. Never throws for device problems; they end up in <see cref="CapturedSnapshot.Error"/>.</summary>
     public async Task<CapturedSnapshot> TakeAsync(Guid deviceId, int camera, int maxWidth, int maxHeight, CancellationToken ct) =>
-        await TakeAsync(await _devices.FindAsync(deviceId, ct).ConfigureAwait(false), camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
+        await TakeAsync(_vapix, await _devices.FindAsync(deviceId, ct).ConfigureAwait(false), camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// Takes one snapshot of a device of the user's view. For a user with a device group a device outside the view answers
+    /// like an unknown one (<see cref="DevicesNotAvailableException"/>); device problems end up in <see cref="CapturedSnapshot.Error"/>.
+    /// </summary>
+    public async Task<CapturedSnapshot> TakeAsync(ICallContext caller, Guid deviceId, int camera, int maxWidth, int maxHeight, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var device = await caller.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
+        if (device is null && !caller.HasAllDevices)
+        {
+            throw new DevicesNotAvailableException();
+        }
+
+        return await TakeAsync(caller.Vapix, device, camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
+    }
 
     /// <summary>Takes one snapshot of a device already looked up (null = no longer managed). Never throws for device problems.</summary>
-    public async Task<CapturedSnapshot> TakeAsync(IDeviceInfo? device, int camera, int maxWidth, int maxHeight, CancellationToken ct)
+    public Task<CapturedSnapshot> TakeAsync(IDeviceInfo? device, int camera, int maxWidth, int maxHeight, CancellationToken ct) =>
+        TakeAsync(_vapix, device, camera, maxWidth, maxHeight, ct);
+
+    /// <summary>Takes one snapshot of a device already looked up, with the clients of <paramref name="vapix"/>.</summary>
+    public async Task<CapturedSnapshot> TakeAsync(IVapixClientFactory vapix, IDeviceInfo? device, int camera, int maxWidth, int maxHeight, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(vapix);
         if (device is null)
         {
             return Failed(DeviceMessages.Removed);
@@ -149,7 +206,7 @@ public sealed partial class SnapshotService : IDisposable
             timeout.CancelAfter(Timeout);
             try
             {
-                var client = await _vapix.CreateAsync(deviceId, timeout.Token).ConfigureAwait(false);
+                var client = await vapix.CreateAsync(deviceId, timeout.Token).ConfigureAwait(false);
                 var sources = await GetSourcesAsync(deviceId, client, timeout.Token).ConfigureAwait(false);
                 var source = sources.FirstOrDefault(s => s.Camera == camera);
                 if (sources.Count > 0 && source is null)
@@ -241,7 +298,7 @@ public sealed partial class SnapshotService : IDisposable
 
     public void Dispose() => _gate.Dispose();
 
-    private async Task<IReadOnlyList<SnapshotTile>> ListDeviceAsync(IDeviceInfo device, bool refreshSources, CancellationToken ct)
+    private async Task<IReadOnlyList<SnapshotTile>> ListDeviceAsync(IVapixClientFactory vapix, IDeviceInfo device, bool refreshSources, CancellationToken ct)
     {
         if (SnapshotRequests.StatusError(device) is { } statusError)
         {
@@ -255,7 +312,7 @@ public sealed partial class SnapshotService : IDisposable
             timeout.CancelAfter(Timeout);
             try
             {
-                var client = await _vapix.CreateAsync(device.Id, timeout.Token).ConfigureAwait(false);
+                var client = await vapix.CreateAsync(device.Id, timeout.Token).ConfigureAwait(false);
                 if (refreshSources)
                 {
                     _sources.TryRemove(device.Id, out _);
@@ -289,6 +346,16 @@ public sealed partial class SnapshotService : IDisposable
     }
 
     private static CapturedSnapshot Failed(string error) => new(null, 0, 0, null, error);
+
+    /// <summary>Where devices come from: a user's call (strict for a device group) or the plugin's context.</summary>
+    internal sealed record DeviceAccess(IDeviceRepository Devices, IVapixClientFactory Vapix, bool Strict)
+    {
+        public static DeviceAccess Of(ICallContext caller)
+        {
+            ArgumentNullException.ThrowIfNull(caller);
+            return new(caller.Devices, caller.Vapix, !caller.HasAllDevices);
+        }
+    }
 
     [GeneratedRegex(@"^Camera(\s*\d+)?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex GenericNameRegex();

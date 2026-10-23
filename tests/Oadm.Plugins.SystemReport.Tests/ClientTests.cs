@@ -283,6 +283,15 @@ public sealed class ClientTests : IDisposable
 
         public void RaiseSelectionChanged() => SelectionChanged?.Invoke(this, EventArgs.Empty);
 
+        /// <summary>False: a user with a device group.</summary>
+        public bool AllDevices { get; set; } = true;
+
+        public bool HasAllDevices => AllDevices;
+
+        public event EventHandler? PermissionsChanged;
+
+        public void RaisePermissionsChanged() => PermissionsChanged?.Invoke(this, EventArgs.Empty);
+
         public bool CanRunTask(string pluginId) => false;
         public Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>?>(null);
         public Task OpenAsync(string hostPage) => Task.CompletedTask;

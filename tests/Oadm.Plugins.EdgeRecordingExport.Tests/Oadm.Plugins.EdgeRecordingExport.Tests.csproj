@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.EdgeRecordingExport\Oadm.Plugins.EdgeRecordingExport.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.EdgeRecordingExport.Client\Oadm.Plugins.EdgeRecordingExport.Client.csproj" />
   </ItemGroup>
 

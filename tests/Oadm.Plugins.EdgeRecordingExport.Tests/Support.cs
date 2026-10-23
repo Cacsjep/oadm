@@ -316,8 +316,12 @@ internal sealed class Rig
     public Rig()
     {
         Plugin.StartAsync(new FakeContext(Devices, Cameras), CancellationToken.None).GetAwaiter().GetResult();
+        Call = new TestCall(Devices, Cameras);
         Page = new PageContext(this);
     }
+
+    /// <summary>The user's call (all devices).</summary>
+    public TestCall Call { get; }
 
     public FakeDevices Devices { get; } = new();
 
@@ -361,12 +365,12 @@ internal sealed class PageContext(Rig rig) : ICorePluginClientContext
 
     public void RaisePermissionsChanged() => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => rig.Plugin.InvokeAsync(method, payloadJson, ct);
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => rig.Plugin.InvokeAsync(rig.Call, method, payloadJson, ct);
 
     public async Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct)
     {
         Interlocked.Increment(ref Downloads);
-        return await rig.Plugin.OpenDownloadAsync(method, payloadJson, ct);
+        return await rig.Plugin.OpenDownloadAsync(rig.Call, method, payloadJson, ct);
     }
 }
 
@@ -392,4 +396,30 @@ internal sealed class TempFolder : IDisposable
         {
         }
     }
+}
+
+/// <summary>
+/// A user's call with all devices over the test's fakes (device groups, SDK 0.4.0): what the host passes to the plugin.
+/// </summary>
+internal sealed class TestCall(Oadm.Sdk.Devices.IDeviceRepository devices, Oadm.Sdk.Vapix.IVapixClientFactory vapix, Oadm.Sdk.Devices.IDeviceEventStreams? eventStreams = null) : Oadm.Sdk.Plugins.ICallContext
+{
+    public string UserName { get; init; } = "admin";
+
+    public string SessionId { get; init; } = Guid.NewGuid().ToString("N");
+
+    public string DeviceScopeKey => Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey;
+
+    public bool HasAllDevices => true;
+
+    public Oadm.Sdk.Devices.IDeviceRepository Devices => devices;
+
+    public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => vapix;
+
+    public Oadm.Sdk.Tasks.ITaskRunner Tasks => throw new NotSupportedException();
+
+    public Oadm.Sdk.Devices.IDeviceEventStreams? EventStreams => eventStreams;
+
+    public bool Has(string permission) => true;
+
+    public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => true;
 }

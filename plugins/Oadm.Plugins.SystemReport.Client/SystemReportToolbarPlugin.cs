@@ -19,7 +19,8 @@ public interface ISystemReportUi
 /// <summary>
 /// "System report" on the Devices page toolbar (icon button, group Tasks after the task buttons), like ADM's "Get system report":
 /// enabled with a selection; asks where to save the ZIP first (<c>oadm-system-reports-&lt;date&gt;.zip</c>), then shows the
-/// progress dialog while the server downloads the server report of every selected device and bundles them.
+/// progress dialog while the server downloads the server report of every selected device and bundles them. Hidden for
+/// users with a device group (system reports are for users with all devices).
 /// </summary>
 public sealed class SystemReportToolbarPlugin : IToolbarPlugin
 {
@@ -50,6 +51,8 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
         ToolTip.SetShowOnDisabled(button, true);
         void Update()
         {
+            // System reports are for users with all devices only (the server refuses everyone else).
+            button.IsVisible = ctx.HasAllDevices;
             var count = ctx.SelectedDevices.Count;
             button.IsEnabled = count is > 0 and <= SystemReportPluginInfo.MaxDevices;
             ToolTip.SetTip(button, count > SystemReportPluginInfo.MaxDevices ? TooManyText : Tooltip);
@@ -57,6 +60,7 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
 
         Update();
         ctx.SelectionChanged += (_, _) => Update();
+        ctx.PermissionsChanged += (_, _) => Update();
         button.Click += async (_, _) => await RunAsync(ctx, Ui ?? new AvaloniaUi(ctx, button)).ConfigureAwait(true);
         return button;
     }

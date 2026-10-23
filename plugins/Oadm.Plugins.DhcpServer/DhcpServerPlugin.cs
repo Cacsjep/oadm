@@ -6,7 +6,9 @@ namespace Oadm.Plugins.DhcpServer;
 /// Core plugin "DHCP server" (see the plugin README): an RFC 2131 DHCP server on one IPv4 interface with
 /// a dynamic range, static leases, an in-use probe before offering, a check for other DHCP servers and rate limits.
 /// Settings and leases are stored server side and restored on start; the server starts disabled.
-/// Page backend methods: <see cref="DhcpServerMethods"/>; live events: state and lease changes.
+/// Page backend methods: <see cref="DhcpServerMethods"/>; live events: state and lease changes. Device groups (SDK 0.4.0):
+/// the server is server-wide, so every change is for users with all devices; users with a group see the page with the
+/// leases of their devices only.
 /// </summary>
 public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
 {
@@ -39,7 +41,7 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var service = new DhcpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.AutoAdd, ctx.Network?.ForSite(null));
+        var service = new DhcpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.AutoAdd, ctx.Network?.ForSite(null), ctx.DeviceScopes);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
     }
@@ -61,6 +63,29 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
     [
         new(PermissionKeys.Manage, "Change the DHCP server", "Turn the DHCP server on or off, change its addresses and static leases, and release leases.") { OperatorDefault = false },
     ];
+
+    /// <summary>The DHCP server is server-wide: saving, static leases and release are for users with all devices.</summary>
+    public bool RequiresAllDevices(string method) => method != DhcpServerMethods.GetState;
+
+    /// <summary>A user's call: users with a device group read the state with the leases of their devices.</summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var service = _service ?? throw new InvalidOperationException("The DHCP server plugin is not running.");
+        if (caller.HasAllDevices)
+        {
+            return await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+        }
+
+        if (method != DhcpServerMethods.GetState)
+        {
+            throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices)
+        }
+
+        service.Viewers.Seen(caller);
+        var view = Serving.DhcpGroupView.From(await caller.Devices.ListAsync(ct).ConfigureAwait(false));
+        return DhcpJson.Serialize(service.GetState(view));
+    }
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {

@@ -165,6 +165,16 @@ Never run these on a production network: a second DHCP server hands out wrong ad
 Automated tests (`tests/Oadm.Plugins.DhcpServer.Tests`) cover all of this on an in-memory network (`FakeDhcpNetwork`) and
 on loopback with random ports. They never send DHCP traffic on a real interface.
 
+## Device groups
+
+SDK 0.4.0. The DHCP server serves the whole network, so `save`, `saveStatic`, `deleteStatic`, `makeStatic` and `release`
+are for users with all devices (`RequiresAllDevices`; the page shows without changes for the others, `MayManage`). Users
+with a device group see the page with the leases of their devices only: by MAC address (an Axis serial number is its MAC
+address) or by address on the server's network (`Serving/DhcpGroupView`). Their pages get the state and the lease
+changes of their devices through `PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page
+(`plugins/Shared/ViewerScopes.cs`, filtered in the background loop; a removed lease only by its MAC address). Tests:
+`CanaryTests` (the canary, filtered leases and live changes), `PageViewModelTests` (no changes for a group).
+
 ## Permissions
 
 `oadm.dhcp-server:show` (the page, `getState`) and `:manage` "Change the DHCP server" (`save`, `saveStatic`,
