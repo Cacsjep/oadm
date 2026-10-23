@@ -133,7 +133,7 @@ public sealed class CertificatesTabTests
         await tab.RevokeCommand.ExecuteAsync(null); // Cancel
         var authority = new PkiCertificateAuthority(pki.Service);
         Assert.False(authority.IsRevoked(https));
-        Assert.Equal(("Revoke the certificate of " + tab.Rows[0].Device + "?", IssuedCertificatesViewModel.ConfirmMessage), dialogs.Asked[0]);
+        Assert.Equal(("Revoke the certificate of " + tab.Rows[0].Device + "?", IssuedCertificatesViewModel.ConfirmMessageOne), dialogs.Asked[0]);
 
         dialogs.Answer = RevocationReason.DeviceReplaced;
         await tab.RevokeCommand.ExecuteAsync(null);

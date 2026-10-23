@@ -75,6 +75,9 @@ public sealed partial class IssuedCertificatesViewModel : ObservableObject
 
     public const string ConfirmMessage = "OADM no longer accepts them for network access or renewal. This cannot be undone.";
 
+    /// <summary>The confirmation of one certificate.</summary>
+    public const string ConfirmMessageOne = "OADM no longer accepts it for network access or renewal. This cannot be undone.";
+
     private readonly ICorePluginClientContext _ctx;
     private readonly TimeProvider _time;
     private readonly List<IssuedCertificateRow> _selected = [];
@@ -376,7 +379,7 @@ public sealed partial class IssuedCertificatesViewModel : ObservableObject
         var title = serials.Count == 1
             ? $"Revoke the certificate of {_selected.First(r => r.CanRevoke).Device}?"
             : string.Create(CultureInfo.CurrentCulture, $"Revoke {serials.Count:N0} certificates?");
-        if (await dialogs.ConfirmRevokeAsync(title, ConfirmMessage).ConfigureAwait(true) is not { } reason)
+        if (await dialogs.ConfirmRevokeAsync(title, serials.Count == 1 ? ConfirmMessageOne : ConfirmMessage).ConfigureAwait(true) is not { } reason)
         {
             return;
         }
