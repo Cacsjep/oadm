@@ -103,7 +103,11 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   Admin methods) are audited as "Plugin action" (target the plugin, detail the method); VAPIX Commander `tryRequest`
   and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
   audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
-  starts), `Query` any key of the task; `ListTaskPlugins` leaves out tasks without a key.
+  starts), `Query` any key of the task; `ListTaskPlugins` leaves out tasks without a key. Users with a device group
+  (docs/spec/device-scope.md "Plugins"): only packages with `minSdkVersion` 0.4.0 or later, never the methods a plugin
+  declares with `RequiresAllDevices`, and the plugin's `ctx.Devices` / `Vapix` / `Tasks` / `EventStreams` / `System`
+  refuse during their calls, in work started from the call and in their jobs (PERMISSION_DENIED); jobs, job ids and
+  downloads belong to the user who started them (another user's id answers NOT_FOUND like an unknown one).
 - **Audit log**: table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail), 365 days or 200,000
   entries. Logged: login ok / failed, logout, user changes, roles ("Created role", "Changed role" with "+Web View: Open
   devices, -Restart", "Deleted role"), settings changes, credential list add / remove / reveal, PKI

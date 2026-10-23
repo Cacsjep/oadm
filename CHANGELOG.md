@@ -18,6 +18,10 @@ version and date, and the release workflow copies it into the GitHub release.
   the user's group; live video stops when its device leaves the group.
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
+- Device groups: users with a group see only plugin pages built for device groups, and plugin pages show them only
+  their own devices, reports and live updates.
+- Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
+  user's group.
 
 ### Changed
 

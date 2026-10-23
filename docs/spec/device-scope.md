@@ -70,6 +70,10 @@ an independent security review the same day). A user may be limited to part of t
 - Every bundled plugin moves to the call context before 4.2. Plugins built against SDK 0.3.0 load and run unchanged for
   users with all devices (new SDK members are default interface members); their methods are refused for group users.
 - Plugin testing: `Oadm.Sdk.Testing` gets a fake call with a group and the canary test (see Tests).
+- **Built (plugin host):** the call per call, the refusals, jobs with owners, event audiences (plus `DeviceScope(key)` for
+  state kept per group), `ctx.DeviceScopes`, the sweep per scope and the plugin canary (`PluginCanary`): see
+  `docs/spec/plugins.md` "Host side of the call context". A converted bundled plugin sets `minSdkVersion` 0.4.0 in its
+  plugin.json and runs a `PluginCanary` in its tests (`CanaryTests.EveryBundledPluginIsConvertedOrListed`).
 
 ## Decisions
 

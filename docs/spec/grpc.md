@@ -129,7 +129,13 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   all uploads together or when less than 1 GB of disk would stay free, see "Security and access" 4),
   `Delete(fileId)`. Uploads live in `<datafolder>/uploads/<id>.bin` + `<id>.json`, are deleted
   after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
-- `PluginService`: `ListCorePlugins` (navigation pages; `CorePluginInfo.no_page = 4` for a core plugin without a page,
+- `PluginService`: Invoke, Watch and Download run with the caller's call (`PluginCaller`: user + device view, docs/spec/
+  device-scope.md "Plugins"): for a user with a device group PERMISSION_DENIED "Only users with all devices can use this
+  plugin." for a package whose `minSdkVersion` is below 0.4.0 (its pages are left out of `ListCorePlugins`), "Only users
+  with all devices can do this." for a method the plugin declares with `RequiresAllDevices` and for any use of the
+  context's full accesses during the call (`DeviceAccessRefusedException`, mapped by the interceptor); NOT_FOUND
+  "N devices are no longer available." for device ids outside the view (`DevicesNotAvailableException`); Watch delivers
+  each event only to the watchers its audience covers. `ListCorePlugins` (navigation pages; `CorePluginInfo.no_page = 4` for a core plugin without a page,
   `ICorePlugin.HasPage` false: the client adds no rail entry), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (NOT_FOUND unknown plugin or
   object, FAILED_PRECONDITION not running, INVALID_ARGUMENT for an `ArgumentException` of the
