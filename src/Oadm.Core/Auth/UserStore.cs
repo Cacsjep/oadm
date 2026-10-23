@@ -37,6 +37,8 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
 
     private readonly SemaphoreSlim _write = new(1, 1);
     private volatile bool _hasUsers;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (long Version, UserRecord? User)> _byId = new();
+    private long _usersVersion;
 
     /// <summary>Raised after users were added, changed or deleted.</summary>
     public event EventHandler? Changed;
@@ -92,12 +94,32 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
         return [.. rows.OrderBy(u => u.UserName, StringComparer.OrdinalIgnoreCase).Select(UserRecord.From)];
     }
 
-    /// <summary>The user with this id as stored now, or null (one row by its key: a queued task leaving the queue).</summary>
+    /// <summary>
+    /// The user with this id as stored now, or null (a queued task leaving the queue: 30,000 tasks of one user read the row
+    /// once). Cached until the next write of the users table (<see cref="UsersWritten"/>); <see cref="UserRecord.LastLoginUtc"/>
+    /// may be older.
+    /// </summary>
     public async Task<UserRecord?> GetAsync(Guid id, CancellationToken ct)
     {
+        // The version first: a read that overlaps a write is stored under the version before it, which the write moved on.
+        var version = Interlocked.Read(ref _usersVersion);
+        if (_byId.TryGetValue(id, out var cached) && cached.Version == version)
+        {
+            return cached.User;
+        }
+
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         var row = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, ct).ConfigureAwait(false);
-        return row is null ? null : UserRecord.From(row);
+        var user = row is null ? null : UserRecord.From(row);
+        _byId[id] = (version, user);
+        return user;
+    }
+
+    /// <summary>Called right after every write of the users table (also by other stores, see <see cref="NotifyDeviceAccessChanged"/>).</summary>
+    private void UsersWritten()
+    {
+        Interlocked.Increment(ref _usersVersion);
+        _byId.Clear();
     }
 
     /// <summary>The user with this name (case-insensitive), or null.</summary>
@@ -188,6 +210,7 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             };
             db.Users.Add(entity);
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            UsersWritten();
             _hasUsers = true;
             CallerContext.Raise(Changed, this, EventArgs.Empty);
             return entity;
@@ -285,6 +308,7 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             if (changes.Count > 0)
             {
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                UsersWritten();
                 if (hash is not null || user.Disabled)
                 {
                     await tokens.RevokeUserAsync(user.Id, ct).ConfigureAwait(false);
@@ -359,6 +383,7 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             await RequireAnotherEnabledAdminAsync(db, user, ct).ConfigureAwait(false);
             db.Users.Remove(user);
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            UsersWritten();
             await tokens.RevokeUserAsync(user.Id, ct).ConfigureAwait(false);
             CallerContext.Raise(Changed, this, EventArgs.Empty);
             return user.UserName;
@@ -389,6 +414,7 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             return;
         }
 
+        UsersWritten(); // the rows were written by the caller
         foreach (var (userId, access) in users)
         {
             tokens.SetDeviceAccess(userId, access);

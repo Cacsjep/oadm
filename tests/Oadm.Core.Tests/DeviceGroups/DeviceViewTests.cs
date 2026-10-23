@@ -41,6 +41,37 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task AUsersStoredViewFollowsEveryChangeOfTheUserAtOnce()
+    {
+        // ForUserAsync keeps the user's row between writes (30,000 tasks leaving the queue read it once): every write ends that.
+        var group = (await SaveGroupAsync("B", thisServer: true)).Group;
+        var other = (await SaveGroupAsync("C", thisServer: true)).Group;
+        var anna = await Users.AddAsync("anna", "pw", BuiltInRoles.OperatorId, DeviceScope.Group(group.Id), Ct);
+        Assert.Equal(group.Id, (await Views.ForUserAsync(anna.Id, Ct)).GroupId);
+        Assert.Equal(group.Id, (await Views.ForUserAsync(anna.Id, Ct)).GroupId);
+
+        await Users.UpdateAsync(anna.Id, null, null, null, DeviceScope.Group(other.Id), null, Ct);
+        Assert.Equal(other.Id, (await Views.ForUserAsync(anna.Id, Ct)).GroupId);
+
+        await Users.UpdateAsync(anna.Id, null, null, null, DeviceScope.All, null, Ct);
+        Assert.True((await Views.ForUserAsync(anna.Id, Ct)).HasAllDevices);
+
+        await Users.UpdateAsync(anna.Id, null, null, null, DeviceScope.Group(other.Id), null, Ct);
+        await Groups.DeleteAsync(other.Id, Ct); // the group's store writes the users' rows
+        var none = await Views.ForUserAsync(anna.Id, Ct);
+        Assert.False(none.HasAllDevices);
+        Assert.Null(none.GroupId);
+
+        await Users.UpdateAsync(anna.Id, null, null, null, DeviceScope.Group(group.Id), null, Ct);
+        Assert.Equal(group.Id, (await Views.ForUserAsync(anna.Id, Ct)).GroupId);
+        await Users.UpdateAsync(anna.Id, (Guid?)null, disabled: true, null, null, Ct);
+        Assert.Null((await Views.ForUserAsync(anna.Id, Ct)).GroupId);
+
+        await Users.DeleteAsync(anna.Id, null, Ct);
+        Assert.Null((await Views.ForUserAsync(anna.Id, Ct)).GroupId);
+    }
+
+    [Fact]
     public async Task ABatchWithAnyDeviceOutsideTheViewOrUnknownIsRefusedWholeWithTheSameText()
     {
         var b = Sites.Add("Building B");

@@ -143,8 +143,11 @@ an independent security review the same day). A user may be limited to part of t
   round reads no allowed ids again; at the start `HostDeviceScopes.LoadAsync` seeds the feed with every stored device,
   `DeviceChangeFeed.SeedMembership`, so the first polling round moves nothing either). Every writer of the device table
   publishes the device as stored after its write, never the copy it read before (`StoredDevicePublisher`: the row read
-  again and published behind one gate per feed, so reads and publishes keep their order; repository, tags, credentials,
-  the polling's status note): a status write that read the tags before a tag change never puts the old tags back into the
+  again and published behind the gate of the device, 64 gates per feed striped by id, so reads and publishes of a device
+  keep their order; repository (one connection for the read, the write and the read after it), the polling's status
+  note. Batch writers, tags and credentials, hold every gate from before their transaction until they published
+  (`StoredDevicePublisher.HoldAsync`, gates first, then the database write lock): the rows read inside the transaction
+  are what the table holds, published without a second read): a status write that read the tags before a tag change never puts the old tags back into the
   feed, the scope rows or the grids of the old group. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
@@ -343,7 +346,8 @@ an independent security review the same day). A user may be limited to part of t
   `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
   (backstop, never without `TaskEngine.Views`).
 - **Queue check**: each task keeps its `TaskCaller` in memory; leaving the queue it reads the owner's current view
-  (`ForUserAsync`: the user's row by its id, never the whole users table) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
+  (`ForUserAsync`: the user's row by its id, never the whole users table, kept by `UserStore.GetAsync` until the next
+  write of the users table) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
   or group), before the device's state is read out or any request is sent. The plugin gets `ITaskExecutionContext.Caller`
   (`TaskCallContext` over that view; event streams not offered there yet).
 - **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/

@@ -307,6 +307,9 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         ArgumentNullException.ThrowIfNull(mutate);
 
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        // One connection for the read, the write and the read after it (a polling round: 30,000 of them).
+        await db.Database.OpenConnectionAsync(ct).ConfigureAwait(false);
         var entity = await db.Devices.FirstOrDefaultAsync(d => d.Id == id, ct).ConfigureAwait(false);
         if (entity is null)
         {
@@ -346,7 +349,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         if (modified is not [nameof(Device.LastSeenUtc)])
         {
             // As stored now: only the modified columns were written, the other columns of the copy may be older.
-            var stored = await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, [id]).ConfigureAwait(false);
+            var stored = await StoredDevicePublisher.PublishStoredAsync(db, changeFeed, [id]).ConfigureAwait(false);
             return Shown(stored.Count == 1 ? stored[0].Clone() : entity.Clone());
         }
 
