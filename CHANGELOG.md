@@ -30,6 +30,10 @@ version and date, and the release workflow copies it into the GitHub release.
   user's group.
 - Device groups: users with a group see the PKI and EST server pages read only, with the certificates and enrollments of
   their own devices. Certificates of a device such a user added name only its IP addresses, never its host name.
+- Device groups: users with a group see the NTP server and DHCP server pages read only, with the requests and leases of
+  their own devices. Snapshot report, Hardening scan, Edge Recording Export, I/O Monitor, Metadata Monitor and Web View
+  work only on their devices; a monitor stops when its device leaves the group. System report is for users with all
+  devices.
 
 ### Changed
 

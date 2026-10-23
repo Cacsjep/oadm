@@ -526,15 +526,6 @@ public sealed class CanaryTests
         ["oadm.action-rules"] = "plugins-pages",
         ["oadm.edge-storage"] = "plugins-pages",
         ["oadm.image-health"] = "plugins-pages",
-        ["oadm.hardening-scan"] = "plugins-pages",
-        ["oadm.edge-recording-export"] = "plugins-pages",
-        ["oadm.io-monitor"] = "plugins-pages",
-        ["oadm.metadata-monitor"] = "plugins-pages",
-        ["oadm.snapshot-report"] = "plugins-pages",
-        ["oadm.system-report"] = "plugins-pages",
-        ["oadm.web-view"] = "plugins-pages",
-        ["oadm.ntp-server"] = "plugins-pages",
-        ["oadm.dhcp-server"] = "plugins-pages",
     };
 
     private static readonly string[] Packages = ["devices-core", "tasks", "add-devices", "shared-core", "client", "plugin-host", "plugins-certs", "plugins-tasks", "plugins-pages"];

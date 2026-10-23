@@ -5,6 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 using Oadm.Plugins.NtpServer.Serving;
 using Oadm.Sdk.Plugins;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.NtpServer.Tests;
@@ -20,7 +21,7 @@ public sealed class CanaryTests
         var outside = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.49" });
         await using var plugin = new NtpServerPlugin(new NtpServerOptions { Time = new FakeTimeProvider() });
         await plugin.StartAsync(ctx, CancellationToken.None);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .WithoutDevices(NtpServerMethods.GetState, "server-wide state; the requests and sites of the user's devices only")
             .AllDevicesOnly(NtpServerMethods.Save, """{"enabled":false}""")
             .RunAsync();

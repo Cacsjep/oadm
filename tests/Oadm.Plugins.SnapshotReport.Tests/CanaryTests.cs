@@ -1,3 +1,4 @@
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.SnapshotReport.Tests;
@@ -17,7 +18,7 @@ public sealed class CanaryTests
         await plugin.StartAsync(ctx, CancellationToken.None);
         var report = $$"""{"site":"Site","items":[{"deviceId":"{{inside.Id}}","camera":1}]}""";
         Task<string> OwnersReport(Testing.FakeCallContext owner) => ctx.InvokeAsync(plugin, owner, SnapshotReportMethods.GenerateReport, report).ContinueWith(t => JobId(t.Result), TaskScheduler.Default);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(SnapshotReportMethods.ListSources, """{"deviceIds":["{inside}","{device}"]}""")
             .Method(SnapshotReportMethods.Snapshot, """{"deviceId":"{device}","camera":1}""")
             .Method(SnapshotReportMethods.GenerateReport, """{"site":"Site","items":[{"deviceId":"{inside}","camera":1},{"deviceId":"{device}","camera":1}]}""")

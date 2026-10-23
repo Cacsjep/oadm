@@ -1,6 +1,7 @@
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.IoMonitor.Tests;
@@ -23,7 +24,7 @@ public sealed class CanaryTests
         await using var plugin = Plugin();
         await plugin.StartAsync(ctx, CancellationToken.None);
         var start = $$"""{"deviceId":"{{inside.Id}}"}""";
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(IoMonitorMethods.Start, """{"deviceId":"{device}"}""")
             .Job(IoMonitorMethods.KeepAlive, """{"streamId":"{job}"}""", async owner => StreamId(await ctx.InvokeAsync(plugin, owner, IoMonitorMethods.Start, start)))
             .Job(IoMonitorMethods.Stop, """{"streamId":"{job}"}""", async owner => StreamId(await ctx.InvokeAsync(plugin, owner, IoMonitorMethods.Start, start)))

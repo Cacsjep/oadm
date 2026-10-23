@@ -1,3 +1,4 @@
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.EdgeRecordingExport.Tests;
@@ -13,7 +14,7 @@ public sealed class CanaryTests
         var outside = ctx.Add(new Testing.FakeDevice());
         var plugin = new EdgeRecordingExportPlugin();
         await plugin.StartAsync(ctx, CancellationToken.None);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(EdgeRecordingMethods.Search, """{"deviceId":"{device}"}""")
             .Download(EdgeRecordingMethods.Export, """{"deviceId":"{device}","recordingId":"20261023_101500_1A2B_B8A44F631339","diskId":"SD_DISK"}""")
             .RunAsync();

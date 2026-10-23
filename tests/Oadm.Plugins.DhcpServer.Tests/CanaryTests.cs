@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.DhcpServer.Tests;
@@ -15,7 +16,7 @@ public sealed class CanaryTests
         var outside = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.49", Serial = "ACCC8E000002" });
         await using var plugin = new DhcpServerPlugin(Options.Test(new FakeDhcpNetwork(), time: new FakeTimeProvider()));
         await plugin.StartAsync(ctx, CancellationToken.None);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .WithoutDevices(DhcpServerMethods.GetState, "server-wide state; the leases of the user's devices only")
             .AllDevicesOnly(DhcpServerMethods.Save, """{"enabled":false}""")
             .AllDevicesOnly(DhcpServerMethods.SaveStatic, """{"mac":"AC:CC:8E:00:00:02","address":"10.0.0.49"}""")

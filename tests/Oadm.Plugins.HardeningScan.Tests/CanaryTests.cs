@@ -3,6 +3,7 @@ using Microsoft.Extensions.Time.Testing;
 using Oadm.Plugins.HardeningScan.Scanning;
 using Oadm.Sdk.Plugins;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.HardeningScan.Tests;
@@ -23,7 +24,7 @@ public sealed class CanaryTests
         var outside = ctx.Add(new Testing.FakeDevice());
         await using var plugin = Plugin();
         await plugin.StartAsync(ctx, CancellationToken.None);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .WithoutDevices(HardeningMethods.GetState, "results of the user's view only, no device ids")
             .Method(HardeningMethods.GetDetail, """{"deviceIds":["{inside}","{device}"]}""")
             .Method(HardeningMethods.StartScan, """{"level":"Basic","deviceIds":["{inside}","{device}"]}""")

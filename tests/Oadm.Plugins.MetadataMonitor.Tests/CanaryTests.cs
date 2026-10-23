@@ -1,5 +1,6 @@
 using Oadm.Sdk.Devices;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.MetadataMonitor.Tests;
@@ -19,7 +20,7 @@ public sealed class CanaryTests
         // Another user's stream (the fake host offers no event streams, so the job stands for it).
         Task<string> OthersStream(Testing.FakeCallContext owner) =>
             Task.FromResult(ctx.FakeJobs.Start(owner, "stream", (_, token) => Task.Delay(Timeout.Infinite, token)).Id);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(MetadataMethods.Start, """{"deviceId":"{device}"}""")
             .Method(MetadataMethods.GetRtspPort, """{"deviceId":"{device}"}""")
             .Job(MetadataMethods.KeepAlive, """{"streamId":"{job}"}""", OthersStream)

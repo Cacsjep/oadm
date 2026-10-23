@@ -1,5 +1,6 @@
 using Oadm.Sdk.Plugins;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.SystemReport.Tests;
@@ -19,7 +20,7 @@ public sealed class CanaryTests : IDisposable
         var outside = ctx.Add(new Testing.FakeDevice());
         using var plugin = new SystemReportPlugin();
         await plugin.StartAsync(ctx, CancellationToken.None);
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .AllDevicesOnly(SystemReportMethods.Start, $$"""{"deviceIds":["{{inside.Id}}"]}""")
             .AllDevicesOnly(SystemReportMethods.Status, """{"jobId":"x"}""")
             .AllDevicesOnly(SystemReportMethods.Read, """{"jobId":"x"}""")
