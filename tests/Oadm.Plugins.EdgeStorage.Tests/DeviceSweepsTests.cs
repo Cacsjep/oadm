@@ -162,6 +162,7 @@ public sealed class DeviceSweepsTests
         published.Clear();
 
         ctx.FakeScopes.Add("B", [stays.Id], key);
+        Assert.Equal([stays.Id], sweep.ScopedSnapshot().Rows.Select(r => r.Id)); // the counts of a state publish
         sweep.Publish();
 
         Assert.Equal([stays.Id], published.SelectMany(p => p.Rows).Select(r => r.Id));
