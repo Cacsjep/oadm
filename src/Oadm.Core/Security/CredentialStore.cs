@@ -27,8 +27,10 @@ public sealed class CredentialStore(
         ArgumentNullException.ThrowIfNull(password);
 
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct).ConfigureAwait(false)
-            ?? throw new KeyNotFoundException($"Device {deviceId} not found.");
+        if (!await db.Devices.AnyAsync(d => d.Id == deviceId, ct).ConfigureAwait(false))
+        {
+            throw new KeyNotFoundException($"Device {deviceId} not found.");
+        }
 
         var encrypted = protector.Protect(password, deviceId.ToByteArray());
         var existing = await db.DeviceCredentials.FirstOrDefaultAsync(c => c.DeviceId == deviceId, ct).ConfigureAwait(false);
@@ -43,7 +45,7 @@ public sealed class CredentialStore(
         }
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, deviceId, device));
+        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, [deviceId]).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -58,16 +60,15 @@ public sealed class CredentialStore(
         ArgumentNullException.ThrowIfNull(password);
 
         var ids = deviceIds.Distinct().ToList();
-        var devices = new List<Device>(ids.Count);
         await using (var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false))
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
             foreach (var chunk in ids.Chunk(500))
             {
-                var found = await db.Devices.AsNoTracking().Where(d => chunk.Contains(d.Id)).ToListAsync(ct).ConfigureAwait(false);
+                var found = await db.Devices.AsNoTracking().Where(d => chunk.Contains(d.Id)).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
                 if (found.Count != chunk.Length)
                 {
-                    var missing = chunk.First(id => !found.Exists(d => d.Id == id));
+                    var missing = chunk.First(id => !found.Contains(id));
                     throw new KeyNotFoundException($"Device {missing} not found.");
                 }
 
@@ -88,16 +89,13 @@ public sealed class CredentialStore(
                 }
 
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
-                devices.AddRange(found);
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
         }
 
-        foreach (var device in devices)
-        {
-            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, device.Id, device));
-        }
+        // As stored after the write, never the rows read before it (another writer may have changed tags or site meanwhile).
+        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, ids).ConfigureAwait(false);
     }
 
     /// <summary>Returns the decrypted credentials, or null if none are stored.</summary>
@@ -156,12 +154,7 @@ public sealed class CredentialStore(
             return false;
         }
 
-        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct).ConfigureAwait(false);
-        if (device is not null)
-        {
-            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, deviceId, device));
-        }
-
+        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, [deviceId]).ConfigureAwait(false);
         return true;
     }
 }

@@ -130,7 +130,8 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
 
     /// <summary>
     /// Incremented when a device is added or removed, or an update changes what device groups decide on (serial, site,
-    /// tags, who added it); also for the first update of a device the feed has not seen yet. The allowed ids of the views
+    /// tags, who added it); also for the first update of a device the feed has not seen yet (<see cref="SeedMembership"/>
+    /// at the start makes every stored device seen, so the first polling round moves nothing). The allowed ids of the views
     /// are cached per this version, so a status change never makes them read again (docs/spec/device-scope.md, Sessions).
     /// </summary>
     public long MembershipVersion => Interlocked.Read(ref _membershipVersion);
@@ -162,6 +163,41 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         }
 
         Auth.CallerContext.Raise(Changed, this, delivered);
+    }
+
+    /// <summary>
+    /// What device groups decide on, of every stored device (read at the start): an update of such a device that changes
+    /// none of it leaves <see cref="MembershipVersion"/> as it is. A device published meanwhile keeps what was published
+    /// (newer than the read); a device removed meanwhile is not taken. The version moves once, so a list cached before the
+    /// seed is read again.
+    /// </summary>
+    public void SeedMembership(IEnumerable<DeviceScopeRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        lock (_publishing)
+        {
+            foreach (var row in rows)
+            {
+                if (!_removed.ContainsKey(row.Id))
+                {
+                    _membership.TryAdd(row.Id, MembershipFields.Of(row));
+                }
+            }
+
+            Interlocked.Increment(ref _membershipVersion);
+        }
+    }
+
+    /// <summary>Devices whose membership fields the feed knows (tests).</summary>
+    internal int MembershipCount
+    {
+        get
+        {
+            lock (_publishing)
+            {
+                return _membership.Count;
+            }
+        }
     }
 
     /// <summary>One batch: the version moves once, every subscriber gets the changes in order.</summary>
@@ -278,6 +314,9 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
     {
         public static MembershipFields Of(Device device) =>
             new(device.Serial, device.SiteId, string.Join('\u0000', device.Tags ?? []), device.AddedByAllDevices, device.AddedByGroupId);
+
+        public static MembershipFields Of(DeviceScopeRow row) =>
+            new(row.Serial, row.SiteId, string.Join('\u0000', row.Tags ?? []), row.AddedByAllDevices, row.AddedByGroupId);
     }
 
     private void Write(DeviceChange change)

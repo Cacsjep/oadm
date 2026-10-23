@@ -138,7 +138,12 @@ an independent security review the same day). A user may be limited to part of t
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
   key is (group revision, tag and site catalog revision, `DeviceChangeFeed.MembershipVersion`: it moves only when a
   device is added or removed or its serial, site, tags or adder change, never for a status, so at 30,000 devices a polling
-  round reads no allowed ids again). One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
+  round reads no allowed ids again; at the start `HostDeviceScopes.LoadAsync` seeds the feed with every stored device,
+  `DeviceChangeFeed.SeedMembership`, so the first polling round moves nothing either). Every writer of the device table
+  publishes the device as stored after its write, never the copy it read before (`StoredDevicePublisher`: the row read
+  again and published behind one gate per feed, so reads and publishes keep their order; repository, tags, credentials,
+  the polling's status note): a status write that read the tags before a tag change never puts the old tags back into the
+  feed, the scope rows or the grids of the old group. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
   the user's devices, say "1 device is no longer available." (`DeviceMessages.NoLongerAvailable`), also as a row or
