@@ -61,8 +61,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
-- The **Users** page is now **Permissions**: users and device groups side by side, the roles below. The user list no longer
-  shows the last login.
+- The **Users** page is now **Permissions**: users and device groups side by side (on small screens one below the
+  other), the roles below. The user list no longer shows the last login.
 - Remove, Refresh and the other device actions do nothing when a chosen device was removed meanwhile and say "1 device
   is no longer available." (before, Remove and Refresh skipped it).
 
