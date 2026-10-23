@@ -21,6 +21,9 @@ namespace Oadm.Core.Uploads;
 /// All uploads together use at most <see cref="QuotaBytes"/> (10 GB) and at least
 /// <see cref="MinFreeDiskBytes"/> (1 GB) of the disk stay free: a new upload first removes the oldest finished
 /// uploads until it fits, otherwise it is refused (<see cref="UploadRejectedException.TooLarge"/>, RESOURCE_EXHAUSTED).
+/// An upload of a user belongs to that user's session (<see cref="UploadOwner"/>, docs/spec/device-scope.md, Uploads): it is
+/// read and deleted with that owner only (<see cref="For"/>, the owner overloads); for anyone else its id answers like an
+/// unknown id. The overloads without an owner are the system's (the cleanup, tasks the system started).
 /// </summary>
 public sealed partial class UploadStore : IUploadedFiles
 {
@@ -84,8 +87,14 @@ public sealed partial class UploadStore : IUploadedFiles
     public async Task<TimeSpan> GetRetentionAsync(CancellationToken ct) =>
         TimeSpan.FromHours(await ReadIntSettingAsync(SettingKeys.UploadsRetentionHours, ServerSettings.DefaultUploadsRetentionHours, ct).ConfigureAwait(false));
 
-    /// <summary>Starts an upload. Throws <see cref="UploadRejectedException"/> for an empty name or a size over the limit.</summary>
-    public async Task<UploadWriter> BeginAsync(string name, long size, CancellationToken ct)
+    /// <summary>Starts an upload of the system (no owner). Throws <see cref="UploadRejectedException"/> for an empty name or a size over the limit.</summary>
+    public Task<UploadWriter> BeginAsync(string name, long size, CancellationToken ct) => BeginAsync(name, size, null, ct);
+
+    /// <summary>
+    /// Starts an upload of <paramref name="owner"/> (a user's session; null: the system's). Throws
+    /// <see cref="UploadRejectedException"/> for an empty name or a size over the limit.
+    /// </summary>
+    public async Task<UploadWriter> BeginAsync(string name, long size, UploadOwner? owner, CancellationToken ct)
     {
         var safeName = SanitizeName(name);
         if (size < 0)
@@ -105,7 +114,7 @@ public sealed partial class UploadStore : IUploadedFiles
         Reserve(id, size);
         try
         {
-            return new UploadWriter(this, id, safeName, size, Path.Combine(Directory, id + PartialExtension));
+            return new UploadWriter(this, id, safeName, size, Path.Combine(Directory, id + PartialExtension), owner);
         }
         catch
         {
@@ -114,12 +123,14 @@ public sealed partial class UploadStore : IUploadedFiles
         }
     }
 
+    /// <summary>The upload with this id, whoever uploaded it (system paths only).</summary>
     public async Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct)
     {
         var meta = await ReadMetadataAsync(fileId, ct).ConfigureAwait(false);
         return meta is null || !File.Exists(ContentPath(fileId)) ? null : meta.ToUploadedFile();
     }
 
+    /// <summary>Opens an upload, whoever uploaded it (system paths only).</summary>
     public async Task<Stream> OpenReadAsync(string fileId, CancellationToken ct)
     {
         if (await FindAsync(fileId, ct).ConfigureAwait(false) is null)
@@ -127,8 +138,37 @@ public sealed partial class UploadStore : IUploadedFiles
             throw new FileNotFoundException($"Uploaded file {fileId} does not exist (it may have expired).", fileId);
         }
 
-        return new FileStream(ContentPath(fileId), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81_920, useAsync: true);
+        return OpenContent(fileId);
     }
+
+    /// <summary>The upload with this id when <paramref name="owner"/> uploaded it; null otherwise (like an unknown id).</summary>
+    public async Task<UploadedFile?> FindAsync(string fileId, UploadOwner owner, CancellationToken ct)
+    {
+        var meta = await ReadMetadataAsync(fileId, ct).ConfigureAwait(false);
+        return meta is null || !meta.IsOwnedBy(owner) || !File.Exists(ContentPath(fileId)) ? null : meta.ToUploadedFile();
+    }
+
+    /// <summary>Opens an upload of <paramref name="owner"/>; <see cref="FileNotFoundException"/> for any other id.</summary>
+    public async Task<Stream> OpenReadAsync(string fileId, UploadOwner owner, CancellationToken ct)
+    {
+        if (await FindAsync(fileId, owner, ct).ConfigureAwait(false) is null)
+        {
+            throw new FileNotFoundException($"Uploaded file {fileId} does not exist (it may have expired).", fileId);
+        }
+
+        return OpenContent(fileId);
+    }
+
+    /// <summary>Deletes an upload of <paramref name="owner"/>. Returns false when it does not exist or another owner has it.</summary>
+    public async Task<bool> DeleteAsync(string fileId, UploadOwner owner, CancellationToken ct) =>
+        await ReadMetadataAsync(fileId, ct).ConfigureAwait(false) is { } meta && meta.IsOwnedBy(owner)
+        && await DeleteAsync(fileId, ct).ConfigureAwait(false);
+
+    /// <summary>The uploads of one owner as <see cref="IUploadedFiles"/>: a task a user started reads only that user's uploads.</summary>
+    public IUploadedFiles For(UploadOwner owner) => new OwnedUploads(this, owner);
+
+    private FileStream OpenContent(string fileId) =>
+        new(ContentPath(fileId), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81_920, useAsync: true);
 
     /// <summary>Deletes an upload. Returns false when it does not exist.</summary>
     public Task<bool> DeleteAsync(string fileId, CancellationToken ct)
@@ -197,10 +237,10 @@ public sealed partial class UploadStore : IUploadedFiles
         return removed;
     }
 
-    internal async Task<UploadedFile> CommitAsync(string id, string name, long size, string sha256, string partialPath, CancellationToken ct)
+    internal async Task<UploadedFile> CommitAsync(string id, string name, long size, string sha256, string partialPath, UploadOwner? owner, CancellationToken ct)
     {
         File.Move(partialPath, ContentPath(id), overwrite: true);
-        var meta = new Metadata(id, name, size, sha256, _time.GetUtcNow().UtcDateTime);
+        var meta = new Metadata(id, name, size, sha256, _time.GetUtcNow().UtcDateTime) { UserId = owner?.UserId, SessionId = owner?.SessionId };
         var tmp = MetadataPath(id) + ".tmp";
         await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(meta, JsonOptions), ct).ConfigureAwait(false);
         File.Move(tmp, MetadataPath(id), overwrite: true);
@@ -378,7 +418,37 @@ public sealed partial class UploadStore : IUploadedFiles
 
     private sealed record Metadata(string Id, string Name, long Size, string Sha256, DateTime CreatedUtc)
     {
+        /// <summary>The user who uploaded it; null for uploads of the system and from before 4.2 (no user reads those).</summary>
+        public Guid? UserId { get; init; }
+
+        /// <summary>The session it was uploaded in (<see cref="UploadOwner.SessionId"/>).</summary>
+        public string? SessionId { get; init; }
+
+        public bool IsOwnedBy(UploadOwner owner) =>
+            UserId is { } user && user == owner.UserId
+            && SessionId is { Length: > 0 } session && string.Equals(session, owner.SessionId, StringComparison.Ordinal);
+
         public UploadedFile ToUploadedFile() => new(Id, Name, Size, Sha256);
+    }
+
+    private sealed class OwnedUploads(UploadStore store, UploadOwner owner) : IUploadedFiles
+    {
+        public Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct) => store.FindAsync(fileId, owner, ct);
+
+        public Task<Stream> OpenReadAsync(string fileId, CancellationToken ct) => store.OpenReadAsync(fileId, owner, ct);
+    }
+}
+
+/// <summary>Who uploaded a file: the user and the login session (<see cref="Auth.AuthenticatedCaller.SessionId"/>).</summary>
+/// <param name="UserId">The user's id.</param>
+/// <param name="SessionId">The opaque session id.</param>
+public readonly record struct UploadOwner(Guid UserId, string SessionId)
+{
+    /// <summary>The owner of a user's call.</summary>
+    public static UploadOwner Of(Auth.AuthenticatedCaller caller)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return new(caller.UserId, caller.SessionId);
     }
 }
 
@@ -392,13 +462,15 @@ public sealed class UploadWriter : IAsyncDisposable
     private readonly FileStream _stream;
     private readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
     private readonly string _partialPath;
+    private readonly UploadOwner? _owner;
     private long _written;
     private bool _completed;
     private bool _disposed;
 
-    internal UploadWriter(UploadStore store, string id, string name, long declaredSize, string partialPath)
+    internal UploadWriter(UploadStore store, string id, string name, long declaredSize, string partialPath, UploadOwner? owner)
     {
         _store = store;
+        _owner = owner;
         Id = id;
         Name = name;
         DeclaredSize = declaredSize;
@@ -439,7 +511,7 @@ public sealed class UploadWriter : IAsyncDisposable
         await _stream.FlushAsync(ct).ConfigureAwait(false);
         await _stream.DisposeAsync().ConfigureAwait(false);
         var sha = Convert.ToHexString(_hash.GetHashAndReset());
-        var file = await _store.CommitAsync(Id, Name, _written, sha, _partialPath, ct).ConfigureAwait(false);
+        var file = await _store.CommitAsync(Id, Name, _written, sha, _partialPath, _owner, ct).ConfigureAwait(false);
         _completed = true;
         return file;
     }

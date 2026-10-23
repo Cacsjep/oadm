@@ -104,6 +104,43 @@ public sealed class TaskQueryUploadAndLogTests
     }
 
     [Fact]
+    public async Task AnotherUsersUploadCannotBeDeletedOrReadByTheirTasks()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.0.1", FakeSerials.Make(1), "pw");
+        await using var host = await TestServerHost.StartAsync(network);
+        Register(host, new SamplePlugin());
+        var device = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
+        var uploaded = await UploadAsync(new Proto.FileService.FileServiceClient(host.Invoker), "AXIS_P3265-V_12_11_77.bin", RandomNumberGenerator.GetBytes(10_000));
+        var other = await host.InvokerForUserAsync("admin2", Oadm.Sdk.Plugins.UserRole.Admin);
+
+        // Delete: the same answer as for an unknown id, and the file stays.
+        var refused = await Assert.ThrowsAsync<RpcException>(() => new Proto.FileService.FileServiceClient(other).DeleteAsync(new Proto.FileIdRequest { FileId = uploaded.Id }).ResponseAsync);
+        Assert.Equal(StatusCode.NotFound, refused.StatusCode);
+        Assert.Equal($"Upload {uploaded.Id} not found.", refused.Status.Detail);
+        Assert.NotNull(await host.Get<IUploadedFiles>().FindAsync(uploaded.Id, CancellationToken.None));
+
+        // A task of the other user does not find the upload; a task of the uploader does.
+        var run = await new Proto.TaskService.TaskServiceClient(other).RunAsync(new Proto.RunTaskRequest
+        {
+            PluginId = SamplePlugin.PluginId,
+            DeviceIds = { device.Id.ToString() },
+            PayloadJson = JsonSerializer.Serialize(new { fileId = uploaded.Id }),
+        });
+        var task = await TestHelpers.WaitForTaskAsync(host, run.TaskIds[0]);
+        Assert.Equal(Proto.TaskState.Failed, task.State);
+        Assert.Equal("upload missing", task.Devices[0].Message);
+
+        var own = await host.Tasks.RunAsync(new Proto.RunTaskRequest
+        {
+            PluginId = SamplePlugin.PluginId,
+            DeviceIds = { device.Id.ToString() },
+            PayloadJson = JsonSerializer.Serialize(new { fileId = uploaded.Id }),
+        });
+        Assert.Equal(Proto.TaskState.DoneWithWarnings, (await TestHelpers.WaitForTaskAsync(host, own.TaskIds[0])).State);
+    }
+
+    [Fact]
     public async Task UploadsOverTheLimitOrWithoutHeaderAreRejected()
     {
         await using var host = await TestServerHost.StartAsync();

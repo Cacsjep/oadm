@@ -141,6 +141,13 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         new TaskCallContext(caller, view, _vapix, ForView(view, caller));
 
     /// <summary>
+    /// The uploads a task reads (<see cref="ITaskExecutionContext.Files"/>): a task a user started reads only the uploads of
+    /// that user's session (another id answers like an unknown one); a task the system started reads any upload.
+    /// </summary>
+    private IUploadedFiles FilesOf(TaskCaller? caller) =>
+        caller is not null && _files is UploadStore store ? store.For(new UploadOwner(caller.UserId, caller.SessionId)) : _files;
+
+    /// <summary>
     /// Reads a task owner's current view when the task leaves the queue (set by the server). Without it, a call of a user
     /// with a device group cannot run tasks through <see cref="RunAsync(string, IReadOnlyList{Guid}, string?, string, CancellationToken)"/>.
     /// </summary>
@@ -947,7 +954,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     vapix,
                     pluginLogger,
                     task.Registration.Owner,
-                    _files,
+                    FilesOf(task.Caller),
                     new Sink(this, task),
                     _time)
                 {
