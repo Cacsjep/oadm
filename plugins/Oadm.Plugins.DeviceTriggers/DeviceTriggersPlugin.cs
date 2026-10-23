@@ -17,7 +17,7 @@ namespace Oadm.Plugins.DeviceTriggers;
 /// as two event types for the event rules: the trigger itself and "&lt;Trigger&gt;: connection lost". The types change
 /// with the triggers (<see cref="IDynamicEventSource"/>). Triggers live in the plugin setting <see cref="SettingsKey"/>.
 /// Device groups (docs/spec/device-scope.md, Shared objects): every trigger belongs to the device scope of the user who made
-/// it (<see cref="TriggerDefinition.Owner"/>) and watches only that scope's devices, so its events (and the rules they feed)
+/// it (<see cref="TriggerDefinition.Owner"/>) and watches only that scope's devices, so its events
 /// come only from them; users of a group see and change only their group's triggers; a deleted group's triggers watch
 /// nothing until a user with all devices saves them.
 /// </summary>
