@@ -259,6 +259,9 @@ internal sealed class PluginPageContext(PkiPlugin plugin, PluginEventHub hub) : 
 
     public Func<string, string?, Task<string?>>? Intercept { get; set; }
 
+    /// <summary>False: the user is limited to a device group.</summary>
+    public bool HasAllDevices { get; set; } = true;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         if (Intercept is { } intercept)

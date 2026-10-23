@@ -35,6 +35,15 @@ Apache 2.0).
   - Methods: `getState`, `getEnrollments`, `getNotRenewed` (500 at most), `getCertificate` (the certificate of a listed
     enrollment, records collection `issued`, described by `Serving/CertificateDescriber`) for everyone; `save` and `clearEnrollments`
     Admin (permission `oadm.est:manage`).
+  - Device groups (SDK 0.4.0, `minSdkVersion` 0.4.0): `InvokeAsync(ICallContext, ...)`; `save` and `clearEnrollments` are
+    `RequiresAllDevices`; for a user with a group the reads are filtered by `ViewedSet` (`plugins/Shared/ViewerScopes.cs`,
+    the ids and sites of `caller.Devices`): enrollments with a device of the view (none without a device), Not renewed
+    and the certificate count of its devices, listeners of its sites (and of this server when it has a local device),
+    `getCertificate` only for a listed enrollment of its devices (else `CertificateGone`). Events: `enrollments` with
+    `PluginEventAudience.Device` (no device: `AllDevices`); `state`, `enrollmentsCleared` and `certificates` to
+    `AllDevices` and to `DeviceScope(key)` of each group that read the page (`ViewerScopes`; the state per group with its
+    own rows). Names (`EstEndpoint.CommonName`, `DnsNames`): host names only when `AddedByAllDevices`. Background work
+    (the listener, the renewal check) keeps `ctx.Devices`; the set-up task gets its device from the host.
 - Task **Certificate enrollment** (`Tasks/EstTasks.cs`, Security; the dialog `EstSetupWindow` like the Applications
   dialog: the chosen camera's profiles through the read-only query `listProfiles`, Remove with an inline confirmation, Set
   up with the IEEE 802.1X choice): set up
@@ -50,4 +59,5 @@ Apache 2.0).
   key, on; at most one per use), Save with the status left of it; Enrollments (live, search, Delete all); Not renewed (only while there are
   any). No Revoke and no list of every certificate (docs/spec/est-server.md).
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device
-  ID hierarchy and a fake CA, the page with screenshots).
+  ID hierarchy and a fake CA, the page with screenshots; `DeviceGroupTests`: the `PluginCanary`, the filtered lists and
+  certificate, the events per group, the names of a device a group user added, the page for a group user).
