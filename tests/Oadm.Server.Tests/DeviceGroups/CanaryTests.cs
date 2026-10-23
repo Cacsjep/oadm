@@ -734,7 +734,7 @@ public sealed class CanaryTests
             var tasks = await Host.Get<Core.Tasks.ITaskStore>().ListAsync(CancellationToken.None);
             var outsideTasks = tasks.Count(t => t.Devices.Any(d => d.DeviceId == Outside));
             var row = await Host.Get<DeviceRepository>().GetAsync(Outside, CancellationToken.None);
-            return $"requests {OutsideDevice.Requests}, streams {Streams.Opened(Outside)}, tasks {outsideTasks}, row {row?.Address}/{row?.Status}/{string.Join(";", row?.Tags ?? [])}";
+            return $"requests {OutsideDevice.Requests}, streams {Streams.OpenedFor(Outside)}, tasks {outsideTasks}, row {row?.Address}/{row?.Status}/{string.Join(";", row?.Tags ?? [])}";
         }
 
         public ValueTask DisposeAsync() => Host.DisposeAsync();
@@ -762,32 +762,5 @@ public sealed class CanaryTests
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
 
         public Sdk.Plugins.UserRole RequiredRole(string method) => Sdk.Plugins.UserRole.Operator;
-    }
-
-    /// <summary>Video and event streams that only count who asked; they never deliver anything.</summary>
-    internal sealed class RecordingStreams : ILiveVideoSourceFactory, Sdk.Devices.IDeviceEventStreams
-    {
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _opened = new();
-
-        public int Opened(Guid deviceId) => _opened.GetValueOrDefault(deviceId);
-
-        public Task<LiveViewCapabilities> GetCapabilitiesAsync(Guid deviceId, CancellationToken ct)
-        {
-            _opened.AddOrUpdate(deviceId, 1, (_, n) => n + 1);
-            throw new KeyNotFoundException("recording fake");
-        }
-
-        public Task<ILiveVideoSource> OpenAsync(LiveStreamKey key, CancellationToken ct)
-        {
-            ArgumentNullException.ThrowIfNull(key);
-            _opened.AddOrUpdate(key.DeviceId, 1, (_, n) => n + 1);
-            throw new KeyNotFoundException("recording fake");
-        }
-
-        public Task<Sdk.Devices.IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct)
-        {
-            _opened.AddOrUpdate(deviceId, 1, (_, n) => n + 1);
-            throw new KeyNotFoundException("recording fake");
-        }
     }
 }
