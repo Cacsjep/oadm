@@ -229,6 +229,24 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public Sites.ISites? Sites => FakeSites;
 
+    /// <summary>The plugin's jobs (<see cref="FakePluginJobs"/>): owned by the user who started them.</summary>
+    public FakePluginJobs FakeJobs { get; } = new();
+
+    /// <inheritdoc />
+    public IPluginJobs? Jobs => FakeJobs;
+
+    /// <summary>The device groups (<see cref="FakeDeviceScopes"/>); a test adds and deletes groups here.</summary>
+    public FakeDeviceScopes FakeScopes => field ??= new FakeDeviceScopes(this);
+
+    /// <inheritdoc />
+    public IDeviceScopes? DeviceScopes => FakeScopes;
+
+    /// <summary>A call of a user with all devices (<see cref="FakeCallContext.AllDevices"/>).</summary>
+    public FakeCallContext CallAsAllDevices(string userName = "admin") => FakeCallContext.AllDevices(this, userName);
+
+    /// <summary>A call of a user limited to a group of <paramref name="deviceIds"/> (<see cref="FakeCallContext.WithGroup"/>).</summary>
+    public FakeCallContext CallAsGroup(IEnumerable<Guid> deviceIds, string userName = "operator") => FakeCallContext.WithGroup(this, deviceIds, userName);
+
     /// <inheritdoc />
     public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. DeviceList]);
 

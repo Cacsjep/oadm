@@ -133,7 +133,7 @@ public interface ICorePlugin : IPlugin
 
     /// <summary>
     /// False: the plugin has no page in the client's navigation rail (no rail entry at all); its client part is e.g. a
-    /// toolbar plugin that calls <see cref="InvokeAsync"/> through <c>IToolbarContext.InvokePluginAsync</c>. Default true.
+    /// toolbar plugin that calls <see cref="InvokeAsync(string, string?, CancellationToken)"/> through <c>IToolbarContext.InvokePluginAsync</c>. Default true.
     /// </summary>
     bool HasPage => true;
 
@@ -145,7 +145,7 @@ public interface ICorePlugin : IPlugin
 
     /// <summary>
     /// The role a user needs to call <paramref name="method"/> through the plugin's page (PluginService.Invoke). The host
-    /// checks it before <see cref="InvokeAsync"/> and answers PERMISSION_DENIED for a missing role. Methods that change
+    /// checks it before <see cref="InvokeAsync(ICallContext, string, string?, CancellationToken)"/> and answers PERMISSION_DENIED for a missing role. Methods that change
     /// the server's configuration (settings, keys, services) return <see cref="UserRole.Admin"/>; reads and device
     /// work stay <see cref="UserRole.Operator"/> (the default).
     /// </summary>
@@ -172,6 +172,28 @@ public interface ICorePlugin : IPlugin
     /// means Administrator only (fail closed).
     /// </summary>
     string? RequiredPermission(string method) => null;
+
+    /// <summary>
+    /// The page backend with the user's call (SDK 0.4.0): who calls and the devices the user may reach. Implement this
+    /// overload and use <paramref name="caller"/> for devices, VAPIX, tasks and event streams; the default forwards to
+    /// <see cref="InvokeAsync(string, string?, CancellationToken)"/>. The host calls this one. A package built against an
+    /// older SDK (plugin.json <c>minSdkVersion</c> below 0.4.0) is refused for users with a device group before it runs.
+    /// </summary>
+    Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct) => InvokeAsync(method, payloadJson, ct);
+
+    /// <summary>
+    /// True for methods only users with all devices may call (SDK 0.4.0): saves of server-wide services (NTP, DHCP, PKI and
+    /// EST settings, a shared command library). The host refuses them for users with a device group before the plugin
+    /// runs ("Only users with all devices can do this."). Also asked for downloads. Default false.
+    /// </summary>
+    bool RequiresAllDevices(string method) => false;
+
+    /// <summary>
+    /// Why <paramref name="method"/> needs <see cref="ICorePluginContext.System"/> (every device) during the call of a user
+    /// with a device group, e.g. "counts every device, shows no device data"; null (the default) = it does not, and
+    /// <c>ctx.System</c> refuses there like <c>ctx.Devices</c>. Keep the list short: the canary test prints it.
+    /// </summary>
+    string? SystemAccessReason(string method) => null;
 }
 
 /// <summary>Role of an OADM user. Admin may do everything; Operator works with devices and tasks.</summary>
@@ -294,6 +316,12 @@ public interface ITaskExecutionContext
     /// address-in-use check, the device's host name, OADM's address towards the device. Null on hosts without it.
     /// </summary>
     Sites.IDeviceNetwork? Network => null;
+
+    /// <summary>
+    /// The user who started the task, with the devices that user may reach (SDK 0.4.0): a task that reads or changes other
+    /// devices than its own (a source device) goes through it. Null for tasks the system started and on older hosts.
+    /// </summary>
+    ICallContext? Caller => null;
 }
 
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
@@ -438,6 +466,24 @@ public interface ICorePluginContext
     /// hosts without them.
     /// </summary>
     IPluginServices? Services => null;
+
+    /// <summary>
+    /// Every managed device, VAPIX client, task and event stream (SDK 0.4.0): for background work, which never carries a
+    /// user. During the call of a user with a device group it refuses like <see cref="Devices"/>, except in the methods
+    /// that declare <see cref="ICorePlugin.SystemAccessReason"/>. Default: the context's own members (older hosts).
+    /// </summary>
+    ISystemAccess System => new ContextSystemAccess(this);
+
+    /// <summary>
+    /// Work a method starts for its user, owned by that user (<see cref="IPluginJobs"/>, SDK 0.4.0). Null on older hosts.
+    /// </summary>
+    IPluginJobs? Jobs => null;
+
+    /// <summary>
+    /// The device groups for objects the plugin keeps per group (<see cref="IDeviceScopes"/>, SDK 0.4.0). Null on older
+    /// hosts (no groups: every object belongs to all devices).
+    /// </summary>
+    IDeviceScopes? DeviceScopes => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>
@@ -612,5 +658,11 @@ public static class TaskPluginNames
 public static class SdkInfo
 {
     /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
-    public const string Version = "0.3.0";
+    public const string Version = "0.4.0";
+
+    /// <summary>
+    /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.2). Users with a device group may call only
+    /// plugins whose <c>minSdkVersion</c> is at least this; older plugins keep working for users with all devices.
+    /// </summary>
+    public const string CallContextVersion = "0.4.0";
 }

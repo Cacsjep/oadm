@@ -2,7 +2,7 @@ namespace Oadm.Sdk.Plugins;
 
 /// <summary>
 /// A file a core plugin sends to its client page through gRPC <c>PluginService.Download</c>
-/// (<see cref="ICorePluginDownloads.OpenDownloadAsync"/>): the host copies <see cref="Content"/> to the client in chunks
+/// (<see cref="ICorePluginDownloads.OpenDownloadAsync(string, string?, CancellationToken)"/>): the host copies <see cref="Content"/> to the client in chunks
 /// and disposes the download afterwards, also when the client cancels. Nothing is stored on the server, so a plugin can
 /// pass a device answer straight on (e.g. a recording export opened with <c>VapixRequestOptions.StreamResponse</c>).
 /// </summary>
@@ -58,4 +58,12 @@ public interface ICorePluginDownloads
 {
     /// <summary>Opens the file <paramref name="method"/> names for <paramref name="payloadJson"/>.</summary>
     Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>
+    /// <see cref="OpenDownloadAsync(string, string?, CancellationToken)"/> with the user's call (SDK 0.4.0): the file of a
+    /// job looks the job up for this user (<see cref="IPluginJobs.Find"/>), devices go through <paramref name="caller"/>.
+    /// The host calls this one; the default forwards to the old one.
+    /// </summary>
+    Task<PluginDownload> OpenDownloadAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct) =>
+        OpenDownloadAsync(method, payloadJson, ct);
 }

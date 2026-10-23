@@ -155,6 +155,13 @@ public interface IToolbarContext
     /// <summary>Whether the user's role allows <paramref name="permission"/> ("devices.refresh"). Default (older hosts): true.</summary>
     bool Has(string permission) => true;
 
+    /// <summary>
+    /// Whether the user may reach every device (SDK 0.4.0); false for a user limited to a device group: hide or disable
+    /// what only users with all devices may do (the server refuses it anyway). Changes come with PermissionsChanged.
+    /// Default (older hosts): true.
+    /// </summary>
+    bool HasAllDevices => true;
+
     /// <summary>Raised on the UI thread after the user's role or its permissions changed.</summary>
     event EventHandler? PermissionsChanged
     {

@@ -56,4 +56,7 @@ public sealed record FakeDevice : IDeviceInfo
 
     /// <summary>The name of <see cref="SiteId"/>.</summary>
     public string? SiteName { get; init; }
+
+    /// <summary>A user with all devices added it (host names may be trusted). Default true.</summary>
+    public bool AddedByAllDevices { get; init; } = true;
 }

@@ -66,6 +66,13 @@ public interface IDeviceInfo
 
     /// <summary>The name of <see cref="SiteId"/> ("Building B"); null on the server's own network.</summary>
     string? SiteName => null;
+
+    /// <summary>
+    /// A user with all devices (or the system) added the device. SDK 0.4.0: only then may a plugin trust names the device
+    /// was added with, e.g. its host name in a certificate (a user limited to a device group could control the DNS at a
+    /// site). False when not known (older hosts, the client).
+    /// </summary>
+    bool AddedByAllDevices => false;
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

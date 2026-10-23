@@ -60,6 +60,27 @@ returns null or throws `NotSupportedException`.
   shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `EventSubscriptions` (every event the server
   handles, see "Event rules"), `AutoAdd` (add or follow an Axis device like
   the add page).
+- **SDK 0.4.0 (OADM 4.2), device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`):
+  `ICallContext` (UserName, SessionId, DeviceScopeKey "all" or the group id, `Has`, `HasAllDevices`, `Devices`, `Vapix`,
+  `Tasks`, `EventStreams` scoped to the user's view: outside ids answer null or throw
+  `Oadm.Sdk.Devices.DevicesNotAvailableException` = NOT_FOUND `DeviceMessages.NoLongerAvailable`, `Contains`). Overloads
+  with the call, default members forwarding to the old ones: `ICorePlugin.InvokeAsync(caller, method, payload, ct)`,
+  `ICorePluginDownloads.OpenDownloadAsync(caller, ...)`, `ITaskPluginQuery.QueryAsync(ctx, caller, device, ...)`.
+  `ICorePlugin.RequiresAllDevices(method)` (saves of server-wide services; the host refuses them for group users) and
+  `SystemAccessReason(method)` (the few methods that may use `ctx.System` in a group user's call). `ICorePluginContext.System`
+  (`ISystemAccess`: every device, for background work; default the context's own members) and `Jobs` (`IPluginJobs`:
+  work owned by the user who started it, `Find` answers null for another user's id) and `DeviceScopes` (`IDeviceScopes`:
+  `Exists`, `Contains`, `Devices`, `NameOf` per scope key, `Changed`: objects a plugin keeps per group run only on its
+  devices, a deleted group's are off). `ITaskExecutionContext.Caller` (the
+  user who started the task). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
+  User, Session; the old `Publish` reaches only watchers with all devices on 4.2). `IDeviceInfo.AddedByAllDevices`.
+  Actions: `IActionPlugin.Destinations(settings)` and `IActionContext.IsDestinationAllowed(host, port)`
+  (`ActionDestination.NotAllowedText`) for the address list of rules of device groups. Client SDK: `HasAllDevices` on
+  `ICorePluginClientContext`, `ITaskDialogContext`, `IToolbarContext` (default true). `SdkInfo.Version` 0.4.0,
+  `SdkInfo.CallContextVersion`: users with a device group may call only packages whose `minSdkVersion` is at least
+  0.4.0; older packages keep working for users with all devices. Test fakes: `Oadm.Sdk.Testing.FakeCallContext`
+  (`AllDevices`, `WithGroup`, `Refused`), `FakePluginJobs`, `FakeDeviceScopes`, `FakeCoreContext.CallAsGroup` /
+  `CallAsAllDevices`.
 - Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource` (see "Event
   rules").
 - Compliance: `IComplianceCheckType` (standalone in a `*.Server.dll`, or through `IComplianceSource` of a core plugin),

@@ -17,9 +17,18 @@ public interface ITaskPluginQuery
     /// <see cref="ArgumentException"/> for an unknown method or bad input; the message reaches the dialog.
     /// </summary>
     Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>
+    /// <see cref="QueryAsync(ITaskQueryContext, IDeviceInfo, string, string?, CancellationToken)"/> with the user's call
+    /// (SDK 0.4.0): read other devices than <paramref name="device"/> only through <paramref name="caller"/> (the user's
+    /// view). The host calls this one; the default forwards to the old one. <paramref name="device"/> is always in the
+    /// user's view (the host checked it).
+    /// </summary>
+    Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        QueryAsync(ctx, device, method, payloadJson, ct);
 }
 
-/// <summary>What the server gives a query (<see cref="ITaskPluginQuery.QueryAsync"/>).</summary>
+/// <summary>What the server gives a query (<see cref="ITaskPluginQuery.QueryAsync(ITaskQueryContext, IDeviceInfo, string, string?, CancellationToken)"/>).</summary>
 public interface ITaskQueryContext
 {
     /// <summary>Pre-authenticated for the queried device.</summary>

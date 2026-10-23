@@ -32,6 +32,12 @@ public interface ITaskDialogContext
     bool Has(string permission) => true;
 
     /// <summary>
+    /// Whether the user may reach every device (SDK 0.4.0); false for a user limited to a device group: hide or disable
+    /// what only users with all devices may do (the server refuses it anyway). Default (older hosts): true.
+    /// </summary>
+    bool HasAllDevices => true;
+
+    /// <summary>
     /// Every device of the system, e.g. to take settings from a device that is not selected ("Use configuration from:
     /// Device"). Default (older hosts): empty, the dialog then offers its selected devices only.
     /// </summary>
@@ -177,6 +183,13 @@ public interface ICorePluginClientContext
     /// disables what the role lacks (the server refuses the call anyway). Default (older hosts): true.
     /// </summary>
     bool Has(string permission) => true;
+
+    /// <summary>
+    /// Whether the user may reach every device (SDK 0.4.0); false for a user limited to a device group: hide or disable
+    /// what only users with all devices may do (the server refuses it anyway). Changes come with PermissionsChanged.
+    /// Default (older hosts): true.
+    /// </summary>
+    bool HasAllDevices => true;
 
     /// <summary>Raised on the UI thread after the user's role or its permissions changed (ask <see cref="Has"/> again).</summary>
     event EventHandler? PermissionsChanged

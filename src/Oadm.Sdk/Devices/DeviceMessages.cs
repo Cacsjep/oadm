@@ -12,6 +12,15 @@ public static class DeviceMessages
     /// <summary>A device that is no longer in the device table.</summary>
     public const string Removed = "The device was removed from OADM.";
 
+    /// <summary>
+    /// The refusal of a request that names devices the user cannot reach (removed, or outside the user's device group):
+    /// "1 device is no longer available." / "3 devices are no longer available.". The same text for both, so the answer
+    /// never tells an unknown device from one outside the group. The whole request is refused, never run in part.
+    /// </summary>
+    public static string NoLongerAvailable(int count) => count == 1
+        ? "1 device is no longer available."
+        : string.Create(CultureInfo.InvariantCulture, $"{Math.Max(0, count):N0} devices are no longer available.");
+
     /// <summary>The short status name of the device grid: "OK", "Unreachable", "Credentials required" ...</summary>
     public static string StatusText(DeviceStatus status) => status switch
     {
