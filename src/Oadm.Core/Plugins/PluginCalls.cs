@@ -164,7 +164,10 @@ internal sealed class HostCallContext : ICallContext
         // Users with all devices may cancel every task, like the tasks pane; others only the tasks they started.
         public bool Cancel(Guid taskId) => (call.HasAllDevices || owners.IsOwner(taskId, call.UserId)) && inner.Cancel(taskId);
 
-        public bool? IsActive(Guid taskId) => call.HasAllDevices || owners.IsOwner(taskId, call.UserId) ? inner.IsActive(taskId) : null;
+        // Like the engine's IsActiveOwn: another user's task is "cannot tell" only while it runs; unknown or ended = false.
+        public bool? IsActive(Guid taskId) => call.HasAllDevices || owners.IsOwner(taskId, call.UserId)
+            ? inner.IsActive(taskId)
+            : inner.IsActive(taskId) == false ? false : null;
     }
 }
 
