@@ -258,8 +258,10 @@ an independent security review the same day). A user may be limited to part of t
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;
   actions "Entered device group" / "Left device group"; also for tags and sites) and `Oadm.Server.AddDevices.MembershipAudit`
   (Commit, the waiting list, the automatic add, relocation and DHCP moves).
-- Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove), `QueuedByUserId` written
-  by `AddAsync(..., queuedBy, ...)`; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
+- Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove, add), `QueuedByUserId` written
+  by `AddAsync(..., queuedBy, scope, ...)`: an entry without a site of a user with a group has its own key
+  (`KeeperKey`: the address, "#" and the user's id; `AddressPart` for the comparison with managed devices), so the user
+  never changes or learns of another user's entry for the same address, and the reply's total counts the user's scope; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
 
 ## Code (devices-core)
 

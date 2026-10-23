@@ -207,6 +207,21 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         siteId is { } site ? Normalize(address) + "@" + site.ToString("N").ToUpperInvariant() : Normalize(address);
 
     /// <summary>
+    /// The key of an entry for everywhere kept by a user without all devices: <see cref="Normalize(string?)"/>, "#" and the
+    /// user's id, so it never meets another user's entry for the same address (docs/spec/device-scope.md, Small leaks closed).
+    /// <see cref="AddressPart"/> gives the address part back for the comparison with managed devices.
+    /// </summary>
+    public static string KeeperKey(string? address, Guid userId) => Normalize(address) + "#" + userId.ToString("N").ToUpperInvariant();
+
+    /// <summary>The key without a keeper part (<see cref="KeeperKey"/>): what is compared with managed devices.</summary>
+    public static string AddressPart(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        const int suffix = 33; // "#" and 32 hex digits
+        return key.Length > suffix && key[^suffix] == '#' && Guid.TryParseExact(key[^(suffix - 1)..], "N", out _) ? key[..^suffix] : key;
+    }
+
+    /// <summary>
     /// The address as a device record stores it, upper case: no scheme ("https://cam:8443" = "cam:8443"), no trailing "/",
     /// an IPv6 address without a port without brackets.
     /// </summary>
@@ -242,13 +257,37 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
     /// <param name="addedBy">The name of the user who keeps them.</param>
     /// <param name="queuedBy">The id of that user: a try checks the devices of that user at the time of the try.</param>
     /// <param name="ct">Cancellation.</param>
-    public async Task<WaitingAddResult> AddAsync(IReadOnlyList<WaitingLine> lines, string source, string addedBy, Guid? queuedBy, CancellationToken ct)
+    public Task<WaitingAddResult> AddAsync(IReadOnlyList<WaitingLine> lines, string source, string addedBy, Guid? queuedBy, CancellationToken ct) =>
+        AddAsync(lines, source, addedBy, queuedBy, WaitingScope.Everything, ct);
+
+    /// <inheritdoc cref="AddAsync(IReadOnlyList{WaitingLine}, string, string, CancellationToken)"/>
+    /// <param name="lines">The lines.</param>
+    /// <param name="source">Where they came from.</param>
+    /// <param name="addedBy">The name of the user who keeps them.</param>
+    /// <param name="queuedBy">The id of that user: a try checks the devices of that user at the time of the try.</param>
+    /// <param name="scope">
+    /// The keeper's entries (<see cref="WaitingScope"/>). A user without all devices never changes an entry outside it: the
+    /// entries for everywhere of such a user have their own key (<see cref="KeeperKey"/>), so another user's entry for the
+    /// same address stays as it is and is not counted; <see cref="WaitingAddResult.Total"/> counts the scope.
+    /// </param>
+    /// <param name="ct">Cancellation.</param>
+    public async Task<WaitingAddResult> AddAsync(IReadOnlyList<WaitingLine> lines, string source, string addedBy, Guid? queuedBy, WaitingScope scope, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(scope);
+        if (!scope.All && queuedBy is null)
+        {
+            throw new ArgumentException("A user without all devices keeps entries as that user.", nameof(queuedBy));
+        }
+
+        string KeyOf(WaitingLine line) => !scope.All && line.SiteId is null
+            ? KeeperKey(line.Address, queuedBy!.Value)
+            : Normalize(line.Address, line.SiteId);
+
         var now = time.GetUtcNow().UtcDateTime;
         var distinct = lines
             .Where(l => !string.IsNullOrWhiteSpace(l.Address) && l.Address.Trim().Length <= MaxAddressLength)
-            .GroupBy(l => Normalize(l.Address, l.SiteId), StringComparer.Ordinal)
+            .GroupBy(KeyOf, StringComparer.Ordinal)
             .Select(g => g.Last())
             .ToList();
         source = Cut(source.Trim(), MaxSourceLength);
@@ -258,7 +297,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
-            var keys = distinct.Select(l => Normalize(l.Address, l.SiteId)).ToHashSet(StringComparer.Ordinal);
+            var keys = distinct.Select(KeyOf).ToHashSet(StringComparer.Ordinal);
             var existing = new Dictionary<string, WaitingDevice>(StringComparer.Ordinal);
             foreach (var chunk in keys.Chunk(500))
             {
@@ -268,20 +307,32 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
                 }
             }
 
+            // An entry outside the keeper's scope (fail closed: not expected, the keys of such entries differ) is left alone.
+            var foreign = existing.Where(e => !scope.Covers(e.Value.SiteId, e.Value.QueuedByUserId)).Select(e => e.Key).ToHashSet(StringComparer.Ordinal);
             var count = await db.WaitingDevices.CountAsync(ct).ConfigureAwait(false);
-            var added = distinct.Count(l => !existing.ContainsKey(Normalize(l.Address, l.SiteId)));
+            var added = distinct.Count(l => !existing.ContainsKey(KeyOf(l)));
             if (count + added > MaxEntries)
             {
                 throw new WaitingListFullException(FullText);
             }
 
+            var updated = 0;
             foreach (var line in distinct)
             {
-                var key = Normalize(line.Address, line.SiteId);
+                var key = KeyOf(line);
+                if (foreign.Contains(key))
+                {
+                    continue;
+                }
+
                 if (!existing.TryGetValue(key, out var row))
                 {
                     row = new WaitingDevice { Id = Guid.NewGuid(), NormalizedAddress = key, SiteId = line.SiteId };
                     db.WaitingDevices.Add(row);
+                }
+                else
+                {
+                    updated++;
                 }
 
                 row.Address = line.Address.Trim();
@@ -302,9 +353,10 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
             }
 
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            var total = scope.All ? count + added : await scope.Apply(db.WaitingDevices.AsNoTracking()).CountAsync(ct).ConfigureAwait(false);
             await transaction.CommitAsync(ct).ConfigureAwait(false);
             Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
-            return new WaitingAddResult(added, distinct.Count - added, count + added);
+            return new WaitingAddResult(added, updated, total);
         }
         finally
         {
@@ -612,7 +664,7 @@ public sealed class WaitingDeviceStore(IDbContextFactory<OadmDbContext> dbFactor
         ArgumentNullException.ThrowIfNull(managedAddresses);
         ArgumentNullException.ThrowIfNull(managedSerials);
         var gone = (await ListKeysAsync(ct).ConfigureAwait(false))
-            .Where(k => managedAddresses.Contains(k.NormalizedAddress) || (k.ExpectedSerial is { } s && managedSerials.Contains(s)))
+            .Where(k => managedAddresses.Contains(AddressPart(k.NormalizedAddress)) || (k.ExpectedSerial is { } s && managedSerials.Contains(s)))
             .Select(k => k.Id).ToList();
         if (gone.Count > 0)
         {
