@@ -40,7 +40,7 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
     public bool MaySend => _host.Has(CommanderViewModel.Permission("send"));
 
     /// <summary>The role may save the request as a command ("oadm.vapix-commander:saved").</summary>
-    public bool MaySave => _host.Has(CommanderViewModel.Permission("saved"));
+    public bool MaySave => _host.Has(CommanderViewModel.Permission("saved")) && _host.HasAllDevices;
 
     /// <summary>Save shows while building and when the role may save.</summary>
     public bool CanShowSave => IsBuilding && MaySave;

@@ -101,23 +101,60 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         _ => PermissionKeys.Show,
     };
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>Changing the saved commands everyone shares is for users with all devices (docs/spec/device-scope.md).</summary>
+    public bool RequiresAllDevices(string method) => method is CommanderMethods.Save or CommanderMethods.Delete or CommanderMethods.Import;
+
+    /// <summary>In-process callers and tests without a user: the context's own devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => InvokeCoreAsync(null, method, payloadJson, ct);
+
+    /// <summary>The page's call (SDK 0.4.0): devices, clients and tasks only through <paramref name="caller"/>.</summary>
+    public Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return InvokeCoreAsync(caller, method, payloadJson, ct);
+    }
+
+    private async Task<string?> InvokeCoreAsync(ICallContext? caller, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         return method switch
         {
             CommanderMethods.ListLibrary => CommandJson.Write(ListLibrary()),
             CommanderMethods.ListSaved => CommandJson.Write(new CommandListReply { Commands = [.. await Saved.ListAsync(ct).ConfigureAwait(false)] }),
-            CommanderMethods.Save => CommandJson.Write(await SaveAsync(CommandJson.Read<SaveCommandRequest>(payloadJson), ct).ConfigureAwait(false)),
+            CommanderMethods.Save => CommandJson.Write(await SaveAsync(WithOwner(CommandJson.Read<SaveCommandRequest>(payloadJson), caller), ct).ConfigureAwait(false)),
             CommanderMethods.Delete => CommandJson.Write(await DeleteAsync(CommandJson.Read<DeleteCommandRequest>(payloadJson), ct).ConfigureAwait(false)),
             CommanderMethods.Export => CommandJson.Write(await Saved.ExportAsync(CommandJson.Read<ExportRequest>(payloadJson).Ids, ct).ConfigureAwait(false)),
-            CommanderMethods.Import => CommandJson.Write(await ImportAsync(CommandJson.Read<ImportRequest>(payloadJson), ct).ConfigureAwait(false)),
-            CommanderMethods.TryRequest => CommandJson.Write(await TryAsync(CommandJson.Read<TryCommandRequest>(payloadJson), ct).ConfigureAwait(false)),
-            CommanderMethods.CheckCompatibility => CommandJson.Write(await CheckCompatibilityAsync(CommandJson.Read<CompatibilityRequest>(payloadJson), ct).ConfigureAwait(false)),
-            CommanderMethods.Rollout => CommandJson.Write(await RolloutAsync(CommandJson.Read<RolloutRequest>(payloadJson), ct).ConfigureAwait(false)),
+            CommanderMethods.Import => CommandJson.Write(await ImportAsync(WithOwner(CommandJson.Read<ImportRequest>(payloadJson), caller), ct).ConfigureAwait(false)),
+            CommanderMethods.TryRequest => CommandJson.Write(await TryAsync(CommandJson.Read<TryCommandRequest>(payloadJson), caller, ct).ConfigureAwait(false)),
+            CommanderMethods.CheckCompatibility => CommandJson.Write(await CheckCompatibilityAsync(CommandJson.Read<CompatibilityRequest>(payloadJson), caller, ct).ConfigureAwait(false)),
+            CommanderMethods.Rollout => CommandJson.Write(await RolloutAsync(CommandJson.Read<RolloutRequest>(payloadJson), caller, ct).ConfigureAwait(false)),
             _ => throw new NotSupportedException($"Unknown method '{method}'."),
         };
     }
+
+    /// <summary>The user who saves is the caller, never a name the page sent.</summary>
+    private static SaveCommandRequest WithOwner(SaveCommandRequest request, ICallContext? caller)
+    {
+        if (caller is not null)
+        {
+            request.Owner = caller.UserName;
+        }
+
+        return request;
+    }
+
+    private static ImportRequest WithOwner(ImportRequest request, ICallContext? caller)
+    {
+        if (caller is not null)
+        {
+            request.Owner = caller.UserName;
+        }
+
+        return request;
+    }
+
+    /// <summary>The devices of the call (the user's view), or the context's own without a user.</summary>
+    private IDeviceRepository DevicesOf(ICallContext? caller) => caller?.Devices ?? Context.Devices;
 
     internal CommandListReply ListLibrary() => new()
     {
@@ -194,12 +231,21 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             : reference.StartsWith(RunCommandAction.LibraryPrefix, StringComparison.Ordinal)
                 ? new CommandRef { Source = CommandSources.Library, Id = reference[RunCommandAction.LibraryPrefix.Length..] }
                 : throw new InvalidOperationException("Choose a command.");
-        return ResolveAsync(commandRef, null, ct);
+        return ResolveAsync(commandRef, null, ct); // event rules are for users with all devices only
     }
 
     /// <summary>The server's definition of a command plus the stored password values of a saved one.</summary>
+    internal Task<(CommandDefinition Command, Dictionary<string, JsonElement> Values)> ResolveAsync(
+        CommandRef reference, IReadOnlyDictionary<string, JsonElement>? values, CancellationToken ct) =>
+        ResolveAsync(reference, values, allowSavedSecrets: true, ct);
+
+    /// <summary>
+    /// The server's definition of a command plus the stored password values of a saved one. Without
+    /// <paramref name="allowSavedSecrets"/> (a user with a device group) a stored password the command
+    /// would use refuses it (<see cref="CommanderTexts.SavedPasswordsRefused"/>): the user enters the passwords instead.
+    /// </summary>
     internal async Task<(CommandDefinition Command, Dictionary<string, JsonElement> Values)> ResolveAsync(
-        CommandRef reference, IReadOnlyDictionary<string, JsonElement>? values, CancellationToken ct)
+        CommandRef reference, IReadOnlyDictionary<string, JsonElement>? values, bool allowSavedSecrets, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(reference);
         var merged = new Dictionary<string, JsonElement>(values ?? new Dictionary<string, JsonElement>(), StringComparer.Ordinal);
@@ -217,6 +263,11 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
                 {
                     if (!merged.TryGetValue(field, out var entered) || entered.ValueKind != JsonValueKind.String || entered.GetString()!.Length == 0)
                     {
+                        if (!allowSavedSecrets)
+                        {
+                            throw new CommandValidationException(CommanderTexts.SavedPasswordsRefused);
+                        }
+
                         merged[field] = JsonSerializer.SerializeToElement(secret);
                     }
                 }
@@ -231,13 +282,15 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         }
     }
 
-    internal async Task<TryCommandReply> TryAsync(TryCommandRequest request, CancellationToken ct)
+    internal Task<TryCommandReply> TryAsync(TryCommandRequest request, CancellationToken ct) => TryAsync(request, null, ct);
+
+    internal async Task<TryCommandReply> TryAsync(TryCommandRequest request, ICallContext? caller, CancellationToken ct)
     {
         CommandDefinition command;
         RenderedRequest rendered;
         try
         {
-            (command, var values) = await ResolveAsync(request.Command, request.Values, ct).ConfigureAwait(false);
+            (command, var values) = await ResolveAsync(request.Command, request.Values, caller?.HasAllDevices ?? true, ct).ConfigureAwait(false);
             rendered = CommandRenderer.Render(command, values);
         }
         catch (CommandValidationException ex)
@@ -245,10 +298,11 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             return new TryCommandReply { Error = ex.Message };
         }
 
-        var device = await Context.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false);
+        var device = await DevicesOf(caller).FindAsync(request.DeviceId, ct).ConfigureAwait(false);
         if (device is null)
         {
-            return new TryCommandReply { Error = DeviceMessages.Removed };
+            // A user with a device group: an unknown device and one outside the group answer the same, nothing is sent.
+            return caller is { HasAllDevices: false } ? throw new DevicesNotAvailableException() : new TryCommandReply { Error = DeviceMessages.Removed };
         }
 
         if (device.Status == DeviceStatus.CertificateChanged)
@@ -275,7 +329,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         IVapixClient vapix;
         try
         {
-            vapix = await Context.Vapix.CreateAsync(device.Id, ct).ConfigureAwait(false);
+            vapix = await (caller?.Vapix ?? Context.Vapix).CreateAsync(device.Id, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -305,7 +359,13 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         return new TryCommandReply { Outcome = TryOutcome.From(outcome) };
     }
 
-    internal async Task<CompatibilityReply> CheckCompatibilityAsync(CompatibilityRequest request, CancellationToken ct)
+    internal Task<CompatibilityReply> CheckCompatibilityAsync(CompatibilityRequest request, CancellationToken ct) => CheckCompatibilityAsync(request, null, ct);
+
+    /// <summary>
+    /// Cached compatibility per device and command. A user with a device group: every device must be in the user's view
+    /// (an unknown or outside id refuses the whole request).
+    /// </summary>
+    internal async Task<CompatibilityReply> CheckCompatibilityAsync(CompatibilityRequest request, ICallContext? caller, CancellationToken ct)
     {
         var commands = new List<CommandDefinition?>();
         foreach (var reference in request.Commands)
@@ -328,15 +388,22 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         if (ids.Count > FindOneByOneLimit)
         {
             known = [];
-            foreach (var d in await Context.Devices.ListAsync(ct).ConfigureAwait(false))
+            foreach (var d in await DevicesOf(caller).ListAsync(ct).ConfigureAwait(false))
             {
                 known.TryAdd(d.Id, d);
             }
         }
 
+        var missing = 0;
         foreach (var deviceId in ids)
         {
-            var device = known is not null ? known.GetValueOrDefault(deviceId) : await Context.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
+            var device = known is not null ? known.GetValueOrDefault(deviceId) : await DevicesOf(caller).FindAsync(deviceId, ct).ConfigureAwait(false);
+            if (device is null && caller is { HasAllDevices: false })
+            {
+                missing++;
+                continue;
+            }
+
             reply.Devices.Add(new DeviceCompatibility
             {
                 DeviceId = deviceId,
@@ -344,7 +411,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             });
         }
 
-        return reply;
+        return missing > 0 ? throw new DevicesNotAvailableException(missing) : reply;
 
         static CompatibilityEntry Entry(CommandDefinition? command, IDeviceInfo? device)
         {
@@ -363,7 +430,10 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         }
     }
 
-    internal async Task<RolloutReply> RolloutAsync(RolloutRequest request, CancellationToken ct)
+    internal Task<RolloutReply> RolloutAsync(RolloutRequest request, CancellationToken ct) => RolloutAsync(request, null, ct);
+
+    /// <summary>The rollout as tasks of the caller: only on devices of the user's view, the whole run is refused otherwise.</summary>
+    internal async Task<RolloutReply> RolloutAsync(RolloutRequest request, ICallContext? caller, CancellationToken ct)
     {
         var deviceIds = request.DeviceIds.Distinct().ToList();
         if (deviceIds.Count == 0)
@@ -388,7 +458,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             CommandDefinition? resolved = null;
             try
             {
-                var (command, values) = await ResolveAsync(request.Commands[i].Command, request.Commands[i].Values, ct).ConfigureAwait(false);
+                var (command, values) = await ResolveAsync(request.Commands[i].Command, request.Commands[i].Values, caller?.HasAllDevices ?? true, ct).ConfigureAwait(false);
                 resolved = command;
                 _ = CommandRenderer.Render(command, values); // validation only: nothing is sent when a value is wrong
                 payload.Commands.Add(new RolloutPayloadCommand { Command = command, Values = values });
@@ -411,15 +481,16 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         }
 
         var rollout = Rollouts.Get(payload.RolloutId, payload.StopOnFirstError);
-        var taskIds = await Context.Tasks.RunAsync(
+        var tasks = caller?.Tasks ?? Context.Tasks;
+        var taskIds = await tasks.RunAsync(
             RolloutTaskPlugin.PluginId,
             deviceIds,
             JsonSerializer.Serialize(payload, CommandJson.Api),
-            string.IsNullOrWhiteSpace(request.Owner) ? "VAPIX Commander" : request.Owner,
+            caller?.UserName ?? (string.IsNullOrWhiteSpace(request.Owner) ? "VAPIX Commander" : request.Owner),
             ct).ConfigureAwait(false);
         foreach (var taskId in rollout.SetTaskIds(taskIds))
         {
-            CancelTask(taskId);
+            tasks.Cancel(taskId);
         }
 
         LogRolloutStarted(payload.RolloutId, payload.Commands.Count, deviceIds.Count, payload.StopOnFirstError);

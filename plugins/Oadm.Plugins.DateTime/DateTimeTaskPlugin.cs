@@ -78,6 +78,10 @@ public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
         await _runner.RunAsync(ctx, device, payload, ct).ConfigureAwait(false);
     }
 
+    /// <summary>The user's query (SDK 0.4.0): reads only the queried device, which the host checked against the user's view.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        QueryAsync(ctx, device, method, payloadJson, ct);
+
     /// <summary>
     /// Read-only: "getTimeSettings" returns <see cref="CurrentTimeSettings"/> of the device (getDateTimeInfo + getNTPInfo,
     /// or param.cgi Time) plus the OADM server's UTC time and time zone, for the dialog's "Device time" card.

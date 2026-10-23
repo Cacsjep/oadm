@@ -111,3 +111,7 @@ Returns the payload JSON; the password lives only in memory.
 Keys `task:oadm.users:add`, `:update`, `:remove` (all three full device control). `RequiredPermissions` names the
 key of the payload's mode; the dialog shows only the modes the role has and starts in the first of them. Operator
 default: add and update, not remove.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query `listUsers` reads only the queried device, which the host checks. Test: `DeviceGroupTests` (`PluginCanary`).

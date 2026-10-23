@@ -48,6 +48,15 @@ public interface ITaskQueryContext
     /// whether a new address is in use. Null on hosts without it.
     /// </summary>
     Sites.IDeviceNetwork? Network => null;
+
+    /// <summary>
+    /// Which of <paramref name="addresses"/> a managed device on the queried device's route uses, also a device outside the
+    /// user's view (SDK 0.4.0): an address-in-use check that answers only "in use" and never names that device. Addresses
+    /// are compared as IP addresses; the answer holds the entries of <paramref name="addresses"/> as given. Default (older
+    /// hosts, without device groups, where <see cref="Devices"/> lists every device): none.
+    /// </summary>
+    Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct) =>
+        Task.FromResult<IReadOnlySet<string>>(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 }
 
 /// <summary>

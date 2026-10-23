@@ -23,5 +23,7 @@
     <!-- The real VAPIX client for the opt-in hardware write test. -->
     <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Outputs\Oadm.Plugins.Outputs.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
+    <Compile Include="..\Shared\TaskPluginCanaryHost.cs" Link="Shared\TaskPluginCanaryHost.cs" />
   </ItemGroup>
 </Project>

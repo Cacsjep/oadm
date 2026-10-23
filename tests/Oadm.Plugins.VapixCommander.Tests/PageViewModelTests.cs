@@ -33,6 +33,9 @@ internal sealed class FakeClientContext(VapixCommanderPlugin plugin) : ICorePlug
 
     public string OwnerName => "tech@pc";
 
+    /// <summary>False: a user with a device group.</summary>
+    public bool HasAllDevices { get; set; } = true;
+
     public Window? Owner => null;
 
     /// <summary>When set, every call waits for it first (tests that look at the page while a call runs).</summary>

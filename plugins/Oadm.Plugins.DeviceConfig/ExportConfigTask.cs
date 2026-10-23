@@ -47,6 +47,10 @@ public sealed class ExportConfigTask : ITaskPlugin, ITaskPluginQuery
     public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
         throw new InvalidOperationException("\"Export configuration\" only reads; it never runs as a task.");
 
+    /// <summary>The user's query (SDK 0.4.0): reads only the queried device, which the host checked against the user's view.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        QueryAsync(ctx, device, method, payloadJson, ct);
+
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);

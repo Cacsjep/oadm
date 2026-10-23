@@ -180,3 +180,7 @@ instants agree on every OS. Each transition becomes `Mm.w.d/time` in the local t
 standard, end in daylight saving time). A fourth weekday that is also the last of the month is "last" (week 5) unless
 the next six years match "fourth" more often. POSIX strings follow the device's style: Europe/Vienna =
 `<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00` (exactly what the development camera reports), Asia/Kolkata = `<UTC530>-5:30`.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query reads only the queried device, which the host checks. Test: `DeviceGroupTests` (`PluginCanary`).

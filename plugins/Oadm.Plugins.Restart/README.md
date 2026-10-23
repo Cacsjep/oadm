@@ -36,3 +36,7 @@ into memory, so a rebuild works while the server runs. Restart the server to loa
 
 To do the same in another plugin project, copy the `OadmPluginId` / `OadmPluginOutputDir`
 properties and the `OadmDeployPlugin` target from the `.csproj`.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device. No dialog, no query. Test: `tests/Oadm.Plugins.Restart.Tests` (`PluginCanary` through `tests/Shared/TaskPluginCanaryHost.cs`).

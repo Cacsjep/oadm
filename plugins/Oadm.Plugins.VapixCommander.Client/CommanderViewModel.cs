@@ -34,8 +34,8 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     /// <summary>The role may run the rollout set on many devices ("oadm.vapix-commander:rollout").</summary>
     public bool MayRollout => _host.Has(Permission("rollout"));
 
-    /// <summary>The role may change the saved commands ("oadm.vapix-commander:saved").</summary>
-    public bool MaySaved => _host.Has(Permission("saved"));
+    /// <summary>The role may change the saved commands ("oadm.vapix-commander:saved") and the user has all devices.</summary>
+    public bool MaySaved => _host.Has(Permission("saved")) && _host.HasAllDevices;
 
     /// <summary>The request builder is useful to try a request or to save one.</summary>
     public bool MayBuild => MaySend || MaySaved;

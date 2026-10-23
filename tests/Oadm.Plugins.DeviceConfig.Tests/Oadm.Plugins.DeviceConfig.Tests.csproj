@@ -38,6 +38,7 @@
     <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
     <!-- The engine's step end rules for step assertions. -->
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
+    <Compile Include="..\Shared\TaskPluginCanaryHost.cs" Link="Shared\TaskPluginCanaryHost.cs" />
   </ItemGroup>
 
   <ItemGroup>

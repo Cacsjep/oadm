@@ -241,6 +241,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.Est.Tests", "t
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.Est.Client", "plugins\Oadm.Plugins.Est.Client\Oadm.Plugins.Est.Client.csproj", "{FA9FCA65-3F7A-47E0-9C5A-FBBAF8A81FCE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.Restart.Tests", "tests\Oadm.Plugins.Restart.Tests\Oadm.Plugins.Restart.Tests.csproj", "{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1595,6 +1597,18 @@ Global
 		{FA9FCA65-3F7A-47E0-9C5A-FBBAF8A81FCE}.Release|x64.Build.0 = Release|Any CPU
 		{FA9FCA65-3F7A-47E0-9C5A-FBBAF8A81FCE}.Release|x86.ActiveCfg = Release|Any CPU
 		{FA9FCA65-3F7A-47E0-9C5A-FBBAF8A81FCE}.Release|x86.Build.0 = Release|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Debug|x64.Build.0 = Debug|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Debug|x86.Build.0 = Debug|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Release|x64.ActiveCfg = Release|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Release|x64.Build.0 = Release|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Release|x86.ActiveCfg = Release|Any CPU
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1713,5 +1727,6 @@ Global
 		{F7B15332-0109-4B66-94C4-39511EB5966D} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 		{BEBFA5FD-6867-460C-89BA-AF9ECB850494} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{FA9FCA65-3F7A-47E0-9C5A-FBBAF8A81FCE} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
+		{0C4395B5-1257-4AC0-A4F8-105B48C9B1AA} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

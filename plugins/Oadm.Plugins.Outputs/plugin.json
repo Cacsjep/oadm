@@ -1,7 +1,7 @@
 {
   "id": "oadm.outputs",
   "version": "0.1.0",
-  "minSdkVersion": "0.1.0",
+  "minSdkVersion": "0.4.0",
   "displayName": "Outputs",
   "description": "Event rule action that switches a device output, for example a relay.",
   "alwaysOn": true,

@@ -1,7 +1,7 @@
 {
   "id": "oadm.device-config",
   "version": "0.1.0",
-  "minSdkVersion": "0.1.0",
+  "minSdkVersion": "0.4.0",
   "displayName": "Device configuration",
   "description": "Exports and imports device configurations and sets parameters, action rules and stream profiles on many devices.",
   "alwaysOn": true,

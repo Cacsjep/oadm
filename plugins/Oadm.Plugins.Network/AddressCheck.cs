@@ -27,7 +27,15 @@ public static class AddressCheck
     /// "Overlapping networks": 192.168.0.20 at another site is another network and no conflict). Null = every device.
     /// </summary>
     /// <param name="probe">The probe; null = on the route of the query's device (<see cref="ITaskQueryContext.Network"/>).</param>
-    public static async Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, CancellationToken ct)
+    public static Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, CancellationToken ct) =>
+        QueryAsync(ctx, device, payloadJson, probe, outsideView: false, ct);
+
+    /// <summary>
+    /// The query of a user's dialog. <paramref name="outsideView"/> (a user with a device group, whose
+    /// <see cref="ITaskQueryContext.Devices"/> are the group's): a candidate that a device outside the group has comes back
+    /// in use (<see cref="AddressStatus.UsedByDevice"/>), without naming that device (docs/spec/device-scope.md).
+    /// </summary>
+    public static async Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, bool outsideView, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         var request = AddressCheckRequest.Parse(payloadJson);
@@ -85,12 +93,28 @@ public static class AddressCheck
             }
         }
 
+        if (outsideView && addresses.Count > 0)
+        {
+            var named = managed.Select(m => ParseAddress(m.Address)).OfType<IPAddress>().ToHashSet();
+            var used = await ctx.ManagedAddressesAsync(addresses, ct).ConfigureAwait(false);
+            for (var i = 0; i < addresses.Count; i++)
+            {
+                if (used.Contains(addresses[i]) && ParseAddress(addresses[i]) is { } ip && !named.Contains(ip))
+                {
+                    probed[i] = probed[i] with { InUse = true, UsedByDevice = true };
+                }
+            }
+        }
+
         return new AddressCheckResponse(managed, probed).ToJson();
     }
 
     /// <summary>True when <paramref name="address"/> is outside the networks <paramref name="network"/> reaches (a site).</summary>
     public static bool IsOutside(Sdk.Sites.IDeviceNetwork? network, string address) =>
         network is not null && IPAddress.TryParse(address.Trim().Trim('[', ']'), out var ip) && !network.Reaches(ip);
+
+    private static IPAddress? ParseAddress(string? text) =>
+        IPAddress.TryParse(text?.Trim().Trim('[', ']'), out var ip) ? ip : null;
 
     /// <summary>An IPv4 address (dotted quad) or an IPv6 address without zone or prefix.</summary>
     public static bool IsIpLiteral(string? text) => Ipv4.TryParse(text, out _) || PayloadValidator.TryParseIpv6(text, out _);

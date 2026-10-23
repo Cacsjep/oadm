@@ -20,3 +20,7 @@ port of a device, for example the relay of a camera or an I/O module. Spec: `doc
 - Verified on an AXIS A9210 (AXIS OS 12.10.73.2) with the opt-in `OutputHardwareWriteTests` (`OADM_OUTPUT_WRITE_URL`,
   `_USER`, `_PASSWORD`, optional `_PORT`): every mode through both APIs, read back, ends inactive. Tests:
   `tests/Oadm.Plugins.Outputs.Tests`.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): event rules are for users with all devices, so the action works as before and depends on no device group: it switches only the output of the device it is given, through that device's client. Test: `DeviceGroupTests` (`PluginCanary` through `tests/Shared/TaskPluginCanaryHost.cs`).

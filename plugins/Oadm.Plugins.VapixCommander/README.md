@@ -168,3 +168,22 @@ without ports, "No light hardware found" is the right answer of a camera without
 rollout are full device control. The page hides Send, Run, New command (unless send or saved), Import, edit / delete of
 saved commands and "Save a copy" accordingly; the request builder hides Send and Save. Operator default: all. The event
 rule action "Run VAPIX command" runs as the server and follows "Change event rules".
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md). Page methods get the user's call (`InvokeAsync(caller, ...)`):
+
+- `tryRequest`, `checkCompatibility` and `rollout` reach devices, clients and tasks only through the call. For a user with
+  a device group an id outside the view refuses the whole request like an unknown id (NOT_FOUND "1 device is no longer
+  available."), nothing is sent and no task starts. Users with all devices: unchanged ("Device not found", the removed
+  device text).
+- `save`, `delete` and `import` change the saved commands everyone shares: `RequiresAllDevices`, refused for group
+  users before the plugin runs. The page hides New command, Import, Edit, Delete and Save with values for them
+  (`MaySaved` / `MaySave` also need `HasAllDevices`).
+- Stored passwords of a saved command are only for users with all devices. A group user who leaves such a field empty
+  gets `CommanderTexts.SavedPasswordsRefused` ("Only users with all devices can use the saved passwords. Enter the
+  passwords."); typed passwords work. The action **Run VAPIX command** is unchanged: event rules are for users with
+  all devices.
+- The owner of rollout tasks and saved commands is the caller's user name, never a name the page sends.
+- Tests: `DeviceGroupTests` (`PluginCanary` naming every method and its id fields, the owner, stored passwords, the
+  page).

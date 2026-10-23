@@ -511,15 +511,6 @@ public sealed class CanaryTests
     /// </summary>
     internal static readonly Dictionary<string, string> PluginsNotConverted = new(StringComparer.Ordinal)
     {
-        ["oadm.device-config"] = "plugins-tasks",
-        ["oadm.vapix-commander"] = "plugins-tasks",
-        ["oadm.network"] = "plugins-tasks",
-        ["oadm.users"] = "plugins-tasks",
-        ["oadm.datetime"] = "plugins-tasks",
-        ["oadm.firmware"] = "plugins-tasks",
-        ["oadm.acap"] = "plugins-tasks",
-        ["oadm.restart"] = "plugins-tasks",
-        ["oadm.outputs"] = "plugins-tasks",
         ["oadm.device-triggers"] = "plugins-pages",
         ["oadm.dashboards"] = "plugins-pages",
         ["oadm.live-view"] = "plugins-pages",

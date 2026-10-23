@@ -28,6 +28,10 @@ version and date, and the release workflow copies it into the GitHub release.
   their own devices, reports and live updates.
 - Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
   user's group.
+- Device groups: the task plugins and VAPIX Commander work for users with a group, on the devices of the
+  group. Assign IP address and Network settings say only "In use" for an address of a device outside the group.
+- Device groups: VAPIX Commander saved commands are changed only by users with all devices; others run a saved command
+  only with the passwords they enter.
 - Device groups: users with a group see the PKI and EST server pages read only, with the certificates and enrollments of
   their own devices. Certificates of a device such a user added name only its IP addresses, never its host name.
 
