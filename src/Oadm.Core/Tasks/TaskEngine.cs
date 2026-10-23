@@ -1271,8 +1271,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             // Every managed device, also outside the owner's view: the answer is only "in use".
             var device = await engine._devices.FindAsync(deviceId, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException(DeviceMessages.NoLongerAvailable(1));
-            var all = await engine._devices.ListAsync(ct).ConfigureAwait(false);
-            return ManagedAddresses.Match(all, device.SiteId, deviceId, addresses);
+            return await ManagedAddresses.MatchAsync(engine._devices, device.SiteId, deviceId, addresses, ct).ConfigureAwait(false);
         }
     }
 

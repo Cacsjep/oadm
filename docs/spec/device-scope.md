@@ -150,7 +150,10 @@ an independent security review the same day). A user may be limited to part of t
 - **Address takeover accepted** (security review 2026-10-23): a group user can still give a camera of the group the
   address of a device outside it through raw requests of the VAPIX Commander or in the web interface (Network settings and
   Assign IP address refuse it). The harm is small: over HTTPS the pinned certificate stops the polling of the other device,
-  over HTTP the camera gets only a digest response, never the password.
+  over HTTP the camera gets only a digest response, never the password. The check of Network settings and Assign IP
+  address compares the stored IP addresses only: a device stored by host name is not compared (OADM keeps no resolved
+  address of it, and a name at a site resolves only there), so a group camera can take the address such a device's name
+  points to, with the same small harm.
 - **Shared waiting entries accepted**: a waiting entry with a site of the group is shared by the group's users: each
   sees it, removes it and uses Try now, and it is added as the user who queued it.
 - **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
@@ -336,7 +339,8 @@ an independent security review the same day). A user may be limited to part of t
   route, `Core/Tasks/ManagedAddresses`): Network settings and Assign IP address refuse, for every user and before the
   first write, a static address another managed device has ("Another device managed by OADM uses this address. Nothing
   was changed."), so a group user never takes over the address of a device outside the group (whose polling would then
-  send that device's login to the new camera). Both checks take at most 256 addresses per call.
+  send that device's login to the new camera). Both checks take at most 256 addresses per call and read only id and address
+  of the route's devices (`DeviceRepository.ListAddressesOnRouteAsync`, nothing when no address is an IP address).
 - VAPIX Commander: devices, clients and tasks through the call; `save` / `delete` / `import` `RequiresAllDevices`; stored
   passwords of saved commands only with all devices (`ResolveAsync(..., allowSavedSecrets)`). Run VAPIX command and Set
   output are event rule actions and stay as they are (event rules are for users with all devices).

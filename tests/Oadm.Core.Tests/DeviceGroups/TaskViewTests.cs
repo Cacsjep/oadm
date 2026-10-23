@@ -163,6 +163,27 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task ATasksAddressCheckReadsTheRoutesAddressesAndAnswersForDevicesOutsideTheViewToo()
+    {
+        var self = await AddDeviceAsync("ACCC8E000011", tags: [Tag]);
+        await AddDeviceAsync("ACCC8E000012"); // the same route, outside the group
+        await AddDeviceAsync("ACCC8E000013", siteId: Sites.Add("Warehouse")); // another route
+        var byName = await AddDeviceAsync("ACCC8E000014");
+        await Devices.UpdateAsync(byName.Id, d => d.Address = "cam14.example", Ct);
+        var (_, caller, view) = await GroupUserAsync();
+        IReadOnlySet<string>? used = null;
+        Register(new DelegateTaskPlugin("t.addresses", async (ctx, _, ct) =>
+            used = await ctx.ManagedAddressesAsync(["10.0.0.11", "10.0.0.12", "10.0.0.13", "cam14.example"], ct)));
+        await using var engine = Engine();
+
+        var ids = await engine.RunAsync("t.addresses", await view.GetAsync([self.Id], Ct), null, TaskCaller.Of(caller), Ct);
+        await engine.WaitForCompletionAsync(ids[0], Ct);
+
+        // Only the other device on the route; never the task's own one, another site's, or a host name.
+        Assert.Equal(["10.0.0.12"], used!);
+    }
+
+    [Fact]
     public async Task TasksTheSystemStartsHaveNoCaller()
     {
         var device = await AddDeviceAsync("ACCC8E000001");

@@ -163,6 +163,32 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task TheSharedReadOfTheAllowedIdsNeverRunsOnTheFirstCallersToken()
+    {
+        var b = Sites.Add("Building B");
+        await AddDeviceAsync("ACCC8E000001", siteId: b);
+        var group = (await SaveGroupAsync("G", sites: [b])).Group;
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+        using var gone = new CancellationTokenSource();
+        await gone.CancelAsync();
+
+        // The first caller gave up at once (it may still get the answer when the read ended at once); the read it started
+        // goes on for the others.
+        try
+        {
+            await view.IdsAsync(gone.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => view.CachedIds() is not null, "the shared read ended");
+        var ids = await view.IdsAsync(Ct);
+        Assert.Single(ids);
+        Assert.Same(view.CachedIds(), ids);
+    }
+
+    [Fact]
     public async Task AdministratorsAndUsersWithAllDevicesSeeEverythingAndNoCallerNeverMeansAll()
     {
         await AddDeviceAsync("ACCC8E000001");
