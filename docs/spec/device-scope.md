@@ -98,9 +98,11 @@ an independent security review the same day). A user may be limited to part of t
   in the background (the waiting entry remembers who queued it).
 - **Shared objects** (device triggers, compliance checks, Live View views, dashboards): each object stores its owning
   group (or all devices); an administrator editing it keeps the owner; a duplicate gets the group of the user who
-  duplicates. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices of that
+  duplicates and, for a user with a group, only the devices the user sees now. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices of that
   group ("All devices" = the group). Users see and edit only objects of their own group; others are hidden. A deleted
-  group disables its objects.
+  group disables its objects. A user without devices (no group, or the group was deleted) sees no shared object, saves
+  none ("Your account has no devices.", `OwnerScope.HasNoDevices`: a scope key that is not a group id) and gets no
+  shared job or slot (the hardening scan refuses), whatever key the host gives such a user.
 - **Event rules are not limited by device groups** (decision 2026-10-23): rules are for administrators and operators
   with all devices. Users with a group get no event rules: the rules, the event log, the event catalog and **Test**
   (every `EventService` method) are `AccessRule.AllDevices`, and the client hides the Event rules page for them. Rules

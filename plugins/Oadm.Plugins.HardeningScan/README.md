@@ -141,7 +141,9 @@ of the level is Warn or Fail.
   view of every device). `progress` and `results` go to the pages of the scan's scope (`DeviceScope`; the rows of a
   group's scan also to users with all devices). A device that leaves a group user's devices during the scan gets no row:
   its result (also the error of the refused read) is neither stored nor published. The overload without a call
-  (in-process callers) uses the plugin's context.
+  (in-process callers) uses the plugin's context. A user without devices (`OwnerScope.HasNoDevices`) gets no scan:
+  `startScan` refuses ("Your account has no devices."), `cancelScan` answers like an unknown id, `getState` has no scan.
+  A finished scan's token source is disposed only after its run ended (its stop registration may still fire).
 
 ## Page
 

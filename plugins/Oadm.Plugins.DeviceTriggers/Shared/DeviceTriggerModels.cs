@@ -232,6 +232,11 @@ public sealed record ChangedEvent(IReadOnlyList<Guid> TriggerIds);
 /// <summary>Checks shared by the server and the editor (messages appear below the fields).</summary>
 public static class TriggerValidation
 {
+    /// <summary>The page's notice after a save or a duplicate left devices out (<see cref="SaveReply.Dropped"/>).</summary>
+    public static string DroppedText(int devices) => devices == 1
+        ? "Saved without 1 device that is no longer in the device group."
+        : string.Create(CultureInfo.InvariantCulture, $"Saved without {devices:N0} devices that are no longer in the device group.");
+
     public const string NameField = "Name";
     public const string EventField = "Event";
     public const string DevicesField = "Devices";

@@ -180,6 +180,13 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
 
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
 
+    /// <summary>After a save or a duplicate that left devices out: how many (like Live View and Dashboards).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    public partial string? NoticeText { get; private set; }
+
+    public bool HasNotice => !string.IsNullOrEmpty(NoticeText);
+
     public bool HasSelection => SelectedTrigger is not null;
 
     public string DevicesTitle => SelectedTrigger is { } t ? "Devices of " + t.Name : "Devices";
@@ -303,6 +310,7 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
 
             await ReloadAsync().ConfigureAwait(true);
             SelectedTrigger = reply.Trigger is { } copy ? _rows.GetValueOrDefault(copy.Id) : SelectedTrigger;
+            NoticeText = reply.Dropped > 0 ? TriggerValidation.DroppedText(reply.Dropped) : null;
         }).ConfigureAwait(true);
     }
 
@@ -334,6 +342,7 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
         {
             if (await ShowEditor(editor).ConfigureAwait(true))
             {
+                NoticeText = editor.SavedDropped > 0 ? TriggerValidation.DroppedText(editor.SavedDropped) : null;
                 await ReloadAsync().ConfigureAwait(true);
                 if (editor.Saved is { } saved && _rows.TryGetValue(saved.Id, out var row))
                 {
@@ -358,6 +367,7 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
         try
         {
             ErrorText = null;
+            NoticeText = null;
             await action().ConfigureAwait(true);
         }
 #pragma warning disable CA1031 // Shown on the page.

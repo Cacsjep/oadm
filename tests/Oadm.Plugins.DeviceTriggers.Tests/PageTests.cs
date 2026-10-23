@@ -299,6 +299,43 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task The_page_says_how_many_devices_a_save_or_a_duplicate_left_out()
+    {
+        var id = Guid.NewGuid();
+        var copyId = Guid.NewGuid();
+        var dropped = 2;
+        var ctx = new ScriptedContext((method, _) => method switch
+        {
+            DeviceTriggersMethods.List => TriggerJson.Serialize(new ListReply(
+            [
+                new TriggerSummary(id, "Door", false, "Virtual input", string.Empty, true, 1, 0, 0, 0, null),
+                new TriggerSummary(copyId, "Door (copy)", false, "Virtual input", string.Empty, true, 1, 0, 0, 0, null),
+            ])),
+            DeviceTriggersMethods.Get => TriggerJson.Serialize(new GetReply(null, [])),
+            DeviceTriggersMethods.Duplicate => TriggerJson.Serialize(new SaveReply(new TriggerDefinition { Id = copyId, Name = "Door (copy)", Topic = "t" }, null, null) { Dropped = dropped }),
+            _ => null,
+        });
+        using var vm = new DeviceTriggersViewModel(ctx) { ShowEditor = editor => { editor.SavedDropped = 1; return Task.FromResult(true); } };
+        await vm.ReloadAsync();
+        Assert.False(vm.HasNotice);
+
+        await vm.NewTriggerCommand.ExecuteAsync(null);
+        Assert.Equal("Saved without 1 device that is no longer in the device group.", vm.NoticeText);
+
+        vm.SelectedTrigger = vm.Triggers.Single(t => t.Id == id);
+        await vm.DuplicateCommand.ExecuteAsync(null);
+        Assert.Equal("Saved without 2 devices that are no longer in the device group.", vm.NoticeText);
+        Assert.True(vm.HasNotice);
+        Assert.Equal(copyId, vm.SelectedTrigger?.Id);
+
+        // A duplicate that kept every device clears it.
+        dropped = 0;
+        vm.SelectedTrigger = vm.Triggers.Single(t => t.Id == id);
+        await vm.DuplicateCommand.ExecuteAsync(null);
+        Assert.False(vm.HasNotice);
+    }
+
+    [Fact]
     public async Task The_fake_backend_answers_with_the_plugin_contract()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
@@ -446,6 +483,14 @@ public sealed class PageTests(ITestOutputHelper output)
             Confirmations.Enqueue(message);
             return Task.FromResult(ConfirmResult);
         }
+    }
+
+    /// <summary>A page context whose answers the test scripts per method.</summary>
+    private sealed class ScriptedContext(Func<string, string?, string?> answer) : ICorePluginClientContext
+    {
+        public IReadOnlyList<IDeviceInfo> Devices { get; } = [];
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult(answer(method, payloadJson));
     }
 
     private sealed class FakeModeContext(FakeOadmApi api, IReadOnlyList<IDeviceInfo> devices) : ICorePluginClientContext
