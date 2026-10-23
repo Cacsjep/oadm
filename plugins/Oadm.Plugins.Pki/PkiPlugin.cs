@@ -1,5 +1,6 @@
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Tasks;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Plugins;
 
@@ -56,7 +57,7 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger);
+        var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger, ctx.DeviceScopes);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
         ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
@@ -87,6 +88,33 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     /// <summary>Installing the CA in the server's root store needs "trustServer"; the other Admin methods "manage".</summary>
     public string? RequiredPermission(string method) => method == PkiMethods.InstallServerTrust ? PkiPermissions.TrustServer : null;
 
+    /// <summary>
+    /// The CA and the trust in it are server-wide (docs/spec/device-scope.md "Server-wide services"): users limited to a
+    /// device group may read the state (counts of their own devices), every other method is for users with all devices.
+    /// </summary>
+    public bool RequiresAllDevices(string method) => method != PkiMethods.GetState;
+
+    /// <summary>The page backend with the user's call: the state of a user limited to a group counts only that group's devices.</summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        if (method != PkiMethods.GetState)
+        {
+            if (!caller.HasAllDevices)
+            {
+                throw new DeviceAccessRefusedException(); // the host refuses these first (RequiresAllDevices); fail closed
+            }
+
+            return await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+        }
+
+        var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");
+        service.Viewers.Seen(caller);
+        var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
+        return PkiJson.Serialize(await service.GetStateAsync(view, ct).ConfigureAwait(false));
+    }
+
+    /// <summary>In-process callers and tests: the view of a user with all devices.</summary>
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");

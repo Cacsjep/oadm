@@ -22,11 +22,19 @@ public sealed record CertificateNames(string CommonName, IReadOnlyList<string> I
     /// Names for a device: CN = the OADM address (host part), SAN = its IP addresses (OADM address when it is one + the
     /// device's own), host name, FQDN and <c>axis-&lt;serial&gt;.local</c>, without duplicates.
     /// </summary>
-    public static CertificateNames For(string oadmAddress, string serial, string? hostName, string? fqdn, IEnumerable<string> deviceAddresses)
+    /// <param name="trustNames">
+    /// A user with all devices added the device (<c>IDeviceInfo.AddedByAllDevices</c>). False: no host name, FQDN or
+    /// address name goes into the certificate (a user limited to a group could control the DNS at a site), only the IP
+    /// addresses and <c>axis-&lt;serial&gt;.local</c>; the CN is then the OADM address when it is an IP address, else the
+    /// first IP address or the axis name.
+    /// </param>
+    public static CertificateNames For(string oadmAddress, string serial, string? hostName, string? fqdn, IEnumerable<string> deviceAddresses, bool trustNames)
     {
         ArgumentNullException.ThrowIfNull(oadmAddress);
         ArgumentNullException.ThrowIfNull(serial);
         var host = HostPart(oadmAddress);
+        var axisName = "axis-" + serial.ToLowerInvariant() + ".local";
+        var hostIsIp = IPAddress.TryParse(host, out _);
         var ips = new List<string>();
         var dns = new List<string>();
         void AddName(string? name)
@@ -50,7 +58,7 @@ public sealed record CertificateNames(string CommonName, IReadOnlyList<string> I
             }
         }
 
-        AddName(host);
+        AddName(trustNames || hostIsIp ? host : null);
         // The addresses the device reports itself: IP addresses only, never a name (a camera could name another camera).
         foreach (var address in deviceAddresses ?? [])
         {
@@ -62,10 +70,15 @@ public sealed record CertificateNames(string CommonName, IReadOnlyList<string> I
 
         // The device reports its host name and FQDN itself: only plain names go into a certificate every OADM device trusts,
         // never another camera's axis name (EST maps an axis-<serial>.local name to a camera).
-        AddName(IsPlainHostName(hostName) && !NamesOtherCamera(hostName!, serial) ? hostName : null);
-        AddName(IsPlainHostName(fqdn) && !NamesOtherCamera(fqdn!, serial) ? fqdn : null);
-        AddName("axis-" + serial.ToLowerInvariant() + ".local");
-        return new CertificateNames(host, ips, dns);
+        if (trustNames)
+        {
+            AddName(IsPlainHostName(hostName) && !NamesOtherCamera(hostName!, serial) ? hostName : null);
+            AddName(IsPlainHostName(fqdn) && !NamesOtherCamera(fqdn!, serial) ? fqdn : null);
+        }
+
+        AddName(axisName);
+        var commonName = trustNames || hostIsIp ? host : ips.Count > 0 ? ips[0] : axisName;
+        return new CertificateNames(commonName, ips, dns);
     }
 
     /// <summary>An <c>axis-&lt;12 hex&gt;</c> name (any domain) of a serial other than <paramref name="serial"/>.</summary>

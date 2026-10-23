@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.TrustStore;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
@@ -56,8 +57,9 @@ public sealed partial class PkiService : IAsyncDisposable
     private volatile string? _serverTrustError;
     private Task _background = Task.CompletedTask;
 
-    public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger)
+    public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger, IDeviceScopes? scopes = null)
     {
+        Viewers = new ViewerScopes(scopes);
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _store = new PkiStore(settings ?? throw new ArgumentNullException(nameof(settings)));
         _secrets = secrets;
@@ -78,6 +80,9 @@ public sealed partial class PkiService : IAsyncDisposable
 
     /// <summary>The registry of issued device certificates (written by the task plugins).</summary>
     public IssuedRegistry Issued => _issued;
+
+    /// <summary>The device groups whose users read the page: each gets the state with the counts of its own devices.</summary>
+    internal ViewerScopes Viewers { get; }
 
     /// <summary>Ids (SHA-256) of the active and the previous CAs.</summary>
     public IReadOnlyList<string> KnownCaIds => [.. (_ca is { } ca ? new[] { ca.Id } : []), .. _previous.Select(p => p.Id)];
@@ -140,7 +145,13 @@ public sealed partial class PkiService : IAsyncDisposable
     }
 
     /// <summary>Everything the page shows; the server trust store is checked every time (cheap lookup).</summary>
-    public async Task<PkiState> GetStateAsync(CancellationToken ct)
+    public Task<PkiState> GetStateAsync(CancellationToken ct) => GetStateAsync(null, ct);
+
+    /// <summary>
+    /// The state for a user limited to a device group: the CA and the settings as they are, the counts of issued
+    /// certificates only for the devices of <paramref name="view"/> (null: every device).
+    /// </summary>
+    internal async Task<PkiState> GetStateAsync(ViewedSet? view, CancellationToken ct)
     {
         var ca = _ca;
         var stored = _stored;
@@ -148,6 +159,11 @@ public sealed partial class PkiService : IAsyncDisposable
         var now = Now.UtcDateTime;
         var previous = _previous.Where(p => ReadNotAfter(p.CertificatePem) is not { } end || end > now).ToList();
         var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
+        if (view is not null)
+        {
+            issued = [.. issued.Where(entry => view.Contains(entry.DeviceId))];
+        }
+
         var counts = IssuedCounts.From(issued, ca?.Id, now, config.ExpiryWarningDays);
 
         bool? installed = null;
@@ -778,7 +794,14 @@ public sealed partial class PkiService : IAsyncDisposable
 
         try
         {
-            _events.Publish(PkiMethods.StateTopic, PkiJson.Serialize(await GetStateAsync(CancellationToken.None).ConfigureAwait(false)));
+            _events.Publish(PkiMethods.StateTopic, PkiJson.Serialize(await GetStateAsync(CancellationToken.None).ConfigureAwait(false)), PluginEventAudience.AllDevices);
+
+            // The pages of users limited to a group: the same state with the counts of their own devices.
+            foreach (var key in Viewers.Keys())
+            {
+                var view = await ViewedSet.OfScopeAsync(Viewers.Scopes, key, CancellationToken.None).ConfigureAwait(false);
+                _events.Publish(PkiMethods.StateTopic, PkiJson.Serialize(await GetStateAsync(view, CancellationToken.None).ConfigureAwait(false)), PluginEventAudience.DeviceScope(key));
+            }
         }
 #pragma warning disable CA1031 // Events are best effort; pages re-read the state.
         catch (Exception ex)

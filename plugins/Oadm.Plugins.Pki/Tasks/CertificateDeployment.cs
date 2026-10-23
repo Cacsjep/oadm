@@ -107,11 +107,14 @@ public static class CertificateDeployment
         return CaCertificates.Fingerprint(certificate);
     }
 
-    /// <summary>Names for the device certificate from the OADM address and the device's network info.</summary>
+    /// <summary>
+    /// Names for the device certificate from the OADM address and the device's network info; host names only for a device
+    /// a user with all devices added (docs/spec/device-scope.md "Host names in certificates").
+    /// </summary>
     public static CertificateNames NamesFor(IDeviceInfo device, DeviceNetworkInfo? network)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return CertificateNames.For(device.Address, device.Serial, network?.HostName ?? device.HostName, network?.Fqdn, network?.Addresses ?? []);
+        return CertificateNames.For(device.Address, device.Serial, network?.HostName ?? device.HostName, network?.Fqdn, network?.Addresses ?? [], device.AddedByAllDevices);
     }
 
     /// <summary>The CA certificate and the issuers above it, with OADM aliases.</summary>
