@@ -554,7 +554,7 @@ for them, and it keeps working unchanged for users with all devices.
   asks `ITaskExecutionContext.ManagedAddressesAsync` again before the first write and refuses an address in use (at
   most 256 addresses per call; `FakeTaskContext.OtherDeviceAddresses` in tests). Secrets kept for everyone (a saved
   command's passwords) only when `caller.HasAllDevices`. A package without a page tests with
-  `tests/Shared/TaskPluginCanaryHost.cs` (its tasks started through the call, its actions run on one device of the call).
+  `Oadm.Sdk.Testing.TaskPluginCanaryHost` (its tasks started through the call, its actions run on one device of the call).
 
 A converted method:
 
