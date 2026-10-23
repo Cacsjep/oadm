@@ -4,6 +4,7 @@ using System.Net;
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Core.Discovery;
 using Oadm.Core.Security;
@@ -36,14 +37,21 @@ namespace Oadm.Server.AddDevices;
 /// authenticated call (wrong credentials still add the device, status CredentialsRequired) and
 /// finally queues the first full refresh. Adding devices is not a task and never shows up in the
 /// task list. <b>Prepare</b> is the legacy wizard step, kept for wire compatibility.</para>
+/// <para>Through the caller (docs/spec/device-scope.md, Decisions "New devices", "Add and discovery sessions"): only the
+/// caller's own sessions (another user's session id answers NOT_FOUND like an unknown one); a user with a device group adds
+/// only devices found at the sites of the group that land inside it, logs in only with what was typed (never the credential
+/// list), and the new devices remember the group (<c>AddedByGroupId</c>); a user with all devices adds as before
+/// (<c>AddedByAllDevices</c>). The groups the new devices entered are audited.</para>
 /// </summary>
 public sealed partial class AddDevicesGrpcService(
     IDiscoveryBackend discovery,
-    DeviceRepository devices,
     ServerSettingsStore settings,
-    DevicePollingService polling,
+    DeviceActions actions,
     DiscoveryAuthenticator authenticator,
     DeviceAdder adder,
+    DeviceViewFactory views,
+    DiscoverySessionOwners owners,
+    AuditLog audit,
     ILogger<AddDevicesGrpcService> logger,
     Core.Sites.ISiteStates? states = null) : Proto.AddDevicesService.AddDevicesServiceBase
 {
@@ -53,7 +61,8 @@ public sealed partial class AddDevicesGrpcService(
     public override async Task<Proto.AddPlan> Prepare(Proto.PrepareRequest request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
-        var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, ct).ConfigureAwait(false);
+        var reach = await ReachAsync(context).ConfigureAwait(false);
+        var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, reach, context).ConfigureAwait(false);
         var items = new ConcurrentDictionary<string, Proto.AddPlanItem>();
         await Parallel.ForEachAsync(selected, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (found, token) =>
         {
@@ -84,18 +93,23 @@ public sealed partial class AddDevicesGrpcService(
             throw GrpcGuard.InvalidArgument("Enter a user name and a password.");
         }
 
-        var found = discovery.FindDiscovered(request.SessionId, request.DiscoveredId)
-            ?? throw GrpcGuard.NotFound($"Discovered device '{request.DiscoveredId}' is unknown (discovery session '{request.SessionId}').");
-        if (await devices.FindBySerialAsync(found.Serial, ct).ConfigureAwait(false) is not null)
+        var reach = await ReachAsync(context).ConfigureAwait(false);
+        var caller = AuthInterceptor.CallerOf(context);
+        var found = (owners.Owns(request.SessionId, caller) ? discovery.FindDiscovered(request.SessionId, request.DiscoveredId) : null) is { } known
+            && reach.Allows(known.Route)
+            ? known
+            : throw GrpcGuard.NotFound($"Discovered device '{request.DiscoveredId}' is unknown (discovery session '{request.SessionId}').");
+        if (await adder.IsManagedAsync(found.Serial, ct).ConfigureAwait(false))
         {
             throw GrpcGuard.FailedPrecondition($"The device {found.Serial} has already been added.");
         }
 
         try
         {
+            // The credential is tried on the failed devices of the caller's own sessions only.
             var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password,
-                request.SaveToCredentialList && AuthInterceptor.CallerOf(context).IsAdmin, // the credential list is Administrator only
-                request.RelatedSessionIds, ct).ConfigureAwait(false);
+                request.SaveToCredentialList && caller.IsAdmin, // the credential list is Administrator only
+                owners.Own(request.RelatedSessionIds, caller), ct).ConfigureAwait(false);
             var message = Mappers.ToProto(found, false, 100, result);
             Mappers.AddRoutes(message, found, id => states?.NameOf(id));
             return message;
@@ -122,12 +136,18 @@ public sealed partial class AddDevicesGrpcService(
             throw GrpcGuard.InvalidArgument(ex.Message);
         }
 
-        var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, ct).ConfigureAwait(false);
+        var reach = await ReachAsync(context).ConfigureAwait(false);
+        var resolved = await ResolveAsync(request.SessionId, request.DiscoveredIds, reach, context).ConfigureAwait(false);
+
+        // A user with a device group adds only devices that land inside the group (an excepted serial is not added).
+        var selected = resolved.Where(f => reach.Takes(f.Serial, f.Route)).ToList();
+        if (selected.Count < resolved.Count)
+        {
+            LogOutsideGroup(resolved.Count - selected.Count);
+        }
 
         // The device limit for the whole add up front: nothing of an add that would go over it is stored.
-        var managed = await devices.ListSerialsAsync(ct).ConfigureAwait(false);
-        var newOnes = selected.Select(f => DeviceSerial.Normalize(f.Serial)).Distinct(StringComparer.Ordinal).Count(serial => !managed.Contains(serial));
-        if (managed.Count + newOnes > devices.MaxDevices)
+        if (await adder.WouldExceedLimitAsync(selected.Select(f => f.Serial), ct).ConfigureAwait(false))
         {
             throw new RpcException(new Status(StatusCode.ResourceExhausted, DeviceLimits.TooManyDevicesText));
         }
@@ -145,7 +165,7 @@ public sealed partial class AddDevicesGrpcService(
             var credentialsToStore = deviceCredentials is null ? null : new DeviceCredentials(deviceCredentials.UserName, deviceCredentials.Password);
             try
             {
-                var result = await adder.AddAsync(found, useHostName, devicePassword, credentialsToStore, serverName, token).ConfigureAwait(false);
+                var result = await adder.AddAsync(found, useHostName, devicePassword, credentialsToStore, serverName, reach.AddedBy, token).ConfigureAwait(false);
                 if (result is { } one)
                 {
                     added[found.DiscoveredId] = one;
@@ -161,7 +181,7 @@ public sealed partial class AddDevicesGrpcService(
         var reply = new Proto.CommitReply();
         var ids = selected.Where(s => added.ContainsKey(s.DiscoveredId)).Select(s => added[s.DiscoveredId].Id).ToArray();
         reply.DeviceIds.AddRange(ids.Select(i => i.ToString()));
-        foreach (var found in selected)
+        foreach (var found in resolved)
         {
             var ok = added.TryGetValue(found.DiscoveredId, out var one);
             reply.Results.Add(new Proto.CommitResult
@@ -174,7 +194,18 @@ public sealed partial class AddDevicesGrpcService(
 
         if (ids.Length > 0)
         {
-            polling.QueueRefresh(ids);
+            try
+            {
+                // The first full refresh of the devices the caller just added (inside the caller's view by now).
+                actions.QueueRefresh(await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false));
+            }
+            catch (DevicesNotAvailableException)
+            {
+                // One was removed meanwhile: the polling's next round reads the others.
+            }
+
+            var caller = AuthInterceptor.CallerOf(context);
+            await MembershipAudit.AddedAsync(views, audit, caller.UserName, caller.ClientAddress, ids, string.Empty, ct).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(request.SessionId))
@@ -210,19 +241,32 @@ public sealed partial class AddDevicesGrpcService(
             ?? usable.FirstOrDefault(c => string.IsNullOrEmpty(c.DiscoveredId));
     }
 
-    /// <summary>Selected discovered devices that are known and not managed yet, in request order.</summary>
-    private async Task<List<DiscoveredDevice>> ResolveAsync(string sessionId, IEnumerable<string> discoveredIds, CancellationToken ct)
+    /// <summary>The caller's reach; a caller who cannot add devices anywhere is refused before anything is read.</summary>
+    private async Task<AddReach> ReachAsync(ServerCallContext context)
     {
+        var reach = await AddReach.ForAsync(views, AuthInterceptor.CallerOf(context), context.CancellationToken).ConfigureAwait(false);
+        return reach.CanAdd ? reach : throw new RpcException(new Status(StatusCode.PermissionDenied, AddDeviceTexts.CannotAdd));
+    }
+
+    /// <summary>
+    /// Selected discovered devices of the caller's own session that are known, on a route of the caller and not managed yet,
+    /// in request order. Another user's session, or a device on a route outside the caller's sites, is NOT_FOUND like an
+    /// unknown one.
+    /// </summary>
+    private async Task<List<DiscoveredDevice>> ResolveAsync(string sessionId, IEnumerable<string> discoveredIds, AddReach reach, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        var owned = owners.Owns(sessionId, AuthInterceptor.CallerOf(context));
         var result = new List<DiscoveredDevice>();
         foreach (var id in discoveredIds.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var found = discovery.FindDiscovered(sessionId, id);
-            if (found is null)
+            var found = owned ? discovery.FindDiscovered(sessionId, id) : null;
+            if (found is null || !reach.Allows(found.Route))
             {
                 throw GrpcGuard.NotFound($"Discovered device '{id}' is unknown (discovery session '{sessionId}').");
             }
 
-            if (Equals(found.Address, IPAddress.None) || await devices.FindBySerialAsync(found.Serial, ct).ConfigureAwait(false) is not null)
+            if (Equals(found.Address, IPAddress.None) || await adder.IsManagedAsync(found.Serial, ct).ConfigureAwait(false))
             {
                 continue;
             }
@@ -235,4 +279,7 @@ public sealed partial class AddDevicesGrpcService(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Add devices: {Added} of {Selected} device(s) added")]
     private partial void LogCommitted(int added, int selected);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Add devices: {Count} device(s) not added, they would not be in the user's device group")]
+    private partial void LogOutsideGroup(int count);
 }

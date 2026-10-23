@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:settings="using:Oadm.Client.Settings"
+             x:Class="Oadm.Client.Settings.DeviceGroupFormView"
+             x:DataType="settings:DeviceGroupEditorViewModel">
+  <!-- Name and description of the device group editor, on top of the shared device picker's card. -->
+  <StackPanel Classes="form">
+    <ui:FormField Label="Name">
+      <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" />
+    </ui:FormField>
+    <ui:FormField Label="Description" Hint="Optional">
+      <TextBox Text="{Binding Description}" MaxLength="200" />
+    </ui:FormField>
+  </StackPanel>
+</UserControl>

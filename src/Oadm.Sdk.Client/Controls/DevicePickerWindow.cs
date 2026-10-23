@@ -15,6 +15,9 @@ namespace Oadm.Sdk.Client.Controls;
 /// virtualized list with a check box per device (address, model; a device that cannot be chosen is greyed with the
 /// reason), then Cancel / OK. With <see cref="DevicePickerOptions"/> a column on the left offers the device of the event,
 /// All devices, or Chosen devices and tags with the tag list (devices of a chosen tag show checked with the tag).
+/// The device group editor (<see cref="DevicePickerOptions.Group"/>) shows Sites and Tags on the left, the devices they
+/// cover checked and locked with Except / Include per row, and a form of the host above (name, description), with
+/// <see cref="Accept"/> deciding whether the main button closes the window.
 /// Open it with <see cref="ShowAsync"/>; the view model is <see cref="DevicePickerViewModel"/>.
 /// </summary>
 public sealed class DevicePickerWindow : Window
@@ -23,12 +26,21 @@ public sealed class DevicePickerWindow : Window
 
     /// <summary>The window for <paramref name="viewModel"/>; usually opened through the static ShowAsync methods.</summary>
     public DevicePickerWindow(DevicePickerViewModel viewModel)
+        : this(viewModel, null)
+    {
+    }
+
+    /// <summary>
+    /// The window for <paramref name="viewModel"/> with <paramref name="form"/> (the host's fields, e.g. a device group's
+    /// name and description) on top of the card.
+    /// </summary>
+    public DevicePickerWindow(DevicePickerViewModel viewModel, Control? form)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ViewModel = viewModel;
         DataContext = viewModel;
         Width = viewModel.HasChoices ? 1000 : 760;
-        Height = 640;
+        Height = form is null ? 640 : 720;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
@@ -50,14 +62,14 @@ public sealed class DevicePickerWindow : Window
         bar.Children.AddRange([all, none, search]);
         summary.Margin = new Thickness(2, 12, 0, 0);
 
-        var header = Row(new TextBlock(), Header("Address"), Header("Model"), Header(string.Empty));
+        var header = Row(new TextBlock(), Header("Address"), Header("Model"), Header(string.Empty), viewModel.IsGroup ? new TextBlock() : null);
         header.Margin = new Thickness(0, 12, 0, 4);
 
         var list = new ListBox
         {
             SelectionMode = SelectionMode.Single,
             ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
-            ItemTemplate = new FuncDataTemplate<DevicePickItem>((_, _) => ItemRow(), supportsRecycling: true),
+            ItemTemplate = new FuncDataTemplate<DevicePickItem>((_, _) => ItemRow(viewModel.IsGroup), supportsRecycling: true),
         };
         list.Classes.Add("devicePicker");
         list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(DevicePickerViewModel.Visible)));
@@ -66,32 +78,51 @@ public sealed class DevicePickerWindow : Window
         empty.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickerViewModel.EmptyText)));
         empty.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.IsEmpty)));
         var listArea = new Panel { Children = { list, empty } };
+        var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+        error.Classes.Add("error");
+        error.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickerViewModel.ErrorText)));
+        error.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.HasError)));
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto") };
         Grid.SetRow(summary, 1);
         Grid.SetRow(header, 2);
         Grid.SetRow(listArea, 3);
-        body.Children.AddRange([bar, summary, header, listArea]);
+        Grid.SetRow(error, 4);
+        body.Children.AddRange([bar, summary, header, listArea, error]);
         body.Bind(IsEnabledProperty, new Binding(nameof(DevicePickerViewModel.IsChosen)));
         Control content = body;
         if (viewModel.HasChoices)
         {
-            var choices = Choices(viewModel);
+            var choices = viewModel.IsGroup ? GroupChoices() : Choices(viewModel);
             var split = new Grid { ColumnDefinitions = new ColumnDefinitions("240,*"), ColumnSpacing = 24 };
             Grid.SetColumn(body, 1);
             split.Children.AddRange([choices, body]);
             content = split;
         }
 
+        if (form is not null)
+        {
+            var stack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 16 };
+            Grid.SetRow(content, 1);
+            stack.Children.AddRange([form, content]);
+            content = stack;
+        }
+
         var card = new Border { Child = content, Margin = new Thickness(16, 0, 16, 8) };
         card.Classes.Add("card");
 
-        var ok = new Button { Content = "OK", IsDefault = true };
-        ok.Classes.Add("primary");
-        ok.Click += (_, _) => Close(true);
+        AcceptButton = new Button { Content = "OK", IsDefault = true };
+        AcceptButton.Classes.Add("primary");
+        AcceptButton.Click += async (_, _) =>
+        {
+            if (Accept is null || await Accept().ConfigureAwait(true))
+            {
+                Close(true);
+            }
+        };
         var footer = new DialogFooter();
         footer.CancelButton.Click += (_, _) => Close(false);
-        footer.Actions.Add(ok);
+        footer.Actions.Add(AcceptButton);
 
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         Grid.SetRow(card, 1);
@@ -102,6 +133,15 @@ public sealed class DevicePickerWindow : Window
 
     /// <summary>Its view model.</summary>
     public DevicePickerViewModel ViewModel { get; }
+
+    /// <summary>The main button of the footer ("OK"): the host may change its text and bind it (e.g. "Save", disabled with a reason).</summary>
+    public Button AcceptButton { get; }
+
+    /// <summary>
+    /// Runs when the main button is clicked: the window closes with true only when it returns true (e.g. the host saved
+    /// and the server accepted). Null: the button closes the window at once.
+    /// </summary>
+    public Func<Task<bool>>? Accept { get; set; }
 
     /// <summary>The window title (title bar and task switcher).</summary>
     public string? Heading
@@ -209,6 +249,45 @@ public sealed class DevicePickerWindow : Window
         return column;
     }
 
+    /// <summary>The group editor's left column: Sites (with "This server") and Tags, each with its device count.</summary>
+    private static Grid GroupChoices()
+    {
+        var sitesTitle = new TextBlock { Text = "Sites" };
+        sitesTitle.Classes.Add("sectionTitle");
+        var sites = new ListBox
+        {
+            SelectionMode = SelectionMode.Single,
+            MaxHeight = 200,
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+            ItemTemplate = new FuncDataTemplate<SitePickItem>((_, _) => CountRow(nameof(SitePickItem.IsChecked), nameof(SitePickItem.Name), nameof(SitePickItem.CountText), "Devices at this site"), supportsRecycling: true),
+        };
+        sites.Classes.Add("devicePicker");
+        sites.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(DevicePickerViewModel.Sites)));
+
+        var tagsTitle = new TextBlock { Text = "Tags", Margin = new Thickness(0, 12, 0, 0) };
+        tagsTitle.Classes.Add("sectionTitle");
+        var tags = new ListBox
+        {
+            SelectionMode = SelectionMode.Single,
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+            ItemTemplate = new FuncDataTemplate<TagPickItem>((_, _) => TagRow(), supportsRecycling: true),
+        };
+        tags.Classes.Add("devicePicker");
+        tags.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(DevicePickerViewModel.Tags)));
+        tags.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.HasTags)));
+        var none = new TextBlock { Text = "No tags yet. Tag devices on the Devices page.", TextWrapping = TextWrapping.Wrap };
+        none.Classes.Add("secondary");
+        none.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.ShowNoTags)));
+        var tagBody = new Panel { Children = { tags, none } };
+
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
+        Grid.SetRow(sites, 1);
+        Grid.SetRow(tagsTitle, 2);
+        Grid.SetRow(tagBody, 3);
+        column.Children.AddRange([sitesTitle, sites, tagsTitle, tagBody]);
+        return column;
+    }
+
     private static RadioButton Radio(string text, string property, string group)
     {
         var radio = new RadioButton { Content = text, GroupName = group };
@@ -216,15 +295,18 @@ public sealed class DevicePickerWindow : Window
         return radio;
     }
 
-    private static Grid TagRow()
+    private static Grid TagRow() => CountRow(nameof(TagPickItem.IsChecked), nameof(TagPickItem.Name), nameof(TagPickItem.CountText), "Devices with this tag");
+
+    /// <summary>A check box with a name and a device count on the right (tags, the group editor's sites).</summary>
+    private static Grid CountRow(string isChecked, string name, string countText, string countTip)
     {
         var check = new CheckBox();
-        check.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(nameof(TagPickItem.IsChecked)) { Mode = BindingMode.TwoWay });
-        check.Bind(ContentControl.ContentProperty, new Binding(nameof(TagPickItem.Name)));
+        check.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(isChecked) { Mode = BindingMode.TwoWay });
+        check.Bind(ContentControl.ContentProperty, new Binding(name));
         var count = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) };
         count.Classes.Add("secondary");
-        count.Bind(TextBlock.TextProperty, new Binding(nameof(TagPickItem.CountText)));
-        ToolTip.SetTip(count, "Devices with this tag");
+        count.Bind(TextBlock.TextProperty, new Binding(countText));
+        ToolTip.SetTip(count, countTip);
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), MinHeight = 32 };
         Grid.SetColumn(count, 1);
         row.Children.AddRange([check, count]);
@@ -247,23 +329,52 @@ public sealed class DevicePickerWindow : Window
         return header;
     }
 
-    /// <summary>The columns of the list: check box, address, model, reason.</summary>
-    private static Grid Row(Control check, Control address, Control model, Control rest)
+    /// <summary>The columns of the list: check box, address, model, reason (the group editor: Except / Include last).</summary>
+    private static Grid Row(Control check, Control address, Control model, Control rest, Control? action = null)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("40,160,180,*"), MinHeight = 32 };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions(action is null ? "40,160,180,*" : "40,160,180,*,Auto"), MinHeight = 32 };
         Grid.SetColumn(address, 1);
         Grid.SetColumn(model, 2);
         Grid.SetColumn(rest, 3);
-        foreach (var cell in new[] { check, address, model, rest })
+        Control[] cells = action is null ? [check, address, model, rest] : [check, address, model, rest, action];
+        if (action is not null)
+        {
+            Grid.SetColumn(action, 4);
+        }
+
+        foreach (var cell in cells)
         {
             cell.VerticalAlignment = VerticalAlignment.Center;
         }
 
-        row.Children.AddRange([check, address, model, rest]);
+        row.Children.AddRange(cells);
         return row;
     }
 
-    private static Grid ItemRow()
+    /// <summary>The group editor's row action: Except for a device a site or tag covers, Include for an excepted one.</summary>
+    private static Panel ExceptActions()
+    {
+        static Button Link(string text, string command, string visible, string tip)
+        {
+            var link = new Button { Content = text, Margin = new Thickness(8, 0) };
+            link.Classes.Add("link");
+            link.Bind(Button.CommandProperty, new Binding(command));
+            link.Bind(IsVisibleProperty, new Binding(visible));
+            ToolTip.SetTip(link, tip);
+            return link;
+        }
+
+        return new Panel
+        {
+            Children =
+            {
+                Link("Except", nameof(DevicePickItem.ExceptCommand), nameof(DevicePickItem.CanExcept), "Leave this device out of the group"),
+                Link("Include", nameof(DevicePickItem.IncludeCommand), nameof(DevicePickItem.CanInclude), "Take this device back into the group"),
+            },
+        };
+    }
+
+    private static Grid ItemRow(bool group)
     {
         var check = new CheckBox { HorizontalAlignment = HorizontalAlignment.Center };
         check.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(nameof(DevicePickItem.Chosen)) { Mode = BindingMode.TwoWay });
@@ -276,7 +387,7 @@ public sealed class DevicePickerWindow : Window
         reason.Classes.Add("secondary");
         reason.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickItem.Note)));
         reason.Bind(ToolTip.TipProperty, new Binding(nameof(DevicePickItem.Note)));
-        var row = Row(check, address, model, reason);
+        var row = Row(check, address, model, reason, group ? ExceptActions() : null);
         row.Bind(OpacityProperty, new Binding(nameof(DevicePickItem.IsAvailable)) { Converter = AvailableOpacity });
         return row;
     }

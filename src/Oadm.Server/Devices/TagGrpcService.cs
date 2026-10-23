@@ -18,13 +18,12 @@ namespace Oadm.Server.Devices;
 /// Roles (<c>AccessPolicy</c>): Update and Delete need tags.manage and all devices, the rest tags.assign. Every change is
 /// audited. Device groups (docs/spec/device-scope.md): the counts are those of the caller's view, the devices of
 /// SetDeviceTags come from the view (an unknown or outside id refuses the call), the store refuses tags a group uses for
-/// users with a group, and every move of a device into or out of a group is audited (<see cref="DeviceMembershipAudit"/>).
+/// users with a group, and every move of a device into or out of a group is audited (<see cref="DeviceGroupMembership"/>).
 /// </summary>
 public sealed class TagGrpcService(
     DeviceTagStore tags,
     DeviceViewFactory views,
     DeviceGroupStore groups,
-    DeviceMembershipAudit membership,
     AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.TagService.TagServiceBase
 {
@@ -95,10 +94,10 @@ public sealed class TagGrpcService(
     public override async Task<Proto.DeleteTagReply> Delete(Proto.TagName request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
-        var before = await membership.CaptureAsync(ct).ConfigureAwait(false);
+        var before = await DeviceGroupMembership.CaptureAsync(views, ct).ConfigureAwait(false);
         var result = await Guard(() => tags.DeleteAsync(request.Name, ct)).ConfigureAwait(false);
         await audit.WriteAsync(AuditActions.TagDeleted, result.Name, "removed from " + DevicesText(result.DevicesChanged), ct).ConfigureAwait(false);
-        await membership.WriteAsync(before, result.Changes, $"tag {result.Name} deleted", ct).ConfigureAwait(false);
+        await AuditMembershipAsync(context, before, result.Changes, $"tag {result.Name} deleted").ConfigureAwait(false);
         return new Proto.DeleteTagReply { DevicesChanged = result.DevicesChanged };
     }
 
@@ -108,7 +107,7 @@ public sealed class TagGrpcService(
         var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
         var view = await views.ForAsync(context).ConfigureAwait(false);
         var devices = await view.GetAsync(ids, ct).ConfigureAwait(false); // unknown or outside the view: NOT_FOUND, nothing changed
-        var before = await membership.CaptureAsync(ct).ConfigureAwait(false);
+        var before = await DeviceGroupMembership.CaptureAsync(views, ct).ConfigureAwait(false);
         var result = await Guard(() => tags.SetDeviceTagsAsync(devices, [.. request.Add], [.. request.Remove], ct)).ConfigureAwait(false);
         var reply = new Proto.SetDeviceTagsReply { DevicesChanged = result.DevicesChanged };
         foreach (var created in result.Created)
@@ -123,10 +122,24 @@ public sealed class TagGrpcService(
             var removed = TagNames.Canonical(request.Remove);
             string detail = $"Tagged {DevicesText(result.DevicesChanged)}: {TagNames.ChangeText(added, removed)}";
             await audit.WriteAsync(AuditActions.DevicesTagged, TagNames.ChangeText(added, removed), detail, ct).ConfigureAwait(false);
-            await membership.WriteAsync(before, result.Changes, TagNames.ChangeText(added, removed), ct).ConfigureAwait(false);
+            await AuditMembershipAsync(context, before, result.Changes, TagNames.ChangeText(added, removed)).ConfigureAwait(false);
         }
 
         return reply;
+    }
+
+    /// <summary>"Entered device group" / "Left device group" for the devices a tag change moved (one entry per group).</summary>
+    private async Task AuditMembershipAsync(ServerCallContext context, DeviceGroupFilters before,
+        IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> changes, string reason)
+    {
+        if (changes.Count == 0)
+        {
+            return;
+        }
+
+        var caller = AuthInterceptor.CallerOf(context);
+        var moved = await DeviceGroupMembership.ChangesAsync(views, [.. changes], context.CancellationToken, before).ConfigureAwait(false);
+        await DeviceGroupMembership.WriteAsync(audit, caller.UserName, caller.ClientAddress, moved, reason, context.CancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The tags with the counts of the view; users with all devices also get the groups that use each tag.</summary>

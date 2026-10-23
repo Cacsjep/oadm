@@ -889,6 +889,8 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
     public bool Has(string permission) => _host.Has(permission);
 
+    public bool HasAllDevices => _host.HasAllDevices;
+
     /// <summary>The host's permission changes, while the page lives (a closed page unsubscribes on Dispose).</summary>
     public event EventHandler? PermissionsChanged
     {

@@ -117,6 +117,62 @@ public sealed class DiscoverySitesTests
     }
 
     [Fact]
+    public async Task ARangeScanOfAGroupWithOneSiteRunsOnlyThereAndNeverOnTheServersOwnNetwork()
+    {
+        var (sites, a, b) = TwoSites();
+        a.Reaches = host => host.StartsWith("192.168.0.", StringComparison.Ordinal);
+        b.Reaches = host => host.StartsWith("192.168.0.", StringComparison.Ordinal);
+        a.Map("192.168.0.20", 443, Somewhere);
+        b.Map("192.168.0.20", 443, Somewhere);
+        var probe = new RoutedProbe()
+            .Add(DeviceRoute.Local, "192.168.0.20", "ACCC8E0000C1")
+            .Add(DeviceRoute.ViaSite(a.Id), "192.168.0.20", "ACCC8E0000A1")
+            .Add(DeviceRoute.ViaSite(b.Id), "192.168.0.20", "ACCC8E0000B1");
+        await using var service = new DiscoveryService(new FakeMdnsBrowser(), new RangeScanner(probe), probe, sites: sites);
+
+        var session = service.StartRangeScan(Ipv4Range.Create(IPAddress.Parse("192.168.0.1"), IPAddress.Parse("192.168.0.30")), null,
+            new DiscoveryRoutes(false, new HashSet<Guid> { a.Id }));
+        var events = await CollectAsync(service, session.Id);
+
+        Assert.True(events[^1].Finished);
+        Assert.Equal(100, events[^1].ProgressPercent);
+        var device = Assert.Single(events.Select(e => e.Device).OfType<DiscoveredDevice>().DistinctBy(d => d.Serial));
+        Assert.Equal(("ACCC8E0000A1", DeviceRoute.ViaSite(a.Id)), (device.Serial, device.Route));
+        Assert.All(probe.Probed, p => Assert.Equal(DeviceRoute.ViaSite(a.Id), p.Route));
+    }
+
+    [Fact]
+    public async Task ZeroConfAndAddressProbesOfAGroupWithThisServerStayOnTheServersOwnNetwork()
+    {
+        var (sites, a, _) = TwoSites();
+        a.Announced.Add(new SiteBrowseResult("ACCC8E0000A1", "Cam A - ACCC8E0000A1", [IPAddress.Parse("192.168.0.20")], 80, "axis-accc8e0000a1.local"));
+        var probe = new RoutedProbe()
+            .Add(DeviceRoute.Local, "10.0.0.48", "B8A44F631339")
+            .Add(DeviceRoute.ViaSite(a.Id), "192.168.0.20", "ACCC8E0000A1");
+        var browser = new FakeMdnsBrowser();
+        await using var service = new DiscoveryService(browser, new RangeScanner(probe), probe, sites: sites);
+        var local = new DiscoveryRoutes(true, new HashSet<Guid>());
+
+        var session = service.StartZeroConf(duration: TimeSpan.FromSeconds(30), routes: local);
+        browser.Announce("10.0.0.48", "B8A44F631339");
+        await WaitAsync(service, session.Id, devices => devices.Count == 1 && devices[0].Model is not null);
+        service.StopScan(session.Id);
+        await CollectAsync(service, session.Id);
+        Assert.Equal(DeviceRoute.Local, Assert.Single(service.GetDevices(session.Id)).Route);
+        Assert.DoesNotContain(probe.Probed, p => !p.Route.IsLocal);
+
+        var asked = new ConcurrentBag<DeviceRoute>();
+        RouteProbe Probe(DeviceRoute route) => new(route, _ =>
+        {
+            asked.Add(route);
+            return Task.FromResult<DeviceProbeResult?>(null);
+        });
+        var manual = service.StartAddressProbe("192.168.0.20", [Probe(DeviceRoute.Local), Probe(DeviceRoute.ViaSite(a.Id))], null, local);
+        await CollectAsync(service, manual.Id);
+        Assert.Equal([DeviceRoute.Local], asked);
+    }
+
+    [Fact]
     public async Task TwoSitesWithTheSameAddressAreTwoDevicesAndAnExpectedMacAddressKeepsOnlyItsOwn()
     {
         var (sites, a, b) = TwoSites();

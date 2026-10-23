@@ -47,11 +47,11 @@ public sealed record TagUpdateResult(TagDefinition Tag, string OldName, TagColor
 public sealed record SetDeviceTagsResult(int DevicesChanged, IReadOnlyList<TagDefinition> Created)
 {
     /// <summary>The changed devices before and after the write.</summary>
-    public IReadOnlyList<DeviceGroups.DeviceMembershipChange> Changes { get; init; } = [];
+    public IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes { get; init; } = [];
 }
 
 /// <summary>Result of <see cref="DeviceTagStore.DeleteAsync"/>: the deleted name and every changed device before and after.</summary>
-public sealed record TagDeleteResult(string Name, int DevicesChanged, IReadOnlyList<DeviceGroups.DeviceMembershipChange> Changes);
+public sealed record TagDeleteResult(string Name, int DevicesChanged, IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes);
 
 /// <summary>
 /// A user with a device group tried to add or remove a tag a device group uses: that would move devices between groups

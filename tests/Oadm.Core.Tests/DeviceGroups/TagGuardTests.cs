@@ -82,38 +82,28 @@ public sealed class TagGuardTests : DeviceGroupTestBase
     }
 
     [Fact]
-    public async Task TheMembershipAuditNamesTheDevicesThatLeftOrEnteredAGroup()
+    public async Task TheChangesOfATagWriteNameWhoLeftOrEnteredAGroup()
     {
         var a = await AddDeviceAsync("ACCC8E000001", tags: ["Lobby"]);
         var b = await AddDeviceAsync("ACCC8E000002");
-        await SaveGroupAsync("Lobby", tags: [await TagIdAsync("Lobby")]);
-        var membership = Db.Get<DeviceMembershipAudit>();
+        var group = await SaveGroupAsync("Lobby", tags: [await TagIdAsync("Lobby")]);
         var all = await Views.ForScopeAsync(DeviceScope.All, "admin", Ct);
 
-        var before = await membership.CaptureAsync(Ct);
+        var before = await DeviceGroupMembership.CaptureAsync(Views, Ct);
         var tagged = await Tags.SetDeviceTagsAsync(await all.GetAsync([a.Id, b.Id], Ct), ["Lobby"], [], Ct);
-        Assert.Equal(1, await membership.WriteAsync(before, tagged.Changes, "tag Lobby added", Ct));
+        var entered = Assert.Single(await DeviceGroupMembership.ChangesAsync(Views, [.. tagged.Changes], Ct, before));
+        Assert.True(entered.Entered);
+        Assert.Equal(group.Group.Id, entered.GroupId);
+        Assert.Equal(["ACCC8E000002"], entered.Serials);
 
-        before = await membership.CaptureAsync(Ct);
+        // A deleted tag no longer resolves: the rules captured before the delete show who left.
+        before = await DeviceGroupMembership.CaptureAsync(Views, Ct);
         var deleted = await Tags.DeleteAsync("Lobby", Ct);
         Assert.Equal(2, deleted.DevicesChanged);
-        Assert.Equal(1, await membership.WriteAsync(before, deleted.Changes, "tag Lobby deleted", Ct));
-
-        var (entries, _) = await Db.Get<AuditLog>().ListAsync(0, 0, Ct);
-        var entered = Assert.Single(entries, e => e.Action == AuditActions.DevicesEnteredGroup);
-        Assert.Equal("Lobby", entered.Target);
-        Assert.Equal("1 device (ACCC8E000002): tag Lobby added", entered.Detail);
-        var left = Assert.Single(entries, e => e.Action == AuditActions.DevicesLeftGroup);
-        Assert.Equal("2 devices (ACCC8E000001, ACCC8E000002): tag Lobby deleted", left.Detail);
-    }
-
-    [Fact]
-    public void TheDetailNamesAtMostTenSerials()
-    {
-        var serials = Enumerable.Range(0, 12).Select(i => $"ACCC8E0000{i:D2}").ToList();
-        Assert.Equal(
-            "12 devices (ACCC8E000000, ACCC8E000001, ACCC8E000002, ACCC8E000003, ACCC8E000004, ACCC8E000005, ACCC8E000006, ACCC8E000007, ACCC8E000008, ACCC8E000009 and 2 more): site Building B",
-            DeviceMembershipAudit.Detail(serials, "site Building B"));
+        var left = Assert.Single(await DeviceGroupMembership.ChangesAsync(Views, [.. deleted.Changes], Ct, before));
+        Assert.False(left.Entered);
+        Assert.Equal(["ACCC8E000001", "ACCC8E000002"], left.Serials);
+        Assert.Empty(await DeviceGroupMembership.ChangesAsync(Views, [.. deleted.Changes], Ct)); // judged by the rules now: nobody was in it
     }
 
     [Fact]

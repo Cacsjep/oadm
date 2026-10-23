@@ -75,8 +75,6 @@ public static class AuditActions
     public const string DeviceGroupCreated = "Created device group";
     public const string DeviceGroupChanged = "Changed device group";
     public const string DeviceGroupDeleted = "Deleted device group";
-    public const string DevicesLeftGroup = "Devices left device group";
-    public const string DevicesEnteredGroup = "Devices entered device group";
 }
 
 /// <summary>

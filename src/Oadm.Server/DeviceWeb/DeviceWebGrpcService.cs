@@ -7,10 +7,12 @@ using Grpc.Core;
 using Google.Protobuf;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 
 using Proto = Oadm.Contracts.V1;
@@ -21,11 +23,13 @@ namespace Oadm.Server.DeviceWeb;
 /// gRPC DeviceWebService: relays the web interface of a device for the Web View plugin. Every request of the embedded
 /// browser reaches the device through the device's own VAPIX client, so the stored login answers the device's challenge
 /// and the pinned certificate is checked; passwords never reach the client. Read and write requests pass unchanged
-/// (the user works in the device's web interface like in a browser).
+/// (the user works in the device's web interface like in a browser). Only devices of the caller's view (an id that is
+/// unknown or outside it: NOT_FOUND, the device is never contacted); an open exchange ends when its device leaves the view.
 /// </summary>
 public sealed partial class DeviceWebGrpcService(
-    DeviceRepository devices,
-    VapixClientFactory clients,
+    DeviceViewFactory views,
+    DeviceActions actions,
+    DeviceViewWatcher watcher,
     Oadm.Core.Persistence.OadmPaths paths,
     AuditLog audit,
     IHostApplicationLifetime lifetime,
@@ -70,7 +74,7 @@ public sealed partial class DeviceWebGrpcService(
         RequirePluginOn();
         var id = GrpcGuard.ParseId(request.DeviceId, "device id");
         var ct = context.CancellationToken;
-        var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
+        var device = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(id, ct).ConfigureAwait(false);
         if (Refusal(device) is { } refusal)
         {
             return new Proto.OpenDeviceWebReply { Ok = false, Message = refusal };
@@ -130,6 +134,7 @@ public sealed partial class DeviceWebGrpcService(
         context.WriteOptions = new WriteOptions(WriteFlags.NoCompress);
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
+        var view = await views.ForAsync(context).ConfigureAwait(false);
         if (!await requestStream.MoveNext(ct).ConfigureAwait(false) || requestStream.Current.KindCase != Proto.DeviceWebFrame.KindOneofCase.Request)
         {
             throw GrpcGuard.InvalidArgument("The first frame must be the request.");
@@ -143,7 +148,8 @@ public sealed partial class DeviceWebGrpcService(
         }
 
         RequirePluginOn();
-        var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
+        var viewed = await view.GetAsync([id], ct).ConfigureAwait(false);
+        var device = viewed[0];
         // Refused statuses are not contacted: a rejected login would be sent again with every request of the page.
         if (Refusal(device) is { } refusal)
         {
@@ -151,14 +157,30 @@ public sealed partial class DeviceWebGrpcService(
         }
 
         await AuditOpenAsync(device, force: false, ct).ConfigureAwait(false);
-        var client = await clients.GetClientAsync(device, ct).ConfigureAwait(false);
-        if (head.Websocket)
+
+        // A WebSocket (or a long download) ends when the device leaves the caller's view; never for all devices.
+        using var lease = await watcher.WatchAsync(viewed, ct).ConfigureAwait(false);
+        using var bound = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.Left);
+        var client = await actions.GetClientAsync(viewed, bound.Token).ConfigureAwait(false);
+        try
         {
-            await RelayWebSocketAsync(client, head, requestStream, responseStream, ct).ConfigureAwait(false);
+            if (head.Websocket)
+            {
+                await RelayWebSocketAsync(client, head, requestStream, responseStream, bound.Token).ConfigureAwait(false);
+            }
+            else
+            {
+                await RelayHttpAsync(client, head, requestStream, responseStream, bound.Token).ConfigureAwait(false);
+            }
         }
-        else
+        catch (OperationCanceledException) when (lease.HasLeft && !ct.IsCancellationRequested)
         {
-            await RelayHttpAsync(client, head, requestStream, responseStream, ct).ConfigureAwait(false);
+            throw GrpcGuard.NotFound(DeviceMessages.NoLongerAvailable(1));
+        }
+
+        if (lease.HasLeft && !ct.IsCancellationRequested)
+        {
+            throw GrpcGuard.NotFound(DeviceMessages.NoLongerAvailable(1));
         }
     }
 

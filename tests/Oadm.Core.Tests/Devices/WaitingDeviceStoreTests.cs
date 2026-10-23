@@ -164,6 +164,58 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
     }
 
     [Fact]
+    public async Task AScopeSeesTheEntriesOfItsSitesAndItsOwnEntriesForEverywhere()
+    {
+        var siteA = Guid.NewGuid();
+        var siteB = Guid.NewGuid();
+        var user = Guid.NewGuid();
+        await _store.AddAsync([Line("10.0.0.1") with { SiteId = siteA }, Line("10.0.0.2") with { SiteId = siteB }, Line("10.0.0.3")], "Import", "admin", Guid.NewGuid(), CancellationToken.None);
+        await _store.AddAsync([Line("10.0.0.4")], "Import", "tech", user, CancellationToken.None);
+        var all = (await _store.ListAsync(null, 0, CancellationToken.None)).Items.ToDictionary(i => i.Address, i => i.Id);
+
+        var siteOnly = new WaitingScope(false, false, new HashSet<Guid> { siteA }, user);
+        var page = await _store.ListAsync(null, 0, siteOnly, CancellationToken.None);
+        Assert.Equal(["10.0.0.1", "10.0.0.4"], page.Items.Select(i => i.Address));
+        Assert.Equal(2, page.Total);
+        Assert.Equal((2, 0), await _store.CountsAsync(siteOnly, CancellationToken.None));
+        Assert.Equal(new HashSet<Guid> { all["10.0.0.1"] }, await _store.InScopeAsync([all["10.0.0.1"], all["10.0.0.2"], all["10.0.0.3"]], siteOnly, CancellationToken.None));
+        Assert.Equal(2, (await _store.IdsAsync(siteOnly, CancellationToken.None)).Count);
+
+        // "This server": every entry for everywhere, not the other site.
+        var local = new WaitingScope(false, true, new HashSet<Guid>(), Guid.NewGuid());
+        Assert.Equal(["10.0.0.3", "10.0.0.4"], (await _store.ListAsync(null, 0, local, CancellationToken.None)).Items.Select(i => i.Address));
+
+        // Remove all of a scope removes only its entries; ids outside it stay.
+        Assert.Equal(0, await _store.RemoveAsync([all["10.0.0.2"]], all: false, siteOnly, CancellationToken.None));
+        Assert.Equal(2, await _store.RemoveAsync([], all: true, siteOnly, CancellationToken.None));
+        Assert.Equal(["10.0.0.2", "10.0.0.3"], (await _store.ListAsync(null, 0, CancellationToken.None)).Items.Select(i => i.Address));
+        Assert.All(await _store.ToTryAsync(null, true, CancellationToken.None), t => Assert.NotNull(t.QueuedByUserId));
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task ThirtyThousandEntriesOfAHundredSitesAreListedPerScopeQuickly()
+    {
+        var sites = Enumerable.Range(0, 100).Select(_ => Guid.NewGuid()).ToArray();
+        var lines = Enumerable.Range(0, WaitingDeviceStore.MaxEntries)
+            .Select(i => Line($"10.{i / 65536}.{i / 256 % 256}.{i % 256}") with { SiteId = i % 4 == 0 ? null : sites[i % sites.Length] }).ToList();
+        await _store.AddAsync(lines, "Import", "admin", Guid.NewGuid(), CancellationToken.None);
+        var scope = new WaitingScope(false, false, new HashSet<Guid> { sites[1], sites[2] }, Guid.NewGuid());
+
+        var watch = Stopwatch.StartNew();
+        var page = await _store.ListAsync(null, 5_000, scope, CancellationToken.None);
+        var counts = await _store.CountsAsync(scope, CancellationToken.None);
+        var ids = await _store.IdsAsync(scope, CancellationToken.None);
+        var inScope = await _store.InScopeAsync([.. ids.Take(5_000)], scope, CancellationToken.None);
+        long elapsed = watch.ElapsedMilliseconds;
+        output.WriteLine($"30,000 entries: a scope of 2 sites listed, counted and checked in {elapsed} ms ({counts.Count} entries)");
+        Assert.Equal(counts.Count, page.Total);
+        Assert.Equal(counts.Count, ids.Count);
+        Assert.Equal(Math.Min(5_000, ids.Count), inScope.Count);
+        Assert.True(elapsed < 3_000, $"too slow: {elapsed} ms");
+    }
+
+    [Fact]
     [Trait("Category", "Perf")]
     public async Task ThirtyThousandEntriesFitAndOneMoreIsRefusedWhole()
     {

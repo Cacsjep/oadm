@@ -284,6 +284,7 @@ public static partial class OadmServerHost
         services.AddSingleton<IDevicePtz, DevicePtz>();
         services.AddSingleton(new LiveViewHubOptions());
         services.AddSingleton<LiveViewHub>();
+        services.AddSingleton<LiveViewAccess>(); // LiveViewService: only devices of the caller's view
         // Device event streams (RTSP metadata) for core plugins such as the Metadata Monitor
         services.AddSingleton<Sdk.Devices.IDeviceEventStreams, DeviceEventStreams>();
 
@@ -315,7 +316,11 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>(),
                 sp.GetRequiredService<ITaskDeviceCredentials>(),
-                sp.GetRequiredService<ITaskDeviceAddresses>());
+                sp.GetRequiredService<ITaskDeviceAddresses>())
+            {
+                // A queued task checks its owner's current view when it leaves the queue.
+                Views = sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
+            };
             // A raised limit starts queued tasks at once; a lowered one lets running tasks finish.
             sp.GetRequiredService<TaskParallelismSetting>().Changed += (_, _) => engine.RescheduleQueued();
             return engine;
@@ -325,6 +330,7 @@ public static partial class OadmServerHost
         services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
         services.AddSingleton<DeviceLoginService>();
         services.AddSingleton<DeviceFirstPasswordService>();
+        services.AddSingleton<DeviceActions>(); // DeviceService and the web relay: only devices of the caller's view
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
@@ -464,6 +470,7 @@ public static partial class OadmServerHost
             sp.GetService<Core.Sites.ISiteNetwork>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
         services.AddSingleton<DiscoveryAuthenticator>();
+        services.AddSingleton<DiscoverySessionOwners>(); // add page sessions belong to the user who started them
         // Adding devices: the add page's Commit and the automatic add of core plugins (DHCP server) share DeviceAdder.
         services.AddSingleton<DeviceAdder>();
         services.AddSingleton<DeviceAutoAddService>();

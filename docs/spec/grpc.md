@@ -47,7 +47,11 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   version 0 = no check), INVALID_ARGUMENT names / over 50 roles), `DeleteRole(id)` (custom roles
   without users), `Mine` (the caller's role name and its permissions with names). `ServerSettings.roles_notice = 22`
   (administrators only): what operators lost with the upgrade to roles.
-- `DeviceService`: `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
+- `DeviceService` takes its devices from the caller's view (`docs/spec/device-scope.md`): `List` and `Watch` carry only
+  them (`Watch` sends REMOVED when a device leaves the view and ADDED when one enters it; new rules of the caller's group
+  end the stream), any id that is unknown or outside the view refuses the whole request with NOT_FOUND "N devices are no
+  longer available." for every user (Remove and Refresh no longer skip unknown ids), and no ids mean the caller's view.
+  `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
   API lists; clients do not use it), `Watch(WatchDevicesRequest)` (stream of DeviceChanged events: one
   ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
   changes; the request is wire compatible with the former Empty), `Remove` and `SetCredentials` (one
@@ -89,7 +93,13 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   scan_finished and the stream ends once every login of the session finished; watching a finished
   session again replays its devices with their current login result, then streams the logins still
   running), `StopScan` (ends the scan early, the session and its devices stay; unknown ids ignored),
-  `Stop` (forgets the session; the add page calls it on close).
+  `Stop` (forgets the session; the add page calls it on close). Through the caller (docs/spec/device-scope.md): a session
+  belongs to the user who started it (`DiscoverySessionOwners`; another user's id: NOT_FOUND for Watch, ignored by StopScan
+  and Stop); a user with a device group looks only at the group's sites (the server's own network only with "This
+  server", `DiscoveryRoutes`), an import's Site column outside the group is "There is no site named X.", a group of tags or
+  single devices only gets PERMISSION_DENIED "Your device group has no site, so you cannot add devices."
+  (`AddDeviceTexts.CannotAdd`); a managed device outside the caller's devices is sent with only its id, entered address
+  and ALREADY_ADDED.
 - `AddDevicesService`: `RetryAuth(session_id, discovered_id, user_name, password,
   save_to_credential_list, related_session_ids = 6)` (returns the updated DiscoveredDevice, also pushed
   to the stream; on success the credential is tried on the failed devices of the session and of the
@@ -98,7 +108,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `Commit(session_id, discovered_ids, initial_passwords map = 6, initial_root_password, use_host_name = 3)` (the page's
   "Use DNS names instead of IP addresses"; reply:
   `device_ids`, `results = 3` with discovered_id, device_id, status), `Prepare` (legacy, unused).
-  See "Add Devices Page".
+  All three take only the caller's own sessions and devices on the caller's routes (else NOT_FOUND), refuse a group of
+  tags or single devices only (PERMISSION_DENIED); `related_session_ids` of other users are left out; Commit adds for a
+  user with a device group only devices that land inside the group (an excepted serial: no device id in its result) and
+  stores who added them (`AddedByAllDevices`, `AddedByGroupId`). See "Add Devices Page".
 - `TaskService`: `ListTaskPlugins(ListTaskPluginsRequest)` (context-menu entries incl. those contributed by Core
   plugins; `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty; runnable sets
   cached by `TaskPluginRunnableCache` per device-table version, at most 10 s old; with `compact = 1` a
@@ -120,6 +133,14 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   dialogs, 30 s timeout; NOT_FOUND, UNIMPLEMENTED, FAILED_PRECONDITION for an incompatible device,
   changed certificate or rejected credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT;
   the status detail is the user message).
+  Device groups (`docs/spec/device-scope.md`, Tasks): every method works on the caller's view. `Run` and `Query` take
+  their devices from it (any unknown or outside id: NOT_FOUND "N devices are no longer available.", the whole run
+  refused, the same for every user); `ListTaskPlugins` intersects every runnable set and reason with the view before it
+  is encoded; `List` and the `Watch` snapshot are filtered in the query (`json_each`), the limit counts after the filter,
+  and `Watch` sends only changes of the view's devices (a task whose device left the view comes once as Removed);
+  `GetLog`, `Cancel`, `Delete` answer a task outside the view like an unknown one ("Task … not found."). Tasks of
+  removed devices only for users with all devices; `DeleteAll` only for them. Users with all devices get the
+  unfiltered answers.
 - `FileService`: `Upload` (client stream: header {name, size} then 256 KB data chunks; returns
   id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`, over the 10 GB of
   all uploads together or when less than 1 GB of disk would stay free, see "Security and access" 4),
@@ -162,7 +183,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   stored in OADM, the devices are not changed; audited "Changed RTSP port in OADM"), `GetPtz(device_id, camera)` (live
   view permission; presets, home, move, zoom, center of a PTZ channel, `supported` false otherwise, never an error) and
   `MovePtz(device_id, camera, move, x, y, value, preset)` ("Optics Control"; not audited, a drag sends several a second;
-  FAILED_PRECONDITION "The camera refused: <camera text>"). See "Live view".
+  FAILED_PRECONDITION "The camera refused: <camera text>"). Every method only for devices of the caller's view (NOT_FOUND
+  "1 device is no longer available." like an unknown device, the camera is never asked; the RTSP port methods refuse the
+  whole selection); `Watch` ends with that NOT_FOUND when its device leaves the view. See "Live view".
 - `EventService` (`events.proto`, event rules, see "Event rules").
 - `ServerLogService` (`logs.proto`, permission `logs.server`): `List` (the server's log files, a page newest first), see
   "Logs page".
@@ -173,7 +196,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   request reaches the device) and while the Web View plugin is turned off, INVALID_ARGUMENT for a path that leaves the
   device; a user's requests to a device without an Open in the last 8 hours write the audit entry once; request bodies
   over 16 MB are spooled to `<datafolder>/web-relay/`, at most 4 at once, 1 GB of disk kept free, the folder emptied once
-  per start; a `Location` to the device's host on any scheme or port becomes a path).
+  per start; a `Location` to the device's host on any scheme or port becomes a path). Both only for devices of the
+  caller's view (NOT_FOUND "1 device is no longer available.", nothing reaches the device); an `Exchange` ends with it
+  when its device leaves the view.
 - `ComplianceService` (`compliance.proto`, see "Compliance"): `GetCatalog`, `ListChecks`, `WatchChecks`, `GetCheck`,
   `SaveCheck`, `DeleteCheck`, `SetCheckEnabled`, `ListChoices`, `CheckNow`, `WatchResults` (snapshot in batches of 5,000 with
   `snapshot_end`, then changes; `checking` while a result was asked for), `SetEnabled` (compliance on / off, off by default;

@@ -34,7 +34,8 @@ returns null or throws `NotSupportedException`.
   (see Tasks), `Permissions` (`PermissionDefinition` {Key, Name, Description, OperatorDefault, ViewerDefault,
   FullDeviceControl}: finer rights inside the task, "task:<id>:<key>"; empty = one "task:<id>") and
   `RequiredPermissions(payload)` (the keys one run needs; no answer = all declared), `ExecuteAsync`. Optional
-  `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog (`ITaskQueryContext.Devices`: every managed device).
+  `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog (`ITaskQueryContext.Devices`: every managed device; for
+  a user with a device group only the devices of the user's view). The host calls the overload with the user's call.
   Declared today: Upgrade firmware (upgrade, factoryDefault, downgrade), Users (add, update, remove), Applications (install,
   downgrade, startStop, remove, license), Import configuration (import, connection), Configure devices (configure, dangerous).
 - `ICorePlugin`: `TaskPlugins` (contributed tasks), `StartAsync` / `StopAsync`, `InvokeAsync` (the page backend),
@@ -72,7 +73,9 @@ returns null or throws `NotSupportedException`.
   work owned by the user who started it, `Find` answers null for another user's id) and `DeviceScopes` (`IDeviceScopes`:
   `Exists`, `Contains`, `Devices`, `NameOf` per scope key, `Changed`: objects a plugin keeps per group run only on its
   devices, a deleted group's are off). `ITaskExecutionContext.Caller` (the
-  user who started the task). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
+  user who started the task, with the user's view as it is when the task leaves the queue; null for tasks the system
+  or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
+  `TaskEngine.ForView`). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
   User, Session; the old `Publish` reaches only watchers with all devices on 4.2). `IDeviceInfo.AddedByAllDevices`.
   Actions: `IActionPlugin.Destinations(settings)` and `IActionContext.IsDestinationAllowed(host, port)`
   (`ActionDestination.NotAllowedText`) for the address list of rules of device groups. Client SDK: `HasAllDevices` on

@@ -73,7 +73,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<DeviceGroups.DeviceGroupStore>();
         services.AddSingleton<DeviceGroups.DeviceScopeCatalog>();
         services.AddSingleton<DeviceGroups.DeviceViewFactory>();
-        services.AddSingleton<DeviceGroups.DeviceMembershipAudit>();
+        services.AddSingleton<DeviceGroups.DeviceViewWatcher>(); // sessions bound to a device end when it leaves the view
         services.AddSingleton<DeviceGroups.OwnerScopes>();
 
         services.AddSingleton<DatabaseInitializer>();

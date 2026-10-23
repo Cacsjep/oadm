@@ -28,6 +28,9 @@ public sealed class DeviceView
 
     internal ViewKind Kind { get; }
 
+    /// <summary>The factory that made the view (the task engine reads the owner's current view through it).</summary>
+    internal DeviceViewFactory Factory => _factory;
+
     /// <summary>Every device: a user with all devices, an administrator, or <see cref="DeviceViewFactory.System"/>.</summary>
     public bool HasAllDevices => Kind is ViewKind.All or ViewKind.System;
 
@@ -73,6 +76,82 @@ public sealed class DeviceView
 
         var filter = Filter;
         return [.. all.Where(filter.Contains)];
+    }
+
+    /// <summary>
+    /// The device feed of the view (a stream of the device list): subscribed at once, then read the snapshot with
+    /// <see cref="PagesAsync"/>, mark it with <see cref="DeviceViewFeed.Sent"/> and read the changes; devices that leave or
+    /// enter the view come as Removed and Added.
+    /// </summary>
+    public DeviceViewFeed Subscribe() => new(this, _factory.Feed, _factory.Catalog);
+
+    /// <summary>
+    /// Every device of the view in pages of at most <paramref name="take"/> (the snapshot of a stream: one reader never holds
+    /// every device at once). All devices: by serial, like the repository's pages. A group: the cached allowed ids, the rows
+    /// read per page and checked again; a device removed meanwhile is left out.
+    /// </summary>
+    public async IAsyncEnumerable<IReadOnlyList<Device>> PagesAsync(int take, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+        if (Kind == ViewKind.None)
+        {
+            yield break;
+        }
+
+        if (HasAllDevices)
+        {
+            string? after = null;
+            while (true)
+            {
+                var page = await _factory.Devices.ListDevicesPageAsync(after, take, ct).ConfigureAwait(false);
+                if (page.Count > 0)
+                {
+                    yield return page;
+                }
+
+                if (page.Count < take)
+                {
+                    yield break;
+                }
+
+                after = page[^1].Serial;
+            }
+        }
+
+        var ids = await IdsAsync(ct).ConfigureAwait(false);
+        foreach (var chunk in ids.Chunk(take))
+        {
+            var filter = Filter;
+            var page = (await _factory.Devices.GetManyAsync(chunk, ct).ConfigureAwait(false)).Where(filter.Contains).ToList();
+            if (page.Count > 0)
+            {
+                yield return page;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The number of devices of the view per site (devices without a site are left out): the Sites page of a user with a
+    /// device group shows the group's counts. One read of the scope rows, no device rows.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, int>> CountsBySiteAsync(CancellationToken ct)
+    {
+        var counts = new Dictionary<Guid, int>();
+        if (Kind == ViewKind.None)
+        {
+            return counts;
+        }
+
+        var filter = Filter;
+        foreach (var row in await _factory.Devices.ListScopeRowsAsync(ct).ConfigureAwait(false))
+        {
+            if (row.SiteId is { } site && filter.Contains(row))
+            {
+                counts[site] = counts.GetValueOrDefault(site) + 1;
+            }
+        }
+
+        return counts;
     }
 
     /// <summary>

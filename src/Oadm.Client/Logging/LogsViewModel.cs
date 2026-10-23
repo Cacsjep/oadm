@@ -71,8 +71,8 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
     /// <summary>The Audit tab is offered to administrators.</summary>
     public bool CanSeeAudit => Audit is not null && (_session?.IsAdmin ?? false);
 
-    /// <summary>The Server tab is offered to roles with "See the server log".</summary>
-    public bool CanSeeServer => Server is not null && (_session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.LogsServer) ?? false);
+    /// <summary>The Server tab is offered to roles with "See the server log" and users with all devices (its text names devices).</summary>
+    public bool CanSeeServer => Server is not null && (_session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.LogsServer) ?? false) && (_session?.HasAllDevices ?? false);
 
     /// <summary>More than the client log: the switch shows.</summary>
     public bool ShowSwitch => CanSeeServer || CanSeeAudit;

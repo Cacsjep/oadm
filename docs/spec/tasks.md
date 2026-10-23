@@ -51,4 +51,14 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (the message survives as the device result). Payloads are never persisted or logged.
 - Task log: `ctx.Log(level, message)`, warnings, failures, precondition errors and credential
   changes; live from memory while the task runs (`GetLog`), from TaskLogEntries afterwards.
+- **Device groups** (`docs/spec/device-scope.md`): a user's Run takes its devices from the user's view
+  (`TaskEngine.RunAsync(pluginId, ViewedDevices, payload, TaskCaller)`; `TaskEngine.ForView` for `call.Tasks`). The task
+  keeps its owner (`TaskCaller`: user id, name, session, permissions) in memory only. When it leaves the queue it reads
+  the owner's view as it is now (`DeviceViewFactory.ForUserAsync`): a device that left it, a user without the group or a
+  deleted user fails the task with "1 device is no longer available." before any request. The plugin gets the owner's
+  call (`ITaskExecutionContext.Caller`, `TaskCallContext`); tasks the system starts have none. The raw-id
+  `RunAsync` is the system runner; inside the call of a user with a group it runs only on devices of that user's view
+  (backstop). History, Watch, log, cancel and delete of a user with a group show only tasks whose device is in the view
+  now, filtered in the query (`ITaskStore.ListPageAsync(deviceIds, ...)`, `EfTaskStore`: one JSON parameter through
+  `json_each`); 30,000 devices and 50,000 tasks: a page in under 1 s, a Watch snapshot of 10,000 in about 2 s.
 - No scheduling, retry or recurrence.

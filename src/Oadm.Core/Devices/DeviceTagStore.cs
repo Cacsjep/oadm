@@ -334,8 +334,13 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
         }
     }
 
-    private static List<DeviceMembershipChange> Changes(List<TagRewrite> changed) =>
-        changed.ConvertAll(c => new DeviceMembershipChange(DeviceScopeRow.Of(c.After) with { Tags = c.OldTags }, DeviceScopeRow.Of(c.After)));
+    private static List<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes(List<TagRewrite> changed) =>
+        changed.ConvertAll(c =>
+        {
+            var before = c.After.Clone();
+            before.Tags = c.OldTags;
+            return ((Sdk.Devices.IDeviceInfo?)before, (Sdk.Devices.IDeviceInfo?)c.After);
+        });
 
     private TagDefinition NewDefinition(string name, TagColor color, int existing)
     {

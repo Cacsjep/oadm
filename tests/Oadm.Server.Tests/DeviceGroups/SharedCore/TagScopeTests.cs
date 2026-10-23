@@ -83,12 +83,11 @@ public sealed class TagScopeTests
         await host.Tags.DeleteAsync(new Proto.TagName { Name = "Lobby" });
 
         var entries = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
-        var entered = Assert.Single(entries, e => e.Action == AuditActions.DevicesEnteredGroup);
+        var entered = Assert.Single(entries, e => e.Action == Core.DeviceGroups.DeviceGroupMembership.EnteredAction);
         Assert.Equal("Group Lobby", entered.Target);
-        Assert.Equal($"1 device ({b.Serial}): +Lobby", entered.Detail);
-        var left = Assert.Single(entries, e => e.Action == AuditActions.DevicesLeftGroup);
-        Assert.StartsWith("2 devices (", left.Detail, StringComparison.Ordinal);
-        Assert.EndsWith("): tag Lobby deleted", left.Detail, StringComparison.Ordinal);
+        Assert.Equal($"1 device (+Lobby): {b.Serial}", entered.Detail);
+        var left = Assert.Single(entries, e => e.Action == Core.DeviceGroups.DeviceGroupMembership.LeftAction);
+        Assert.StartsWith("2 devices (tag Lobby deleted): ", left.Detail, StringComparison.Ordinal);
         Assert.Equal(TestServerHost.AdminUserName, left.UserName);
         Assert.Contains(a.Serial, left.Detail, StringComparison.Ordinal);
     }

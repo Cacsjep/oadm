@@ -51,6 +51,12 @@ public sealed class DeviceGroupFilter
     /// <summary>The tag and site catalog it was compiled with.</summary>
     public DeviceScopeCatalogKey Catalog { get; }
 
+    /// <summary>"This server" is a rule: devices on the server's own network (without a site) are in the group.</summary>
+    public bool ThisServer => _thisServer;
+
+    /// <summary>The sites of the rules that exist now (a removed site dropped out).</summary>
+    public IReadOnlySet<Guid> Sites => _sites;
+
     /// <summary>
     /// Compiles <paramref name="rules"/>: tag ids become the names of <paramref name="tagNames"/> (a deleted tag drops out),
     /// site ids are kept only while <paramref name="isLiveSite"/> says the site exists (a removed site drops out, its kept
@@ -83,6 +89,9 @@ public sealed class DeviceGroupFilter
         ArgumentNullException.ThrowIfNull(group);
         return Compile(group.Id, group.Revision, group.Rules, tagNames, isLiveSite, catalog);
     }
+
+    /// <summary>True when the group's rules name the site (and it exists): the Sites page of a user with the group shows it.</summary>
+    public bool CoversSite(Guid siteId) => _everything || _sites.Contains(siteId);
 
     /// <summary>True when the device is in the group: a site, "This server", a tag or a single serial covers it and its serial is not excepted.</summary>
     public bool Contains(IDeviceInfo device)

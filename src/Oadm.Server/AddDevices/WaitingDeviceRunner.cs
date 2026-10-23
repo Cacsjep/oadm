@@ -52,6 +52,12 @@ public sealed record WaitingOutcome(WaitingOutcomeKind Kind, string Message);
 /// automatically". Entries whose device OADM manages by now are removed before each round. Entries of a site that is not
 /// online are left alone (not tried, nothing written: they keep their last result) until it is back; entries of a site
 /// that no longer exists are removed.
+/// <para>Each entry is tried as the user who kept it is now (docs/spec/device-scope.md, Decisions "New devices"): a user with
+/// a device group only through the sites of the group (the server's own network only with "This server"), only with the
+/// entry's own login (never the credential list), and only a device that lands inside the group; the new device remembers
+/// the group. An entry whose user cannot add there any more (another group, no devices, removed) is not tried, nothing is
+/// sent to the address (<see cref="AddDeviceTexts.KeeperCannotAdd"/>, held until Try now). An entry kept before device groups
+/// existed (no user id) is tried as before.</para>
 /// </summary>
 public sealed partial class WaitingDeviceRunner(
     WaitingDeviceStore store,
@@ -60,10 +66,10 @@ public sealed partial class WaitingDeviceRunner(
     DeviceRepository devices,
     DeviceAdder adder,
     DeviceTagStore tags,
-    Core.DeviceGroups.DeviceViewFactory views,
     ServerSettingsStore settings,
     DevicePollingService polling,
     AuditLog audit,
+    Core.DeviceGroups.DeviceViewFactory views,
     TimeProvider time,
     ILogger<WaitingDeviceRunner> logger,
     Core.Sites.ISiteStates? sites = null) : BackgroundService
@@ -280,9 +286,13 @@ public sealed partial class WaitingDeviceRunner(
                 }
             }
 
+            // The reach of each user who kept entries, read once per round (the add itself checks again).
+            var reaches = new ConcurrentDictionary<Guid, Lazy<Task<AddReach>>>();
             await Parallel.ForEachAsync(entries, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (entry, token) =>
             {
-                var outcome = await TryOneAsync(entry, token).ConfigureAwait(false);
+                var reach = await reaches.GetOrAdd(entry.QueuedByUserId ?? Guid.Empty,
+                    _ => new Lazy<Task<AddReach>>(() => AddReach.ForUserAsync(views, entry.QueuedByUserId, entry.AddedBy, token))).Value.ConfigureAwait(false);
+                var outcome = await TryOneAsync(entry, reach, token).ConfigureAwait(false);
                 _checking.TryRemove(entry.Id, out _);
                 switch (outcome.Kind)
                 {
@@ -360,16 +370,39 @@ public sealed partial class WaitingDeviceRunner(
         return keep;
     }
 
-    /// <summary>One try of one waiting device. Never throws (one entry's failure must not end the round for the others).</summary>
+    /// <summary>One try of one waiting device, as the user who kept it is now. Never throws.</summary>
     public async Task<WaitingOutcome> TryOneAsync(WaitingTry entry, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(entry);
+        AddReach reach;
+        try
+        {
+            reach = await AddReach.ForUserAsync(views, entry.QueuedByUserId, entry.AddedBy, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            LogTryFailed(entry.Address, ex.Message);
+            return new WaitingOutcome(WaitingOutcomeKind.StillWaiting, $"No Axis device answered at {entry.Address}.");
+        }
+
+        return await TryOneAsync(entry, reach, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>One try of one waiting device with the reach of the user who kept it. Never throws (one entry's failure must not end the round for the others).</summary>
+    private async Task<WaitingOutcome> TryOneAsync(WaitingTry entry, AddReach reach, CancellationToken ct)
+    {
+        if (!reach.CanAdd || (entry.SiteId is { } entrySite && !reach.Routes.Allows(entrySite)))
+        {
+            // The user cannot add devices there any more: nothing is sent to the address, it waits for Try now.
+            return new WaitingOutcome(WaitingOutcomeKind.Held, AddDeviceTexts.KeeperCannotAdd);
+        }
+
         string session;
         try
         {
             // The normal first contact: the import's short one is for the page's speed; a retry has time. Through the entry's
-            // site only, else the server's own network and every online site that reaches the address.
-            session = (await discovery.StartAddressProbeAsync(entry.Address, importLine: false, ct, entry.SiteId, entry.ExpectedSerial).ConfigureAwait(false)).Id;
+            // site only, else the server's own network and every online site that reaches the address (the user's routes).
+            session = (await discovery.StartAddressProbeAsync(entry.Address, importLine: false, ct, entry.SiteId, entry.ExpectedSerial, reach.Routes).ConfigureAwait(false)).Id;
         }
         catch (ArgumentException ex)
         {
@@ -383,6 +416,11 @@ public sealed partial class WaitingDeviceRunner(
 
         try
         {
+            if (reach.UsesCredentialList)
+            {
+                authenticator.AllowCredentialList(session); // a user with a device group: only the entry's own login
+            }
+
             if (entry.ExpectedSerial is { } serial)
             {
                 authenticator.SetExpectedSerial(session, serial);
@@ -416,7 +454,7 @@ public sealed partial class WaitingDeviceRunner(
             var notManaged = new List<DiscoveredDevice>();
             foreach (var device in answers.Values)
             {
-                if (await devices.FindBySerialAsync(device.Serial, ct).ConfigureAwait(false) is null)
+                if (!await adder.IsManagedAsync(device.Serial, ct).ConfigureAwait(false))
                 {
                     notManaged.Add(device);
                 }
@@ -437,6 +475,12 @@ public sealed partial class WaitingDeviceRunner(
             // Exactly one device it does not manage yet (the others answering are managed): that one is meant.
 
             var found = notManaged[0];
+            if (!reach.Takes(found.Serial, found.Route))
+            {
+                // It would not be in the group of the user who kept it: no login, no password sent.
+                return new WaitingOutcome(WaitingOutcomeKind.Held, AddDeviceTexts.KeeperCannotAdd);
+            }
+
             authenticator.Ensure(session, found, alreadyManaged: false);
 
             await authenticator.WhenIdleAsync(session, ct).ConfigureAwait(false);
@@ -476,11 +520,18 @@ public sealed partial class WaitingDeviceRunner(
             return new WaitingOutcome(WaitingOutcomeKind.Changed, "Removed or kept again meanwhile.");
         }
 
+        // The user who kept it, as that user is now: the device must still land inside their devices.
+        var reach = await AddReach.ForUserAsync(views, entry.QueuedByUserId, entry.AddedBy, ct).ConfigureAwait(false);
+        if (!reach.Takes(found.Serial, found.Route))
+        {
+            return new WaitingOutcome(WaitingOutcomeKind.Held, AddDeviceTexts.KeeperCannotAdd);
+        }
+
         var server = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
         (Guid Id, SdkDeviceStatus Status)? added;
         try
         {
-            added = await adder.AddAsync(found, useHostName: false, initialPassword: null, credentials, server.ServerName, ct).ConfigureAwait(false);
+            added = await adder.AddAsync(found, useHostName: false, initialPassword: null, credentials, server.ServerName, reach.AddedBy, ct).ConfigureAwait(false);
         }
         catch (DeviceLimitException)
         {
@@ -497,11 +548,11 @@ public sealed partial class WaitingDeviceRunner(
         {
             try
             {
-                // add-devices: the queuing user's current view (WaitingTry carries no user yet); the system view keeps today's behaviour.
-                var viewed = await views.System.GetAsync([device.Id], ct).ConfigureAwait(false);
+                // The tag store guards the tags of the queuing user's devices: a user with a group never adds a tag a group uses.
+                var viewed = await reach.View.GetAsync([device.Id], ct).ConfigureAwait(false);
                 await tags.SetDeviceTagsAsync(viewed, [.. entry.Tags], [], ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is TagNameException or TagLimitException)
+            catch (Exception ex) when (ex is TagNameException or TagLimitException or TagInUseByGroupException or Oadm.Sdk.Devices.DevicesNotAvailableException)
             {
                 LogTagsFailed(found.Serial, ex.Message);
             }
@@ -517,6 +568,7 @@ public sealed partial class WaitingDeviceRunner(
         LogAdded(found.Serial, found.ConnectAddress, entry.Source);
         await audit.WriteAsync("system", string.Empty, AuditActions.DeviceAddedAutomatically, $"{found.ConnectAddress} ({found.Serial})",
             $"{entry.Source} (waiting list, kept by {entry.AddedBy}): {message}", ct).ConfigureAwait(false);
+        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], "waiting list, kept by " + entry.AddedBy, ct).ConfigureAwait(false);
         return new WaitingOutcome(WaitingOutcomeKind.Added, message);
     }
 

@@ -121,13 +121,23 @@ public static class ServiceRegistration
             sp.GetRequiredService<IDialogService>(),
             sp.GetRequiredService<UserSession>(),
             sp.GetRequiredService<ServerConnection>()));
+        services.AddSingleton(sp =>
+        {
+            var store = sp.GetRequiredService<DeviceStore>();
+            return new DeviceGroupsViewModel(
+                sp.GetRequiredService<IOadmApi>(),
+                sp.GetRequiredService<IDialogService>(),
+                sp.GetRequiredService<UserSession>(),
+                () => [.. store.Devices]);
+        });
         services.AddSingleton(sp => new UsersViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IDialogService>(),
             sp.GetRequiredService<UserSession>(),
             sp.GetRequiredService<ILogger<UsersViewModel>>(),
             sp.GetRequiredService<ServerConnection>(),
-            sp.GetRequiredService<RolesViewModel>()));
+            sp.GetRequiredService<RolesViewModel>(),
+            sp.GetRequiredService<DeviceGroupsViewModel>()));
         services.AddSingleton<Func<AddDevicesMode, AddDevicesViewModel>>(sp => mode => new AddDevicesViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),

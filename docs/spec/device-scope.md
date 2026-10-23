@@ -128,6 +128,11 @@ an independent security review the same day). A user may be limited to part of t
   checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
   devices").
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary.
+- Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
+  `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
+  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md);
+  fake mode (`FakeOadmApi.DeviceGroups`) has Building B, Building A, Head office and Lobby, tech2 in Building B and
+  guard in Lobby. Tests `DeviceGroupsTests`, `Perf/DeviceGroupEditorScaleTests`.
 - Audit: created, changed (rules), deleted groups; a user's group changed.
 
 ## Tests
@@ -194,6 +199,80 @@ an independent security review the same day). A user may be limited to part of t
   `tests/Oadm.Server.Tests/DeviceGroupServiceTests`, `DeviceGroups/ArchitectureTests` (allow-lists with the converting
   package), `DeviceGroups/CanaryTests` (cases, not-converted methods and plugins per package, methods without devices,
   Administrator and all-devices methods closed by the rule).
+
+## Code (add devices)
+
+- `Oadm.Server.AddDevices.AddReach` (from the caller, or from the user who kept a waiting entry as that user is now):
+  `Routes` (`Oadm.Core.Discovery.DiscoveryRoutes`: local = "This server", the group's live sites; all for all devices),
+  `CanAdd`, `UsesCredentialList` (all devices only), `AddedBy` (the `DeviceScope` a new device stores), `Takes(serial,
+  route)` (on a route of the user and inside the group), `Waiting` (`WaitingScope`). `DeviceGroupFilter.ThisServer` and
+  `Sites` expose the compiled rules.
+- Core discovery sessions take `DiscoveryRoutes` (zero-conf, range scan, address probes); `CoreDiscoveryBackend` passes
+  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session.
+- `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed).
+- `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
+  waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
+- Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;
+  actions "Entered device group" / "Left device group"; also for tags and sites) and `Oadm.Server.AddDevices.MembershipAudit`
+  (Commit, the waiting list, the automatic add, relocation and DHCP moves).
+- Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove), `QueuedByUserId` written
+  by `AddAsync(..., queuedBy, ...)`; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
+
+## Code (devices-core)
+
+- **Device list**: `DeviceGrpcService` takes `DeviceViewFactory` and `DeviceActions` (Core: remove, refresh, credentials,
+  Log in, Set password, passphrase policies, the relay's VAPIX client, status notes; only `ViewedDevices`), never the
+  repository. `List` and the `Watch` snapshot read `DeviceView.PagesAsync(1,000)` (a group: the cached allowed ids, rows
+  per page); `DeviceView.Subscribe()` gives a `DeviceViewFeed` (subscribed at once; `Sent(id)` for the snapshot,
+  `ReadAsync(max)`): changes outside the view are dropped, a device that leaves becomes Removed, one that enters Added; a
+  change of the tag and site catalog (deleted tag, removed site) compares the sent ids with `IdsAsync` and reads the
+  entering rows in pages. All devices: every change passes as it is, no ids kept (today's feed). Remove, Refresh,
+  SetCredentials, LogIn, GetCredentialUserName, SetFirstPassword, GetPassphrasePolicies and GetWebUiUrl go through
+  `view.GetAsync(ids)` (Refresh without ids: `GetOrAllAsync`); unknown ids refuse the whole request for everyone.
+- **Sessions bound to one device**: `DeviceViewWatcher.WatchAsync(ViewedDevices one)` gives a `DeviceViewLease` whose
+  `Left` token fires (on the thread pool) when the device leaves its view: Removed, a device change outside the view, a
+  catalog change, the group's rules changed or the group deleted (checked again with `FindAsync`); registered first, then
+  checked, so nothing in between is missed; views with all devices get a lease that never ends. Used by `LiveViewService.Watch`
+  and `DeviceWebService.Exchange` (both end NOT_FOUND "1 device is no longer available."). `ViewedEventStreams`
+  (`IDeviceEventStreams` of one view): opens only devices of the view, an open source throws
+  `DevicesNotAvailableException` when its device leaves, RTSP ports only of viewed devices; for `ICallContext.EventStreams`.
+- **Live view**: `LiveViewGrpcService` takes `LiveViewAccess` (Core: hub, sources, optics, PTZ, RTSP ports; only
+  `ViewedDevices`); every method gets its device or devices from the view; GetRtspPort and SetRtspPort refuse unknown ids
+  whole (no more partial write).
+- **Sites page**: `SiteService.ListSites` / `WatchSites` (and the page `SetAccept` returns): users with all devices see every
+  row with `Site.group_names` (`DeviceGroupStore.GroupsUsingSite`); a group sees only bound sites its rules name
+  (`DeviceGroupFilter.CoversSite`; no removed sites, no waiting nodes) with `device_count` from
+  `DeviceView.CountsBySiteAsync` (one read of the scope rows per push, at most once a second).
+- **Address checks**: none in this area name another device (Log in and Set password say "Another device answers at this
+  address."); the address checks of plugins (Network settings, DHCP) belong to their packages.
+- **Tests**: `Oadm.Core.Tests/DeviceGroups/DeviceViewStreamsTests` (feed, catalog changes, pages, counts by site, leases,
+  event streams), `Oadm.Server.Tests/DeviceGroups/DeviceGroupStreamsTests` (feed over gRPC next to an administrator's,
+  new rules end the stream, unknown ids refused, live video ends, Sites page), canary cases for every converted method and
+  `Filtered` (List, Watch, ListSites, WatchSites: the reply never shows the outside device), perf
+  `DeviceGroupWatchScaleTests` (3,000 of 30,000 devices: snapshot, a burst over every device, 1,000 in and 1,000 out).
+
+## Code (tasks)
+
+- **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` and calls `TaskEngine.RunAsync(pluginId, ViewedDevices,
+  payload, TaskCaller)`; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
+  refuse the run; cancel and the active check only for the user's own tasks when the user has a group). The raw-id
+  `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
+  (backstop, never without `TaskEngine.Views`).
+- **Queue check**: each task keeps its `TaskCaller` in memory; leaving the queue it reads the owner's current view
+  (`ForUserAsync`) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
+  or group), before the device's state is read out or any request is sent. The plugin gets `ITaskExecutionContext.Caller`
+  (`TaskCallContext` over that view; event streams not offered there yet).
+- **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
+  CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
+  (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
+  `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules).
+  A task is in the view while its device is: tasks of removed devices only for users with all devices.
+- **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the
+  sets and the view's ids are the same objects).
+- **Query**: `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
+  call and, for a group, `ITaskQueryContext.Devices` of the view.
+- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch, backstop),
+  `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks), the canary cases of TaskService.
 
 ## Stages
 
