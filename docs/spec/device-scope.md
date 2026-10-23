@@ -269,7 +269,7 @@ an independent security review the same day). A user may be limited to part of t
   `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
   (backstop, never without `TaskEngine.Views`).
 - **Queue check**: each task keeps its `TaskCaller` in memory; leaving the queue it reads the owner's current view
-  (`ForUserAsync`) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
+  (`ForUserAsync`: the user's row by its id, never the whole users table) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
   or group), before the device's state is read out or any request is sent. The plugin gets `ITaskExecutionContext.Caller`
   (`TaskCallContext` over that view; event streams not offered there yet).
 - **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
@@ -284,8 +284,10 @@ an independent security review the same day). A user may be limited to part of t
   sets and the view's ids are the same objects).
 - **Query**: `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
   call and, for a group, `ITaskQueryContext.Devices` of the view.
-- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch, backstop),
-  `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks), the canary cases of TaskService.
+- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch with devices that
+  leave and enter, a removed site and new rules, backstop), `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks),
+  `Perf/TaskQueueCheckScaleTests` (5,000 queued tasks of a group user leave the queue, 501 users), the canary cases of
+  TaskService.
 
 ## Code (task plugins)
 
