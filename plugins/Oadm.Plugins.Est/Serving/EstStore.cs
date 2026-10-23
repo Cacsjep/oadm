@@ -480,6 +480,16 @@ public sealed partial class EstStore : IAsyncDisposable
         }
     }
 
+    /// <summary>The certificates kept of the devices <paramref name="include"/> holds.</summary>
+    public int CountCertificates(Func<Guid, bool> include)
+    {
+        ArgumentNullException.ThrowIfNull(include);
+        lock (_gate)
+        {
+            return _certificates.Values.Count(c => include(c.DeviceId));
+        }
+    }
+
     public int CertificateCount
     {
         get
@@ -509,13 +519,16 @@ public sealed partial class EstStore : IAsyncDisposable
         }
     }
 
-    /// <summary>The certificates the cameras did not renew in time, the ones that end first first; at most <paramref name="max"/>.</summary>
-    public CertificateList NotRenewed(int max)
+    /// <summary>
+    /// The certificates the cameras did not renew in time, the ones that end first first; at most <paramref name="max"/>;
+    /// with <paramref name="include"/> only those of the devices it holds (a user limited to a group).
+    /// </summary>
+    public CertificateList NotRenewed(int max, Func<Guid, bool>? include = null)
     {
         List<IssuedCertificate> matching;
         lock (_gate)
         {
-            matching = [.. Newest().Where(c => c.NotRenewed)];
+            matching = [.. Newest().Where(c => c.NotRenewed && (include is null || include(c.DeviceId)))];
         }
 
         matching.Sort((a, b) => a.NotAfterUtc.CompareTo(b.NotAfterUtc));

@@ -3,6 +3,7 @@ using Grpc.Core;
 using Oadm.Core.Auth;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
 
@@ -21,24 +22,66 @@ public sealed partial class SettingsGrpcService(
     CredentialListStore credentials,
     AuditLog audit,
     ILogger<SettingsGrpcService> logger,
-    Core.Plugins.PluginLicenses licenses) : Proto.SettingsService.SettingsServiceBase
+    Core.Plugins.PluginLicenses licenses,
+    ActionDestinations destinations) : Proto.SettingsService.SettingsServiceBase
 {
-    public override async Task<Proto.ServerSettings> Get(Proto.Empty request, ServerCallContext context) =>
-        await WithNoticeAsync(Mappers.ToProto(await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false)), context.CancellationToken).ConfigureAwait(false);
+    public override async Task<Proto.ServerSettings> Get(Proto.Empty request, ServerCallContext context)
+    {
+        var settings = await WithNoticeAsync(Mappers.ToProto(await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false)), context.CancellationToken).ConfigureAwait(false);
+        return await WithDestinationsAsync(settings, context).ConfigureAwait(false);
+    }
 
+    /// <summary>
+    /// A partial update; <c>action_destinations</c> unset keeps the list (where event rules of device groups may send),
+    /// set replaces it (validated: "host" or "host:port", at most 100).
+    /// </summary>
     public override async Task<Proto.ServerSettings> Set(Proto.ServerSettings request, ServerCallContext context)
     {
         var current = await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false);
         try
         {
+            string? destinationChange = null;
+            if (request.ActionDestinations is { } checkFirst)
+            {
+                ActionDestinations.Normalize(checkFirst.Entries); // a bad address changes nothing
+            }
+
             var saved = await store.SetServerSettingsAsync(Mappers.FromProto(request, current), context.CancellationToken).ConfigureAwait(false);
-            await audit.WriteAsync(AuditActions.SettingsChanged, "Server settings", Changes(current, saved), context.CancellationToken).ConfigureAwait(false);
-            return await WithNoticeAsync(Mappers.ToProto(saved), context.CancellationToken).ConfigureAwait(false);
+            if (request.ActionDestinations is { } list)
+            {
+                var before = await destinations.ListAsync(context.CancellationToken).ConfigureAwait(false);
+                var after = await destinations.SetAsync(list.Entries, context.CancellationToken).ConfigureAwait(false);
+                if (!before.SequenceEqual(after, StringComparer.OrdinalIgnoreCase))
+                {
+                    destinationChange = "Addresses rules of device groups may send to: " + (after.Count == 0 ? "none" : string.Join(", ", after));
+                }
+            }
+
+            var changes = Changes(current, saved);
+            if (destinationChange is not null)
+            {
+                changes = changes == "No change" ? destinationChange : changes + ", " + destinationChange;
+            }
+
+            await audit.WriteAsync(AuditActions.SettingsChanged, "Server settings", changes, context.CancellationToken).ConfigureAwait(false);
+            return await WithDestinationsAsync(await WithNoticeAsync(Mappers.ToProto(saved), context.CancellationToken).ConfigureAwait(false), context).ConfigureAwait(false);
         }
         catch (ArgumentException ex)
         {
             throw GrpcGuard.InvalidArgument(ex.Message);
         }
+    }
+
+    /// <summary>The allowed addresses for users with all devices (they name the VMS and alarm servers); never for a group.</summary>
+    private async Task<Proto.ServerSettings> WithDestinationsAsync(Proto.ServerSettings settings, ServerCallContext context)
+    {
+        if (AuthInterceptor.CallerOf(context).HasAllDevices)
+        {
+            settings.ActionDestinations = new Proto.ActionDestinationList();
+            settings.ActionDestinations.Entries.AddRange(await destinations.ListAsync(context.CancellationToken).ConfigureAwait(false));
+        }
+
+        return settings;
     }
 
     /// <summary>

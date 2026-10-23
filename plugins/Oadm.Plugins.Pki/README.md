@@ -161,6 +161,19 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
 
+## Device groups (SDK 0.4.0)
+
+`minSdkVersion` 0.4.0. `InvokeAsync(ICallContext, ...)`: `getState` for everyone who may see the page, with the counts of
+issued certificates (`issuedDevices`, `devicesWithCurrentCa`, `devicesWithPreviousCa`, `expiringSoon`, per previous CA)
+only of the caller's devices (`ViewedSet` of `plugins/Shared/ViewerScopes.cs`); every other method `RequiresAllDevices`
+(the CA, its trust and the settings are server-wide). The `state` event goes to `AllDevices` with every device and to
+`DeviceScope(key)` of each group that read the page with that group's counts. The page hides the CA actions, the trust
+button and Save for a user with a group (`HasAllDevices`). The tasks get their device from the host;
+`CertificateDeployment.NamesFor` passes `IDeviceInfo.AddedByAllDevices` to `CertificateNames.For(..., trustNames)`: false
+leaves the host name, the FQDN and a name address out (only IP addresses and `axis-<serial>.local`, CN the OADM address
+when it is an IP address, else the first IP address or the axis name). Tests: `DeviceGroupTests` (the `PluginCanary`,
+counts and events per group, names, Enable HTTPS on a device a group user added, the page).
+
 ## Permissions
 
 `oadm.pki:show` (`getState`), `:manage` "Manage the certificate authority" (every other method except

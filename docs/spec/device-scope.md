@@ -102,7 +102,9 @@ an independent security review the same day). A user may be limited to part of t
 - **Secrets in shared items** (library commands and configuration files with saved passwords): users with a group may
   run only items without saved passwords.
 - **Host names in certificates:** PKI and EST put a device's host name into its certificate only when a user with all
-  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name).
+  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name). Built:
+  `CertificateNames.For(..., trustNames)` and `EstEndpoint.DnsNames` read `IDeviceInfo.AddedByAllDevices` (IP addresses and
+  `axis-<serial>.local` only).
 - **Membership:** a single-device serial of a removed device is dormant; it counts again only when a user with all
   devices or a user of that group adds the device. Every change of a device's membership (tag, site, relocation, add,
   remove) is audited as "left / entered group X".
@@ -288,10 +290,31 @@ an independent security review the same day). A user may be limited to part of t
 - Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
   `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use").
 - VAPIX Commander: devices, clients and tasks through the call; `save` / `delete` / `import` `RequiresAllDevices`; stored
-  passwords of saved commands only with all devices (`ResolveAsync(..., allowSavedSecrets)`, the action through
-  `IActionContext.RuleHasAllDevices`, the rule dialog's choices through `IActionQueryContext.HasAllDevices`).
+  passwords of saved commands only with all devices (`ResolveAsync(..., allowSavedSecrets)`). Run VAPIX command and Set
+  output are event rule actions and stay as they are (event rules are for users with all devices).
 - Device configuration keeps no shared files on the server (files stay on the client), so its rule on saved passwords
   has nothing to cover.
+
+## Code (shared-core)
+
+- **Tags**: `DeviceTagStore.SetDeviceTagsAsync(ViewedDevices, ...)`: the guard (`TagInUseByGroupException`) reads the groups
+  inside the BEGIN IMMEDIATE write transaction (a group save during the tagging waits for it); `ListAsync(view)` counts the
+  view; `TagService` fills `group_names` for users with all devices and audits membership moves (`DeviceGroupMembership`
+  with the rules captured before the write).
+- **Owners**: `OwnerScopes` (the owner's compiled filter, its sites, `Changed` / `GroupDeleted`, `Sees`, `OwnerOf`),
+  `OwnerRules` (only administrators choose the owner; tags of a group's object), `RuleOwners` (event types an owner may use,
+  the allowed addresses), `IEventTypeOwners` (the compliance engine: owners of the check events), `DeviceViewRepository`
+  (plugin choices list only the caller's view), `Mapping/OwnerMapping` (`DeviceOwner`).
+- **Compliance**: `ComplianceCheck.Owner`, the engine intersects every check with its owner and re-reconciles the checks of
+  groups on `OwnerScopes.Changed` (only devices that came in are evaluated), `ComplianceService` takes the caller's view.
+- **Event rules**: `StoredRule.Owner`, `RuleEngine` (owner filter in `Selects` and `StateOf`: group counts of "Any
+  device" and "Any site offline"), `ActionRunner` (`RuleEdgeJob.Owner`, targets intersected, `IsDestinationAllowed`),
+  `EventRulesService` (the view on every method, save checks), `EventLog.ListAsync(scope)` / `EventLogScope`,
+  `Core.Settings.ActionDestinations`.
+- **Tests**: `Oadm.Core.Tests/DeviceGroups/TagGuardTests`, `Compliance/ComplianceOwnerTests`, `Events/RuleOwnerTests`, Perf
+  `Compliance/ComplianceOwnerScaleTests`, `DeviceGroups/SharedCoreScaleTests`; `Oadm.Server.Tests/DeviceGroups/SharedCore/*`
+  (tags, compliance, events, settings, server log); `Oadm.Plugins.Notifications.Tests/DestinationTests`; the canary cases of
+  TagService, ComplianceService and EventService.
 
 ## Stages
 

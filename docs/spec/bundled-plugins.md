@@ -139,6 +139,11 @@ Delete and Install certificates, Install CA certificates. Details: plugin `READM
   same way.
 - Roles: everything but `getState` is Admin and audited; "Install in trusted root store" on the server asks with the CA's
   SHA-256 fingerprint.
+- Device groups (SDK 0.4.0): every method but `getState` is for users with all devices (`RequiresAllDevices`); a user
+  with a group sees the page read only, the counts of issued certificates only of the group's devices (the `state` event
+  per group that read the page, `PluginEventAudience.DeviceScope`). Host names, FQDNs and a name address go into a
+  device certificate only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`); else only its
+  IP addresses and `axis-<serial>.local`.
 - Tests: `tests/Oadm.Plugins.Pki.Tests` (every task against a stateful fake camera); opt-in `HardwareWriteTests`
   (`OADM_PKI_HARDWARE_WRITE=1`, not written yet).
 
@@ -455,3 +460,6 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
   requests are logged; the plugin checks the license on every request, and changing or removing that check is not
   allowed by its license.
 - Roles: reading for everyone; Save and Delete all of the enrollments Admin (permission "Change the EST server"), audited.
+- Device groups (SDK 0.4.0): Save and Delete all only for users with all devices; a user with a group sees the
+  enrollments, Not renewed, certificates and listeners (this server, sites) of the group's devices only, never refusals
+  of cameras OADM does not manage. Host names never go into certificates of a device a user with a group added.

@@ -635,7 +635,7 @@ public sealed class TaskPluginInfoTests
     public void A_device_reports_only_ip_addresses_and_never_another_cameras_axis_name()
     {
         var names = CertificateNames.For("10.0.0.48", "B8A44F631339", "axis-accc8e000001", "axis-accc8e000001.local",
-            ["10.0.0.48", "fe80::1", "axis-accc8e000001.local", "mail.example.com"]);
+            ["10.0.0.48", "fe80::1", "axis-accc8e000001.local", "mail.example.com"], trustNames: true);
 
         Assert.Equal(["axis-b8a44f631339.local"], names.DnsNames);
         Assert.Equal(["10.0.0.48", "fe80::1"], names.IpAddresses);
@@ -646,7 +646,7 @@ public sealed class TaskPluginInfoTests
     {
         await using var pki = await PkiHarness.StartAsync();
         var ca = pki.Service.Ca!;
-        var names = CertificateNames.For("10.0.0.48", "B8A44F631339", "cam", null, []);
+        var names = CertificateNames.For("10.0.0.48", "B8A44F631339", "cam", null, [], trustNames: true);
         using var weak = RSA.Create(1024);
         var weakCsr = new CertificateRequest("CN=x", weak, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).CreateSigningRequestPem();
         var ex = Assert.Throws<CertificateRequestRejectedException>(() => DeviceCertificateIssuer.Sign(ca, weakCsr, names, CertificatePurpose.Https, DateTimeOffset.UtcNow, TimeSpan.FromDays(365)));

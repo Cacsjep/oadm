@@ -38,6 +38,18 @@ internal sealed class TestContext(IReadOnlyDictionary<string, string>? data = nu
 
     public void Log(string message) => Lines.Add(message);
 
+    /// <summary>The allow-list of a rule of a device group; null = everything (a rule of all devices).</summary>
+    public Func<string, int, bool>? Allowed { get; init; }
+
+    /// <summary>Every address the action asked for.</summary>
+    public List<(string Host, int Port)> Asked { get; } = [];
+
+    public bool IsDestinationAllowed(string host, int port)
+    {
+        Asked.Add((host, port));
+        return Allowed?.Invoke(host, port) ?? true;
+    }
+
     public string Text(string? text) => Text(text, PlaceholderEscape.None);
 
     public string Text(string? text, PlaceholderEscape escape) => ActionPlaceholders.Fill(text, name => _values.GetValueOrDefault(name), escape);
@@ -110,6 +122,9 @@ internal sealed class MiniHttpServer : IAsyncDisposable
 
     public string? DigestRealm { get; set; }
 
+    /// <summary>Answers a path with a redirect (302) to the returned location; null = no redirect.</summary>
+    public Func<string, string?>? Redirect { get; set; }
+
     private async Task LoopAsync()
     {
         while (!_stop.IsCancellationRequested)
@@ -155,6 +170,14 @@ internal sealed class MiniHttpServer : IAsyncDisposable
                     lock (Requests)
                     {
                         Requests.Add(new ReceivedRequest(first[0], first[1], headers, Encoding.UTF8.GetString(body)));
+                    }
+
+                    if (Redirect?.Invoke(first[1]) is { } location)
+                    {
+                        const string Crlf = "\r\n";
+                        await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 302 Found" + Crlf + "Location: " + location + Crlf + "Content-Length: 0" + Crlf + "Connection: close" + Crlf + Crlf));
+                        await stream.FlushAsync();
+                        return;
                     }
 
                     var challenge = DigestRealm is not null && !(headers.TryGetValue("Authorization", out var auth) && auth.StartsWith("Digest ", StringComparison.Ordinal));

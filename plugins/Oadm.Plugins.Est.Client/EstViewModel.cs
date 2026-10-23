@@ -285,7 +285,8 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
-    public bool MayManage => _ctx.Has(PermissionKeys.Of(EstPluginInfo.PluginId, PermissionKeys.Manage));
+    /// <summary>The role may change the EST server ("manage") and the user has all devices (the server is server-wide).</summary>
+    public bool MayManage => _ctx.HasAllDevices && _ctx.Has(PermissionKeys.Of(EstPluginInfo.PluginId, PermissionKeys.Manage));
 
     public bool HasEnrollments => _allEnrollments.Count > 0;
 

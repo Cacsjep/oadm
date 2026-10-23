@@ -59,11 +59,14 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// <param name="ctx">Page context of the host.</param>
     /// <param name="clientTrust">This computer's trusted root store (<see cref="TrustStoreInstallers.ForClient"/>); tests pass a fake.</param>
     /// <param name="clientSettings">Where the last folder is remembered.</param>
-    /// <summary>The role may manage the certificate authority ("oadm.pki:manage": CA actions and settings).</summary>
-    public bool MayManage => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
+    /// <summary>
+    /// The role may manage the certificate authority ("oadm.pki:manage": CA actions and settings) and the user has all
+    /// devices (the CA is server-wide; users limited to a device group only read the page).
+    /// </summary>
+    public bool MayManage => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
-    /// <summary>The role may install the CA in the server's trusted root store ("oadm.pki:trustServer").</summary>
-    public bool MayTrustServer => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, PkiPermissions.TrustServer));
+    /// <summary>The role may install the CA in the server's trusted root store ("oadm.pki:trustServer"), for users with all devices.</summary>
+    public bool MayTrustServer => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, PkiPermissions.TrustServer));
 
     public PkiViewModel(ICorePluginClientContext ctx, ITrustStoreInstaller clientTrust, PkiClientSettingsStore? clientSettings = null)
     {
@@ -72,6 +75,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         {
             OnPropertyChanged(nameof(MayManage));
             OnPropertyChanged(nameof(MayTrustServer));
+            SaveCommand.NotifyCanExecuteChanged();
         };
         _clientTrust = clientTrust ?? throw new ArgumentNullException(nameof(clientTrust));
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
@@ -579,7 +583,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
     }
 
-    private bool CanSave() => !IsSaving && IsFormValid;
+    private bool CanSave() => MayManage && !IsSaving && IsFormValid;
 
     [RelayCommand]
     private async Task ImportRadiusCaAsync()

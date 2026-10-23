@@ -32,6 +32,37 @@ public sealed class CanaryTests
     /// <summary>The converted methods: the call with the out-of-view id in every id field.</summary>
     private static readonly Dictionary<string, Func<Canary, Guid, Task>> Cases = new(StringComparer.Ordinal)
     {
+        // shared-core: event rules
+        ["/oadm.v1.EventService/SaveRule"] = async (c, id) =>
+            await Events(c).SaveRuleAsync(new Proto.SaveRuleRequest
+            {
+                DefinitionJson = QuietRule(c, new Sdk.Events.DeviceSelector { Mode = Sdk.Events.DeviceSelectorMode.Devices, DeviceIds = [c.Inside, id] }).ToJson(),
+            }),
+        ["/oadm.v1.EventService/TestAction"] = async (c, id) =>
+            await Events(c).TestActionAsync(new Proto.TestActionRequest { ActionId = QuietAction.ActionId, DeviceId = id.ToString() }),
+
+        // shared-core: tags and compliance
+        ["/oadm.v1.TagService/SetDeviceTags"] = async (c, id) =>
+            await new Proto.TagService.TagServiceClient(c.Invoker).SetDeviceTagsAsync(new Proto.SetDeviceTagsRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, Add = { "Free" } }),
+        ["/oadm.v1.ComplianceService/SaveCheck"] = async (c, id) =>
+            await new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).SaveCheckAsync(new Proto.ComplianceCheckDetail
+            {
+                Summary = new Proto.ComplianceCheckSummary
+                {
+                    Name = "Canary " + Guid.NewGuid().ToString("N")[..8],
+                    TypeId = Core.Compliance.BuiltInComplianceTypes.ReachableId,
+                    Enabled = true,
+                    Devices = new Proto.ComplianceDevices { DeviceIds = { c.Inside.ToString(), id.ToString() } },
+                },
+                SettingsJson = "{}",
+            }),
+        ["/oadm.v1.ComplianceService/CheckNow"] = async (c, id) =>
+            await new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).CheckNowAsync(new Proto.ComplianceCheckNowRequest { DeviceIds = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.ComplianceService/ListChoices"] = async (c, id) =>
+            await new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).ListChoicesAsync(new Proto.ComplianceChoicesRequest
+            {
+                TypeId = Core.Compliance.BuiltInComplianceTypes.FirmwareId, FieldKey = "minimum", DeviceId = id.ToString(),
+            }),
         ["/oadm.v1.DeviceService/GetPassphrasePolicies"] = async (c, id) =>
             await new Proto.DeviceService.DeviceServiceClient(c.Invoker).GetPassphrasePoliciesAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
         ["/oadm.v1.PluginService/Invoke"] = CanaryPlugin.InvokeAsync,
@@ -144,6 +175,88 @@ public sealed class CanaryTests
             Assert.Contains(c.Inside.ToString(), text.ToString(), StringComparison.Ordinal);
             return text.ToString();
         },
+        // shared-core: event rules (the administrator's rule on every device is never shown)
+        ["/oadm.v1.EventService/GetCatalog"] = async c => (await Events(c).GetCatalogAsync(new Proto.Empty())).ToString(),
+        ["/oadm.v1.EventService/ListRules"] = async c =>
+        {
+            var admin = await AdminRuleAsync(c);
+            var text = (await Events(c).ListRulesAsync(new Proto.Empty())).ToString();
+            Assert.DoesNotContain(admin, text, StringComparison.Ordinal);
+            return text;
+        },
+        ["/oadm.v1.EventService/WatchRules"] = async c =>
+        {
+            var admin = await AdminRuleAsync(c);
+            using var call = Events(c).WatchRules(new Proto.Empty(), deadline: DateTime.UtcNow.AddSeconds(30));
+            Assert.True(await call.ResponseStream.MoveNext(CancellationToken.None));
+            Assert.DoesNotContain(admin, call.ResponseStream.Current.ToString(), StringComparison.Ordinal);
+            return call.ResponseStream.Current.ToString();
+        },
+        ["/oadm.v1.EventService/ListLog"] = async c =>
+        {
+            await LogBothAsync(c);
+            var text = (await Events(c).ListLogAsync(new Proto.ListEventLogRequest())).ToString();
+            Assert.Contains(c.Inside.ToString(), text, StringComparison.Ordinal);
+            return text;
+        },
+        ["/oadm.v1.EventService/WatchLog"] = async c =>
+        {
+            using var call = Events(c).WatchLog(new Proto.Empty(), deadline: DateTime.UtcNow.AddSeconds(30));
+            var text = new System.Text.StringBuilder();
+            var reading = Task.Run(async () =>
+            {
+                while (await call.ResponseStream.MoveNext(CancellationToken.None))
+                {
+                    text.Append(call.ResponseStream.Current);
+                    if (call.ResponseStream.Current.Entries.Any(e => e.DeviceId == c.Inside.ToString()))
+                    {
+                        return;
+                    }
+                }
+            });
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(async () =>
+            {
+                await LogBothAsync(c); // the outside line first, then the inside one, until the stream has one
+                return reading.IsCompleted;
+            }, "the inside line arrived");
+            await reading;
+            return text.ToString();
+        },
+
+        // shared-core: tags and compliance
+        ["/oadm.v1.TagService/List"] = async c => (await new Proto.TagService.TagServiceClient(c.Invoker).ListAsync(new Proto.Empty())).ToString(),
+        ["/oadm.v1.TagService/Watch"] = async c =>
+        {
+            using var call = new Proto.TagService.TagServiceClient(c.Invoker).Watch(new Proto.Empty(), deadline: DateTime.UtcNow.AddSeconds(30));
+            Assert.True(await call.ResponseStream.MoveNext(CancellationToken.None));
+            return call.ResponseStream.Current.ToString();
+        },
+        ["/oadm.v1.ComplianceService/ListChecks"] = async c => (await ComplianceOnAsync(c).ListChecksAsync(new Proto.Empty())).ToString(),
+        ["/oadm.v1.ComplianceService/WatchChecks"] = async c =>
+        {
+            using var call = ComplianceOnAsync(c).WatchChecks(new Proto.Empty(), deadline: DateTime.UtcNow.AddSeconds(30));
+            Assert.True(await call.ResponseStream.MoveNext(CancellationToken.None));
+            return call.ResponseStream.Current.ToString();
+        },
+        ["/oadm.v1.ComplianceService/WatchResults"] = async c =>
+        {
+            // The administrator's default checks have results on both devices; the group user gets none of them.
+            var admin = new Proto.ComplianceService.ComplianceServiceClient(c.Host.Invoker);
+            await admin.SetEnabledAsync(new Proto.SetComplianceEnabledRequest { Enabled = true });
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(async () => (await admin.ListChecksAsync(new Proto.Empty())).Checks.Where(k => k.BuiltIn).All(k => k.Passed + k.Failed + k.NotChecked >= 2), "results on both devices");
+            using var call = ComplianceOnAsync(c).WatchResults(new Proto.Empty(), deadline: DateTime.UtcNow.AddSeconds(30));
+            var text = new System.Text.StringBuilder();
+            while (await call.ResponseStream.MoveNext(CancellationToken.None))
+            {
+                text.Append(call.ResponseStream.Current);
+                if (call.ResponseStream.Current.SnapshotEnd)
+                {
+                    break;
+                }
+            }
+
+            return text.ToString();
+        },
         ["/oadm.v1.SiteService/ListSites"] = async c => (await new Proto.SiteService.SiteServiceClient(c.Invoker).ListSitesAsync(new Proto.Empty())).ToString(),
         ["/oadm.v1.SiteService/WatchSites"] = async c =>
         {
@@ -193,32 +306,6 @@ public sealed class CanaryTests
     /// <summary>Methods that take device ids or deliver device data and are not converted yet: method → package.</summary>
     internal static readonly Dictionary<string, string> NotConverted = new(StringComparer.Ordinal)
     {
-        ["/oadm.v1.TagService/List"] = "shared-core",
-        ["/oadm.v1.TagService/Watch"] = "shared-core",
-        ["/oadm.v1.TagService/Create"] = "shared-core",
-        ["/oadm.v1.TagService/SetDeviceTags"] = "shared-core",
-        ["/oadm.v1.ComplianceService/GetCatalog"] = "shared-core",
-        ["/oadm.v1.ComplianceService/ListChecks"] = "shared-core",
-        ["/oadm.v1.ComplianceService/WatchChecks"] = "shared-core",
-        ["/oadm.v1.ComplianceService/GetCheck"] = "shared-core",
-        ["/oadm.v1.ComplianceService/WatchResults"] = "shared-core",
-        ["/oadm.v1.ComplianceService/CheckNow"] = "shared-core",
-        ["/oadm.v1.ComplianceService/SaveCheck"] = "shared-core",
-        ["/oadm.v1.ComplianceService/DeleteCheck"] = "shared-core",
-        ["/oadm.v1.ComplianceService/SetCheckEnabled"] = "shared-core",
-        ["/oadm.v1.ComplianceService/ListChoices"] = "shared-core",
-        ["/oadm.v1.EventService/GetCatalog"] = "shared-core",
-        ["/oadm.v1.EventService/ListRules"] = "shared-core",
-        ["/oadm.v1.EventService/WatchRules"] = "shared-core",
-        ["/oadm.v1.EventService/GetRule"] = "shared-core",
-        ["/oadm.v1.EventService/ListLog"] = "shared-core",
-        ["/oadm.v1.EventService/WatchLog"] = "shared-core",
-        ["/oadm.v1.EventService/SaveRule"] = "shared-core",
-        ["/oadm.v1.EventService/DeleteRule"] = "shared-core",
-        ["/oadm.v1.EventService/SetRuleEnabled"] = "shared-core",
-        ["/oadm.v1.EventService/DuplicateRule"] = "shared-core",
-        ["/oadm.v1.EventService/ListActionChoices"] = "shared-core",
-        ["/oadm.v1.EventService/TestAction"] = "shared-core",
     };
 
     /// <summary>
@@ -229,6 +316,23 @@ public sealed class CanaryTests
     /// </summary>
     private static readonly Dictionary<string, Func<Canary, Task>> OwnObjectCases = new(StringComparer.Ordinal)
     {
+        // shared-core: the administrator's rule (all devices) is hidden from the group user like an unknown one
+        ["/oadm.v1.EventService/GetRule"] = async c =>
+            await HiddenAsync(async () => await Events(c).GetRuleAsync(new Proto.RuleId { Id = await AdminRuleAsync(c) })),
+        ["/oadm.v1.EventService/DeleteRule"] = async c =>
+            await HiddenAsync(async () => await Events(c).DeleteRuleAsync(new Proto.RuleId { Id = await AdminRuleAsync(c) })),
+        ["/oadm.v1.EventService/SetRuleEnabled"] = async c =>
+            await HiddenAsync(async () => await Events(c).SetRuleEnabledAsync(new Proto.SetRuleEnabledRequest { Id = await AdminRuleAsync(c) })),
+        ["/oadm.v1.EventService/DuplicateRule"] = async c =>
+            await HiddenAsync(async () => await Events(c).DuplicateRuleAsync(new Proto.RuleId { Id = await AdminRuleAsync(c) })),
+
+        // shared-core: a compliance check of all devices (the default Reachable) is hidden from the group user like an unknown one
+        ["/oadm.v1.ComplianceService/GetCheck"] = async c =>
+            await HiddenAsync(() => new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).GetCheckAsync(new Proto.ComplianceCheckId { Id = HiddenCheck }).ResponseAsync),
+        ["/oadm.v1.ComplianceService/DeleteCheck"] = async c =>
+            await HiddenAsync(() => new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).DeleteCheckAsync(new Proto.ComplianceCheckId { Id = HiddenCheck }).ResponseAsync),
+        ["/oadm.v1.ComplianceService/SetCheckEnabled"] = async c =>
+            await HiddenAsync(() => new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).SetCheckEnabledAsync(new Proto.SetComplianceCheckEnabledRequest { Id = HiddenCheck }).ResponseAsync),
         ["/oadm.v1.DiscoveryService/StartZeroConf"] = async c =>
             await CannotAddAsync(() => c.Discovery.StartZeroConfAsync(new Proto.Empty()).ResponseAsync),
         ["/oadm.v1.DiscoveryService/StartRangeScan"] = async c =>
@@ -287,6 +391,85 @@ public sealed class CanaryTests
         },
     };
 
+    private static readonly string HiddenCheck = Core.Compliance.BuiltInComplianceTypes.ReachableCheckId.ToString();
+
+    /// <summary>An object of another owner: NOT_FOUND like an unknown one, and it is still there.</summary>
+    private static async Task HiddenAsync(Func<Task> call)
+    {
+        var refused = await Assert.ThrowsAsync<RpcException>(call);
+        Assert.Equal(StatusCode.NotFound, refused.StatusCode);
+    }
+
+    private static Proto.ComplianceService.ComplianceServiceClient ComplianceOnAsync(Canary c) => new(c.Invoker);
+
+    private static Proto.EventService.EventServiceClient Events(Canary c) => new(c.Invoker);
+
+    /// <summary>A rule with the quiet action (registered once) on <paramref name="devices"/>.</summary>
+    private static Sdk.Events.RuleDefinition QuietRule(Canary c, Sdk.Events.DeviceSelector devices)
+    {
+        QuietAction.Register(c.Host);
+        return new Sdk.Events.RuleDefinition
+        {
+            Name = "Canary " + Guid.NewGuid().ToString("N")[..8],
+            Enabled = true,
+            Conditions = [new Sdk.Events.RuleCondition { Kind = Sdk.Events.RuleConditionKind.Event, EventTypeId = Core.Events.BuiltInEvents.Unreachable, Devices = devices }],
+            Actions = [new Sdk.Events.RuleAction { ActionId = QuietAction.ActionId }],
+        };
+    }
+
+    /// <summary>The administrator's rule on every device (created once): its id.</summary>
+    private static async Task<string> AdminRuleAsync(Canary c)
+    {
+        var events = new Proto.EventService.EventServiceClient(c.Host.Invoker);
+        if ((await events.ListRulesAsync(new Proto.Empty())).Rules.FirstOrDefault(r => r.Name == "Canary admin") is { } existing)
+        {
+            return existing.Id;
+        }
+
+        var rule = QuietRule(c, new Sdk.Events.DeviceSelector { Mode = Sdk.Events.DeviceSelectorMode.All });
+        rule.Name = "Canary admin";
+        return (await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = rule.ToJson() })).Summary.Id;
+    }
+
+    /// <summary>An event line of the device outside the view and one of the inside device, stored.</summary>
+    private static async Task LogBothAsync(Canary c)
+    {
+        var log = c.Host.Get<Core.Events.EventLog>();
+        log.Write(Core.Events.EventLogKind.Event, Core.Events.EventLogResult.Info, "Canary event", c.Outside, "10.9.0.2 (" + OutsideSerial + ")");
+        log.Write(Core.Events.EventLogKind.Event, Core.Events.EventLogResult.Info, "Canary event", c.Inside, "10.9.0.1");
+        await log.FlushAsync(CancellationToken.None);
+    }
+
+    /// <summary>An action without devices that does nothing (event rules need one).</summary>
+    internal sealed class QuietAction : Sdk.Actions.IActionPlugin
+    {
+        public const string ActionId = "test.canary-quiet";
+
+        public string Id => ActionId;
+
+        public string DisplayName => "Quiet";
+
+        public string? IconKey => null;
+
+        public bool NeedsDevice => false;
+
+        public IReadOnlyList<Sdk.Actions.ActionField> Fields => [];
+
+        public Task ExecuteAsync(Sdk.Actions.IActionContext ctx, Sdk.Actions.ActionInvocation invocation, CancellationToken ct) => Task.CompletedTask;
+
+        public static void Register(TestServerHost host)
+        {
+            var registry = host.Get<Core.Plugins.PluginRegistry>();
+            lock (registry)
+            {
+                if (host.Get<Core.Events.EventCatalog>().FindAction(ActionId) is null)
+                {
+                    registry.RegisterActionPlugin(new QuietAction(), new Core.Plugins.PluginOrigin("test.canary-quiet", "1.0", null) { DisplayName = "Quiet" });
+                }
+            }
+        }
+    }
+
     private static async Task CannotAddAsync(Func<Task> call)
     {
         var refused = await Assert.ThrowsAsync<RpcException>(call);
@@ -297,6 +480,9 @@ public sealed class CanaryTests
     internal static readonly Dictionary<string, string> WithoutDevices = new(StringComparer.Ordinal)
     {
         ["/oadm.v1.AuthService/Status"] = "open: server name and version",
+        ["/oadm.v1.TagService/Create"] = "a tag definition: a name and a color, no device",
+        ["/oadm.v1.ComplianceService/GetCatalog"] = "the kinds of checks and their settings, no device",
+        ["/oadm.v1.EventService/ListActionChoices"] = "the choices of an action setting (saved commands); the plugin lists only devices of the caller's view",
         ["/oadm.v1.AuthService/Login"] = "open: the session",
         ["/oadm.v1.AuthService/CreateFirstAdmin"] = "open: only while no user exists",
         ["/oadm.v1.AuthService/Logout"] = "the own session",
@@ -312,6 +498,12 @@ public sealed class CanaryTests
         ["/oadm.v1.LicenseService/GetLicense"] = "the license (its device count is an accepted existence leak, docs/spec/device-scope.md)",
     };
 
+    /// <summary>Converted plugins that need no PluginCanary, with the reason and the tests that cover them.</summary>
+    internal static readonly Dictionary<string, string> PluginsConverted = new(StringComparer.Ordinal)
+    {
+        ["oadm.notifications"] = "no methods and no devices; its addresses: Oadm.Plugins.Notifications.Tests.DestinationTests, Oadm.Core.Tests.Events.RuleOwnerTests",
+    };
+
     /// <summary>
     /// The bundled plugins not converted yet and the package that moves their methods to the call context. A converted
     /// plugin leaves the list: its plugin.json says minSdkVersion 0.4.0 or later and its test project runs a
@@ -319,9 +511,6 @@ public sealed class CanaryTests
     /// </summary>
     internal static readonly Dictionary<string, string> PluginsNotConverted = new(StringComparer.Ordinal)
     {
-        ["oadm.pki"] = "plugins-certs",
-        ["oadm.est"] = "plugins-certs",
-        ["oadm.notifications"] = "shared-core",
         ["oadm.device-triggers"] = "plugins-pages",
         ["oadm.dashboards"] = "plugins-pages",
         ["oadm.live-view"] = "plugins-pages",
@@ -372,9 +561,16 @@ public sealed class CanaryTests
         var ids = manifests.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var minSdk = manifests.ToDictionary(m => m.Id, m => m.MinSdk, StringComparer.Ordinal);
         Assert.All(PluginsNotConverted.Keys, id => Assert.Contains(id, ids));
+        Assert.Empty(PluginsNotConverted.Keys.Intersect(PluginsConverted.Keys));
+        Assert.All(PluginsConverted.Keys, id => Assert.Contains(id, ids));
         foreach (var (id, folder) in manifests.Where(m => !PluginsNotConverted.ContainsKey(m.Id)).Select(m => (m.Id, m.Folder)))
         {
             Assert.True(Core.Plugins.PluginLoader.IsAtLeast(minSdk[id], Sdk.Plugins.SdkInfo.CallContextVersion), $"{id} is converted but its plugin.json says minSdkVersion {minSdk[id]}.");
+            if (PluginsConverted.ContainsKey(id))
+            {
+                continue; // converted without methods to canary (reason in PluginsConverted)
+            }
+
             var tests = TestRepository.Path("tests", Path.GetFileName(folder) + ".Tests");
             Assert.True(
                 Directory.Exists(tests) && Directory.EnumerateFiles(tests, "*.cs", SearchOption.AllDirectories).Any(f => File.ReadAllText(f).Contains("new PluginCanary(", StringComparison.Ordinal)),

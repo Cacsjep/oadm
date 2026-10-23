@@ -4,7 +4,9 @@ using System.Threading.Channels;
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 
 using Proto = Oadm.Contracts.V1;
@@ -13,16 +15,28 @@ namespace Oadm.Server.Devices;
 
 /// <summary>
 /// gRPC TagService: tag definitions (name + color) and tagging many devices in one call (<see cref="DeviceTagStore"/>).
-/// Roles (<c>AccessPolicy</c>): Update and Delete are Admin only, the rest Operator. Every change is audited.
+/// Roles (<c>AccessPolicy</c>): Update and Delete need tags.manage and all devices, the rest tags.assign. Every change is
+/// audited. Device groups (docs/spec/device-scope.md): the counts are those of the caller's view, the devices of
+/// SetDeviceTags come from the view (an unknown or outside id refuses the call), the store refuses tags a group uses for
+/// users with a group, and every move of a device into or out of a group is audited (<see cref="DeviceGroupMembership"/>).
 /// </summary>
-public sealed class TagGrpcService(DeviceTagStore tags, AuditLog audit, IHostApplicationLifetime lifetime) : Proto.TagService.TagServiceBase
+public sealed class TagGrpcService(
+    DeviceTagStore tags,
+    DeviceViewFactory views,
+    DeviceGroupStore groups,
+    AuditLog audit,
+    IHostApplicationLifetime lifetime) : Proto.TagService.TagServiceBase
 {
-    public override async Task<Proto.TagList> List(Proto.Empty request, ServerCallContext context) =>
-        ToProto(await tags.ListAsync(context.CancellationToken).ConfigureAwait(false));
+    public override async Task<Proto.TagList> List(Proto.Empty request, ServerCallContext context)
+    {
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        return await ListAsync(view, context.CancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>The list now and after every change of the definitions; a burst of changes sends the newest list once.</summary>
     public override async Task Watch(Proto.Empty request, IServerStreamWriter<Proto.TagList> responseStream, ServerCallContext context)
     {
+        var view = await views.ForAsync(context).ConfigureAwait(false);
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
         var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -30,11 +44,11 @@ public sealed class TagGrpcService(DeviceTagStore tags, AuditLog audit, IHostApp
         tags.DefinitionsChanged += OnChanged;
         try
         {
-            await responseStream.WriteAsync(ToProto(await tags.ListAsync(ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
+            await responseStream.WriteAsync(await ListAsync(view, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
             while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
                 signal.Reader.TryRead(out _);
-                await responseStream.WriteAsync(ToProto(await tags.ListAsync(ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
+                await responseStream.WriteAsync(await ListAsync(view, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -68,21 +82,33 @@ public sealed class TagGrpcService(DeviceTagStore tags, AuditLog audit, IHostApp
             await audit.WriteAsync(AuditActions.TagRecolored, result.Tag.Name, $"{ColorText(result.OldColor)} to {ColorText(result.Tag.Color)}", ct).ConfigureAwait(false);
         }
 
-        return ToProto(new TagSummary(result.Tag.Id, result.Tag.Name, result.Tag.Color, 0, Defined: true));
+        // A rename keeps the tag in its groups (groups name tags by id): nobody moves.
+        await groups.LoadAsync(ct).ConfigureAwait(false);
+        return ToProto(new TagSummary(result.Tag.Id, result.Tag.Name, result.Tag.Color, 0, Defined: true), groups.GroupsUsingTag(result.Tag.Id));
     }
 
+    /// <summary>
+    /// Deletes the tag (users with all devices). The client asks first when <see cref="Proto.DeviceTag.GroupNames"/> names
+    /// groups ("Used by device group Building B"); their devices of this tag leave them, audited per group.
+    /// </summary>
     public override async Task<Proto.DeleteTagReply> Delete(Proto.TagName request, ServerCallContext context)
     {
-        var (name, devicesChanged) = await Guard(() => tags.DeleteAsync(request.Name, context.CancellationToken)).ConfigureAwait(false);
-        await audit.WriteAsync(AuditActions.TagDeleted, name, "removed from " + DevicesText(devicesChanged), context.CancellationToken).ConfigureAwait(false);
-        return new Proto.DeleteTagReply { DevicesChanged = devicesChanged };
+        var ct = context.CancellationToken;
+        var before = await DeviceGroupMembership.CaptureAsync(views, ct).ConfigureAwait(false);
+        var result = await Guard(() => tags.DeleteAsync(request.Name, ct)).ConfigureAwait(false);
+        await audit.WriteAsync(AuditActions.TagDeleted, result.Name, "removed from " + DevicesText(result.DevicesChanged), ct).ConfigureAwait(false);
+        await AuditMembershipAsync(context, before, result.Changes, $"tag {result.Name} deleted").ConfigureAwait(false);
+        return new Proto.DeleteTagReply { DevicesChanged = result.DevicesChanged };
     }
 
     public override async Task<Proto.SetDeviceTagsReply> SetDeviceTags(Proto.SetDeviceTagsRequest request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
         var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
-        var result = await Guard(() => tags.SetDeviceTagsAsync(ids, [.. request.Add], [.. request.Remove], ct)).ConfigureAwait(false);
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var devices = await view.GetAsync(ids, ct).ConfigureAwait(false); // unknown or outside the view: NOT_FOUND, nothing changed
+        var before = await DeviceGroupMembership.CaptureAsync(views, ct).ConfigureAwait(false);
+        var result = await Guard(() => tags.SetDeviceTagsAsync(devices, [.. request.Add], [.. request.Remove], ct)).ConfigureAwait(false);
         var reply = new Proto.SetDeviceTagsReply { DevicesChanged = result.DevicesChanged };
         foreach (var created in result.Created)
         {
@@ -96,26 +122,49 @@ public sealed class TagGrpcService(DeviceTagStore tags, AuditLog audit, IHostApp
             var removed = TagNames.Canonical(request.Remove);
             string detail = $"Tagged {DevicesText(result.DevicesChanged)}: {TagNames.ChangeText(added, removed)}";
             await audit.WriteAsync(AuditActions.DevicesTagged, TagNames.ChangeText(added, removed), detail, ct).ConfigureAwait(false);
+            await AuditMembershipAsync(context, before, result.Changes, TagNames.ChangeText(added, removed)).ConfigureAwait(false);
         }
 
         return reply;
     }
 
-    internal static Proto.TagList ToProto(IEnumerable<TagSummary> summaries)
+    /// <summary>"Entered device group" / "Left device group" for the devices a tag change moved (one entry per group).</summary>
+    private async Task AuditMembershipAsync(ServerCallContext context, DeviceGroupFilters before,
+        IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> changes, string reason)
     {
+        if (changes.Count == 0)
+        {
+            return;
+        }
+
+        var caller = AuthInterceptor.CallerOf(context);
+        var moved = await DeviceGroupMembership.ChangesAsync(views, [.. changes], context.CancellationToken, before).ConfigureAwait(false);
+        await DeviceGroupMembership.WriteAsync(audit, caller.UserName, caller.ClientAddress, moved, reason, context.CancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The tags with the counts of the view; users with all devices also get the groups that use each tag.</summary>
+    private async Task<Proto.TagList> ListAsync(DeviceView view, CancellationToken ct)
+    {
+        var summaries = await tags.ListAsync(view, ct).ConfigureAwait(false);
+        await groups.LoadAsync(ct).ConfigureAwait(false);
         var list = new Proto.TagList();
-        list.Tags.AddRange(summaries.Select(ToProto));
+        list.Tags.AddRange(summaries.Select(s => ToProto(s, view.HasAllDevices && s.Id is { } id ? groups.GroupsUsingTag(id) : [])));
         return list;
     }
 
-    internal static Proto.DeviceTag ToProto(TagSummary tag) => new()
+    internal static Proto.DeviceTag ToProto(TagSummary tag, IReadOnlyList<string>? groupNames = null)
     {
-        Id = tag.Id?.ToString() ?? string.Empty,
-        Name = tag.Name,
-        Color = (Proto.TagColor)(int)tag.Color,
-        DeviceCount = tag.DeviceCount,
-        Defined = tag.Defined,
-    };
+        var proto = new Proto.DeviceTag
+        {
+            Id = tag.Id?.ToString() ?? string.Empty,
+            Name = tag.Name,
+            Color = (Proto.TagColor)(int)tag.Color,
+            DeviceCount = tag.DeviceCount,
+            Defined = tag.Defined,
+        };
+        proto.GroupNames.AddRange(groupNames ?? []);
+        return proto;
+    }
 
     internal static TagColor ToCore(Proto.TagColor color) =>
         Enum.IsDefined((TagColor)(int)color) ? (TagColor)(int)color : TagColor.None;
@@ -139,6 +188,10 @@ public sealed class TagGrpcService(DeviceTagStore tags, AuditLog audit, IHostApp
         catch (TagConflictException ex)
         {
             throw new RpcException(new Status(StatusCode.AlreadyExists, ex.Message));
+        }
+        catch (TagInUseByGroupException ex)
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, ex.Message));
         }
         catch (TagLimitException ex)
         {
