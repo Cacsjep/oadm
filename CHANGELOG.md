@@ -6,107 +6,53 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
-## [4.1.0-rc.4] - 2026-10-23
+## [4.1.0] - 2026-10-23
 
 ### Added
 
-- EST server: **View certificate** in the **Enrollments** list (also a double click on a row) shows the certificate an
-  enrollment issued: validity, issued to and by, key, serial number, fingerprint, uses and names. Enrollments from this
-  version on keep their certificate as long as they are listed.
-- **Certificate enrollment** stays open while Set up or Remove runs: the step it is on, then the result with the
-  camera's message, and the profiles are read again.
-- SDK: `ITaskDialogContext.CanRunTasks` and `RunTaskAsync`: a task dialog can start its task and follow it while it
-  stays open. `IPluginRecords.GetAsync` reads one record.
-
-### Changed
-
-- Plugins: the page no longer shows the server ID; it is in Settings > **License**.
-
-### Fixed
-
-- Set up certificate enrollment after **Remove** failed after 2 minutes with "got no certificate": the camera keeps the
-  removed profile's certificate in use and never stores a new one under the same name. The profile now takes a second
-  name (`oadm2_...`), the camera switches to the new certificate and the older one is deleted. The same applies to a
-  profile whose settings changed (it used to keep its old certificate).
-- Set up certificate enrollment says so when the camera reports Enrolled but did not store the new certificate.
-
-## [4.1.0-rc.3] - 2026-10-22
-
-### Added
-
+- **OADM PRO**: Settings has a **License** card with the server ID, the license state, **Import license** and **Remove
+  license**, and links to start a 30-day trial or activate a license on oadm.app. OADM itself works the same without a
+  license.
+- Plugins: OADM PRO plugins are listed with an **OADM PRO** chip; without an active license they stay off and
+  **Activate** opens Settings > License. They stop when the license ends and run again with a new one.
+- **EST server** (OADM PRO, off by default): cameras with AXIS OS 12.10 or later get their certificates for HTTPS,
+  IEEE 802.1X, MQTT and RTSPS from the OADM CA and renew them by themselves. Only cameras OADM manages get certificates;
+  they sign in with their Axis device ID, and a renewal only with a certificate the OADM CA issued for that camera.
 - EST server at sites: cameras at a site get and renew their certificates through their site node. The node app asks to
   allow TCP 9454 when the first camera there is set up; the EST server page shows the sites whose node has not allowed it
   yet.
-- EST server: the **Enrollments** list has a search and **Delete all**.
-- EST server: **Listen on** chooses the network interface the cameras reach the server on, like the NTP and DHCP
-  servers; the page groups its settings under **General** and **Profiles**.
-- Plugin SDK 0.3.0 (OADM 4.1): OADM PRO, plugin services, records and the listener below. Plugins built with the 4.1
-  packages need OADM 4.1 or later.
-- SDK: `ICorePluginContext.Records` (`IPluginRecords`): a plugin's records in their own database table, one row per
-  record, for data that grows with the devices. The EST server keeps its certificates there and writes only the
-  changed ones (before: one value rewritten whole); certificates of 4.1.0-rc.2 move on the first start.
-- SDK: `IPluginNetwork.ListenTcpAsync` with the addresses of one interface; `InterfaceOptions.All`, `AllId`, `AllLabel`, `IsAll`.
-- EST server: **Not renewed** lists the certificates a camera did not renew in time (cameras renew halfway through the
-  validity), with the new event **Certificate not renewed** for the event rules.
-
-### Changed
-
-- Settings: the server ID shows only in the **License** card, no longer also in the Server card.
-- EST server security: a renewal signs in only with a certificate the OADM CA issued itself that names one camera;
-  EST and PKI never put another camera's `axis-<serial>` name, reported by a camera as its host name, into a certificate.
-- Set up certificate enrollment changes only the profiles that differ, waits for a new certificate for each written
-  profile, and keeps the IEEE 802.1X profile unless it writes OADM's own.
-- Security: OADM pins a renewed HTTPS certificate only when it names exactly one camera, this one; PKI takes only IP
-  addresses from what a device reports; EST certificates name the stored address, never the address a connection came
-  from.
-- Set up certificate enrollment reads IEEE 802.1X fresh from the camera (unknown counts as on), never removes a profile
-  that serves it, and counts the camera's other profiles against its limit of two before changing anything.
-- EST server: certificates revoked in 4.1.0-rc.2 are renewed again after the update (Revoke is gone); remove the
-  camera's profile in **Certificate enrollment** to stop it.
-- EST server: the list of every certificate and **Revoke** are gone. The certificates are on the cameras (PKI page);
-  to stop renewals remove the profile in the **Certificate enrollment** dialog. OADM keeps only the newest certificate of each camera and
-  profile and the one before it.
-- EST server: one menu entry **Certificate enrollment** (Security) instead of two. Its dialog lists the enrollment
-  profiles of the chosen camera (also those of another EST server) with their status; **Remove** removes the selected
-  profile from every selected camera, **Set up** sets them up.
-- Set up certificate enrollment: when a camera gets no certificate within 2 minutes, the task says whether the camera
-  could not reach the EST server or reached it and got no certificate.
-
-## [4.1.0-rc.2] - 2026-10-22
-
-### Added
-
-- **EST server** (OADM PRO, off by default): cameras with AXIS OS 12.10 or later get their certificates for HTTPS,
-  IEEE 802.1X, MQTT and RTSPS from the OADM CA and renew them by themselves. Only cameras OADM manages get certificates;
-  they sign in with their Axis device ID. Page **EST server** (port, profiles, enrollments, certificates with Revoke),
-  tasks **Set up certificate enrollment** and **Remove certificate enrollment** (Security), events **Certificate
-  enrolled** and **Enrollment refused**. Cameras with IEEE 802.1X on keep their network access certificate unless you
-  choose to replace it in the set-up dialog. Not for devices at a site yet.
-- Plugins: OADM PRO plugins are listed with an **OADM PRO** chip; without an active license they stay off and
-  **Activate** opens Settings > License. They stop when the license ends and run again with a new one.
+- EST server page: **Listen on** chooses the network interface the cameras reach the server on, settings grouped under
+  **General** and **Profiles**; **Enrollments** with a search, **Delete all** and **View certificate** (also a double
+  click on a row: validity, issued to and by, key, serial number, fingerprint, uses and names); **Not renewed** lists the
+  certificates a camera did not renew in time (cameras renew halfway through the validity).
+- **Certificate enrollment** (Security): lists the enrollment profiles of the chosen camera (also those of another EST
+  server) with their status; **Set up** sets them up, **Remove** removes the selected profile from every selected camera.
+  The dialog stays open while it runs and shows the step it is on, then the result with the camera's message. Cameras
+  with IEEE 802.1X on keep their network access certificate unless you choose to replace it.
+- Events **Certificate enrolled**, **Enrollment refused** and **Certificate not renewed** for the event rules.
+- Settings: **Create support report** (card **Support**, administrators) saves one ZIP with the server's and this
+  computer's log files and a summary of the server, for a support request. No passwords are included.
+- Plugin SDK 0.3.0 (OADM 4.1): OADM PRO, plugin services, `ICorePluginContext.Records` (`IPluginRecords`, also
+  `GetAsync`) for data that grows with the devices, `IPluginNetwork.ListenTcpAsync` with the addresses of one interface
+  (`InterfaceOptions.All`, `AllId`, `AllLabel`, `IsAll`), `ITaskDialogContext.CanRunTasks` and `RunTaskAsync` (a task
+  dialog starts its task and follows it while it stays open). Plugins built with the 4.1 packages need OADM 4.1 or later.
 
 ### Changed
 
 - A device's new HTTPS certificate from the OADM CA (renewed by the camera or by PKI) no longer shows **Certificate
   changed**: OADM accepts a certificate the OADM CA issued directly for the same device. Any other new certificate still
   does.
+- Security: OADM pins a renewed HTTPS certificate only when it names exactly one camera, this one; PKI takes only IP
+  addresses from what a device reports and never puts another camera's `axis-<serial>` name into a certificate.
+- The server ID shows only in Settings > **License**, no longer in the Server card or on the Plugins page.
 - Turning off **Allow Basic login over HTTP** now also ends event streams and live videos that logged in with Basic at
   once; turning it on or off no longer stops running tasks.
+- Updated libraries: MailKit 4.18.1, BouncyCastle 2.7.0.
 
 ### Fixed
 
 - The OADM Site Node tries to reach the server every 10 s at most (was 60 s) and logs a repeated failure only once.
 - Configure devices: a host name setting of spaces only or with a tab is refused.
-- Support report: the help says that the log files name devices by address and serial number.
-
-## [4.1.0-rc.1] - 2026-10-22
-
-### Added
-
-- Settings: a **License** card for OADM PRO: the server ID, the license state, **Import license** and **Remove license**,
-  and links to start a 30-day trial or activate a license on oadm.app. OADM itself works the same without a license.
-- Settings: **Create support report** (card **Support**, administrators) saves one ZIP with the server's and this
-  computer's log files and a summary of the server, for a support request. No passwords are included.
 
 ## [4.0.2] - 2026-10-22
 
