@@ -384,8 +384,7 @@ jobs:
         timeout-minutes: 8
         run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/OADM-*.msi | Where-Object Name -notlike 'OADM-SiteNode-*' | Select-Object -First 1).FullName -Mode ClientOnly
 
-  # The OADM Site Node MSI on a runner of its own: a third install on the same runner failed or lost the runner
-  # (4.1.0-rc.3, rc.4), and a re-run repeats only this job.
+  # The OADM Site Node MSI on a runner of its own: a re-run repeats only this job.
   smoke-windows-node:
     name: smoke windows site node
     needs: installers

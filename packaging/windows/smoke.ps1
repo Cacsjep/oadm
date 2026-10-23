@@ -58,17 +58,11 @@ function Show-MsiFailure([string] $log) {
     else { Get-Content $log -Tail 80 | Write-Host }
 }
 
-# A removal right after the service stopped sometimes fails at once with 1603 on the runner (4.1.0-rc.3): the cause is
-# printed and the removal tried once more after 15 s.
+# Restart Manager off: a silent removal would otherwise close every program that holds one of its files, also the
+# runner's own terminal (the runner is lost, 4.1.0-rc.4) or fail at once with 1603 when it cannot (rc.3). A file in use
+# then fails the step with 3010 instead.
 function Uninstall([string] $log) {
-    $p = Invoke-Limited msiexec.exe "/x `"$Msi`" /qn /norestart /l*v $log" $log
-    if ($p.ExitCode -eq 1603 -or $p.ExitCode -eq 1618) {
-        Show-MsiFailure $log
-        Say "uninstall failed with $($p.ExitCode), once more in 15 s"
-        Start-Sleep 15
-        $p = Invoke-Limited msiexec.exe "/x `"$Msi`" /qn /norestart /l*v $log.retry" "$log.retry"
-        $log = "$log.retry"
-    }
+    $p = Invoke-Limited msiexec.exe "/x `"$Msi`" MSIRESTARTMANAGERCONTROL=Disable /qn /norestart /l*v $log" $log
     if ($p.ExitCode -ne 0) { Show-MsiFailure $log; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
 }
 
@@ -83,11 +77,21 @@ Show-Machine
 if ($Mode -eq 'SiteNode') {
     $node = 'C:\Program Files\OADM Site Node\oadm-site-node.exe'
     $data = 'C:\ProgramData\OADM Site Node'
-    # The command line of the node: its output and exit code (the local channel answers within seconds).
+    # The command line of the node: its output and exit code (the local channel answers within seconds). A hidden process
+    # of its own, never in the runner's terminal: the terminal would keep a handle to the exe until the removal.
     function Invoke-Node([string[]] $arguments) {
         Say "oadm-site-node $($arguments -join ' ')"
-        $out = & $node @arguments 2>&1 | Out-String
-        $code = $LASTEXITCODE
+        $info = [System.Diagnostics.ProcessStartInfo]::new($node)
+        foreach ($a in $arguments) { $info.ArgumentList.Add($a) }
+        $info.UseShellExecute = $false
+        $info.CreateNoWindow = $true
+        $info.RedirectStandardOutput = $true
+        $info.RedirectStandardError = $true
+        $proc = [System.Diagnostics.Process]::Start($info)
+        $errTask = $proc.StandardError.ReadToEndAsync()
+        $out = $proc.StandardOutput.ReadToEnd() + $errTask.GetAwaiter().GetResult()
+        if (-not $proc.WaitForExit(120000)) { $proc.Kill($true); throw "oadm-site-node $($arguments -join ' ') did not end within 120 s" }
+        $code = $proc.ExitCode
         Write-Host $out
         if ($code -ne 0) { Get-ChildItem "$data\logs" -Filter *.log -ErrorAction SilentlyContinue | Get-Content -Tail 40 | Write-Host; throw "oadm-site-node $($arguments -join ' ') failed: $code" }
         $out

@@ -38,8 +38,8 @@ builds the installers (the .deb packages for amd64 and arm64); installs, checks 
 only"; checks the .pkg's choices and payload without installing) -> job `smoke-windows` (needs installers, 25 min: the MSI
 installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
 heartbeat with free memory and the busiest processes while a program runs; its own job because the Windows runner
-sometimes stops answering there, so a re-run repeats only this job; a failed removal prints the failed MSI action and is
-tried once more after 15 s) and job `smoke-windows-node` (needs installers, 15 min: the OADM Site Node MSI the same way, on
+sometimes stops answering there, so a re-run repeats only this job; removals run with Restart Manager off, so they
+never close a program of the runner, and a failed one prints the failed MSI action) and job `smoke-windows-node` (needs installers, 15 min: the OADM Site Node MSI the same way, on
 a runner of its own) -> job `release` (needs all; the GitHub
 release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` and `SHA256SUMS.txt`)
 -> job `nuget` (needs release and `nuget-pack`; skipped without the repository variable `NUGET_USER`: `dotnet nuget push`
