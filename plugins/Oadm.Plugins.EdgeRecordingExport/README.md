@@ -43,12 +43,17 @@ Verified on an AXIS P3265-V (AXIS OS 12.11, export schema 1.4) and an AXIS camer
 | `search` | Invoke | `SearchRequest` {deviceId, startUtc?, stopUtc?} | `SearchResult` {deviceId, recordings [{id, diskId, start, stop?, source, type}], estimatedBytes?, format, problem?, truncated, noDisk} | show |
 | `export` | Download | `ExportRequest` {deviceId, recordingId, diskId, startUtc?, stopUtc?, format} | the file (name from the camera, length when sent) | export, audited |
 
+Device groups (SDK 0.4.0): both take the camera from the user's call (`caller.Devices`, `caller.Vapix`). For a user with a
+device group a camera outside the group answers like an unknown one (NOT_FOUND "1 device is no longer available.") and is
+never contacted; users with all devices get "The device was removed from OADM." as before.
+
 ## Tests
 
 `tests/Oadm.Plugins.EdgeRecordingExport.Tests`: parsing of the recorded answers, the server part against a fake camera
 that answers like the P3265-V (paging, cut times, estimates, refusals, export), the page (choice, range errors, search
 summary, download into a folder per camera, skip on the second run, "_2", a failed recording, Stop, the export right),
-a headless screenshot (`edge-recording-export.png`, `-download.png`), Perf (5,000 cameras), and the read-only hardware
+a headless screenshot (`edge-recording-export.png`, `-download.png`), Perf (5,000 cameras), the device-group canary
+(`CanaryTests`), and the read-only hardware
 test through the in-process server and the real gRPC client (searches the last two minutes of every dev camera and
 downloads them). Server: `tests/Oadm.Server.Tests/PluginDownloadTests` (the SDK file stream). Fake mode
 (`FakeOadmApi.EdgeRecording.cs`): a 10 s clip every 40 minutes, continuous hours on the Q6135-LE, no edge storage on

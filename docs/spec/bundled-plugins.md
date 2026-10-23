@@ -344,6 +344,8 @@ and tests: plugin `README.md`.
   estimated from at most 40 recordings per camera.
 - Roles: "show" (Operator and Viewer: search), "Export recordings" (`export`, Operator yes, Viewer no); every downloaded
   recording is audited with the camera and the times.
+- Device groups (SDK 0.4.0): search and export take the camera from the user's call; a camera outside the user's group
+  answers like an unknown one and is never contacted.
 - Tests: `tests/Oadm.Plugins.EdgeRecordingExport.Tests` (+ Perf 5,000 cameras, read-only hardware test that searches and
   downloads the last two minutes of the dev cameras through the in-process server).
 

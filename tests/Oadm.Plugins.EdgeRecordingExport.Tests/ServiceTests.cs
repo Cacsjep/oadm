@@ -11,7 +11,7 @@ public sealed class ServiceTests
 {
     private static async Task<SearchResult> SearchAsync(Rig rig, Guid deviceId, DateTimeOffset? start = null, DateTimeOffset? stop = null) =>
         JsonSerializer.Deserialize<SearchResult>(
-            (await rig.Plugin.InvokeAsync(EdgeRecordingMethods.Search, JsonSerializer.Serialize(new SearchRequest(deviceId, start, stop), EdgeRecordingInfo.Json), CancellationToken.None))!,
+            (await rig.Plugin.InvokeAsync(rig.Call, EdgeRecordingMethods.Search, JsonSerializer.Serialize(new SearchRequest(deviceId, start, stop), EdgeRecordingInfo.Json), CancellationToken.None))!,
             EdgeRecordingInfo.Json)!;
 
     [Fact]
@@ -120,7 +120,7 @@ public sealed class ServiceTests
         var device = rig.Add(camera, "10.0.0.48");
         var recording = (await SearchAsync(rig, device.Id)).Recordings[0];
 
-        var download = await rig.Plugin.OpenDownloadAsync(EdgeRecordingMethods.Export,
+        var download = await rig.Plugin.OpenDownloadAsync(rig.Call, EdgeRecordingMethods.Export,
             JsonSerializer.Serialize(new ExportRequest(device.Id, recording.Id, recording.DiskId, recording.Start, recording.Stop, "mp4"), EdgeRecordingInfo.Json), CancellationToken.None);
         await using (download)
         {
@@ -144,12 +144,12 @@ public sealed class ServiceTests
         var changed = rig.Add(new FakeCamera(), "10.0.0.49", DeviceStatus.CertificateChanged);
 
         string Request(Guid id) => JsonSerializer.Serialize(new ExportRequest(id, camera.Recordings[0].Id, "SD_DISK", null, null, "mp4"), EdgeRecordingInfo.Json);
-        var missing = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Plugin.OpenDownloadAsync(EdgeRecordingMethods.Export, Request(device.Id), CancellationToken.None));
+        var missing = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Plugin.OpenDownloadAsync(rig.Call, EdgeRecordingMethods.Export, Request(device.Id), CancellationToken.None));
         Assert.Equal(EdgeRecordingTexts.NotExported, missing.Message);
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Plugin.OpenDownloadAsync(EdgeRecordingMethods.Export, Request(changed.Id), CancellationToken.None));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Plugin.OpenDownloadAsync(rig.Call, EdgeRecordingMethods.Export, Request(changed.Id), CancellationToken.None));
         Assert.Equal(DeviceMessages.CertificateChanged, refused.Message);
-        await Assert.ThrowsAsync<ArgumentException>(() => rig.Plugin.OpenDownloadAsync("other", Request(device.Id), CancellationToken.None));
-        await Assert.ThrowsAsync<ArgumentException>(() => rig.Plugin.OpenDownloadAsync(EdgeRecordingMethods.Export, "{", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => rig.Plugin.OpenDownloadAsync(rig.Call, "other", Request(device.Id), CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => rig.Plugin.OpenDownloadAsync(rig.Call, EdgeRecordingMethods.Export, "{", CancellationToken.None));
     }
 
     [Fact]

@@ -9,7 +9,7 @@ namespace Oadm.Plugins.EdgeRecordingExport;
 /// Core plugin "Edge Recording Export": finds the recordings on the SD card or network share of chosen cameras in a time
 /// range and passes each one's export (MP4, else Matroska) on to the client, which saves them in a folder per camera.
 /// Off by default (plugin.json). The page drives the work camera by camera and file by file; the server keeps no state
-/// and stores no file. Read-only for the cameras.
+/// and stores no file. Read-only for the cameras; every camera comes from the user's call (device groups, SDK 0.4.0).
 /// </summary>
 public sealed class EdgeRecordingExportPlugin : ICorePlugin, ICorePluginDownloads
 {
@@ -65,22 +65,30 @@ public sealed class EdgeRecordingExportPlugin : ICorePlugin, ICorePluginDownload
         return Task.CompletedTask;
     }
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>Only through the user's call (<see cref="InvokeAsync(ICallContext, string, string?, CancellationToken)"/>).</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("Call the Edge Recording Export plugin with the user's call.");
+
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The Edge Recording Export plugin is not running.");
         return method switch
         {
             EdgeRecordingMethods.Search => JsonSerializer.Serialize(
-                await service.SearchAsync(Read<SearchRequest>(payloadJson), ct).ConfigureAwait(false), EdgeRecordingInfo.Json),
+                await service.SearchAsync(caller, Read<SearchRequest>(payloadJson), ct).ConfigureAwait(false), EdgeRecordingInfo.Json),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
     }
 
-    public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>Only through the user's call (<see cref="OpenDownloadAsync(ICallContext, string, string?, CancellationToken)"/>).</summary>
+    public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("Call the Edge Recording Export plugin with the user's call.");
+
+    public Task<PluginDownload> OpenDownloadAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The Edge Recording Export plugin is not running.");
         return method == EdgeRecordingMethods.Export
-            ? service.OpenExportAsync(Read<ExportRequest>(payloadJson), ct)
+            ? service.OpenExportAsync(caller, Read<ExportRequest>(payloadJson), ct)
             : throw new ArgumentException($"Unknown download '{method}'.", nameof(method));
     }
 

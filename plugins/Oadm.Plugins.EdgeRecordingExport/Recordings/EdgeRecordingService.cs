@@ -30,23 +30,27 @@ public sealed class EdgeRecordingOptions
 /// <summary>
 /// The camera side of the page: <see cref="SearchAsync"/> lists the recordings of one camera in a range with their
 /// estimated size, <see cref="OpenExportAsync"/> opens one recording's export as a stream that the host passes on to the
-/// client (nothing is stored on the server). Read-only for the cameras; the stored login never leaves the server.
+/// client (nothing is stored on the server). Read-only for the cameras; the stored login never leaves the server. Cameras
+/// come from the user's call (<see cref="ICallContext"/>): for a user with a device group a camera outside the group answers
+/// like an unknown one (<see cref="DevicesNotAvailableException"/>) and is never contacted.
 /// </summary>
 public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRecordingOptions options)
 {
     /// <summary>The recordings of one camera in the range. Never throws for camera problems: they are the result's Problem.</summary>
-    public async Task<SearchResult> SearchAsync(SearchRequest request, CancellationToken ct)
+    public async Task<SearchResult> SearchAsync(ICallContext caller, SearchRequest request, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(request);
         if (request.StartUtc is { } s && request.StopUtc is { } e && s >= e)
         {
             throw new ArgumentException("The start must be before the stop.");
         }
 
-        var device = await ctx.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false);
+        var device = await caller.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false);
         if (device is null)
         {
-            return Failed(request.DeviceId, DeviceMessages.Removed);
+            // A user with a device group: outside the group and unknown answer alike (users with all devices: as before).
+            return caller.HasAllDevices ? Failed(request.DeviceId, DeviceMessages.Removed) : throw new DevicesNotAvailableException();
         }
 
         if (!device.HasVideo)
@@ -61,7 +65,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
 
         try
         {
-            var client = await ctx.Vapix.CreateAsync(device.Id, ct).ConfigureAwait(false);
+            var client = await caller.Vapix.CreateAsync(device.Id, ct).ConfigureAwait(false);
             var properties = await WithTimeout(t => client.ListParametersAsync([EdgeStorageRequests.PropertiesGroup], t), ct).ConfigureAwait(false);
             if (!IsYes(properties, "LocalStorage"))
             {
@@ -95,8 +99,9 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
     /// Opens the export of one recording, cut to the request's times; the caller disposes the download. Throws
     /// <see cref="InvalidOperationException"/> with the reason in plain words when the camera cannot send it.
     /// </summary>
-    public async Task<PluginDownload> OpenExportAsync(ExportRequest request, CancellationToken ct)
+    public async Task<PluginDownload> OpenExportAsync(ICallContext caller, ExportRequest request, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(request);
         if (string.IsNullOrWhiteSpace(request.RecordingId) || string.IsNullOrWhiteSpace(request.DiskId))
         {
@@ -104,8 +109,8 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
         }
 
         var format = request.Format is EdgeStorageRequests.Mp4 ? EdgeStorageRequests.Mp4 : EdgeStorageRequests.Matroska;
-        var device = await ctx.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException(DeviceMessages.Removed);
+        var device = await caller.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false)
+            ?? (caller.HasAllDevices ? throw new InvalidOperationException(DeviceMessages.Removed) : throw new DevicesNotAvailableException());
         if (!device.HasVideo)
         {
             throw new InvalidOperationException(EdgeRecordingTexts.NotVideo);
@@ -119,7 +124,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
         HttpResponseMessage? response = null;
         try
         {
-            var client = await ctx.Vapix.CreateAsync(device.Id, ct).ConfigureAwait(false);
+            var client = await caller.Vapix.CreateAsync(device.Id, ct).ConfigureAwait(false);
             using var message = new HttpRequestMessage(HttpMethod.Get, new Uri(EdgeStorageRequests.ExportUri(request.RecordingId, request.DiskId, request.StartUtc, request.StopUtc, format), UriKind.Relative));
             message.Options.Set(VapixRequestOptions.Timeout, options.ExportStartTimeout);
             message.Options.Set(VapixRequestOptions.StreamResponse, true);
