@@ -32,9 +32,9 @@ public sealed class DeviceViewStreamsTests : DeviceGroupTestBase
 
         // Outside the view: nothing. A tag that brings it in: Added. Inside: Updated. The tag gone: Removed.
         await Devices.UpdateAsync(other.Id, d => d.Model = "M1", Ct);
-        await Tags.SetDeviceTagsAsync([other.Id], ["PTZ"], [], Ct);
+        await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([other.Id], Ct), ["PTZ"], [], Ct);
         await Devices.UpdateAsync(atB.Id, d => d.Model = "M2", Ct);
-        await Tags.SetDeviceTagsAsync([other.Id], [], ["PTZ"], Ct);
+        await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([other.Id], Ct), [], ["PTZ"], Ct);
         var changes = await ReadAsync(feed, 3);
         Assert.Equal(
             [(DeviceChangeKind.Added, other.Id), (DeviceChangeKind.Updated, atB.Id), (DeviceChangeKind.Removed, other.Id)],
@@ -146,7 +146,7 @@ public sealed class DeviceViewStreamsTests : DeviceGroupTestBase
         using var forAll = await watcher.WatchAsync(await all.GetAsync([tagged.Id], Ct), Ct);
         Assert.Equal(3, watcher.Count); // all devices: nothing to follow
 
-        await Tags.SetDeviceTagsAsync([tagged.Id], [], ["PTZ"], Ct);
+        await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([tagged.Id], Ct), [], ["PTZ"], Ct);
         await Eventually.TrueAsync(() => byTag.HasLeft, "the session of the untagged device ended");
         Sites.Remove(b);
         await Eventually.TrueAsync(() => bySite.HasLeft, "the session of the device of the removed site ended");
@@ -192,7 +192,7 @@ public sealed class DeviceViewStreamsTests : DeviceGroupTestBase
             }
         }, CancellationToken.None);
 
-        await Tags.SetDeviceTagsAsync([tagged.Id], [], ["PTZ"], Ct);
+        await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([tagged.Id], Ct), [], ["PTZ"], Ct);
         var ended = await Assert.ThrowsAsync<DevicesNotAvailableException>(() => reading);
         Assert.Equal(DeviceMessages.NoLongerAvailable(1), ended.Message);
         Assert.False(timeout.IsCancellationRequested);

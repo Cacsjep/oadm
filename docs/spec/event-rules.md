@@ -21,6 +21,25 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Roles | Administrators create, change, copy, turn on / off and delete rules (audited "Created / Changed / Deleted / Turned ... event rule"); operators read rules and the log. |
 | Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
 
+- **Device groups** (`docs/spec/device-scope.md`, Shared objects): every rule has an owner (`StoredRule.Owner`, columns
+  `OwnerAllDevices` + `OwnerGroupId`; rules from before 4.2 belong to all devices). A new rule belongs to the caller's
+  devices, an edit keeps the owner (also an administrator's), a copy belongs to the user who copies; only administrators
+  choose another owner. Users of a group see, change, copy, turn on or off and delete only their group's rules (others
+  answer like unknown ones). Saving a rule of a group refuses chosen devices outside the group (NOT_FOUND "N devices are no
+  longer available."), tags that are neither defined nor on a device of the group, events the group does not have (the
+  offline events of other sites, checks of other owners, device triggers without a device of the group: "The event no
+  longer exists.") and addresses outside `Events.ActionDestinations` (`IActionPlugin.Destinations`). When it runs
+  (`RuleOwners`, `OwnerScopes`): conditions and targets are intersected with the group ("All devices" are the group's
+  devices, the event's device must be one of them), the "Any device" events count only the group's devices, "Any site
+  offline" only the group's sites; a target outside the group is skipped "Not a device of the rule's device group" (also
+  the off actions of a device that just left); the rules follow the group's rules, tags and sites at once
+  (`OwnerScopes.Changed`, a device's tags, site or adder) and are turned off without an owner when the group is deleted
+  (`CoreOwnedObjects`, the engine reads them again); a rule without an owner cannot be turned on. Send HTTP request and Send
+  TCP message of a rule of a group send only to the allowed addresses: checked on save and when sending, after the
+  placeholders and for every redirect (`IActionContext.IsDestinationAllowed`). The catalog of a group lists its events only;
+  the event log shows a group's user the lines of its rules and of its devices (filtered in memory over the ids of the
+  retained lines, then the page loaded: 25,000 of 50,000 lines at 30,000 devices in 0.2 s); Clear the log stays with users
+  with all devices; Test runs with a device of the caller's view only and, for a group, only to allowed addresses.
 - **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields) and
   `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`; only queues).
   `ICorePluginContext.EventSubscriptions` (`IEventSubscriptions.Subscribe(handler)`, `Core.Events.EventSubscription`):

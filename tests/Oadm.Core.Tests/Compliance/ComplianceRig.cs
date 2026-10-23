@@ -44,6 +44,15 @@ internal sealed class ComplianceRig : IAsyncDisposable
 
     public DeviceRepository Devices => _db.Get<DeviceRepository>();
 
+    public Oadm.Core.DeviceGroups.DeviceViewFactory Views => _db.Get<Oadm.Core.DeviceGroups.DeviceViewFactory>();
+
+    public Oadm.Core.DeviceGroups.DeviceGroupStore Groups => _db.Get<Oadm.Core.DeviceGroups.DeviceGroupStore>();
+
+    public DeviceTagStore Tags => _db.Get<DeviceTagStore>();
+
+    /// <summary>The view of a user with all devices (the default caller of the rig).</summary>
+    public Oadm.Core.DeviceGroups.DeviceView AllView { get; private set; } = null!;
+
     /// <summary>A rig with compliance turned on (the server's default is off), unless <paramref name="enabled"/> is false.</summary>
     public static async Task<ComplianceRig> StartAsync(bool enabled = true, Oadm.Core.Sites.ISiteStates? sites = null)
     {
@@ -80,8 +89,10 @@ internal sealed class ComplianceRig : IAsyncDisposable
         _engine = new ComplianceEngine(
             Catalog, Store, Devices, _db.Get<IDeviceChangeFeed>(), new FakeVapixFactory(), Time,
             new ComplianceEngineOptions { TickInterval = TimeSpan.FromSeconds(30), FlushInterval = TimeSpan.FromHours(1) },
-            NullLogger<ComplianceEngine>.Instance, () => Events);
-        Service = new ComplianceService(Store, _engine, Devices, new FakeVapixFactory(), NullLoggerFactory.Instance);
+            NullLogger<ComplianceEngine>.Instance, () => Events, _db.Get<Oadm.Core.DeviceGroups.OwnerScopes>());
+        Service = new ComplianceService(Store, _engine, new FakeVapixFactory(), NullLoggerFactory.Instance, Views,
+            _db.Get<Oadm.Core.DeviceGroups.OwnerScopes>(), Tags);
+        AllView = await Views.ForScopeAsync(Oadm.Core.Auth.DeviceScope.All, "admin", CancellationToken.None);
         await _engine.LoadAsync(CancellationToken.None);
         await _engine.StartAsync(CancellationToken.None);
     }
@@ -110,7 +121,7 @@ internal sealed class ComplianceRig : IAsyncDisposable
             Severity = ComplianceSeverity.Problem,
         });
 
-    public async Task<ComplianceCheck> SaveAsync(ComplianceCheck check) => (await Service.SaveAsync(check, CancellationToken.None)).Check;
+    public async Task<ComplianceCheck> SaveAsync(ComplianceCheck check) => (await Service.SaveAsync(check, AllView, null, mayChooseOwner: true, CancellationToken.None)).Check;
 
     /// <summary>The current result of a check on a device (null = none).</summary>
     public ComplianceResultModel? Result(Guid checkId, Guid deviceId)

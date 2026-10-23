@@ -40,8 +40,28 @@ public sealed record TagSummary(Guid? Id, string Name, TagColor Color, int Devic
 /// <summary>Result of a rename / recolor.</summary>
 public sealed record TagUpdateResult(TagDefinition Tag, string OldName, TagColor OldColor, int DevicesChanged);
 
-/// <summary>Result of <see cref="DeviceTagStore.SetDeviceTagsAsync"/>.</summary>
-public sealed record SetDeviceTagsResult(int DevicesChanged, IReadOnlyList<TagDefinition> Created);
+/// <summary>
+/// Result of <see cref="DeviceTagStore.SetDeviceTagsAsync"/>: how many devices changed, the definitions created and every
+/// changed device before and after (the membership audit of device groups).
+/// </summary>
+public sealed record SetDeviceTagsResult(int DevicesChanged, IReadOnlyList<TagDefinition> Created)
+{
+    /// <summary>The changed devices before and after the write.</summary>
+    public IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes { get; init; } = [];
+}
+
+/// <summary>Result of <see cref="DeviceTagStore.DeleteAsync"/>: the deleted name and every changed device before and after.</summary>
+public sealed record TagDeleteResult(string Name, int DevicesChanged, IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes);
+
+/// <summary>
+/// A user with a device group tried to add or remove a tag a device group uses: that would move devices between groups
+/// (docs/spec/device-scope.md, Decisions: Tags). Nothing was changed.
+/// </summary>
+public sealed class TagInUseByGroupException(string name)
+    : InvalidOperationException($"A device group uses the tag {name}. Only users with all devices can add or remove it. Nothing was changed.")
+{
+    public string Name { get; } = name;
+}
 
 /// <summary>A tag name that cannot be used; the message says why (shown below the name field).</summary>
 public sealed class TagNameException(string message) : ArgumentException(message);

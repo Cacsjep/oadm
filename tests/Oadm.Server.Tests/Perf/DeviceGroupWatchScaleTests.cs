@@ -66,8 +66,8 @@ public sealed class DeviceGroupWatchScaleTests(ITestOutputHelper output)
         var tags = host.Get<DeviceTagStore>();
         await ServerScale.MeasureAsync(output, $"{Moved:N0} devices enter and {Moved:N0} leave the group", TimeSpan.FromSeconds(15), async () =>
         {
-            await tags.SetDeviceTagsAsync(entering, [DeviceGroupStreamsTests.GroupUser.Tag], [], cts.Token);
-            await tags.SetDeviceTagsAsync(leaving, [], [DeviceGroupStreamsTests.GroupUser.Tag], cts.Token);
+            await tags.SetDeviceTagsAsync(await host.Get<Oadm.Core.DeviceGroups.DeviceViewFactory>().System.GetAsync(entering, cts.Token), [DeviceGroupStreamsTests.GroupUser.Tag], [], cts.Token);
+            await tags.SetDeviceTagsAsync(await host.Get<Oadm.Core.DeviceGroups.DeviceViewFactory>().System.GetAsync(leaving, cts.Token), [], [DeviceGroupStreamsTests.GroupUser.Tag], cts.Token);
             var added = new HashSet<string>();
             var removed = new HashSet<string>();
             while ((added.Count < Moved || removed.Count < Moved) && await mine.ResponseStream.MoveNext(cts.Token))

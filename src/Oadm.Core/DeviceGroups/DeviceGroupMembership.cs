@@ -13,6 +13,18 @@ namespace Oadm.Core.DeviceGroups;
 public sealed record DeviceGroupMembershipChange(Guid GroupId, string GroupName, bool Entered, IReadOnlyList<string> Serials);
 
 /// <summary>
+/// The compiled rules of every group at one moment (<see cref="DeviceGroupMembership.CaptureAsync"/>): a writer that changes
+/// what the rules resolve to (a deleted tag, a removed site) captures them before the write, so the devices that were in a
+/// group by the old rules are seen leaving it.
+/// </summary>
+public sealed class DeviceGroupFilters
+{
+    internal DeviceGroupFilters(IReadOnlyDictionary<Guid, DeviceGroupFilter> filters) => Filters = filters;
+
+    internal IReadOnlyDictionary<Guid, DeviceGroupFilter> Filters { get; }
+}
+
+/// <summary>
 /// The audit of a device's membership (docs/spec/device-scope.md, Decisions "Membership"): every change of the groups a device
 /// is in (tag, site, relocation, add, remove) is audited as "Entered device group" / "Left device group" with the group as the
 /// target and the devices in the detail. One entry per group and change, never one per device. The groups are checked with
@@ -36,12 +48,21 @@ public static class DeviceGroupMembership
         return ChangesAsync(views, [.. devices.Select(d => ((IDeviceInfo?)null, (IDeviceInfo?)d))], ct);
     }
 
+    /// <summary>The rules of every group now, for a write that changes what they resolve to (see <see cref="DeviceGroupFilters"/>).</summary>
+    public static async Task<DeviceGroupFilters> CaptureAsync(DeviceViewFactory views, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(views);
+        await views.ForScopeAsync(DeviceScope.None, null, ct).ConfigureAwait(false);
+        var groups = views.Groups.Loaded?.Keys ?? Enumerable.Empty<Guid>();
+        return new DeviceGroupFilters(groups.ToDictionary(id => id, views.FilterOf));
+    }
+
     /// <summary>
     /// The groups each device left and entered between <c>Before</c> and <c>After</c> (null Before: added; null After:
-    /// removed).
+    /// removed). <paramref name="before"/>: the rules <c>Before</c> is judged by (captured before the write); null = the rules now.
     /// </summary>
     public static async Task<IReadOnlyList<DeviceGroupMembershipChange>> ChangesAsync(DeviceViewFactory views,
-        IReadOnlyCollection<(IDeviceInfo? Before, IDeviceInfo? After)> changes, CancellationToken ct)
+        IReadOnlyCollection<(IDeviceInfo? Before, IDeviceInfo? After)> changes, CancellationToken ct, DeviceGroupFilters? before = null)
     {
         ArgumentNullException.ThrowIfNull(views);
         ArgumentNullException.ThrowIfNull(changes);
@@ -57,11 +78,12 @@ public static class DeviceGroupMembership
         foreach (var group in groups)
         {
             var filter = views.FilterOf(group.Id);
+            var old = before is null ? filter : before.Filters.GetValueOrDefault(group.Id) ?? DeviceGroupFilter.Nothing;
             var entered = new List<string>();
             var left = new List<string>();
-            foreach (var (before, after) in changes)
+            foreach (var (was0, after) in changes)
             {
-                var was = before is not null && filter.Contains(before);
+                var was = was0 is not null && old.Contains(was0);
                 var isIn = after is not null && filter.Contains(after);
                 if (isIn && !was)
                 {
@@ -69,7 +91,7 @@ public static class DeviceGroupMembership
                 }
                 else if (was && !isIn)
                 {
-                    left.Add(before!.Serial);
+                    left.Add(was0!.Serial);
                 }
             }
 

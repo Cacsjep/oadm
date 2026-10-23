@@ -119,7 +119,7 @@ public sealed class TaskViewTests : DeviceGroupTestBase
         await started.Task.WaitAsync(Eventually.DefaultTimeout);
 
         // While two tasks wait in the queue, one device leaves the group (its tag is removed).
-        await Tags.SetDeviceTagsAsync([leaving.Id], [], [Tag], Ct);
+        await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([leaving.Id], Ct), [], [Tag], Ct);
         gate.SetResult();
         foreach (var id in ids)
         {
@@ -310,7 +310,7 @@ public sealed class TaskViewTests : DeviceGroupTestBase
 
             var outsideTask = (await engine.RunAsync("t.watch", [outside.Id], null, "system", Ct))[0];
             await engine.WaitForCompletionAsync(outsideTask, Ct);
-            await Tags.SetDeviceTagsAsync([leaving.Id], [], [Tag], Ct);
+            await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([leaving.Id], Ct), [], [Tag], Ct);
             gate.SetResult();
             await engine.WaitForCompletionAsync(running, Ct);
             var insideTask = (await engine.RunAsync("t.watch", [inside.Id], null, "system", Ct))[0];
