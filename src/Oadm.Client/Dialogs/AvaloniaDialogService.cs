@@ -129,6 +129,17 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         await window.ShowDialog(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowDeviceGroupEditorAsync(Settings.DeviceGroupEditorViewModel editor)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        return await Settings.DeviceGroupFormView.CreateWindow(editor).ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task ShowRoleFormAsync(Settings.RolesViewModel roles)
     {
         ArgumentNullException.ThrowIfNull(roles);
@@ -216,7 +227,8 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
             return null;
         }
 
-        var context = new TaskDialogContext(api, dialog.PluginId, session is null ? null : session.Has, store is null ? null : () => [.. store.Devices], tasks);
+        var context = new TaskDialogContext(api, dialog.PluginId, session is null ? null : session.Has, store is null ? null : () => [.. store.Devices], tasks,
+            session is null ? null : () => session.HasAllDevices);
         return await dialog.ShowAsync(context, devices, owner).ConfigureAwait(true);
     }
 

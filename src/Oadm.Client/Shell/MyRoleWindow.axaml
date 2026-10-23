@@ -9,13 +9,20 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
-  <!-- The user's own role and what it allows, read-only, grouped like the permission matrix of the Users page. -->
+  <!-- The user's own role and what it allows, read-only, grouped like the permission matrix of the Users page; on top the
+       user's devices (All devices or the device group with its rules). -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding RoleName, StringFormat='Your role: {0}'}" />
 
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
-        <TextBlock Grid.Row="0" Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <StackPanel Grid.Row="0" Spacing="12">
+          <StackPanel Spacing="2">
+            <TextBlock TextWrapping="Wrap" Text="{Binding DevicesText}" />
+            <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding DevicesDetail}" IsVisible="{Binding HasDevicesDetail}" />
+          </StackPanel>
+          <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        </StackPanel>
         <ListBox Grid.Row="1" Classes="readOnlyList" ItemsSource="{Binding Rows}" SelectionMode="Single">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="shell:MyRoleRow">

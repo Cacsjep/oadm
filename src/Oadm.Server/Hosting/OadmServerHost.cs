@@ -284,6 +284,7 @@ public static partial class OadmServerHost
         services.AddSingleton<IDevicePtz, DevicePtz>();
         services.AddSingleton(new LiveViewHubOptions());
         services.AddSingleton<LiveViewHub>();
+        services.AddSingleton<LiveViewAccess>(); // LiveViewService: only devices of the caller's view
         // Device event streams (RTSP metadata) for core plugins such as the Metadata Monitor
         services.AddSingleton<Sdk.Devices.IDeviceEventStreams, DeviceEventStreams>();
 
@@ -325,6 +326,7 @@ public static partial class OadmServerHost
         services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
         services.AddSingleton<DeviceLoginService>();
         services.AddSingleton<DeviceFirstPasswordService>();
+        services.AddSingleton<DeviceActions>(); // DeviceService and the web relay: only devices of the caller's view
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),

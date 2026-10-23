@@ -23,6 +23,9 @@ public interface IDialogService
     /// <summary>The Add user, Edit user or Change password dialog of the Users page (<see cref="Oadm.Client.Settings.UsersViewModel.Form"/>).</summary>
     Task ShowUserFormAsync(Oadm.Client.Settings.UsersViewModel users);
 
+    /// <summary>The device group editor (New or Edit device group); true when the group was saved.</summary>
+    Task<bool> ShowDeviceGroupEditorAsync(Oadm.Client.Settings.DeviceGroupEditorViewModel editor);
+
     /// <summary>The dialog for a new role, a copy or a rename (<see cref="Oadm.Client.Settings.RolesViewModel.IsEditorOpen"/>).</summary>
     Task ShowRoleFormAsync(Oadm.Client.Settings.RolesViewModel roles);
 

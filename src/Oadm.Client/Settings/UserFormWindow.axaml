@@ -10,6 +10,7 @@
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
   <!-- Add user, Edit user and Change password of the Users page: single operation, the form in Border.dialogBody.
+       Devices: All devices or a device group (an administrator always has all devices).
        Errors and the server's refusals below the fields. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding FormTitle}" />
@@ -26,10 +27,18 @@
         <ui:FormField Label="Role" IsVisible="{Binding IsAddForm}">
           <ComboBox ItemsSource="{Binding Roles}" SelectedItem="{Binding NewRole}" HorizontalAlignment="Stretch" />
         </ui:FormField>
+        <ui:FormField Label="Devices" IsVisible="{Binding IsAddForm}" Hint="{Binding NewDevicesHint}">
+          <ComboBox ItemsSource="{Binding DeviceOptions}" SelectedItem="{Binding NewDevices}" IsEnabled="{Binding IsNewDevicesEnabled}"
+                    HorizontalAlignment="Stretch" />
+        </ui:FormField>
 
         <!-- Edit user -->
         <ui:FormField Label="Role" IsVisible="{Binding IsEditForm}" Hint="{Binding EditRoleHint}">
           <ComboBox x:Name="EditRoleBox" ItemsSource="{Binding Roles}" SelectedItem="{Binding EditRole}" HorizontalAlignment="Stretch" />
+        </ui:FormField>
+        <ui:FormField Label="Devices" IsVisible="{Binding IsEditForm}" Hint="{Binding EditDevicesHint}">
+          <ComboBox ItemsSource="{Binding DeviceOptions}" SelectedItem="{Binding EditDevices}" IsEnabled="{Binding IsEditDevicesEnabled}"
+                    PlaceholderText="No devices" HorizontalAlignment="Stretch" />
         </ui:FormField>
 
         <!-- Change password -->

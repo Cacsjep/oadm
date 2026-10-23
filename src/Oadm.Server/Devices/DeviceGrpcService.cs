@@ -4,7 +4,7 @@ using Oadm.Core.Auth;
 using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
-using Oadm.Core.Vapix;
+using Oadm.Sdk.Devices;
 using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
@@ -13,91 +13,91 @@ using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Devices;
 
-/// <summary>gRPC DeviceService: the device table, its live change stream and per-device actions.</summary>
+/// <summary>
+/// gRPC DeviceService: the device table, its live change stream and per-device actions. Every call gets its devices from
+/// the caller's <see cref="DeviceView"/> (docs/spec/device-scope.md): the list and the feed carry only devices of the view,
+/// and a request with any id that is unknown or outside the view is refused whole (NOT_FOUND "N devices are no longer
+/// available.", the same answer for every user). The actions run through <see cref="DeviceActions"/>, which takes only
+/// viewed devices.
+/// </summary>
 public sealed class DeviceGrpcService(
-    DeviceRepository devices,
-    CredentialStore credentials,
-    VapixClientFactory clients,
-    DevicePollingService polling,
-    DeviceLoginService logins,
-    DeviceFirstPasswordService firstPasswords,
+    DeviceActions actions,
     CredentialListStore credentialList,
     AuditLog audit,
     IHostApplicationLifetime lifetime,
-    DeviceViewFactory views,
-    DeviceStatusNotes? notes = null) : Proto.DeviceService.DeviceServiceBase
+    DeviceViewFactory views) : Proto.DeviceService.DeviceServiceBase
 {
-    /// <summary>The device with its status note (kept in server memory, <see cref="DeviceStatusNotes"/>).</summary>
-    private Proto.Device WithNote(Proto.Device device)
-    {
-        if (notes is not null && device.Status == Proto.DeviceStatus.CredentialsRequired && Guid.TryParse(device.Id, out var id)
-            && notes.Get(id) is { } note)
-        {
-            device.StatusDetail = note;
-        }
-
-        return device;
-    }
-
-    private Proto.DeviceChanged WithNote(Proto.DeviceChanged change)
-    {
-        WithNote(change.Device);
-        return change;
-    }
-
     /// <summary>Devices read from the database at a time for a device list.</summary>
     public const int SnapshotPageSize = 1_000;
 
+    /// <summary>Changes taken from the feed at a time.</summary>
+    private const int ChangeBatchSize = 1_000;
+
+    /// <summary>The device with its status note (kept in server memory, <see cref="DeviceStatusNotes"/>).</summary>
+    private Proto.Device ToProto(Device device, bool hasCredentials) => WithNote(Mappers.ToProto(device, hasCredentials), device);
+
+    private Proto.DeviceChanged ToProto(DeviceChange change, bool hasCredentials)
+    {
+        var proto = Mappers.ToProto(change, hasCredentials);
+        if (change.Kind != DeviceChangeKind.Removed && change.Device is { } device)
+        {
+            WithNote(proto.Device, device);
+        }
+
+        return proto;
+    }
+
+    private Proto.Device WithNote(Proto.Device proto, Device device)
+    {
+        if (proto.Status == Proto.DeviceStatus.CredentialsRequired && actions.StatusNote(device) is { } note)
+        {
+            proto.StatusDetail = note;
+        }
+
+        return proto;
+    }
+
+    /// <summary>Every device of the caller's view in one message (legacy; clients use Watch).</summary>
     public override async Task<Proto.DeviceList> List(Proto.Empty request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
-        var withCredentials = await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var withCredentials = await actions.DeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
         var reply = new Proto.DeviceList();
-        string? after = null;
-        while (true)
+        await foreach (var page in view.PagesAsync(SnapshotPageSize, ct).ConfigureAwait(false))
         {
-            var page = await devices.ListDevicesPageAsync(after, SnapshotPageSize, ct).ConfigureAwait(false);
-            reply.Devices.AddRange(page.Select(device => WithNote(Mappers.ToProto(device, withCredentials.Contains(device.Id)))));
-            if (page.Count < SnapshotPageSize)
-            {
-                return reply;
-            }
-
-            after = page[^1].Serial;
+            reply.Devices.AddRange(page.Select(device => ToProto(device, withCredentials.Contains(device.Id))));
         }
+
+        return reply;
     }
 
     /// <summary>
-    /// Snapshot (one ADDED per device), SNAPSHOT_END when asked for, then live changes until the client
-    /// or the server stops. A slow client gets the changes coalesced per device, never dropped.
+    /// Snapshot (one ADDED per device of the caller's view), SNAPSHOT_END when asked for, then live changes until the client
+    /// or the server stops. A slow client gets the changes coalesced per device, never dropped. A device that leaves the
+    /// view becomes REMOVED, one that enters it ADDED (<see cref="DeviceViewFeed"/>); a change of the caller's group ends the
+    /// stream (<see cref="CallerStreams"/>) and the client connects again with the new view.
     /// </summary>
     public override async Task Watch(Proto.WatchDevicesRequest request, IServerStreamWriter<Proto.DeviceChanged> responseStream, ServerCallContext context)
     {
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
+        var view = await views.ForAsync(context).ConfigureAwait(false);
 
         // Subscribe first, then snapshot: nothing that happens in between is lost.
-        using var subscription = devices.Changes.Subscribe();
+        using var feed = view.Subscribe();
         try
         {
             // In pages: one client's snapshot holds at most SnapshotPageSize devices in memory.
-            var withCredentials = await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
-            string? after = null;
-            while (true)
+            var withCredentials = await actions.DeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
+            await foreach (var page in view.PagesAsync(SnapshotPageSize, ct).ConfigureAwait(false))
             {
-                var page = await devices.ListDevicesPageAsync(after, SnapshotPageSize, ct).ConfigureAwait(false);
                 foreach (var device in page)
                 {
+                    feed.Sent(device.Id);
                     var change = new DeviceChange(DeviceChangeKind.Added, device.Id, device);
-                    await responseStream.WriteAsync(WithNote(Mappers.ToProto(change, withCredentials.Contains(device.Id))), ct).ConfigureAwait(false);
+                    await responseStream.WriteAsync(ToProto(change, withCredentials.Contains(device.Id)), ct).ConfigureAwait(false);
                 }
-
-                if (page.Count < SnapshotPageSize)
-                {
-                    break;
-                }
-
-                after = page[^1].Serial;
             }
 
             if (request.SnapshotEndMarker)
@@ -107,25 +107,17 @@ public sealed class DeviceGrpcService(
 
             // Changes are taken in batches: a burst (Refresh all, a Run on 5,000 devices) asks the
             // credential table once per batch instead of once per device.
-            var reader = subscription.Reader;
-            var batch = new List<DeviceChange>();
-            while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            while (await feed.ReadAsync(ChangeBatchSize, ct).ConfigureAwait(false) is { } batch)
             {
-                batch.Clear();
-                while (batch.Count < 1000 && reader.TryRead(out var next))
-                {
-                    batch.Add(next);
-                }
-
                 var withCredentialsNow = batch.Count > 16
-                    ? await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false)
+                    ? await actions.DeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false)
                     : null;
                 foreach (var change in batch)
                 {
-                    var hasCredentials = change.Kind != DeviceChangeKind.Removed
+                    var hasCredentials = change.Kind != DeviceChangeKind.Removed && change.Device is { } device
                         && (withCredentialsNow?.Contains(change.DeviceId)
-                            ?? await credentials.HasCredentialsAsync(change.DeviceId, ct).ConfigureAwait(false));
-                    await responseStream.WriteAsync(WithNote(Mappers.ToProto(change, hasCredentials)), ct).ConfigureAwait(false);
+                            ?? await actions.HasCredentialsAsync(device, ct).ConfigureAwait(false));
+                    await responseStream.WriteAsync(ToProto(change, hasCredentials), ct).ConfigureAwait(false);
                 }
             }
         }
@@ -135,33 +127,32 @@ public sealed class DeviceGrpcService(
         }
     }
 
-    /// <summary>Removes the devices in one transaction (unknown ids are ignored).</summary>
+    /// <summary>Removes the devices in one transaction. Any id that is unknown or outside the view refuses the whole request.</summary>
     public override async Task<Proto.Empty> Remove(Proto.DeviceIds request, ServerCallContext context)
     {
+        var ct = context.CancellationToken;
         var ids = GrpcGuard.ParseIds(request.Ids, "device id");
-        var wanted = ids.ToHashSet();
-        var addresses = (await devices.ListDevicesAsync(context.CancellationToken).ConfigureAwait(false))
-            .Where(d => wanted.Contains(d.Id)).Select(d => d.Address).ToList();
-        await devices.RemoveManyAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false);
+        var removed = (await actions.RemoveAsync(viewed, ct).ConfigureAwait(false)).ToHashSet();
+        var addresses = viewed.Where(d => removed.Contains(d.Id)).Select(d => d.Address).ToList();
         if (addresses.Count > 0)
         {
             var target = string.Join(", ", addresses.Take(5)) + (addresses.Count > 5 ? $" +{addresses.Count - 5} more" : string.Empty);
-            await audit.WriteAsync(AuditActions.DevicesRemoved, target, addresses.Count == 1 ? "1 device" : $"{addresses.Count} devices", context.CancellationToken).ConfigureAwait(false);
+            await audit.WriteAsync(AuditActions.DevicesRemoved, target, addresses.Count == 1 ? "1 device" : $"{addresses.Count} devices", ct).ConfigureAwait(false);
         }
 
         return new Proto.Empty();
     }
 
-    /// <summary>Queues a full refresh; results arrive through Watch.</summary>
+    /// <summary>
+    /// Queues a full refresh; results arrive through Watch. No ids: every device of the caller's view. Any id that is unknown
+    /// or outside the view refuses the whole request.
+    /// </summary>
     public override async Task<Proto.Empty> Refresh(Proto.DeviceIds request, ServerCallContext context)
     {
         var ids = GrpcGuard.ParseIds(request.Ids, "device id");
-        if (ids.Length == 0)
-        {
-            ids = [.. (await devices.ListDevicesAsync(context.CancellationToken).ConfigureAwait(false)).Select(d => d.Id)];
-        }
-
-        polling.QueueRefresh(ids);
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetOrAllAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        actions.QueueRefresh(viewed);
         return new Proto.Empty();
     }
 
@@ -173,22 +164,18 @@ public sealed class DeviceGrpcService(
             throw GrpcGuard.InvalidArgument("User name is required.");
         }
 
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
         try
         {
             // One transaction for all devices (5,000 selected devices: one commit, not 5,000).
-            await credentials.SetManyAsync(ids, request.UserName.Trim(), request.Password, context.CancellationToken).ConfigureAwait(false);
+            await actions.SetCredentialsAsync(viewed, request.UserName.Trim(), request.Password, context.CancellationToken).ConfigureAwait(false);
         }
-        catch (KeyNotFoundException ex)
+        catch (KeyNotFoundException)
         {
-            throw GrpcGuard.NotFound(ex.Message);
+            // Removed between the check and the write: nothing was stored, the answer of any device that is gone.
+            throw GrpcGuard.NotFound(DeviceMessages.NoLongerAvailable(1));
         }
 
-        foreach (var id in ids)
-        {
-            clients.Invalidate(id);
-        }
-
-        polling.QueueRefresh(ids);
         return new Proto.Empty();
     }
 
@@ -216,7 +203,8 @@ public sealed class DeviceGrpcService(
             throw GrpcGuard.InvalidArgument("Enter a password.");
         }
 
-        var results = await logins.LogInAsync(ids, request.UserName, request.Password, ct).ConfigureAwait(false);
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false);
+        var results = await actions.LogInAsync(viewed, request.UserName, request.Password, ct).ConfigureAwait(false);
         var reply = new Proto.DeviceLogInReply();
         foreach (var result in results)
         {
@@ -258,7 +246,8 @@ public sealed class DeviceGrpcService(
     public override async Task<Proto.CredentialUserNameReply> GetCredentialUserName(Proto.DeviceIds request, ServerCallContext context)
     {
         var ids = GrpcGuard.ParseIds(request.Ids, "device id");
-        var name = await logins.SharedUserNameAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        var name = await actions.SharedUserNameAsync(viewed, context.CancellationToken).ConfigureAwait(false);
         return new Proto.CredentialUserNameReply { UserName = name ?? string.Empty };
     }
 
@@ -275,10 +264,11 @@ public sealed class DeviceGrpcService(
             throw GrpcGuard.InvalidArgument("Select at least one device.");
         }
 
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false);
         IReadOnlyList<DeviceFirstPasswordResult> results;
         try
         {
-            results = await firstPasswords.SetAsync(ids, request.Password ?? string.Empty, ct).ConfigureAwait(false);
+            results = await actions.SetFirstPasswordAsync(viewed, request.Password ?? string.Empty, ct).ConfigureAwait(false);
         }
         catch (ArgumentException ex)
         {
@@ -304,7 +294,7 @@ public sealed class DeviceGrpcService(
         var reply = new Proto.PassphrasePoliciesReply();
         // Only devices of the caller's view; any other id refuses the whole request (NOT_FOUND) before a device is asked.
         var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
-        foreach (var policy in await firstPasswords.ReadPoliciesAsync(viewed, context.CancellationToken).ConfigureAwait(false))
+        foreach (var policy in await actions.ReadPoliciesAsync(viewed, context.CancellationToken).ConfigureAwait(false))
         {
             reply.Policies.Add(new Proto.DevicePassphrasePolicy { DeviceId = policy.DeviceId.ToString(), Policy = policy.Policy ?? string.Empty });
         }
@@ -315,8 +305,7 @@ public sealed class DeviceGrpcService(
     public override async Task<Proto.UrlReply> GetWebUiUrl(Proto.DeviceId request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "device id");
-        var device = await devices.GetAsync(id, context.CancellationToken).ConfigureAwait(false)
-            ?? throw GrpcGuard.NotFound($"Device {id} not found.");
+        var device = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(id, context.CancellationToken).ConfigureAwait(false);
         return new Proto.UrlReply { Url = Mappers.WebUiUrl(device) };
     }
 }
