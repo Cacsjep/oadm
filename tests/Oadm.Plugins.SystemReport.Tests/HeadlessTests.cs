@@ -48,6 +48,17 @@ public sealed class HeadlessTests
             ctx.Selected.Add(new FakeDevice());
             ctx.RaiseSelectionChanged();
             Assert.True(button.IsEnabled);
+            Assert.True(button.IsVisible);
+
+            // A user with a device group: system reports are for users with all devices, the button is hidden.
+            var group = new ClientTests.FakeToolbarContext { AllDevices = false };
+            Assert.False(new SystemReportToolbarPlugin().CreateControl(group).IsVisible);
+            ctx.AllDevices = false;
+            ctx.RaisePermissionsChanged();
+            Assert.False(button.IsVisible);
+            ctx.AllDevices = true;
+            ctx.RaisePermissionsChanged();
+            Assert.True(button.IsVisible);
 
             // The dialog in the middle of a job: done, downloading, waiting and failed devices.
             string[] models = ["AXIS P3265-V", "AXIS Q6135-LE", "AXIS M3106-L Mk II", "AXIS C1310-E", "AXIS A1610", "AXIS P1465-LE"];

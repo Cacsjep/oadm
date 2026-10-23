@@ -238,6 +238,8 @@ one ZIP for Axis support. Details: plugin `README.md`.
   signature, at most 256 MB and 5 minutes per device, at most 4 devices at a time for all jobs; refused statuses without
   a request; jobs live 30 minutes after their last use, their files are deleted then, on `delete` and when the plugin
   stops; 1..50 devices per job (the toolbar button is disabled above 50: "Choose at most 50 devices."), status polls carry only the changed devices; methods are Operator, `start` is audited.
+- Device groups (SDK 0.4.0): every method is for users with all devices (`RequiresAllDevices`, like backups and the
+  audit log); the toolbar button is hidden for users with a device group.
 - Tests: `tests/Oadm.Plugins.SystemReport.Tests` (+ read-only hardware test `SystemReportHardwareTests`),
   `tests/Oadm.Server.Tests/SystemReportServerTests`.
 
@@ -267,6 +269,9 @@ login. Decisions, the relay and tests: plugin `README.md`.
   address gets its session cookie (others 403, another Host 400); requests stay on the device; refused statuses are not
   contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
   off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
+- Device groups (SDK 0.4.0): no page methods; the tree lists only the user's devices and `DeviceWebService` takes the
+  device from the user's view, so a tab's requests end when its device leaves the view (its tab closes like a removed
+  device's). Canary: `tests/Oadm.Plugins.WebView.Tests/CanaryTests`.
 - Page: left card: the page select (Web interface, Overlays, Privacy masks, Image Health Analytics, Object Analytics, License Plate Verifier,
   Custom with a path field, error below it; it shows the active tab's page, changing it opens the page in the active tab,
   new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no

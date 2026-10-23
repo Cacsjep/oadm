@@ -21,6 +21,9 @@ client saves one ZIP for Axis support. Read-only for devices.
   `status` ({jobId, sinceVersion}) -> state running/packing/done/failed, total, finished, failed, size, version and only the
   devices changed after `sinceVersion` (5,000 devices: no full list per poll); `read` ({jobId, offset}) -> 2 MB base64
   chunks; `delete`. All Operator; `start` is audited ("Plugin action", "System report", "start").
+- Device groups (SDK 0.4.0): like backups and the audit log, system reports stay with users who have all devices. Every
+  method answers true from `RequiresAllDevices` (the host refuses users with a device group before the plugin runs) and
+  the toolbar button is hidden for them (`IToolbarContext.HasAllDevices`, updated on `PermissionsChanged`).
 - Client (`SystemReportToolbarPlugin`, group Tasks, order 100, `ui:ToolbarButton` "System report" with text, icon `file`,
   enabled with a selection, tooltip "System report: download the system reports of the selected devices for Axis support,
   in one ZIP file"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
@@ -33,7 +36,8 @@ client saves one ZIP for Axis support. Read-only for devices.
 - Tests: `tests/Oadm.Plugins.SystemReport.Tests` (downloader: modes, fallback, 401/403 not retried, refused statuses,
   timeout, unreachable, a 20 MB answer streamed past the 16 MB limit, the 256 MB cap; jobs: bundle content and summary,
   failures, 4 at a time, status deltas, chunked read, delete, 30 min expiry, stop and crash leftovers, 5,000 devices;
-  client view model against the real plugin and fake mode, cancel, toolbar flow; headless `system-report-dialog.png`;
+  client view model against the real plugin and fake mode, cancel, toolbar flow, hidden for a device group; the
+  device-group canary `CanaryTests`; headless `system-report-dialog.png`;
   read-only hardware test `SystemReportHardwareTests` through the in-process server), `tests/Oadm.Server.Tests/
   SystemReportServerTests` (no_page, operator call, audit, data folder).
 

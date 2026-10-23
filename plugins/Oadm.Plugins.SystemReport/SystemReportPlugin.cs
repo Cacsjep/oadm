@@ -77,6 +77,19 @@ public sealed class SystemReportPlugin : ICorePlugin, IDisposable
 
     public string? RequiredPermission(string method) => "download";
 
+    /// <summary>
+    /// Like backups and the audit log, system reports stay with users who have all devices (docs/spec/device-scope.md,
+    /// Decisions): the host refuses every method for users with a device group before it runs.
+    /// </summary>
+    public bool RequiresAllDevices(string method) => true;
+
+    /// <summary>Only users with all devices reach it (<see cref="RequiresAllDevices"/>); a group user's call is refused here too.</summary>
+    public Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return caller.HasAllDevices ? InvokeAsync(method, payloadJson, ct) : throw new DeviceAccessRefusedException();
+    }
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var jobs = _jobs ?? throw new InvalidOperationException("The system report plugin is not running.");
