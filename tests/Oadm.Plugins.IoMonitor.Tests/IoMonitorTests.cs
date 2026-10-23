@@ -51,6 +51,27 @@ public sealed class ServerTests
     }
 
     [Fact]
+    public async Task The_reading_never_carries_the_call_that_started_it()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var device = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(device);
+
+        FakeVapix.CallMarker.Value = "anna";
+        try
+        {
+            Assert.NotNull((await rig.StartStreamAsync(device.Id)).StreamId);
+        }
+        finally
+        {
+            FakeVapix.CallMarker.Value = null;
+        }
+
+        await Wait.UntilAsync(() => rig.Vapix.Requests >= 2);
+        Assert.All(rig.Vapix.MarkersSeen, Assert.Null);
+    }
+
+    [Fact]
     public async Task A_failed_read_is_pushed_and_the_stream_recovers()
     {
         await using var rig = await new Rig().StartAsync();
