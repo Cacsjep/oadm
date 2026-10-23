@@ -16,8 +16,8 @@ Common to all: every device request and every wait is a named step; every succes
   VAPIX Commander set `minSdkVersion` 0.4.0. Their tasks run only on devices of the user's view (the host refuses the
   whole run otherwise) and touch only their own device; their queries read only the queried device, which the host
   checks. Each test project runs a `PluginCanary` (task-only packages through `tests/Shared/TaskPluginCanaryHost.cs`).
-  Set output switches only the device the rule engine gives it, and the engine gives a rule of a group only the group's
-  devices.
+  Set output is an event rule action; event rules are for users with all devices, so it switches the output of any
+  device the rule names, as before.
 
 ## Network settings and Assign IP address
 
@@ -79,9 +79,9 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
 - Device groups: devices, clients and tasks only through the call (`tryRequest`, `checkCompatibility`, `rollout`: an id
   outside the user's view refuses the request like an unknown one); `save`, `delete` and `import` only for users with
   all devices (`RequiresAllDevices`; the page hides New command, Import, Edit, Delete and Save with values); a saved
-  command's stored passwords only for users with all devices and rules of users with all devices (others get
-  `CommanderTexts.SavedPasswordsRefused` and enter the passwords; the rule dialog of a group user does not offer such a
-  command); the task owner is the caller.
+  command's stored passwords only for users with all devices (others get `CommanderTexts.SavedPasswordsRefused` and
+  enter the passwords); the task owner is the caller. Run VAPIX command is unchanged (event rules are for users with
+  all devices).
 - Methods are Operator; `tryRequest` and `rollout` are audited. Scale: 30,000 target devices, every list action under
   200 ms (test).
 - Tests: `tests/Oadm.Plugins.VapixCommander.Tests`, `.Library.Tests`; read-only hardware test `VapixCommanderHardwareTests`.

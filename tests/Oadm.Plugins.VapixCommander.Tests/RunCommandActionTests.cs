@@ -166,51 +166,17 @@ public sealed class RunCommandActionTests
         public string Text(string? text) => (text ?? string.Empty).Replace("{carID}", "ABC123", StringComparison.Ordinal).Replace("{device}", "10.0.0.48", StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task A_rule_of_a_device_group_never_runs_a_saved_command_with_stored_passwords()
-    {
-        var (plugin, action, ctx, device) = await StartAsync();
-        var command = Samples.Parse("""
-            { "id": "custom.pw", "version": 1, "name": "Password test", "category": "Custom", "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
-              "writes": false, "fields": [ { "name": "pwd", "label": "Password", "type": "password" } ],
-              "request": { "method": "POST", "path": "/x", "bodyType": "form", "body": { "pwd": "{{pwd}}" } }, "response": { "kind": "text" } }
-            """);
-        command.Fields[0].Default = JsonSerializer.SerializeToElement("Stored1!");
-        var id = await SaveAsync(plugin, command);
-        var shift = Samples.ShiftLevel;
-        shift.Fields.Single(f => f.Name == "level").Default = JsonSerializer.SerializeToElement(20);
-        var plain = await SaveAsync(plugin, shift);
-        var vapix = ctx.VapixFactory.For(device.Id);
-
-        // The rule dialog of a user with a device group does not offer it.
-        var choices = await action.ListChoicesAsync(new QueryContext(ctx, hasAllDevices: false), "command", CancellationToken.None);
-        Assert.DoesNotContain(choices, c => c.Value == RunCommandAction.SavedPrefix + id);
-        Assert.Contains(choices, c => c.Value == RunCommandAction.SavedPrefix + plain);
-        Assert.Contains(await action.ListChoicesAsync(new QueryContext(ctx), "command", CancellationToken.None), c => c.Value == RunCommandAction.SavedPrefix + id);
-
-        // A rule of a group that has it anyway is refused before anything is sent.
-        var refused = await Assert.ThrowsAsync<CommandValidationException>(() =>
-            RunAsync(action, vapix, device, $$"""{"command":"saved:{{id}}"}""", ActionEdge.Fired, ruleHasAllDevices: false));
-        Assert.Equal(CommanderTexts.SavedPasswordsRefused, refused.Message);
-        Assert.Empty(vapix.Requests);
-
-        // A rule with all devices runs it as before.
-        await RunAsync(action, vapix, device, $$"""{"command":"saved:{{id}}"}""", ActionEdge.Fired);
-        Assert.Contains("Stored1", Assert.Single(vapix.Requests).Body, StringComparison.Ordinal);
-    }
-
-    private static async Task<List<string>> RunAsync(RunCommandAction action, IVapixClient vapix, FakeDevice device, string settingsJson, ActionEdge edge, bool ruleHasAllDevices = true)
+    private static async Task<List<string>> RunAsync(RunCommandAction action, IVapixClient vapix, FakeDevice device, string settingsJson, ActionEdge edge)
     {
         using var settings = JsonDocument.Parse(settingsJson);
-        var context = new RunContext(vapix, ruleHasAllDevices);
+        var context = new RunContext(vapix);
         var trigger = new ActionTrigger("t", "Test", device.Id, device.Address, device.Model, true, DateTimeOffset.UtcNow, new Dictionary<string, string>());
         await action.ExecuteAsync(context, new ActionInvocation(Guid.NewGuid(), "Rule", edge, settings.RootElement.Clone(), device, trigger), CancellationToken.None);
         return context.Lines;
     }
 
-    private sealed class RunContext(IVapixClient vapix, bool ruleHasAllDevices = true) : IActionContext
+    private sealed class RunContext(IVapixClient vapix) : IActionContext
     {
-        public bool RuleHasAllDevices => ruleHasAllDevices;
         public List<string> Lines { get; } = [];
         public IVapixClient? Vapix { get; } = vapix;
         public ILogger Logger => NullLogger.Instance;
@@ -220,9 +186,8 @@ public sealed class RunCommandActionTests
         public string Text(string? text) => text ?? string.Empty;
     }
 
-    private sealed class QueryContext(FakeCoreContext ctx, bool hasAllDevices = true) : IActionQueryContext
+    private sealed class QueryContext(FakeCoreContext ctx) : IActionQueryContext
     {
-        public bool HasAllDevices => hasAllDevices;
         public ILogger Logger => NullLogger.Instance;
         public ICorePlugin? Owner => null;
         public IPluginSettings Settings => ctx.Settings;

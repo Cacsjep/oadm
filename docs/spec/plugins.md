@@ -101,9 +101,7 @@ returns null or throws `NotSupportedException`.
   background). Task plugin queries: `TaskPluginQueries.QueryAsync(caller, ...)` (the device through the view, the query
   context's `Devices` = the view, the 0.4.0 rule; `ITaskQueryContext.ManagedAddressesAsync(addresses)`: which candidates a
   managed device on the queried device's route has, over every device, never naming one, for address-in-use checks).
-  Actions: `IActionContext.RuleHasAllDevices` (false for a rule of a device group) and `IActionQueryContext.HasAllDevices`
-  (the user who edits the rule): secrets kept for everyone (a saved command's passwords) only with all devices; both
-  default true for older hosts and are set by the rule engine. **Jobs**: `PluginJobRegistry` (`ctx.Jobs`): random 128-bit ids, owner
+  **Jobs**: `PluginJobRegistry` (`ctx.Jobs`): random 128-bit ids, owner
   = the host's call (user id + session); `Find` / `List` answer only the owner's jobs; a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
   the owner's devices or role change or the session or the user's sessions end; at most 50 per user and plugin (finished

@@ -11,8 +11,7 @@ namespace Oadm.Tests.Shared;
 /// The core plugin of the canary (<see cref="PluginCanary"/>) for plugins without a page: task plugins and event rule
 /// actions (docs/spec/device-scope.md, Tests). It starts their work the way the host does for a user: "run" starts a task
 /// through the call (<c>{"pluginId":"..","deviceIds":[..],"payload":".."}</c>), "action" runs an action on one device of
-/// the call (<c>{"actionId":"..","deviceId":"..","settings":{..}}</c>) with the call's client and
-/// <see cref="IActionContext.RuleHasAllDevices"/> of the caller. Queries of the task plugins are canary cases of their own
+/// the call (<c>{"actionId":"..","deviceId":"..","settings":{..}}</c>) with the call's client. Queries of the task plugins are canary cases of their own
 /// (<see cref="PluginCanary.Query"/>).
 /// </summary>
 internal sealed class TaskPluginCanaryHost(IReadOnlyList<ITaskPlugin> taskPlugins, IReadOnlyList<IActionPlugin>? actions = null) : ICorePlugin
@@ -63,7 +62,7 @@ internal sealed class TaskPluginCanaryHost(IReadOnlyList<ITaskPlugin> taskPlugin
                 var device = await caller.Devices.FindAsync(Guid.Parse(root.GetProperty("deviceId").GetString()!), ct)
                     ?? throw new DevicesNotAvailableException();
                 var vapix = await caller.Vapix.CreateAsync(device.Id, ct);
-                var context = new FakeActionContext(vapix) { RuleHasAllDevices = caller.HasAllDevices };
+                var context = new FakeActionContext(vapix);
                 var trigger = new ActionTrigger("canary", "Canary", device.Id, device.Address, device.Model, null, DateTimeOffset.UnixEpoch, new Dictionary<string, string>());
                 var settings = root.TryGetProperty("settings", out var s) ? s.Clone() : JsonDocument.Parse("{}").RootElement.Clone();
                 await action.ExecuteAsync(context, new ActionInvocation(Guid.NewGuid(), "Canary", ActionEdge.Fired, settings, device, trigger), ct);

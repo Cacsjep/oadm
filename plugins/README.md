@@ -527,9 +527,8 @@ for them, and it keeps working unchanged for users with all devices.
 - **Task plugins and actions**: a query reads devices other than the queried one only through `caller`; for an
   address-in-use check ask `ITaskQueryContext.ManagedAddressesAsync(candidates)` (every device on the route, never
   named) and name only devices of `ctx.Devices` (Network settings `checkAddresses`). Secrets kept for everyone (a saved
-  command's passwords) only when `caller.HasAllDevices`, `IActionContext.RuleHasAllDevices` or
-  `IActionQueryContext.HasAllDevices`. A package without a page tests with `tests/Shared/TaskPluginCanaryHost.cs` (its
-  tasks started through the call, its actions run on one device of the call).
+  command's passwords) only when `caller.HasAllDevices`. A package without a page tests with
+  `tests/Shared/TaskPluginCanaryHost.cs` (its tasks started through the call, its actions run on one device of the call).
 
 A converted method:
 

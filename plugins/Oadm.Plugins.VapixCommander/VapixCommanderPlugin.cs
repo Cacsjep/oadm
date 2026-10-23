@@ -201,16 +201,9 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
     private static bool NeedsNoInput(CommandDefinition command) => command.Fields.All(f => !f.IsRequired || f.Default is not null);
 
     /// <summary>The commands the event rule action offers: saved ones first, then library ones that need no input.</summary>
-    internal IReadOnlyList<Oadm.Sdk.Actions.ActionChoice> ActionChoices() => ActionChoices(withSavedSecrets: true);
-
-    /// <summary>
-    /// The commands the event rule action offers; without <paramref name="withSavedSecrets"/> (a user with a device group)
-    /// no saved command with stored passwords.
-    /// </summary>
-    internal IReadOnlyList<Oadm.Sdk.Actions.ActionChoice> ActionChoices(bool withSavedSecrets) =>
+    internal IReadOnlyList<Oadm.Sdk.Actions.ActionChoice> ActionChoices() =>
     [
-        .. _savedSnapshot.Where(c => withSavedSecrets || c.StoredSecretFields.Count == 0)
-            .OrderBy(c => c.Command.Name, StringComparer.CurrentCultureIgnoreCase)
+        .. _savedSnapshot.OrderBy(c => c.Command.Name, StringComparer.CurrentCultureIgnoreCase)
             .Select(c => new Oadm.Sdk.Actions.ActionChoice(RunCommandAction.SavedPrefix + c.Command.Id, "Saved: " + c.Command.Name)),
         .. Library.Commands.Where(NeedsNoInput).OrderBy(c => c.Category).ThenBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
             .Select(c => new Oadm.Sdk.Actions.ActionChoice(RunCommandAction.LibraryPrefix + c.Id, c.Category + ": " + c.Name)),
@@ -231,17 +224,14 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
     }
 
     /// <summary>The command and values an event rule action sends (stored values and passwords of a saved command).</summary>
-    /// <param name="reference">"saved:&lt;id&gt;" or "library:&lt;id&gt;".</param>
-    /// <param name="allowSavedSecrets">The rule belongs to users with all devices: its saved command may use the stored passwords.</param>
-    /// <param name="ct">Cancels the read.</param>
-    internal Task<(CommandDefinition Command, Dictionary<string, JsonElement> Values)> ResolveForActionAsync(string reference, bool allowSavedSecrets, CancellationToken ct)
+    internal Task<(CommandDefinition Command, Dictionary<string, JsonElement> Values)> ResolveForActionAsync(string reference, CancellationToken ct)
     {
         var commandRef = reference.StartsWith(RunCommandAction.SavedPrefix, StringComparison.Ordinal)
             ? new CommandRef { Source = CommandSources.Saved, Id = reference[RunCommandAction.SavedPrefix.Length..] }
             : reference.StartsWith(RunCommandAction.LibraryPrefix, StringComparison.Ordinal)
                 ? new CommandRef { Source = CommandSources.Library, Id = reference[RunCommandAction.LibraryPrefix.Length..] }
                 : throw new InvalidOperationException("Choose a command.");
-        return ResolveAsync(commandRef, null, allowSavedSecrets, ct);
+        return ResolveAsync(commandRef, null, ct); // event rules are for users with all devices only
     }
 
     /// <summary>The server's definition of a command plus the stored password values of a saved one.</summary>
@@ -251,7 +241,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
 
     /// <summary>
     /// The server's definition of a command plus the stored password values of a saved one. Without
-    /// <paramref name="allowSavedSecrets"/> (a user with a device group, a rule of a group) a stored password the command
+    /// <paramref name="allowSavedSecrets"/> (a user with a device group) a stored password the command
     /// would use refuses it (<see cref="CommanderTexts.SavedPasswordsRefused"/>): the user enters the passwords instead.
     /// </summary>
     internal async Task<(CommandDefinition Command, Dictionary<string, JsonElement> Values)> ResolveAsync(

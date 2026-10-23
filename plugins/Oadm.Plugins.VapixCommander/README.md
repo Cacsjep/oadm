@@ -182,9 +182,8 @@ SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md). Page methods get t
   (`MaySaved` / `MaySave` also need `HasAllDevices`).
 - Stored passwords of a saved command are only for users with all devices. A group user who leaves such a field empty
   gets `CommanderTexts.SavedPasswordsRefused` ("Only users with all devices can use the saved passwords. Enter the
-  passwords."); typed passwords work. The action **Run VAPIX command** refuses such a command in a rule of a group
-  (`IActionContext.RuleHasAllDevices`) and the rule dialog of a group user does not offer it
-  (`IActionQueryContext.HasAllDevices`).
+  passwords."); typed passwords work. The action **Run VAPIX command** is unchanged: event rules are for users with
+  all devices.
 - The owner of rollout tasks and saved commands is the caller's user name, never a name the page sends.
 - Tests: `DeviceGroupTests` (`PluginCanary` naming every method and its id fields, the owner, stored passwords, the
-  page), `RunCommandActionTests.A_rule_of_a_device_group_never_runs_a_saved_command_with_stored_passwords`.
+  page).

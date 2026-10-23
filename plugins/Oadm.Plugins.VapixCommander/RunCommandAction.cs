@@ -77,7 +77,7 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
     }
 
     public Task<IReadOnlyList<ActionChoice>> ListChoicesAsync(IActionQueryContext ctx, string fieldKey, CancellationToken ct) =>
-        Task.FromResult(owner.ActionChoices(withSavedSecrets: (ctx ?? throw new ArgumentNullException(nameof(ctx))).HasAllDevices));
+        Task.FromResult(owner.ActionChoices());
 
     public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct)
     {
@@ -91,7 +91,7 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
 
         var device = invocation.Device ?? throw new InvalidOperationException("No device.");
         var vapix = ctx.Vapix ?? throw new InvalidOperationException("No device.");
-        var (command, values) = await owner.ResolveForActionAsync(reference, ctx.RuleHasAllDevices, ct).ConfigureAwait(false);
+        var (command, values) = await owner.ResolveForActionAsync(reference, ct).ConfigureAwait(false);
         FillEventValues(ctx, command, values);
         if (command.Dangerous && !invocation.GetBool("allowDangerous"))
         {

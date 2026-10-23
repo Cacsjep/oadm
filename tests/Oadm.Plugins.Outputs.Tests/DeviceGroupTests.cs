@@ -5,11 +5,11 @@ using SdkTesting = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Outputs.Tests;
 
-/// <summary>"Set output" in rules of a device group (docs/spec/device-scope.md).</summary>
+/// <summary>"Set output" and device groups (docs/spec/device-scope.md).</summary>
 public sealed class DeviceGroupTests
 {
     /// <summary>
-    /// The rule engine picks the targets of a rule within the owner's devices; the action itself switches only the output
+    /// Event rules are for users with all devices; the action depends on no device group and switches only the output
     /// of the device it is given, through that device's client.
     /// </summary>
     [Fact]

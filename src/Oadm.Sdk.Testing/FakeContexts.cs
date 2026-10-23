@@ -136,8 +136,6 @@ public sealed class FakeActionContext(IVapixClient? vapix = null) : IActionConte
     /// <inheritdoc />
     public IPluginLicense? License { get; init; }
 
-    /// <inheritdoc />
-    public bool RuleHasAllDevices { get; init; } = true;
 
     /// <inheritdoc />
     public void Log(string message) => Lines.Add(message);

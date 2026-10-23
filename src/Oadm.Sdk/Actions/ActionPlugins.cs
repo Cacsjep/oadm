@@ -292,13 +292,6 @@ public interface IActionContext
     /// <see cref="ActionDestination.NotAllowedText"/>. Default true (older hosts have no device groups).
     /// </summary>
     bool IsDestinationAllowed(string host, int port) => true;
-
-    /// <summary>
-    /// Whether the rule belongs to users with all devices (SDK 0.4.0); false for a rule of a device group. Secrets kept for
-    /// everyone (a saved command's passwords) are only for rules with all devices. Default true (older hosts have no device
-    /// groups).
-    /// </summary>
-    bool RuleHasAllDevices => true;
 }
 
 /// <summary>An address outside the devices an action sends to (<see cref="IActionPlugin.Destinations"/>).</summary>
@@ -324,12 +317,6 @@ public interface IActionQueryContext
 
     /// <summary>Every managed device.</summary>
     IDeviceRepository Devices { get; }
-
-    /// <summary>
-    /// Whether the user who edits the rule has all devices (SDK 0.4.0); false for a user with a device group: leave out
-    /// the choices only users with all devices may use (a saved command with stored passwords). Default true (older hosts).
-    /// </summary>
-    bool HasAllDevices => true;
 }
 
 /// <summary>

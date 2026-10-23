@@ -23,4 +23,4 @@ port of a device, for example the relay of a camera or an I/O module. Spec: `doc
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the action switches only the output of the device the rule engine gives it, and the engine gives a rule of a device group only the group's devices. Test: `DeviceGroupTests` (`PluginCanary` through `tests/Shared/TaskPluginCanaryHost.cs`).
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): event rules are for users with all devices, so the action works as before and depends on no device group: it switches only the output of the device it is given, through that device's client. Test: `DeviceGroupTests` (`PluginCanary` through `tests/Shared/TaskPluginCanaryHost.cs`).
