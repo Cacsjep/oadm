@@ -291,8 +291,10 @@ internal sealed class FakeCameras : IVapixClientFactory
             : Task.FromException<IVapixClient>(new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(10061)));
 }
 
-internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory vapix) : ICorePluginContext
+internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory vapix, IDeviceScopes? scopes = null) : ICorePluginContext
 {
+    public IDeviceScopes? DeviceScopes => scopes;
+
     public IDeviceRepository Devices => devices;
 
     public IVapixClientFactory Vapix => vapix;

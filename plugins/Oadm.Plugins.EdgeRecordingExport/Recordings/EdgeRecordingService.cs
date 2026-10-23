@@ -25,6 +25,9 @@ public sealed class EdgeRecordingOptions
     public int SizeParallelism { get; init; } = 4;
 
     public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>How often a running export of a group user asks whether the camera is still in the group.</summary>
+    public TimeSpan AccessCheckInterval { get; init; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>
@@ -36,6 +39,23 @@ public sealed class EdgeRecordingOptions
 /// </summary>
 public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRecordingOptions options)
 {
+    /// <summary>
+    /// A group user's export ends when the camera leaves the group (checked every
+    /// <see cref="EdgeRecordingOptions.AccessCheckInterval"/> through the group's devices now); users with all devices and
+    /// hosts without groups get the camera's stream as it is.
+    /// </summary>
+    private Stream BoundToView(ICallContext caller, IDeviceInfo device, Stream stream)
+    {
+        if (caller.HasAllDevices || ctx.DeviceScopes is not { } scopes)
+        {
+            return stream;
+        }
+
+        var key = caller.DeviceScopeKey;
+        var id = device.Id;
+        return new ViewBoundStream(stream, async t => await scopes.Devices(key).FindAsync(id, t).ConfigureAwait(false) is not null, options.AccessCheckInterval, options.Time);
+    }
+
     /// <summary>The recordings of one camera in the range. Never throws for camera problems: they are the result's Problem.</summary>
     public async Task<SearchResult> SearchAsync(ICallContext caller, SearchRequest request, CancellationToken ct)
     {
@@ -145,7 +165,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
             var name = EdgeStorageParsing.FileName(response.Content.Headers.ContentDisposition)
                 ?? DefaultName(request, format);
             var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            var download = new PluginDownload(stream, name, response.Content.Headers.ContentLength, response)
+            var download = new PluginDownload(BoundToView(caller, device, stream), name, response.Content.Headers.ContentLength, response)
             {
                 AuditDetail = string.Create(CultureInfo.InvariantCulture, $"Exported recording: {device.Address}, {Range(request.StartUtc, request.StopUtc)}"),
             };
