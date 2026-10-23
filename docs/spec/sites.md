@@ -59,6 +59,8 @@ pairing code in the app). Add port in the app never marks a port as the server's
   (`ISiteStates.LinkAnswersAsync`) is a site problem. One control link attaches per site at a time; a port request follows
   the caller's token and is asked again when it did not arrive and after every reconnect.
 - Permission `sites.view` "See sites" (Devices, Operator and Viewer yes); every SiteService change is Administrator only.
+  A user with a device group sees only the bound sites the group names, with the group's device counts (no removed
+  sites, no waiting nodes); users with all devices see every site and the groups that use it (`Site.group_names`).
   Audit: Turned on / off site nodes, Bound site, Wrong pairing code, Renamed site, Replaced site,
   Removed site, Site offline / online, Site node was reset (system). Backup: "Sites: N restored".
 - Client: rail page **Sites** (right below Compliance, else Devices, no group; `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog

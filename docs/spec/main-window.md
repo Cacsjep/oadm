@@ -16,7 +16,8 @@ Layout, top to bottom:
    Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.
-3. Status line: "N devices, M selected".
+3. Status line: "N devices, M selected". A user with a device group sees only the devices of the group; a device that
+   leaves or enters it leaves or enters the grid (`docs/spec/device-scope.md`).
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
    interface, Refresh, **Log in**, **Set password**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
