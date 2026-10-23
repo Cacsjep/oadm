@@ -83,18 +83,13 @@ public sealed partial class RolesCardView : UserControl
         }
     }
 
-    /// <summary>The group header: expander, the group's icon and name.</summary>
+    /// <summary>The group header: expander and name (no icons: not every group has one).</summary>
     private StackPanel GroupCell(PermissionRowViewModel row)
     {
         var expander = new ToggleButton { Classes = { "groupExpander" }, Focusable = false, IsChecked = row.IsExpanded };
         expander.Click += (_, _) => _vm?.ToggleGroupCommand.Execute(row);
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(expander);
-        if (Icon(row.IconKey) is { } icon)
-        {
-            panel.Children.Add(new OadmIcon { Data = icon, VerticalAlignment = VerticalAlignment.Center });
-        }
-
         panel.Children.Add(new TextBlock { Text = row.Title, Classes = { "groupHeader" }, VerticalAlignment = VerticalAlignment.Center });
         return panel;
     }
@@ -139,7 +134,9 @@ public sealed partial class RolesCardView : UserControl
     {
         var text = new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Name)), TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center };
 
-        var grid = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center, DataContext = role };
+        // The header cell keeps 10 px left padding and room for a sort mark on the right: the negative margin gives the
+        // panel the cell's own center, the center of the checkboxes below.
+        var grid = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(-10, 0, -25, 0), DataContext = role };
         ToolTip.SetTip(grid, role.DescriptionTip);
         grid.Children.Add(text);
         if (!role.IsAdministrator && _vm is { } vm)
