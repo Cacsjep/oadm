@@ -28,6 +28,14 @@ public sealed partial class TagInfo : ObservableObject
     /// <summary>Devices with this tag in the server's last list (the dialog counts the client mirror itself).</summary>
     [ObservableProperty] public partial int DeviceCount { get; private set; }
 
+    /// <summary>
+    /// The device groups whose rules use the tag (<c>DeviceTag.group_names</c>, only for users with all devices): deleting it
+    /// asks first, naming them.
+    /// </summary>
+    public IReadOnlyList<string> GroupNames { get; private set; } = [];
+
+    internal void SetGroupNames(IReadOnlyList<string> names) => GroupNames = names;
+
     /// <summary>A tag outside any store (rows built without a <see cref="TagStore"/>, tests).</summary>
     public static TagInfo Detached(string name) => new(name);
 
@@ -91,6 +99,7 @@ public sealed class TagStore
             if (seen.Add(info))
             {
                 info.Update(tag.Name, tag.Defined ? tag.Color : TagColor.Unspecified, tag.Defined, tag.DeviceCount);
+                info.SetGroupNames([.. tag.GroupNames]);
                 listed.Add(info);
             }
         }
@@ -112,6 +121,15 @@ public sealed class TagStore
         ArgumentNullException.ThrowIfNull(tag);
         TagInfo info = Resolve(tag.Name);
         info.Update(tag.Name, tag.Defined ? tag.Color : TagColor.Unspecified, tag.Defined, info.DeviceCount);
+        if (tag.GroupNames.Count > 0)
+        {
+            info.SetGroupNames([.. tag.GroupNames]);
+        }
+        else if (previousName is not null && _byName.TryGetValue(previousName, out TagInfo? renamed) && renamed != info)
+        {
+            info.SetGroupNames(renamed.GroupNames); // a rename keeps the tag in its groups
+        }
+
         if (previousName is not null && !string.Equals(previousName, tag.Name, StringComparison.OrdinalIgnoreCase)
             && _byName.TryGetValue(previousName, out TagInfo? old))
         {

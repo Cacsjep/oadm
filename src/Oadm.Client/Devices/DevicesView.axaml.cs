@@ -181,6 +181,7 @@ public partial class DevicesView : UserControl
             ApplyItemsSource();
             vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext, TrailingToolbarPanel);
             EmptyAddButton.Flyout = Toolbar.AddToolbarPlugin.CreateMenu(vm.ToolbarContext);
+            Toolbar.AddToolbarPlugin.FollowRefusal(EmptyAddButton, vm.ToolbarContext, null);
             DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
             _liveView = vm.LiveView;
             _liveView.PropertyChanged += OnLiveViewPropertyChanged;

@@ -31,8 +31,15 @@ public enum ComplianceTab
 /// One count card of the Compliance page: a check that is on, how many devices fail it; a click filters to them, Edit and
 /// Delete sit on the card (on hover).
 /// </summary>
-public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check) : ObservableObject
+public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check, bool showOwner = false) : ObservableObject
 {
+    /// <summary>The viewer has all devices: the card names a device group that owns the check.</summary>
+    public bool ShowOwner { get; } = showOwner;
+
+    /// <summary>"Building B" for a check of a device group, "No devices" for one whose group was deleted; null for all devices.</summary>
+    public string? OwnerText => Check.Owner is not { } owner || owner.AllDevices ? null
+        : owner.GroupName.Length > 0 ? owner.GroupName : Settings.DeviceGroupWords.NoDevices;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title), nameof(Value), nameof(Detail), nameof(IsError), nameof(IsWarning), nameof(IsOk), nameof(ToolTip))]
     public partial ComplianceCheckSummary Check { get; set; } = check;
@@ -46,8 +53,13 @@ public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check
     /// <summary>The failed devices ("12"), "–" while the check does not run.</summary>
     public string Value => Check.Problem.Length > 0 ? "–" : Check.Failed.ToString("N0", CultureInfo.CurrentCulture);
 
-    /// <summary>"failed · 3 not checked", the reason it does not run, or "All passed".</summary>
-    public string Detail
+    /// <summary>
+    /// "failed · 3 not checked", the reason it does not run, or "All passed"; for a viewer with all devices the owning device
+    /// group follows ("failed · Building B").
+    /// </summary>
+    public string Detail => ShowOwner && OwnerText is { } owner ? ResultDetail + " · " + owner : ResultDetail;
+
+    private string ResultDetail
     {
         get
         {
@@ -473,9 +485,27 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
             return null;
         }
 
+        IReadOnlyList<Settings.DeviceAccessOption>? owners = null;
+        if (_session?.IsAdmin == true)
+        {
+            try
+            {
+                var groups = await _api.ListDeviceGroupsAsync(CancellationToken.None).ConfigureAwait(true);
+                owners = [Settings.DeviceAccessOption.All, .. groups.Groups.Select(g => new Settings.DeviceAccessOption(g.Id, g.Name))];
+            }
+            catch (RpcException ex)
+            {
+                ErrorText = ex.Status.Detail;
+                return null;
+            }
+        }
+
         return new ComplianceCheckEditorViewModel(
-            _api, _dialogs, catalog, [.. _devices.Devices.Cast<IDeviceInfo>()], existing, _devices.Tags.Tags.Select(t => t.Name));
+            _api, _dialogs, catalog, [.. _devices.Devices.Cast<IDeviceInfo>()], existing, _devices.Tags.Tags.Select(t => t.Name), owners);
     }
+
+    /// <summary>Cards name the device group that owns a check for users with all devices (group users see only their own).</summary>
+    private bool ShowOwners => _session?.HasAllDevices ?? true;
 
     private void OnPermissionsChanged(object? sender, EventArgs e)
     {
@@ -504,7 +534,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
                 return card;
             }
 
-            return new ComplianceCardViewModel(c);
+            return new ComplianceCardViewModel(c, ShowOwners);
         }).ToList();
         if (!cards.SequenceEqual(Cards))
         {

@@ -21,7 +21,9 @@ namespace Oadm.Client.Compliance;
 /// <summary>
 /// The check dialog (new check, or change one): name, kind of check, devices, the kind's settings (drawn from its fields),
 /// Problem or Warning, how often it reads the devices, turned on. A default check (Reachable, Login works) changes only its
-/// devices. Errors stand below their field; Save is disabled with the first problem as tooltip.
+/// devices. Administrators also choose the owner (All devices or a device group: the check runs only on its devices; a
+/// check whose group was deleted has none until one is chosen). Errors stand below their field; Save is disabled with the
+/// first problem as tooltip.
 /// </summary>
 public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
 {
@@ -35,7 +37,7 @@ public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
 
     public ComplianceCheckEditorViewModel(
         IOadmApi api, IDialogService dialogs, ComplianceCatalog catalog, IReadOnlyList<IDeviceInfo> devices, ComplianceCheckDetail? existing = null,
-        IEnumerable<string>? tagNames = null)
+        IEnumerable<string>? tagNames = null, IReadOnlyList<Settings.DeviceAccessOption>? ownerChoices = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         _api = api ?? throw new ArgumentNullException(nameof(api));
@@ -54,6 +56,9 @@ public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
             ShowPickerAsync);
         Devices.Changed += (_, _) => Revalidate();
 
+        OwnerChoices = ownerChoices;
+        Owner = ownerChoices is null ? null : InitialOwner(ownerChoices, summary);
+        Validation.Rule(nameof(Owner), () => ShowOwner && Owner is null ? Settings.DeviceGroupWords.ChooseDevices : null);
         Validation.Rule(nameof(Name), () => Name.Trim().Length == 0 ? "Enter a name." : Name.Trim().Length > 64 ? "Use at most 64 characters." : null);
         Validation.Rule(nameof(SelectedType), () => SelectedType?.Value is ComplianceTypeEntry ? null : "Choose the kind of check.");
         Validation.Rule(nameof(IntervalText), () => !ReadsDevices || (int.TryParse(IntervalText, NumberStyles.Integer, CultureInfo.CurrentCulture, out var n) && n is >= 15 and <= 1440)
@@ -80,6 +85,23 @@ public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
     public bool CanChangeKind => !IsBuiltIn;
 
     public IReadOnlyList<GroupedChoice> Types { get; }
+
+    /// <summary>The owners an administrator chooses from (All devices, then the device groups); null: no Owner field.</summary>
+    public IReadOnlyList<Settings.DeviceAccessOption>? OwnerChoices { get; }
+
+    /// <summary>The Owner field shows (administrators only).</summary>
+    public bool ShowOwner => OwnerChoices is not null;
+
+    /// <summary>Whose devices the check runs on; null while none is chosen (its group was deleted).</summary>
+    [ObservableProperty] public partial Settings.DeviceAccessOption? Owner { get; set; }
+
+    partial void OnOwnerChanged(Settings.DeviceAccessOption? value) => Validation.Validate();
+
+    /// <summary>The check's owner among <paramref name="choices"/>: All devices for a new check and for an older server.</summary>
+    private static Settings.DeviceAccessOption? InitialOwner(IReadOnlyList<Settings.DeviceAccessOption> choices, ComplianceCheckSummary? summary) =>
+        summary?.Owner is not { } owner || owner.AllDevices
+            ? choices.FirstOrDefault(c => c.IsAll)
+            : choices.FirstOrDefault(c => c.GroupId is not null && c.GroupId == owner.GroupId);
 
     public DeviceSelectorViewModel Devices { get; }
 
@@ -282,6 +304,11 @@ public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
                     Tags = { selector.Tags },
                 },
             };
+            if (ShowOwner && Owner is { } owner)
+            {
+                summary.Owner = new DeviceOwner { AllDevices = owner.IsAll, GroupId = owner.GroupId ?? string.Empty };
+            }
+
             Saved = await _api.SaveComplianceCheckAsync(
                 new ComplianceCheckDetail { Summary = summary, SettingsJson = ActionFieldViewModel.ToSettings(Fields).ToJsonString() },
                 CancellationToken.None).ConfigureAwait(true);

@@ -37,7 +37,16 @@ public static class ServiceRegistration
                 store.Current.Appearance = Oadm.Theme.OadmColors.Current; // the appearance the client started with
                 return store;
             });
-            services.AddSingleton<IOadmApi>(_ => new FakeOadmApi(simulationTime: options.FakeSimulationTime));
+            services.AddSingleton<IOadmApi>(_ =>
+            {
+                var fake = new FakeOadmApi(simulationTime: options.FakeSimulationTime);
+                if (options.FakeUser is { } user)
+                {
+                    fake.CurrentUserName = user; // a sample user, e.g. tech2 with the device group Building B
+                }
+
+                return fake;
+            });
             services.AddSingleton<IServerTrust, NoServerTrust>();
         }
         else
@@ -52,20 +61,22 @@ public static class ServiceRegistration
             services.AddSingleton<IServerTrust>(sp => new GrpcServerTrust(sp.GetRequiredService<GrpcOadmApi>()));
         }
 
-        services.AddSingleton(_ =>
+        services.AddSingleton(sp =>
         {
             var session = new UserSession();
             if (options.UseFake)
             {
-                // Fake mode has no login: the administrator "admin".
-                session.SignIn(new Contracts.V1.UserInfo
-                {
-                    UserName = FakeOadmApi.FakeUserName,
-                    Role = Contracts.V1.UserRole.Admin,
-                    RoleId = FakeOadmApi.AdministratorRoleId,
-                    RoleName = "Administrator",
-                    AllPermissions = true,
-                }, "fake");
+                // Fake mode has no login: the administrator "admin", or the sample user of --fake-user with its role and devices.
+                session.SignIn(sp.GetRequiredService<IOadmApi>() is FakeOadmApi fake
+                    ? fake.CurrentUser()
+                    : new Contracts.V1.UserInfo
+                    {
+                        UserName = FakeOadmApi.FakeUserName,
+                        Role = Contracts.V1.UserRole.Admin,
+                        RoleId = FakeOadmApi.AdministratorRoleId,
+                        RoleName = "Administrator",
+                        AllPermissions = true,
+                    }, "fake");
             }
 
             return session;

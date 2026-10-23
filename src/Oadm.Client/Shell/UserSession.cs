@@ -62,6 +62,14 @@ public sealed partial class UserSession : ObservableObject
     [ObservableProperty]
     public partial string DeviceGroupName { get; private set; } = "";
 
+    /// <summary>
+    /// Why the user cannot add devices, or null when the user may (all devices, or a device group with "This server" or a
+    /// site): the server's refusal text, shown as the tooltip of the disabled Add entries. Set from Your role
+    /// (<see cref="ApplyDevices"/>, <c>MyRole.devices</c>); the server refuses anyway.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? AddDevicesRefusal { get; private set; }
+
     /// <summary>The page the role starts on after a login (a rail key; empty = Devices).</summary>
     public string StartPage { get; private set; } = "";
 
@@ -116,8 +124,25 @@ public sealed partial class UserSession : ObservableObject
         IsAdmin = false;
         HasAllDevices = false;
         DeviceGroupName = "";
+        AddDevicesRefusal = null;
         RoleName = "";
         StartPage = "";
+    }
+
+    /// <summary>
+    /// The user's devices from Your role (<c>MyRole.devices</c>; null from a server before device groups): decides
+    /// <see cref="AddDevicesRefusal"/>. Raises <see cref="PermissionsChanged"/> when it changes.
+    /// </summary>
+    public void ApplyDevices(MyDevices? devices)
+    {
+        string? refusal = HasAllDevices || devices is null || devices.AllDevices || devices.ThisServer || devices.SiteNames.Count > 0
+            ? null
+            : Settings.DeviceGroupWords.CannotAdd;
+        if (refusal != AddDevicesRefusal)
+        {
+            AddDevicesRefusal = refusal;
+            PermissionsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void Apply(UserInfo user)
@@ -138,6 +163,10 @@ public sealed partial class UserSession : ObservableObject
         IsAdmin = admin;
         HasAllDevices = allDevices;
         DeviceGroupName = allDevices ? "" : user.DeviceGroupName;
+        if (allDevices)
+        {
+            AddDevicesRefusal = null;
+        }
         if (changed)
         {
             PermissionsChanged?.Invoke(this, EventArgs.Empty);

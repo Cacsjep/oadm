@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
-  <!-- A compliance check: single operation (one form, no card): name, devices, kind of check and its settings (its declared
+  <!-- A compliance check: single operation (one form, no card): name, the owner (administrators), devices, kind of check and its settings (its declared
        fields), when it fails, how often. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
@@ -20,6 +20,10 @@
         <StackPanel Classes="form">
           <ui:FormField Classes="wide" Label="Name">
             <TextBox x:Name="NameBox" Text="{Binding Name}" IsEnabled="{Binding CanChangeKind}" MaxLength="64" />
+          </ui:FormField>
+          <ui:FormField Classes="wide" Label="Owner" IsVisible="{Binding ShowOwner}" Hint="The check runs only on the owner's devices">
+            <ComboBox ItemsSource="{Binding OwnerChoices}" SelectedItem="{Binding Owner}" PlaceholderText="No devices"
+                      HorizontalAlignment="Stretch" />
           </ui:FormField>
           <ui:FormField Classes="wide" Label="Devices" Error="{Binding Devices.Problem}">
             <er:DeviceSelectorView DataContext="{Binding Devices}" />
