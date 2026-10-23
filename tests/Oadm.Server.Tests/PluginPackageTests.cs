@@ -198,7 +198,7 @@ public sealed class PluginPackageTests
             .Select(PluginLoader.ReadManifest)
             .ToList();
         Assert.NotEmpty(manifests);
-        Assert.Equal(["oadm.action-rules", "oadm.dashboards", "oadm.device-triggers", "oadm.edge-recording-export", "oadm.edge-storage", "oadm.est", "oadm.hardening-scan", "oadm.image-health", "oadm.io-monitor", "oadm.live-view", "oadm.metadata-monitor"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
+        Assert.Equal(["oadm.action-rules", "oadm.dashboards", "oadm.device-triggers", "oadm.edge-recording-export", "oadm.edge-storage", "oadm.est", "oadm.hardening-scan", "oadm.image-health", "oadm.io-monitor", "oadm.live-view", "oadm.metadata-monitor", "oadm.radius"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
 
         // Core functionality is always on; every bundled plugin has a description.
         Assert.Equal(
@@ -206,8 +206,8 @@ public sealed class PluginPackageTests
             manifests.Where(m => m.AlwaysOn).Select(m => m.Id).Order());
         Assert.All(manifests, m => Assert.False(string.IsNullOrWhiteSpace(m.Description), m.Id));
 
-        // OADM PRO plugins: the EST server only.
-        Assert.Equal(["oadm.est"], manifests.Where(m => m.Pro).Select(m => m.Id));
+        // OADM PRO plugins: the EST server and the 802.1X server.
+        Assert.Equal(["oadm.est", "oadm.radius"], manifests.Where(m => m.Pro).Select(m => m.Id).Order());
     }
 
     private sealed class CountingCorePlugin(string id, params ITaskPlugin[] tasks) : ICorePlugin

@@ -505,3 +505,14 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
 - Device groups (SDK 0.4.0): Save and Delete all only for users with all devices; a user with a group sees the
   enrollments, Not renewed, certificates and listeners (this server, sites) of the group's devices only, never refusals
   of cameras OADM does not manage. Host names never go into certificates of a device a user with a group added.
+
+## 802.1X server (core plugin, OADM PRO, in work)
+
+`plugins/Oadm.Plugins.Radius` (+ `.Client` later), id `oadm.radius`, display name **802.1X server** (group Security,
+icon `lock`), off by default, `"pro": true`, its own source-available `LICENSE`, site support full with UDP 1812. Spec:
+`docs/spec/radius-server.md`; details: plugin `README.md`. So far the protocol layer (`Protocol/`) only; the plugin
+starts nothing and has no page yet.
+
+- Rules that must hold: only devices whose client certificate passes (the OADM CA or a trusted root, a managed device)
+  are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets are dropped, never answered;
+  secrets and keys are never logged.

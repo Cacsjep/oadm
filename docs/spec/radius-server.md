@@ -1,7 +1,7 @@
 # 802.1X server (OADM PRO, planned)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-23, not built yet (stages at the end).
+Agreed 2026-10-23; in work: the protocol layer is built ("Code (protocol)"), the rest follows the stages at the end.
 
 An OADM PRO plugin (`oadm.radius`, `"pro": true`, its own source-available license like EST). OADM answers the switches
 of the network as their **RADIUS server** and authenticates the cameras on the switch ports with **EAP-TLS** (IEEE
@@ -330,6 +330,68 @@ and reason, never secrets or key material.
   client with the alert text, an unchecked cipher suite is not offered.
 - Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
 - Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with an OADM CA certificate on a real switch.
+
+## Code (protocol)
+
+`plugins/Oadm.Plugins.Radius/Protocol/` (namespace `Oadm.Plugins.Radius.Protocol.*`): the protocol without sockets, host or
+UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`.
+
+- **Datagram flow** (`Sessions/RadiusProcessor.Process(datagram, RadiusClient, IPEndPoint source)`, thread-safe, never
+  throws): `RadiusPacket.Parse` (framing rules above) → only Access-Request and Status-Server → the Message-Authenticator
+  (`RadiusAuthenticators.VerifyRequest`, before anything else; missing or wrong = drop `WrongSecret`) → Status-Server
+  answered (Access-Accept, not cached) → `AccessRequest.Read` (attribute rules) → `RadiusDuplicateCache` (key: switch,
+  source address and port, Identifier; same authenticator = cached answer or drop while in work; a new authenticator
+  replaces the entry) → the session of the State attribute or a new one → the answer by `RadiusPacketWriter.Response`
+  (Message-Authenticator first, Response Authenticator, Proxy-State last in order). The result: `Answered` /
+  `AnsweredFromCache` with the bytes to send to the source, or `Dropped` with a `RadiusDropReason` (Malformed,
+  NotARequest, WrongSecret, InProgress, StaleEapResponse, AnswerTooLarge, InternalError) and a short detail for the debug
+  log; the session snapshot after the step and the reason of an Access-Reject.
+- **The switch** is a `RadiusClient(Key, Secret)` the server part finds by the source address (site + address at a site);
+  the processor never looks at NAS-Identifier or NAS-IP-Address for that. `EndSessions(key)` ends a removed switch's
+  sessions (Abandoned, "The switch was removed") and forgets its cached answers.
+- **Settings**: `RadiusProtocolOptions` (record, replaced as a whole through `Options` while running): `Tls`
+  (`TlsSettings`: `MinimumVersion`, `CipherSuites` of `TlsCipherSuites`, `Validate()` for the page, `DefaultFor(min)` for
+  Reset to default), `LargestFragment` (500..1400), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
+  `FromCertificate(x509, issuers)`, read when a handshake starts, so a renewal applies at once), the timeouts (30 s / 60 s),
+  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000.
+- **Who passes**: `IClientCertificateValidator.Validate(ClientCertificateCheck)` (switch key, session id, the chain DER leaf
+  first, TLS version, EAP identity and MAC shown only) returns `ClientCertificateVerdict.Accept(vlanId, warning, tag)` or
+  `Refuse(reason, alert)`. Called synchronously inside the TLS handshake (in-memory lookups only); an exception refuses
+  (alert 80). The refusal's reason is the session's reason; its alert goes to the device.
+- **Sessions** (`Sessions/EapTlsSession`, internal): key switch + State (16 random bytes, the same in every
+  Access-Challenge); a new session (no State) for the same switch + port + MAC abandons the old one (several MACs on one
+  port stay separate). `SessionChanged` (event, one snapshot per state change, raised under the session's lock) and
+  `ExpireSessions()` (call every second) give the server part the Sessions tab and the log; `EapSessionSnapshot` (states,
+  fragment n of m, reason, alert, port, port type, MAC, EAP identity, NAS identity, TLS version and suite, client
+  certificates, VLAN, warning, tag; never keys) and `EapSessionTexts` (the plain words and the refusal texts).
+- **When each state shows**: Receiving client hello = the device's fragments before TLS started; Sending server
+  certificate = OADM's last (or only) fragment of its flight is out; Waiting for acknowledgement = an earlier fragment is
+  out; Receiving client certificate = the device's fragments after that; Checking client certificate = the validator runs;
+  Waiting for client finished = the certificate passed and TLS needs more of the device's flight (it came in parts);
+  Sending result = OADM's last flight (TLS 1.2 Finished, TLS 1.3 commitment) or its refusal alert is out.
+- **First message**: EAP-Start (empty EAP-Message) → Identity request; Identity → EAP-TLS Start; a NAK without EAP-TLS fails;
+  anything else the switch started → Identity request (RFC 3579 2.1, Appendix A). An EAP-Request from the switch: Access-
+  Reject with EAP-Response/Nak (RFC 3579 2.6.2). An unreadable EAP packet: Access-Reject with EAP-Failure (RFC 3579 2.2).
+- **EAP Identifier** (RFC 3748 4.1): a response with the Identifier of the request before is a retransmission (the
+  outstanding request again); any other Identifier is dropped. EAP-Success and EAP-Failure carry the response's Identifier.
+- **Fragments**: OADM's TLS data per EAP-TLS message = min(Largest fragment, Framed-MTU − 4 − 10), an 802.11 port at most
+  1,496 EAP octets (RFC 3580 3.10); L and the total only on the first fragment, never on an unfragmented message (RFC 9190
+  2.1.9). The device's fragments: L required on the first of a fragmented message (at most 64 KB), a repeated L only with
+  the same value, the fragments add up exactly; else "Message could not be read".
+- **Results**: an alert OADM raises is sent in an EAP-TLS request and the session waits for the device's answer before
+  EAP-Failure ("Sending result" with the reason; a timeout then ends Failed with that reason); an alert from the device
+  ends at once with EAP-Failure. TLS 1.3: the commitment message (application data 0x00) after the handshake.
+- **BouncyCastle** (2.7.0, compiled against, the host's copy at run time): `TlsServerProtocol()` without stream;
+  `OfferInput` / `ReadOutput`; `EapTlsServer : DefaultTlsServer` gives versions, suites (only those of the server key:
+  ECDSA or RSA), the certificate request, the credentials (signature scheme from the client's list) and records the
+  alerts. BouncyCastle exports keying material only inside `NotifyHandshakeComplete`, so the MSK is derived there.
+- **Keys and attributes**: `MppeKeys` (MS-MPPE-Recv-Key = MSK 0..31, Send-Key = MSK 32..63, RFC 2548 2.4.2 with two
+  distinct salts), `VlanAttributes` (tag 0), the Access-Accept also echoes the request's User-Name (RFC 3579 3).
+- **Text**: `MacAddress.Parse` (also HPE `accc8e-123456`; an EUI-64 or extra digits are not a suffix), `RadiusText`
+  (UTF-8, control and format characters removed), `NasPortTypes`, `TlsAlertTexts` (the table above; the OADM-sent form of
+  a certificate alert says "Client certificate …").
+- **RFC vectors**: RFC 2865 7 and RFC 5997 6 (Message-Authenticator). The second request of RFC 2865 7.3 is printed with
+  a State length of 0x10 for 8 octets and is malformed as printed (a test shows the parser drops it).
 
 ## Stages
 
