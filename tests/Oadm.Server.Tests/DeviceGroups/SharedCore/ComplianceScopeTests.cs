@@ -68,6 +68,39 @@ public sealed class ComplianceScopeTests
     }
 
     [Fact]
+    public async Task AGroupUserNeverSeesTheIdOfADeviceThatLeftTheGroupAndSavesTheCheckAgain()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var admin = new Proto.ComplianceService.ComplianceServiceClient(host.Invoker);
+        await admin.SetEnabledAsync(new Proto.SetComplianceEnabledRequest { Enabled = true });
+        var staying = await GroupCallers.DeviceAsync(host, 1, "Lobby");
+        var leaving = await GroupCallers.DeviceAsync(host, 2, "Lobby");
+        var user = await GroupCallers.ForTagAsync(host, "lobby", "Lobby");
+        var client = new Proto.ComplianceService.ComplianceServiceClient(user.Invoker);
+        var saved = await client.SaveCheckAsync(Reachable("Two", new Proto.ComplianceDevices { DeviceIds = { staying.Id.ToString(), leaving.Id.ToString() } }));
+        Assert.Equal(2, saved.Devices.DeviceIds.Count);
+
+        // The administrator takes one device out of the group.
+        await host.Tags.SetDeviceTagsAsync(new Proto.SetDeviceTagsRequest { DeviceIds = { leaving.Id.ToString() }, Remove = { "Lobby" } });
+
+        var detail = await client.GetCheckAsync(new Proto.ComplianceCheckId { Id = saved.Id });
+        Assert.Equal([staying.Id.ToString()], detail.Summary.Devices.DeviceIds);
+        Assert.Equal([staying.Id.ToString()], (await client.ListChecksAsync(new Proto.Empty())).Checks.Single(c => c.Id == saved.Id).Devices.DeviceIds);
+        using (var watch = client.WatchChecks(new Proto.Empty()))
+        {
+            Assert.True(await watch.ResponseStream.MoveNext());
+            Assert.Equal([staying.Id.ToString()], watch.ResponseStream.Current.Checks.Single(c => c.Id == saved.Id).Devices.DeviceIds);
+        }
+
+        Assert.Equal(2, (await admin.ListChecksAsync(new Proto.Empty())).Checks.Single(c => c.Id == saved.Id).Devices.DeviceIds.Count);
+
+        // Saving what the user sees works and keeps only the group's device.
+        detail.Summary.Name = "Two, now one";
+        var again = await client.SaveCheckAsync(detail);
+        Assert.Equal([staying.Id.ToString()], again.Devices.DeviceIds);
+    }
+
+    [Fact]
     public async Task SavingRefusesOutsideDevicesHiddenChecksAndAnotherOwner()
     {
         await using var host = await TestServerHost.StartAsync();

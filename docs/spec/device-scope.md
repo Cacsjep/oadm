@@ -360,6 +360,9 @@ an independent security review the same day). A user may be limited to part of t
   (plugin choices list only the caller's view), `Mapping/OwnerMapping` (`DeviceOwner`).
 - **Compliance**: `ComplianceCheck.Owner`, the engine intersects every check with its owner and re-reconciles the checks of
   groups on `OwnerScopes.Changed` (only devices that came in are evaluated), `ComplianceService` takes the caller's view.
+  A check keeps the device ids it was saved with; the replies of a group user (ListChecks, WatchChecks, GetCheck, SaveCheck,
+  SetCheckEnabled, SetEnabled) name only the ids of the user's view now, so a device that left the group is never shown
+  and saving the check again works (it then keeps only the group's devices).
 - **Event rules**: no owner, no view (decision 2026-10-23): every `EventService` method is `.ForAllDevices()`, the
   engine, the action runner and the event log work as in 4.1.0; the canary counts EventService as closed by the rule.
 - **Tests**: `Oadm.Core.Tests/DeviceGroups/TagGuardTests`, `Compliance/ComplianceOwnerTests`, Perf

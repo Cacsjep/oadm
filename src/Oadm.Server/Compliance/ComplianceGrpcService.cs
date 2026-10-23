@@ -40,8 +40,16 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
             await audit.WriteAsync(request.Enabled ? AuditActions.ComplianceTurnedOn : AuditActions.ComplianceTurnedOff, "Compliance", null, context.CancellationToken).ConfigureAwait(false);
         }
 
-        return ToProto(compliance.ListChecks(await views.ForAsync(context).ConfigureAwait(false)));
+        var all = await views.ForAsync(context).ConfigureAwait(false);
+        return ToProto(compliance.ListChecks(all), await VisibleAsync(all, context.CancellationToken).ConfigureAwait(false));
     }
+
+    /// <summary>
+    /// The device ids a group caller may see in a check (its view's ids, cached), null for a caller with all devices: a check
+    /// keeps the ids it was saved with, also of devices that left the group since; the reply never names them.
+    /// </summary>
+    private static async Task<IReadOnlySet<Guid>?> VisibleAsync(DeviceView view, CancellationToken ct) =>
+        view.HasAllDevices ? null : await view.IdsAsync(ct).ConfigureAwait(false);
 
     public override Task<Proto.ComplianceCatalog> GetCatalog(Proto.Empty request, ServerCallContext context)
     {
@@ -67,8 +75,11 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
         return Task.FromResult(catalog);
     }
 
-    public override async Task<Proto.ComplianceCheckList> ListChecks(Proto.Empty request, ServerCallContext context) =>
-        ToProto(compliance.ListChecks(await views.ForAsync(context).ConfigureAwait(false)));
+    public override async Task<Proto.ComplianceCheckList> ListChecks(Proto.Empty request, ServerCallContext context)
+    {
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        return ToProto(compliance.ListChecks(view), await VisibleAsync(view, context.CancellationToken).ConfigureAwait(false));
+    }
 
     /// <summary>The list now and after every change; a burst sends the newest list once (at most every 500 ms).</summary>
     public override async Task WatchChecks(Proto.Empty request, IServerStreamWriter<Proto.ComplianceCheckList> responseStream, ServerCallContext context)
@@ -81,12 +92,12 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
         Engine.ChecksChanged += OnChanged;
         try
         {
-            await responseStream.WriteAsync(ToProto(compliance.ListChecks(view)), ct).ConfigureAwait(false);
+            await responseStream.WriteAsync(ToProto(compliance.ListChecks(view), await VisibleAsync(view, ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
             while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
                 signal.Reader.TryRead(out _);
-                await responseStream.WriteAsync(ToProto(compliance.ListChecks(view)), ct).ConfigureAwait(false);
+                await responseStream.WriteAsync(ToProto(compliance.ListChecks(view), await VisibleAsync(view, ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -102,8 +113,13 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
     public override async Task<Proto.ComplianceCheckDetail> GetCheck(Proto.ComplianceCheckId request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "check id");
-        var state = Find(await views.ForAsync(context).ConfigureAwait(false), id);
-        return new Proto.ComplianceCheckDetail { Summary = ToProto(state), SettingsJson = state.Check.Settings.ToJsonString() };
+        var view = await views.ForAsync(context).ConfigureAwait(false);
+        var state = Find(view, id);
+        return new Proto.ComplianceCheckDetail
+        {
+            Summary = ToProto(state, Owners, await VisibleAsync(view, context.CancellationToken).ConfigureAwait(false)),
+            SettingsJson = state.Check.Settings.ToJsonString(),
+        };
     }
 
     public override async Task<Proto.ComplianceCheckSummary> SaveCheck(Proto.ComplianceCheckDetail request, ServerCallContext context)
@@ -138,7 +154,7 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
         {
             var (stored, created) = await compliance.SaveAsync(check, view, Mapping.OwnerMapping.FromProto(summary.Owner), caller.IsAdmin, context.CancellationToken).ConfigureAwait(false);
             await audit.WriteAsync(created ? AuditActions.ComplianceCheckCreated : AuditActions.ComplianceCheckChanged, stored.Name, null, context.CancellationToken).ConfigureAwait(false);
-            return ToProto(State(view, stored.Id));
+            return ToProto(State(view, stored.Id), Owners, await VisibleAsync(view, context.CancellationToken).ConfigureAwait(false));
         }
         catch (KeyNotFoundException ex)
         {
@@ -189,7 +205,7 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
         {
             var stored = await compliance.SetEnabledAsync(id, request.Enabled, view, context.CancellationToken).ConfigureAwait(false);
             await audit.WriteAsync(request.Enabled ? AuditActions.ComplianceCheckTurnedOn : AuditActions.ComplianceCheckTurnedOff, stored.Name, null, context.CancellationToken).ConfigureAwait(false);
-            return ToProto(State(view, stored.Id));
+            return ToProto(State(view, stored.Id), Owners, await VisibleAsync(view, context.CancellationToken).ConfigureAwait(false));
         }
         catch (KeyNotFoundException ex)
         {
@@ -331,26 +347,21 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
             };
     }
 
-    private Proto.ComplianceCheckList ToProto(IEnumerable<ComplianceCheckState> states)
+    private Proto.ComplianceCheckList ToProto(IEnumerable<ComplianceCheckState> states, IReadOnlySet<Guid>? visible)
     {
         var list = new Proto.ComplianceCheckList { Enabled = Engine.Enabled };
-        list.Checks.AddRange(states.Select(ToProto));
+        list.Checks.AddRange(states.Select(s => ToProto(s, Owners, visible)));
         return list;
     }
 
-    private Proto.ComplianceCheckSummary ToProto(ComplianceCheckState state)
-    {
-        var proto = ToProto(state, Owners);
-        return proto;
-    }
-
-    internal static Proto.ComplianceCheckSummary ToProto(ComplianceCheckState state, OwnerScopes? owners)
+    /// <param name="visible">The ids a group caller sees (<see cref="VisibleAsync"/>); null = every stored id.</param>
+    internal static Proto.ComplianceCheckSummary ToProto(ComplianceCheckState state, OwnerScopes? owners, IReadOnlySet<Guid>? visible)
     {
         var check = state.Check;
         var devices = new Proto.ComplianceDevices { All = check.Devices.Mode == DeviceSelectorMode.All };
         if (!devices.All)
         {
-            devices.DeviceIds.AddRange(check.Devices.DeviceIds.Select(id => id.ToString()));
+            devices.DeviceIds.AddRange(check.Devices.DeviceIds.Where(id => visible is null || visible.Contains(id)).Select(id => id.ToString()));
             devices.Tags.AddRange(check.Devices.Tags);
         }
 
