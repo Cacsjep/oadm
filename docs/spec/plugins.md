@@ -71,7 +71,8 @@ returns null or throws `NotSupportedException`.
   `ICorePlugin.RequiresAllDevices(method)` (saves of server-wide services; the host refuses them for group users) and
   `SystemAccessReason(method)` (the few methods that may use `ctx.System` in a group user's call). `ICorePluginContext.System`
   (`ISystemAccess`: every device, for background work; default the context's own members) and `Jobs` (`IPluginJobs`:
-  work owned by the user who started it, `Find` answers null for another user's id) and `DeviceScopes` (`IDeviceScopes`:
+  work owned by the user and session that started it, `Find` answers null for another user's or session's id; `StartShared`:
+  a job of the owner's device scope, found and stopped by every user of it) and `DeviceScopes` (`IDeviceScopes`:
   `Exists`, `Contains` (a device, or a device id: from the host's group fields of each device, false when unknown),
   `Devices`, `NameOf` per scope key, `Changed`, `InAnyGroup`: objects a plugin keeps per group run only on its
   devices, a deleted group's are off). `ITaskExecutionContext.Caller` (the
@@ -79,6 +80,9 @@ returns null or throws `NotSupportedException`.
   or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
   `TaskEngine.ForView`). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
   User, Session; the old `Publish` reaches only watchers with all devices on 4.2). `IDeviceInfo.AddedByAllDevices`.
+  `EventTypeInfo.OwnerScopeKey` (the device scope key of the object behind an event type: a device trigger or a compliance
+  check of a group, "all" for one of all devices; null = nobody's): pages that list event types to users hide another
+  owner's; the host fills it for compliance checks (`DeviceScope.ScopeKey` of the check's owner) and passes the plugins' own.
   Actions get nothing new (event rules are for users with all devices). Client SDK: `HasAllDevices` on
   `ICorePluginClientContext`, `ITaskDialogContext`, `IToolbarContext` (default true). `SdkInfo.Version` 0.4.0,
   `SdkInfo.CallContextVersion`: users with a device group may call only packages whose `minSdkVersion` is at least

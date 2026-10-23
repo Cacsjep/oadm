@@ -21,6 +21,12 @@ public readonly record struct DeviceScope(bool AllDevices, Guid? GroupId)
     /// <summary>The group when the scope is a group, else null.</summary>
     public Guid? EffectiveGroupId => AllDevices ? null : GroupId;
 
+    /// <summary>
+    /// The scope as <c>ICallContext.DeviceScopeKey</c> names it: "all", the group's id, or "none" (no device: matches no
+    /// user's key, like <c>DeviceView.ScopeKey</c>).
+    /// </summary>
+    public string ScopeKey => AllDevices ? Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey : GroupId?.ToString() ?? "none";
+
     /// <summary>Neither all devices nor a group: no device at all.</summary>
     public bool IsNone => !AllDevices && GroupId is null;
 }

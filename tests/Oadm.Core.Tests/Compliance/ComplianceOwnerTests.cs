@@ -91,9 +91,16 @@ public sealed class ComplianceOwnerTests
         kept = rig.Engine.GetCheck(mine.Id)!;
         var refused = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => rig.Service.SaveAsync(kept, lobby, DeviceScope.All, false, Ct));
         Assert.Equal(OwnerRules.OnlyAdministrators, refused.Message);
+        Assert.Equal(lobby.ScopeKey, rig.Engine.EventTypes.Single(t => t.Id == ComplianceEngine.EventTypeId(mine.Id)).OwnerScopeKey);
+        var typesChanged = 0;
+        rig.Engine.EventTypesChanged += (_, _) => Interlocked.Increment(ref typesChanged);
         var (moved, _) = await rig.Service.SaveAsync(kept, rig.AllView, DeviceScope.All, true, Ct);
         Assert.Equal(DeviceScope.All, moved.Owner);
         Assert.Empty(rig.Service.ListChecks(lobby));
+
+        // The check's event type names its owner (Dashboards shows it only to that owner's users) and follows a new one.
+        Assert.Equal(1, typesChanged);
+        Assert.Equal(Sdk.Plugins.ICallContext.AllDevicesScopeKey, rig.Engine.EventTypes.Single(t => t.Id == ComplianceEngine.EventTypeId(mine.Id)).OwnerScopeKey);
     }
 
     [Fact]

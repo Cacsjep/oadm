@@ -405,7 +405,10 @@ an independent security review the same day). A user may be limited to part of t
   task is bound to its run before it reads the device: the run of its user's scope, an undo task only for a run Undo
   marked.
 - **VAPIX Commander**: a rollout belongs to the user who started it; a task of another user naming its id is refused.
-- **Dashboards**: group users see device events with a device list of their devices, OADM's own device status events and
+- **Dashboards**: group users never see the device triggers of another owner, also on devices both can see (decision
+  2026-10-23, "Shared objects: others are hidden"): an event type names its owner (`EventTypeInfo.OwnerScopeKey`, SDK
+  0.4.0; Device triggers fill it, the host fills it for compliance checks) and Dashboards hides the types of another
+  owner. Group users see device events with a device list of their devices, OADM's own device status events and
   the site events of their sites; events without a device list from other sources (compliance checks, which carry no
   owner) are hidden, also as watch keys. Every push checks the group's devices now; a renewal naming a device that left
   ends the old watch.
