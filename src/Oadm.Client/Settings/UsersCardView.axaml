@@ -24,6 +24,7 @@
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
           <DataGridTextColumn Header="Role" Width="180" Binding="{Binding RoleText}" x:DataType="settings:UserRowViewModel" />
+          <DataGridTextColumn Header="Devices" Width="160" Binding="{Binding DevicesText}" x:DataType="settings:UserRowViewModel" />
           <DataGridTextColumn Header="Last login" Width="140" Binding="{Binding LastLoginText}" x:DataType="settings:UserRowViewModel" />
           <DataGridTemplateColumn Header="State" Width="100" SortMemberPath="StateText" x:DataType="settings:UserRowViewModel">
             <DataGridTemplateColumn.CellTemplate>

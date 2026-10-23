@@ -66,8 +66,12 @@ public sealed partial class FakeOadmApi
         }
     }
 
-    public Task<UserInfo> AddUserAsync(string userName, string password, string roleId, CancellationToken ct)
+    public Task<UserInfo> AddUserAsync(AddUserRequest request, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        string userName = request.UserName;
+        string password = request.Password;
+        string roleId = request.RoleId;
         lock (_gate)
         {
             ThrowIfOffline();
@@ -92,6 +96,13 @@ public sealed partial class FakeOadmApi
                 ?? throw new RpcException(new Status(StatusCode.InvalidArgument, "Unknown role."));
             var user = new UserInfo { Id = Guid.NewGuid().ToString(), UserName = name, Created = Timestamp.FromDateTime(DateTime.UtcNow) };
             SetRole(user, role);
+            user.AllDevices = true;
+            if (request.HasAllDevices && !request.AllDevices && string.IsNullOrEmpty(request.DeviceGroupId))
+            {
+                throw Invalid("Choose All devices or a device group.");
+            }
+
+            SetUserDevicesLocked(user, request.HasAllDevices ? request.AllDevices : null, request.DeviceGroupId);
             _users.Add(user);
             AuditLocked("Added user", name, "Role " + role.Name);
             return Task.FromResult(user.Clone());
@@ -132,6 +143,15 @@ public sealed partial class FakeOadmApi
             if (stateChanges)
             {
                 user.Disabled = request.Disabled;
+            }
+
+            if (request.HasAllDevices || request.HasDeviceGroupId)
+            {
+                SetUserDevicesLocked(user, request.HasAllDevices ? request.AllDevices : null, request.HasDeviceGroupId ? request.DeviceGroupId : null);
+            }
+            else if (roleChanges)
+            {
+                user.AllDevices = user.AllDevices || user.Role == UserRole.Admin;
             }
 
             AuditLocked("Changed user", user.UserName, request.NewPassword.Length > 0 ? "password reset" : "role or state");
@@ -231,6 +251,7 @@ public sealed partial class FakeOadmApi
                 Disabled = disabled,
                 Created = Timestamp.FromDateTime(now.AddDays(-daysAgo)),
                 LastLogin = lastLoginHoursAgo is { } h ? Timestamp.FromDateTime(now.AddHours(-h)) : null,
+                AllDevices = true,
             };
             SetRole(user, _roles.First(r => r.Id == roleId));
             return user;
@@ -273,5 +294,7 @@ public sealed partial class FakeOadmApi
                 Detail = seed[i].Detail,
             });
         }
+
+        SeedGroupsLocked();
     }
 }

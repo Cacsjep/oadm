@@ -133,14 +133,31 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   the permissions live: toolbar entries (`IToolbarPlugin.RequiredPermission`, `DeviceToolbar.ApplyPermissions`), the
   context menu entries, the live view click, the tasks pane's Cancel / Delete / Delete all, the Event rules rail entry
   (`events.view`) and its changes, tag administration, the rail's plugin pages and the task menu (reloaded from the
-  server, which filters them). The server checks every call again.
+  server, which filters them). The server checks every call again. `UserSession.HasAllDevices` (Administrator, All
+  devices, or a server before device groups: `UserInfo.all_devices` unset) hides what only users with all devices may do
+  (docs/spec/device-scope.md): tag rename, recolor and delete, Delete all of the tasks pane, Clear of the event log, the
+  Server tab of the Logs page, turning compliance on or off; the client SDK contexts (`IToolbarContext`,
+  `ICorePluginClientContext`, `ITaskDialogContext`) answer `HasAllDevices` from it. **Your role** shows the devices on
+  top: "Devices: All devices", "Devices: Building B (412 devices)" with the group's rules below (`MyRole.devices`, never
+  the excepted devices), or "Devices: No devices".
 - **Users page** (Admin only, subtitle "Who can log in to this server and what each role may do."; `Settings/UsersPageView`
   = the users card on top at the height it needs and the roles card filling the rest, with a splitter): **New user** (secondary button) above the list, then users with role
   (plain text), last login, state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
   and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
-  Add user (user name, password, role), Edit user (the role; Administrator with a hint) and Change password (new +
-  confirm) are one single-operation dialog `Settings/UserFormWindow` (`UsersViewModel.Form`), errors and refusals below
-  the fields. **Roles
+  The list has a **Devices** column: All devices, the user's device group, or No devices (the group was deleted).
+  Add user (user name, password, role, devices), Edit user (the role and the devices; Administrator with a hint) and
+  Change password (new + confirm) are one single-operation dialog `Settings/UserFormWindow` (`UsersViewModel.Form`),
+  errors and refusals below the fields. **Devices** offers All devices and the groups (`DeviceAccessOption`): for the
+  Administrator role it is locked with "Administrators always have all devices."; with a group the hint says "Users with
+  a device group view the NTP server, DHCP server and PKI pages but cannot change them." (`DeviceGroupWords`, also in
+  the role dialog); a user without devices must get a choice before Save. **Device groups card** below the users
+  (`DeviceGroupsCardView`, `DeviceGroupsViewModel`, `DeviceGroupService`): Group (description as tooltip), Rules ("Site
+  Building B, tag PTZ, 3 devices, except 1", from the server), Devices (right-aligned), Users; **New device group**, row
+  Edit and Delete (red; the confirmation names the users who have no devices afterwards). New and Edit open the group
+  editor (`DeviceGroupEditorViewModel`, `DeviceGroupFormView.CreateWindow`): the shared device picker in its group mode
+  with Name and Description (Optional) on top; the device list is built off the UI thread; Save sends the rules with the
+  revision the editor started from; name errors below the name, refusals of the rules (too many, changed meanwhile)
+  directly below the device list. **Roles
   card** (`RolesCardView`, `RolesViewModel`): the permission matrix, rows = permissions in groups (Devices, Tasks, Event
   rules, then one group per plugin in rail order; collapsible, a three-state check box per role for the whole group),
   columns = roles (built in code-behind; header with name, "3 users", "Starts on Compliance" and a menu Edit, Copy, Reset to default, Delete; the Administrator role Edit and Copy),

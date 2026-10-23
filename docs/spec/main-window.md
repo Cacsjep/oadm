@@ -84,10 +84,11 @@ Layout, top to bottom:
    Log card (level chip, time, device address, message; `TaskService.GetLog`, re-read when the current
    step or the task state changes, new entries appended), built from the shared grid and chip styles; **Cancel task**
    in its footer while the task runs. Pane buttons: details, cancel, delete, a separator, **delete all** (red, with
-   confirmation; running tasks are cancelled first); all work per task.
+   confirmation; running tasks are cancelled first; hidden for users with a device group); all work per task.
 
 **Logs page** (rail, bottom; `Logging/LogsViewModel` + `LogsView`): the segmented switch **Server** | **Client** | **Audit**
-on top of each card. **Server** (first when the role may see it, permission `logs.server` "See the server log", group "Logs";
+on top of each card. **Server** (first when the role may see it, permission `logs.server` "See the server log", group "Logs", and only for users
+with all devices: its text names devices;
 Administrator always, Operator and Viewer off by default): the server's log files read on request by gRPC
 `ServerLogService.List(offset, limit, min_level, search)` (`logs.proto`; `Oadm.Server.Logging.ServerLogGrpcService` over
 `Oadm.Contracts.Logging.LogFileReader`: the files `oadm-server-*.log`, newest first, entries of the Serilog template, continuation

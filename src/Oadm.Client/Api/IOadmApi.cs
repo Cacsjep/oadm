@@ -35,7 +35,8 @@ public interface IOadmApi
 
     // UserService (Admin only)
     Task<IReadOnlyList<UserInfo>> ListUsersAsync(CancellationToken ct);
-    Task<UserInfo> AddUserAsync(string userName, string password, string roleId, CancellationToken ct);
+    /// <summary>Adds a user with a role and the devices (all devices or a device group).</summary>
+    Task<UserInfo> AddUserAsync(AddUserRequest request, CancellationToken ct);
     Task<UserInfo> UpdateUserAsync(UpdateUserRequest request, CancellationToken ct);
     Task DeleteUserAsync(string id, CancellationToken ct);
 
@@ -49,6 +50,22 @@ public interface IOadmApi
 
     /// <summary>The caller's role and what it allows (every user).</summary>
     Task<MyRole> GetMyRoleAsync(CancellationToken ct);
+
+    // DeviceGroupService (Admin only): the devices a user may reach (docs/spec/device-scope.md).
+
+    /// <summary>Every device group by name, with its device count, users and rules summary.</summary>
+    Task<DeviceGroupList> ListDeviceGroupsAsync(CancellationToken ct);
+
+    Task<DeviceGroupInfo> GetDeviceGroupAsync(string id, CancellationToken ct);
+
+    /// <summary>Creates (empty id) or changes a group; the stored group comes back.</summary>
+    Task<DeviceGroupInfo> SaveDeviceGroupAsync(SaveDeviceGroupRequest request, CancellationToken ct);
+
+    /// <summary>Deletes a group: its users have no devices, what it owned is off.</summary>
+    Task<DeleteDeviceGroupReply> DeleteDeviceGroupAsync(string id, CancellationToken ct);
+
+    /// <summary>How many devices the rules cover now.</summary>
+    Task<DeviceGroupPreview> PreviewDeviceGroupAsync(PreviewDeviceGroupRequest request, CancellationToken ct);
 
     // ServerLogService ("See the server log")
     /// <summary>One page of the server's log, newest first; min_level "Information", "Warning", "Error" or empty.</summary>

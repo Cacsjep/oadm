@@ -12,6 +12,8 @@ version and date, and the release workflow copies it into the GitHub release.
   Also in the search and the export.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the
   upgrade every user keeps all devices.
+- Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
+  single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
 

@@ -127,7 +127,7 @@ public sealed partial class TasksViewModel : ObservableObject
     public bool MayDelete => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.TasksDelete) ?? true;
 
     /// <summary>The role may delete the whole task list ("tasks.deleteAll").</summary>
-    public bool MayDeleteAll => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.TasksDeleteAll) ?? true;
+    public bool MayDeleteAll => (_session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.TasksDeleteAll) ?? true) && (_session?.HasAllDevices ?? true);
 
     private bool HasSelection => SelectedTask is not null;
     private bool CanCancel => MayCancel && SelectedTask?.IsActive == true;
