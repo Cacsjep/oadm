@@ -251,8 +251,12 @@ an independent security review the same day). A user may be limited to part of t
   route)` (on a route of the user and inside the group), `Waiting` (`WaitingScope`). `DeviceGroupFilter.ThisServer` and
   `Sites` expose the compiled rules.
 - Core discovery sessions take `DiscoveryRoutes` (zero-conf, range scan, address probes); `CoreDiscoveryBackend` passes
-  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session.
-- `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed).
+  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session, kept while the
+  session exists (`IDiscoveryBackend.IsActive`) or a watch of it is open (`Hold`), else 30 minutes after its last use, so
+  Add and Retry work however long the page stays idle.
+- `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed); the login
+  session of a discovery session that still exists never expires, so it keeps that permission, the expected device and the
+  typed passwords (a session made again after it expired tries only typed passwords).
 - `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
   waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;

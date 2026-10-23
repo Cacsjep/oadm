@@ -92,14 +92,17 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     private readonly SemaphoreSlim _parallel = new(Parallelism);
     private readonly CancellationTokenSource _stopping = new();
     private readonly BasicOverHttpSetting? _basicOverHttp;
+    private readonly Discovery.IDiscoveryBackend? _discovery;
 
     public DiscoveryAuthenticator(
         CredentialListStore credentialList,
         IVapixConnector connector,
         TimeProvider time,
         ILogger<DiscoveryAuthenticator> logger,
-        BasicOverHttpSetting? basicOverHttp = null)
+        BasicOverHttpSetting? basicOverHttp = null,
+        Discovery.IDiscoveryBackend? sessions = null)
     {
+        _discovery = sessions;
         _basicOverHttp = basicOverHttp;
         _credentialList = credentialList;
         _connector = connector;
@@ -446,7 +449,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         var now = _time.GetUtcNow();
         foreach (var (id, old) in _sessions)
         {
-            if (now - old.LastUsed > SessionLifetime && old.Running().Length == 0)
+            // A session that still exists keeps its logins and its settings (credential list, expected device): recreated it
+            // would try only typed credentials.
+            if (now - old.LastUsed > SessionLifetime && old.Running().Length == 0 && _discovery?.IsActive(id) != true)
             {
                 _sessions.TryRemove(id, out _);
             }

@@ -122,10 +122,9 @@ public sealed class DiscoveryGrpcService(
         var ct = linked.Token;
         var sessionId = request.SessionId;
         var caller = AuthInterceptor.CallerOf(context);
-        if (!owners.Owns(sessionId, caller))
-        {
-            throw GrpcGuard.NotFound($"Discovery session '{sessionId}' not found."); // another user's session: like an unknown one
-        }
+        // Held while the watch is open: the add page may stay open for hours and its Add and Retry still find the session.
+        using var hold = owners.Hold(sessionId, caller)
+            ?? throw GrpcGuard.NotFound($"Discovery session '{sessionId}' not found."); // another user's session: like an unknown one
 
         var view = await views.ForAsync(context).ConfigureAwait(false);
         IAsyncEnumerable<DiscoveryEvent> events;

@@ -59,4 +59,10 @@ public interface IDiscoveryBackend
     /// the add still works after the client stopped discovery. Never a device of another session.
     /// </summary>
     DiscoveredDevice? FindDiscovered(string sessionId, string discoveredId);
+
+    /// <summary>
+    /// True while the session exists (started, not stopped): what belongs to it (its owner, its logins) is kept as long,
+    /// however long the add page stays open. The default: false (kept only by use).
+    /// </summary>
+    bool IsActive(string sessionId) => false;
 }
