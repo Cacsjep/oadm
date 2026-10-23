@@ -88,7 +88,8 @@ returns null or throws `NotSupportedException`.
   `SdkInfo.CallContextVersion`: users with a device group may call only packages whose `minSdkVersion` is at least
   0.4.0; older packages keep working for users with all devices. Test fakes: `Oadm.Sdk.Testing.FakeCallContext`
   (`AllDevices`, `WithGroup`, `Refused`; `Over`, `OverGroup` over a test's own device and VAPIX fakes; task
-  `IsActive` / `Cancel` / `AnyActiveAsync` like the host), `FakePluginJobs`, `FakeDeviceScopes` (also over a test's own
+  `IsActive` / `Cancel` / `AnyActiveAsync` like the host, also over a test's own runner: unknown and ended tasks false; a
+  cancelled task of `FakeCoreContext` ends at once, the host's when its run stops), `FakePluginJobs`, `FakeDeviceScopes` (also over a test's own
   device list), `FakeCoreContext.EndTask` (its tasks stay active until then), `FakeCoreContext.CallAsGroup` /
   `CallAsAllDevices`.
 - **Host side of the call context** (`src/Oadm.Core/Plugins/PluginCalls.cs`, `CorePluginHost`, `PluginGrpcService`):
@@ -99,8 +100,8 @@ returns null or throws `NotSupportedException`.
   true); then they call the plugin's call overload inside a `PluginCallMark` (`CallerContext.PluginCall`, cleared by
   `CallerContext.Suppress`). The call (`HostCallContext`) reads devices from the view, refuses VAPIX clients, task runs
   (whole batch) and event streams (`ViewedEventStreams`: they end when the device leaves the view) outside it with
-  `DevicesNotAvailableException`, and lets a group user cancel only tasks started through its own calls (`IsActive` of another user's task: null, "cannot
-tell"; `AnyActiveAsync` answers for every task of the user's devices, null when one runs on a device outside them). Its `Tasks` is
+  `DevicesNotAvailableException`, and lets a group user cancel only tasks started through its own calls (`IsActive` of another user's active task: null, "cannot
+tell"; unknown and ended tasks: false for everyone; `AnyActiveAsync` answers for every task of the user's devices, null when one runs on a device outside them). Its `Tasks` is
   `TaskEngine.ForView(view, TaskCaller.Of(caller))`, also in the user's jobs: the caller owns the tasks (the owner text is
   the caller's "user@machine", never what the plugin passes), each task checks the caller's view again when it leaves the
   queue and gets `ITaskExecutionContext.Caller`. The context's

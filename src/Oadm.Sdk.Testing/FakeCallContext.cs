@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
@@ -12,8 +15,11 @@ namespace Oadm.Sdk.Testing;
 /// VAPIX fakes (<see cref="Over"/>, <see cref="OverGroup"/>). Devices outside the group behave like on the server:
 /// <see cref="IDeviceRepository.FindAsync"/> answers null, VAPIX clients, task runs and event streams throw
 /// <see cref="DevicesNotAvailableException"/>, nothing runs. <see cref="Refused"/> counts those refusals for the canary
-/// tests of a plugin. Like the host, a group user's <see cref="ITaskRunner.IsActive"/> and <see cref="ITaskRunner.Cancel"/>
-/// answer only the tasks that user started, <see cref="ITaskRunner.AnyActiveAsync"/> the tasks of the group's devices.
+/// tests of a plugin. The call's <see cref="Tasks"/> answer like the host, also over a test's own runner: unknown and ended
+/// tasks are not active (false); a group user cancels only the tasks that user started and gets null from
+/// <see cref="ITaskRunner.IsActive"/> for another user's active task; <see cref="ITaskRunner.AnyActiveAsync"/> answers for the
+/// tasks of the group's devices, whoever started them (null for an active task outside the group). Unlike the host, a
+/// cancelled task of a <see cref="FakeCoreContext"/> ends at once; on the server it stays active until its run stops.
 /// </summary>
 public sealed class FakeCallContext : ICallContext
 {
@@ -67,7 +73,9 @@ public sealed class FakeCallContext : ICallContext
 
     /// <summary>
     /// A user limited to a device group of <paramref name="deviceIds"/> over a test's own fakes (see <see cref="Over"/>):
-    /// devices outside the group are refused before the fakes are asked.
+    /// devices outside the group are refused before the fakes are asked. Task cancels and questions are filtered like the
+    /// host's: the user's own tasks are those its calls started over the same runner; a task the fake cannot place on a
+    /// device counts as outside the group.
     /// </summary>
     public static FakeCallContext OverGroup(
         IEnumerable<Guid> deviceIds,
@@ -182,58 +190,60 @@ public sealed class FakeCallContext : ICallContext
 
     private sealed class ScopedTasks(FakeCallContext call) : ITaskRunner
     {
-        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+        public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(deviceIds);
             call.RequireAll(deviceIds);
-            return call._core is { } core
-                ? core.Run(pluginId, deviceIds, payloadJson, owner, call.UserName)
-                : (call._tasks ?? throw Missing("task runner")).RunAsync(pluginId, deviceIds, payloadJson, owner, ct);
-        }
-
-        public bool Cancel(Guid taskId)
-        {
-            if (call._core is not { } core)
+            if (call._core is { } core)
             {
-                return (call._tasks ?? throw Missing("task runner")).Cancel(taskId);
+                return await core.Run(pluginId, deviceIds, payloadJson, owner, call.UserName).ConfigureAwait(false);
             }
 
-            return Own(core, taskId) && core.EndTask(taskId);
+            var runner = call._tasks ?? throw Missing("task runner");
+            var ids = await runner.RunAsync(pluginId, deviceIds, payloadJson, owner, ct).ConfigureAwait(false);
+            var started = StartedOver(runner);
+            for (var i = 0; i < ids.Count && i < deviceIds.Count; i++)
+            {
+                started[ids[i]] = new StartedTask(deviceIds[i], call.UserName);
+            }
+
+            return ids;
         }
 
+        // Like the host (TaskEngine.Cancel / CancelOwn): users with all devices cancel every task, a group user only its own.
+        public bool Cancel(Guid taskId) =>
+            call._core is { } core
+                ? Own(taskId) && core.EndTask(taskId)
+                : Own(taskId) && Runner.Cancel(taskId);
+
+        // Like the host (TaskEngine.IsActive / IsActiveOwn): unknown and ended tasks are not active (false); a group user
+        // learns nothing about another user's active task (null).
         public bool? IsActive(Guid taskId)
         {
-            if (call._core is not { } core)
-            {
-                return (call._tasks ?? throw Missing("task runner")).IsActive(taskId);
-            }
-
-            return Own(core, taskId) ? core.TaskActive(taskId) : null;
+            var active = call._core is { } core ? core.TaskActive(taskId) : Runner.IsActive(taskId);
+            return call.HasAllDevices || Own(taskId) || active == false ? active : null;
         }
 
         public Task<bool?> AnyActiveAsync(IReadOnlyCollection<Guid> taskIds, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(taskIds);
-            if (call._core is not { } core)
+            if (call._core is null && call.HasAllDevices)
             {
-                return (call._tasks ?? throw Missing("task runner")).AnyActiveAsync(taskIds, ct);
+                return Runner.AnyActiveAsync(taskIds, ct);
             }
 
-            // Like the host: unknown and ended tasks are not active; an active task on a device outside the group, null.
-            if (call.HasAllDevices)
-            {
-                return Task.FromResult<bool?>(taskIds.Any(id => core.TaskActive(id) == true));
-            }
-
+            // Like the host: unknown and ended tasks are not active; a group user asks about the tasks of the group's devices,
+            // whoever started them; an active task on a device outside the group (or one the fake cannot place), null.
             var outside = false;
             foreach (var id in taskIds)
             {
-                if (core.TaskOf(id) is not { } task || core.TaskActive(id) != true)
+                var active = call._core is { } core ? core.TaskActive(id) : Runner.IsActive(id);
+                if (active == false)
                 {
                     continue;
                 }
 
-                if (call.Contains(task.DeviceId))
+                if (active == true && (call.HasAllDevices || (DeviceOf(id) is { } device && call.Contains(device))))
                 {
                     return Task.FromResult<bool?>(true);
                 }
@@ -244,10 +254,34 @@ public sealed class FakeCallContext : ICallContext
             return Task.FromResult<bool?>(outside ? null : false);
         }
 
-        // Users with all devices: every task; a group user: only the tasks of its own calls.
-        private bool Own(FakeCoreContext core, Guid taskId) =>
-            call.HasAllDevices || (core.TaskOf(taskId) is { StartedBy: { } user } && string.Equals(user, call.UserName, StringComparison.OrdinalIgnoreCase));
+        private ITaskRunner Runner => call._tasks ?? throw Missing("task runner");
+
+        private Guid? DeviceOf(Guid taskId) =>
+            call._core is { } core ? core.TaskOf(taskId)?.DeviceId
+            : StartedOver(Runner).TryGetValue(taskId, out var task) ? task.DeviceId
+            : null;
+
+        // Users with all devices: every task; a group user: only the tasks its calls started (by user name, like the host's user id).
+        private bool Own(Guid taskId)
+        {
+            if (call.HasAllDevices)
+            {
+                return true;
+            }
+
+            var user = call._core is { } core ? core.TaskOf(taskId)?.StartedBy
+                : StartedOver(Runner).TryGetValue(taskId, out var task) ? task.StartedBy
+                : null;
+            return user is not null && string.Equals(user, call.UserName, StringComparison.OrdinalIgnoreCase);
+        }
     }
+
+    /// <summary>The tasks calls started over a test's own runner (<see cref="Over"/>, <see cref="OverGroup"/>), shared by every call over it.</summary>
+    private static ConcurrentDictionary<Guid, StartedTask> StartedOver(ITaskRunner runner) => StartedByRunner.GetValue(runner, _ => new());
+
+    private static readonly ConditionalWeakTable<ITaskRunner, ConcurrentDictionary<Guid, StartedTask>> StartedByRunner = new();
+
+    private sealed record StartedTask(Guid DeviceId, string StartedBy);
 
     private sealed class ScopedEventStreams(FakeCallContext call, IDeviceEventStreams inner) : IDeviceEventStreams
     {
