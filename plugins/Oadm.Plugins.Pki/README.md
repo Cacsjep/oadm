@@ -4,12 +4,11 @@ Core plugin (+ `.Client`), rail page **PKI** (group Security, icon `shield`), al
 `tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
 part 2: the contributed Security tasks (below), and the OADM CA service (`PkiCertificateAuthority`, offered as
 `IDeviceCertificateAuthority` through `ICorePluginContext.Services` while the plugin runs; the EST server signs with it),
-the only writers of the `issued` registry.
+the only writers of the list of issued certificates (see "Issued certificates and revocation" below).
 - CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
   key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
-  most 10, newest first, expired ones dropped), `issued` (`{serialNumber, deviceId, purpose https|dot1x, caId, notAfterUtc,
-  issuedUtc, alias, source}`, source "EST" for certificates of the CA service, empty for PKI's tasks; per device and purpose the newest counts; `IssuedRegistry` keeps changes in memory and writes at
-  most every 2 s and on stop, entries ended more than 30 days ago are dropped), `config`. Without `Secrets` the plugin keeps no CA
+  most 10, newest first, expired ones dropped), `config`, `existingImported` (the one pass over the devices ran; below);
+  `issued` of OADM 4.1 moves into the plugin records at the first start (below). Without `Secrets` the plugin keeps no CA
   ("CA cannot be stored on this server"); a key that cannot be decrypted (other master key) is the error state "CA key
   cannot be read" with Generate / Import only, nothing is overwritten.
 - First start: the default CA "OADM Root CA <machine name>" in the background (status "Creating the certificate
@@ -48,8 +47,10 @@ the only writers of the `issued` registry.
 - Page methods (`PkiMethods`, camelCase, errors as `{errors: {Field: message}}` or `{error}`): `getState` (status, ca,
   previousCas, config, serverTrustInstalled (checked every call), counts, radiusCa, `simulated` in fake mode), `generate`,
   `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
-  `saveSettings`, `importRadiusCa`; event `state` after every change.
-- Page (`HasOwnCards`, subtitle "Issues device certificates for HTTPS and IEEE 802.1X.", header chip "CA valid until
+  `saveSettings`, `importRadiusCa`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
+  after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
+- Page: two fixed tabs (`ui:PageTab`) **Certificate authority** (the cards below) and **Certificates** (below).
+- Tab Certificate authority (`HasOwnCards`, subtitle "Issues device certificates for HTTPS and IEEE 802.1X.", header chip "CA valid until
   <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
   cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
   chips for the server and this computer, the source (Generated / Imported) as a "Source" row, buttons Install in trusted
@@ -64,7 +65,10 @@ the only writers of the `issued` registry.
   protector, event hub and anchor registry: default CA, restart, other master key, no secrets, replace + confirmation,
   previous CAs cap/expiry/remove, export, backup restore, settings, RADIUS CA, status texts; trust store installers per
   OS with the fake runner; page view model incl. dialogs; fake mode; headless screenshots `pki-page.png`,
-  `pki-page-imported-intermediate.png`, `pki-generate-dialog.png`, `pki-import-dialog-errors.png`, `pki-backup-dialog.png`);
+  `pki-page-imported-intermediate.png`, `pki-generate-dialog.png`, `pki-import-dialog-errors.png`, `pki-backup-dialog.png`;
+  the list of issued certificates and revocation: `IssuedRegistryTests`, `RevocationTests`, `ExistingCertificateImportTests`,
+  `CertificatesTabTests` (+ `pki-certificates.png`, `pki-revoke-confirm.png`, `pki-certificate-window.png`), `BackupTests`
+  (a restore on another server over the real database), Perf `IssuedScaleTests` (30,000 devices x 4 certificates));
   `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
   lazy re-rating in `CertificatePinning`, host context).
 
@@ -161,11 +165,49 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
 
+## Issued certificates and revocation
+
+Spec: `docs/spec/radius-server.md` "Certificates and revocation (PKI)". EST and the coming 802.1X server read it through
+the CA service.
+- `Ca/IssuedRegistry` (`PkiService.Issued`): every device certificate the OADM CA issued, in memory and in the plugin
+  records `issued` (one row per serial: `IssuedCertificate` without DER), `issuedDer` (`{"der": base64}`, read one at a
+  time by `GetDerAsync`) and `revoked` (`CertificateRevocation`). Indexes by normalized serial
+  (`CertificateSerials.Normalize`), by device and the newest per device and use (state Replaced); an ordered list for the
+  pages (newest first, one pass per query with filters and search). New entries are written every `FlushDelay` (2 s)
+  and on stop, only changed rows, in batches of 2,000; `RevokeAsync` writes before it returns and raises
+  `RevocationChanged` once; `IsRevoked` / `FindRevocation` read an immutable dictionary replaced on change (no lock).
+  `PruneAsync` at the start and every hour: certificates ended more than a year ago, revocations of ended certificates.
+  `LoadAsync` (in `PkiService.StartAsync`, before anything is answered) moves the settings value `issued` of OADM 4.1.
+- Writers: `CertificateDeployment.IssueAsync` (the tasks, with DER and the device's serial) and
+  `PkiCertificateAuthority.SignAsync` (the service: use from `DeviceCertificateRequest.Purpose`, DER, the serial of the
+  `axis-<serial>.local` name); certificates a task deletes from the device stay listed. `ImportFoundAsync` adds OADM
+  certificates found in a device's certificate list (signed by the active or a previous CA, checked by a chain build;
+  naming this device): `CertificateInventory.ReadAsync` with the device (View / Delete certificates), Renew certificates,
+  and `Ca/ExistingCertificateImport` (once per server, 5 minutes after the start, every device that answers with AXIS OS
+  11.11+, 4 at a time, read only; setting `existingImported`).
+- Methods: `getCertificates` (`CertificatesRequest`: state, purpose, source, search, offset, limit 500 ->
+  `CertificatesReply`; the caller's devices from `call.Devices`; a user with a group: only those, else every row and
+  removed devices with `DeviceManaged` false; an offset past the end answers the last page), `getCertificate`
+  (`CertificateDetailsRequest` -> `CertificateDetailsReply` with the SDK's `CertificateDescription` and the revocation;
+  not listed or another group's: "This certificate is not in the list."; no DER: "OADM keeps no copy of this
+  certificate."), `revoke` (`RevokeRequest`: serials, at most 5,000, and `RevocationReason`) and `revokeDevice`
+  (`RevokeDeviceRequest`: every certificate of the device that is still valid) -> `RevokeReply` (revoked, already
+  revoked, not found or expired); the revoking user is the caller. Event `certificates` at most once per
+  `PkiOptions.CertificatesEventDelay` (1 s) to `AllDevices` and to each group that read the page.
+- Client (`IssuedCertificatesViewModel`, in `PkiView.axaml`): filters (state, use, issued by), search (300 ms after the
+  last key), Previous / Next, `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one
+  step and kept over a new page, View certificate (`ui:CertificateWindow`, a double click too), Revoke and Revoke all of
+  this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
+  "manage". The tab reads only when shown; an event while the other tab is shown marks it to read when opened.
+- Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
+  View certificate describes a certificate the fake CA signs; Revoke changes the rows.
+
 ## Device groups (SDK 0.4.0)
 
 `minSdkVersion` 0.4.0. `InvokeAsync(ICallContext, ...)`: `getState` for everyone who may see the page, with the counts of
 issued certificates (`issuedDevices`, `devicesWithCurrentCa`, `devicesWithPreviousCa`, `expiringSoon`, per previous CA)
-only of the caller's devices (`ViewedSet` of `plugins/Shared/ViewerScopes.cs`); every other method `RequiresAllDevices`
+only of the caller's devices (`ViewedSet` of `plugins/Shared/ViewerScopes.cs`); `getCertificates` and `getCertificate`
+only of the caller's devices (above); every other method `RequiresAllDevices`
 (the CA, its trust and the settings are server-wide). The `state` event goes to `AllDevices` with every device and to
 `DeviceScope(key)` of each group that read the page with that group's counts. The page hides the CA actions, the trust
 button and Save for a user with a group (`HasAllDevices`). The tasks get their device from the host;
@@ -174,11 +216,12 @@ button and Save for a user with a group (`HasAllDevices`). The tasks get their d
 and `axis-<serial>.local`, CN the OADM address when it is an IP address, else the first IP address or the axis name).
 `inAnyGroup` (`PkiService.InAnyGroup`, `IDeviceScopes.InAnyGroup`; no scopes: true) leaves out everything the camera
 reports (host name, FQDN, further IP addresses): a group user could change them on the camera. Tests: `DeviceGroupTests` (the `PluginCanary`,
-counts and events per group, names, Enable HTTPS on a device a group user added, one a group covers and one no group covers, the page).
+counts and events per group, names, Enable HTTPS on a device a group user added, one a group covers and one no group covers, the page,
+the Certificates tab of a group user).
 
 ## Permissions
 
-`oadm.pki:show` (`getState`), `:manage` "Manage the certificate authority" (every other method except
-`installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
+`oadm.pki:show` (`getState`, `getCertificates`, `getCertificate`), `:manage` "Manage the certificate authority" (every other
+method, Revoke too, except `installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
 and locks the settings without "manage", and hides "Install in trusted root store" without "trustServer". The Security
 tasks have one key each (`task:oadm.pki....`). Operator default: show and the tasks.

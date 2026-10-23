@@ -20,10 +20,23 @@ public static class CertificateInventory
     /// Reads certificates, CA certificates, the web server certificate (SOAP) and the 802.1X configuration (network-settings,
     /// when <paramref name="apis"/> lists it). Read-only.
     /// </summary>
-    public static async Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, CancellationToken ct)
+    public static Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, CancellationToken ct) =>
+        ReadAsync(vapix, apis, registry, service, null, ct);
+
+    /// <summary>
+    /// Like <see cref="ReadAsync(IVapixClient, IReadOnlyList{DeviceApi}, IReadOnlyList{IssuedCertificate}, PkiService?, CancellationToken)"/>;
+    /// with <paramref name="device"/> the OADM certificates found that the list of issued certificates does not hold yet are
+    /// added to it (certificates from before the list).
+    /// </summary>
+    public static async Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, IDeviceInfo? device, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(vapix);
         var certificates = await CertApi.ListCertificatesAsync(vapix, ct).ConfigureAwait(false);
+        if (service is not null && device is not null)
+        {
+            await service.ImportFoundAsync(device, certificates.Select(c => (c.Alias, c.Pem)), ct).ConfigureAwait(false);
+        }
+
         var cas = await CertApi.ListCaCertificatesAsync(vapix, ct).ConfigureAwait(false);
         WebServerTlsConfiguration? webServer = null;
         try
@@ -170,7 +183,7 @@ public static class CertificateQuery
         var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
         try
         {
-            var list = await CertificateInventory.ReadAsync(ctx.Vapix, device.Apis, registry, service, ct).ConfigureAwait(false);
+            var list = await CertificateInventory.ReadAsync(ctx.Vapix, device.Apis, registry, service, device, ct).ConfigureAwait(false);
             return PkiJson.Serialize(new CertificateListReply { Certificates = list });
         }
         catch (PkiDeviceException ex)
@@ -236,7 +249,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
         var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
         var installed = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
-            var read = await CertificateInventory.ReadAsync(ctx.Vapix, apis, registry, service, ct).ConfigureAwait(false);
+            var read = await CertificateInventory.ReadAsync(ctx.Vapix, apis, registry, service, device, ct).ConfigureAwait(false);
 
             // Validate every choice before the first delete.
             foreach (var choice in chosen)
@@ -258,7 +271,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
             return read;
         }).ConfigureAwait(false);
 
-        var serials = new List<string>();
+        // A deleted certificate stays in the list of issued certificates (a copy could be in use): it can be revoked until it ends.
         foreach (var choice in chosen)
         {
             await ctx.StepAsync("Delete certificate " + choice.Alias, async step =>
@@ -275,15 +288,6 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
                 step.Complete(choice.Ca ? "CA certificate deleted" : "Certificate and key deleted");
             }).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{choice.Alias}\" deleted.");
-            if (!choice.Ca && installed.FirstOrDefault(c => c.Alias == choice.Alias && c.Kind != CertificateKind.Ca) is { } deleted)
-            {
-                serials.AddRange(registry.Where(e => string.Equals(e.Alias, deleted.Alias, StringComparison.Ordinal)).Select(e => e.SerialNumber));
-            }
-        }
-
-        if (service is not null)
-        {
-            await service.Issued.RemoveAsync(device.Id, serials, ct).ConfigureAwait(false);
         }
 
         await ctx.StepAsync(PkiSteps.Verify, async step =>

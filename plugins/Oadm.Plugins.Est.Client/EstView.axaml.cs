@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 
+using Oadm.Sdk.Client.Controls;
+
 namespace Oadm.Plugins.Est.Client;
 
 /// <summary>
@@ -49,11 +51,11 @@ public partial class EstView : UserControl
         }
     }
 
-    private void OnCertificateRequested(object? sender, EstCertificateViewModel certificate)
+    private void OnCertificateRequested(object? sender, CertificateDetails certificate)
     {
         if (TopLevel.GetTopLevel(this) is Window owner)
         {
-            _ = EstCertificateWindow.ShowAsync(certificate, owner);
+            _ = CertificateWindow.ShowAsync(certificate, owner);
         }
     }
 }

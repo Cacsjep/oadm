@@ -212,7 +212,14 @@ public sealed class HttpsTaskTests
         Assert.Equal(alias, h.Detail(PkiSteps.RemovePrevious));
         Assert.DoesNotContain(alias, h.Camera.CertificateAliases);
         Assert.NotEqual(alias, h.Camera.WebServerAlias);
-        Assert.Single(await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None));
+
+        // Both stay in the list of issued certificates: the deleted one as Replaced (a copy could still be in use).
+        var both = await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None);
+        Assert.Equal(2, both.Count);
+        var now = h.Time.GetUtcNow().UtcDateTime;
+        Assert.Equal(Oadm.Sdk.Certificates.IssuedCertificateState.Replaced, h.Pki.Service.Issued.StateOf(both.Single(e => e.Alias == alias), now, 30));
+        Assert.Equal(Oadm.Sdk.Certificates.IssuedCertificateState.Valid, h.Pki.Service.Issued.StateOf(both.Single(e => e.Alias != alias), now, 30));
+        Assert.NotNull(await h.Pki.Service.Issued.GetDerAsync(both[0].SerialNumber, CancellationToken.None)); // kept for View certificate
         Assert.Contains(h.Context.LogEntries, e => e.Message.Contains("is replaced by a new one", StringComparison.Ordinal));
     }
 
@@ -436,7 +443,7 @@ public sealed class RenewDeleteInstallTests
         Assert.NotEqual(oldDot1x, h.Camera.EapTlsParams["certClient"]!.GetValue<string>());
         Assert.DoesNotContain(oldHttps, h.Camera.CertificateAliases);
         Assert.DoesNotContain(oldDot1x, h.Camera.CertificateAliases);
-        Assert.Equal(2, (await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None)).Count);
+        Assert.Equal(4, (await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None)).Count); // the replaced ones stay listed
         Assert.Equal("https", h.Context.Scheme);
     }
 

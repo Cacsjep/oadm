@@ -16,7 +16,9 @@ Apache 2.0).
     `POST .../simplereenroll`; everything else and unknown or disabled profiles 404. Who may enroll: the camera's Axis
     device ID (or a valid certificate of the OADM CA for it, with or without a record) whose serial is a managed device of
     the same site. Answers: PKCS#7 certs-only, base64 at 76 characters, leaf and chain. Refusals: 401 (no or no valid
-    identity), 403 (not managed, other site, certificate of another camera), 400 (request unreadable or refused by the CA), 503 (no PRO, no CA).
+    identity), 403 (not managed, other site, certificate of another camera, a certificate on PKI's revocation list:
+    `IDeviceCertificateAuthority.IsRevoked`, "Certificate revoked on ... (reason)"), 400 (request unreadable or refused by
+    the CA), 503 (no PRO, no CA). Every request names its use (`DeviceCertificateRequest.Purpose`) for PKI's list.
   - `DeviceId/AxisDeviceId`: the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
@@ -33,7 +35,7 @@ Apache 2.0).
     from the hourly `CheckRenewalsAsync` (newest certificate per device and profile, halfway through its lifetime plus
     `NotRenewedGrace`: Axis cameras renew halfway and retry daily; removing an `oadm_` profile stops the check).
   - Methods: `getState`, `getEnrollments`, `getNotRenewed` (500 at most), `getCertificate` (the certificate of a listed
-    enrollment, records collection `issued`, described by `Serving/CertificateDescriber`) for everyone; `save` and `clearEnrollments`
+    enrollment, records collection `issued`, described by the SDK's `CertificateDescriber`, shown in the shared `ui:CertificateWindow`) for everyone; `save` and `clearEnrollments`
     Admin (permission `oadm.est:manage`).
   - Device groups (SDK 0.4.0, `minSdkVersion` 0.4.0): `InvokeAsync(ICallContext, ...)`; `save` and `clearEnrollments` are
     `RequiresAllDevices`; for a user with a group the reads are filtered by `ViewedSet` (`plugins/Shared/ViewerScopes.cs`,
@@ -58,7 +60,8 @@ Apache 2.0).
   server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
 - Client part (`Oadm.Plugins.Est.Client.dll`): General (listen on, port, enrollments kept) and Profiles (name, use, days,
   key, on; at most one per use), Save with the status left of it; Enrollments (live, search, Delete all); Not renewed (only while there are
-  any). No Revoke and no list of every certificate (docs/spec/est-server.md).
+  any; a revoked certificate is never flagged). No Revoke and no list of every certificate here: both are PKI's (tab
+  Certificates, docs/spec/radius-server.md "Certificates and revocation").
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device
   ID hierarchy and a fake CA, the page with screenshots; `DeviceGroupTests`: the `PluginCanary`, the filtered lists and
   certificate, the events per group, the names of a device a group user added, the page for a group user).

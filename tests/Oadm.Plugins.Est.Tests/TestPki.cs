@@ -126,5 +126,15 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
 
     public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>The revocation list (PKI's, SDK 0.4.0), by normalized serial.</summary>
+    public Dictionary<string, CertificateRevocation> Revoked { get; } = [];
+
+    public void Revoke(string serialNumber, RevocationReason reason = RevocationReason.KeyCompromised) =>
+        Revoked[CertificateSerials.Normalize(serialNumber)] = new CertificateRevocation(CertificateSerials.Normalize(serialNumber), new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc), reason, "admin");
+
+    public bool IsRevoked(string serialNumber) => Revoked.ContainsKey(CertificateSerials.Normalize(serialNumber));
+
+    public CertificateRevocation? FindRevocation(string serialNumber) => Revoked.GetValueOrDefault(CertificateSerials.Normalize(serialNumber));
+
     public void Dispose() => _ca.Dispose();
 }

@@ -2,9 +2,54 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Oadm.Plugins.Est.Serving;
+namespace Oadm.Sdk.Certificates;
 
-/// <summary>Describes a certificate for the page's certificate details, in plain names (no OIDs where a name exists).</summary>
+/// <summary>One part of a certificate's subject or issuer ("Common name" = "10.0.0.48").</summary>
+/// <param name="Name">The part in plain words, or the OID's name.</param>
+/// <param name="Value">Its value.</param>
+public sealed record CertificateNamePart(string Name, string Value);
+
+/// <summary>
+/// A certificate in plain names for the shared certificate window (SDK 0.4.0, <c>Oadm.Sdk.Client.Controls.CertificateWindow</c>):
+/// made on the server by <see cref="CertificateDescriber.Describe"/> and sent to the page as JSON.
+/// </summary>
+public sealed record CertificateDescription
+{
+    /// <summary>"7D FD 05 49 ...".</summary>
+    public string SerialNumber { get; init; } = string.Empty;
+
+    /// <summary>The subject's parts in the certificate's order.</summary>
+    public IReadOnlyList<CertificateNamePart> Subject { get; init; } = [];
+
+    /// <summary>The issuer's parts in the certificate's order.</summary>
+    public IReadOnlyList<CertificateNamePart> Issuer { get; init; } = [];
+
+    /// <summary>Start of validity.</summary>
+    public DateTime NotBeforeUtc { get; init; }
+
+    /// <summary>End of validity.</summary>
+    public DateTime NotAfterUtc { get; init; }
+
+    /// <summary>"ECC P-256", "RSA 2048".</summary>
+    public string Key { get; init; } = string.Empty;
+
+    /// <summary>"SHA-256 with ECDSA".</summary>
+    public string Signature { get; init; } = string.Empty;
+
+    /// <summary>The X.509 version (3).</summary>
+    public int Version { get; init; }
+
+    /// <summary>What it may be used for ("Digital signature", "Server authentication").</summary>
+    public IReadOnlyList<string> Uses { get; init; } = [];
+
+    /// <summary>The names in it ("IP 10.0.0.48", "DNS axis-b8a44f631339.local").</summary>
+    public IReadOnlyList<string> Names { get; init; } = [];
+
+    /// <summary>SHA-256 of the certificate, upper hex in pairs.</summary>
+    public string Fingerprint { get; init; } = string.Empty;
+}
+
+/// <summary>Describes a certificate in plain names (no OIDs where a name exists) for the shared certificate window (SDK 0.4.0).</summary>
 public static class CertificateDescriber
 {
     private static readonly Dictionary<string, string> NameParts = new(StringComparer.Ordinal)
@@ -42,6 +87,7 @@ public static class CertificateDescriber
         (X509KeyUsageFlags.CrlSign, "Revocation list signing"),
     ];
 
+    /// <summary>The certificate <paramref name="der"/> (DER) in plain names. Throws <see cref="CryptographicException"/> when it cannot be read.</summary>
     public static CertificateDescription Describe(byte[] der)
     {
         ArgumentNullException.ThrowIfNull(der);
@@ -86,9 +132,9 @@ public static class CertificateDescriber
     }
 
     /// <summary>The parts of a name in its order: known parts by name, others by their OID's name.</summary>
-    private static List<NameValue> Parts(X500DistinguishedName name)
+    private static List<CertificateNamePart> Parts(X500DistinguishedName name)
     {
-        var parts = new List<NameValue>();
+        var parts = new List<CertificateNamePart>();
         foreach (var rdn in name.EnumerateRelativeDistinguishedNames())
         {
             if (rdn.HasMultipleElements)
@@ -98,7 +144,7 @@ public static class CertificateDescriber
 
             var type = rdn.GetSingleElementType();
             var label = type.Value is { } oid && NameParts.TryGetValue(oid, out var known) ? known : type.FriendlyName ?? type.Value ?? string.Empty;
-            parts.Add(new NameValue(label, rdn.GetSingleElementValue() ?? string.Empty));
+            parts.Add(new CertificateNamePart(label, rdn.GetSingleElementValue() ?? string.Empty));
         }
 
         return parts;

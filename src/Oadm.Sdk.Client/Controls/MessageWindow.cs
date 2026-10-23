@@ -29,8 +29,55 @@ public sealed class MessageWindow : Window
         _confirm.Click += (_, _) => Close(true);
         _footer.CancelButton.Click += (_, _) => Close(false);
         _footer.Actions.Add(_confirm);
-        Content = new StackPanel { Children = { _title, _message, _footer } };
+        _choiceField.IsVisible = false;
+        _choiceField.Input = _choice;
+        _choice.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
+        var choicePanel = new StackPanel { Margin = new Thickness(16, 0, 16, 24), Children = { _choiceField } };
+        choicePanel.Classes.Add("form");
+        choicePanel.Bind(IsVisibleProperty, _choiceField.GetObservable(IsVisibleProperty));
+        Content = new StackPanel { Children = { _title, _message, choicePanel, _footer } };
     }
+
+    private readonly FormField _choiceField = new();
+    private readonly ComboBox _choice = new();
+
+    /// <summary>
+    /// The label of one choice below the message ("Reason"); null hides it. The choices are <see cref="Choices"/>, the
+    /// chosen one <see cref="ChosenIndex"/> (the first by default).
+    /// </summary>
+    public string? ChoiceLabel
+    {
+        get => _choiceField.Label;
+        set
+        {
+            _choiceField.Label = value;
+            _choiceField.IsVisible = value is not null;
+        }
+    }
+
+    /// <summary>The choices of <see cref="ChoiceLabel"/>.</summary>
+    public IReadOnlyList<string> Choices
+    {
+        get => _choices;
+        set
+        {
+            _choices = value ?? [];
+            _choice.ItemsSource = _choices;
+            _choice.SelectedIndex = _choices.Count > 0 ? 0 : -1;
+        }
+    }
+
+    private IReadOnlyList<string> _choices = [];
+
+    /// <summary>The index of the chosen choice; -1 without choices.</summary>
+    public int ChosenIndex
+    {
+        get => _choice.SelectedIndex;
+        set => _choice.SelectedIndex = value;
+    }
+
+    /// <summary>The choice's select (for tests).</summary>
+    public ComboBox ChoiceBox => _choice;
 
     /// <summary>The window title (title bar and task switcher).</summary>
     public string? Heading
@@ -127,6 +174,24 @@ public sealed class MessageWindow : Window
         ArgumentNullException.ThrowIfNull(owner);
         var window = new MessageWindow { Heading = title, Message = message, ConfirmText = confirmText, CancelText = cancelText };
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Asks for confirmation with one choice below the message (Revoke: the reason); the index of the chosen one when the
+    /// user clicked <paramref name="confirmText"/>, null for Cancel. <paramref name="danger"/>: a red confirm button for an
+    /// action that cannot be undone whatever its text.
+    /// </summary>
+    public static async Task<int?> ConfirmWithChoiceAsync(Window owner, string title, string message, string confirmText, string choiceLabel, IReadOnlyList<string> choices, bool danger = false)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(choices);
+        var window = new MessageWindow { Heading = title, Message = message, ConfirmText = confirmText, ChoiceLabel = choiceLabel, Choices = choices };
+        if (danger)
+        {
+            window.IsDanger = true;
+        }
+
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true) ? window.ChosenIndex : null;
     }
 
     /// <summary>Shows a message with an OK button.</summary>

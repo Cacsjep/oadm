@@ -34,6 +34,11 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             EnsureFakePki();
+            if (FakePkiCertificates(method, payload) is { } certificates)
+            {
+                return Json(certificates);
+            }
+
             switch (method)
             {
                 case "getState":

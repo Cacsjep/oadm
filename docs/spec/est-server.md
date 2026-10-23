@@ -23,7 +23,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     **IEEE 802.1X** (client certificates).
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). **View
     certificate** (toolbar, or a double click on a row; decision 2026-10-23) shows the certificate an enrollment issued
-    in OADM's own window (`EstCertificateWindow`): validity with a status chip, issued to and issued by, key and
+    in OADM's own window (the shared `ui:CertificateWindow` of the client SDK, also used by PKI and the 802.1X server): validity with a status chip, issued to and issued by, key and
     signature, version, serial number, SHA-256 fingerprint, uses, the names in it; values selectable. The server keeps the
     certificate (DER) of every listed enrollment in the records collection `issued` by serial number and deletes it when
     its enrollment leaves the list or on Delete all (`Enrollment.SerialNumber`, `EstStore.IssuedAsync`, read one at a time
@@ -34,9 +34,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     client's list empties: topic `enrollmentsCleared`).
   - **Not renewed** (only while there are any): device, profile, valid until, state (Not renewed, Expired), 500 at most
     with "Showing 500 of ...". No list of every certificate: the certificates are on the cameras (PKI page, device
-    details). No Revoke (decision 2026-10-22): without a revocation list it only stopped renewals, which **Remove**
-    in the Certificate enrollment dialog and removing the device already do; revocation (planned with the 802.1X server, `docs/spec/radius-server.md` "Certificates and revocation": PKI keeps the issued certificates and a revocation list, EST refuses renewing a revoked certificate; a CRL the RADIUS servers of IEEE 802.1X
-    check) is a later feature of PKI.
+    details; every certificate the OADM CA issued: PKI page, tab Certificates). No Revoke here: revoking is PKI's (tab
+    Certificates, `docs/spec/radius-server.md` "Certificates and revocation", built 2026-10-24); a revoked certificate
+    renews nothing (below) and is never flagged Not renewed. **Remove** in the dialog still stops renewals.
 - **Task "Certificate enrollment"** (device context menu, Security; one task per device), its dialog like the
   Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set
   up by OADM or Other, EST server, status Enrolled / No certificate / Server not reached), **Remove** (red, inline
@@ -76,7 +76,10 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   itself issued (chain element 1 is the OADM CA, never another CA below a root above an imported OADM CA) whose DNS
   names hold exactly one `axis-<serial>.local` serial, a managed device; with a record of it, the record's device must
   be that device (a record of a device OADM no longer manages is forgotten: a camera removed and added again). A record
-  is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps. EST and
+  is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps. A
+  certificate on PKI's revocation list (`IDeviceCertificateAuthority.IsRevoked`, one lookup) is refused, for
+  `simpleenroll` too: 403 "Certificate revoked on 2026-11-02 (Key compromised)" (`CertificateRevocation.Describe()`), listed
+  in Enrollments; the Axis device ID is never revoked, so Set up gives the camera a new certificate. EST and
   PKI never take a reported host name or FQDN `axis-<12 hex>...` of another serial into a certificate, so a camera
   cannot name another camera (`EstEndpoint.NamesOtherCamera`, `CertificateNames.NamesOtherCamera`).
 - **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
@@ -94,11 +97,12 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   SANs from what it knows (the stored address, host name, FQDN, `axis-<serial>.local`; never the address a connection
   came from, never another camera's axis name), never from the CSR; EKU from the profile; key
   policy RSA >= 2048 / EC >= 256; SHA-1/MD5 CSRs refused. The answer carries the leaf **and the chain** (Axis refuses a
-  leaf only), PKCS#7 certs-only, base64 wrapped at 76 characters. Every certificate goes into PKI's issued registry.
+  leaf only), PKCS#7 certs-only, base64 wrapped at 76 characters. Every certificate goes into PKI's list of issued
+  certificates with its use (`DeviceCertificateRequest.Purpose`: HTTPS, IEEE 802.1X, MQTT, RTSPS) and source EST.
 - **The server's TLS certificate:** issued by the OADM CA, SANs = the server's addresses and host name; **one per site**
   with the node's addresses toward the cameras (cameras dial an IP, so no SNI: the plugin picks the certificate by the
   site the connection came through). Re-issued when the addresses change (node network cards, DHCP).
-- Revocation: none (no CRL, no OCSP); **Remove** in the dialog stops renewals, see "What the user sees".
+- Revocation: PKI's revocation list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
 - Logs: one line per request (no keys, no CSR bodies).
 - Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
   or no valid identity, 403 not managed / other site / certificate of another camera, 400 request unreadable or refused, 404 unknown, 503 no

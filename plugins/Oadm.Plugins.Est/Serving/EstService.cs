@@ -947,12 +947,18 @@ public sealed partial class EstService : IAsyncDisposable
             }
 
             var flagged = 0;
+            var authority = _host.Authority();
             foreach (var certificate in due)
             {
                 if (!managed.Contains(certificate.DeviceId))
                 {
                     _store.ForgetDevice(certificate.DeviceId);
                     continue;
+                }
+
+                if (authority?.IsRevoked(certificate.SerialNumber) == true)
+                {
+                    continue; // revoked in PKI: its renewal is refused on purpose, nothing to warn about
                 }
 
                 _store.MarkNotRenewed(certificate.SerialNumber, now);

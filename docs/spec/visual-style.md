@@ -113,7 +113,12 @@ dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chi
 `FileRow` (chosen file + "Choose file"; `IsSingleButton`: one wide button that shows the chosen file's name, the
 compliance check form), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
 `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
-inline "I understand" risk sections; line breaks start a new line, text between `**` is bold), `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
+inline "I understand" risk sections; line breaks start a new line, text between `**` is bold; `ConfirmWithChoiceAsync`: one
+select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
+`CertificateWindow` + `CertificateDetails` (every certificate shown in OADM's own window: EST enrollments, PKI's list of
+issued certificates, the 802.1X log; validity chip or the revocation, issued to and by, key and signature, serial,
+fingerprint, uses, names, all selectable; the server describes the certificate with the SDK's `CertificateDescriber`),
+`PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
 "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
 (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,
 param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with
@@ -149,7 +154,8 @@ required / Password not set / Certificate changed, red for Unreachable, `ShowSta
 hover; device grid, Web View, Live View), `DeviceTree` + `DeviceTreeModel` (every devices-by-tag tree: tag groups in
 name order with a chevron, "No tag" last, a device under each of its tags, sorted by address, search over address,
 model, MAC, host name and tags, optional filter, one reset per rebuild; Web View, Live View), `PageTab` (every tab of a
-page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `TileGrid` + `TileFrame` (every
+page with tabs: title, close button, the active one underlined; theme `Border.browserTab`; without a close command a
+fixed tab: the PKI page, the OADM Site Node app), `TileGrid` + `TileFrame` (every
 grid of tiles that fills its page: cells of `Oadm.Sdk.Layout.TileLayout` (size, smallest tile, drop size, most tiles;
 the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSource`, while editing the cell lines and a
 frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a

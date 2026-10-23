@@ -34,6 +34,9 @@ public static class EstRefusals
     public const string OtherSite = "The camera belongs to another site.";
     public const string OtherCamera = "The camera signed in with the certificate of another camera.";
     public const string BadRequest = "The certificate request cannot be read.";
+
+    /// <summary>The camera signed in with a certificate on PKI's revocation list (with the date and reason when known).</summary>
+    public const string Revoked = "Certificate revoked";
 }
 
 /// <summary>
@@ -138,6 +141,13 @@ public sealed partial class EstEndpoint(
             return Refuse(403, EstRefusals.OtherSite, device);
         }
 
+        // A certificate on PKI's revocation list renews nothing (docs/spec/radius-server.md "Certificates and revocation"):
+        // the Axis device ID is never on it (OADM did not issue it), so Set up still gives the camera a new certificate.
+        if (ca.IsRevoked(client.SerialNumber))
+        {
+            return Refuse(403, ca.FindRevocation(client.SerialNumber)?.Describe() ?? EstRefusals.Revoked, device);
+        }
+
         // A certificate EST issued signs in only for its own device. A record of a device OADM no longer manages (the camera
         // was removed and added again: a new device id) is forgotten.
         if (store.FindCertificate(client.SerialNumber) is { } own && own.DeviceId != device.Id)
@@ -168,7 +178,8 @@ public sealed partial class EstEndpoint(
                 {
                     DeviceId = device.Id,
                     Validity = TimeSpan.FromDays(profile.ValidityDays),
-                    Source = "EST",
+                    Source = IssuedCertificateSources.Est,
+                    Purpose = profile.Purpose,
                 },
                 ct).ConfigureAwait(false);
         }

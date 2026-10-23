@@ -142,6 +142,32 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_revoked_certificate_renews_nothing_and_the_refusal_is_listed()
+    {
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+        var enrolled = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(200, enrolled.Status);
+        Assert.Equal(DeviceCertificatePurposes.Https, Assert.Single(DeviceRequests()).Purpose); // the use for PKI's list
+        using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(enrolled.Body))[0]);
+        using var identity = TestPki.Usable(issued.CopyWithPrivateKey(key));
+        _ca.Revoke(issued.SerialNumber);
+        var (csr2, key2) = TestPki.Request();
+        using var __ = key2;
+
+        var renewal = await SendAsync("POST", "/.well-known/est/https/simplereenroll", identity, Body(csr2));
+
+        Assert.Equal(403, renewal.Status);
+        Assert.Single(DeviceRequests()); // nothing signed
+        var refused = _service.Store.Enrollments()[0];
+        Assert.Equal((false, EnrollmentKind.Renewal, "Certificate revoked on 2026-11-02 (Key compromised)"), (refused.Ok, refused.Kind, refused.Reason));
+        Assert.StartsWith(EstRefusals.Revoked, refused.Reason, StringComparison.Ordinal);
+
+        // The camera's own Axis device ID is never on the list: Set up gives it a new certificate.
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr2))).Status);
+    }
+
+    [Fact]
     public async Task Only_managed_cameras_with_a_device_id_get_certificates()
     {
         var (csr, key) = TestPki.Request();

@@ -131,7 +131,9 @@ setup and the manual test plan: plugin `README.md`.
 `plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (group Security, icon `shield`), always on.
 One certificate authority for device certificates (generated on first start or imported), the server's trust in it, and
 the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
-Delete and Install certificates, Install CA certificates. Details: plugin `README.md`; device API research:
+Delete and Install certificates, Install CA certificates; the list of every certificate the OADM CA issued and the
+revocation list (tab **Certificates**, Revoke; docs/spec/radius-server.md "Certificates and revocation"). Details: plugin
+`README.md`; device API research:
 `tests/Oadm.Plugins.Pki.Tests/Fixtures/`.
 
 - Rules that must hold: the CA key is stored only encrypted with the master key (without `Secrets` no CA is kept; a key
@@ -145,10 +147,14 @@ Delete and Install certificates, Install CA certificates. Details: plugin `READM
   trust store; View and Delete certificates read at most 5,000 devices per window (each device is read, 4 at a time; a
   larger selection gets "Choose at most 5,000 devices."), the other tasks take any number; while it runs it offers the
   OADM CA to other plugins (`IDeviceCertificateAuthority`, `docs/spec/plugins.md` "Plugin services"), which signs the
-  same way.
-- Roles: everything but `getState` is Admin and audited; "Install in trusted root store" on the server asks with the CA's
+  same way; every certificate the OADM CA issues for a device (tasks and the service) goes into the list of issued
+  certificates with its DER; a revocation is written before the call returns, never changed and never undone, and
+  `IsRevoked` is a hash lookup in memory; a certificate stays listed a year after it ended, a revocation while its
+  certificate is valid.
+- Roles: everything but `getState`, `getCertificates` and `getCertificate` is Admin and audited (Revoke too); "Install in trusted root store" on the server asks with the CA's
   SHA-256 fingerprint.
-- Device groups (SDK 0.4.0): every method but `getState` is for users with all devices (`RequiresAllDevices`); a user
+- Device groups (SDK 0.4.0): every method but `getState`, `getCertificates` and `getCertificate` is for users with all
+  devices (`RequiresAllDevices`); the Certificates tab of a user with a group lists only the group's devices; a user
   with a group sees the page read only, the counts of issued certificates only of the group's devices (the `state` event
   per group that read the page, `PluginEventAudience.DeviceScope`). Host names, FQDNs and a name address go into a
   device certificate only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`); else only its
@@ -492,7 +498,8 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
 - Rules that must hold: only cameras that sign in with a valid Axis device ID (or a valid certificate the OADM CA itself issued them, naming exactly one camera) and that
   OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the OADM CA of PKI
   signs (no CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
-  requests are logged; the plugin checks the license on every request, and changing or removing that check is not
+  requests are logged; a certificate on PKI's revocation list renews nothing (403 "Certificate revoked on ...");
+  the plugin checks the license on every request, and changing or removing that check is not
   allowed by its license.
 - Roles: reading for everyone; Save and Delete all of the enrollments Admin (permission "Change the EST server"), audited.
 - Device groups (SDK 0.4.0): Save and Delete all only for users with all devices; a user with a group sees the

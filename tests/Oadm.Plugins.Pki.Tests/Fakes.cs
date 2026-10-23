@@ -108,7 +108,17 @@ internal static class TestSecrets
 /// <summary>Core plugin context: in-memory settings, real secret protector, event hub and trust anchor registry.</summary>
 internal sealed class TestCoreContext(IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors) : ICorePluginContext
 {
-    public IDeviceRepository Devices => throw new NotSupportedException();
+    /// <summary>The managed devices (none by default: the context then has no device list).</summary>
+    public IReadOnlyList<IDeviceInfo>? DeviceList { get; init; }
+
+    public IDeviceRepository Devices => DeviceList is { } list ? new ListRepository(list) : throw new NotSupportedException();
+
+    private sealed class ListRepository(IReadOnlyList<IDeviceInfo> list) : IDeviceRepository
+    {
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult(list);
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(list.FirstOrDefault(d => d.Id == id));
+    }
 
     public IVapixClientFactory Vapix => throw new NotSupportedException();
 
@@ -128,6 +138,14 @@ internal sealed class TestCoreContext(IPluginSettings settings, ISecretProtector
     public FakeDeviceScopes Scopes { get; } = new FakeCoreContext().FakeScopes;
 
     public IDeviceScopes? DeviceScopes => Scopes;
+
+    /// <summary>The plugin records (issued certificates, revocation list); shared across restarts when a test passes its own.</summary>
+    public MemoryPluginRecords PluginRecords { get; init; } = new();
+
+    /// <summary>Other records than <see cref="PluginRecords"/> (the database of the backup test).</summary>
+    public IPluginRecords? OtherRecords { get; init; }
+
+    public IPluginRecords? Records => OtherRecords ?? PluginRecords;
 }
 
 /// <summary>A started PKI plugin over in-memory settings (fast 2048-bit keys), with its hub and anchors.</summary>
@@ -169,6 +187,7 @@ internal sealed class PkiHarness : IAsyncDisposable
         ServerName = "SERVER01",
         TrustStore = trust,
         Time = time ?? TimeProvider.System,
+        CertificatesEventDelay = TimeSpan.Zero,
     };
 
     /// <summary>Starts the plugin; waits for the default CA unless <paramref name="waitForDefault"/> is false.</summary>
@@ -177,7 +196,9 @@ internal sealed class PkiHarness : IAsyncDisposable
         ISecretProtector? secrets = null,
         bool noSecrets = false,
         TimeProvider? time = null,
-        bool waitForDefault = true)
+        bool waitForDefault = true,
+        MemoryPluginRecords? records = null,
+        IReadOnlyList<IDeviceInfo>? devices = null)
     {
         settings ??= new InMemoryPluginSettingsProvider();
         var protector = noSecrets ? null : secrets ?? TestSecrets.Create();
@@ -185,14 +206,14 @@ internal sealed class PkiHarness : IAsyncDisposable
         var anchors = new TrustAnchorRegistry();
         var trust = new FakeTrustStore();
         var plugin = new PkiPlugin(Options(trust, time));
-        var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId));
+        var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId)) { PluginRecords = records ?? new MemoryPluginRecords(), DeviceList = devices };
         await plugin.StartAsync(core, CancellationToken.None);
         if (waitForDefault)
         {
             await plugin.Service!.Background;
         }
 
-        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes);
+        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes) { Records = core.PluginRecords };
     }
 
     public async Task<T> InvokeAsync<T>(string method, object? payload = null) =>
@@ -200,9 +221,17 @@ internal sealed class PkiHarness : IAsyncDisposable
 
     public Task<PkiState> StateAsync() => InvokeAsync<PkiState>(PkiMethods.GetState);
 
-    /// <summary>Writes the issued registry the task plugins (part 2) will write.</summary>
-    public Task SetIssuedAsync(IEnumerable<IssuedCertificate> issued) =>
-        Settings.SetAsync(PkiStore.IssuedKey, PkiJson.Serialize(issued.ToList()), CancellationToken.None);
+    /// <summary>The plugin records of the started plugin (issued certificates, revocation list).</summary>
+    public MemoryPluginRecords Records { get; init; } = new();
+
+    /// <summary>Adds issued certificates as the tasks and the CA service do.</summary>
+    public async Task SetIssuedAsync(IEnumerable<IssuedCertificate> issued)
+    {
+        foreach (var entry in issued)
+        {
+            await Service.Issued.AddAsync(entry, CancellationToken.None);
+        }
+    }
 
     public async ValueTask DisposeAsync() => await Plugin.DisposeAsync();
 }

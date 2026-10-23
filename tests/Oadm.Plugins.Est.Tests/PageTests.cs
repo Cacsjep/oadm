@@ -10,6 +10,7 @@ using Oadm.Plugins.Est.Client;
 using Oadm.Plugins.Est.Serving;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
@@ -70,7 +71,7 @@ public sealed class PageTests : IAsyncLifetime
         vm.SelectedEnrollment = vm.Enrollments.Single(e => e.Refused);
         Assert.False(vm.ViewCertificateCommand.CanExecute(null)); // a refusal issued nothing
         vm.SelectedEnrollment = vm.Enrollments.Single(e => e.Ok);
-        EstCertificateViewModel? shown = null;
+        CertificateDetails? shown = null;
         vm.CertificateRequested += (_, c) => shown = c;
         await store.FlushAsync(CancellationToken.None); // read back from the records
         await vm.ViewCertificateCommand.ExecuteAsync(null);
@@ -79,8 +80,8 @@ public sealed class PageTests : IAsyncLifetime
         Assert.Equal("Certificate · 10.0.0.48 · https", shown.Title);
         Assert.Equal("Valid, 364 days left", shown.ValidityText);
         Assert.True(shown.IsValid);
-        Assert.Equal([new NameValue("Common name", "10.0.0.48")], shown.IssuedTo);
-        Assert.Equal([new NameValue("Common name", "OADM Root CA acs"), new NameValue("Organization", "OADM")], shown.IssuedBy);
+        Assert.Equal([new CertificateNamePart("Common name", "10.0.0.48")], shown.IssuedTo);
+        Assert.Equal([new CertificateNamePart("Common name", "OADM Root CA acs"), new CertificateNamePart("Organization", "OADM")], shown.IssuedBy);
         Assert.Equal(("ECC P-256", "SHA-256 with ECDSA", "3", "7D FD 05 49"), (shown.Key, shown.Signature, shown.Version, shown.SerialNumber));
         Assert.Equal("Digital signature, Server authentication", shown.Uses);
         Assert.Equal("IP 10.0.0.48" + Environment.NewLine + "DNS axis-b8a44f631339.local", shown.Names);
@@ -130,7 +131,7 @@ public sealed class PageTests : IAsyncLifetime
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         await session.Dispatch(() =>
         {
-            var window = new EstCertificateWindow { DataContext = new EstCertificateViewModel(Oadm.Plugins.Est.Serving.CertificateDescriber.Describe(der), row, now.UtcDateTime) };
+            var window = new CertificateWindow { DataContext = new CertificateDetails(CertificateDescriber.Describe(der), $"Certificate · {row.Device} · {row.Profile}", now.UtcDateTime) };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
             Pump();

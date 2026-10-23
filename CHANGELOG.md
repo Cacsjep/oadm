@@ -8,6 +8,9 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST), with filters, search and
+  View certificate. **Revoke** takes certificates out of use for good; EST no longer renews a revoked certificate.
+  Certificates from before this version are added when OADM reads them from the devices.
 - Device list: an **Architecture** column ("aarch64", "armv7hf"), off by default; turn it on in the column chooser.
   Also in the search and the export.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the

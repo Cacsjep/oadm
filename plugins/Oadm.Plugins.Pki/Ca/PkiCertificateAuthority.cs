@@ -35,6 +35,25 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
         remove => service.CaChanged -= value;
     }
 
+    public event EventHandler? RevocationChanged
+    {
+        add => service.RevocationChanged += value;
+        remove => service.RevocationChanged -= value;
+    }
+
+    public bool IsRevoked(string serialNumber) => service.Issued.IsRevoked(serialNumber);
+
+    public CertificateRevocation? FindRevocation(string serialNumber) => service.Issued.FindRevocation(serialNumber);
+
+    public IReadOnlyList<CertificateRevocation> Revocations => service.Issued.Revocations;
+
+    public Task<IssuedCertificatePage> ListIssuedAsync(IssuedCertificateQuery query, CancellationToken ct) => service.QueryIssuedAsync(query, ct);
+
+    public Task<byte[]?> GetIssuedCertificateAsync(string serialNumber, CancellationToken ct) => service.Issued.GetDerAsync(serialNumber, ct);
+
+    public Task<RevokeResult> RevokeAsync(IReadOnlyCollection<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct) =>
+        service.RevokeSerialsAsync(serialNumbers, reason, userName, ct);
+
     public async Task<IssuedDeviceCertificate> SignAsync(DeviceCertificateRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -76,16 +95,20 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
             var (_, serial, notAfter) = DeviceCertificateIssuer.Describe(signed);
             if (request.DeviceId is { } deviceId)
             {
+                // The list of issued certificates: every device certificate, with its use (MQTT and RTSPS too) and DER.
+                var serials = IssuedRegistry.AxisSerials(signed);
                 await service.Issued.AddAsync(new IssuedCertificate
                 {
                     SerialNumber = serial,
                     DeviceId = deviceId,
-                    Purpose = purpose,
+                    DeviceSerial = serials.Count == 1 ? serials[0] : null,
+                    Purpose = DeviceCertificatePurposes.Of(request),
                     CaId = ca.Id,
+                    NotBeforeUtc = signed.NotBefore.ToUniversalTime(),
                     NotAfterUtc = notAfter,
                     IssuedUtc = service.Time.GetUtcNow().UtcDateTime,
                     Source = request.Source,
-                }, ct).ConfigureAwait(false);
+                }, signed.RawData, ct).ConfigureAwait(false);
             }
 
             return new IssuedDeviceCertificate(signed.RawData, [ca.Certificate.RawData, .. ca.Chain.Select(c => c.RawData)], serial, notAfter);
