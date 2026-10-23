@@ -6,7 +6,7 @@ namespace Oadm.Sdk.Testing;
 /// <summary>
 /// The device groups of a <see cref="FakeCoreContext"/> or of a test's own device list (<see cref="IDeviceScopes"/>):
 /// <see cref="Add"/> a group with its devices, <see cref="Delete"/> it (its key then exists no more and covers nothing,
-/// like on the server). A group covers only devices that exist.
+/// like on the server). A check by device id covers only devices that exist.
 /// </summary>
 public sealed class FakeDeviceScopes : IDeviceScopes
 {
