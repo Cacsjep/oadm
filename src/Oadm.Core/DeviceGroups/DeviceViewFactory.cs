@@ -62,14 +62,15 @@ public sealed class DeviceViewFactory
             throw new InvalidOperationException("A device view needs the caller of the call; background work uses DeviceViewFactory.System.");
         }
 
-        return await ForScopeAsync(caller.HasAllDevices ? DeviceScope.All : caller.Devices.Access, caller.UserName, ct).ConfigureAwait(false);
+        return await ForScopeAsync(caller.HasAllDevices ? DeviceScope.All : caller.Devices.Access, caller.UserName, ct, caller.UserId).ConfigureAwait(false);
     }
 
     /// <summary>
     /// The view of a stored scope (the owner of a task, a rule, a compliance check, a waiting entry): all devices, a group
-    /// (an unknown or deleted group has no devices) or none.
+    /// (an unknown or deleted group has no devices) or none. A view without devices gets the scope key of
+    /// <paramref name="userId"/> (<see cref="DeviceScope.NoDevicesKeyOf"/>), without a user a key of its own.
     /// </summary>
-    public async Task<DeviceView> ForScopeAsync(DeviceScope scope, string? userName, CancellationToken ct)
+    public async Task<DeviceView> ForScopeAsync(DeviceScope scope, string? userName, CancellationToken ct, Guid? userId = null)
     {
         await EnsureLoadedAsync(ct).ConfigureAwait(false);
         if (scope.AllDevices)
@@ -79,7 +80,7 @@ public sealed class DeviceViewFactory
 
         return scope.GroupId is { } groupId && _groups.Loaded!.ContainsKey(groupId)
             ? new DeviceView(this, ViewKind.Group, groupId, userName)
-            : new DeviceView(this, ViewKind.None, null, userName);
+            : new DeviceView(this, ViewKind.None, null, userName, userId);
     }
 
     /// <summary>
@@ -91,10 +92,10 @@ public sealed class DeviceViewFactory
         var user = await _users.GetAsync(userId, ct).ConfigureAwait(false); // one row by its key, never the whole table
         if (user is null || user.Disabled)
         {
-            return await ForScopeAsync(DeviceScope.None, user?.UserName, ct).ConfigureAwait(false);
+            return await ForScopeAsync(DeviceScope.None, user?.UserName, ct, userId).ConfigureAwait(false);
         }
 
-        return await ForScopeAsync(user.HasAllDevices ? DeviceScope.All : user.DeviceAccess, user.UserName, ct).ConfigureAwait(false);
+        return await ForScopeAsync(user.HasAllDevices ? DeviceScope.All : user.DeviceAccess, user.UserName, ct, userId).ConfigureAwait(false);
     }
 
     /// <summary>The caller's devices for the auth interceptor: the stored access with the group's current revision.</summary>

@@ -47,7 +47,7 @@ public sealed class DiscoveryGrpcService(
     {
         var reach = await ReachAsync(context).ConfigureAwait(false);
         var session = await discovery.StartZeroConfAsync(context.CancellationToken, reach.Routes).ConfigureAwait(false);
-        return new() { SessionId = Own(session.Id, reach, context) };
+        return new() { SessionId = await OwnAsync(session.Id, reach, context).ConfigureAwait(false) };
     }
 
     public override async Task<Proto.DiscoverySession> StartRangeScan(Proto.RangeScanRequest request, ServerCallContext context)
@@ -56,7 +56,7 @@ public sealed class DiscoveryGrpcService(
         try
         {
             var session = await discovery.StartRangeScanAsync(request.From, request.To, context.CancellationToken, reach.Routes).ConfigureAwait(false);
-            return new Proto.DiscoverySession { SessionId = Own(session.Id, reach, context) };
+            return new Proto.DiscoverySession { SessionId = await OwnAsync(session.Id, reach, context).ConfigureAwait(false) };
         }
         catch (ArgumentException ex)
         {
@@ -95,7 +95,7 @@ public sealed class DiscoveryGrpcService(
         {
             var session = await discovery.StartAddressProbeAsync(request.Address, request.ImportLine, context.CancellationToken, siteId,
                 expectedSerial.Length > 0 ? expectedSerial : null, reach.Routes).ConfigureAwait(false);
-            Own(session.Id, reach, context);
+            await OwnAsync(session.Id, reach, context).ConfigureAwait(false);
             if (expectedSerial.Length > 0)
             {
                 // Before the watch starts the automatic login: another device at this address gets no password.
@@ -215,6 +215,7 @@ public sealed class DiscoveryGrpcService(
     {
         if (owners.Owns(request.SessionId, AuthInterceptor.CallerOf(context)))
         {
+            // The owner and the logins stay for the lifetime: Add still works after the page stopped discovery.
             await discovery.StopAsync(request.SessionId).ConfigureAwait(false);
         }
 
@@ -230,16 +231,22 @@ public sealed class DiscoveryGrpcService(
 
     /// <summary>
     /// Registers the caller as the session's owner before anyone can watch it, and lets its automatic login use the
-    /// credential list only for a user with all devices (before the first device is seen).
+    /// credential list only for a user with all devices (before the first device is seen). A session of a call whose
+    /// user's devices, role or login changed meanwhile is stopped at once and refused ("Your devices changed. Connect again.").
     /// </summary>
-    private string Own(string sessionId, AddReach reach, ServerCallContext context)
+    private async Task<string> OwnAsync(string sessionId, AddReach reach, ServerCallContext context)
     {
         if (reach.UsesCredentialList)
         {
             authenticator.AllowCredentialList(sessionId);
         }
 
-        owners.Register(sessionId, AuthInterceptor.CallerOf(context));
+        if (!owners.Register(sessionId, AuthInterceptor.CallerOf(context)))
+        {
+            await owners.StopAsync(sessionId).ConfigureAwait(false);
+            throw new Sdk.Plugins.DeviceAccessRefusedException(DeviceGroupTexts.DevicesChanged);
+        }
+
         return sessionId;
     }
 

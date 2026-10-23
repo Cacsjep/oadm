@@ -24,7 +24,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups: a device that leaves a group disappears at once from the group's tables, dashboard values and scan
   results, and an export of its recordings ends. An administrator can save a group's view or dashboard after one of its
   devices left the group: the save leaves that device out and says so. The same for a group's device trigger.
-- Hardening scan: every user with the same devices may stop a running scan, not only the user who started it.
+- Hardening scan: every user with the same devices may stop a running scan, not only the user who started it. The scan
+  keeps running when the user who started it logs out.
 - Device groups: the dashboards of a user with a group offer only the group's own device triggers, and their live values
   stop at once when the user's devices change.
 - Device groups: a file you upload for a task (firmware, an application, a backup) can be used only by you, in the same
@@ -73,6 +74,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Remove, Refresh, Check now, tagging, the RTSP port, the first password, the queries of task dialogs and the other
   device actions do nothing when a chosen device was removed meanwhile and say "1 device is no longer available."
   (before, Remove and Refresh skipped it).
+- Add devices: a search whose page was closed or lost its connection stops on the server 30 minutes after its last use,
+  with the passwords typed for it; logging out or getting other devices stops it at once.
 
 ## [4.1.0] - 2026-10-23
 

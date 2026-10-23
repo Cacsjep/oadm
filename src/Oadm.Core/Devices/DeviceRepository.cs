@@ -19,7 +19,9 @@ public sealed class DeviceLimitException() : InvalidOperationException(DeviceLim
 /// <summary>
 /// Device table access. Every returned <see cref="Device"/> is a detached copy; mutate it and call
 /// <see cref="UpdateAsync(Device, CancellationToken)"/>, or use <see cref="UpdateAsync(Guid, Action{Device}, CancellationToken)"/>.
-/// All writes publish to <see cref="IDeviceChangeFeed"/>, except a write that only moves LastSeenUtc.
+/// All writes publish to <see cref="IDeviceChangeFeed"/>, except a write that only moves LastSeenUtc; a write publishes the
+/// device as stored after it (<see cref="StoredDevicePublisher"/>), never the copy it read before, so a stale copy never
+/// overwrites a newer change of another writer (tags, site, credentials).
 /// Every read shows the computed status (<see cref="SiteDeviceStatus"/>): <see cref="DeviceStatus.SiteOffline"/> while the
 /// device's site is not online, with <see cref="Device.SiteName"/> filled; the stored status stays the last real one and
 /// Site offline is never written.
@@ -284,7 +286,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             _addLock.Release();
         }
 
-        changeFeed.Publish(new DeviceChange(DeviceChangeKind.Added, entity.Id, entity.Clone()));
+        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, [entity.Id], DeviceChangeKind.Added).ConfigureAwait(false);
         return Shown(entity.Clone());
     }
 
@@ -343,11 +345,17 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
 
         if (modified is not [nameof(Device.LastSeenUtc)])
         {
-            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, id, entity.Clone()));
+            // As stored now: only the modified columns were written, the other columns of the copy may be older.
+            var stored = await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, [id]).ConfigureAwait(false);
+            return Shown(stored.Count == 1 ? stored[0].Clone() : entity.Clone());
         }
 
         return Shown(entity.Clone());
     }
+
+    /// <summary>Publishes the devices as stored now (a writer outside the repository, a note that changed without a write).</summary>
+    public Task<IReadOnlyList<Device>> PublishStoredAsync(IReadOnlyCollection<Guid> ids) =>
+        StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, ids);
 
     /// <summary>Ids of all devices, without loading the rows (cheap for 5,000 devices).</summary>
     public async Task<IReadOnlyList<Guid>> ListDeviceIdsAsync(CancellationToken ct)
@@ -398,11 +406,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             await transaction.CommitAsync(ct).ConfigureAwait(false);
         }
 
-        foreach (var id in removed)
-        {
-            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Removed, id, null));
-        }
-
+        await StoredDevicePublisher.PublishRemovedAsync(changeFeed, removed).ConfigureAwait(false);
         return removed;
     }
 
@@ -418,7 +422,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
 
         db.Devices.Remove(entity);
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        changeFeed.Publish(new DeviceChange(DeviceChangeKind.Removed, id, null));
+        await StoredDevicePublisher.PublishRemovedAsync(changeFeed, [id]).ConfigureAwait(false);
         return true;
     }
 

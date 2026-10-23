@@ -455,8 +455,8 @@ public sealed partial class DevicePollingService : IDisposable
         var updated = await _devices.UpdateAsync(device.Id, d => observation.ApplyTo(d), ct).ConfigureAwait(false);
         if (updated is not null && noteChanged)
         {
-            // The status may stay Credentials required: the watchers still get the device with its new note.
-            _devices.Changes.Publish(new DeviceChange(DeviceChangeKind.Updated, device.Id, updated));
+            // The status may stay Credentials required: the watchers still get the device with its new note (as stored).
+            await _devices.PublishStoredAsync([device.Id]).ConfigureAwait(false);
         }
 
         if (updated is not null)

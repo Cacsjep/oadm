@@ -68,9 +68,11 @@ an independent security review the same day). A user may be limited to part of t
 - **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
   scan, export and monitor ids); every id-taking method and download checks it; ids of another user or session answer
   NOT_FOUND, and an ended session forgets its jobs, finished ones too. A shared job (`IPluginJobs.StartShared`, one scan
-  per scope) is found and stopped by every user with its device scope. A job started in a call whose user's devices, role
+  per scope) is found and stopped by every user with its device scope; it belongs to the scope, not to the user who
+  started it (lead decision 2026-10-23): the starter's logout, new role or other devices leave it running, it ends only
+  when the rules of its group change, on a cancel or when its plugin stops. A job started in a call whose user's devices, role
   or session changed after the call began is refused ("Your devices changed. Connect again.").
-  When the owner's devices change (another group, new rules of the group, another role) the owner's jobs end and are
+  When the owner's devices change (another group, new rules of the group, another role) the owner's own jobs end and are
   forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
   of the group (tag, site, add, remove; the coalesced `HostDeviceScopes.Changed`) the finished jobs of its users are
   forgotten (a Snapshot Report PDF, an event list read) and the running ones when they end. Tasks a call or a job
@@ -136,7 +138,12 @@ an independent security review the same day). A user may be limited to part of t
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
   key is (group revision, tag and site catalog revision, `DeviceChangeFeed.MembershipVersion`: it moves only when a
   device is added or removed or its serial, site, tags or adder change, never for a status, so at 30,000 devices a polling
-  round reads no allowed ids again). One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
+  round reads no allowed ids again; at the start `HostDeviceScopes.LoadAsync` seeds the feed with every stored device,
+  `DeviceChangeFeed.SeedMembership`, so the first polling round moves nothing either). Every writer of the device table
+  publishes the device as stored after its write, never the copy it read before (`StoredDevicePublisher`: the row read
+  again and published behind one gate per feed, so reads and publishes keep their order; repository, tags, credentials,
+  the polling's status note): a status write that read the tags before a tag change never puts the old tags back into the
+  feed, the scope rows or the grids of the old group. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
   the user's devices, say "1 device is no longer available." (`DeviceMessages.NoLongerAvailable`), also as a row or
@@ -216,7 +223,11 @@ an independent security review the same day). A user may be limited to part of t
   `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; the migration
   `DeviceGroupFlagsWithoutDefault` removes the database default 1 it left on the three columns, so a row inserted without
   them fails (NOT NULL) instead of getting all devices; C# default false: every writer chooses.
-- **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. The
+- **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. Scope keys
+  (`ICallContext.DeviceScopeKey`, `DeviceView.ScopeKey`): "all", the group id, for a stored object without devices "none"
+  (`DeviceScope.NoDevicesKey`), and for a user without devices a key of that user only, "none:" and the user id
+  (`DeviceScope.NoDevicesKeyOf`; a view without a user: a random one): two users who lost their groups never share saved
+  views, dashboards, triggers or a shared scan, and no scope (`ctx.DeviceScopes`) answers such a key (fail closed). The
   caller: `AuthenticatedCaller.Devices` (`CallerDevices(Access, GroupRevision)`, default `None`), `HasAllDevices`
   (Administrator always), `DeviceGroupId`, `SessionId` (opaque, for plugins). Sessions carry the access
   (`AuthSession.DeviceAccess`, `AuthTokenStore.SetDeviceAccess`).
@@ -262,12 +273,17 @@ an independent security review the same day). A user may be limited to part of t
   route)` (on a route of the user and inside the group), `Waiting` (`WaitingScope`). `DeviceGroupFilter.ThisServer` and
   `Sites` expose the compiled rules.
 - Core discovery sessions take `DiscoveryRoutes` (zero-conf, range scan, address probes); `CoreDiscoveryBackend` passes
-  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session, kept while the
-  session exists (`IDiscoveryBackend.IsActive`) or a watch of it is open (`Hold`), else 30 minutes after its last use, so
-  Add and Retry work however long the page stays idle.
+  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user, login session and group
+  of each add-page session; the session lives while a watch of it is open (`Hold`), so Add and Retry work however long the
+  page stays open, then 30 minutes after its last use; then a timer stops it on the server and forgets the owner entry and
+  its logins (`DiscoveryAuthenticator.Forget`). `SessionsEnded` (logout, expiry, password, disabled), `UserRoleChanged`,
+  `UserDeviceAccessChanged`, `DeviceGroupStore.Changed` and `Deleted` stop the affected users' sessions at once; the change
+  is recorded in `AccessEpochs` first and `Register` checks it after adding the entry, so a start whose call began before
+  the change is stopped and refused (PERMISSION_DENIED "Your devices changed. Connect again.").
 - `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed); the login
-  session of a discovery session that still exists never expires, so it keeps that permission, the expected device and the
-  typed passwords (a session made again after it expired tries only typed passwords).
+  session of a discovery session that still exists does not expire by itself, so it keeps that permission, the expected
+  device and the typed passwords until `DiscoverySessionOwners` stops the session (a session made again after it expired
+  tries only typed passwords).
 - `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
   waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;

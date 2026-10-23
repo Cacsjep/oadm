@@ -166,7 +166,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
         }
 
         await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: device groups follow a rename at once
-        Publish(changed);
+        await PublishAsync(changed).ConfigureAwait(false);
         RaiseDefinitionsChanged();
         return result;
     }
@@ -209,7 +209,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
         }
 
         await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: device groups follow the tag at once
-        Publish(changed);
+        await PublishAsync(changed).ConfigureAwait(false);
         RaiseDefinitionsChanged();
         return new TagDeleteResult(deletedName, changed.Count, Changes(changed));
     }
@@ -300,7 +300,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
             await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: a device group sees the new tag at once
         }
 
-        Publish(changed);
+        await PublishAsync(changed).ConfigureAwait(false);
         if (created.Count > 0)
         {
             RaiseDefinitionsChanged();
@@ -440,7 +440,7 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
     /// <summary>A device whose tags a write changed: the device after the write and its tags before.</summary>
     private sealed record TagRewrite(Device After, List<string> OldTags);
 
-    private void Publish(List<TagRewrite> changed) => Publish(changed.ConvertAll(c => c.After));
+    private Task PublishAsync(List<TagRewrite> changed) => PublishAsync(changed.ConvertAll(c => c.After));
 
     private static List<string>? Replace(List<string> tags, string oldName, string newName) =>
         tags.Any(t => TagNames.Comparer.Equals(t, oldName))
@@ -452,13 +452,9 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
             ? tags.Where(t => !names.Contains(t, TagNames.Comparer)).ToList()
             : null;
 
-    private void Publish(List<Device> changed)
-    {
-        foreach (var device in changed)
-        {
-            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, device.Id, device));
-        }
-    }
+    /// <summary>The changed devices as stored now: the rows the write loaded may hold an older status or site of another writer.</summary>
+    private async Task PublishAsync(List<Device> changed) =>
+        await StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, changed.ConvertAll(d => d.Id)).ConfigureAwait(false);
 
     public void Dispose()
     {

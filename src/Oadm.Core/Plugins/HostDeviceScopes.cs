@@ -64,12 +64,20 @@ public sealed class HostDeviceScopes : IDeviceScopes, IDisposable
         }
 
         // Subscribed before the read: a change during the read wins over the row read (TryAdd), a removed device stays out.
-        foreach (var row in await _views.Devices.ListScopeRowsAsync(ct).ConfigureAwait(false))
+        var rows = await _views.Devices.ListScopeRowsAsync(ct).ConfigureAwait(false);
+        foreach (var row in rows)
         {
             if (!_removedWhileLoading.ContainsKey(row.Id))
             {
                 _rows.TryAdd(row.Id, row);
             }
+        }
+
+        // The same rows tell the device feed what it has not published yet: the first polling round after the start then
+        // moves no membership version (no allowed ids read again for every device that changes its status).
+        if (_views.Feed is DeviceChangeFeed feed)
+        {
+            feed.SeedMembership(rows);
         }
 
         Volatile.Write(ref _loaded, 1);

@@ -18,12 +18,20 @@ public sealed class DeviceView
 {
     private readonly DeviceViewFactory _factory;
 
-    internal DeviceView(DeviceViewFactory factory, ViewKind kind, Guid? groupId, string? userName)
+    private readonly string? _noDevicesKey;
+
+    internal DeviceView(DeviceViewFactory factory, ViewKind kind, Guid? groupId, string? userName, Guid? userId = null)
     {
         _factory = factory;
         Kind = kind;
         GroupId = groupId;
         UserName = userName;
+        if (kind == ViewKind.None)
+        {
+            // Fail closed: a view without devices has a key nobody else has. The user's own key keeps the user's jobs
+            // findable in the next call; a view without a user gets a key of its own.
+            _noDevicesKey = Auth.DeviceScope.NoDevicesKeyOf(userId ?? Guid.NewGuid());
+        }
     }
 
     internal ViewKind Kind { get; }
@@ -43,8 +51,13 @@ public sealed class DeviceView
     /// <summary>The user the view belongs to; null for <see cref="DeviceViewFactory.System"/>.</summary>
     public string? UserName { get; }
 
-    /// <summary>The key of per-group state ("all" or the group id), like <c>ICallContext.DeviceScopeKey</c>.</summary>
-    public string ScopeKey => HasAllDevices ? Sdk.Plugins.ICallContext.AllDevicesScopeKey : GroupId?.ToString() ?? "none";
+    /// <summary>
+    /// The key of per-group state ("all" or the group id), like <c>ICallContext.DeviceScopeKey</c>. A view without devices
+    /// (no group, or its group was deleted) has a key of its own user ("none:" and the user's id, a random one without a
+    /// user): never another user's key, so users without devices share no state kept per scope (saved views, dashboards,
+    /// triggers, shared jobs), and no group or "all" state answers it.
+    /// </summary>
+    public string ScopeKey => HasAllDevices ? Sdk.Plugins.ICallContext.AllDevicesScopeKey : GroupId?.ToString() ?? _noDevicesKey!;
 
     /// <summary>The compiled rules as of now (<see cref="DeviceGroupFilter.Everything"/> / <see cref="DeviceGroupFilter.Nothing"/> included).</summary>
     public DeviceGroupFilter Filter => Kind switch
