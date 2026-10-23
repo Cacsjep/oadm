@@ -49,7 +49,13 @@ public sealed class PluginNetworkScope : IPluginNetwork, IAsyncDisposable
     public async Task<IUdpRelay> ListenUdpAsync(int port, string reason, CancellationToken ct)
     {
         ThrowIfDisposed();
-        return Track(new TrackedUdp(this, await LocalListener.OpenUdpAsync(port, reason, _firewall, _time, _loopbackOnly, ct).ConfigureAwait(false)));
+        return Track(new TrackedUdp(this, await LocalListener.OpenUdpAsync(port, reason, _firewall, _time, _loopbackOnly, null, ct).ConfigureAwait(false)));
+    }
+
+    public async Task<IUdpRelay> ListenUdpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct)
+    {
+        ThrowIfDisposed();
+        return Track(new TrackedUdp(this, await LocalListener.OpenUdpAsync(port, reason, _firewall, _time, _loopbackOnly, addresses, ct).ConfigureAwait(false)));
     }
 
     public async Task<ITcpRelay> ListenTcpAsync(int port, string reason, CancellationToken ct)

@@ -61,7 +61,9 @@ returns null or throws `NotSupportedException`.
   rules, Windows service only; `FirewallRuleKeeper`), `DataDirectory` (`<datafolder>/plugin-data/<id>`: working files, never a
   shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `EventSubscriptions` (every event the server
   handles, see "Event rules"), `AutoAdd` (add or follow an Axis device like
-  the add page).
+  the add page), `Network` (`IPluginNetwork`: routes, `ListenUdpAsync` / `ListenTcpAsync` on the server's own network,
+  both also on the addresses of one interface, UDP with SDK 0.4.0; `FakePluginNetwork.LastUdpAddresses` /
+  `LastTcpAddresses` in tests).
 - **SDK 0.4.0 (OADM 4.2), device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`):
   `ICallContext` (UserName, SessionId, DeviceScopeKey "all" or the group id, `Has`, `HasAllDevices`, `Devices`, `Vapix`,
   `Tasks`, `EventStreams` scoped to the user's view: outside ids answer null or throw
@@ -319,8 +321,9 @@ is always on.
   them; docs/spec/radius-server.md "Certificates and revocation"): `IsRevoked(serial)` (a hash lookup, any notation of
   the serial, `CertificateSerials.Normalize`), `FindRevocation`, `Revocations`, event `RevocationChanged` (it belongs to the
   offer: subscribe again when `Find` returns another instance), `ListIssuedAsync(IssuedCertificateQuery)`,
-  `GetIssuedCertificateAsync(serial)` (DER), `RevokeAsync(serials, RevocationReason, userName)`; the request's `Purpose`
-  (`DeviceCertificatePurposes`). `CertificateDescriber` (SDK) and the client SDK's `CertificateWindow` show a certificate
+  `GetIssuedCertificateAsync(serial)` (DER), `RevokeAsync(serials, RevocationReason, userName)`, `PreviousChains` (the
+  previous OADM CAs with their chains, DER, for servers that check device certificates: the 802.1X server); the request's
+  `Purpose` (`DeviceCertificatePurposes`). `CertificateDescriber` (SDK) and the client SDK's `CertificateWindow` show a certificate
   in plain names. Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
   (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
