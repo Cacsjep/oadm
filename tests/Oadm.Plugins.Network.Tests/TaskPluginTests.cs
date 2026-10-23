@@ -267,6 +267,35 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
+    public async Task Address_of_another_managed_device_fails_before_any_write()
+    {
+        var id = Guid.NewGuid();
+        var vapix = new FakeNetworkVapix();
+        var ctx = new RecordingContext(vapix) { OtherDeviceAddresses = { "10.0.0.60" } };
+        var probe = new FakeAddressProbe();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(ctx, id, StaticPayload(id, "10.0.0.60"), probe));
+
+        Assert.Equal("10.0.0.60: " + AddressCheck.UsedByOtherDevice + " Nothing was changed.", ex.Message);
+        Assert.Empty(probe.Probed);
+        Assert.Empty(vapix.Writes); // not even DNS
+        Assert.Equal("Check address is free: Failed", StepRun.Lines(ctx.Steps)[4]);
+    }
+
+    [Fact]
+    public async Task The_devices_own_address_is_never_asked_as_another_devices()
+    {
+        var id = Guid.NewGuid();
+        var vapix = new FakeNetworkVapix();
+        var ctx = new RecordingContext(vapix) { OtherDeviceAddresses = { "10.0.0.48" } };
+
+        await RunAsync(ctx, id, StaticPayload(id, "10.0.0.48"), new FakeAddressProbe());
+
+        Assert.Empty(Assert.Single(ctx.ManagedAddressQueries));
+        Assert.Contains(Free, StepRun.Lines(ctx.Steps));
+    }
+
+    [Fact]
     public async Task Free_address_is_probed_then_written()
     {
         var id = Guid.NewGuid();

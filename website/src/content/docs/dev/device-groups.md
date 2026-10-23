@@ -45,7 +45,9 @@ ones (they may throw).
 
 A task touches only its own device through `ctx.Vapix`. A task or query that reads other devices (a source device) goes
 through the call. For an address-in-use check, ask `ITaskQueryContext.ManagedAddressesAsync(candidates)`: it checks
-every device on the route and never names one. Name only devices the user sees.
+every device on the route and never names one. Name only devices the user sees. A task that sets a static address asks
+`ITaskExecutionContext.ManagedAddressesAsync(addresses)` again before its first write and refuses an address in use
+(test with `FakeTaskContext.OtherDeviceAddresses`). Both take at most 256 addresses per call.
 
 ## Methods for users with all devices
 

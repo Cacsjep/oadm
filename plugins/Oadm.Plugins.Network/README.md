@@ -118,7 +118,7 @@ Static IPv6 (`"ipv6": {"mode":"static","prefixLength":64,"gateway":null}`) takes
 (`Ipv6Change.AddressFor`; `ipv6.address` is the fallback).
 
 Query `checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0.100","2001:db8::100"],"probe":true}`
-(IPv4 and IPv6, at most 256), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse","answersPing"}]}`.
+(IPv4 and IPv6, at most 256 per call: the dialog asks only its rows' new addresses, one query per route and round), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse","answersPing"}]}`.
 
 Task names (`GetTaskName`, once per run): Network settings "Set static IP 10.0.0.60" (one device) / "Set static IP
 addresses" (several), "Switch to DHCP", "Set DNS servers" / "Use DNS from DHCP", "Set host name cam-1" / "Set host
@@ -142,7 +142,11 @@ device identity, Update OADM device address.
 Every device request is its own step. Unchanged sections are Skipped ("Keep unchanged"). A failing write is Failed and
 later steps Skipped. A successful task ends with the engine's step **Completed**.
 
-**Check address is free** runs right before the first write. Every new static address (IPv4, static IPv6) is probed
+**Check address is free** runs right before the first write. First the task asks the server whether another managed
+device on the device's route has a new static address (`ITaskExecutionContext.ManagedAddressesAsync`, also a device
+outside the user's device group, offline ones included): then the step fails with "10.0.0.60: Another device managed by
+OADM uses this address. Nothing was changed." (`AddressCheck.UsedByOtherDevice`, never the device's name, the same text
+for every user) and nothing is probed or sent. Then every new static address (IPv4, static IPv6) is probed
 with `IAddressProbe` (ping 2 x 1 s plus TCP 80/443, `NetworkAddressProbe` on the device's route; tests use a fake). The device's own current
 addresses are never probed ("10.0.0.48 is the device's own address"). When anything answers, the step fails with
 "10.0.0.60 is already in use (answers ping). Nothing was changed." (or "(answers on port 80/443)") and nothing is sent,

@@ -1216,6 +1216,20 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             engine.AddLog(task, deviceId, TaskLogLevel.Info, https ? "OADM now connects over HTTPS and trusts the new certificate." : "OADM now connects over HTTP.");
             return await engine._vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
         }
+
+        public async Task<IReadOnlySet<string>> ManagedAddressesAsync(Guid deviceId, IReadOnlyCollection<string> addresses, CancellationToken ct)
+        {
+            if (addresses.Count == 0)
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            // Every managed device, also outside the owner's view: the answer is only "in use".
+            var device = await engine._devices.FindAsync(deviceId, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException(DeviceMessages.NoLongerAvailable(1));
+            var all = await engine._devices.ListAsync(ct).ConfigureAwait(false);
+            return ManagedAddresses.Match(all, device.SiteId, deviceId, addresses);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: GetTaskName failed; the display name is used")]

@@ -135,6 +135,33 @@ public sealed class AssignIpTests
         Assert.DoesNotContain("Completed: Done", StepRun.Lines(ctx.Steps));
     }
 
+    [Fact]
+    public async Task Address_of_another_managed_device_is_refused_before_any_write()
+    {
+        // The other device is offline (nothing answers): only OADM knows the address is taken, also for a group user who
+        // does not see that device. The text never names it.
+        var device = new FakeDevice(Guid.NewGuid());
+        var vapix = new FakeNetworkVapix();
+        var ctx = new RecordingContext(vapix) { OtherDeviceAddresses = { "10.0.0.60" } };
+        var probe = new FakeAddressProbe();
+        var payload = new NetworkPayload
+        {
+            Ipv4 = new Ipv4Change(Ipv4Mode.Static, 24, "10.0.0.138"),
+            Dns = new DnsChange(false, ["10.0.0.2"], KeepDomains: true),
+            Devices = new Dictionary<Guid, DeviceAssignment> { [device.Id] = new("10.0.0.60") },
+        }.ToJson();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System, probe).ExecuteAsync(ctx, device, payload, CancellationToken.None)));
+
+        Assert.Equal("10.0.0.60: Another device managed by OADM uses this address. Nothing was changed.", ex.Message);
+        Assert.Empty(vapix.Writes);
+        Assert.Empty(probe.Probed);
+        Assert.Equal(["10.0.0.60"], Assert.Single(ctx.ManagedAddressQueries));
+        Assert.Equal("Check address is free: Failed", StepRun.Lines(ctx.Steps)[3]);
+        Assert.Contains((TaskLogLevel.Error, ex.Message), ctx.LogEntries);
+    }
+
     [Theory]
     [InlineData("""{"ipv4":{"mode":"static","prefixLength":24,"gateway":"10.0.0.138"},"devices":{"00000000-0000-0000-0000-000000000001":{"ipv4Address":"10.0.0.60"}}}""", "Assign IP 10.0.0.60")]
     [InlineData("""{"ipv4":{"mode":"static","prefixLength":24,"gateway":"10.0.0.138"},"devices":{"00000000-0000-0000-0000-000000000001":{"ipv4Address":"10.0.0.60"},"00000000-0000-0000-0000-000000000002":{"ipv4Address":"10.0.0.61"}}}""", "Assign IP addresses")]

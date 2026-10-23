@@ -34,6 +34,12 @@ internal sealed class FakeDeviceRepository : IDeviceRepository
         return device.Id;
     }
 
+    public Guid Add(IDeviceInfo device)
+    {
+        _devices[device.Id] = device;
+        return device.Id;
+    }
+
     public Guid[] AddMany(int count) => [.. Enumerable.Range(0, count).Select(_ => Add())];
 
     public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) =>

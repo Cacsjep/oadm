@@ -16,6 +16,9 @@ public static class AddressCheck
 {
     public const string QueryMethod = "checkAddresses";
 
+    /// <summary>The task's refusal of an address another managed device has (never names that device).</summary>
+    public const string UsedByOtherDevice = "Another device managed by OADM uses this address.";
+
     private const int Parallelism = 32;
 
     /// <param name="probe">The probe; null = on the route of the query's device (<see cref="ITaskQueryContext.Network"/>).</param>
