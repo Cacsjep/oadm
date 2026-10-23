@@ -19,6 +19,7 @@ repair, format, encryption on or off, retention. SD cards only (network shares a
 | Retention | 0 to 7,000 days; 0 = no age limit ("No age limit, keep them until the card is full"). The task skips a camera that has the value already. |
 | Cancel | Before the card is unmounted the task stops; from the unmount on it finishes its steps (a card is never left unmounted, the camera finishes its job anyway). |
 | Failures | The card is mounted again after any failure, also when the unmount answer was lost (the mount step reads the card first); the first failure stays the task's error, a failed mount after it is logged. Up to 5 lost job status answers in a row are asked again. Encrypt on an encrypted card: "The SD card is encrypted already. Nothing was changed." |
+| Device groups | SDK 0.4.0 (`minSdkVersion` 0.4.0). One table per device scope (`DeviceSweeps<StorageRow>`): the users of a device group share the table of their group's cameras, `rows` and `state` reach only them (`PluginEventAudience.DeviceScope`). `read` with ids and the runs (`change`, `format`) refuse the whole request when any camera is outside the caller's devices (NOT_FOUND "1 device is no longer available.", like an unknown id; nothing read, no task); `read` without ids = the caller's cameras; runs start through the caller's task runner. After a task the camera is read again in every table that has its row. A deleted group has no table. |
 | Page | The read's end comes as an event; the page also asks for the state every second while a read runs (an event sent before the watch connected is lost). |
 
 ## Task steps
@@ -74,7 +75,8 @@ Research answers: `tests/Oadm.Plugins.EdgeStorage.Tests/Fixtures/`.
 
 ## Tests
 
-`tests/Oadm.Plugins.EdgeStorage.Tests`: parsing of the recorded answers, every task against `SdCamera` (a stateful fake
+`tests/Oadm.Plugins.EdgeStorage.Tests`: `DeviceGroupTests` (the plugin canary, one table per group, runs through the
+caller), `DeviceSweepsTests` (the shared sweep per scope), parsing of the recorded answers, every task against `SdCamera` (a stateful fake
 that answers like the Q1615 Mk III, 403 while mounted), the plugin's table and rights, the page view model against the
 plugin in process, the dialogs, headless screenshots (`edge-storage-*.png`), Perf (5,000 cameras read, searched and
 selected). Opt-in `StorageHardwareWriteTests` (`OADM_STORAGE_WRITE_URL` / `_USER` / `_PASSWORD`; **formats the card**):

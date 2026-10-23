@@ -8,6 +8,7 @@ of several cameras at once, like the live view of a VMS: each view is a grid of 
 | Topic | Decision |
 |---|---|
 | Storage | On the server, shared by every user (plugin setting `views`, JSON). A save carries the version it was made on; an older one is refused ("Another user changed the view X meanwhile. Click Cancel and make your changes again."). Every change is pushed to every open page (event `views` with the whole list). An unreadable stored list is kept as `viewsUnreadable` and the list starts empty. |
+| Device groups | SDK 0.4.0 (`minSdkVersion` 0.4.0). Every view belongs to the device scope of the user who made it (`SavedView.owner`: a group's id, none = all devices, also every view from before device groups; set by the server only). Users of a group list, change and delete only their group's views, and `list` and the `views` event show them only the cameras the group has now; users with all devices see every view (unchanged). A view of another group answers like a deleted one ("The view no longer exists."), its delete is nothing to do. An edit keeps the owner (also an administrator's); a save refuses cameras outside the owner's devices (NOT_FOUND "1 device is no longer available.", nothing stored; views of all devices keep removed devices as before). Names are unique per owner. After a change, users with all devices get every view (`PluginEventAudience.AllDevices`), the users of the view's group their group's views (`DeviceScope`). A deleted group's views are seen only by users with all devices; an administrator's save gives such a view to all devices. |
 | Grid | 20 x 20 cells that always fill the tab (no scrolling); a camera is a rectangle of cells, at least 2 x 2; cameras never overlap. |
 | Limits | 16 cameras per view (decoding stays smooth on an average PC), 200 views, names 1..64 characters, unique case-insensitive. |
 | Roles | "Show the page" (automatic, Operator and Viewer: a monitoring page), **Change views** (`manage`: create, change, delete; Operator yes, Viewer no). The pictures need the host's "Live view" right (`devices.liveView`); without it the tiles say "Your role does not allow live view.". Save and delete are audited ("Plugin action"). |
@@ -32,7 +33,8 @@ which checks the name and the layout before it sends).
 
 ## Tests
 
-`tests/Oadm.Plugins.LiveView.Tests`: storage, versions and every refusal of the server part; the drop placement and
+`tests/Oadm.Plugins.LiveView.Tests`: `DeviceGroupTests` (the plugin canary, views per group, an administrator keeps the
+owner, cameras that left the group, a deleted group); storage, versions and every refusal of the server part; the drop placement and
 moves of `ViewLayout` (the cameras of a view on the shared `TileLayout`; the grid itself is the shared `ui:TileGrid`, its
 rules tested in `tests/Oadm.Core.Tests/Layout/TileLayoutTests`); the page (new view, drop, channel, save, other users, Cancel, close with changes, roles, removed
 devices; Perf: the camera tree of 5,000 devices); a headless screenshot with fake-mode video (`plugin-live-view.png`,

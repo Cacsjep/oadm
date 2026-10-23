@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.DeviceTriggers.Tests" />
   </ItemGroup>
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Plugins.DeviceTriggers.Runtime;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
@@ -15,6 +16,10 @@ namespace Oadm.Plugins.DeviceTriggers;
 /// OADM keeps a permanent WebSocket event stream to each device (<see cref="TriggerRuntime"/>) and publishes every trigger
 /// as two event types for the event rules: the trigger itself and "&lt;Trigger&gt;: connection lost". The types change
 /// with the triggers (<see cref="IDynamicEventSource"/>). Triggers live in the plugin setting <see cref="SettingsKey"/>.
+/// Device groups (docs/spec/device-scope.md, Shared objects): every trigger belongs to the device scope of the user who made
+/// it (<see cref="TriggerDefinition.Owner"/>) and watches only that scope's devices, so its events
+/// come only from them; users of a group see and change only their group's triggers; a deleted group's triggers watch
+/// nothing until a user with all devices saves them.
 /// </summary>
 public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSource, IAsyncDisposable
 {
@@ -90,6 +95,11 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     public UserRole RequiredRole(string method) => DeviceTriggersMethods.IsAdminMethod(method) ? UserRole.Admin : UserRole.Operator;
 
+    /// <summary>Saving and turning on count the devices every trigger watches together (one limit for the server).</summary>
+    public string? SystemAccessReason(string method) => method is DeviceTriggersMethods.Save or DeviceTriggersMethods.SetEnabled
+        ? "counts the devices all triggers watch together (a limit of the server), shows no device data"
+        : null;
+
     /// <summary>Changing triggers is one right ("manage", the Admin methods); seeing them is "show".</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
@@ -110,8 +120,13 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
         _reads = new EventListReads(ctx, _options, _time);
         _runtime = new TriggerRuntime(ctx, _options, _time);
-        _runtime.Changed += (_, ids) => ctx.Events?.Publish(DeviceTriggersMethods.ChangedTopic, TriggerJson.Serialize(new ChangedEvent([.. ids])));
+        _runtime.Changed += (_, ids) => PublishChanged(ids);
         _runtime.DevicesRemoved += (_, ids) => _ = RemoveDevicesAsync(ids);
+        if (ctx.DeviceScopes is { } scopes)
+        {
+            scopes.Changed += OnScopeChanged;
+        }
+
         EventTypesChanged?.Invoke(this, EventArgs.Empty);
         await ResolveAsync(ct).ConfigureAwait(false);
         _resolveTimer = _time.CreateTimer(_ => _ = ResolveSafelyAsync(), null, _options.ResolveInterval, _options.ResolveInterval);
@@ -121,6 +136,11 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     public async Task StopAsync(CancellationToken ct)
     {
+        if (_ctx?.DeviceScopes is { } scopes)
+        {
+            scopes.Changed -= OnScopeChanged;
+        }
+
         // The timer first (no new rounds), then a resolve in flight finishes (it may still apply to the runtime) and
         // later ones find no runtime; only then the runtime closes its connections.
         if (_resolveTimer is { } timer)
@@ -166,46 +186,58 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         _reads = null;
     }
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>In-process calls without a user (the host itself, tests): every trigger, owned by all devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
+
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
-        var ctx = _ctx ?? throw new InvalidOperationException("The device triggers plugin is not running.");
+        ArgumentNullException.ThrowIfNull(caller);
+        var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
         switch (method)
         {
             case DeviceTriggersMethods.List:
-                return TriggerJson.Serialize(new ListReply([.. Triggers.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).Select(Summary)]));
+                return TriggerJson.Serialize(new ListReply([.. Visible(caller).OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).Select(Summary)]));
             case DeviceTriggersMethods.Get:
             {
                 var id = TriggerJson.Deserialize<IdRequest>(payloadJson).Id;
-                var trigger = Triggers.FirstOrDefault(t => t.Id == id);
+                var trigger = Visible(caller).FirstOrDefault(t => t.Id == id);
                 return TriggerJson.Serialize(new GetReply(trigger, trigger is null || _runtime is null ? [] : _runtime.StatesOf(Resolved(trigger))));
             }
 
             case DeviceTriggersMethods.StartRead:
-                return TriggerJson.Serialize(_reads!.Start(TriggerJson.Deserialize<StartReadRequest>(payloadJson).DeviceIds ?? [], _running?.Token ?? CancellationToken.None));
+            {
+                var ids = TriggerJson.Deserialize<StartReadRequest>(payloadJson).DeviceIds ?? [];
+                await CallDevices.RequireAsync(caller, ids, ct).ConfigureAwait(false);
+                return TriggerJson.Serialize(_reads!.Start(caller, ids, _running?.Token ?? CancellationToken.None));
+            }
+
             case DeviceTriggersMethods.ReadStatus:
-                return TriggerJson.Serialize(_reads!.StatusOf(TriggerJson.Deserialize<ReadStatusRequest>(payloadJson).JobId ?? string.Empty)
+                return TriggerJson.Serialize(_reads!.StatusOf(caller, TriggerJson.Deserialize<ReadStatusRequest>(payloadJson).JobId ?? string.Empty)
                     ?? throw new ArgumentException("The read of the event lists ended. Read the events again."));
             case DeviceTriggersMethods.Save:
-                return TriggerJson.Serialize(await SaveAsync(ctx, TriggerJson.Deserialize<SaveRequest>(payloadJson).Trigger, ct).ConfigureAwait(false));
+                return TriggerJson.Serialize(await SaveAsync(ctx, caller, TriggerJson.Deserialize<SaveRequest>(payloadJson).Trigger, ct).ConfigureAwait(false));
             case DeviceTriggersMethods.Delete:
             {
                 var id = TriggerJson.Deserialize<IdRequest>(payloadJson).Id;
-                await ChangeAsync(ctx, list => list.RemoveAll(t => t.Id == id) > 0, typesChanged: true, ct).ConfigureAwait(false);
+                var owner = Visible(caller).FirstOrDefault(t => t.Id == id)?.Owner;
+                await ChangeAsync(ctx, list => list.RemoveAll(t => t.Id == id && OwnerScope.Sees(caller, t.Owner)) > 0, typesChanged: true, owner, ct).ConfigureAwait(false);
                 return null;
             }
 
             case DeviceTriggersMethods.SetEnabled:
             {
                 var request = TriggerJson.Deserialize<SetEnabledRequest>(payloadJson);
-                if (request.Enabled && Triggers.FirstOrDefault(t => t.Id == request.Id) is { Enabled: false } turningOn
-                    && WatchedCount([.. Triggers.Where(t => t.Enabled), turningOn], await ctx.Devices.ListAsync(ct).ConfigureAwait(false)) > _options.MaxWatchedDevices)
+                var target = Visible(caller).FirstOrDefault(t => t.Id == request.Id);
+                if (request.Enabled && target is { Enabled: false } turningOn
+                    && await WatchedCountAsync([.. Triggers.Where(t => t.Enabled), turningOn], ct).ConfigureAwait(false) > _options.MaxWatchedDevices)
                 {
                     throw new ArgumentException(DeviceTriggersPluginInfo.TooManyDevicesText);
                 }
 
                 await ChangeAsync(ctx, list =>
                 {
-                    var i = list.FindIndex(t => t.Id == request.Id);
+                    var i = target is null ? -1 : list.FindIndex(t => t.Id == request.Id);
                     if (i < 0 || list[i].Enabled == request.Enabled)
                     {
                         return false;
@@ -213,14 +245,65 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
                     list[i] = list[i] with { Enabled = request.Enabled };
                     return true;
-                }, typesChanged: false, ct).ConfigureAwait(false);
+                }, typesChanged: false, target?.Owner, ct).ConfigureAwait(false);
                 return null;
             }
 
             case DeviceTriggersMethods.Duplicate:
-                return TriggerJson.Serialize(await DuplicateAsync(ctx, TriggerJson.Deserialize<IdRequest>(payloadJson).Id, ct).ConfigureAwait(false));
+                return TriggerJson.Serialize(await DuplicateAsync(ctx, caller, TriggerJson.Deserialize<IdRequest>(payloadJson).Id, ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+        }
+    }
+
+    private const string NotRunning = "The device triggers plugin is not running.";
+
+    /// <summary>The triggers the caller sees: all for users with all devices, the group's own for users of a group.</summary>
+    private IEnumerable<TriggerDefinition> Visible(ICallContext caller) => Triggers.Where(t => OwnerScope.Sees(caller, t.Owner));
+
+    /// <summary>A group's rules changed or the group was deleted: its triggers follow its devices at once.</summary>
+    private void OnScopeChanged(object? sender, string scopeKey)
+    {
+        if (Triggers.Any(t => string.Equals(OwnerScope.Of(t.Owner), scopeKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            _ = RunDetached(ResolveSafelyAsync);
+        }
+    }
+
+    /// <summary>
+    /// Tells the open pages which triggers changed: users with all devices every id, the users of a group the ids of its
+    /// triggers only.
+    /// </summary>
+    private void PublishChanged(IReadOnlyCollection<Guid> ids, string? owner = null)
+    {
+        if (_ctx?.Events is not { } events)
+        {
+            return;
+        }
+
+        events.Publish(DeviceTriggersMethods.ChangedTopic, TriggerJson.Serialize(new ChangedEvent([.. ids])), PluginEventAudience.AllDevices);
+        var owners = Triggers.Where(t => ids.Contains(t.Id)).Select(t => OwnerScope.Of(t.Owner));
+        if (owner is not null)
+        {
+            owners = owners.Append(OwnerScope.Of(owner));
+        }
+
+        foreach (var group in owners.Where(o => o != ICallContext.AllDevicesScopeKey).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var mine = Triggers.Where(t => ids.Contains(t.Id) && string.Equals(OwnerScope.Of(t.Owner), group, StringComparison.OrdinalIgnoreCase)).Select(t => t.Id).ToList();
+            events.Publish(DeviceTriggersMethods.ChangedTopic, TriggerJson.Serialize(new ChangedEvent(mine)), PluginEventAudience.DeviceScope(group));
+        }
+    }
+
+    /// <summary>
+    /// Background work started from a user's call (the resolve and the connections it opens): it runs without the call, like
+    /// every other round of the trigger runtime.
+    /// </summary>
+    private static Task RunDetached(Func<Task> work)
+    {
+        using (ExecutionContext.SuppressFlow())
+        {
+            return Task.Run(work, CancellationToken.None);
         }
     }
 
@@ -286,12 +369,22 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         }
     }
 
-    private async Task<SaveReply> SaveAsync(ICorePluginContext ctx, TriggerDefinition? incoming, CancellationToken ct)
+    /// <summary>
+    /// Saves a trigger. A new one belongs to the caller's devices; a change keeps the owner (another group's trigger is
+    /// treated as unknown, a new one); a user with all devices who saves a deleted group's trigger gives it to all devices.
+    /// The chosen devices of a group's trigger must be in the group (else NOT_FOUND, nothing stored); names are unique among
+    /// the owner's triggers.
+    /// </summary>
+    private async Task<SaveReply> SaveAsync(ICorePluginContext ctx, ICallContext caller, TriggerDefinition? incoming, CancellationToken ct)
     {
         if (incoming is null)
         {
             return new SaveReply(null, "The trigger is empty.", null);
         }
+
+        var stored = incoming.Id == Guid.Empty ? null : Visible(caller).FirstOrDefault(t => t.Id == incoming.Id);
+        var owner = OwnerScope.ForSave(ctx, caller, stored?.Owner, stored is null);
+        await OwnerScope.RequireDevicesAsync(ctx, caller, owner, incoming.DeviceIds ?? [], ct).ConfigureAwait(false);
 
         var trigger = incoming with
         {
@@ -303,12 +396,14 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             ValueFields = [.. (incoming.ValueFields ?? []).Where(f => f is not null && !string.IsNullOrWhiteSpace(f.Name) && Enum.IsDefined(f.Kind)).DistinctBy(f => f.Name)],
             FilterText = incoming.FilterText ?? string.Empty,
             EventName = incoming.EventName ?? string.Empty,
+            Id = stored?.Id ?? (incoming.Id == Guid.Empty || Triggers.Any(t => t.Id == incoming.Id) ? Guid.Empty : incoming.Id),
+            Owner = owner == ICallContext.AllDevicesScopeKey ? null : owner,
         };
         var others = Triggers.Where(t => t.Id != trigger.Id).ToList();
-        var errors = TriggerValidation.Check(trigger, others.Select(o => o.Name)).ToDictionary();
+        var errors = TriggerValidation.Check(trigger, others.Where(o => OwnerScope.Of(o.Owner) == owner).Select(o => o.Name)).ToDictionary();
         if (!errors.ContainsKey(TriggerValidation.DevicesField))
         {
-            var devices = (await ctx.Devices.ListAsync(ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
+            var devices = (await OwnerScope.DevicesOf(ctx, caller, owner).ListAsync(ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
             var unknown = trigger.DeviceIds.Count(id => !devices.ContainsKey(id));
             var unsupported = trigger.DeviceIds.Where(id => devices.TryGetValue(id, out var d) && d.Apis.Count > 0
                 && !d.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion)).Select(id => devices[id].Address).ToList();
@@ -323,7 +418,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         }
 
         if (!errors.ContainsKey(TriggerValidation.DevicesField) && trigger.Enabled
-            && WatchedCount([.. others.Where(o => o.Enabled), trigger], await ctx.Devices.ListAsync(ct).ConfigureAwait(false)) > _options.MaxWatchedDevices)
+            && await WatchedCountAsync([.. others.Where(o => o.Enabled), trigger], ct).ConfigureAwait(false) > _options.MaxWatchedDevices)
         {
             errors[TriggerValidation.DevicesField] = DeviceTriggersPluginInfo.TooManyDevicesText;
         }
@@ -358,13 +453,14 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             }
 
             return true;
-        }, typesChanged: true, ct).ConfigureAwait(false);
+        }, typesChanged: true, saved.Owner, ct).ConfigureAwait(false);
         return new SaveReply(saved, null, null);
     }
 
-    private async Task<SaveReply> DuplicateAsync(ICorePluginContext ctx, Guid id, CancellationToken ct)
+    /// <summary>A copy of a trigger the caller sees, owned by the caller's devices (turned off).</summary>
+    private async Task<SaveReply> DuplicateAsync(ICorePluginContext ctx, ICallContext caller, Guid id, CancellationToken ct)
     {
-        var source = Triggers.FirstOrDefault(t => t.Id == id);
+        var source = Visible(caller).FirstOrDefault(t => t.Id == id);
         if (source is null)
         {
             return new SaveReply(null, "The trigger no longer exists.", null);
@@ -375,14 +471,15 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             return new SaveReply(null, $"At most {DeviceTriggersPluginInfo.MaxTriggers} triggers.", null);
         }
 
-        var names = Triggers.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var owner = caller.DeviceScopeKey;
+        var names = Triggers.Where(t => OwnerScope.Of(t.Owner) == owner).Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var name = CopyName(source.Name, names);
-        var copy = source with { Id = Guid.NewGuid(), Name = name, Enabled = false };
+        var copy = source with { Id = Guid.NewGuid(), Name = name, Enabled = false, Owner = owner == ICallContext.AllDevicesScopeKey ? null : owner };
         await ChangeAsync(ctx, list =>
         {
             list.Add(copy);
             return true;
-        }, typesChanged: true, ct).ConfigureAwait(false);
+        }, typesChanged: true, copy.Owner, ct).ConfigureAwait(false);
         return new SaveReply(copy, null, null);
     }
 
@@ -402,7 +499,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     }
 
     /// <summary>Changes the stored list (serialized), then the event types and the connections follow.</summary>
-    private async Task ChangeAsync(ICorePluginContext ctx, Func<List<TriggerDefinition>, bool> change, bool typesChanged, CancellationToken ct)
+    private async Task ChangeAsync(ICorePluginContext ctx, Func<List<TriggerDefinition>, bool> change, bool typesChanged, string? owner, CancellationToken ct)
     {
         await _write.WaitAsync(ct).ConfigureAwait(false);
         List<TriggerDefinition> updated;
@@ -430,8 +527,9 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             EventTypesChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        await ResolveAsync(ct).ConfigureAwait(false);
-        ctx.Events?.Publish(DeviceTriggersMethods.ChangedTopic, TriggerJson.Serialize(new ChangedEvent([])));
+        // The resolve reads every device and opens connections: background work, never in the user's call.
+        await RunDetached(() => ResolveAsync(ct)).ConfigureAwait(false);
+        PublishChanged([], owner);
     }
 
     /// <summary>
@@ -462,7 +560,10 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         }
 
         var stored = Triggers;
-        var devices = stored.Any(t => t.AllDevices || t.Tags.Count > 0) ? await ctx.Devices.ListAsync(ct).ConfigureAwait(false) : [];
+        var scoped = stored.Any(t => OwnerScope.Of(t.Owner) != ICallContext.AllDevicesScopeKey);
+        var devices = scoped || stored.Any(t => t.AllDevices || t.Tags.Count > 0) ? await ctx.Devices.ListAsync(ct).ConfigureAwait(false) : [];
+        var byId = scoped ? devices.ToDictionary(d => d.Id) : null;
+        bool Covers(TriggerDefinition t, IDeviceInfo d) => Owns(ctx, t, d);
         var next = new Dictionary<Guid, Resolution>();
         var notWatched = new Dictionary<Guid, int>();
         var changed = false;
@@ -475,7 +576,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             var watched = stored.Where(t => t.Enabled).SelectMany(t => t.DeviceIds).ToHashSet();
             var before = _resolved.Values.Where(r => r.Value.Enabled).SelectMany(r => r.Value.Implicit).ToHashSet();
             var wanted = stored.Where(t => t.Enabled && (t.AllDevices || t.Tags.Count > 0))
-                .SelectMany(t => devices.Where(d => t.CoversImplicitly(d.Tags) && CanSendEvents(d)).Select(d => d.Id))
+                .SelectMany(t => devices.Where(d => Covers(t, d) && t.CoversImplicitly(d.Tags) && CanSendEvents(d)).Select(d => d.Id))
                 .Where(id => !watched.Contains(id))
                 .Distinct()
                 .OrderBy(id => before.Contains(id) ? 0 : 1)
@@ -493,11 +594,21 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             foreach (var trigger in stored)
             {
                 var resolved = trigger;
+                if (byId is not null && OwnerScope.Of(trigger.Owner) != ICallContext.AllDevicesScopeKey)
+                {
+                    // A group's trigger: only the chosen devices the group still has (none for a deleted group).
+                    var kept = trigger.DeviceIds.Where(id => byId.TryGetValue(id, out var d) && Covers(trigger, d)).ToList();
+                    if (kept.Count != trigger.DeviceIds.Count)
+                    {
+                        resolved = trigger with { DeviceIds = kept };
+                    }
+                }
+
                 if (trigger.AllDevices || trigger.Tags.Count > 0)
                 {
                     var chosen = trigger.DeviceIds.ToHashSet();
                     var covered = devices
-                        .Where(d => !chosen.Contains(d.Id) && trigger.CoversImplicitly(d.Tags) && CanSendEvents(d))
+                        .Where(d => !chosen.Contains(d.Id) && Covers(trigger, d) && trigger.CoversImplicitly(d.Tags) && CanSendEvents(d))
                         .Select(d => d.Id)
                         .ToList();
                     var implicitIds = (trigger.Enabled ? covered.Where(watched.Contains) : covered).ToHashSet();
@@ -506,7 +617,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                         notWatched[trigger.Id] = covered.Count - implicitIds.Count;
                     }
 
-                    resolved = trigger with { DeviceIds = [.. trigger.DeviceIds, .. implicitIds], Implicit = implicitIds };
+                    resolved = resolved with { DeviceIds = [.. resolved.DeviceIds, .. implicitIds], Implicit = implicitIds };
                 }
 
                 var previous = _resolved.GetValueOrDefault(trigger.Id);
@@ -556,16 +667,29 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         }
     }
 
-    /// <summary>Devices the turned-on <paramref name="triggers"/> watch together: chosen, tagged and all devices.</summary>
-    internal static int WatchedCount(IReadOnlyCollection<TriggerDefinition> triggers, IReadOnlyList<IDeviceInfo> devices)
+    /// <summary>
+    /// Devices the turned-on <paramref name="triggers"/> watch together: chosen, tagged and all devices, each within its
+    /// owner's devices. Reads every device (<see cref="ICorePluginContext.System"/>, declared in <see cref="SystemAccessReason"/>):
+    /// the limit is the server's; only the count is used.
+    /// </summary>
+    private async Task<int> WatchedCountAsync(IReadOnlyCollection<TriggerDefinition> triggers, CancellationToken ct)
     {
+        var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
+        var devices = await ctx.System.Devices.ListAsync(ct).ConfigureAwait(false);
         var watched = triggers.SelectMany(t => t.DeviceIds).ToHashSet();
         foreach (var trigger in triggers.Where(t => t.AllDevices || t.Tags.Count > 0))
         {
-            watched.UnionWith(devices.Where(d => trigger.CoversImplicitly(d.Tags) && CanSendEvents(d)).Select(d => d.Id));
+            watched.UnionWith(devices.Where(d => Owns(ctx, trigger, d) && trigger.CoversImplicitly(d.Tags) && CanSendEvents(d)).Select(d => d.Id));
         }
 
         return watched.Count;
+    }
+
+    /// <summary>Whether a device is in the devices of the trigger's owner (every device for all devices; none for a deleted group).</summary>
+    private static bool Owns(ICorePluginContext ctx, TriggerDefinition trigger, IDeviceInfo device)
+    {
+        var owner = OwnerScope.Of(trigger.Owner);
+        return owner == ICallContext.AllDevicesScopeKey || (ctx.DeviceScopes?.Contains(owner, device) ?? false);
     }
 
     /// <summary>A device of a tag or of all devices: the stream API listed, or its API list not read yet.</summary>
@@ -597,7 +721,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                 }
 
                 return changed;
-            }, typesChanged: false, CancellationToken.None).ConfigureAwait(false);
+            }, typesChanged: false, null, CancellationToken.None).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Tried again on the next sweep.
         catch (Exception ex)

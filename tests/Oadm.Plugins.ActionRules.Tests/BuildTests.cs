@@ -23,13 +23,15 @@ public sealed class BuildTests : IAsyncLifetime
     private readonly string _data = Path.Combine(Path.GetTempPath(), "oadm-action-rules-build-" + Guid.NewGuid().ToString("N"));
     private readonly FakeDevice _os12 = new();
     private readonly FakeDevice _os10 = new() { Address = "10.0.0.200", Model = "AXIS M3206-LVE", FirmwareVersion = "10.12.338" };
+    private readonly FakeDevice _unread = new() { Address = "10.0.0.201" };
+    private readonly FakeDevices _devices = new();
     private readonly FakeCameras _cameras = new();
     private readonly RecordingRunner _runner = new();
     private readonly ActionRulesPlugin _plugin = new();
 
     public async Task InitializeAsync()
     {
-        var devices = new FakeDevices();
+        var devices = _devices;
         devices.Items.Add(_os12);
         devices.Items.Add(_os10);
         _cameras.Cameras[_os12.Id] = new RuleCamera("os12");
@@ -62,10 +64,13 @@ public sealed class BuildTests : IAsyncLifetime
     [Fact]
     public async Task The_events_of_the_devices_are_merged_without_the_schedules()
     {
+        _devices.Items.Add(_unread);
         var reply = ActionRulesJson.Deserialize<EventsReply>(await _plugin.InvokeAsync(
-            ActionRulesMethods.Events, ActionRulesJson.Serialize(new EventsRequest([_os12.Id, _os10.Id, Guid.NewGuid()])), CancellationToken.None));
+            ActionRulesMethods.Events, ActionRulesJson.Serialize(new EventsRequest([_os12.Id, _os10.Id, _unread.Id])), CancellationToken.None));
 
         Assert.Equal((3, 1), (reply.Devices, reply.Unknown)); // the third device was never read
+        await Assert.ThrowsAsync<Oadm.Sdk.Devices.DevicesNotAvailableException>(() => _plugin.InvokeAsync(
+            ActionRulesMethods.Events, ActionRulesJson.Serialize(new EventsRequest([_os12.Id, Guid.NewGuid()])), CancellationToken.None)); // not managed
         var input = Assert.Single(reply.Events, e => e.Event.Topic == VirtualInputTopic);
         Assert.Equal(2, input.Devices);
         Assert.True(input.Event.Stateful);

@@ -511,12 +511,6 @@ public sealed class CanaryTests
     /// </summary>
     internal static readonly Dictionary<string, string> PluginsNotConverted = new(StringComparer.Ordinal)
     {
-        ["oadm.device-triggers"] = "plugins-pages",
-        ["oadm.dashboards"] = "plugins-pages",
-        ["oadm.live-view"] = "plugins-pages",
-        ["oadm.action-rules"] = "plugins-pages",
-        ["oadm.edge-storage"] = "plugins-pages",
-        ["oadm.image-health"] = "plugins-pages",
         ["oadm.hardening-scan"] = "plugins-pages",
         ["oadm.edge-recording-export"] = "plugins-pages",
         ["oadm.io-monitor"] = "plugins-pages",

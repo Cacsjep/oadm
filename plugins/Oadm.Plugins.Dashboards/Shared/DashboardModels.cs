@@ -225,7 +225,14 @@ public sealed record Widget
 }
 
 /// <summary>A saved dashboard. <see cref="Version"/> grows with every save; a save of an older version is refused.</summary>
-public sealed record Dashboard(string Id, string Name, long Version, IReadOnlyList<Widget> Widgets);
+public sealed record Dashboard(string Id, string Name, long Version, IReadOnlyList<Widget> Widgets)
+{
+    /// <summary>
+    /// The device group that owns it (its users see and change it, with the group's devices only); null = all devices (also
+    /// every dashboard saved before device groups). Set by the server, never taken from a page.
+    /// </summary>
+    public string? Owner { get; init; }
+}
 
 /// <summary>Every dashboard, sorted by name (method "list" and the event "dashboards").</summary>
 public sealed record DashboardList(IReadOnlyList<Dashboard> Dashboards);

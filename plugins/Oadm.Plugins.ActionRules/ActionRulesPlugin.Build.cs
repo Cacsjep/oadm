@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 
 using Oadm.Plugins.ActionRules.Rules;
+using Oadm.Plugins.Shared;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.ActionRules;
 
@@ -113,9 +115,10 @@ public sealed partial class ActionRulesPlugin
         };
 
     /// <summary>A new rule from the rule builder, checked whole before any task starts.</summary>
-    private async Task<RunStarted> BuildAsync(BuildRequest request, CancellationToken ct)
+    private async Task<RunStarted> BuildAsync(ICallContext caller, BuildRequest request, CancellationToken ct)
     {
         var devices = DeviceIds(request.DeviceIds);
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false);
         var rule = Normalize(request.Rule ?? throw new ArgumentException("Describe the rule.", nameof(request)));
         if (BuildProblem(rule) is { } problem)
         {
@@ -163,7 +166,7 @@ public sealed partial class ActionRulesPlugin
             Rule = device,
             Schedules = schedules,
         };
-        return await StartAsync(payload, devices, ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, devices, ct).ConfigureAwait(false);
     }
 
     /// <summary>The events the devices offered, by topic.</summary>

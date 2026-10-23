@@ -27,6 +27,7 @@
   <ItemGroup>
     <!-- The on-request table of the page, shared with Image Health Dashboard and Edge storage. -->
     <Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />
+    <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
   </ItemGroup>
 
   <ItemGroup>

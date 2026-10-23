@@ -25,6 +25,7 @@
   <ItemGroup>
     <!-- The on-request table of the page, shared with Image Health Dashboard. -->
     <Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />
+    <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
   </ItemGroup>
 
   <ItemGroup>

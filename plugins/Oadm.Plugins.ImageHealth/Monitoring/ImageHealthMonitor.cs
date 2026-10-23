@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 
 using Microsoft.Extensions.Logging;
@@ -25,77 +26,112 @@ public sealed class ImageHealthOptions
 
 /// <summary>
 /// The status of AXIS Image Health Analytics on every camera, read only on request (no
-/// background polling, no open connection). <see cref="StartCheck"/> asks the page's video devices once for the app status
-/// (<see cref="ImageHealthPluginInfo.StatusPath"/>, <see cref="ImageHealthOptions.CheckParallelism"/> at a time, stored
-/// credentials): the page calls it when it opens, on Refresh and, with Auto refresh on, every 10 s. Rows are updated in
-/// place between checks, so a detection change is seen and timed. Read-only for devices: one GET per camera and check.
-/// The table machinery (one check at a time, rows by device, batched events) is the shared <see cref="DeviceSweep{TRow}"/>.
+/// background polling, no open connection). <see cref="StartCheck(string, IReadOnlySet{Guid}?)"/> asks the page's video
+/// devices once for the app status (<see cref="ImageHealthPluginInfo.StatusPath"/>, <see cref="ImageHealthOptions.CheckParallelism"/>
+/// at a time, stored credentials): the page calls it when it opens, on Refresh and, with Auto refresh on, every 10 s. Rows
+/// are updated in place between checks, so a detection change is seen and timed. Read-only for devices: one GET per camera
+/// and check. The table machinery (one check at a time, rows by device, batched events) is the shared
+/// <see cref="DeviceSweep{TRow}"/>, one per device scope (<see cref="DeviceSweeps{TRow}"/>): the users of a device group
+/// share the table of their group's cameras, and its rows and counts reach only them.
 /// </summary>
 public sealed partial class ImageHealthMonitor : IAsyncDisposable
 {
+    private static readonly ImageHealthState Empty = new(false, 0, 0, 0, 0, 0, 0, null, []);
+
     private readonly ICorePluginContext _ctx;
     private readonly ImageHealthOptions _options;
-    private readonly DeviceSweep<ImageHealthRow> _sweep;
-    private int _withoutApp;
-    private IReadOnlySet<Guid>? _scope;
-    private readonly Lock _scopeSync = new();
+    private readonly DeviceSweeps<ImageHealthRow> _sweeps;
+    private readonly ConcurrentDictionary<string, ScopeCounts> _counts = new(StringComparer.OrdinalIgnoreCase);
 
     public ImageHealthMonitor(ICorePluginContext ctx, ImageHealthOptions options)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _sweep = new DeviceSweep<ImageHealthRow>(
+        var sweepOptions = new DeviceSweepOptions { Parallelism = options.CheckParallelism, DeviceTimeout = options.RequestTimeout, PublishInterval = options.PublishInterval, Time = options.Time };
+        _sweeps = new DeviceSweeps<ImageHealthRow>(ctx, (key, devices) => new DeviceSweep<ImageHealthRow>(
             ctx,
-            new DeviceSweepOptions { Parallelism = options.CheckParallelism, DeviceTimeout = options.RequestTimeout, PublishInterval = options.PublishInterval, Time = options.Time },
+            devices,
+            sweepOptions,
             d => d.HasVideo,
             ReadRowAsync,
             r => r.Address,
-            PublishRows,
-            PublishState)
+            (rows, removed) => PublishRows(key, rows, removed),
+            () => PublishState(key))
         {
-            Finished = LogFinished,
-        };
+            Finished = () => LogFinished(key),
+        });
     }
 
-    /// <summary>Whether a check runs (tests).</summary>
-    public bool IsChecking => _sweep.IsRunning;
+    /// <summary>Whether the check of the table of all devices runs (tests).</summary>
+    public bool IsChecking => _sweeps.Existing(ICallContext.AllDevicesScopeKey)?.IsRunning ?? false;
 
-    /// <summary>The running check (tests wait for it).</summary>
-    public Task CurrentCheck => _sweep.Current;
+    /// <summary>The running check of the table of all devices (tests wait for it).</summary>
+    public Task CurrentCheck => CurrentCheckOf(ICallContext.AllDevicesScopeKey);
+
+    /// <summary>The scopes that have a table (tests).</summary>
+    internal IReadOnlyList<string> Scopes => _sweeps.Keys;
+
+    /// <summary>The running check of a scope's table (tests wait for it).</summary>
+    public Task CurrentCheckOf(string scopeKey) => _sweeps.Existing(scopeKey)?.Current ?? Task.CompletedTask;
+
+    /// <summary>A check in the table of all devices (tests).</summary>
+    public ImageHealthState StartCheck(IReadOnlySet<Guid>? only = null) => StartCheck(ICallContext.AllDevicesScopeKey, only);
 
     /// <summary>
-    /// Starts a check of <paramref name="only"/> (null = every video device) unless one runs; returns the state at once
-    /// (rows and progress follow as events).
+    /// Starts a check of <paramref name="only"/> (null = every video device of the scope) in the table of
+    /// <paramref name="scopeKey"/> unless one runs; returns the state at once (rows and progress follow as events). A deleted
+    /// group has no table: an empty state.
     /// </summary>
-    public ImageHealthState StartCheck(IReadOnlySet<Guid>? only = null)
+    public ImageHealthState StartCheck(string scopeKey, IReadOnlySet<Guid>? only)
     {
-        lock (_scopeSync)
+        if (_sweeps.For(scopeKey) is not { } sweep)
         {
-            // A check while another runs is read right after it (DeviceSweep.Start): the counts cover both choices.
-            var running = _sweep.IsRunning;
-            var scope = Volatile.Read(ref _scope);
-            Volatile.Write(ref _scope, !running ? only
-                : scope is null || only is null ? null
-                : scope.Union(only).ToHashSet());
-            _sweep.Start(only);
+            return Empty;
         }
 
-        return Snapshot(withRows: true);
+        var counts = _counts.GetOrAdd(scopeKey, _ => new ScopeCounts());
+        lock (counts)
+        {
+            // A check while another runs is read right after it (DeviceSweep.Start): the counts cover both choices.
+            var running = sweep.IsRunning;
+            var scope = counts.Scope;
+            counts.Scope = !running ? only
+                : scope is null || only is null ? null
+                : scope.Union(only).ToHashSet();
+            sweep.Start(only);
+        }
+
+        return Snapshot(scopeKey, withRows: true);
     }
 
-    public ValueTask DisposeAsync() => _sweep.DisposeAsync();
+    public ValueTask DisposeAsync() => _sweeps.DisposeAsync();
 
-    /// <summary>Current counts and, with <paramref name="withRows"/>, every row sorted by address.</summary>
-    public ImageHealthState Snapshot(bool withRows)
+    /// <summary>The counts and rows of the table of all devices (tests).</summary>
+    public ImageHealthState Snapshot(bool withRows) => Snapshot(ICallContext.AllDevicesScopeKey, withRows);
+
+    /// <summary>Current counts and, with <paramref name="withRows"/>, every row of the scope's table sorted by address.</summary>
+    public ImageHealthState Snapshot(string scopeKey, bool withRows)
     {
-        var now = _sweep.Snapshot();
-        if (!now.Running)
+        if ((_ctx.DeviceScopes is { } scopes && !scopes.Exists(scopeKey)) || _sweeps.Existing(scopeKey) is not { } sweep)
         {
-            // The video devices of the last check that are not in the table answered "not installed"; rows of cameras
-            // another page checked do not count.
-            var scope = Volatile.Read(ref _scope);
-            var rows = scope is null ? now.Rows.Count : now.Rows.Count(r => scope.Contains(r.DeviceId));
-            Volatile.Write(ref _withoutApp, Math.Max(0, now.Total - rows));
+            return Empty;
+        }
+
+        var now = sweep.Snapshot();
+        var counts = _counts.GetOrAdd(scopeKey, _ => new ScopeCounts());
+        int withoutApp;
+        lock (counts)
+        {
+            if (!now.Running)
+            {
+                // The video devices of the last check that are not in the table answered "not installed"; rows of cameras
+                // another page checked do not count.
+                var scope = counts.Scope;
+                var rows = scope is null ? now.Rows.Count : now.Rows.Count(r => scope.Contains(r.DeviceId));
+                counts.WithoutApp = Math.Max(0, now.Total - rows);
+            }
+
+            withoutApp = counts.WithoutApp;
         }
 
         int Count(string app) => now.Rows.Count(r => r.App == app);
@@ -105,14 +141,20 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
             now.Total,
             Count(AppStates.Running),
             Count(AppStates.NotRunning),
-            Volatile.Read(ref _withoutApp),
+            withoutApp,
             Count(AppStates.Error),
             now.FinishedUtc,
-            withRows ? _sweep.Sorted(now.Rows) : []);
+            withRows ? sweep.Sorted(now.Rows) : []);
     }
 
-    /// <summary>Pushes the rows changed since the last call and the counts when they changed (tests call it directly).</summary>
-    internal void Publish() => _sweep.Publish();
+    /// <summary>Pushes the rows changed since the last call and the counts when they changed, in every table (tests call it directly).</summary>
+    internal void Publish()
+    {
+        foreach (var sweep in _sweeps.All)
+        {
+            sweep.Publish();
+        }
+    }
 
     /// <summary>One status request: the app state and its detections, or the reason the camera could not be read.</summary>
     internal async Task<StatusResult> ReadStatusAsync(IDeviceInfo device, CancellationToken ct)
@@ -124,6 +166,7 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
 
         try
         {
+            // Background work of the sweep (no caller): the sweep's devices are the scope's already.
             var client = await _ctx.Vapix.CreateAsync(device.Id, ct).ConfigureAwait(false);
             using var request = new HttpRequestMessage(HttpMethod.Get, ImageHealthPluginInfo.StatusPath);
             using var response = await client.SendAsync(request, ct).ConfigureAwait(false);
@@ -151,9 +194,18 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            return StatusResult.Failed(_sweep.Failure(ex));
+            return StatusResult.Failed(Failure(ex));
         }
     }
+
+    /// <summary>The usual text when a camera cannot be read (as <see cref="DeviceSweep{TRow}.Failure"/>).</summary>
+    private string Failure(Exception ex) => ex switch
+    {
+        OperationCanceledException => DeviceMessages.Timeout(_options.RequestTimeout),
+        HttpRequestException { InnerException: System.Net.Sockets.SocketException socket } => DeviceMessages.Unreachable(socket.Message),
+        HttpRequestException http => DeviceMessages.Unreachable(http.Message),
+        _ => ex.Message,
+    };
 
     /// <summary>
     /// The row of one camera: null without the app (it leaves the table). A failed request keeps the detections as they
@@ -194,38 +246,48 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
         };
     }
 
-    private void PublishRows(IReadOnlyList<ImageHealthRow> rows, IReadOnlyList<Guid> removed)
+    /// <summary>Rows of a scope's table go only to the users of that scope.</summary>
+    private void PublishRows(string scopeKey, IReadOnlyList<ImageHealthRow> rows, IReadOnlyList<Guid> removed)
     {
         if (_ctx.Events is not { } events)
         {
             return;
         }
 
+        var audience = PluginEventAudience.DeviceScope(scopeKey);
         foreach (var chunk in rows.Chunk(ImageHealthPluginInfo.MaxRowsPerEvent))
         {
-            events.Publish(ImageHealthMethods.RowsTopic, ImageHealthJson.Serialize(new RowsEvent(chunk, [])));
+            events.Publish(ImageHealthMethods.RowsTopic, ImageHealthJson.Serialize(new RowsEvent(chunk, [])), audience);
         }
 
         if (removed.Count > 0)
         {
-            events.Publish(ImageHealthMethods.RowsTopic, ImageHealthJson.Serialize(new RowsEvent([], removed)));
+            events.Publish(ImageHealthMethods.RowsTopic, ImageHealthJson.Serialize(new RowsEvent([], removed)), audience);
         }
     }
 
-    private void PublishState()
+    private void PublishState(string scopeKey)
     {
-        var state = Snapshot(withRows: false);
-        _ctx.Events?.Publish(ImageHealthMethods.StateTopic, ImageHealthJson.Serialize(state));
+        var state = Snapshot(scopeKey, withRows: false);
+        _ctx.Events?.Publish(ImageHealthMethods.StateTopic, ImageHealthJson.Serialize(state), PluginEventAudience.DeviceScope(scopeKey));
     }
 
-    private void LogFinished()
+    private void LogFinished(string scopeKey)
     {
-        var state = Snapshot(withRows: false);
+        var state = Snapshot(scopeKey, withRows: false);
         LogChecked(_ctx.Logger, state.Total, state.Running, state.NotRunning, state.Failed);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Image Health Dashboard: {Total} video devices checked, {Running} with the app running, {NotRunning} with the app stopped, {Failed} could not be read")]
     private static partial void LogChecked(ILogger logger, int total, int running, int notRunning, int failed);
+
+    /// <summary>The choice of a scope's last check and its cameras without the app (under its own lock).</summary>
+    private sealed class ScopeCounts
+    {
+        public int WithoutApp { get; set; }
+
+        public IReadOnlySet<Guid>? Scope { get; set; }
+    }
 }
 
 /// <summary>One status request: the app state, its detections while it runs, or why the camera could not be read.</summary>

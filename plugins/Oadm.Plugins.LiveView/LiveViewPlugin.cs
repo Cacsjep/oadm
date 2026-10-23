@@ -1,13 +1,16 @@
 using System.Text.Json;
 
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.LiveView;
 
 /// <summary>
-/// Core plugin "Live View": saved views of several cameras, shared by every user of the server. The server part keeps the
-/// views in the plugin settings and tells every open page about a change; the video itself goes through the host's live
-/// view (gRPC LiveViewService) like the Devices page's side panel.
+/// Core plugin "Live View": saved views of several cameras, shared by the users of the same devices. The server part keeps
+/// the views in the plugin settings and tells every open page about a change; the video itself goes through the host's live
+/// view (gRPC LiveViewService) like the Devices page's side panel. Each view belongs to the device scope of the user who
+/// made it (<see cref="SavedView.Owner"/>, docs/spec/device-scope.md, Shared objects): users of a device group see and
+/// change only their group's views, with only their group's cameras; users with all devices every view.
 /// </summary>
 public sealed class LiveViewPlugin : ICorePlugin, IDisposable
 {
@@ -57,39 +60,72 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
 
     public void Dispose() => _gate.Dispose();
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>In-process calls without a user (the host itself, tests): every view, owned by all devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => InvokeAsync(System, method, payloadJson, ct);
+
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         switch (method)
         {
             case "list":
-                return Serialize(await ListAsync(ct).ConfigureAwait(false));
+                return Serialize(await ListAsync(caller, ct).ConfigureAwait(false));
             case "save":
-                return JsonSerializer.Serialize(await SaveAsync(Read<SaveViewRequest>(payloadJson), ct).ConfigureAwait(false), LiveViewPluginInfo.Json);
+                return JsonSerializer.Serialize(await SaveAsync(caller, Read<SaveViewRequest>(payloadJson), ct).ConfigureAwait(false), LiveViewPluginInfo.Json);
             case "delete":
-                await DeleteAsync(Read<DeleteViewRequest>(payloadJson).Id, ct).ConfigureAwait(false);
+                await DeleteAsync(caller, Read<DeleteViewRequest>(payloadJson).Id, ct).ConfigureAwait(false);
                 return null;
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
     }
 
-    /// <summary>Every view, sorted by name.</summary>
-    internal async Task<ViewList> ListAsync(CancellationToken ct)
+    /// <summary>Every view (tests: a user with all devices).</summary>
+    internal Task<ViewList> ListAsync(CancellationToken ct) => ListAsync(System, ct);
+
+    /// <summary>
+    /// The caller's views sorted by name: users with all devices every view, users of a group their group's views with only
+    /// the cameras the group has now (a camera that left the group or was removed is left out).
+    /// </summary>
+    internal async Task<ViewList> ListAsync(ICallContext caller, CancellationToken ct)
     {
+        List<SavedView> views;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return new ViewList([.. Sorted(await LoadAsync(ct).ConfigureAwait(false))]);
+            views = await LoadAsync(ct).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+
+        if (caller.HasAllDevices)
+        {
+            return new ViewList([.. Sorted(views)]);
+        }
+
+        var mine = views.Where(v => OwnerScope.Sees(caller, v.Owner)).ToList();
+        if (mine.Count == 0)
+        {
+            return new ViewList([]);
+        }
+
+        var devices = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+        return new ViewList([.. Sorted(mine.Select(v => Within(v, devices)))]);
     }
 
-    /// <summary>Creates or changes a view after checking its name, layout, version and the limits.</summary>
-    internal async Task<SavedView> SaveAsync(SaveViewRequest request, CancellationToken ct)
+    /// <summary>Creates or changes a view (tests: a user with all devices).</summary>
+    internal Task<SavedView> SaveAsync(SaveViewRequest request, CancellationToken ct) => SaveAsync(System, request, ct);
+
+    /// <summary>
+    /// Creates or changes a view after checking its name, layout, version and the limits. A new view belongs to the caller's
+    /// devices; a change keeps the owner (a view of another group answers like a deleted one). Every camera must be in the
+    /// owner's devices (else NOT_FOUND, nothing stored); names are unique among the owner's views.
+    /// </summary>
+    internal async Task<SavedView> SaveAsync(ICallContext caller, SaveViewRequest request, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(request);
         var name = request.Name?.Trim() ?? string.Empty;
         if (ViewRules.NameProblem(name) is { } nameProblem)
@@ -108,18 +144,21 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
         {
             var views = await LoadAsync(ct).ConfigureAwait(false);
             var isNew = string.IsNullOrEmpty(request.Id);
-            var index = isNew ? -1 : views.FindIndex(v => v.Id == request.Id);
+            var index = isNew ? -1 : views.FindIndex(v => v.Id == request.Id && OwnerScope.Sees(caller, v.Owner));
             if (!isNew && index < 0)
             {
                 throw new ArgumentException(ViewRules.Gone);
             }
+
+            var owner = OwnerScope.ForSave(Context, caller, index >= 0 ? views[index].Owner : null, isNew);
+            await OwnerScope.RequireDevicesAsync(Context, caller, owner, tiles.Select(t => t.DeviceId), ct).ConfigureAwait(false);
 
             if (index >= 0 && request.Version != 0 && request.Version != views[index].Version)
             {
                 throw new ArgumentException(ViewRules.ChangedMeanwhile(views[index].Name));
             }
 
-            if (views.Where((v, i) => i != index).Any(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)))
+            if (views.Where((v, i) => i != index && OwnerScope.Of(v.Owner) == owner).Any(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new ArgumentException(ViewRules.NameTaken(name));
             }
@@ -129,7 +168,10 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
                 throw new ArgumentException(ViewRules.TooManyViews);
             }
 
-            var saved = new SavedView(isNew ? Guid.NewGuid().ToString("N") : request.Id!, name, index >= 0 ? views[index].Version + 1 : 1, [.. tiles]);
+            var saved = new SavedView(isNew ? Guid.NewGuid().ToString("N") : request.Id!, name, index >= 0 ? views[index].Version + 1 : 1, [.. tiles])
+            {
+                Owner = owner == ICallContext.AllDevicesScopeKey ? null : owner,
+            };
             var next = new List<SavedView>(views);
             if (index >= 0)
             {
@@ -140,7 +182,7 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
                 next.Add(saved);
             }
 
-            await StoreAsync(next, ct).ConfigureAwait(false);
+            await StoreAsync(next, owner, ct).ConfigureAwait(false);
             return saved;
         }
         finally
@@ -149,16 +191,20 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
         }
     }
 
-    /// <summary>Deletes a view; an unknown id is nothing to do.</summary>
-    internal async Task DeleteAsync(string id, CancellationToken ct)
+    /// <summary>Deletes a view (tests: a user with all devices).</summary>
+    internal Task DeleteAsync(string id, CancellationToken ct) => DeleteAsync(System, id, ct);
+
+    /// <summary>Deletes a view of the caller's devices; an unknown id (or a view of another group) is nothing to do.</summary>
+    internal async Task DeleteAsync(ICallContext caller, string id, CancellationToken ct)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             var views = await LoadAsync(ct).ConfigureAwait(false);
-            if (views.RemoveAll(v => v.Id == id) > 0)
+            if (views.Find(v => v.Id == id && OwnerScope.Sees(caller, v.Owner)) is { } gone)
             {
-                await StoreAsync([.. views], ct).ConfigureAwait(false);
+                views.Remove(gone);
+                await StoreAsync([.. views], OwnerScope.Of(gone.Owner), ct).ConfigureAwait(false);
             }
         }
         finally
@@ -194,14 +240,38 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
         return [.. views];
     }
 
-    private async Task StoreAsync(List<SavedView> views, CancellationToken ct)
+    /// <summary>
+    /// Stores the views, then tells the open pages: users with all devices get every view, the users of the changed view's
+    /// group get their group's views with only the group's cameras.
+    /// </summary>
+    private async Task StoreAsync(List<SavedView> views, string changedOwner, CancellationToken ct)
     {
-        var ctx = _ctx ?? throw new InvalidOperationException("The Live View plugin is not running.");
+        var ctx = Context;
         // Once the write started it finishes: a cancelled caller never leaves the cache and the stored list apart.
         await ctx.Settings.SetAsync(ViewsKey, JsonSerializer.Serialize(views, LiveViewPluginInfo.Json), CancellationToken.None).ConfigureAwait(false);
         _views = views;
-        ctx.Events?.Publish(LiveViewPluginInfo.ViewsTopic, Serialize(new ViewList([.. Sorted(views)])));
+        if (ctx.Events is not { } events)
+        {
+            return;
+        }
+
+        events.Publish(LiveViewPluginInfo.ViewsTopic, Serialize(new ViewList([.. Sorted(views)])), PluginEventAudience.AllDevices);
+        if (changedOwner != ICallContext.AllDevicesScopeKey && ctx.DeviceScopes is { } scopes && scopes.Exists(changedOwner))
+        {
+            var devices = (await scopes.Devices(changedOwner).ListAsync(CancellationToken.None).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+            var group = views.Where(v => OwnerScope.Of(v.Owner) == changedOwner).Select(v => Within(v, devices));
+            events.Publish(LiveViewPluginInfo.ViewsTopic, Serialize(new ViewList([.. Sorted(group)])), PluginEventAudience.DeviceScope(changedOwner));
+        }
     }
+
+    /// <summary>A view with only the cameras of <paramref name="devices"/>.</summary>
+    private static SavedView Within(SavedView view, HashSet<Guid> devices) =>
+        view.Tiles.All(t => devices.Contains(t.DeviceId)) ? view : view with { Tiles = [.. view.Tiles.Where(t => devices.Contains(t.DeviceId))] };
+
+    private ICorePluginContext Context => _ctx ?? throw new InvalidOperationException("The Live View plugin is not running.");
+
+    /// <summary>The call of in-process work without a user (all devices).</summary>
+    private ContextCall System => new(Context);
 
     private static IEnumerable<SavedView> Sorted(IEnumerable<SavedView> views) =>
         views.OrderBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase);

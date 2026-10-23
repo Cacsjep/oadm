@@ -368,7 +368,14 @@ public sealed record BuildRequest(IReadOnlyList<Guid> DeviceIds, NewRule Rule);
 public sealed record NewRecipientRequest(IReadOnlyList<Guid> DeviceIds, string Template, string Name, IReadOnlyDictionary<string, string> Parameters);
 
 /// <summary>A run that can be undone.</summary>
-public sealed record UndoRun(Guid RunId, DateTimeOffset CreatedUtc, string Description, string Action, int Devices, bool Undone);
+public sealed record UndoRun(Guid RunId, DateTimeOffset CreatedUtc, string Description, string Action, int Devices, bool Undone)
+{
+    /// <summary>
+    /// The device scope of the user who started it ("all" or a device group's id): only that group's users (and users with
+    /// all devices) see and undo it. Runs saved before device groups have none: all devices.
+    /// </summary>
+    public string? Scope { get; init; }
+}
 
 /// <summary>The page's JSON (camelCase, nulls left out).</summary>
 public static class ActionRulesJson

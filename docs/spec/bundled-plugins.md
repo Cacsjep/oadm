@@ -175,7 +175,8 @@ has the app, with five count cards (Good, Detected, Pending, Detection off, Erro
   credentials); only on request and for the chosen cameras (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
   cameras at a time, 3 s each; a stopped app stays as **Not running**; a detection turned off is no problem (the camera
-  counts as Good); refused statuses without a request. Methods `check` and `getState` are Operator.
+  counts as Good); refused statuses without a request. Methods `check` and `getState` are Operator. One table per device
+  scope: a group user checks and sees only the group's cameras, chosen ids outside it are refused whole (NOT_FOUND).
 - Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (+ read-only hardware test `ImageHealthHardwareTests`). Not in fake mode.
 
 ## I/O Monitor (core plugin)
@@ -198,6 +199,9 @@ Automation, icon `flame`), **off by default**. A trigger is an event the chosen 
 temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item; every trigger is an
 event of the event rules, plus "<Trigger>: connection lost". Decisions, device research and details: plugin `README.md`.
 
+- Device groups: every trigger belongs to the group of the user who made it (none = all devices) and watches only that
+  group's devices ("All devices" and tags = the group's), so its events come only from them; group users see and
+  change only their group's triggers; a deleted group's triggers watch nothing; the editor's reads are the user's jobs.
 - Rules that must hold: the event list is read live from the devices for every create and edit, never cached; devices
   come from the shared device picker (All devices, tags, single devices), resolved after every change and every 30 s; all
   turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`; one permanent connection each, Windows
@@ -241,6 +245,8 @@ and device API: plugin `README.md`.
   statuses are not contacted; a copied rule brings the schedules it uses first (OADM's own id
   `com.axis.schedules.oadm.<name>`, the same on every device); topics are written without the `//.` AXIS OS 10 appends;
   built-in schedules are never changed or deleted, a used schedule is deleted only together with its rules.
+- Device groups: one table per device scope; every device id of a request in the caller's devices or the whole request
+  is refused (NOT_FOUND) before anything is read, saved or started; undo runs per group.
 - Roles: "show" (Operator, Viewer), "Change action rules" (`manage`, Operator yes), "Delete action rules" (`delete`,
   Operator yes); every change, copy, delete and undo is audited.
 - Tests: `tests/Oadm.Plugins.ActionRules.Tests` (+ Perf 5,000 devices); opt-in `RulesHardwareWriteTests` and
@@ -300,8 +306,10 @@ login. Decisions, the relay and tests: plugin `README.md`.
 **off by default**, switchable. Saved views of several cameras at once, like a VMS: a view is a grid of cameras, opened in a
 tab. Decisions, methods and tests: plugin `README.md`.
 
-- Rules that must hold: views live on the server, shared by every user (plugin setting `views`), every change pushed to
-  every open page; a save of an older version is refused (two users); the grid is 20 x 20 cells and always fills the tab,
+- Rules that must hold: views live on the server, shared by the users of the same devices (plugin setting `views`; each
+  view belongs to the device group of the user who made it, none = all devices; group users see and change only their
+  group's views with the group's cameras, saving refuses cameras outside the owner's devices, an edit keeps the owner),
+  every change pushed to the open pages that see it; a save of an older version is refused (two users); the grid is 20 x 20 cells and always fills the tab,
   a camera at least 2 x 2, never overlapping, at most 16 cameras per view and 200 views; the server checks every rule
   again (`ViewRules`, shared with the page; the grid is the shared `ui:TileGrid` with `LiveViewPluginInfo.Layout`). Roles: "show" (Operator and Viewer), "Change views" (`manage`, Operator yes,
   Viewer no; save and delete audited); the pictures need "Live view". Every camera is the host's live video component
@@ -330,7 +338,10 @@ Gauge, Live video; a gauge has the Number settings plus Min, Max and the line wi
   dashboards live on the server like Live View's views (plugin setting `dashboards`, every change pushed, an older version
   refused), the grid is the shared `ui:TileGrid` (20 x 20, at least 2 x 2, never overlapping), at most 50 widgets of them
   16 live videos and 200 dashboards; colors and icons are theme names; the server checks every rule again
-  (`DashboardRules`).
+  (`DashboardRules`). Device groups: each dashboard belongs to the group of the user who made it (none = all devices);
+  group users see and change only their group's dashboards with the group's devices, get only the events of their devices
+  and sites and only the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps
+  the owner.
 - Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete audited);
   video needs "Live view".
 - Page: left card Dashboards and Events (the events with values, device triggers first); right card the tabs, while
@@ -380,6 +391,8 @@ cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: 
   stored, logged or in a URL; retention 0..7,000 days (0 = no age limit).
 - Roles: "show" (Operator, Viewer), "Change storage settings" (`manage`, Operator yes), "Format and encrypt storage"
   (`format`, full device control, Operator no); both run methods audited.
+- Device groups: one table per device scope; a group user reads and runs the tools only on the group's cameras (ids
+  outside it refuse the whole request, NOT_FOUND).
 - Shared code (no copies): the disk list `EdgeDisk` / `EdgeDisks` (also Edge Recording Export and Hardening scan), the
   on-request table `plugins/Shared/DeviceSweep.cs` + `SweepRows.cs` (also Image Health Dashboard), `DeviceMessages.Refusal`
   (SDK) and `PluginEventWatch.RunAsync` (client SDK).
