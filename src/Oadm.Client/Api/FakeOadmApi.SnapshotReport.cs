@@ -169,7 +169,7 @@ public sealed partial class FakeOadmApi
 
         if (device is null)
         {
-            return JsonSerializer.Serialize(new { error = Oadm.Sdk.Devices.DeviceMessages.Removed }, FakeJson);
+            return JsonSerializer.Serialize(new { error = Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1) }, FakeJson);
         }
 
         // Multisensor sensors are 4:3 (2592x1944), everything else 16:9.

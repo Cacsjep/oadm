@@ -45,7 +45,7 @@ Verified on an AXIS P3265-V (AXIS OS 12.11, export schema 1.4) and an AXIS camer
 
 Device groups (SDK 0.4.0): both take the camera from the user's call (`caller.Devices`, `caller.Vapix`). For a user with a
 device group a camera outside the group answers like an unknown one (NOT_FOUND "1 device is no longer available.") and is
-never contacted; users with all devices get "The device was removed from OADM." as before. A group user's export ends when
+never contacted; users with all devices get the same text in the answer (no error). A group user's export ends when
 the camera leaves the group: while the client downloads, the stream asks every 5 s (`EdgeRecordingOptions.AccessCheckInterval`)
 whether the camera is still in the group's devices now (`IDeviceScopes.Devices`), and the next read after it left throws
 `DevicesNotAvailableException` (`ViewBoundStream`).

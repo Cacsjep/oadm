@@ -86,7 +86,7 @@ public sealed partial class FakeOadmApi
 
         string? error = device?.Status switch
         {
-            null => Oadm.Sdk.Devices.DeviceMessages.Removed,
+            null => Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1),
             DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
             DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
             DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,

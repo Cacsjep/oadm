@@ -133,6 +133,11 @@ an independent security review the same day). A user may be limited to part of t
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
   key is (group revision, tag and site catalog revision, `DeviceChangeFeed.Version`). The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
+- **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
+  the user's devices, say "1 device is no longer available." (`DeviceMessages.NoLongerAvailable`), also as a row or
+  state text (monitors, reports, snapshots, event list reads, trigger saves); "The device was removed from OADM."
+  (`DeviceMessages.Removed`) stays for background state of a stored object whose device is gone (a trigger's device row)
+  and for the host.
 - **Small leaks closed:** address checks answer only "in use"; conflict and log texts never name devices outside the
   view; discovery rows of such devices say only "already added"; Your role shows no excepted serials. "This server"
   means exactly devices without a site (devices kept from a removed site keep its id).

@@ -91,7 +91,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
         }
         catch (KeyNotFoundException)
         {
-            const string text = DeviceMessages.Removed;
+            var text = DeviceMessages.NoLongerAvailable(1);
             SetState(MonitorStates.Error, text);
             return text;
         }
@@ -327,7 +327,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
                 }
                 catch (KeyNotFoundException)
                 {
-                    SetState(MonitorStates.Error, DeviceMessages.Removed);
+                    SetState(MonitorStates.Error, DeviceMessages.NoLongerAvailable(1));
                     return false;
                 }
                 catch (DevicesNotAvailableException ex)

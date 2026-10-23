@@ -133,7 +133,7 @@ public sealed class ServerTests
         rig.Devices.Items.AddRange([camera, io]);
 
         Assert.Equal("The device has no inputs or outputs to show", (await rig.StartStreamAsync(camera.Id)).Error);
-        Assert.Equal(DeviceMessages.Removed, (await rig.StartStreamAsync(Guid.NewGuid())).Error);
+        Assert.Equal(DeviceMessages.NoLongerAvailable(1), (await rig.StartStreamAsync(Guid.NewGuid())).Error);
         var io2 = new TestDevice("10.0.0.71", "A9210");
         var io3 = new TestDevice("10.0.0.72", "A9210");
         rig.Devices.Items.AddRange([io2, io3]);

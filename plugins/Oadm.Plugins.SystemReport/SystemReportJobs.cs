@@ -96,7 +96,7 @@ public sealed partial class SystemReportJobs : IDisposable
         var job = new Job(id, folder, items, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
         foreach (var item in items.Where(i => i.Device is null))
         {
-            job.Finish(item, null, null, null, DeviceMessages.Removed);
+            job.Finish(item, null, null, null, DeviceMessages.NoLongerAvailable(1));
         }
 
         job.Worker = Task.Run(() => RunAsync(job), CancellationToken.None);

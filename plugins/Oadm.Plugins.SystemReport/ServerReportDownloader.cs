@@ -125,7 +125,7 @@ public static partial class ServerReportRequests
 
         if (ex is KeyNotFoundException)
         {
-            return DeviceMessages.Removed;
+            return DeviceMessages.NoLongerAvailable(1);
         }
 
         if (ex is IOException && Find<HttpRequestException>(ex) is null && Find<SocketException>(ex) is null)

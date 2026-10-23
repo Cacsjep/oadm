@@ -205,7 +205,8 @@ public sealed class DeviceFactsReader
         || error.StartsWith("Timeout", StringComparison.Ordinal)
         || error.StartsWith("Unauthorized", StringComparison.Ordinal)
         || error.StartsWith("Forbidden", StringComparison.Ordinal)
-        || error.StartsWith(DeviceMessages.Removed, StringComparison.Ordinal);
+        || error.StartsWith(DeviceMessages.Removed, StringComparison.Ordinal)
+        || error.StartsWith(DeviceMessages.NoLongerAvailable(1), StringComparison.Ordinal);
 
     private async Task<Fact<T>> ReadAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct)
     {

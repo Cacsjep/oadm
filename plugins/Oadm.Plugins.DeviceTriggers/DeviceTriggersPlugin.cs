@@ -428,7 +428,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                 && !d.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion)).Select(id => devices[id].Address).ToList();
             if (unknown > 0)
             {
-                errors[TriggerValidation.DevicesField] = unknown == 1 ? "A chosen device was removed from OADM." : $"{unknown} chosen devices were removed from OADM.";
+                errors[TriggerValidation.DevicesField] = DeviceMessages.NoLongerAvailable(unknown);
             }
             else if (unsupported.Count > 0)
             {

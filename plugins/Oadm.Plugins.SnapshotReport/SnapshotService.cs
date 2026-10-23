@@ -184,7 +184,7 @@ public sealed partial class SnapshotService : IDisposable
         ArgumentNullException.ThrowIfNull(vapix);
         if (device is null)
         {
-            return Failed(DeviceMessages.Removed);
+            return Failed(DeviceMessages.NoLongerAvailable(1));
         }
 
         var deviceId = device.Id;

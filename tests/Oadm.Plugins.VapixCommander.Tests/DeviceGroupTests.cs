@@ -197,7 +197,7 @@ public sealed class DeviceGroupTests
         var compatibility = CommandJson.Read<CompatibilityReply>(await ctx.InvokeAsync(plugin, admin, CommanderMethods.CheckCompatibility,
             $$"""{"deviceIds":["{{Guid.NewGuid()}}"],"commands":[{{Brand}}]}"""));
 
-        Assert.Equal(DeviceMessages.Removed, tried.Error);
+        Assert.Equal(DeviceMessages.NoLongerAvailable(1), tried.Error);
         Assert.Equal("Device not found", Assert.Single(Assert.Single(compatibility.Devices).Commands).Text);
     }
 }

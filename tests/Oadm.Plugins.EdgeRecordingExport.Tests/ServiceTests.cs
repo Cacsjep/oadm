@@ -108,7 +108,7 @@ public sealed class ServiceTests
 
         Assert.Empty(credentials.Requests); // refused statuses are not contacted
         Assert.Empty(atSite.Requests);
-        Assert.Equal(DeviceMessages.Removed, (await SearchAsync(rig, Guid.NewGuid())).Problem);
+        Assert.Equal(DeviceMessages.NoLongerAvailable(1), (await SearchAsync(rig, Guid.NewGuid())).Problem);
         await Assert.ThrowsAsync<ArgumentException>(() => SearchAsync(rig, cases[0].Device.Id, FakeCamera.T0, FakeCamera.T0));
     }
 

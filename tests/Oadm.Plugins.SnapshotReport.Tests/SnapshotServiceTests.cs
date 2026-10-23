@@ -192,7 +192,7 @@ public sealed class SnapshotServiceTests
         var timeout = TimeSpan.FromSeconds(10);
         Assert.StartsWith("Unreachable - ", SnapshotRequests.ExceptionError(new HttpRequestException("x", new SocketException((int)SocketError.ConnectionRefused)), timeout), StringComparison.Ordinal);
         Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", SnapshotRequests.ExceptionError(new InvalidOperationException("basicdeviceinfo.cgi: HTTP 401"), timeout));
-        Assert.Equal("The device was removed from OADM.", SnapshotRequests.ExceptionError(new KeyNotFoundException("x"), timeout));
+        Assert.Equal("1 device is no longer available.", SnapshotRequests.ExceptionError(new KeyNotFoundException("x"), timeout));
         Assert.Equal("Unreachable - Name not resolved", SnapshotRequests.ExceptionError(new HttpRequestException("Name not resolved."), timeout));
     }
 
@@ -213,7 +213,7 @@ public sealed class SnapshotServiceTests
         Assert.Equal("Certificate changed. Remove the device and add it again to trust the new certificate.", (await service.TakeAsync(certificate.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("Password not set - the device is in factory default", (await service.TakeAsync(factoryDefault.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("The device has no video", (await service.TakeAsync(speaker.Id, 1, 640, 360, CancellationToken.None)).Error);
-        Assert.Equal("The device was removed from OADM.", (await service.TakeAsync(Guid.NewGuid(), 1, 640, 360, CancellationToken.None)).Error);
+        Assert.Equal("1 device is no longer available.", (await service.TakeAsync(Guid.NewGuid(), 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("The device has no video source 7", (await new SnapshotService(new FakeRepository(new FakeDevice { Id = certificate.Id }), factory).TakeAsync(certificate.Id, 7, 640, 360, CancellationToken.None)).Error);
         Assert.All(factory.Cameras.Values, c => Assert.Empty(c.Requests));
     }
