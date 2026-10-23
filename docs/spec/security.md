@@ -174,6 +174,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   roles (`RetryAuth`), like everywhere the credential list is written.
 - Candidates: the credential list and credentials typed on the page; passwords of managed devices are never tried on new
   devices; at most 10 rejected credentials per device. Details in "Add Devices Page".
+- Users with a device group: the credential list is never tried for them (adding, Retry, Log in, the waiting list): a
+  session tries the list only after `DiscoveryAuthenticator.AllowCredentialList` (users with all devices, the server's
+  automatic add), else only what was typed for it (fail closed). Test `AddDevicesScopeTests` (no credential request reaches
+  the device, also after the list changed and through the waiting list).
 - Tests: `AxisCheckTests`, `FastAddTests`; read-only hardware test `FastAddHardwareTests` (the development camera passes
   on both schemes).
 

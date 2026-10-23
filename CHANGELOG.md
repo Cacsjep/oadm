@@ -12,6 +12,8 @@ version and date, and the release workflow copies it into the GitHub release.
   Also in the search and the export.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the
   upgrade every user keeps all devices.
+- Device groups: a user with a group finds and adds devices only at the sites of the group, and only with the passwords
+  they enter (never the credential list). The waiting list shows each user the devices of their sites.
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
 

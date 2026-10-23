@@ -51,6 +51,12 @@ public sealed class DeviceGroupFilter
     /// <summary>The tag and site catalog it was compiled with.</summary>
     public DeviceScopeCatalogKey Catalog { get; }
 
+    /// <summary>"This server" is a rule: devices on the server's own network (without a site) are in the group.</summary>
+    public bool ThisServer => _thisServer;
+
+    /// <summary>The sites of the rules that exist now (a removed site dropped out).</summary>
+    public IReadOnlySet<Guid> Sites => _sites;
+
     /// <summary>
     /// Compiles <paramref name="rules"/>: tag ids become the names of <paramref name="tagNames"/> (a deleted tag drops out),
     /// site ids are kept only while <paramref name="isLiveSite"/> says the site exists (a removed site drops out, its kept

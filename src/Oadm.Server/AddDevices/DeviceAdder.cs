@@ -26,9 +26,29 @@ public sealed partial class DeviceAdder(
     VapixProbe probe,
     ILogger<DeviceAdder> logger)
 {
+    /// <summary>True when OADM manages the serial already (any user's device: "already added" is an accepted existence leak).</summary>
+    public async Task<bool> IsManagedAsync(string serial, CancellationToken ct) =>
+        await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false) is not null;
+
+    /// <summary>
+    /// The managed device with the serial, or null. For the add page's "already added" only: the caller checks it against the
+    /// user's view before it shows anything of it.
+    /// </summary>
+    public Task<Device?> FindManagedAsync(string serial, CancellationToken ct) => devices.FindBySerialAsync(serial, ct);
+
+    /// <summary>True when adding the serials that OADM does not manage yet would go over the device limit.</summary>
+    public async Task<bool> WouldExceedLimitAsync(IEnumerable<string> serials, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(serials);
+        var managed = await devices.ListSerialsAsync(ct).ConfigureAwait(false);
+        var newOnes = serials.Select(DeviceSerial.Normalize).Distinct(StringComparer.Ordinal).Count(serial => !managed.Contains(serial));
+        return managed.Count + newOnes > devices.MaxDevices;
+    }
+
     /// <summary>
     /// Adds the device. <paramref name="probed"/> is the anonymous probe the caller already ran (null: probed here).
-    /// Returns null when the serial is managed already.
+    /// <paramref name="addedBy"/> is who adds it (docs/spec/device-scope.md, Model "On the device"): all devices (a user with
+    /// all devices, the server itself) or the user's device group; never none. Returns null when the serial is managed already.
     /// </summary>
     public async Task<(Guid Id, SdkDeviceStatus Status)?> AddAsync(
         DiscoveredDevice found,
@@ -36,10 +56,18 @@ public sealed partial class DeviceAdder(
         string? initialPassword,
         DeviceCredentials? deviceCredentials,
         string serverName,
+        Oadm.Core.Auth.DeviceScope addedBy,
         CancellationToken ct,
         VapixProbeResult? probed = null)
     {
         ArgumentNullException.ThrowIfNull(found);
+        if (addedBy.IsNone)
+        {
+            throw new InvalidOperationException("A device is added by a user with all devices or with a device group.");
+        }
+
+        var addedByAll = addedBy.AllDevices;
+        var addedByGroup = addedBy.EffectiveGroupId;
         if (await devices.FindBySerialAsync(found.Serial, ct).ConfigureAwait(false) is not null)
         {
             LogSkippedManaged(found.Serial);
@@ -70,6 +98,8 @@ public sealed partial class DeviceAdder(
                     CertFingerprintSha256 = scheme == Uri.UriSchemeHttps ? probed?.CertificateFingerprint : null,
                     ServerName = serverName,
                     Status = probed is null ? SdkDeviceStatus.Unreachable : SdkDeviceStatus.Unknown,
+                    AddedByAllDevices = addedByAll,
+                    AddedByGroupId = addedByGroup,
                 },
                 ct).ConfigureAwait(false);
         }

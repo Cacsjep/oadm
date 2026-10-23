@@ -32,7 +32,8 @@ public sealed partial class DeviceAutoAddService(
     AuditLog audit,
     TimeProvider time,
     ILogger<DeviceAutoAddService> logger,
-    Core.Sites.ISiteStates? sites = null) : IDeviceAutoAdd
+    Core.Sites.ISiteStates? sites = null,
+    Core.DeviceGroups.DeviceViewFactory? views = null) : IDeviceAutoAdd
 {
     private long _lastLimitWarningTicks = DateTimeOffset.MinValue.UtcTicks;
 
@@ -98,6 +99,7 @@ public sealed partial class DeviceAutoAddService(
             var session = "auto-add:" + Guid.NewGuid().ToString("N");
             try
             {
+                authenticator.AllowCredentialList(session); // the server itself adds the device: the credential list as before
                 authenticator.Ensure(session, found, alreadyManaged: false);
                 await authenticator.WhenIdleAsync(session, ct).ConfigureAwait(false);
                 var login = authenticator.Get(session, serial);
@@ -118,7 +120,7 @@ public sealed partial class DeviceAutoAddService(
         (Guid Id, SdkDeviceStatus Status)? added;
         try
         {
-            added = await adder.AddAsync(found, useHostName: false, initialPassword: null, credentials, server.ServerName, ct, probed).ConfigureAwait(false);
+            added = await adder.AddAsync(found, useHostName: false, initialPassword: null, credentials, server.ServerName, DeviceScope.All, ct, probed).ConfigureAwait(false);
         }
         catch (DeviceLimitException)
         {
@@ -147,6 +149,7 @@ public sealed partial class DeviceAutoAddService(
         };
         LogAdded(serial, text, source, result);
         await audit.WriteAsync(AuditActions.DeviceAddedAutomatically, $"{text} ({serial})", $"{source}: {message}", ct).ConfigureAwait(false);
+        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], source, ct).ConfigureAwait(false);
         return new DeviceAutoAddOutcome(result, device.Id, message);
     }
 
@@ -172,6 +175,7 @@ public sealed partial class DeviceAutoAddService(
             case DeviceAddressChangeResult.Updated:
                 await audit.WriteAsync(AuditActions.DeviceMoved, $"{normalized}",
                     $"{source}: {Devices.DeviceMoveText.Of(oldRoute, old, Core.Sites.DeviceRoute.Local, ip.ToString(), sites)}", ct).ConfigureAwait(false);
+                await MembershipAudit.MovedAsync(views, audit, device, ct).ConfigureAwait(false);
                 return DeviceFollowResult.Moved;
             case DeviceAddressChangeResult.KeptHostName:
                 return DeviceFollowResult.KeptHostName;

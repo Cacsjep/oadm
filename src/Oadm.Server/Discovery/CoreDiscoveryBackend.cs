@@ -20,25 +20,31 @@ namespace Oadm.Server.Discovery;
 /// all of them (each resolves it itself).
 /// </remarks>
 public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerSettingsStore settings, VapixProbe probe, RoutedDns? dns = null,
-    ISiteNetwork? sites = null, ISiteStates? states = null) : IDiscoveryBackend
+    ISiteNetwork? sites = null, ISiteStates? states = null, TimeProvider? time = null) : IDiscoveryBackend
 {
     private readonly RoutedDns _dns = dns ?? RoutedDns.Local;
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
 
     /// <summary>How long a host name of "Add manually" may take to resolve.</summary>
     public static readonly TimeSpan ResolveTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly ConcurrentDictionary<string, DiscoveredDevice> _recent = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>How long the devices of a stopped session stay findable (like the session's login results).</summary>
+    public static readonly TimeSpan RecentLifetime = TimeSpan.FromMinutes(30);
 
-    public async Task<DiscoverySession> StartZeroConfAsync(CancellationToken ct)
+    // The devices of stopped sessions, per (session, discovered id): a session never finds another session's devices.
+    private readonly ConcurrentDictionary<(string Session, string Id), (DiscoveredDevice Device, DateTimeOffset Seen)> _recent = new();
+    private long _lastPruneTicks;
+
+    public async Task<DiscoverySession> StartZeroConfAsync(CancellationToken ct, DiscoveryRoutes? routes = null)
     {
         var current = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
         var seconds = Math.Clamp(current.ZeroConfSeconds, ServerSettings.MinZeroConfSeconds, ServerSettings.MaxZeroConfSeconds);
-        return discovery.StartZeroConf(duration: TimeSpan.FromSeconds(seconds));
+        return discovery.StartZeroConf(duration: TimeSpan.FromSeconds(seconds), routes: routes);
     }
 
     public void StopScan(string sessionId) => discovery.StopScan(sessionId);
 
-    public async Task<DiscoverySession> StartRangeScanAsync(string fromAddress, string toAddress, CancellationToken ct)
+    public async Task<DiscoverySession> StartRangeScanAsync(string fromAddress, string toAddress, CancellationToken ct, DiscoveryRoutes? routes = null)
     {
         if (!Ipv4Range.TryParse(fromAddress, toAddress, out var range, out var error))
         {
@@ -51,11 +57,13 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
             Parallelism = current.ScanParallelism,
             Timeout = TimeSpan.FromMilliseconds(current.ScanTimeoutMs),
         };
-        return discovery.StartRangeScan(range!, options);
+        return discovery.StartRangeScan(range!, options, routes);
     }
 
-    public async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct, Guid? siteId = null, string? expectedSerial = null)
+    public async Task<DiscoverySession> StartAddressProbeAsync(string input, bool importLine, CancellationToken ct, Guid? siteId = null, string? expectedSerial = null,
+        DiscoveryRoutes? routes = null)
     {
+        var allowed = routes ?? DiscoveryRoutes.All;
         if (!EnteredAddress.TryParse(input, out var entered, out var error))
         {
             throw new ArgumentException(error);
@@ -72,29 +80,41 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         // Where to probe: the chosen site only, else the server's own network and every online site that reaches the
         // address (a name: every online site, each resolves it on its own DNS).
         var literal = IPAddress.TryParse(entered.Host, out var typed) ? typed : null;
-        List<DeviceRoute> routes;
+        List<DeviceRoute> probeRoutes;
         if (siteId is { } site)
         {
+            if (!allowed.Allows(site))
+            {
+                // Not one of the caller's sites: nothing is probed (the gRPC layer refuses such a site before).
+                return discovery.StartAddressProbe(entered.DeviceAddress, [], expectedSerial, allowed);
+            }
+
             if (sites is null || !sites.OnlineSites().Contains(site))
             {
                 // The line's site is offline: nothing answers there now ("Site offline: Building B"); the line can wait.
                 var offline = SiteException.For(site, states?.NameOf(site) ?? site.ToString(), SiteProblem.Offline);
-                return discovery.StartAddressProbe(entered.DeviceAddress, [new RouteProbe(DeviceRoute.ViaSite(site), _ => throw offline)], expectedSerial);
+                return discovery.StartAddressProbe(entered.DeviceAddress, [new RouteProbe(DeviceRoute.ViaSite(site), _ => throw offline)], expectedSerial, allowed);
             }
 
-            routes = [DeviceRoute.ViaSite(site)];
+            probeRoutes = [DeviceRoute.ViaSite(site)];
         }
         else
         {
-            routes = [DeviceRoute.Local];
+            probeRoutes = allowed.Local ? [DeviceRoute.Local] : [];
             if (sites is not null)
             {
-                routes.AddRange(sites.OnlineSites().Where(s => literal is null || sites.Reaches(s, literal)).Select(DeviceRoute.ViaSite));
+                probeRoutes.AddRange(sites.OnlineSites().Where(s => allowed.Allows(s) && (literal is null || sites.Reaches(s, literal))).Select(DeviceRoute.ViaSite));
             }
         }
 
+        if (probeRoutes.Count == 0)
+        {
+            // No route of the caller reaches the address: nothing answers.
+            return discovery.StartAddressProbe(entered.DeviceAddress, [], expectedSerial, allowed);
+        }
+
         // Names resolve on each route before the session starts: a name no route knows is the line's problem as before.
-        var resolved = await Task.WhenAll(routes.Select(async route => (Route: route, Address: literal ?? await TryResolveAsync(route, entered.Host, ct).ConfigureAwait(false))))
+        var resolved = await Task.WhenAll(probeRoutes.Select(async route => (Route: route, Address: literal ?? await TryResolveAsync(route, entered.Host, ct).ConfigureAwait(false))))
             .ConfigureAwait(false);
         var usable = resolved.Where(r => r.Address is not null).ToList();
         if (usable.Count == 0)
@@ -107,7 +127,7 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
             var result = await probe.ProbeAsync(entered.DeviceAddress, token, schemes, timeout, r.Route).ConfigureAwait(false);
             return result is null ? null : ToDiscovery(result, r.Address!);
         })).ToList();
-        return discovery.StartAddressProbe(entered.DeviceAddress, probes, expectedSerial);
+        return discovery.StartAddressProbe(entered.DeviceAddress, probes, expectedSerial, allowed);
     }
 
     public IAsyncEnumerable<DiscoveryEvent> WatchAsync(string sessionId, CancellationToken ct) =>
@@ -127,7 +147,7 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         }
 
         Remember(sessionId);
-        return _recent.GetValueOrDefault(discoveredId);
+        return _recent.TryGetValue((sessionId, discoveredId.ToUpperInvariant()), out var found) ? found.Device : null;
     }
 
     /// <summary>Maps the add probe's result to a discovery result at the resolved address.</summary>
@@ -170,19 +190,39 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
             return;
         }
 
+        var now = _time.GetUtcNow();
+        Prune(now);
         try
         {
             foreach (var device in discovery.GetDevices(sessionId))
             {
                 if (!Equals(device.Address, IPAddress.None))
                 {
-                    _recent[device.DiscoveredId] = device;
+                    _recent[(sessionId, device.DiscoveredId.ToUpperInvariant())] = (device, now);
                 }
             }
         }
         catch (KeyNotFoundException)
         {
             // Session already stopped: keep what was remembered before.
+        }
+    }
+
+    /// <summary>Forgets the devices of sessions not used for <see cref="RecentLifetime"/> (now and then, not on every call).</summary>
+    private void Prune(DateTimeOffset now)
+    {
+        var last = Interlocked.Read(ref _lastPruneTicks);
+        if (now.UtcTicks - last < TimeSpan.TicksPerMinute || Interlocked.CompareExchange(ref _lastPruneTicks, now.UtcTicks, last) != last)
+        {
+            return;
+        }
+
+        foreach (var (key, value) in _recent)
+        {
+            if (now - value.Seen > RecentLifetime)
+            {
+                _recent.TryRemove(new KeyValuePair<(string, string), (DiscoveredDevice, DateTimeOffset)>(key, value));
+            }
         }
     }
 }

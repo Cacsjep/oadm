@@ -51,7 +51,8 @@ public sealed partial class DeviceRelocationHostedService(
     ISiteStates? sites = null,
     AuditLog? audit = null,
     TimeProvider? time = null,
-    ISiteNetwork? network = null) : BackgroundService
+    ISiteNetwork? network = null,
+    Core.DeviceGroups.DeviceViewFactory? views = null) : BackgroundService
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly Dictionary<Guid, DateTimeOffset> _offlineSince = [];
@@ -88,6 +89,7 @@ public sealed partial class DeviceRelocationHostedService(
                     {
                         await audit.WriteAsync("system", string.Empty, AuditActions.DeviceMoved, serial,
                             "Found again: " + DeviceMoveText.Of(DeviceConnections.RouteOf(before), before.Address, route, address, sites), ct).ConfigureAwait(false);
+                        await AddDevices.MembershipAudit.MovedAsync(views, audit, before, ct).ConfigureAwait(false);
                     }
 
                     break;

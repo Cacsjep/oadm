@@ -45,6 +45,9 @@ public sealed class DeviceViewFactory
     /// <summary>The global device repository behind the views (system work only).</summary>
     internal DeviceRepository Devices { get; }
 
+    /// <summary>The device groups behind the views.</summary>
+    internal DeviceGroupStore Groups => _groups;
+
     /// <summary>The tag and site catalog the filters resolve against.</summary>
     public DeviceScopeCatalog Catalog => _catalog;
 

@@ -32,8 +32,6 @@ public sealed partial class ArchitectureTests
         ["DeviceGrpcService(DeviceRepository)"] = "converted in devices-core (Watch, Remove, Refresh, SetCredentials, GetWebUiUrl)",
         ["LiveViewGrpcService(DeviceRepository)"] = "converted in devices-core",
         ["DeviceWebGrpcService(DeviceRepository)"] = "converted in devices-core",
-        ["AddDevicesGrpcService(DeviceRepository)"] = "converted in add-devices",
-        ["DiscoveryGrpcService(DeviceRepository)"] = "converted in add-devices",
     };
 
     /// <summary>

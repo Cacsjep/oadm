@@ -68,20 +68,6 @@ public sealed class CanaryTests
         ["/oadm.v1.TaskService/Query"] = "tasks",
         ["/oadm.v1.TaskService/Cancel"] = "tasks",
         ["/oadm.v1.TaskService/Delete"] = "tasks",
-        ["/oadm.v1.DiscoveryService/StartZeroConf"] = "add-devices",
-        ["/oadm.v1.DiscoveryService/StartRangeScan"] = "add-devices",
-        ["/oadm.v1.DiscoveryService/ProbeAddress"] = "add-devices",
-        ["/oadm.v1.DiscoveryService/WatchDiscovered"] = "add-devices",
-        ["/oadm.v1.DiscoveryService/StopScan"] = "add-devices",
-        ["/oadm.v1.DiscoveryService/Stop"] = "add-devices",
-        ["/oadm.v1.AddDevicesService/Prepare"] = "add-devices",
-        ["/oadm.v1.AddDevicesService/Commit"] = "add-devices",
-        ["/oadm.v1.AddDevicesService/RetryAuth"] = "add-devices",
-        ["/oadm.v1.WaitingDeviceService/Add"] = "add-devices",
-        ["/oadm.v1.WaitingDeviceService/List"] = "add-devices",
-        ["/oadm.v1.WaitingDeviceService/Watch"] = "add-devices",
-        ["/oadm.v1.WaitingDeviceService/Remove"] = "add-devices",
-        ["/oadm.v1.WaitingDeviceService/TryNow"] = "add-devices",
         ["/oadm.v1.TagService/List"] = "shared-core",
         ["/oadm.v1.TagService/Watch"] = "shared-core",
         ["/oadm.v1.TagService/Create"] = "shared-core",
@@ -112,6 +98,78 @@ public sealed class CanaryTests
         ["/oadm.v1.PluginService/Watch"] = "plugin-host",
         ["/oadm.v1.PluginService/Download"] = "plugin-host",
     };
+
+    /// <summary>
+    /// Converted methods that take no device id but objects of their own (discovery sessions, waiting entries): the group user
+    /// (a group of tags only, so it cannot add devices) calls them with another user's objects that found or keep the device
+    /// outside the view. Each case asserts its refusal; the test checks that nothing reached the device and nothing changed.
+    /// The adds of a group with sites are in <see cref="AddDevicesScopeTests"/>.
+    /// </summary>
+    private static readonly Dictionary<string, Func<Canary, Task>> OwnObjectCases = new(StringComparer.Ordinal)
+    {
+        ["/oadm.v1.DiscoveryService/StartZeroConf"] = async c =>
+            await CannotAddAsync(() => c.Discovery.StartZeroConfAsync(new Proto.Empty()).ResponseAsync),
+        ["/oadm.v1.DiscoveryService/StartRangeScan"] = async c =>
+            await CannotAddAsync(() => c.Discovery.StartRangeScanAsync(new Proto.RangeScanRequest { From = "10.9.0.2", To = "10.9.0.2" }).ResponseAsync),
+        ["/oadm.v1.DiscoveryService/ProbeAddress"] = async c =>
+            await CannotAddAsync(() => c.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "10.9.0.2" }).ResponseAsync),
+        ["/oadm.v1.DiscoveryService/WatchDiscovered"] = async c =>
+        {
+            var refused = await Assert.ThrowsAsync<RpcException>(async () =>
+            {
+                using var call = c.Discovery.WatchDiscovered(new Proto.DiscoverySession { SessionId = c.AdminSession });
+                await call.ResponseStream.MoveNext(CancellationToken.None);
+            });
+            Assert.Equal(StatusCode.NotFound, refused.StatusCode);
+        },
+        ["/oadm.v1.DiscoveryService/StopScan"] = async c =>
+        {
+            await c.Discovery.StopScanAsync(new Proto.DiscoverySession { SessionId = c.AdminSession });
+            await c.AdminSessionStillWorksAsync();
+        },
+        ["/oadm.v1.DiscoveryService/Stop"] = async c =>
+        {
+            await c.Discovery.StopAsync(new Proto.DiscoverySession { SessionId = c.AdminSession });
+            await c.AdminSessionStillWorksAsync();
+        },
+        ["/oadm.v1.AddDevicesService/Prepare"] = async c =>
+            await CannotAddAsync(() => c.AddDevices.PrepareAsync(new Proto.PrepareRequest { SessionId = c.AdminSession, DiscoveredIds = { OutsideSerial } }).ResponseAsync),
+        ["/oadm.v1.AddDevicesService/Commit"] = async c =>
+            await CannotAddAsync(() => c.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = c.AdminSession, DiscoveredIds = { OutsideSerial } }).ResponseAsync),
+        ["/oadm.v1.AddDevicesService/RetryAuth"] = async c =>
+            await CannotAddAsync(() => c.AddDevices.RetryAuthAsync(new Proto.RetryAuthRequest
+            {
+                SessionId = c.AdminSession, DiscoveredId = OutsideSerial, UserName = "root", Password = "pass",
+            }).ResponseAsync),
+        ["/oadm.v1.WaitingDeviceService/Add"] = async c =>
+            await CannotAddAsync(() => c.Waiting.AddAsync(new Proto.AddWaitingRequest { Lines = { new Proto.WaitingLine { Address = "10.9.0.2" } } }).ResponseAsync),
+        ["/oadm.v1.WaitingDeviceService/List"] = async c =>
+            Assert.Empty((await c.Waiting.ListAsync(new Proto.ListWaitingRequest())).Devices),
+        ["/oadm.v1.WaitingDeviceService/Watch"] = async c =>
+        {
+            using var call = c.Waiting.Watch(new Proto.Empty());
+            Assert.True(await call.ResponseStream.MoveNext(CancellationToken.None));
+            Assert.Equal(0, call.ResponseStream.Current.Count);
+        },
+        ["/oadm.v1.WaitingDeviceService/Remove"] = async c =>
+        {
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await c.Waiting.RemoveAsync(new Proto.WaitingIds { Ids = { c.AdminWaitingId } }));
+            Assert.Equal(StatusCode.NotFound, refused.StatusCode);
+            await c.Waiting.RemoveAsync(new Proto.WaitingIds { All = true }); // all = the caller's entries: none
+            Assert.Equal(1, (await new Proto.WaitingDeviceService.WaitingDeviceServiceClient(c.Host.Invoker).ListAsync(new Proto.ListWaitingRequest())).TotalCount);
+        },
+        ["/oadm.v1.WaitingDeviceService/TryNow"] = async c =>
+        {
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await c.Waiting.TryNowAsync(new Proto.WaitingIds { Ids = { c.AdminWaitingId } }));
+            Assert.Equal(StatusCode.NotFound, refused.StatusCode);
+        },
+    };
+
+    private static async Task CannotAddAsync(Func<Task> call)
+    {
+        var refused = await Assert.ThrowsAsync<RpcException>(call);
+        Assert.Equal((StatusCode.PermissionDenied, Oadm.Server.AddDevices.AddDeviceTexts.CannotAdd), (refused.StatusCode, refused.Status.Detail));
+    }
 
     /// <summary>Methods a group user may call that carry no device id and no device data: method → reason.</summary>
     internal static readonly Dictionary<string, string> WithoutDevices = new(StringComparer.Ordinal)
@@ -174,11 +232,12 @@ public sealed class CanaryTests
     {
         foreach (var method in AccessPolicy.ListedMethods)
         {
-            var places = new[] { Cases.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
+            var places = new[] { Cases.ContainsKey(method) || OwnObjectCases.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
             Assert.True(places == 1, $"{method} is in {places} canary lists (a case, not converted, without devices, closed by the rule); it must be in exactly one.");
         }
 
-        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
+        Assert.Empty(Cases.Keys.Intersect(OwnObjectCases.Keys));
+        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(OwnObjectCases.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
         Assert.All(NotConverted.Values.Concat(PluginsNotConverted.Values), p => Assert.Contains(p, Packages));
         Assert.All(WithoutDevices.Values, reason => Assert.False(string.IsNullOrWhiteSpace(reason)));
     }
@@ -212,6 +271,28 @@ public sealed class CanaryTests
 
             // The same call inside the view works (the case calls what it should).
             await call(canary, canary.Inside);
+        }
+    }
+
+    [Fact]
+    public async Task AnotherUsersSessionsAndWaitingDevicesAreAnsweredLikeUnknownOnesAndNeverContacted()
+    {
+        await using var canary = await Canary.StartAsync();
+        await canary.PrepareAdminObjectsAsync();
+        foreach (var (method, call) in OwnObjectCases)
+        {
+            var before = await canary.SnapshotAsync();
+            try
+            {
+                await call(canary);
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"{method}: {ex.Message}");
+            }
+
+            var after = await canary.SnapshotAsync();
+            Assert.True(before == after, $"{method} contacted the device outside the view or changed something: {before} -> {after}");
         }
     }
 
@@ -255,6 +336,36 @@ public sealed class CanaryTests
         public FakeAxisDevice OutsideDevice { get; }
 
         public RecordingStreams Streams { get; }
+
+        public Proto.DiscoveryService.DiscoveryServiceClient Discovery => new(Invoker);
+
+        public Proto.AddDevicesService.AddDevicesServiceClient AddDevices => new(Invoker);
+
+        public Proto.WaitingDeviceService.WaitingDeviceServiceClient Waiting => new(Invoker);
+
+        /// <summary>The administrator's finished range scan that found the device outside the view.</summary>
+        public string AdminSession { get; private set; } = string.Empty;
+
+        /// <summary>An entry of the administrator's waiting list.</summary>
+        public string AdminWaitingId { get; private set; } = string.Empty;
+
+        /// <summary>The administrator's session (contact with the device) and waiting entry, before the snapshots.</summary>
+        public async Task PrepareAdminObjectsAsync()
+        {
+            var (session, devices) = await TestHelpers.ScanWithLoginAsync(Host, "10.9.0.2", "10.9.0.2");
+            Assert.Equal(OutsideSerial, Assert.Single(devices.Values).Serial);
+            AdminSession = session;
+            var admin = new Proto.WaitingDeviceService.WaitingDeviceServiceClient(Host.Invoker);
+            await admin.AddAsync(new Proto.AddWaitingRequest { Lines = { new Proto.WaitingLine { Address = "10.9.0.77" } } });
+            AdminWaitingId = Assert.Single((await admin.ListAsync(new Proto.ListWaitingRequest())).Devices).Id;
+        }
+
+        /// <summary>The administrator's session is still there (a group user's Stop did nothing).</summary>
+        public async Task AdminSessionStillWorksAsync()
+        {
+            var again = await TestHelpers.WatchToEndAsync(Host, AdminSession);
+            Assert.Equal(Proto.AuthState.AlreadyAdded, again[OutsideSerial].AuthState);
+        }
 
         public static async Task<Canary> StartAsync()
         {

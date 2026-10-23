@@ -195,6 +195,24 @@ an independent security review the same day). A user may be limited to part of t
   package), `DeviceGroups/CanaryTests` (cases, not-converted methods and plugins per package, methods without devices,
   Administrator and all-devices methods closed by the rule).
 
+## Code (add devices)
+
+- `Oadm.Server.AddDevices.AddReach` (from the caller, or from the user who kept a waiting entry as that user is now):
+  `Routes` (`Oadm.Core.Discovery.DiscoveryRoutes`: local = "This server", the group's live sites; all for all devices),
+  `CanAdd`, `UsesCredentialList` (all devices only), `AddedBy` (the `DeviceScope` a new device stores), `Takes(serial,
+  route)` (on a route of the user and inside the group), `Waiting` (`WaitingScope`). `DeviceGroupFilter.ThisServer` and
+  `Sites` expose the compiled rules.
+- Core discovery sessions take `DiscoveryRoutes` (zero-conf, range scan, address probes); `CoreDiscoveryBackend` passes
+  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session.
+- `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed).
+- `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
+  waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
+- Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;
+  actions "Entered device group" / "Left device group"; also for tags and sites) and `Oadm.Server.AddDevices.MembershipAudit`
+  (Commit, the waiting list, the automatic add, relocation and DHCP moves).
+- Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove), `QueuedByUserId` written
+  by `AddAsync(..., queuedBy, ...)`; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered
