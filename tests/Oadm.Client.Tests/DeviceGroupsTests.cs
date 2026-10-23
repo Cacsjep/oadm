@@ -436,8 +436,20 @@ public sealed class DeviceGroupsTests
             var users = new UsersViewModel(api, dialogs, Admin(), NullLogger<UsersViewModel>.Instance, groups: groups);
             await users.LoadAsync();
 
-            var page = new Window { Width = 1400, Height = 1100, Content = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) } };
+            // A wide page: users and device groups side by side; a small or scaled screen: the groups below the users.
+            var view = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) };
+            var page = new Window { Width = 1900, Height = 1100, Content = view };
             page.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(view.HasTwoColumns);
+            Capture(page, outDir, "client-permissions-wide.png");
+            page.Width = 1050; // the page of a 1280 px window with the rail
+            page.Height = 640;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(view.HasTwoColumns);
+            Capture(page, outDir, "client-permissions-1280.png");
+            page.Width = 1400;
+            page.Height = 1100;
             Dispatcher.UIThread.RunJobs();
             List<string> texts = page.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("Device groups", texts);

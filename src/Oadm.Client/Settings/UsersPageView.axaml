@@ -6,12 +6,15 @@
              x:DataType="settings:UsersViewModel">
   <!-- Navigation page Permissions (Admin only): users left and device groups right on top, the roles card (permission matrix) below with a
        splitter, like the Devices page and its tasks. The top row takes the height it needs, the roles card the rest. -->
-  <Grid RowDefinitions="Auto,Auto,Auto,*">
+  <Grid x:Name="Page" RowDefinitions="Auto,Auto,Auto,*">
     <c:PageTitleBar Grid.Row="0" Title="Permissions" Subtitle="Who can log in, which devices they reach and what each role may do." Margin="0,0,0,16" />
     <ScrollViewer Grid.Row="1">
-      <Grid ColumnDefinitions="*,16,*" VerticalAlignment="Top">
+      <!-- Side by side on a wide page; on a narrower one (small or scaled screens) the device groups move below the users
+           (UsersPageView.axaml.cs), so no column of the users is cut off; then the two cards share the height with the roles
+       card (the splitter moves the line between them). -->
+      <Grid x:Name="Columns" ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto" VerticalAlignment="Top">
         <settings:UsersCardView Grid.Column="0" VerticalAlignment="Top" />
-        <settings:DeviceGroupsCardView Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding DeviceGroups}" />
+        <settings:DeviceGroupsCardView x:Name="GroupsCard" Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding DeviceGroups}" />
       </Grid>
     </ScrollViewer>
     <GridSplitter Grid.Row="2" Classes="paneSplitter" />
