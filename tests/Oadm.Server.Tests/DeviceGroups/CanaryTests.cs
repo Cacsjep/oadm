@@ -477,12 +477,16 @@ public sealed class CanaryTests
     }
 
     [Fact]
-    public async Task AGroupUserNeverReachesTheMethodsTheRuleCloses()
+    public void AGroupUserNeverReachesTheMethodsTheRuleCloses()
     {
-        await using var canary = await Canary.StartAsync();
+        // A group user whose role has every permission.
+        var caller = new AuthenticatedCaller(Guid.NewGuid(), "canary", Guid.NewGuid(), PermissionSet.All, "local", "", "x")
+        {
+            Devices = new CallerDevices(DeviceScope.Group(Guid.NewGuid()), 1),
+        };
         var closed = AccessPolicy.ListedMethods.Where(ClosedByTheRule).ToList();
         Assert.NotEmpty(closed);
-        Assert.All(closed, m => Assert.False(AccessPolicy.Allows(AccessPolicy.For(m), canary.Caller)));
+        Assert.All(closed, m => Assert.False(AccessPolicy.Allows(AccessPolicy.For(m), caller)));
     }
 
     // ------------------------------------------------------------------ task ids and lists
