@@ -22,7 +22,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   every full refresh incl. the first one after add; proto `repeated DeviceApi apis = 28`),
   CredentialUserName (not stored: user name of the DeviceCredential, filled by repository reads
   for plugins; never the password),
-  AddedByAllDevices (a user with all devices or the system added it; migration `DeviceGroups`: true for existing rows)
+  AddedByAllDevices (a user with all devices or the system added it; migration `DeviceGroups`: true for existing rows;
+  no database default since `DeviceGroupFlagsWithoutDefault`)
   and AddedByGroupId (the adding user's device group, no foreign key): the serial rule of device groups and the host
   names of PKI and EST read them (`docs/spec/device-scope.md`; SDK `IDeviceInfo.AddedByAllDevices`).
 - `DeviceGroup` (table DeviceGroups, migration `DeviceGroups`): Id, Name (1..64, unique case-insensitive via
@@ -62,8 +63,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   At most 1000 entries per task; the 1000th says that later entries were dropped.
 - `ComplianceCheckEntity` / `ComplianceResultEntity` (tables ComplianceChecks, ComplianceResults, migration
   `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance". Compliance
-  checks have an owner, OwnerAllDevices + OwnerGroupId (migration `DeviceGroups`: all devices for existing rows; no owner
-  = off, `docs/spec/device-scope.md`). Event rules have none (migration `EventRulesWithoutOwner` drops the columns
+  checks have an owner, OwnerAllDevices + OwnerGroupId (migration `DeviceGroups`: all devices for existing rows, no
+  database default since `DeviceGroupFlagsWithoutDefault`; no owner = off, `docs/spec/device-scope.md`). Event rules have none (migration `EventRulesWithoutOwner` drops the columns
   `DeviceGroups` had added).
 - `Setting`: Key, ValueJson.
 - `PluginRecord` (table PluginRecords, migration `PluginRecords`): key (PluginId max 128, Collection max 64, Key max 255),

@@ -88,7 +88,7 @@ public sealed class DeviceViewFactory
     /// </summary>
     public async Task<DeviceView> ForUserAsync(Guid userId, CancellationToken ct)
     {
-        var user = (await _users.ListAsync(ct).ConfigureAwait(false)).FirstOrDefault(u => u.Id == userId);
+        var user = await _users.GetAsync(userId, ct).ConfigureAwait(false); // one row by its key, never the whole table
         if (user is null || user.Disabled)
         {
             return await ForScopeAsync(DeviceScope.None, user?.UserName, ct).ConfigureAwait(false);

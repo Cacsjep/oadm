@@ -361,4 +361,88 @@ public sealed class TaskViewTests : DeviceGroupTestBase
 
         Assert.NotNull(device);
     }
+
+    private static async Task<List<TaskChange>> ReadUntilAsync(TaskViewSubscription subscription, Func<List<TaskChange>, bool> done)
+    {
+        var received = new List<TaskChange>();
+        using var cts = new CancellationTokenSource(Eventually.DefaultTimeout);
+        await foreach (var change in subscription.ReadAllAsync(cts.Token))
+        {
+            received.Add(change);
+            if (done(received))
+            {
+                break;
+            }
+        }
+
+        return received;
+    }
+
+    private static bool Has(List<TaskChange> changes, TaskChangeKind kind, Guid taskId) =>
+        changes.Exists(c => c.Kind == kind && c.Task.Id == taskId);
+
+    [Fact]
+    public async Task TheWatchOfAGroupRemovesTheTasksOfADeviceThatLeftAndAddsTheHistoryOfOneThatEnteredAtOnce()
+    {
+        var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var leaving = await AddDeviceAsync("ACCC8E000002", tags: [Tag]);
+        var entering = await AddDeviceAsync("ACCC8E000003");
+        var (_, _, view) = await GroupUserAsync();
+        var start = DateTimeOffset.UtcNow.AddHours(-1);
+        var ofInside = Finished(inside.Id, start);
+        var ofLeaving = Finished(leaving.Id, start.AddSeconds(1));
+        var ofEntering = Finished(entering.Id, start.AddSeconds(2));
+        var olderOfEntering = Finished(entering.Id, start.AddSeconds(-5));
+        await Db.Get<EfTaskStore>().AddRangeAsync([ofInside, ofLeaving, ofEntering, olderOfEntering], Ct);
+        await using var engine = Engine();
+
+        var (snapshot, subscription) = await engine.SubscribeWithSnapshotAsync(view, 100, Ct);
+        using (subscription)
+        {
+            Assert.Equal([ofLeaving.Id, ofInside.Id], snapshot.Select(t => t.Id));
+
+            // No task changes: the device moves alone bring the Removed and the Added.
+            await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([leaving.Id], Ct), [], [Tag], Ct);
+            await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([entering.Id], Ct), [Tag], [], Ct);
+            var received = await ReadUntilAsync(subscription, r => Has(r, TaskChangeKind.Removed, ofLeaving.Id) && r.Count(c => c.Kind == TaskChangeKind.Added) == 2);
+
+            Assert.Equal([TaskChangeKind.Removed], received.Where(c => c.Task.Id == ofLeaving.Id).Select(c => c.Kind));
+            Assert.Equal([olderOfEntering.Id, ofEntering.Id], received.Where(c => c.Kind == TaskChangeKind.Added).Select(c => c.Task.Id));
+            Assert.DoesNotContain(received, c => c.Task.Id == ofInside.Id);
+            Assert.Equal(3, subscription.SentCount);
+        }
+    }
+
+    [Fact]
+    public async Task TheWatchOfAGroupFollowsARemovedSiteAndANewRuleOfTheGroup()
+    {
+        var siteA = Sites.Add("Site A");
+        var siteB = Sites.Add("Site B");
+        var atA = await AddDeviceAsync("ACCC8E000001", siteId: siteA);
+        var atB = await AddDeviceAsync("ACCC8E000002", siteId: siteB);
+        var group = (await SaveGroupAsync("Sites", sites: [siteA])).Group;
+        var user = await Users.AddAsync("anna", "pw", BuiltInRoles.OperatorId, DeviceScope.Group(group.Id), Ct);
+        var view = await Views.ForAsync(CallerOf(user), Ct);
+        var start = DateTimeOffset.UtcNow.AddHours(-1);
+        var ofA = Finished(atA.Id, start);
+        var ofB = Finished(atB.Id, start.AddSeconds(1));
+        await Db.Get<EfTaskStore>().AddRangeAsync([ofA, ofB], Ct);
+        await using var engine = Engine();
+
+        var (snapshot, subscription) = await engine.SubscribeWithSnapshotAsync(view, 100, Ct);
+        using (subscription)
+        {
+            Assert.Equal([ofA.Id], snapshot.Select(t => t.Id));
+
+            // The group's rules take in site B: its history comes in.
+            await SaveGroupAsync("Sites", sites: [siteA, siteB], id: group.Id, revision: group.Revision);
+            Assert.Contains(await ReadUntilAsync(subscription, r => Has(r, TaskChangeKind.Added, ofB.Id)), c => c.Task.Id == ofB.Id);
+
+            // Site A is removed: the catalog changed, its device's task leaves at once.
+            Sites.Remove(siteA);
+            var received = await ReadUntilAsync(subscription, r => Has(r, TaskChangeKind.Removed, ofA.Id));
+            Assert.DoesNotContain(received, c => c.Task.Id == ofB.Id);
+            Assert.Equal(1, subscription.SentCount);
+        }
+    }
 }

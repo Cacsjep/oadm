@@ -92,6 +92,14 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
         return [.. rows.OrderBy(u => u.UserName, StringComparer.OrdinalIgnoreCase).Select(UserRecord.From)];
     }
 
+    /// <summary>The user with this id as stored now, or null (one row by its key: a queued task leaving the queue).</summary>
+    public async Task<UserRecord?> GetAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var row = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, ct).ConfigureAwait(false);
+        return row is null ? null : UserRecord.From(row);
+    }
+
     /// <summary>The user with this name (case-insensitive), or null.</summary>
     public async Task<UserEntity?> FindByNameAsync(string userName, CancellationToken ct)
     {

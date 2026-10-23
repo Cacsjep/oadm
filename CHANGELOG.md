@@ -14,7 +14,8 @@ version and date, and the release workflow copies it into the GitHub release.
   upgrade every user keeps all devices. Such a user sees and runs tasks only on the devices of the group; a queued task
   whose device left the group fails before it starts.
 - Device groups: a user with a group finds and adds devices only at the sites of the group, and only with the passwords
-  they enter (never the credential list). The waiting list shows each user the devices of their sites.
+  they enter (never the credential list). The waiting list shows each user the devices of their sites; devices waiting
+  without a site only to the user who kept them.
 - Device groups: device triggers, Live View views and dashboards belong to the group of the user who made them; a user
   with a group sees and changes only these, with the devices of the group. Image Health Dashboard, Edge storage and the
   Action Rule Editor show each group its own table.

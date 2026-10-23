@@ -200,8 +200,8 @@ caller's devices is only "already added" (no model, address or names). Every new
 (`Device.AddedByAllDevices`, `AddedByGroupId`: Commit, the waiting list, the automatic add of core plugins as all
 devices); the groups it entered are audited "Entered device group" (target the group, detail "3 devices (added): ...",
 `DeviceGroupMembership`, one entry per group), a device that moves to another route "Left device group" / "Entered device
-group" ("moved"). The waiting list is scoped by site (`WaitingScope`: the group's sites, the entries for everywhere with
-"This server" and the user's own entries for everywhere; ids outside: NOT_FOUND "Some of these devices are no longer
+group" ("moved"). The waiting list is scoped by site (`WaitingScope`: the group's sites and the user's own entries for
+everywhere, never another user's entries for everywhere, also with "This server"; ids outside: NOT_FOUND "Some of these devices are no longer
 waiting.", a line of another site: NOT_FOUND; a line without a site of a group with one site and without "This server"
 waits for that site). Each entry stores who kept it (`QueuedByUserId`); a round tries it as that user is now (routes,
 no credential list for a group, inside the group, tags any group uses left out), an entry whose user cannot add there any

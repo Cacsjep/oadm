@@ -117,7 +117,7 @@ an independent security review the same day). A user may be limited to part of t
   before they are encoded; a queued task checks the owner's view again when it leaves the queue.
 - **Add and discovery sessions** belong to the user who started them; Retry and Commit take only that user's sessions;
   a found device must be on a route of the group; the network scan and zero-conf on the server's network only for
-  groups with "This server"; the waiting list is scoped by site and checks the queuing user's current view.
+  groups with "This server"; the waiting list is scoped by site (entries without a site: only the user's own) and checks the queuing user's current view.
 - **Sessions:** a stream checks the user's group revision like the role right after it registers; a change of a group's
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
   key is (group revision, tag and site catalog revision, `DeviceChangeFeed.Version`). The view never follows the "no
@@ -127,6 +127,10 @@ an independent security review the same day). A user may be limited to part of t
   means exactly devices without a site (devices kept from a removed site keep its id).
 - **Existence leaks accepted** (documented, not hidden): "already added" on the add page and a duplicate add, the device
   limit message, the license's device count.
+- **Shared limits accepted** (security review 2026-10-23): the server-wide caps are shared by all users, so one user with
+  a group can fill them for everyone: 200 device triggers, 200 dashboards, 200 Live View views, 16 open event streams of
+  the Metadata Monitor and 20 of the I/O Monitor. They are no per-group quotas; an administrator deletes or stops what
+  fills them.
 - **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
 
 ## The editors
@@ -173,8 +177,9 @@ an independent security review the same day). A user may be limited to part of t
   `Users.DeviceGroupId` (FK Restrict); `Devices.AddedByAllDevices` + `AddedByGroupId` (no FK: a deleted group leaves the
   serial dormant); `WaitingDevices.QueuedByUserId`; `ComplianceChecks` `OwnerAllDevices` + `OwnerGroupId` (FK
   Restrict; `DeviceGroups` gave `EventRules` the same columns, the migration `EventRulesWithoutOwner` drops them again).
-  `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; new rows have
-  no database default (C# default false: every writer chooses).
+  `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; the migration
+  `DeviceGroupFlagsWithoutDefault` removes the database default 1 it left on the three columns, so a row inserted without
+  them fails (NOT NULL) instead of getting all devices; C# default false: every writer chooses.
 - **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. The
   caller: `AuthenticatedCaller.Devices` (`CallerDevices(Access, GroupRevision)`, default `None`), `HasAllDevices`
   (Administrator always), `DeviceGroupId`, `SessionId` (opaque, for plugins). Sessions carry the access
@@ -271,20 +276,25 @@ an independent security review the same day). A user may be limited to part of t
   `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
   (backstop, never without `TaskEngine.Views`).
 - **Queue check**: each task keeps its `TaskCaller` in memory; leaving the queue it reads the owner's current view
-  (`ForUserAsync`) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
+  (`ForUserAsync`: the user's row by its id, never the whole users table) and fails with `DeviceMessages.NoLongerAvailable(1)` when the device is not in it (also a deleted user
   or group), before the device's state is read out or any request is sent. The plugin gets `ITaskExecutionContext.Caller`
   (`TaskCallContext` over that view; event streams not offered there yet).
 - **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
   CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
   (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
-  `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules).
+  `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules),
+  the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`): the sent tasks of a
+  device that left go out as Removed at once, the tasks of a device that entered as Added (its active tasks and the newest
+  up to the snapshot limit, one query per batch of devices).
   A task is in the view while its device is: tasks of removed devices only for users with all devices.
 - **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the
   sets and the view's ids are the same objects).
 - **Query**: `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
   call and, for a group, `ITaskQueryContext.Devices` of the view.
-- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch, backstop),
-  `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks), the canary cases of TaskService.
+- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch with devices that
+  leave and enter, a removed site and new rules, backstop), `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks),
+  `Perf/TaskQueueCheckScaleTests` (5,000 queued tasks of a group user leave the queue, 501 users), the canary cases of
+  TaskService.
 
 ## Code (task plugins)
 

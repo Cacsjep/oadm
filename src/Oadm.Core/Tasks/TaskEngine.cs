@@ -481,7 +481,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     public async Task<(IReadOnlyList<TaskRecord> Snapshot, TaskViewSubscription Subscription)> SubscribeWithSnapshotAsync(DeviceGroups.DeviceView view, int? limit, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(view);
-        var subscription = await TaskViewSubscription.CreateAsync(_feed.Subscribe(), view, ct).ConfigureAwait(false);
+        var subscription = await TaskViewSubscription.CreateAsync(_feed.Subscribe(), view, (ids, token) => FilteredSnapshotAsync(ids, limit, token), ct).ConfigureAwait(false);
         try
         {
             var snapshot = subscription.PassesEverything
