@@ -23,8 +23,7 @@
           <DataGridTemplateColumn Header="Group" Width="180" SortMemberPath="Name" x:DataType="settings:DeviceGroupRowViewModel">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="settings:DeviceGroupRowViewModel">
-                <TextBlock Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                           ToolTip.Tip="{Binding DescriptionTip}" />
+                <ui:IconLabel Icon="{StaticResource Icon.folder}" Text="{Binding Name}" Margin="10,0" ToolTip.Tip="{Binding DescriptionTip}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
