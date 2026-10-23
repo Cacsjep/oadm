@@ -64,11 +64,11 @@ public sealed class EngineRobustnessTests
         await using var rig = await EventRulesRig.StartAsync(beforeStart: r => r.HoldActions = true);
         var camera = await rig.AddDeviceAsync("10.0.0.1");
         rig.Publisher.ReplaceStates(EventRulesRig.Blur, [camera.Id]);
-        await rig.Rules.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice()), CancellationToken.None);
+        await rig.Rules.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice()), rig.AllView, null, true, CancellationToken.None);
         await rig.Engine.DrainAsync(CancellationToken.None);
         await Task.Delay(100);
 
-        Assert.Equal(1, Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).ActiveCount); // evaluated
+        Assert.Equal(1, Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).ActiveCount); // evaluated
         Assert.Empty(rig.OnDevice.Edges); // but nothing ran yet
 
         rig.Runner.PluginsStarted();
@@ -92,7 +92,7 @@ public sealed class EngineRobustnessTests
         await rig.SettleAsync();
 
         Assert.Empty(rig.NoDevice.Runs);
-        Assert.Equal(0, Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).ActiveCount);
+        Assert.Equal(0, Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).ActiveCount);
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public sealed class EngineRobustnessTests
             rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, i % 2 == 0);
         }
 
-        var turnOff = rig.Rules.SetEnabledAsync(rule.Id, false, CancellationToken.None);
+        var turnOff = rig.Rules.SetEnabledAsync(rule.Id, false, rig.AllView, CancellationToken.None);
         await Task.Delay(100);
         Assert.False(turnOff.IsFaulted);
 
@@ -175,11 +175,11 @@ public sealed class EngineRobustnessTests
             rig.WithoutDevice(new JsonObject { ["text"] = "b", ["secret"] = "two" }));
         var original = await rig.SaveAsync(rule);
 
-        var copy = await rig.Rules.DuplicateAsync(original.Id, CancellationToken.None);
+        var copy = await rig.Rules.DuplicateAsync(original.Id, rig.AllView, CancellationToken.None);
         Assert.NotNull(copy);
         Assert.All(copy.Value.Definition.Actions, a => Assert.Equal(["secret"], a.StoredSecretFields));
-        await rig.Rules.SetEnabledAsync(original.Id, false, CancellationToken.None);
-        await rig.Rules.SetEnabledAsync(copy.Value.Definition.Id, true, CancellationToken.None);
+        await rig.Rules.SetEnabledAsync(original.Id, false, rig.AllView, CancellationToken.None);
+        await rig.Rules.SetEnabledAsync(copy.Value.Definition.Id, true, rig.AllView, CancellationToken.None);
         rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
         await rig.SettleAsync();
         Assert.Equal(["a|one", "b|two"], rig.NoDevice.Runs.Select(r => r.Text));
@@ -194,7 +194,7 @@ public sealed class EngineRobustnessTests
             await db.SaveChangesAsync();
         }
 
-        var second = await rig.Rules.DuplicateAsync(original.Id, CancellationToken.None);
+        var second = await rig.Rules.DuplicateAsync(original.Id, rig.AllView, CancellationToken.None);
         Assert.NotNull(second);
         Assert.Empty(second.Value.Definition.Actions[0].StoredSecretFields);
         Assert.Equal(["secret"], second.Value.Definition.Actions[1].StoredSecretFields);
@@ -236,12 +236,12 @@ public sealed class EngineRobustnessTests
 
         var saved = await rig.SaveAsync(rule);
 
-        Assert.Equal("Not available: Off package is turned off", Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).Problem);
+        Assert.Equal("Not available: Off package is turned off", Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).Problem);
         Assert.Equal("x", saved.Actions[0].Settings["command"]!.GetValue<string>());
 
         // Its field checks still apply.
         rule.Actions[0].Settings = [];
-        var refused = await Assert.ThrowsAsync<RuleValidationException>(() => rig.Rules.SaveAsync(rule, CancellationToken.None));
+        var refused = await Assert.ThrowsAsync<RuleValidationException>(() => rig.Rules.SaveAsync(rule, rig.AllView, null, true, CancellationToken.None));
         Assert.Contains("Command", refused.Message, StringComparison.Ordinal);
     }
 

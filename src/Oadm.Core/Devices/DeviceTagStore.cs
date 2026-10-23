@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using Oadm.Core.DeviceGroups;
 using Oadm.Core.Persistence;
 
 namespace Oadm.Core.Devices;
@@ -9,6 +10,10 @@ namespace Oadm.Core.Devices;
 /// devices is one transaction for all of them (5,000 devices: one commit) and publishes one Updated change per changed
 /// device to <see cref="IDeviceChangeFeed"/>. Writes are serialized (name uniqueness, rewrites). Devices store their
 /// tags distinct and sorted (<see cref="TagNames.Canonical"/>), with the spelling of the definition.
+/// The store is the only writer of device tags and holds the device-group guard (docs/spec/device-scope.md, Decisions: Tags):
+/// a user with a device group tags devices of the group but never adds or removes a tag any device group uses (that would
+/// move devices between groups). The guard reads the groups inside the write transaction, which holds SQLite's write lock
+/// from its start, so a group saved meanwhile is either seen or commits after the tagging.
 /// </summary>
 public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed, TimeProvider time) : IDisposable
 {
@@ -23,11 +28,18 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
     public long Version => Interlocked.Read(ref _version);
 
     /// <summary>Every definition sorted by name with its device count, then the undefined names used on devices (sorted).</summary>
-    public async Task<IReadOnlyList<TagSummary>> ListAsync(CancellationToken ct)
+    public Task<IReadOnlyList<TagSummary>> ListAsync(CancellationToken ct) => ListAsync(null, ct);
+
+    /// <summary>
+    /// Every definition sorted by name with its device count in <paramref name="view"/> (null: every device), then the
+    /// undefined names used on devices of the view (sorted). Definitions are listed for every user (names, no device data).
+    /// </summary>
+    public async Task<IReadOnlyList<TagSummary>> ListAsync(DeviceView? view, CancellationToken ct)
     {
+        IReadOnlySet<Guid>? allowed = view is null || view.HasAllDevices ? null : await view.IdsAsync(ct).ConfigureAwait(false);
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         var definitions = await db.TagDefinitions.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
-        var counts = await CountAsync(db, ct).ConfigureAwait(false);
+        var counts = await CountAsync(db, allowed, ct).ConfigureAwait(false);
         var result = new List<TagSummary>(definitions.Count);
         foreach (var definition in definitions.OrderBy(d => d.Name, TagNames.Comparer))
         {
@@ -108,7 +120,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             if (definition is null)
             {
                 // A name only on devices (older data): it gets a definition.
-                var counts = await CountAsync(db, ct).ConfigureAwait(false);
+                var counts = await CountAsync(db, null, ct).ConfigureAwait(false);
                 if (!counts.ContainsKey(name.Trim()))
                 {
                     throw new KeyNotFoundException($"There is no tag named \"{name.Trim()}\".");
@@ -143,7 +155,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             changed = string.Equals(target, oldName, StringComparison.Ordinal)
                 ? []
-                : await RewriteAsync(db, ids: null, tags => Replace(tags, oldName, target), ct).ConfigureAwait(false);
+                : (await RewriteAsync(db, ids: null, tags => Replace(tags, oldName, target), ct).ConfigureAwait(false)).ConvertAll(c => c.After);
             await transaction.CommitAsync(ct).ConfigureAwait(false);
             result = new TagUpdateResult(definition.Clone(), oldName, oldColor, changed.Count);
         }
@@ -158,13 +170,16 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
         return result;
     }
 
-    /// <summary>Deletes the tag: its definition and the tag on every device, in one transaction. Returns the devices changed.</summary>
+    /// <summary>
+    /// Deletes the tag: its definition and the tag on every device, in one transaction. Returns the devices changed with
+    /// their tags before and after. Device groups that use the tag lose it (their rules keep the id of a tag that is gone).
+    /// </summary>
     /// <exception cref="KeyNotFoundException">No such tag.</exception>
-    public async Task<(string Name, int DevicesChanged)> DeleteAsync(string name, CancellationToken ct)
+    public async Task<TagDeleteResult> DeleteAsync(string name, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(name);
         string deletedName;
-        List<Device> changed;
+        List<TagRewrite> changed;
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -195,19 +210,22 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
         await ReloadNamesAsync().ConfigureAwait(false); // before the devices: device groups follow the tag at once
         Publish(changed);
         RaiseDefinitionsChanged();
-        return (deletedName, changed.Count);
+        return new TagDeleteResult(deletedName, changed.Count, Changes(changed));
     }
 
     /// <summary>
     /// Adds and removes tag names on many devices in one transaction (one call for 5,000 devices). Names in
-    /// <paramref name="add"/> without a definition get one (next palette color). Unknown device ids are ignored.
+    /// <paramref name="add"/> without a definition get one (next palette color). The devices come from the caller's view;
+    /// for a view of a device group no name in <paramref name="add"/> or <paramref name="remove"/> may be a tag a device
+    /// group uses (<see cref="TagInUseByGroupException"/>, nothing changed).
     /// </summary>
     /// <exception cref="TagNameException">A name to add cannot be used, or a name is both added and removed.</exception>
     /// <exception cref="TagLimitException">A device would get more than <see cref="TagNames.MaxTagsPerDevice"/> tags, or too many definitions.</exception>
+    /// <exception cref="TagInUseByGroupException">A user with a device group added or removed a tag a group uses.</exception>
     public async Task<SetDeviceTagsResult> SetDeviceTagsAsync(
-        IReadOnlyCollection<Guid> deviceIds, IReadOnlyCollection<string> add, IReadOnlyCollection<string> remove, CancellationToken ct)
+        ViewedDevices devices, IReadOnlyCollection<string> add, IReadOnlyCollection<string> remove, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(deviceIds);
+        ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(remove);
         var toAdd = TagNames.Canonical(add.Select(TagNames.Clean));
@@ -217,20 +235,28 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             throw new TagNameException($"The tag \"{both}\" cannot be added and removed at the same time.");
         }
 
-        if (deviceIds.Count == 0 || (toAdd.Count == 0 && toRemove.Count == 0))
+        if (devices.Count == 0 || (toAdd.Count == 0 && toRemove.Count == 0))
         {
             return new SetDeviceTagsResult(0, []);
         }
 
         var created = new List<TagDefinition>();
-        List<Device> changed;
+        List<TagRewrite> changed;
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+            // BEGIN IMMEDIATE (Microsoft.Data.Sqlite's default): the write lock is held from here, so the groups the guard
+            // reads are the committed ones and no group save commits before this transaction ends.
             await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
             var definitions = (await db.TagDefinitions.ToListAsync(ct).ConfigureAwait(false))
                 .ToDictionary(d => d.NormalizedName, StringComparer.Ordinal);
+            if (!devices.View.HasAllDevices)
+            {
+                await GuardAsync(db, definitions, toAdd.Concat(toRemove), ct).ConfigureAwait(false);
+            }
+
             for (int i = 0; i < toAdd.Count; i++)
             {
                 if (definitions.TryGetValue(TagNames.Normalize(toAdd[i]), out var existing))
@@ -250,7 +276,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
 
-            changed = await RewriteAsync(db, deviceIds, tags =>
+            changed = await RewriteAsync(db, devices.Ids, tags =>
             {
                 var next = Remove(tags, toRemove) ?? tags;
                 var result = TagNames.Canonical(next.Where(t => !toAdd.Contains(t, TagNames.Comparer)).Concat(toAdd));
@@ -279,8 +305,42 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             RaiseDefinitionsChanged();
         }
 
-        return new SetDeviceTagsResult(changed.Count, created.Select(c => c.Clone()).ToList());
+        return new SetDeviceTagsResult(changed.Count, created.Select(c => c.Clone()).ToList()) { Changes = Changes(changed) };
     }
+
+    /// <summary>
+    /// Refuses a name that is the definition of a tag a device group uses (read inside the write transaction). A name
+    /// without a definition is no group's tag (groups name tags by id).
+    /// </summary>
+    private static async Task GuardAsync(OadmDbContext db, Dictionary<string, TagDefinition> definitions, IEnumerable<string> names, CancellationToken ct)
+    {
+        var used = new HashSet<Guid>();
+        foreach (var tagIds in await db.DeviceGroups.AsNoTracking().Select(g => g.TagIds).ToListAsync(ct).ConfigureAwait(false))
+        {
+            used.UnionWith(tagIds);
+        }
+
+        if (used.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var name in names)
+        {
+            if (definitions.TryGetValue(TagNames.Normalize(name), out var definition) && used.Contains(definition.Id))
+            {
+                throw new TagInUseByGroupException(definition.Name);
+            }
+        }
+    }
+
+    private static List<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes(List<TagRewrite> changed) =>
+        changed.ConvertAll(c =>
+        {
+            var before = c.After.Clone();
+            before.Tags = c.OldTags;
+            return ((Sdk.Devices.IDeviceInfo?)before, (Sdk.Devices.IDeviceInfo?)c.After);
+        });
 
     private TagDefinition NewDefinition(string name, TagColor color, int existing)
     {
@@ -299,13 +359,21 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
         };
     }
 
-    /// <summary>Device count per tag name used on devices (case-insensitive, first spelling seen). Reads only the Tags column.</summary>
-    private static async Task<Dictionary<string, int>> CountAsync(OadmDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Device count per tag name used on devices (case-insensitive, first spelling seen), only of the devices in
+    /// <paramref name="allowed"/> when given. Reads only the Id and Tags columns.
+    /// </summary>
+    private static async Task<Dictionary<string, int>> CountAsync(OadmDbContext db, IReadOnlySet<Guid>? allowed, CancellationToken ct)
     {
         var counts = new Dictionary<string, int>(TagNames.Comparer);
-        await foreach (var tags in db.Devices.AsNoTracking().Select(d => d.Tags).AsAsyncEnumerable().WithCancellation(ct).ConfigureAwait(false))
+        await foreach (var row in db.Devices.AsNoTracking().Select(d => new { d.Id, d.Tags }).AsAsyncEnumerable().WithCancellation(ct).ConfigureAwait(false))
         {
-            foreach (string tag in tags.Distinct(TagNames.Comparer))
+            if (allowed is not null && !allowed.Contains(row.Id))
+            {
+                continue;
+            }
+
+            foreach (string tag in row.Tags.Distinct(TagNames.Comparer))
             {
                 counts[tag] = counts.GetValueOrDefault(tag) + 1;
             }
@@ -317,9 +385,9 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
     /// <summary>
     /// Applies <paramref name="rewrite"/> (null = unchanged) to the tags of the given devices (null = all) inside the caller's
     /// transaction: candidates are found on the Tags column alone, then only the changed rows are loaded and written (in
-    /// chunks: SQLite limits the parameters per statement). Returns detached copies of the changed devices.
+    /// chunks: SQLite limits the parameters per statement). Returns detached copies of the changed devices with their tags before.
     /// </summary>
-    private static async Task<List<Device>> RewriteAsync(OadmDbContext db, IReadOnlyCollection<Guid>? ids, Func<List<string>, List<string>?> rewrite, CancellationToken ct)
+    private static async Task<List<TagRewrite>> RewriteAsync(OadmDbContext db, IReadOnlyCollection<Guid>? ids, Func<List<string>, List<string>?> rewrite, CancellationToken ct)
     {
         var updates = new Dictionary<Guid, List<string>>();
         if (ids is null)
@@ -347,14 +415,15 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             }
         }
 
-        var changed = new List<Device>(updates.Count);
+        var changed = new List<TagRewrite>(updates.Count);
         foreach (var chunk in updates.Keys.Chunk(Chunk))
         {
             var entities = await db.Devices.Where(d => chunk.Contains(d.Id)).ToListAsync(ct).ConfigureAwait(false);
             foreach (var entity in entities)
             {
+                var before = entity.Tags;
                 entity.Tags = updates[entity.Id];
-                changed.Add(entity);
+                changed.Add(new TagRewrite(entity, before));
             }
 
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -364,8 +433,13 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             db.ChangeTracker.Clear();
         }
 
-        return changed.Select(d => d.Clone()).ToList();
+        return changed.ConvertAll(c => c with { After = c.After.Clone() });
     }
+
+    /// <summary>A device whose tags a write changed: the device after the write and its tags before.</summary>
+    private sealed record TagRewrite(Device After, List<string> OldTags);
+
+    private void Publish(List<TagRewrite> changed) => Publish(changed.ConvertAll(c => c.After));
 
     private static List<string>? Replace(List<string> tags, string oldName, string newName) =>
         tags.Any(t => TagNames.Comparer.Equals(t, oldName))

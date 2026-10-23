@@ -70,7 +70,6 @@ public sealed partial class WaitingDeviceRunner(
     DevicePollingService polling,
     AuditLog audit,
     Core.DeviceGroups.DeviceViewFactory views,
-    Core.DeviceGroups.DeviceGroupStore groups,
     TimeProvider time,
     ILogger<WaitingDeviceRunner> logger,
     Core.Sites.ISiteStates? sites = null) : BackgroundService
@@ -545,14 +544,15 @@ public sealed partial class WaitingDeviceRunner(
         }
 
         polling.QueueRefresh([device.Id]);
-        var entryTags = TagsFor(reach, entry.Tags);
-        if (entryTags.Count > 0)
+        if (entry.Tags.Count > 0)
         {
             try
             {
-                await tags.SetDeviceTagsAsync([device.Id], [.. entryTags], [], ct).ConfigureAwait(false);
+                // The tag store guards the tags of the queuing user's devices: a user with a group never adds a tag a group uses.
+                var viewed = await reach.View.GetAsync([device.Id], ct).ConfigureAwait(false);
+                await tags.SetDeviceTagsAsync(viewed, [.. entry.Tags], [], ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is TagNameException or TagLimitException)
+            catch (Exception ex) when (ex is TagNameException or TagLimitException or TagInUseByGroupException or Oadm.Sdk.Devices.DevicesNotAvailableException)
             {
                 LogTagsFailed(found.Serial, ex.Message);
             }
@@ -570,22 +570,6 @@ public sealed partial class WaitingDeviceRunner(
             $"{entry.Source} (waiting list, kept by {entry.AddedBy}): {message}", ct).ConfigureAwait(false);
         await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], "waiting list, kept by " + entry.AddedBy, ct).ConfigureAwait(false);
         return new WaitingOutcome(WaitingOutcomeKind.Added, message);
-    }
-
-    /// <summary>
-    /// The tags an added device gets: every tag of the entry for a user with all devices; for a user with a device group not
-    /// the tags any group uses (that would move devices between groups, docs/spec/device-scope.md, Decisions "Tags").
-    /// </summary>
-    private IReadOnlyList<string> TagsFor(AddReach reach, IReadOnlyList<string> entryTags)
-    {
-        if (reach.AllDevices || entryTags.Count == 0)
-        {
-            return entryTags;
-        }
-
-        var names = views.Catalog.TagNames;
-        var used = groups.TagIdsInUse().Select(id => names.GetValueOrDefault(id)).OfType<string>().ToHashSet(TagNames.Comparer);
-        return [.. entryTags.Where(t => !used.Contains(t))];
     }
 
     /// <summary>"Answers through Building A and Building B." (the server's own network is "this server").</summary>

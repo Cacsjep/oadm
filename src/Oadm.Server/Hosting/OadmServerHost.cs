@@ -414,7 +414,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<Core.Compliance.ComplianceEngineOptions>(),
             sp.GetRequiredService<ILogger<Core.Compliance.ComplianceEngine>>(),
-            () => sp.GetRequiredService<RuleEngine>().PublisherFor(Core.Compliance.ComplianceEngine.EventSourceId)));
+            () => sp.GetRequiredService<RuleEngine>().PublisherFor(Core.Compliance.ComplianceEngine.EventSourceId),
+            sp.GetRequiredService<Core.DeviceGroups.OwnerScopes>()));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<Core.Compliance.ComplianceEngine>());
         // Sites: "Site offline: <site>" and "Any site offline" for the event rules; devices of a site published when it
         // goes offline or online (computed status, nothing written).
@@ -434,9 +435,11 @@ public static partial class OadmServerHost
         services.AddSingleton(sp => new Core.Compliance.ComplianceService(
             sp.GetRequiredService<Core.Compliance.ComplianceStore>(),
             sp.GetRequiredService<Core.Compliance.ComplianceEngine>(),
-            sp.GetRequiredService<DeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
+            sp.GetRequiredService<Core.DeviceGroups.OwnerScopes>(),
+            sp.GetRequiredService<DeviceTagStore>()));
 
         // Event rules: IF events THEN actions (built-in device status events, plugin events and actions).
         services.AddSingleton<EventCatalog>();
@@ -455,7 +458,13 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            owners: sp.GetRequiredService<RuleOwners>()));
+        // The owners of event rules: devices and sites of groups, the compliance checks of groups, the allowed addresses.
+        services.AddSingleton(sp => new RuleOwners(
+            sp.GetRequiredService<Core.DeviceGroups.OwnerScopes>(),
+            sp.GetRequiredService<Core.Settings.ActionDestinations>(),
+            [sp.GetRequiredService<Core.Compliance.ComplianceEngine>()]));
         services.AddSingleton(new RuleEngineOptions());
         services.AddSingleton(sp => new RuleEngine(
             sp.GetRequiredService<EventCatalog>(),
@@ -466,7 +475,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<IDeviceChangeFeed>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<RuleEngineOptions>(),
-            sp.GetRequiredService<ILogger<RuleEngine>>()));
+            sp.GetRequiredService<ILogger<RuleEngine>>(),
+            sp.GetRequiredService<RuleOwners>()));
         services.AddSingleton<EventRulesService>();
         services.AddHostedService<EventLogRetentionHostedService>();
 

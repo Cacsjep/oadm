@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
+    <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
   </ItemGroup>
 
   <ItemGroup>

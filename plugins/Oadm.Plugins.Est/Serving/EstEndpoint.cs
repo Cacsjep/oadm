@@ -267,8 +267,17 @@ public sealed partial class EstEndpoint(
         }
     }
 
-    /// <summary>The device's address (host part) like PKI's certificates.</summary>
-    internal static string CommonName(IDeviceInfo device) => HostPart(device.Address);
+    /// <summary>
+    /// The device's address (host part) like PKI's certificates. For a device a user limited to a group added, a name
+    /// address is never taken (docs/spec/device-scope.md "Host names in certificates"): its <c>axis-&lt;serial&gt;.local</c>.
+    /// </summary>
+    internal static string CommonName(IDeviceInfo device)
+    {
+        var host = HostPart(device.Address);
+        return device.AddedByAllDevices || IPAddress.TryParse(host, out _) ? host : AxisLocalNameOf(device);
+    }
+
+    private static string AxisLocalNameOf(IDeviceInfo device) => "axis-" + device.Serial.ToLowerInvariant() + ".local";
 
     internal static IReadOnlyList<string> IpAddresses(IDeviceInfo device, RequestOrigin origin)
     {
@@ -294,6 +303,13 @@ public sealed partial class EstEndpoint(
     internal static IReadOnlyList<string> DnsNames(IDeviceInfo device)
     {
         var names = new List<string>();
+        if (!device.AddedByAllDevices)
+        {
+            // Added by a user limited to a group, who could control the DNS at a site: no host name, only the axis name.
+            names.Add(AxisLocalNameOf(device));
+            return names;
+        }
+
         // The camera reports its host name itself: only plain names (no wildcard, no odd characters) go into a certificate
         // every OADM device trusts, never another camera's axis name.
         if (IsPlainHostName(device.HostName) && !NamesOtherCamera(device.HostName!.Trim(), device.Serial))
@@ -307,7 +323,7 @@ public sealed partial class EstEndpoint(
             names.Add(host);
         }
 
-        names.Add("axis-" + device.Serial.ToLowerInvariant() + ".local");
+        names.Add(AxisLocalNameOf(device));
         return names;
     }
 

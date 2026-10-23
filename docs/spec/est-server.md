@@ -49,6 +49,12 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   Close. The runs also show in the tasks pane.
 - **Event rules**: "Certificate enrolled", "Enrollment refused" (device, profile, reason), "Certificate not renewed"
   (device, profile, valid until).
+- **Users with a device group** (docs/spec/device-scope.md "Server-wide services"): the page read only (Save and Delete
+  all hidden; the server refuses them, `RequiresAllDevices`); Enrollments, Not renewed, View certificate, the certificate
+  count and the listeners only of the group's devices (a listener of this server when the group has a device without a
+  site, of a site when it has a device there); refusals of cameras OADM does not manage only for users with all devices.
+  Live updates: a new enrollment goes to the pages that see its device; state, Delete all and Not renewed changes to
+  users with all devices and to each group whose users read the page (with that group's rows).
 
 ## EST server
 
@@ -78,7 +84,10 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   `cacerts`, never a slot held); at most 64 connections, 4 per address, 2 minutes each; the client's chain is collected
   without downloads (`DisableCertificateDownloads`).
 - **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
-  no `*`); EC keys only on P-256, P-384 or P-521.
+  no `*`), and only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`, docs/spec/device-scope.md
+  "Host names in certificates"): for a device a user with a group added, the certificate and the camera's profile name
+  only its stored IP address and `axis-<serial>.local` (CN = that address, or the axis name for a name address); EC keys
+  only on P-256, P-384 or P-521.
 - **Issuing:** the OADM CA of the PKI plugin signs (one CA for everything), through the SDK's plugin services: PKI offers
   "sign a device certificate" and "CA chain", EST uses them. Like PKI's `DeviceCertificateIssuer`, OADM sets subject and
   SANs from what it knows (the stored address, host name, FQDN, `axis-<serial>.local`; never the address a connection
@@ -220,7 +229,7 @@ carried only the audit log line of the profile change (`EstEventProbeTests`, Har
 profile status instead, and OADM keeps no event stream open to the cameras for EST.
 
 **Accepted as they are** (decision 2026-10-22): host names and FQDNs a camera reports go into its certificates whatever
-their domain (only another camera's `axis-<serial>` name is refused); PKI takes the IP addresses a device reports; Set up
+their domain (only for devices a user with all devices added) (only another camera's `axis-<serial>` name is refused); PKI takes the IP addresses a device reports; Set up
 removes a profile of another EST server whole when it serves a use OADM sets up.
 
 ## License of the code

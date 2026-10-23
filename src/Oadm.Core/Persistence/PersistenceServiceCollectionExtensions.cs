@@ -57,6 +57,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<ITaskStore>(sp => sp.GetRequiredService<EfTaskStore>());
 
         services.AddSingleton<ServerSettingsStore>();
+        services.AddSingleton<Settings.ActionDestinations>();
         services.AddSingleton<IPluginSettingsProvider, DbPluginSettingsProvider>();
 
         // Users, sessions and the audit log ("Security and access" in CLAUDE.md)
@@ -74,6 +75,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<DeviceGroups.DeviceScopeCatalog>();
         services.AddSingleton<DeviceGroups.DeviceViewFactory>();
         services.AddSingleton<DeviceGroups.DeviceViewWatcher>(); // sessions bound to a device end when it leaves the view
+        services.AddSingleton<DeviceGroups.OwnerScopes>();
 
         services.AddSingleton<DatabaseInitializer>();
         return services;
