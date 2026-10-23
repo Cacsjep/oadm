@@ -218,7 +218,11 @@ an independent security review the same day). A user may be limited to part of t
   `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; the migration
   `DeviceGroupFlagsWithoutDefault` removes the database default 1 it left on the three columns, so a row inserted without
   them fails (NOT NULL) instead of getting all devices; C# default false: every writer chooses.
-- **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. The
+- **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. Scope keys
+  (`ICallContext.DeviceScopeKey`, `DeviceView.ScopeKey`): "all", the group id, for a stored object without devices "none"
+  (`DeviceScope.NoDevicesKey`), and for a user without devices a key of that user only, "none:" and the user id
+  (`DeviceScope.NoDevicesKeyOf`; a view without a user: a random one): two users who lost their groups never share saved
+  views, dashboards, triggers or a shared scan, and no scope (`ctx.DeviceScopes`) answers such a key (fail closed). The
   caller: `AuthenticatedCaller.Devices` (`CallerDevices(Access, GroupRevision)`, default `None`), `HasAllDevices`
   (Administrator always), `DeviceGroupId`, `SessionId` (opaque, for plugins). Sessions carry the access
   (`AuthSession.DeviceAccess`, `AuthTokenStore.SetDeviceAccess`).
