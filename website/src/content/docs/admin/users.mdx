@@ -11,6 +11,7 @@ import credentials from '../../../assets/screens/client-page-credentials.png';
 import audit from '../../../assets/screens/logs-audit-tab.png';
 
 Everyone logs in to the server with their own user. Every user has one role, and the role decides what the user may do.
+A [device group](../device-groups/) can limit a user to part of the devices.
 
 | Role | What it may do |
 |---|---|
@@ -26,11 +27,14 @@ only. No other role can get them.
 
 <Image src={users} alt="Users page with the users on top and the roles below" class="screen" />
 
-**+ User** adds a user. The buttons of a row edit the user's role, change the password, disable or delete the user. You
+**New user** adds a user. The buttons of a row edit the user's role and devices, change the password, disable or delete the user. You
 cannot change your own role or delete yourself, and the last administrator stays. A new role applies to the user's next
 action, without logging in again.
 
 Five wrong passwords in five minutes lock a user for five minutes.
+
+The **Devices** field of a user is **All devices** or a device group. The **Device groups** card below the users
+creates and changes the groups: see [Device groups](../device-groups/).
 
 ## Roles
 
@@ -63,7 +67,7 @@ nothing until you tick it.
 
 <Image src={yourRole} alt="Your role window" class="screen" />
 
-Click your name in the title bar, top right, to see your role and what it allows.
+Click your name in the title bar, top right, to see your role, what it allows and your devices.
 
 ## After the update to roles
 
