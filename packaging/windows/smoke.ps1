@@ -51,9 +51,25 @@ function Invoke-Limited([string] $file, [string] $arguments, [string] $log, [int
     $p
 }
 
+# The lines before the failed action ("Return value 3") of an MSI log: the end of the log is only the property dump.
+function Show-MsiFailure([string] $log) {
+    $hit = Select-String -Path $log -Pattern 'Return value 3' -List
+    if ($hit) { Get-Content $log | Select-Object -Skip ([Math]::Max(0, $hit.LineNumber - 40)) -First 45 | Write-Host }
+    else { Get-Content $log -Tail 80 | Write-Host }
+}
+
+# A removal right after the service stopped sometimes fails at once with 1603 on the runner (4.1.0-rc.3): the cause is
+# printed and the removal tried once more after 15 s.
 function Uninstall([string] $log) {
     $p = Invoke-Limited msiexec.exe "/x `"$Msi`" /qn /norestart /l*v $log" $log
-    if ($p.ExitCode -ne 0) { Get-Content $log -Tail 80 | Write-Host; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
+    if ($p.ExitCode -eq 1603 -or $p.ExitCode -eq 1618) {
+        Show-MsiFailure $log
+        Say "uninstall failed with $($p.ExitCode), once more in 15 s"
+        Start-Sleep 15
+        $p = Invoke-Limited msiexec.exe "/x `"$Msi`" /qn /norestart /l*v $log.retry" "$log.retry"
+        $log = "$log.retry"
+    }
+    if ($p.ExitCode -ne 0) { Show-MsiFailure $log; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
 }
 
 function Test-Decoder {
