@@ -129,6 +129,20 @@ public sealed partial class FakeOadmApi
             }
 
             _groups.Remove(group);
+            int turnedOff = 0;
+            foreach (ComplianceCheckDetail check in _complianceChecks.Where(c => c.Summary.Owner is { AllDevices: false } o && o.GroupId == group.Id))
+            {
+                check.Summary.Owner = new DeviceOwner(); // no owner: off until an administrator chooses one
+                check.Summary.Enabled = false;
+                turnedOff++;
+            }
+
+            if (turnedOff > 0)
+            {
+                reply.Disabled.Add(turnedOff == 1 ? "1 compliance check" : string.Create(CultureInfo.InvariantCulture, $"{turnedOff} compliance checks"));
+                RecomputeComplianceLocked();
+            }
+
             AuditLocked("Deleted device group", group.Name, "");
             return Task.FromResult(reply);
         }
