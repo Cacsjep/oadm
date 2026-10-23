@@ -100,7 +100,7 @@ public sealed class ComplianceOwnerTests
     public async Task SavingRefusesDevicesAndTagsOutsideTheOwnersDevices()
     {
         await using var rig = await ComplianceRig.StartAsync();
-        var inside = await rig.AddDeviceAsync("10.0.0.1", DeviceStatus.Ok, "Lobby");
+        var inside = await rig.AddDeviceAsync("10.0.0.1", DeviceStatus.Ok, "Lobby", "Yard");
         var outside = await rig.AddDeviceAsync("10.0.0.2", DeviceStatus.Ok, "Yard");
         await rig.Devices.UpdateAsync(outside.Id, d => d.Tags = ["Yard", "Hidden"], Ct); // Hidden: a name without a definition
         await rig.Tags.CreateAsync("Yard", TagColor.None, Ct);
@@ -116,9 +116,11 @@ public sealed class ComplianceOwnerTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             rig.Service.SaveAsync(Reachable(new DeviceSelector { Mode = DeviceSelectorMode.Devices, Tags = ["Hidden"] }), view, null, false, Ct));
 
-        // Defined tags (names every user sees) are fine: the check still covers only the group's devices.
+        // Defined tags (names every user sees) are fine: the check still covers only the group's devices. The group's device
+        // with the tag is checked (the round ran); the outside one with it is not.
         var (check, _) = await rig.Service.SaveAsync(Reachable(new DeviceSelector { Mode = DeviceSelectorMode.Devices, Tags = ["Yard"] }), view, null, false, Ct);
-        await Eventually.StaysTrueAsync(() => rig.Result(check.Id, outside.Id) is null, "no result for the device outside the group", TimeSpan.FromMilliseconds(200));
+        await rig.WaitForAsync(check.Id, inside.Id, ComplianceOutcome.Passed);
+        Assert.Null(rig.Result(check.Id, outside.Id));
         Assert.Empty(rig.Service.ListChecks(view).Single().Check.Devices.DeviceIds);
     }
 
