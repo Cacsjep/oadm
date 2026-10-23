@@ -102,6 +102,16 @@ implementation (SNTPv4 compatible), no library.
   removed sites, rate limits per site, the task's address at a site), `PageViewModelTests` (sites on the page), headless
   `ntp-server-page-sites.png`.
 
+## Device groups
+
+SDK 0.4.0. The NTP server serves every device, so `save` is for users with all devices (`RequiresAllDevices`; the page
+shows the form read-only without Save for the others, `MayManage`). Users with a device group see the page with the
+requests of their devices (by address on their route: the server's network or their site, `Serving/NtpGroupView`) and the
+sites of their devices only (site relays, the "Serve at sites" choices). Their pages get live state and requests through
+`PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page (`plugins/Shared/ViewerScopes.cs`,
+filtered from the group's devices in the background loop); users with all devices get the full state as before. Tests:
+`CanaryTests` (the canary, filtered state and live requests), `PageViewModelTests` (read-only form for a group).
+
 ## Permissions
 
 `oadm.ntp-server:show` (the page, `getState`) and `:manage` "Change the NTP server" (`save`). Without "manage" the form

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Plugins.NtpServer.Serving;
 using Oadm.Plugins.NtpServer.Status;
 using Oadm.Plugins.NtpServer.Upstream;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
@@ -43,15 +44,20 @@ public sealed partial class NtpServerService : IAsyncDisposable
     private string? _publishedState;
     private readonly IPluginNetwork? _network;
     private readonly ISites? _sites;
+    private readonly IDeviceScopes? _scopes;
+    private string? _groupPublishedState;
     private readonly Dictionary<Guid, SiteServer> _siteServers = [];
     private readonly Lock _siteLock = new();
 
     /// <param name="firewall">Host firewall (Windows service only): UDP rule for the port while enabled.</param>
     /// <param name="network">The host's network: the server's address towards a device on its route.</param>
     /// <param name="sites">The bound sites and their relays ("Serve at sites"); null on a server without sites.</param>
+    /// <param name="scopes">The device groups: the pages of users with a group get the requests and sites of their devices.</param>
     public NtpServerService(NtpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null,
-        IPluginNetwork? network = null, ISites? sites = null)
+        IPluginNetwork? network = null, ISites? sites = null, IDeviceScopes? scopes = null)
     {
+        _scopes = scopes;
+        Viewers = new ViewerScopes(scopes);
         _network = network;
         _sites = sites;
         _options = options ?? new NtpServerOptions();
@@ -61,6 +67,12 @@ public sealed partial class NtpServerService : IAsyncDisposable
         _limiter = new NtpRateLimiter(_options.RateLimit, _options.Time);
         _firewallRule = new FirewallRuleKeeper(Sdk.Network.FirewallRule.ForService("NTP", FirewallProtocol.Udp, _options.Port), firewall, _logger);
     }
+
+    /// <summary>The device groups whose users opened the page: their pages get the state of their own devices.</summary>
+    internal ViewerScopes Viewers { get; }
+
+    /// <summary>The state as a user with a device group sees it (the requests and sites of the group's devices).</summary>
+    internal NtpState GetState(NtpGroupView view) => view.Filter(GetState(full: true));
 
     /// <summary>The firewall rule of the NTP port (open while enabled).</summary>
     public FirewallRuleKeeper Firewall => _firewallRule;
@@ -493,8 +505,9 @@ public sealed partial class NtpServerService : IAsyncDisposable
                     }
                 }
 
-                PublishRequests();
+                var entries = PublishRequests();
                 PublishState(force: false);
+                await PublishToGroupsAsync(entries, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -509,17 +522,57 @@ public sealed partial class NtpServerService : IAsyncDisposable
         }
     }
 
-    private void PublishRequests()
+    /// <summary>The new requests to the pages of users with all devices; returns them (empty when none).</summary>
+    private IReadOnlyList<RequestEntry> PublishRequests()
     {
         var last = _log.LastSeq;
         if (last <= _publishedSeq)
         {
-            return;
+            return [];
         }
 
         var entries = _log.Snapshot(_publishedSeq);
         _publishedSeq = last;
-        _events?.Publish(NtpServerMethods.RequestsTopic, NtpJson.Serialize(new RequestsEvent(entries)));
+        _events?.Publish(NtpServerMethods.RequestsTopic, NtpJson.Serialize(new RequestsEvent(entries)), PluginEventAudience.AllDevices);
+        return entries;
+    }
+
+    /// <summary>
+    /// The pages of users with a device group (<see cref="Viewers"/>): a changed state and the new requests, each with the
+    /// rows of the group's own devices only (<see cref="PluginEventAudience.DeviceScope"/>). Background work: the group's
+    /// devices come from the device scopes.
+    /// </summary>
+    private async Task PublishToGroupsAsync(IReadOnlyList<RequestEntry> entries, CancellationToken ct)
+    {
+        if (_events is not { } events || _scopes is not { } scopes)
+        {
+            return;
+        }
+
+        var keys = Viewers.Keys();
+        var state = GetState(full: false);
+        var json = NtpJson.Serialize(state);
+        var stateChanged = !string.Equals(json, _groupPublishedState, StringComparison.Ordinal);
+        _groupPublishedState = json;
+        if (keys.Count == 0 || (!stateChanged && entries.Count == 0))
+        {
+            return;
+        }
+
+        foreach (var key in keys)
+        {
+            var view = NtpGroupView.From(await scopes.Devices(key).ListAsync(ct).ConfigureAwait(false));
+            var audience = PluginEventAudience.DeviceScope(key);
+            if (stateChanged)
+            {
+                events.Publish(NtpServerMethods.StateTopic, NtpJson.Serialize(view.Filter(state)), audience);
+            }
+
+            if (view.Filter(entries) is { Count: > 0 } mine)
+            {
+                events.Publish(NtpServerMethods.RequestsTopic, NtpJson.Serialize(new RequestsEvent(mine)), audience);
+            }
+        }
     }
 
     private void PublishState(bool force)
@@ -531,7 +584,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
         }
 
         _publishedState = json;
-        _events?.Publish(NtpServerMethods.StateTopic, json);
+        _events?.Publish(NtpServerMethods.StateTopic, json, PluginEventAudience.AllDevices);
     }
 
     /// <summary>

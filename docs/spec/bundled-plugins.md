@@ -85,6 +85,8 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   2 s, one Kiss-o'-Death RATE a minute) and 2,000 requests/s overall; a failed bind is retried every 30 s; status texts
   in plain words (`NtpStatusTexts`: port in use, permission, interface missing, upstream not answering).
 - Roles: `save` is Admin and audited. The Windows service opens UDP 123 in the firewall while enabled.
+- Device groups (SDK 0.4.0): `save` only for users with all devices (the form is read-only for the others); users with a
+  group see the requests and sites of their own devices, live through their group's scope.
 - Tests: `tests/Oadm.Plugins.NtpServer.Tests` (loopback with random ports, never port 123 on a real interface).
 
 ## DHCP server (core plugin)
