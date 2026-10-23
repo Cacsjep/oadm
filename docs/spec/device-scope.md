@@ -102,10 +102,13 @@ an independent security review the same day). A user may be limited to part of t
   the password they type. (A fake camera at their site could otherwise collect every saved credential.)
 - **Secrets in shared items** (library commands and configuration files with saved passwords): users with a group may
   run only items without saved passwords.
-- **Host names in certificates:** PKI and EST put a device's host name into its certificate only when a user with all
-  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name). Built:
-  `CertificateNames.For(..., trustNames)` and `EstEndpoint.DnsNames` read `IDeviceInfo.AddedByAllDevices` (IP addresses and
-  `axis-<serial>.local` only).
+- **Host names in certificates:** PKI and EST put a host name into a device's certificate only when a user with all
+  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name). When a
+  device group covers the device, only what that user stated counts: the stored address, never the host name, FQDN or
+  further IP addresses the camera reports (a group user can change them on the camera). A device no group covers keeps
+  the reported names and addresses. Always: the stored IP address and `axis-<serial>.local`. Built:
+  `CertificateDeployment.NamesFor(device, network, inAnyGroup)` and `EstEndpoint.DnsNames(device, inAnyGroup)` read
+  `IDeviceInfo.AddedByAllDevices` and `IDeviceScopes.InAnyGroup` (SDK 0.4.0, default true; no scopes: covered).
 - **Membership:** a single-device serial of a removed device is dormant; it counts again only when a user with all
   devices or a user of that group adds the device. Every change of a device's membership (tag, site, relocation, add,
   remove) is audited as "left / entered group X".

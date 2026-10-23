@@ -52,6 +52,25 @@ public sealed class HostDeviceScopes : IDeviceScopes, IDisposable
 
     public IDeviceRepository Devices(string scopeKey) => new ScopeDevices(this, scopeKey);
 
+    public bool InAnyGroup(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        if (_groups.Loaded is not { } loaded)
+        {
+            return true; // groups not loaded yet: fail closed
+        }
+
+        foreach (var id in loaded.Keys)
+        {
+            if (_views.FilterOf(id).Contains(device))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public string? NameOf(string scopeKey) =>
         IsAll(scopeKey) ? DeviceGroupTexts.AllDevices : GroupOf(scopeKey) is { } id ? _groups.Loaded![id].Name : null;
 

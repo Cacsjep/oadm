@@ -42,7 +42,8 @@ Apache 2.0).
     `getCertificate` only for a listed enrollment of its devices (else `CertificateGone`). Events: `enrollments` with
     `PluginEventAudience.Device` (no device: `AllDevices`); `state`, `enrollmentsCleared` and `certificates` to
     `AllDevices` and to `DeviceScope(key)` of each group that read the page (`ViewerScopes`; the state per group with its
-    own rows). Names (`EstEndpoint.CommonName`, `DnsNames`): host names only when `AddedByAllDevices`. Background work
+    own rows). Names (`EstEndpoint.CommonName`, `DnsNames`): host names only when `AddedByAllDevices`, the camera's
+    reported host name only when no group covers the device (`EstService.InAnyGroup`, no scopes: covered). Background work
     (the listener, the renewal check) keeps `ctx.Devices`; the set-up task gets its device from the host.
 - Task **Certificate enrollment** (`Tasks/EstTasks.cs`, Security; the dialog `EstSetupWindow` like the Applications
   dialog: the chosen camera's profiles through the read-only query `listProfiles`, Remove with an inline confirmation, Set

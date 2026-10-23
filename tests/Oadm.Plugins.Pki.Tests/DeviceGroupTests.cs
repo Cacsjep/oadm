@@ -1,8 +1,11 @@
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json.Nodes;
 
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Client;
+using Oadm.Plugins.Pki.Device;
+using Oadm.Plugins.Pki.Tasks;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
 
@@ -98,6 +101,56 @@ public sealed class DeviceGroupTests
         Assert.Equal("CN=10.0.0.48", served.Subject);
         Assert.Equal([IPAddress.Parse("10.0.0.48")], san.EnumerateIPAddresses());
         Assert.Equal(["axis-b8a44f631339.local"], san.EnumerateDnsNames()); // not the host name axis-b8a44f631339 the device reports
+    }
+
+    [Fact]
+    public async Task A_device_a_group_covers_gets_no_host_name_or_second_address_the_camera_reports()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        // What a user of the group could set on the camera (Network settings, VAPIX Commander, Web View).
+        var system = h.Camera.NetworkInfo["data"]!["system"]!.AsObject();
+        system["hostname"]!["hostname"] = "bank";
+        system["resolver"]!["domainName"] = "example.com";
+        h.Camera.NetworkInfo["data"]!["devices"]![0]!["IPv4"]!["addresses"]!.AsArray().Add(new JsonObject { ["address"] = "10.0.0.99", ["scope"] = "global" });
+        h.Pki.Scopes.Add("Building B", [h.Device.Id]);
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable));
+
+        using var served = h.Served(h.Camera.WebServerAlias);
+        var san = served.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Equal("CN=10.0.0.48", served.Subject);
+        Assert.Equal([IPAddress.Parse("10.0.0.48")], san.EnumerateIPAddresses());
+        Assert.Equal(["axis-b8a44f631339.local"], san.EnumerateDnsNames());
+    }
+
+    [Fact]
+    public async Task A_device_no_group_covers_keeps_the_names_and_addresses_the_camera_reports()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        h.Camera.NetworkInfo["data"]!["devices"]![0]!["IPv4"]!["addresses"]!.AsArray().Add(new JsonObject { ["address"] = "10.0.0.99", ["scope"] = "global" });
+        h.Pki.Scopes.Add("Lobby", [Guid.NewGuid()]);
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable));
+
+        using var served = h.Served(h.Camera.WebServerAlias);
+        var san = served.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Equal([IPAddress.Parse("10.0.0.48"), IPAddress.Parse("10.0.0.99")], san.EnumerateIPAddresses());
+        Assert.Equal(["axis-b8a44f631339", "axis-b8a44f631339.local"], san.EnumerateDnsNames());
+    }
+
+    [Fact]
+    public void Names_of_a_device_a_group_covers_are_the_address_it_was_added_with_and_its_axis_name()
+    {
+        var added = new PkiFakeDevice(Guid.NewGuid(), "cam.example.com", "B8A44F631339");
+        var network = new DeviceNetworkInfo("bank", "example.com", ["10.0.0.99"], null);
+
+        var covered = CertificateDeployment.NamesFor(added, network, inAnyGroup: true);
+        Assert.Equal("cam.example.com", covered.CommonName);
+        Assert.Empty(covered.IpAddresses);
+        Assert.Equal(["cam.example.com", "axis-b8a44f631339.local"], covered.DnsNames);
+        var free = CertificateDeployment.NamesFor(added, network, inAnyGroup: false);
+        Assert.Equal(["cam.example.com", "bank", "bank.example.com", "axis-b8a44f631339.local"], free.DnsNames);
+        Assert.Equal(["10.0.0.99"], free.IpAddresses);
     }
 
     [Fact]

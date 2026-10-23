@@ -26,7 +26,8 @@ public sealed class TaskTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true));
+        // No device group covers the device: the host name the camera reports goes into its profile.
+        _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Scopes = new FakeCoreContext().FakeScopes });
         await _est.StartAsync(CancellationToken.None);
         _camera.Server = _est;
         _camera.Device = _device;

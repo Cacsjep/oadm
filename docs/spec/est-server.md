@@ -84,10 +84,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   `cacerts`, never a slot held); at most 64 connections, 4 per address, 2 minutes each; the client's chain is collected
   without downloads (`DisableCertificateDownloads`).
 - **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
-  no `*`), and only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`, docs/spec/device-scope.md
-  "Host names in certificates"): for a device a user with a group added, the certificate and the camera's profile name
-  only its stored IP address and `axis-<serial>.local` (CN = that address, or the axis name for a name address); EC keys
-  only on P-256, P-384 or P-521.
+  no `*`), only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`) and only when no device
+  group covers it (`IDeviceScopes.InAnyGroup`; docs/spec/device-scope.md "Host names in certificates"). For a device a
+  user with a group added, the certificate and the camera's profile name only its stored IP address and
+  `axis-<serial>.local` (CN = that address, or the axis name for a name address); for a covered device a user with all
+  devices added, also the name address it was added with. EC keys only on P-256, P-384 or P-521.
 - **Issuing:** the OADM CA of the PKI plugin signs (one CA for everything), through the SDK's plugin services: PKI offers
   "sign a device certificate" and "CA chain", EST uses them. Like PKI's `DeviceCertificateIssuer`, OADM sets subject and
   SANs from what it knows (the stored address, host name, FQDN, `axis-<serial>.local`; never the address a connection
@@ -229,7 +230,8 @@ carried only the audit log line of the profile change (`EstEventProbeTests`, Har
 profile status instead, and OADM keeps no event stream open to the cameras for EST.
 
 **Accepted as they are** (decision 2026-10-22): host names and FQDNs a camera reports go into its certificates whatever
-their domain (only for devices a user with all devices added) (only another camera's `axis-<serial>` name is refused); PKI takes the IP addresses a device reports; Set up
+their domain (only for devices a user with all devices added and no device group covers; only another camera's
+`axis-<serial>` name is refused); PKI takes the IP addresses a device reports, only for devices no group covers; Set up
 removes a profile of another EST server whole when it serves a use OADM sets up.
 
 ## License of the code

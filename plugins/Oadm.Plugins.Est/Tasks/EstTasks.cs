@@ -329,7 +329,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         // OADM's profile already on the camera keeps its name (either one), so it is compared and changed in place.
         var wanted = profiles.Select(p =>
         {
-            var w = Wanted(p, device, address, est.Store.Config.Port, caAliases, Pick(deviceIds, p.Key));
+            var w = Wanted(p, device, est.InAnyGroup(device), address, est.Store.Config.Port, caAliases, Pick(deviceIds, p.Key));
             if (current.FirstOrDefault(c => EstTaskIds.IsOadm(c.Id) && EstTaskIds.ProfileNameOf(c.Id) == p.Name) is { } have)
             {
                 w.Json["id"] = have.Id;
@@ -482,7 +482,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         (deviceIds.Where(d => d.Key == key).OrderBy(d => d.Size).FirstOrDefault() is { Alias: not null } match ? match : deviceIds.OrderBy(d => d.Size).First()).Alias;
 
     /// <summary>The camera profile OADM writes (cert-est v1 <c>profiles</c>).</summary>
-    internal static (EstProfile Profile, JsonObject Json) Wanted(EstProfile profile, IDeviceInfo device, IPAddress address, int port, IReadOnlyList<string> caAliases, string deviceId)
+    internal static (EstProfile Profile, JsonObject Json) Wanted(EstProfile profile, IDeviceInfo device, bool inAnyGroup, IPAddress address, int port, IReadOnlyList<string> caAliases, string deviceId)
     {
         var host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
         var names = new JsonArray();
@@ -491,7 +491,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             names.Add("IP:" + ip);
         }
 
-        foreach (var dns in EstEndpoint.DnsNames(device))
+        foreach (var dns in EstEndpoint.DnsNames(device, inAnyGroup))
         {
             names.Add("DNS:" + dns);
         }

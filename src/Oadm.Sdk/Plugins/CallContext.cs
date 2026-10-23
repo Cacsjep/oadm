@@ -112,6 +112,12 @@ public interface IDeviceScopes
 
     /// <summary>Raised (without a caller) with the key of a group whose rules changed or that was deleted.</summary>
     event EventHandler<string>? Changed;
+
+    /// <summary>
+    /// True when any device group covers <paramref name="device"/> (a user limited to a group can reach it). Fail closed: the
+    /// default and a host that cannot tell answer true.
+    /// </summary>
+    bool InAnyGroup(IDeviceInfo device) => true;
 }
 
 /// <summary>Who receives a plugin event (<see cref="IPluginEvents.Publish(string, string?, PluginEventAudience)"/>).</summary>

@@ -141,6 +141,9 @@ internal sealed class FakeCamera : IVapixClient
 
     public string CertificatePem(string alias) => _certificates[alias].Pem;
 
+    /// <summary>The <c>getNetworkInfo</c> answer (host name, addresses); a test changes it to what the camera reports.</summary>
+    public JsonObject NetworkInfo => _networkInfo;
+
     public JsonObject Dot1x => _networkInfo["data"]!["devices"]![0]!["wired"]!["8021X"]!.AsObject();
 
     public JsonObject EapTlsParams => Dot1x["configurations"]!.AsArray().Single(c => c!["mode"]!.GetValue<string>() == NetworkInfoApi.EapTlsMode)!["params"]!.AsObject();
