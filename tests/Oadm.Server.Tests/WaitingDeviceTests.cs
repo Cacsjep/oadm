@@ -75,6 +75,27 @@ public sealed class WaitingDeviceTests
     }
 
     [Fact]
+    public async Task AKeeperWhoseDevicesCannotBeReadIsSkippedAndTheOtherEntriesAreTried()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.5.7", FakeSerials.Make(57), FilePassword).Offline = true;
+        await using var host = await TestServerHost.StartAsync(network);
+        await KeepAsync(host, Line("10.9.5.7")); // kept by the administrator
+        var broken = Guid.NewGuid();
+        await host.Get<WaitingDeviceStore>().AddAsync([new WaitingLine("10.9.5.8", null, null, null, [])], "Import", "ghost", broken, CancellationToken.None);
+        var runner = host.Get<WaitingDeviceRunner>();
+        runner.ReachOf = (views, user, name, ct) => user == broken
+            ? throw new InvalidOperationException("database is locked")
+            : AddReach.ForUserAsync(views, user, name, ct);
+
+        await runner.RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None);
+
+        var entries = (await host.Get<WaitingDeviceStore>().ListAsync(null, 0, CancellationToken.None)).Items;
+        Assert.Equal(1, entries.Single(e => e.Address == "10.9.5.7").Tries);
+        Assert.Equal(0, entries.Single(e => e.Address == "10.9.5.8").Tries); // waits for the next round
+    }
+
+    [Fact]
     public async Task AFailedLoginIsNotTriedAgainUntilTryNow()
     {
         var network = new FakeAxisNetwork();

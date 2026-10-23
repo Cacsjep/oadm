@@ -101,6 +101,11 @@ public sealed partial class TaskGrpcService(
                 continue;
             }
 
+            if (!caller.HasAllDevices && !entry.Plugin.Origin.SupportsCallContext)
+            {
+                continue; // a package built before SDK 0.4.0: only for users with all devices (Run refuses it too)
+            }
+
             try
             {
                 reply.Plugins.Add(Mappers.ToProto(entry, request.Compact));

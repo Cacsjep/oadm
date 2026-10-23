@@ -118,10 +118,22 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
     private long _version;
     private long _sequence;
 
+    // What decides a device's membership in device groups, per device as last published: an update that changes none of it
+    // (a status, a firmware version) leaves MembershipVersion as it is.
+    private readonly Dictionary<Guid, MembershipFields> _membership = [];
+    private long _membershipVersion;
+
     public event EventHandler<DeviceChange>? Changed;
 
     /// <summary>Incremented by every published change; caches derived from the device table compare it.</summary>
     public long Version => Interlocked.Read(ref _version);
+
+    /// <summary>
+    /// Incremented when a device is added or removed, or an update changes what device groups decide on (serial, site,
+    /// tags, who added it); also for the first update of a device the feed has not seen yet. The allowed ids of the views
+    /// are cached per this version, so a status change never makes them read again (docs/spec/device-scope.md, Sessions).
+    /// </summary>
+    public long MembershipVersion => Interlocked.Read(ref _membershipVersion);
 
     /// <inheritdoc />
     public long Sequence => Interlocked.Read(ref _sequence);
@@ -141,6 +153,11 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         {
             Interlocked.Increment(ref _version);
             Stamp(delivered);
+            if (MembershipMoved(delivered))
+            {
+                Interlocked.Increment(ref _membershipVersion);
+            }
+
             Write(delivered);
         }
 
@@ -161,6 +178,7 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
 
         var prepared = changes.Select(WithSiteStatus).ToList();
         var delivered = new List<DeviceChange>(prepared.Count);
+        var membership = false;
         lock (_publishing)
         {
             foreach (var change in prepared)
@@ -171,6 +189,7 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
                 }
 
                 Stamp(change);
+                membership |= MembershipMoved(change);
                 Write(change);
                 delivered.Add(change);
             }
@@ -178,6 +197,11 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
             if (delivered.Count > 0)
             {
                 Interlocked.Increment(ref _version);
+            }
+
+            if (membership)
+            {
+                Interlocked.Increment(ref _membershipVersion);
             }
         }
 
@@ -229,6 +253,31 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
                 _removed.Remove(id);
             }
         }
+    }
+
+    /// <summary>True when the change can move the device into or out of a group (called under the publishing lock).</summary>
+    private bool MembershipMoved(DeviceChange change)
+    {
+        if (change.Kind == DeviceChangeKind.Removed || change.Device is not { } device)
+        {
+            _membership.Remove(change.DeviceId);
+            return true;
+        }
+
+        var fields = MembershipFields.Of(device);
+        if (change.Kind == DeviceChangeKind.Updated && _membership.TryGetValue(change.DeviceId, out var known) && known == fields)
+        {
+            return false;
+        }
+
+        _membership[change.DeviceId] = fields;
+        return true;
+    }
+
+    private readonly record struct MembershipFields(string? Serial, Guid? SiteId, string Tags, bool AddedByAllDevices, Guid? AddedByGroupId)
+    {
+        public static MembershipFields Of(Device device) =>
+            new(device.Serial, device.SiteId, string.Join('\u0000', device.Tags ?? []), device.AddedByAllDevices, device.AddedByGroupId);
     }
 
     private void Write(DeviceChange change)

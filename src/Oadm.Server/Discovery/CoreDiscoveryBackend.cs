@@ -139,6 +139,8 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         await discovery.StopAsync(sessionId).ConfigureAwait(false);
     }
 
+    public bool IsActive(string sessionId) => discovery.HasSession(sessionId);
+
     public DiscoveredDevice? FindDiscovered(string sessionId, string discoveredId)
     {
         if (string.IsNullOrWhiteSpace(discoveredId))

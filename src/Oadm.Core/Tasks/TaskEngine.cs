@@ -119,6 +119,12 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(caller);
+        if (!devices.View.HasAllDevices && _plugins.TryGetTaskPlugin(pluginId, out var registration) && !registration.Origin.SupportsCallContext)
+        {
+            // A package built before the call context (SDK 0.4.0) runs only for users with all devices.
+            throw new DeviceAccessRefusedException(DeviceAccessRefusedException.PluginNeedsAllDevices);
+        }
+
         return RunCoreAsync(pluginId, devices.Ids, payloadJson, caller.Owner, caller, devices.View.Factory, ct);
     }
 
@@ -921,6 +927,12 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
     }
 
+    /// <summary>The plugin call mark of a task whose owner has a device group (null: all devices or the system).</summary>
+    private static Plugins.PluginCallMark? OwnerMark(RunningTask task, DeviceGroups.DeviceView? ownerView) =>
+        ownerView is { HasAllDevices: false }
+            ? new Plugins.PluginCallMark(task.Registration.Owner?.Id ?? task.Registration.Id, "task:" + task.Registration.Id, HasAllDevices: false, SystemAllowed: false) { ScopeKey = ownerView.ScopeKey }
+            : null;
+
     private async Task ExecuteDeviceAsync(RunningTask task, Guid deviceId)
     {
         var ct = task.Token;
@@ -953,6 +965,10 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                 if (!ownerView.Contains(device))
                 {
                     precondition = DeviceMessages.NoLongerAvailable(1);
+                }
+                else if (!ownerView.HasAllDevices && !task.Registration.Origin.SupportsCallContext)
+                {
+                    precondition = DeviceAccessRefusedException.PluginNeedsAllDevices;
                 }
             }
 
@@ -995,6 +1011,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                         PublishProgress(task);
                     }
                 }))
+                // A group owner's task runs like the owner's call: the full accesses of the package's core plugin
+                // (ctx.Devices, ctx.Vapix, ...) refuse inside it.
+                using (Auth.CallerContext.UsePluginCall(OwnerMark(task, ownerView)))
                 {
                     await plugin.ExecuteAsync(context, device!, task.PayloadJson, ct).ConfigureAwait(false);
                 }
@@ -1252,8 +1271,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             // Every managed device, also outside the owner's view: the answer is only "in use".
             var device = await engine._devices.FindAsync(deviceId, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException(DeviceMessages.NoLongerAvailable(1));
-            var all = await engine._devices.ListAsync(ct).ConfigureAwait(false);
-            return ManagedAddresses.Match(all, device.SiteId, deviceId, addresses);
+            return await ManagedAddresses.MatchAsync(engine._devices, device.SiteId, deviceId, addresses, ct).ConfigureAwait(false);
         }
     }
 

@@ -11,9 +11,11 @@ namespace Oadm.Core.Plugins;
 
 /// <summary>
 /// The jobs of the core plugins (<see cref="ICorePluginContext.Jobs"/>, docs/spec/device-scope.md, Plugins): work a method
-/// starts for its user (a report, a scan, an export, a monitor). A job belongs to the user who started it (user id, and
-/// the session it was started in); <see cref="IPluginJobs.Find"/> answers null for another user's id, exactly like for an
-/// unknown id. Jobs run detached (no caller: the background boundary) with the owner's call as their device access, and
+/// starts for its user (a report, a scan, an export, a monitor). A job belongs to the user who started it and the session
+/// it was started in; <see cref="IPluginJobs.Find"/> answers null for another user's or session's id, exactly like for an
+/// unknown id. A shared job (<see cref="IPluginJobs.StartShared"/>, one scan per scope) belongs to every user with the
+/// owner's device scope: they all find, follow and cancel it. A job started in a call whose user's access, session or
+/// group changed after the call began is refused (<see cref="AccessEpochs"/>), so no job keeps the old access. Jobs run detached (no caller: the background boundary) with the owner's call as their device access, and
 /// with the owner's plugin call mark, so a job of a user with a device group refuses <c>ctx.Devices</c> like the call.
 /// A job ends when its work ends, when it is cancelled, when its plugin stops and when its owner's devices, role or
 /// sessions change (<see cref="CancelOwner"/>, <see cref="CancelGroup"/>: such a job is also forgotten, so a finished
@@ -33,10 +35,14 @@ public sealed partial class PluginJobRegistry
     private readonly ILogger _logger;
     private long _sequence;
 
-    public PluginJobRegistry(ILogger<PluginJobRegistry>? logger = null)
+    public PluginJobRegistry(ILogger<PluginJobRegistry>? logger = null, AccessEpochs? epochs = null)
     {
         _logger = (ILogger?)logger ?? NullLogger.Instance;
+        Epochs = epochs ?? new AccessEpochs();
     }
+
+    /// <summary>The access changes the registry records and checks a new job against (the auth interceptor captures them).</summary>
+    public AccessEpochs Epochs { get; }
 
     /// <summary>The registry a plugin gets as <see cref="ICorePluginContext.Jobs"/>.</summary>
     public IPluginJobs For(string pluginId)
@@ -64,7 +70,11 @@ public sealed partial class PluginJobRegistry
     /// Cancels and forgets every job of a user (other devices, another role, the user was disabled or deleted): their ids
     /// answer like unknown ids from now on, also those of finished jobs (a report made for the old devices).
     /// </summary>
-    public void CancelOwner(Guid userId) => Forget(j => j.UserId == userId);
+    public void CancelOwner(Guid userId)
+    {
+        Epochs.UserChanged(userId); // first: a job registered meanwhile is either refused or seen by Forget
+        Forget(j => j.UserId == userId);
+    }
 
     /// <summary>
     /// Cancels and forgets every job whose owner has the devices of a group (the group's rules changed or it was deleted).
@@ -72,6 +82,7 @@ public sealed partial class PluginJobRegistry
     public void CancelGroup(Guid groupId)
     {
         var key = groupId.ToString();
+        Epochs.ScopeChanged(key);
         Forget(j => string.Equals(j.Owner.DeviceScopeKey, key, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -115,22 +126,18 @@ public sealed partial class PluginJobRegistry
         }
     }
 
-    /// <summary>Cancels every job started in a session (the session ended).</summary>
+    /// <summary>Cancels and forgets every job started in a session (the session ended), finished ones too.</summary>
     public void CancelSession(string sessionId)
     {
-        foreach (var jobs in _byPlugin.Values)
-        {
-            foreach (var job in jobs.Values.Where(j => j.Owner.SessionId == sessionId))
-            {
-                job.Cancel();
-            }
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        Epochs.SessionEnded(sessionId);
+        Forget(j => string.Equals(j.Owner.SessionId, sessionId, StringComparison.Ordinal));
     }
 
     private ConcurrentDictionary<string, Job> Jobs(string pluginId) =>
         _byPlugin.GetOrAdd(pluginId, _ => new ConcurrentDictionary<string, Job>(StringComparer.Ordinal));
 
-    private Job Start(string pluginId, ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work)
+    private Job Start(string pluginId, ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work, bool shared)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
@@ -153,8 +160,17 @@ public sealed partial class PluginJobRegistry
             }
 
             var mark = CallerContext.PluginCall;
-            var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence));
+            var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence), shared);
             jobs[job.Id] = job;
+
+            // Registered first, then checked: an access change either came before (refused here) or comes after and
+            // finds the job (CancelOwner, CancelGroup, CancelSession record the change before they look).
+            if (Epochs.ChangedSince(call.Caller.Caller.AccessEpoch, call.UserId, call.SessionId, call.DeviceScopeKey))
+            {
+                jobs.TryRemove(job.Id, out _);
+                job.Dispose();
+                throw new DeviceAccessRefusedException(DeviceGroups.DeviceGroupTexts.DevicesChanged);
+            }
             var jobMark = new PluginCallMark(pluginId, "job:" + kind, call.HasAllDevices, mark is { SystemAllowed: true } && string.Equals(mark.PluginId, pluginId, StringComparison.OrdinalIgnoreCase))
             {
                 ScopeKey = call.DeviceScopeKey,
@@ -210,14 +226,17 @@ public sealed partial class PluginJobRegistry
     private sealed class PluginJobs(PluginJobRegistry registry, string pluginId) : IPluginJobs
     {
         public IPluginJob Start(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work) =>
-            registry.Start(pluginId, owner, kind, work);
+            registry.Start(pluginId, owner, kind, work, shared: false);
+
+        public IPluginJob StartShared(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work) =>
+            registry.Start(pluginId, owner, kind, work, shared: true);
 
         public IPluginJob? Find(ICallContext caller, string jobId) => registry.Find(pluginId, caller, jobId);
 
         public IReadOnlyList<IPluginJob> List(ICallContext caller) => registry.List(pluginId, caller);
     }
 
-    private sealed class Job(string id, string kind, HostCallContext owner, long sequence) : IPluginJob, IDisposable
+    private sealed class Job(string id, string kind, HostCallContext owner, long sequence, bool shared) : IPluginJob, IDisposable
     {
         private readonly CancellationTokenSource _cancel = new();
 
@@ -229,9 +248,13 @@ public sealed partial class PluginJobRegistry
 
         public Guid UserId => owner.UserId;
 
-        /// <summary>The caller is the job's user and has the devices the job was started with (the same scope).</summary>
+        /// <summary>
+        /// The caller has the devices the job was started with (the same scope) and is the job's user in the job's session;
+        /// for a shared job any user of the scope.
+        /// </summary>
         public bool BelongsTo(HostCallContext call) =>
-            call.UserId == owner.UserId && string.Equals(call.DeviceScopeKey, owner.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
+            string.Equals(call.DeviceScopeKey, owner.DeviceScopeKey, StringComparison.OrdinalIgnoreCase)
+            && (shared || (call.UserId == owner.UserId && string.Equals(call.SessionId, owner.SessionId, StringComparison.Ordinal)));
 
         public long Sequence { get; } = sequence;
 

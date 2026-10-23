@@ -70,6 +70,25 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task TheDevicesOfABatchComeInTheOrderOfTheRequest()
+    {
+        var b = Sites.Add("Building B");
+        var first = await AddDeviceAsync("ACCC8E000001", siteId: b);
+        var second = await AddDeviceAsync("ACCC8E000002", siteId: b);
+        var third = await AddDeviceAsync("ACCC8E000003", siteId: b);
+        var group = (await SaveGroupAsync("B", sites: [b])).Group;
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+        var all = await Views.ForScopeAsync(DeviceScope.All, "admin", Ct);
+        Guid[] request = [third.Id, first.Id, third.Id, second.Id];
+
+        foreach (var viewed in new[] { await view.GetAsync(request, Ct), await all.GetAsync(request, Ct), await Views.System.GetAsync(request, Ct) })
+        {
+            Assert.Equal([third.Id, first.Id, second.Id], viewed.Ids);
+            Assert.Equal(viewed.Ids, viewed.Select(d => d.Id));
+        }
+    }
+
+    [Fact]
     public async Task ARenamedTagStaysAndADeletedTagOrRemovedSiteDropsOutAtOnce()
     {
         var b = Sites.Add("Building B");
@@ -119,15 +138,54 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
         await AddDeviceAsync("ACCC8E000001", siteId: b);
         var group = (await SaveGroupAsync("G", sites: [b])).Group;
         var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+        Assert.Null(view.CachedIds()); // nothing read yet: no answer without a read
         var first = await view.IdsAsync(Ct);
         Assert.Single(first);
         Assert.Same(first, await view.IdsAsync(Ct)); // cached while nothing changed
+        Assert.Same(first, view.CachedIds());
 
         var added = await AddDeviceAsync("ACCC8E000002", siteId: b);
-        Assert.Contains(added.Id, await view.IdsAsync(Ct)); // a new device of a chosen site is in at once
+        Assert.Null(view.CachedIds()); // a device came in: the cached ids are no longer current
+        var withAdded = await view.IdsAsync(Ct);
+        Assert.Contains(added.Id, withAdded); // a new device of a chosen site is in at once
+
+        // A status or firmware change keeps the ids; a change of what groups decide on (tags, site) reads them again.
+        await Devices.UpdateAsync(added.Id, d => d.Status = DeviceStatus.Unreachable, Ct);
+        await Devices.UpdateAsync(added.Id, d => d.FirmwareVersion = "12.0.0", Ct);
+        Assert.Same(withAdded, await view.IdsAsync(Ct));
+        await Devices.UpdateAsync(added.Id, d => d.SiteId = null, Ct);
+        Assert.DoesNotContain(added.Id, await view.IdsAsync(Ct));
+        await Devices.UpdateAsync(added.Id, d => d.SiteId = b, Ct);
+        Assert.Contains(added.Id, await view.IdsAsync(Ct));
 
         await SaveGroupAsync("G", thisServer: true, id: group.Id, revision: group.Revision);
         Assert.Empty(await view.IdsAsync(Ct)); // the new rules apply to the same view
+    }
+
+    [Fact]
+    public async Task TheSharedReadOfTheAllowedIdsNeverRunsOnTheFirstCallersToken()
+    {
+        var b = Sites.Add("Building B");
+        await AddDeviceAsync("ACCC8E000001", siteId: b);
+        var group = (await SaveGroupAsync("G", sites: [b])).Group;
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+        using var gone = new CancellationTokenSource();
+        await gone.CancelAsync();
+
+        // The first caller gave up at once (it may still get the answer when the read ended at once); the read it started
+        // goes on for the others.
+        try
+        {
+            await view.IdsAsync(gone.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => view.CachedIds() is not null, "the shared read ended");
+        var ids = await view.IdsAsync(Ct);
+        Assert.Single(ids);
+        Assert.Same(view.CachedIds(), ids);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 using Oadm.Core.DeviceGroups;
 using Oadm.Core.Persistence;
@@ -15,7 +16,7 @@ namespace Oadm.Core.Devices;
 /// move devices between groups). The guard reads the groups inside the write transaction, which holds SQLite's write lock
 /// from its start, so a group saved meanwhile is either seen or commits after the tagging.
 /// </summary>
-public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed, TimeProvider time) : IDisposable
+public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed, TimeProvider time, ILogger<DeviceTagStore>? logger = null) : IDisposable
 {
     private const int Chunk = 500;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -92,7 +93,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             _writeLock.Release();
         }
 
-        await ReloadNamesAsync().ConfigureAwait(false);
+        await ReloadNamesAfterWriteAsync().ConfigureAwait(false);
         RaiseDefinitionsChanged();
         return created.Clone();
     }
@@ -164,7 +165,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             _writeLock.Release();
         }
 
-        await ReloadNamesAsync().ConfigureAwait(false); // before the devices: device groups follow a rename at once
+        await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: device groups follow a rename at once
         Publish(changed);
         RaiseDefinitionsChanged();
         return result;
@@ -207,7 +208,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             _writeLock.Release();
         }
 
-        await ReloadNamesAsync().ConfigureAwait(false); // before the devices: device groups follow the tag at once
+        await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: device groups follow the tag at once
         Publish(changed);
         RaiseDefinitionsChanged();
         return new TagDeleteResult(deletedName, changed.Count, Changes(changed));
@@ -296,7 +297,7 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
 
         if (created.Count > 0)
         {
-            await ReloadNamesAsync().ConfigureAwait(false); // before the devices: a device group sees the new tag at once
+            await ReloadNamesAfterWriteAsync().ConfigureAwait(false); // before the devices: a device group sees the new tag at once
         }
 
         Publish(changed);
@@ -492,8 +493,35 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
     private readonly SemaphoreSlim _namesLock = new(1, 1);
 
     /// <summary>Reads the committed definitions again (after a write, never cancelled) and moves <see cref="Version"/>.</summary>
+    /// <summary>
+    /// The names after a committed write: a failed read never keeps the change from being published (the devices and the
+    /// definitions changed already). The names stay as they were (fail closed: a group's new or renamed tag covers no
+    /// device until the next write reads them) and the catalog version moves, so the views compile again.
+    /// </summary>
+    private async Task ReloadNamesAfterWriteAsync()
+    {
+        try
+        {
+            await ReloadNamesAsync().ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // The write is committed: publish it whatever the read of the names says.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Interlocked.Increment(ref _version);
+            LogNamesReloadFailed(logger ?? (ILogger)Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, ex);
+        }
+    }
+
+    /// <summary>Tests: runs before the names are read again after a write (throw to simulate a failed read).</summary>
+    internal Action? BeforeNamesReload { get; set; }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the tag names after a change failed; device groups keep the names they had until the next change")]
+    private static partial void LogNamesReloadFailed(ILogger logger, Exception ex);
+
     private async Task ReloadNamesAsync()
     {
+        BeforeNamesReload?.Invoke();
         await _namesLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {

@@ -20,7 +20,7 @@ namespace Oadm.Server.Auth;
 /// message ("3 devices are no longer available."), a <see cref="Sdk.Plugins.DeviceAccessRefusedException"/> (plugin code a
 /// user with a device group may not reach) PERMISSION_DENIED.
 /// </summary>
-public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore roles, CallerStreams streams, DeviceViewFactory views, ILogger<AuthInterceptor> logger) : Interceptor
+public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore roles, CallerStreams streams, DeviceViewFactory views, AccessEpochs epochs, ILogger<AuthInterceptor> logger) : Interceptor
 {
     /// <summary>The session stream reports role changes itself; it is never ended by one.</summary>
     private const string WatchSessionMethod = "/oadm.v1.AuthService/WatchSession";
@@ -32,7 +32,7 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
     public const string AdminOnlyMessage = "Only administrators can do this.";
 
     /// <summary>A stream whose devices changed between its check and its registration: the client connects again.</summary>
-    public const string DevicesChangedMessage = "Your devices changed. Connect again.";
+    public const string DevicesChangedMessage = DeviceGroupTexts.DevicesChanged;
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request, ServerCallContext context, UnaryServerMethod<TRequest, TResponse> continuation)
     {
@@ -262,6 +262,7 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
             throw new RpcException(new Status(StatusCode.Unauthenticated, NotLoggedInMessage));
         }
 
+        var epoch = epochs.Capture(); // before the session is read: a change after it refuses the call's jobs
         var session = await tokens.ValidateAsync(token, context.CancellationToken).ConfigureAwait(false);
         if (session is null)
         {
@@ -274,6 +275,7 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
             CleanMachineName(context.RequestHeaders.GetValue(OadmMetadata.ClientMachine)), session.TokenHash)
         {
             Devices = devices,
+            AccessEpoch = epoch,
         };
         if (!AccessPolicy.Allows(rule, caller))
         {

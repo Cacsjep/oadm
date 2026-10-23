@@ -519,7 +519,11 @@ for them, and it keeps working unchanged for users with all devices.
   are forgotten, a running one once it ended. Tasks it or the call starts with `job.Owner.Tasks` / `caller.Tasks` belong to the user (the
   `owner` argument is ignored) and check the user's devices again when they leave the queue. Every method and download
   that takes a job id looks it up with `ctx.Jobs.Find(caller, id)` and throws the same `KeyNotFoundException` for null as
-  for an unknown id: another user's id answers NOT_FOUND. Never keep your own id table.
+  for an unknown id: another user's or session's id answers NOT_FOUND. Never keep your own id table.
+  Work kept once per device scope (one scan of a group's devices) starts with `ctx.Jobs.StartShared(caller, "scan", ...)`:
+  `Find` and `List` then answer every user with the owner's `DeviceScopeKey`, so any of them follows and stops it
+  (`job.Cancel()`); it still runs with the owner's call. A `Start` or `StartShared` in a call whose user's devices, role or
+  session changed meanwhile throws `DeviceAccessRefusedException` ("Your devices changed. Connect again."): let it pass.
 - **Events**: `ctx.Events.Publish(topic, json, audience)`. `PluginEventAudience.Device(id)` (users who see the device),
   `DeviceRows(ids)` (a JSON array with one element per id: each watcher gets its own elements, in order),
   `User(name)`, `Session(caller.SessionId)` or `Of(caller)` (the page that started the work), `DeviceScope(key)` (state

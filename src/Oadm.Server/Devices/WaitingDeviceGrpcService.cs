@@ -64,7 +64,7 @@ public sealed class WaitingDeviceGrpcService(
         WaitingAddResult result;
         try
         {
-            result = await store.AddAsync(lines, source, caller.UserName, caller.UserId, ct).ConfigureAwait(false);
+            result = await store.AddAsync(lines, source, caller.UserName, caller.UserId, reach.Waiting, ct).ConfigureAwait(false);
         }
         catch (WaitingListFullException ex)
         {

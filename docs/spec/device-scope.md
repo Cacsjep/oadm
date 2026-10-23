@@ -66,7 +66,10 @@ an independent security review the same day). A user may be limited to part of t
   `Publish(topic, json)` goes only to watchers with all devices. Sweep state (ActionRules, EdgeStorage, ImageHealth) is
   kept per group, not per plugin.
 - **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
-  scan, export and monitor ids); every id-taking method and download checks it; ids of another user answer NOT_FOUND.
+  scan, export and monitor ids); every id-taking method and download checks it; ids of another user or session answer
+  NOT_FOUND, and an ended session forgets its jobs, finished ones too. A shared job (`IPluginJobs.StartShared`, one scan
+  per scope) is found and stopped by every user with its device scope. A job started in a call whose user's devices, role
+  or session changed after the call began is refused ("Your devices changed. Connect again.").
   When the owner's devices change (another group, new rules of the group, another role) the owner's jobs end and are
   forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
   of the group (tag, site, add, remove; the coalesced `HostDeviceScopes.Changed`) the finished jobs of its users are
@@ -131,7 +134,9 @@ an independent security review the same day). A user may be limited to part of t
   groups with "This server"; the waiting list is scoped by site (entries without a site: only the user's own) and checks the queuing user's current view.
 - **Sessions:** a stream checks the user's group revision like the role right after it registers; a change of a group's
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
-  key is (group revision, tag and site catalog revision, `DeviceChangeFeed.Version`). The view never follows the "no
+  key is (group revision, tag and site catalog revision, `DeviceChangeFeed.MembershipVersion`: it moves only when a
+  device is added or removed or its serial, site, tags or adder change, never for a status, so at 30,000 devices a polling
+  round reads no allowed ids again). One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **Small leaks closed:** address checks answer only "in use"; conflict and log texts never name devices outside the
   view; discovery rows of such devices say only "already added"; Your role shows no excepted serials. "This server"
@@ -145,7 +150,10 @@ an independent security review the same day). A user may be limited to part of t
 - **Address takeover accepted** (security review 2026-10-23): a group user can still give a camera of the group the
   address of a device outside it through raw requests of the VAPIX Commander or in the web interface (Network settings and
   Assign IP address refuse it). The harm is small: over HTTPS the pinned certificate stops the polling of the other device,
-  over HTTP the camera gets only a digest response, never the password.
+  over HTTP the camera gets only a digest response, never the password. The check of Network settings and Assign IP
+  address compares the stored IP addresses only: a device stored by host name is not compared (OADM keeps no resolved
+  address of it, and a name at a site resolves only there), so a group camera can take the address such a device's name
+  points to, with the same small harm.
 - **Shared waiting entries accepted**: a waiting entry with a site of the group is shared by the group's users: each
   sees it, removes it and uses Try now, and it is added as the user who queued it.
 - **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
@@ -215,9 +223,9 @@ an independent security review the same day). A user may be limited to part of t
   `AddedByAllDevices` or `AddedByGroupId` is the group.
 - **Views**: `DeviceViewFactory.ForAsync(caller)` (throws without a caller), `ForScopeAsync(scope, user)`,
   `ForUserAsync(userId)`, `System` (background work), `CountAsync(rules)`, `CountGroupsAsync`; `DeviceView.ListAsync`,
-  `AllAsync`, `GetAsync(ids)` / `GetOrAllAsync(ids)` (any unknown or outside id: `DevicesNotAvailableException`, NOT_FOUND
+  `AllAsync`, `GetAsync(ids)` / `GetOrAllAsync(ids)` (in the order of the request; any unknown or outside id: `DevicesNotAvailableException`, NOT_FOUND
   `DeviceMessages.NoLongerAvailable(n)`), `FindAsync`, `Contains`, `IdsAsync` (cached per group revision, catalog key and
-  `DeviceChangeFeed.Version`), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
+  `DeviceChangeFeed.MembershipVersion`), `CachedIds()` (the cached ids when current, never a read), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
   `views.ForAsync(ServerCallContext)` (`Oadm.Server.Auth.CallerViews`, the caller from the call's `UserState`,
   `AuthInterceptor.CallerOf`); the interceptor maps `DevicesNotAvailableException` of any service to NOT_FOUND.
 - **Access rule**: `AccessRule.AllDevices` (`.ForAllDevices()`): tag rename and delete, task Delete all, every `EventService` method (rules, event log,
@@ -243,15 +251,21 @@ an independent security review the same day). A user may be limited to part of t
   route)` (on a route of the user and inside the group), `Waiting` (`WaitingScope`). `DeviceGroupFilter.ThisServer` and
   `Sites` expose the compiled rules.
 - Core discovery sessions take `DiscoveryRoutes` (zero-conf, range scan, address probes); `CoreDiscoveryBackend` passes
-  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session.
-- `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed).
+  them and finds a discovered device only in its own session. `DiscoverySessionOwners`: the user of each add-page session, kept while the
+  session exists (`IDiscoveryBackend.IsActive`) or a watch of it is open (`Hold`), else 30 minutes after its last use, so
+  Add and Retry work however long the page stays idle.
+- `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed); the login
+  session of a discovery session that still exists never expires, so it keeps that permission, the expected device and the
+  typed passwords (a session made again after it expired tries only typed passwords).
 - `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
   waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;
   actions "Entered device group" / "Left device group"; also for tags and sites) and `Oadm.Server.AddDevices.MembershipAudit`
   (Commit, the waiting list, the automatic add, relocation and DHCP moves).
-- Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove), `QueuedByUserId` written
-  by `AddAsync(..., queuedBy, ...)`; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
+- Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove, add), `QueuedByUserId` written
+  by `AddAsync(..., queuedBy, scope, ...)`: an entry without a site of a user with a group has its own key
+  (`KeeperKey`: the address, "#" and the user's id; `AddressPart` for the comparison with managed devices), so the user
+  never changes or learns of another user's entry for the same address, and the reply's total counts the user's scope; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
 
 ## Code (devices-core)
 
@@ -288,8 +302,11 @@ an independent security review the same day). A user may be limited to part of t
 
 ## Code (tasks)
 
-- **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` and calls `TaskEngine.RunAsync(pluginId, ViewedDevices,
-  payload, TaskCaller)`; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
+- **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` (the devices in the order of the request: the client pairs
+  the task ids with its device ids) and calls `TaskEngine.RunAsync(pluginId, ViewedDevices, payload, TaskCaller)`; for a
+  group user a task of a package below SDK 0.4.0 is refused whole (`PluginNeedsAllDevices`, also through `call.Tasks`
+  and again when a queued task leaves the queue) and left out of `ListTaskPlugins`; a group owner's task runs under a
+  `PluginCallMark` without all devices, so the package's `ctx.*` refuses inside it like in the owner's call; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
   refuse the run; cancel and the active check only for the user's own tasks when the user has a group, another user's
   active task answers null, "cannot tell"; `AnyActiveAsync` answers for the tasks of the view's devices). The raw-id
   `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
@@ -328,7 +345,8 @@ an independent security review the same day). A user may be limited to part of t
   route, `Core/Tasks/ManagedAddresses`): Network settings and Assign IP address refuse, for every user and before the
   first write, a static address another managed device has ("Another device managed by OADM uses this address. Nothing
   was changed."), so a group user never takes over the address of a device outside the group (whose polling would then
-  send that device's login to the new camera). Both checks take at most 256 addresses per call.
+  send that device's login to the new camera). Both checks take at most 256 addresses per call and read only id and address
+  of the route's devices (`DeviceRepository.ListAddressesOnRouteAsync`, nothing when no address is an IP address).
 - VAPIX Commander: devices, clients and tasks through the call; `save` / `delete` / `import` `RequiresAllDevices`; stored
   passwords of saved commands only with all devices (`ResolveAsync(..., allowSavedSecrets)`). Run VAPIX command and Set
   output are event rule actions and stay as they are (event rules are for users with all devices).
@@ -346,6 +364,9 @@ an independent security review the same day). A user may be limited to part of t
   (plugin choices list only the caller's view), `Mapping/OwnerMapping` (`DeviceOwner`).
 - **Compliance**: `ComplianceCheck.Owner`, the engine intersects every check with its owner and re-reconciles the checks of
   groups on `OwnerScopes.Changed` (only devices that came in are evaluated), `ComplianceService` takes the caller's view.
+  A check keeps the device ids it was saved with; the replies of a group user (ListChecks, WatchChecks, GetCheck, SaveCheck,
+  SetCheckEnabled, SetEnabled) name only the ids of the user's view now, so a device that left the group is never shown
+  and saving the check again works (it then keeps only the group's devices).
 - **Event rules**: no owner, no view (decision 2026-10-23): every `EventService` method is `.ForAllDevices()`, the
   engine, the action runner and the event log work as in 4.1.0; the canary counts EventService as closed by the rule.
 - **Tests**: `Oadm.Core.Tests/DeviceGroups/TagGuardTests`, `Compliance/ComplianceOwnerTests`, Perf
@@ -384,7 +405,10 @@ an independent security review the same day). A user may be limited to part of t
   task is bound to its run before it reads the device: the run of its user's scope, an undo task only for a run Undo
   marked.
 - **VAPIX Commander**: a rollout belongs to the user who started it; a task of another user naming its id is refused.
-- **Dashboards**: group users see device events with a device list of their devices, OADM's own device status events and
+- **Dashboards**: group users never see the device triggers of another owner, also on devices both can see (decision
+  2026-10-23, "Shared objects: others are hidden"): an event type names its owner (`EventTypeInfo.OwnerScopeKey`, SDK
+  0.4.0; Device triggers fill it, the host fills it for compliance checks) and Dashboards hides the types of another
+  owner. Group users see device events with a device list of their devices, OADM's own device status events and
   the site events of their sites; events without a device list from other sources (compliance checks, which carry no
   owner) are hidden, also as watch keys. Every push checks the group's devices now; a renewal naming a device that left
   ends the old watch.

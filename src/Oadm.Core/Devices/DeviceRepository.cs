@@ -61,6 +61,18 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         return [.. rows.Select(r => new ManagedAddress(r.Serial, r.Address, r.SiteId))];
     }
 
+    /// <summary>
+    /// Id and address of every device on one route (devices of <paramref name="siteId"/>, null = the server's own network),
+    /// without loading the rows: the address-in-use checks of tasks and task queries.
+    /// </summary>
+    public async Task<IReadOnlyList<(Guid Id, string Address)>> ListAddressesOnRouteAsync(Guid? siteId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.Devices.AsNoTracking().Where(d => d.SiteId == siteId).Select(d => new { d.Id, d.Address })
+            .ToListAsync(ct).ConfigureAwait(false);
+        return [.. rows.Select(r => (r.Id, r.Address))];
+    }
+
     /// <summary>Number of managed devices.</summary>
     public async Task<int> CountAsync(CancellationToken ct)
     {

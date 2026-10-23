@@ -376,11 +376,12 @@ public static partial class OadmServerHost
             viewWatcher: sp.GetRequiredService<Core.DeviceGroups.DeviceViewWatcher>()));
         services.AddSingleton<PluginServiceRegistry>();
         services.AddSingleton<HostDeviceScopes>();
+        services.AddSingleton<Core.Auth.AccessEpochs>(); // the interceptor captures it, the job registry records changes in it
         services.AddSingleton(sp =>
         {
             // Jobs belong to their user's session and access: they end when the user's devices or role change, when the
             // session ends (logout) and when the user's sessions end (disabled, deleted, new password).
-            var jobs = new PluginJobRegistry(sp.GetRequiredService<ILogger<PluginJobRegistry>>());
+            var jobs = new PluginJobRegistry(sp.GetRequiredService<ILogger<PluginJobRegistry>>(), sp.GetRequiredService<Core.Auth.AccessEpochs>());
             var users = sp.GetRequiredService<Core.Auth.UserStore>();
             users.UserDeviceAccessChanged += (_, userId) => jobs.CancelOwner(userId);
             users.UserRoleChanged += (_, userId) => jobs.CancelOwner(userId);

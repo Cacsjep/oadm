@@ -85,6 +85,14 @@ public sealed record EventTypeInfo(
     /// </summary>
     public IReadOnlyList<Guid>? DeviceIds { get; init; }
 
+    /// <summary>
+    /// The <c>ICallContext.DeviceScopeKey</c> of the owner of the object behind this type (a device trigger or a compliance
+    /// check of a device group, <c>"all"</c> for one of all devices); null = owned by nobody (every user who sees the devices
+    /// may see it). SDK 0.4.0: a page that lists event types to users (Dashboards) hides the types of another owner, also on
+    /// devices both can see.
+    /// </summary>
+    public string? OwnerScopeKey { get; init; }
+
     /// <summary><see cref="Fields"/>, never null.</summary>
     public IReadOnlyList<EventField> DataFields => Fields ?? [];
 }

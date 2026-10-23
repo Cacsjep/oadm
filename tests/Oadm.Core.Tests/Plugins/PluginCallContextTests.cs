@@ -198,10 +198,79 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         rig.Host.Jobs.CancelSession(rig.Admin.Caller.SessionId);
         await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "the admin session's job ended");
 
-        await rig.InvokeAsync(rig.Admin, "job.start", null);
+        // The ended session starts nothing more; a new login does.
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Admin, "job.start", null));
+        await rig.InvokeAsync(rig.Fresh(rig.Admin, "hash-new-login"), "job.start", null);
         Assert.Equal(1, rig.Host.Jobs.RunningCount(PluginId));
         await rig.Host.StopAllAsync(Ct);
         Assert.Equal(0, rig.Host.Jobs.RunningCount(PluginId));
+    }
+
+    [Fact]
+    public async Task AJobStartedInACallWhoseAccessChangedMeanwhileIsRefused()
+    {
+        await using var rig = await RigAsync();
+        var berta = await rig.CallerAsync("berta", DeviceScope.Group(rig.GroupId));
+
+        // The user got other devices (or another role) while the call ran: the call's job would keep the old access.
+        rig.Host.Jobs.CancelOwner(rig.Anna.Caller.UserId);
+        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Anna, "job.start", null));
+        Assert.Equal(DeviceGroupTexts.DevicesChanged, refused.Message);
+        Assert.Equal(0, rig.Host.Jobs.RunningCount(PluginId));
+        Assert.Equal(0, await rig.JobCountAsync(rig.Anna));
+
+        // Another user's change refuses nothing; new rules of the group refuse its users' calls that began before.
+        Assert.NotNull(await rig.InvokeAsync(berta, "job.start", null));
+        rig.Host.Jobs.CancelGroup(rig.GroupId);
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(berta, "job.start", null));
+        Assert.NotNull(await rig.InvokeAsync(rig.Admin, "job.start", null));
+
+        // The next call (after the change) starts jobs again.
+        Assert.NotNull(await rig.InvokeAsync(rig.Fresh(rig.Anna), "job.start", null));
+    }
+
+    [Fact]
+    public async Task AJobBelongsToItsUsersSessionAndAnEndedSessionForgetsItsFinishedJobs()
+    {
+        await using var rig = await RigAsync();
+        rig.Plugin.JobDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var id = (await rig.InvokeAsync(rig.Anna, "job.start", null))!;
+        await rig.Plugin.JobDone.Task.WaitAsync(Eventually.DefaultTimeout);
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "the job ended");
+        var otherLogin = rig.Fresh(rig.Anna, "hash-second-login");
+
+        Assert.Equal("found", await rig.InvokeAsync(rig.Anna, "job.find", id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(otherLogin, "job.find", id));
+        Assert.Equal(0, await rig.JobCountAsync(otherLogin));
+
+        rig.Host.Jobs.CancelSession(rig.Anna.Caller.SessionId);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "job.find", id));
+        Assert.Equal(0, await rig.JobCountAsync(rig.Anna));
+    }
+
+    [Fact]
+    public async Task ASharedJobIsFoundAndStoppedByEveryUserOfItsScopeOnly()
+    {
+        await using var rig = await RigAsync();
+        var berta = await rig.CallerAsync("berta", DeviceScope.Group(rig.GroupId));
+        var shared = (await rig.InvokeAsync(rig.Anna, "job.shared", null))!;
+        rig.Plugin.HoldJobs = true;
+        var own = (await rig.InvokeAsync(rig.Anna, "job.start", null))!;
+
+        Assert.Equal("found", await rig.InvokeAsync(berta, "job.find", shared));
+        Assert.Equal(1, await rig.JobCountAsync(berta));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(berta, "job.find", own)); // not shared: the owner only
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Admin, "job.find", shared)); // another scope
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Admin, "job.cancel", shared));
+
+        Assert.Equal("cancelled", await rig.InvokeAsync(berta, "job.cancel", shared));
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 1, "the shared job ended");
+
+        // A shared job still ends with its owner's access.
+        var second = (await rig.InvokeAsync(rig.Anna, "job.shared", null))!;
+        rig.Host.Jobs.CancelOwner(rig.Anna.Caller.UserId);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(berta, "job.find", second));
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "every job ended");
     }
 
     [Fact]
@@ -341,6 +410,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
 
         async Task<string> FinishedJobAsync()
         {
+            rig.Anna = rig.Fresh(rig.Anna); // the user's next call, after the change
             rig.Plugin.JobDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
             var id = (await rig.InvokeAsync(rig.Anna, "job.start", null))!;
             await rig.Plugin.JobDone.Task.WaitAsync(Eventually.DefaultTimeout);
@@ -417,7 +487,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
             {
                 plugin.TaskCallers.Enqueue(ctx.Caller);
                 return Task.CompletedTask;
-            }), new PluginOrigin("test.tasks", "1.0.0", null) { DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full }));
+            }), new PluginOrigin("test.tasks", "1.0.0", null) { MinSdkVersion = SdkInfo.Version, DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full }));
             taskEngine = new TaskEngine(Db.Get<EfTaskStore>(), registry, Devices, new FakeVapixClientFactory()) { Views = Views };
         }
 
@@ -456,9 +526,13 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         public async Task<PluginCaller> CallerAsync(string name, DeviceScope scope)
         {
             var user = await test.Users.AddAsync(name, "pw", BuiltInRoles.OperatorId, scope, Ct);
-            var caller = test.CallerOf(user);
+            var caller = test.CallerOf(user) with { AccessEpoch = Host.Jobs.Epochs.Capture() };
             return new PluginCaller(caller, await test.Views.ForAsync(caller, Ct));
         }
+
+        /// <summary>The user's next call (the interceptor captures the access epoch again), optionally in another session.</summary>
+        public PluginCaller Fresh(PluginCaller caller, string? tokenHash = null) =>
+            new(caller.Caller with { AccessEpoch = Host.Jobs.Epochs.Capture(), TokenHash = tokenHash ?? caller.Caller.TokenHash }, caller.View);
 
         /// <summary>Like a gRPC call: the interceptor's caller backstop is set too.</summary>
         public async Task<string?> InvokeAsync(PluginCaller caller, string method, object? argument)
@@ -663,6 +737,11 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                             JobResult.TrySetResult(ex);
                         }
                     }).Id;
+                case "job.shared":
+                    return ctx.Jobs!.StartShared(caller, "scan", (_, token) => Task.Delay(Timeout.Infinite, token)).Id;
+                case "job.cancel":
+                    (ctx.Jobs!.Find(caller, payloadJson!) ?? throw new KeyNotFoundException("The scan is no longer available.")).Cancel();
+                    return "cancelled";
                 case "job.find":
                     return ctx.Jobs!.Find(caller, payloadJson!) is null ? throw new KeyNotFoundException("The report is no longer available.") : "found";
                 case "job.count":

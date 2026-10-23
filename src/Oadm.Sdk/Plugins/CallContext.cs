@@ -251,11 +251,22 @@ public interface IPluginJobs
     /// <param name="work">The work; exceptions end the job (logged), never the plugin.</param>
     IPluginJob Start(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work);
 
-    /// <summary>The job with <paramref name="jobId"/> when it belongs to the user of <paramref name="caller"/>, else null (also for unknown ids).</summary>
+    /// <summary>
+    /// The job with <paramref name="jobId"/> when it belongs to <paramref name="caller"/> (the user and session that started
+    /// it, or any user of its device scope for a shared job), else null (also for unknown ids).
+    /// </summary>
     IPluginJob? Find(ICallContext caller, string jobId);
 
-    /// <summary>The jobs of the user of <paramref name="caller"/>, newest first.</summary>
+    /// <summary>The jobs <paramref name="caller"/> may see (see <see cref="Find"/>), newest first.</summary>
     IReadOnlyList<IPluginJob> List(ICallContext caller);
+
+    /// <summary>
+    /// Like <see cref="Start"/>, for work kept once per device scope (one scan of a group's devices): every user with the
+    /// owner's <see cref="ICallContext.DeviceScopeKey"/> finds, follows and cancels the job through <see cref="Find"/> and
+    /// <see cref="List"/>. It still runs with the owner's call and ends like the owner's other jobs (other devices, another
+    /// role, the session ended). SDK 0.4.0; the default (older hosts) is <see cref="Start"/>: only the owner finds it.
+    /// </summary>
+    IPluginJob StartShared(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work) => Start(owner, kind, work);
 }
 
 /// <summary>One job of <see cref="IPluginJobs"/>.</summary>

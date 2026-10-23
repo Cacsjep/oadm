@@ -195,7 +195,7 @@ public sealed partial class TaskPluginQueries
             }
 
             ManagedAddresses.ThrowIfTooMany(addresses);
-            return ManagedAddresses.Match(await system.ListAsync(ct).ConfigureAwait(false), device.SiteId, null, addresses);
+            return await ManagedAddresses.MatchAsync(system, device.SiteId, null, addresses, ct).ConfigureAwait(false);
         }
     }
 }

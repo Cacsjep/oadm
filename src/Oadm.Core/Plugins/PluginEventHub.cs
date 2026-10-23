@@ -21,12 +21,22 @@ public sealed record PluginWatcher(string UserName, string SessionId, string Sco
     /// <summary>The host's own watcher (tests, diagnostics): every event an all-devices user would get.</summary>
     public static PluginWatcher System { get; } = new("", "", ICallContext.AllDevicesScopeKey, true, _ => Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>()));
 
+    /// <summary>
+    /// The ids of the user's view when they are at hand without a read (the view's cache is current), else null: the hub
+    /// leaves out device events of other devices before it queues them, so they never push the user's own events out of the
+    /// queue. The check when the watcher reads stays.
+    /// </summary>
+    public Func<IReadOnlySet<Guid>?>? CachedIds { get; init; }
+
     /// <summary>The watcher of a user's call.</summary>
     public static PluginWatcher Of(PluginCaller caller)
     {
         ArgumentNullException.ThrowIfNull(caller);
         var view = caller.View;
-        return new PluginWatcher(caller.Caller.UserName, caller.Caller.SessionId, view.ScopeKey, caller.HasAllDevices, view.IdsAsync);
+        return new PluginWatcher(caller.Caller.UserName, caller.Caller.SessionId, view.ScopeKey, caller.HasAllDevices, view.IdsAsync)
+        {
+            CachedIds = view.CachedIds,
+        };
     }
 }
 
@@ -37,7 +47,8 @@ public sealed record PluginWatcher(string UserName, string SessionId, string Sco
 /// Each event goes only to the watchers its audience covers (docs/spec/device-scope.md, Plugins): the old
 /// <c>Publish(topic, json)</c> and <see cref="PluginEventAudience.AllDevices"/> to watchers with all devices, a device or
 /// device rows to the users who can see them (rows filtered per watcher, in order), a user, a session or a device scope
-/// key to their watchers. The device checks of a group watcher run in its own reading loop (never in the publisher).
+/// key to their watchers. The device checks of a group watcher run in its own reading loop; the publisher only leaves out
+/// device events of other devices when the watcher's ids are cached (never a read in the publisher).
 /// </summary>
 public sealed partial class PluginEventHub
 {
@@ -96,13 +107,15 @@ public sealed partial class PluginEventHub
     }
 
     /// <summary>
-    /// Whether the event can reach the watcher without a device check: true for watchers it covers by user, session, scope
-    /// and for watchers with all devices; device audiences of group watchers are checked when the watcher reads.
+    /// Whether the event can reach the watcher: true for watchers it covers by user, session, scope and for watchers with all
+    /// devices; device audiences of group watchers are checked against the view's cached ids when they are at hand (no read
+    /// in the publisher) and always again when the watcher reads.
     /// </summary>
     private static bool Reaches(PluginEventAudience audience, PluginWatcher watcher) => audience.Kind switch
     {
         PluginEventAudienceKind.AllDevices => watcher.HasAllDevices,
-        PluginEventAudienceKind.Device or PluginEventAudienceKind.DeviceRows => true,
+        PluginEventAudienceKind.Device or PluginEventAudienceKind.DeviceRows =>
+            watcher.HasAllDevices || watcher.CachedIds?.Invoke() is not { } ids || audience.DeviceIds.Any(ids.Contains),
         PluginEventAudienceKind.User => string.Equals(audience.UserName, watcher.UserName, StringComparison.OrdinalIgnoreCase),
         PluginEventAudienceKind.Session => string.Equals(audience.SessionId, watcher.SessionId, StringComparison.Ordinal),
         PluginEventAudienceKind.DeviceScope => string.Equals(audience.ScopeKey, watcher.ScopeKey, StringComparison.OrdinalIgnoreCase),

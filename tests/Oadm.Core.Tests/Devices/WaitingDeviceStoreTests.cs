@@ -35,6 +35,30 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
         new(address, null, password is null ? null : "root", password, []);
 
     [Fact]
+    public async Task AGroupUsersEntryForEverywhereHasItsOwnKeyAndLeavesWhenTheDeviceIsManaged()
+    {
+        var anna = Guid.NewGuid();
+        var site = Guid.NewGuid();
+        var scope = new WaitingScope(false, true, new HashSet<Guid> { site }, anna);
+        await _store.AddAsync([Line("192.168.0.20", "admin-pw"), Line("192.168.0.21") with { SiteId = site }], "Import", "admin", null, CancellationToken.None);
+
+        var result = await _store.AddAsync([Line("192.168.0.20"), Line("192.168.0.21") with { SiteId = site }], "Import", "anna", anna, scope, CancellationToken.None);
+
+        // The administrator's entry for everywhere stays; the site's entry is shared by the group (updated).
+        Assert.Equal((1, 1, 2), (result.Added, result.Updated, result.Total));
+        var all = (await _store.ListAsync(null, 0, CancellationToken.None)).Items;
+        Assert.Equal(3, all.Count);
+        Assert.True(all.Single(i => i.SiteId is null && i.AddedBy == "admin").HasLogin);
+        Assert.Equal("192.168.0.20", WaitingDeviceStore.AddressPart(WaitingDeviceStore.KeeperKey("192.168.0.20", anna)));
+        Assert.Equal("HOST#X", WaitingDeviceStore.AddressPart("HOST#X")); // only a keeper part is cut
+        await Assert.ThrowsAsync<ArgumentException>(() => _store.AddAsync([Line("192.168.0.22")], "Import", "x", null, scope, CancellationToken.None));
+
+        // The device is managed by now: both entries for everywhere leave, the user's one too.
+        var gone = await _store.RemoveManagedAsync([new ManagedAddress("ACCC8E0000A1", "192.168.0.20", null)], CancellationToken.None);
+        Assert.Equal(2, gone.Count);
+    }
+
+    [Fact]
     public async Task OneEntryPerSiteAndAddressAndTheDropCheckComparesPerRoute()
     {
         var siteA = Guid.NewGuid();

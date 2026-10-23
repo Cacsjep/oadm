@@ -359,7 +359,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
                 || !string.Equals(runtime!.Check.TypeId, check.TypeId, StringComparison.Ordinal)
                 || !JsonNode.DeepEquals(runtime.Check.Settings, check.Settings)
                 || runtime.Check.Severity != check.Severity;
-            typesChanged = isNew || !string.Equals(runtime!.Check.Name, check.Name, StringComparison.Ordinal);
+            typesChanged = isNew || !string.Equals(runtime!.Check.Name, check.Name, StringComparison.Ordinal) || runtime.Check.Owner != check.Owner;
             if (isNew)
             {
                 runtime = new CheckRuntime(check.Clone());
@@ -1409,6 +1409,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
         new(EventTypeId(check.Id), "Compliance: " + check.Name, EventGroup, EventKind.Stateful)
         {
             Description = "On while the check fails on the device.",
+            OwnerScopeKey = check.Owner.ScopeKey, // the check's owning group: Dashboards shows it only to that group's users
         };
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Compliance results could not be written")]

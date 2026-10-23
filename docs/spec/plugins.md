@@ -71,7 +71,8 @@ returns null or throws `NotSupportedException`.
   `ICorePlugin.RequiresAllDevices(method)` (saves of server-wide services; the host refuses them for group users) and
   `SystemAccessReason(method)` (the few methods that may use `ctx.System` in a group user's call). `ICorePluginContext.System`
   (`ISystemAccess`: every device, for background work; default the context's own members) and `Jobs` (`IPluginJobs`:
-  work owned by the user who started it, `Find` answers null for another user's id) and `DeviceScopes` (`IDeviceScopes`:
+  work owned by the user and session that started it, `Find` answers null for another user's or session's id; `StartShared`:
+  a job of the owner's device scope, found and stopped by every user of it) and `DeviceScopes` (`IDeviceScopes`:
   `Exists`, `Contains` (a device, or a device id: from the host's group fields of each device, false when unknown),
   `Devices`, `NameOf` per scope key, `Changed`, `InAnyGroup`: objects a plugin keeps per group run only on its
   devices, a deleted group's are off). `ITaskExecutionContext.Caller` (the
@@ -79,6 +80,9 @@ returns null or throws `NotSupportedException`.
   or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
   `TaskEngine.ForView`). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
   User, Session; the old `Publish` reaches only watchers with all devices on 4.2). `IDeviceInfo.AddedByAllDevices`.
+  `EventTypeInfo.OwnerScopeKey` (the device scope key of the object behind an event type: a device trigger or a compliance
+  check of a group, "all" for one of all devices; null = nobody's): pages that list event types to users hide another
+  owner's; the host fills it for compliance checks (`DeviceScope.ScopeKey` of the check's owner) and passes the plugins' own.
   Actions get nothing new (event rules are for users with all devices). Client SDK: `HasAllDevices` on
   `ICorePluginClientContext`, `ITaskDialogContext`, `IToolbarContext` (default true). `SdkInfo.Version` 0.4.0,
   `SdkInfo.CallContextVersion`: users with a device group may call only packages whose `minSdkVersion` is at least
@@ -113,17 +117,24 @@ tell"; `AnyActiveAsync` answers for every task of the user's devices, null when 
   `ITaskExecutionContext.ManagedAddressesAsync(addresses)`: the same for a running task, the task's own device excluded;
   both at most 256 addresses per call).
   **Jobs**: `PluginJobRegistry` (`ctx.Jobs`): random 128-bit ids, owner
-  = the host's call (user id + session); `Find` / `List` answer only the owner's jobs and only while the caller has the
-  job's device scope; a job runs detached
+  = the host's call (user id + session); `Find` / `List` answer only the owner in the owner's session and only while the
+  caller has the job's device scope; a shared job (`StartShared`, SDK 0.4.0: one scan per scope) answers every caller
+  with the job's device scope, so users of the same group (or all users with all devices) follow and stop it; it still
+  runs with its owner's call and ends like the owner's other jobs. A job started in a call whose user's access, session or
+  group changed after the call began is refused ("Your devices changed. Connect again.", `AccessEpochs`: the interceptor
+  captures the epoch before it reads the session, `CancelOwner`, `CancelGroup` and `CancelSession` record the change
+  before they look, the new job is registered before it is checked); a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
   the owner's devices or role change, the rules of the owner's group change (`CancelGroup` on `DeviceGroupStore.Changed`
   and `Deleted`; a new name or description raises only `Updated`) or the session or the user's sessions end; for a change
-  of devices, role or group the job is also forgotten (a finished report of the old devices answers NOT_FOUND). When
+  of devices, role, group or session the job is also forgotten (a finished report of the old devices answers NOT_FOUND). When
   devices move into or out of the owner's group (`HostDeviceScopes.Changed`, the coalesced membership signal:
   `ScopeDevicesChanged`) its finished jobs are forgotten at once and its running ones when they end; at most 50 per user and plugin (finished
   ones dropped first, else "Wait until your earlier work has finished."). **Events**: `PluginEventHub.WatchAsync(pluginId,
   PluginWatcher, ct)`; the old `Publish(topic, json)` = `PluginEventAudience.AllDevices`; `Device` / `DeviceRows` are
-  checked against the watcher's view ids in the watcher's own loop (rows filtered in order; a payload that is not an array
+  left out before they are queued for a group watcher when its view's ids are cached and name none of their devices (so
+  events of other devices never push its own out of its 256 places; no read in the publisher), and always checked
+  against the watcher's view ids in the watcher's own loop (rows filtered in order; a payload that is not an array
   of one element per id is dropped for group watchers and logged); `User` (name, case-insensitive), `Session`,
   `DeviceScope` (scope key, SDK 0.4.0 addition for state kept per group). **Device scopes**: `HostDeviceScopes`
   (`ctx.DeviceScopes`, over `DeviceGroupStore` + the factory's filters; unknown and deleted keys cover nothing;

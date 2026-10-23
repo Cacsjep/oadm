@@ -285,6 +285,47 @@ public sealed class AddDevicesScopeTests
     }
 
     [Fact]
+    public async Task TheFirstRefreshAfterACommitKeepsTheDevicesThatAreStillThere()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var repo = host.Get<DeviceRepository>();
+        var kept = await repo.AddAsync(new Device { Serial = "ACCC8E00D001", Address = "10.9.7.1", AddedByAllDevices = true }, CancellationToken.None);
+        var removed = await repo.AddAsync(new Device { Serial = "ACCC8E00D002", Address = "10.9.7.2", AddedByAllDevices = true }, CancellationToken.None);
+        await repo.RemoveAsync(removed.Id, CancellationToken.None);
+        var view = await host.Get<DeviceViewFactory>().ForScopeAsync(DeviceScope.All, "admin", CancellationToken.None);
+
+        var refresh = await AddDevicesGrpcService.StillInViewAsync(view, [kept.Id, removed.Id], CancellationToken.None);
+
+        Assert.Equal([kept.Id], refresh!.Ids);
+        Assert.Null(await AddDevicesGrpcService.StillInViewAsync(view, [removed.Id], CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AGroupUsersEntryForAnAddressAnotherUserKeepsLeavesThatEntryAndTheCountsAlone()
+    {
+        await using var world = await World.StartAsync();
+        var local = await world.GroupUserAsync("local", new Proto.DeviceGroupRules { ThisServer = true });
+        var adminWaiting = new Proto.WaitingDeviceService.WaitingDeviceServiceClient(world.Host.Invoker);
+        await adminWaiting.AddAsync(new Proto.AddWaitingRequest
+        {
+            Lines = { new Proto.WaitingLine { Address = "10.9.0.40", UserName = "root", Password = Password, Tags = { "Admin" } }, new Proto.WaitingLine { Address = "10.9.0.42" } },
+        });
+
+        // The same address again from the group user: a new entry of that user, the administrator's stays as it was.
+        var reply = await local.Waiting.AddAsync(new Proto.AddWaitingRequest { Lines = { new Proto.WaitingLine { Address = "10.9.0.40", Tags = { "Mine" } } } });
+        Assert.Equal((1, 0, 1), (reply.Added, reply.Updated, reply.Total)); // nothing about the hidden entries
+        var again = await local.Waiting.AddAsync(new Proto.AddWaitingRequest { Lines = { new Proto.WaitingLine { Address = "10.9.0.40" } } });
+        Assert.Equal((0, 1, 1), (again.Added, again.Updated, again.Total)); // the user's own entry
+
+        var admins = (await adminWaiting.ListAsync(new Proto.ListWaitingRequest())).Devices;
+        Assert.Equal(3, admins.Count);
+        var kept = admins.Single(d => d.Address == "10.9.0.40" && d.AddedBy != "local");
+        Assert.Equal(["Admin"], kept.Tags);
+        Assert.True(kept.HasLogin);
+        Assert.Equal(["10.9.0.40"], (await local.Waiting.ListAsync(new Proto.ListWaitingRequest())).Devices.Select(d => d.Address));
+    }
+
+    [Fact]
     public async Task TheWaitingListIsScopedBySiteAndTriesAsTheUserWhoKeptIt()
     {
         await using var world = await World.StartAsync();

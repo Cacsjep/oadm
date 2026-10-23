@@ -44,6 +44,38 @@ public sealed class PluginEventAudienceTests
         Assert.Equal(["rows:[\"b1\"]", "scope:6", "end:"], await ben.UntilEndAsync());
     }
 
+    [Fact]
+    public async Task DeviceEventsOfOtherDevicesNeverPushAGroupWatchersOwnEventsOutOfItsQueue()
+    {
+        var hub = new PluginEventHub();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var visible = new HashSet<Guid> { A };
+        var watcher = new PluginWatcher("anna", "s-anna", "group-a", false, async _ =>
+        {
+            await gate.Task; // the reader stays on its first event while the others are published
+            return visible;
+        })
+        {
+            CachedIds = () => visible,
+        };
+        var anna = new Watching(hub, watcher);
+        await Eventually.TrueAsync(() => hub.WatcherCount("p") == 1, "anna watches");
+
+        var publisher = hub.For("p");
+        publisher.Publish("first", "1", PluginEventAudience.Device(A));
+        publisher.Publish("mine", "2", PluginEventAudience.Device(A));
+        for (var i = 0; i < PluginEventHub.QueueCapacity * 2; i++)
+        {
+            publisher.Publish("other", "x", PluginEventAudience.Device(B));
+            publisher.Publish("other-rows", "[\"x\"]", PluginEventAudience.DeviceRows([B]));
+        }
+
+        publisher.Publish("end", null, PluginEventAudience.User("anna"));
+        gate.SetResult();
+
+        Assert.Equal(["first:1", "mine:2", "end:"], await anna.UntilEndAsync());
+    }
+
     private static PluginWatcher Watcher(string user, string session, string scope, bool all, params Guid[] visible) =>
         new(user, session, scope, all, _ => Task.FromResult<IReadOnlySet<Guid>>(visible.ToHashSet()));
 
