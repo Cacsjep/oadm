@@ -26,8 +26,9 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _deviceGates = new();
     private readonly ConcurrentDictionary<Guid, (int Left, DateTimeOffset Started)> _running = new();
     private readonly ConcurrentDictionary<Guid, IReadOnlyList<Guid>> _runTasks = new();
+    private const string NotRunning = "The Action Rule Editor plugin is not running.";
     private ICorePluginContext? _ctx;
-    private DeviceSweep<DeviceRulesRow>? _sweep;
+    private DeviceSweeps<DeviceRulesRow>? _sweeps;
 
     public ActionRulesPlugin()
         : this(new DeviceSweepOptions { DeviceTimeout = TimeSpan.FromSeconds(20), Parallelism = 16 })
@@ -62,8 +63,11 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     /// <summary>The saved rules of every run (undo).</summary>
     internal UndoStore Undo { get; private set; }
 
-    /// <summary>The table while the plugin runs (tests).</summary>
-    internal DeviceSweep<DeviceRulesRow>? Sweep => _sweep;
+    /// <summary>The table of all devices while the plugin runs (tests).</summary>
+    internal DeviceSweep<DeviceRulesRow>? Sweep => _sweeps?.For(ICallContext.AllDevicesScopeKey);
+
+    /// <summary>The tables per device scope while the plugin runs (tests).</summary>
+    internal DeviceSweeps<DeviceRulesRow>? Sweeps => _sweeps;
 
     public string? RequiredPermission(string method) => method switch
     {
@@ -84,55 +88,74 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         await StopAsync(ct).ConfigureAwait(false);
         _ctx = ctx;
         Undo = new UndoStore(ctx.DataDirectory is { } data ? Path.Combine(data, "undo") : null, ctx.Secrets, _options.Time);
-        _sweep = new DeviceSweep<DeviceRulesRow>(ctx, _options, _ => true, async (d, _, t) => await ReadAsync(d, t).ConfigureAwait(false), r => r.Address, PublishRows, PublishState);
+        // One table per device scope: the users of a device group share the table of their group's devices.
+        _sweeps = new DeviceSweeps<DeviceRulesRow>(ctx, _options, _ => true, async (d, _, t) => await ReadAsync(d, t).ConfigureAwait(false), r => r.Address, PublishRows, PublishState);
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
-        if (_sweep is { } sweep)
+        if (_sweeps is { } sweeps)
         {
-            _sweep = null;
-            await sweep.DisposeAsync().ConfigureAwait(false);
+            _sweeps = null;
+            await sweeps.DisposeAsync().ConfigureAwait(false);
         }
     }
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>In-process calls without a user (the host itself, tests): the table of all devices.</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
+
+    /// <summary>
+    /// The page's calls: the table of the caller's devices (one per device group). Every device id of a request (chosen
+    /// devices, targets, the source of a copy) must be in the caller's view, else the whole request is refused (NOT_FOUND,
+    /// like an unknown id) before anything is read, saved for undo or started; runs start through the caller's task runner.
+    /// </summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
-        var sweep = _sweep ?? throw new InvalidOperationException("The Action Rule Editor plugin is not running.");
+        ArgumentNullException.ThrowIfNull(caller);
+        var sweeps = _sweeps ?? throw new InvalidOperationException(NotRunning);
         switch (method)
         {
             case ActionRulesMethods.Read:
-                sweep.Start(ReadIds(payloadJson));
-                return ActionRulesJson.Serialize(State());
+                var readIds = ReadIds(payloadJson);
+                if (readIds is not null)
+                {
+                    await CallDevices.RequireAsync(caller, readIds, ct).ConfigureAwait(false);
+                }
+
+                sweeps.For(caller)?.Start(readIds);
+                return ActionRulesJson.Serialize(State(caller.DeviceScopeKey));
             case ActionRulesMethods.GetState:
-                return ActionRulesJson.Serialize(State());
+                return ActionRulesJson.Serialize(State(caller.DeviceScopeKey));
             case ActionRulesMethods.GetProgress:
-                return ActionRulesJson.Serialize(State() with { Rows = [] });
+                return ActionRulesJson.Serialize(State(caller.DeviceScopeKey) with { Rows = [] });
             case ActionRulesMethods.Templates:
                 var ids = ActionRulesJson.Deserialize<TemplatesRequest>(payloadJson).Ids ?? [];
                 return ActionRulesJson.Serialize(ids.Select(id => _templateSets.TryGetValue(id, out var set) ? set : null).OfType<TemplateSet>().ToList());
             case ActionRulesMethods.Edit or ActionRulesMethods.Delete:
-                return ActionRulesJson.Serialize(await RunAsync(method, ActionRulesJson.Deserialize<RunRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await RunAsync(caller, method, ActionRulesJson.Deserialize<RunRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.UndoRuns:
-                return ActionRulesJson.Serialize(await Undo.ListAsync(ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize((await Undo.ListAsync(ct).ConfigureAwait(false)).Where(r => Sees(caller, r)).ToList());
             case ActionRulesMethods.Undo:
-                return ActionRulesJson.Serialize(await UndoAsync(ActionRulesJson.Deserialize<UndoRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await UndoAsync(caller, ActionRulesJson.Deserialize<UndoRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.Deploy:
-                return ActionRulesJson.Serialize(await DeployAsync(ActionRulesJson.Deserialize<DeployRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await DeployAsync(caller, ActionRulesJson.Deserialize<DeployRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.Events:
-                return ActionRulesJson.Serialize(Events(ActionRulesJson.Deserialize<EventsRequest>(payloadJson)));
+                var eventsRequest = ActionRulesJson.Deserialize<EventsRequest>(payloadJson);
+                await CallDevices.RequireAsync(caller, eventsRequest.DeviceIds ?? [], ct).ConfigureAwait(false);
+                return ActionRulesJson.Serialize(Events(eventsRequest));
             case ActionRulesMethods.Build:
-                return ActionRulesJson.Serialize(await BuildAsync(ActionRulesJson.Deserialize<BuildRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await BuildAsync(caller, ActionRulesJson.Deserialize<BuildRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.RecipientNew:
-                return ActionRulesJson.Serialize(await NewRecipientAsync(ActionRulesJson.Deserialize<NewRecipientRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await NewRecipientAsync(caller, ActionRulesJson.Deserialize<NewRecipientRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.RecipientDeploy:
-                return ActionRulesJson.Serialize(await DeployRecipientAsync(ActionRulesJson.Deserialize<DeployRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await DeployRecipientAsync(caller, ActionRulesJson.Deserialize<DeployRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.RecipientEdit or ActionRulesMethods.RecipientDelete:
-                return ActionRulesJson.Serialize(await RecipientsAsync(method, ActionRulesJson.Deserialize<RecipientRunRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await RecipientsAsync(caller, method, ActionRulesJson.Deserialize<RecipientRunRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.ScheduleEdit or ActionRulesMethods.ScheduleDelete:
-                return ActionRulesJson.Serialize(await SchedulesAsync(method, ActionRulesJson.Deserialize<ScheduleRunRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await SchedulesAsync(caller, method, ActionRulesJson.Deserialize<ScheduleRunRequest>(payloadJson), ct).ConfigureAwait(false));
             case ActionRulesMethods.ScheduleDeploy:
-                return ActionRulesJson.Serialize(await DeployScheduleAsync(ActionRulesJson.Deserialize<ScheduleDeployRequest>(payloadJson), ct).ConfigureAwait(false));
+                return ActionRulesJson.Serialize(await DeployScheduleAsync(caller, ActionRulesJson.Deserialize<ScheduleDeployRequest>(payloadJson), ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
@@ -199,11 +222,23 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
-    /// <summary>Reads one device again (after a task on it).</summary>
+    /// <summary>
+    /// Undo runs are kept per device scope: users of a device group see and undo only the runs of their group (others answer
+    /// like unknown runs), users with all devices every run. Runs from before device groups belong to all devices.
+    /// </summary>
+    private static bool Sees(ICallContext caller, UndoRun run) =>
+        caller.HasAllDevices || string.Equals(run.Scope ?? ICallContext.AllDevicesScopeKey, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Reads one device again (after a task on it), in every table that has a row of it.</summary>
     internal async Task RefreshRowAsync(Guid deviceId)
     {
-        if (_sweep is { } sweep)
+        foreach (var sweep in _sweeps?.All ?? [])
         {
+            if (sweep.Snapshot().Rows.All(r => r.DeviceId != deviceId))
+            {
+                continue;
+            }
+
             try
             {
                 await sweep.ReadOneAsync(deviceId, CancellationToken.None).ConfigureAwait(false);
@@ -257,15 +292,25 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            return row with { Text = _sweep?.Failure(ex) ?? ex.Message };
+            return row with { Text = Failure(ex) };
         }
     }
 
+    /// <summary>The usual text when a device cannot be read (as <see cref="DeviceSweep{TRow}.Failure"/>).</summary>
+    private string Failure(Exception ex) => ex switch
+    {
+        OperationCanceledException => DeviceMessages.Timeout(_options.DeviceTimeout),
+        HttpRequestException { InnerException: System.Net.Sockets.SocketException socket } => DeviceMessages.Unreachable(socket.Message),
+        HttpRequestException http => DeviceMessages.Unreachable(http.Message),
+        _ => ex.Message,
+    };
+
     /// <summary>Starts one task per device after checking the request; nothing starts on a bad one.</summary>
-    private async Task<RunStarted> RunAsync(string method, RunRequest request, CancellationToken ct)
+    private async Task<RunStarted> RunAsync(ICallContext caller, string method, RunRequest request, CancellationToken ct)
     {
         var action = method == ActionRulesMethods.Delete ? RuleTaskActions.Delete : RuleTaskActions.Edit;
         var targets = Targets(request.Targets);
+        await CallDevices.RequireAsync(caller, targets.Select(t => t.DeviceId), ct).ConfigureAwait(false);
         if (action == RuleTaskActions.Edit && (request.Patch is null ? "Choose what to change." : request.Patch.Problem() ?? UnknownSetting(request.Patch.Parameters)) is { } problem)
         {
             throw new ArgumentException(problem, nameof(request));
@@ -274,18 +319,18 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         var patch = action == RuleTaskActions.Edit ? PreparePatch(request.Patch!, targets.Select(t => t.DeviceId)) : null;
         var description = TaskName(action, patch);
         var payload = new RuleTaskPayload(action, Guid.NewGuid(), description, targets, patch);
-        return await StartAsync(payload, [.. targets.Select(t => t.DeviceId)], ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, [.. targets.Select(t => t.DeviceId)], ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Puts back what a run changed. Refused while its tasks may still write, and only once: the mark is set before the tasks
     /// start (atomically) and taken back when they cannot be started.
     /// </summary>
-    private async Task<RunStarted> UndoAsync(UndoRequest request, CancellationToken ct)
+    private async Task<RunStarted> UndoAsync(ICallContext caller, UndoRequest request, CancellationToken ct)
     {
-        var ctx = _ctx ?? throw new InvalidOperationException("The Action Rule Editor plugin is not running.");
-        var run = await Undo.FindAsync(request.RunId, ct).ConfigureAwait(false)
-            ?? throw new ArgumentException("This change can no longer be undone.", nameof(request));
+        var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
+        var run = await Undo.FindAsync(request.RunId, ct).ConfigureAwait(false) is { } found && Sees(caller, found) ? found
+            : throw new ArgumentException("This change can no longer be undone.", nameof(request));
         if (IsRunning(run.RunId))
         {
             throw new ArgumentException("This change is still running. Undo it when its tasks are finished.", nameof(request));
@@ -297,6 +342,9 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             throw new ArgumentException("This change wrote nothing that can be undone.", nameof(request));
         }
 
+        // A device of the run that left the caller's devices refuses the whole undo before it is marked.
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false);
+
         if (!await Undo.TryMarkUndoneAsync(run.RunId, true, ct).ConfigureAwait(false))
         {
             throw new ArgumentException("This change was undone already.", nameof(request));
@@ -306,7 +354,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         LogRun(ctx.Logger, RuleTaskActions.Undo, devices.Count);
         try
         {
-            var ids = await ctx.Tasks.RunAsync(ActionRulesInfo.TaskPluginId, devices, ActionRulesJson.Serialize(payload), ActionRulesInfo.DisplayName, ct).ConfigureAwait(false);
+            var ids = await caller.Tasks.RunAsync(ActionRulesInfo.TaskPluginId, devices, ActionRulesJson.Serialize(payload), ActionRulesInfo.DisplayName, ct).ConfigureAwait(false);
             return new RunStarted(payload.RunId, ids);
         }
         catch
@@ -317,9 +365,9 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     }
 
     /// <summary>Copies a rule of one device to the chosen devices (read with its passwords now, kept in the run's memory).</summary>
-    private async Task<RunStarted> DeployAsync(DeployRequest request, CancellationToken ct)
+    private async Task<RunStarted> DeployAsync(ICallContext caller, DeployRequest request, CancellationToken ct)
     {
-        var (vapix, devices) = await DeploySourceAsync(request.SourceDeviceId, request.DeviceIds, ct).ConfigureAwait(false);
+        var (vapix, devices) = await DeploySourceAsync(caller, request.SourceDeviceId, request.DeviceIds, ct).ConfigureAwait(false);
         if (request.Patch is { IsEmpty: false } patch && (patch.Problem() ?? UnknownSetting(patch.Parameters)) is { } problem)
         {
             throw new ArgumentException(problem, nameof(request));
@@ -341,12 +389,12 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             Rule = rule,
             Schedules = [.. set.Schedules.Where(s => used.Contains(s.Id))],
         };
-        return await StartAsync(payload, devices, ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, devices, ct).ConfigureAwait(false);
     }
 
-    private async Task<RunStarted> DeployRecipientAsync(DeployRequest request, CancellationToken ct)
+    private async Task<RunStarted> DeployRecipientAsync(ICallContext caller, DeployRequest request, CancellationToken ct)
     {
-        var (vapix, devices) = await DeploySourceAsync(request.SourceDeviceId, request.DeviceIds, ct).ConfigureAwait(false);
+        var (vapix, devices) = await DeploySourceAsync(caller, request.SourceDeviceId, request.DeviceIds, ct).ConfigureAwait(false);
         var set = await SoapActionEngine.ReadAsync(vapix, ct).ConfigureAwait(false);
         var recipient = set.Recipients.FirstOrDefault(r => r.Id == request.SourceId && RecipientView.VersionOf(r) == request.Version)
             ?? throw new ArgumentException(RuleTexts.RecipientChangedSinceRead, nameof(request));
@@ -355,13 +403,14 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             Recipient = recipient,
             RecipientPatch = request.RecipientPatch,
         };
-        return await StartAsync(payload, devices, ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, devices, ct).ConfigureAwait(false);
     }
 
     /// <summary>A new recipient, created on each device by the same task as a copied one.</summary>
-    private async Task<RunStarted> NewRecipientAsync(NewRecipientRequest request, CancellationToken ct)
+    private async Task<RunStarted> NewRecipientAsync(ICallContext caller, NewRecipientRequest request, CancellationToken ct)
     {
         var devices = DeviceIds(request.DeviceIds);
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(request.Template) || !request.Template.StartsWith("com.axis.recipient.", StringComparison.Ordinal) || request.Template.Length > 256)
         {
             throw new ArgumentException("Choose the kind of recipient.", nameof(request));
@@ -388,13 +437,14 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         {
             Recipient = new DeviceRecipient(string.Empty, name, request.Template, [.. parameters.Select(p => new NameValue(p.Key, p.Value))]),
         };
-        return await StartAsync(payload, devices, ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, devices, ct).ConfigureAwait(false);
     }
 
-    private async Task<RunStarted> RecipientsAsync(string method, RecipientRunRequest request, CancellationToken ct)
+    private async Task<RunStarted> RecipientsAsync(ICallContext caller, string method, RecipientRunRequest request, CancellationToken ct)
     {
         var delete = method == ActionRulesMethods.RecipientDelete;
         var targets = Targets(request.Targets);
+        await CallDevices.RequireAsync(caller, targets.Select(t => t.DeviceId), ct).ConfigureAwait(false);
         if (!delete && request.Patch is null or { IsEmpty: true })
         {
             throw new ArgumentException("Choose what to change.", nameof(request));
@@ -414,13 +464,15 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         {
             RecipientPatch = delete ? null : request.Patch,
         };
-        return await StartAsync(payload, [.. targets.Select(t => t.DeviceId)], ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, [.. targets.Select(t => t.DeviceId)], ct).ConfigureAwait(false);
     }
 
-    private async Task<RunStarted> SchedulesAsync(string method, ScheduleRunRequest request, CancellationToken ct)
+    private async Task<RunStarted> SchedulesAsync(ICallContext caller, string method, ScheduleRunRequest request, CancellationToken ct)
     {
         var delete = method == ActionRulesMethods.ScheduleDelete;
         var targets = Targets(request.Targets);
+        var rules = delete && request.Rules is { Count: > 0 } chosen ? Targets(chosen) : null;
+        await CallDevices.RequireAsync(caller, targets.Select(t => t.DeviceId).Concat(rules?.Select(t => t.DeviceId) ?? []), ct).ConfigureAwait(false);
         if (!delete && (request.Patch is null or { Name: null, Definition: null } ? "Choose what to change." : ScheduleProblem(request.Patch)) is { } problem)
         {
             throw new ArgumentException(problem, nameof(request));
@@ -429,14 +481,16 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         var payload = new RuleTaskPayload(delete ? RuleTaskActions.ScheduleDelete : RuleTaskActions.ScheduleEdit, Guid.NewGuid(), delete ? "Delete schedules" : "Change schedules", targets, null)
         {
             SchedulePatch = delete ? null : request.Patch,
-            Rules = delete && request.Rules is { Count: > 0 } rules ? Targets(rules) : null,
+            Rules = rules,
         };
-        return await StartAsync(payload, [.. targets.Select(t => t.DeviceId)], ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, [.. targets.Select(t => t.DeviceId)], ct).ConfigureAwait(false);
     }
 
     /// <summary>A new schedule (OADM's own id from its name, the same on every device) or one copied from a device.</summary>
-    private async Task<RunStarted> DeployScheduleAsync(ScheduleDeployRequest request, CancellationToken ct)
+    private async Task<RunStarted> DeployScheduleAsync(ICallContext caller, ScheduleDeployRequest request, CancellationToken ct)
     {
+        var devices = DeviceIds(request.DeviceIds);
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false);
         DeviceSchedule schedule;
         if (request.New is { } created)
         {
@@ -450,7 +504,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         else
         {
             var source = request.SourceDeviceId ?? throw new ArgumentException("Choose the schedule.", nameof(request));
-            var (vapix, _) = await DeploySourceAsync(source, request.DeviceIds, ct).ConfigureAwait(false);
+            var (vapix, _) = await DeploySourceAsync(caller, source, request.DeviceIds, ct).ConfigureAwait(false);
             var set = await SoapActionEngine.ReadAsync(vapix, ct).ConfigureAwait(false);
             var found = set.Schedules.FirstOrDefault(s => s.Id == request.SourceId && ScheduleView.VersionOf(s) == request.SourceVersion)
                 ?? throw new ArgumentException(RuleTexts.ScheduleChangedSinceRead, nameof(request));
@@ -459,21 +513,24 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
                 : found with { Id = ScheduleText.OwnId(found.Name) };
         }
 
-        var devices = DeviceIds(request.DeviceIds);
         var payload = new RuleTaskPayload(RuleTaskActions.ScheduleDeploy, Guid.NewGuid(), Shorten("Add schedule " + schedule.Name), [], null)
         {
             Schedules = [schedule],
         };
-        return await StartAsync(payload, devices, ct).ConfigureAwait(false);
+        return await StartAsync(caller, payload, devices, ct).ConfigureAwait(false);
     }
 
-    private async Task<(Sdk.Vapix.IVapixClient Vapix, IReadOnlyList<Guid> Devices)> DeploySourceAsync(Guid source, IReadOnlyList<Guid>? deviceIds, CancellationToken ct)
+    /// <summary>
+    /// The source of a copy and the chosen devices, both in the caller's view (checked before the source is read): a removed
+    /// source or one outside the view answers NOT_FOUND like an unknown id.
+    /// </summary>
+    private static async Task<(Sdk.Vapix.IVapixClient Vapix, IReadOnlyList<Guid> Devices)> DeploySourceAsync(ICallContext caller, Guid source, IReadOnlyList<Guid>? deviceIds, CancellationToken ct)
     {
-        var ctx = _ctx ?? throw new InvalidOperationException("The Action Rule Editor plugin is not running.");
         var devices = DeviceIds(deviceIds);
-        if (await ctx.Devices.FindAsync(source, ct).ConfigureAwait(false) is not { } device)
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false);
+        if (await caller.Devices.FindAsync(source, ct).ConfigureAwait(false) is not { } device)
         {
-            throw new ArgumentException(DeviceMessages.Removed, nameof(source));
+            throw new DevicesNotAvailableException();
         }
 
         if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
@@ -481,7 +538,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             throw new ArgumentException(refusal, nameof(source));
         }
 
-        return (await ctx.Vapix.CreateAsync(source, ct).ConfigureAwait(false), devices);
+        return (await caller.Vapix.CreateAsync(source, ct).ConfigureAwait(false), devices);
     }
 
     /// <summary>The devices a read covers: the page's choice (1 to 30,000), or every device for an older page without one.</summary>
@@ -536,18 +593,19 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             : null;
     }
 
-    /// <summary>Saves the run for undo and starts one task per device.</summary>
-    private async Task<RunStarted> StartAsync(RuleTaskPayload payload, IReadOnlyList<Guid> devices, CancellationToken ct)
+    /// <summary>Saves the run for undo (owned by the caller's device scope) and starts one task per device through the caller.</summary>
+    private async Task<RunStarted> StartAsync(ICallContext caller, RuleTaskPayload payload, IReadOnlyList<Guid> devices, CancellationToken ct)
     {
-        var ctx = _ctx ?? throw new InvalidOperationException("The Action Rule Editor plugin is not running.");
-        await Undo.StartRunAsync(new UndoRun(payload.RunId, _options.Time.GetUtcNow(), RunDescription(payload.Description, devices.Count), payload.Action, devices.Count, false), ct).ConfigureAwait(false);
+        var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false); // before the run is saved
+        await Undo.StartRunAsync(new UndoRun(payload.RunId, _options.Time.GetUtcNow(), RunDescription(payload.Description, devices.Count), payload.Action, devices.Count, false) { Scope = caller.DeviceScopeKey }, ct).ConfigureAwait(false);
         LogRun(ctx.Logger, payload.Action, devices.Count);
         ForgetOldRuns();
         _running[payload.RunId] = (devices.Count, _options.Time.GetUtcNow());
         IReadOnlyList<Guid> ids;
         try
         {
-            ids = await ctx.Tasks.RunAsync(ActionRulesInfo.TaskPluginId, devices, ActionRulesJson.Serialize(payload), ActionRulesInfo.DisplayName, ct).ConfigureAwait(false);
+            ids = await caller.Tasks.RunAsync(ActionRulesInfo.TaskPluginId, devices, ActionRulesJson.Serialize(payload), ActionRulesInfo.DisplayName, ct).ConfigureAwait(false);
         }
         catch
         {
@@ -578,9 +636,10 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     private static string RunDescription(string name, int devices) =>
         name + (devices == 1 ? " on 1 device" : string.Create(CultureInfo.InvariantCulture, $" on {devices:N0} devices"));
 
-    private RulesState State()
+    /// <summary>The state of a scope's table; a deleted group has none (empty).</summary>
+    private RulesState State(string scopeKey)
     {
-        if (_sweep is not { } sweep)
+        if (_sweeps?.For(scopeKey) is not { } sweep)
         {
             return new RulesState(false, 0, 0, null, []);
         }
@@ -589,30 +648,32 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         return new RulesState(now.Running, now.Done, now.Total, now.FinishedUtc, sweep.Sorted(now.Rows));
     }
 
-    private void PublishRows(IReadOnlyList<DeviceRulesRow> rows, IReadOnlyList<Guid> removed)
+    /// <summary>Rows and progress of a scope's table go only to the users of that scope.</summary>
+    private void PublishRows(string scopeKey, IReadOnlyList<DeviceRulesRow> rows, IReadOnlyList<Guid> removed)
     {
         if (_ctx?.Events is not { } events)
         {
             return;
         }
 
+        var audience = PluginEventAudience.DeviceScope(scopeKey);
         foreach (var chunk in rows.Chunk(ActionRulesInfo.MaxRowsPerEvent))
         {
-            events.Publish(ActionRulesMethods.RowsTopic, ActionRulesJson.Serialize(new RowsEvent(chunk, [])));
+            events.Publish(ActionRulesMethods.RowsTopic, ActionRulesJson.Serialize(new RowsEvent(chunk, [])), audience);
         }
 
         if (removed.Count > 0)
         {
-            events.Publish(ActionRulesMethods.RowsTopic, ActionRulesJson.Serialize(new RowsEvent([], removed)));
+            events.Publish(ActionRulesMethods.RowsTopic, ActionRulesJson.Serialize(new RowsEvent([], removed)), audience);
         }
     }
 
-    private void PublishState()
+    private void PublishState(string scopeKey)
     {
-        if (_sweep is { } sweep && _ctx?.Events is { } events)
+        if (_sweeps?.Existing(scopeKey) is { } sweep && _ctx?.Events is { } events)
         {
             var now = sweep.Snapshot();
-            events.Publish(ActionRulesMethods.StateTopic, ActionRulesJson.Serialize(new RulesState(now.Running, now.Done, now.Total, now.FinishedUtc, [])));
+            events.Publish(ActionRulesMethods.StateTopic, ActionRulesJson.Serialize(new RulesState(now.Running, now.Done, now.Total, now.FinishedUtc, [])), PluginEventAudience.DeviceScope(scopeKey));
         }
     }
 

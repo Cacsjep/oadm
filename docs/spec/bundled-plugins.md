@@ -222,6 +222,8 @@ and device API: plugin `README.md`.
   statuses are not contacted; a copied rule brings the schedules it uses first (OADM's own id
   `com.axis.schedules.oadm.<name>`, the same on every device); topics are written without the `//.` AXIS OS 10 appends;
   built-in schedules are never changed or deleted, a used schedule is deleted only together with its rules.
+- Device groups: one table per device scope; every device id of a request in the caller's devices or the whole request
+  is refused (NOT_FOUND) before anything is read, saved or started; undo runs per group.
 - Roles: "show" (Operator, Viewer), "Change action rules" (`manage`, Operator yes), "Delete action rules" (`delete`,
   Operator yes); every change, copy, delete and undo is audited.
 - Tests: `tests/Oadm.Plugins.ActionRules.Tests` (+ Perf 5,000 devices); opt-in `RulesHardwareWriteTests` and
