@@ -24,6 +24,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups: a device that leaves a group disappears at once from the group's tables, dashboard values and scan
   results, and an export of its recordings ends. An administrator can save a group's view or dashboard after one of its
   devices left the group: the save leaves that device out and says so. The same for a group's device trigger.
+- Device groups: a copy of a device trigger made by a user with a group keeps only the group's devices, and the trigger
+  page says how many it left out. A system report can be read only by the user who started it.
 - Hardening scan: every user with the same devices may stop a running scan, not only the user who started it.
 - Device groups: the dashboards of a user with a group offer only the group's own device triggers, and their live values
   stop at once when the user's devices change.
