@@ -70,6 +70,25 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task TheDevicesOfABatchComeInTheOrderOfTheRequest()
+    {
+        var b = Sites.Add("Building B");
+        var first = await AddDeviceAsync("ACCC8E000001", siteId: b);
+        var second = await AddDeviceAsync("ACCC8E000002", siteId: b);
+        var third = await AddDeviceAsync("ACCC8E000003", siteId: b);
+        var group = (await SaveGroupAsync("B", sites: [b])).Group;
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+        var all = await Views.ForScopeAsync(DeviceScope.All, "admin", Ct);
+        Guid[] request = [third.Id, first.Id, third.Id, second.Id];
+
+        foreach (var viewed in new[] { await view.GetAsync(request, Ct), await all.GetAsync(request, Ct), await Views.System.GetAsync(request, Ct) })
+        {
+            Assert.Equal([third.Id, first.Id, second.Id], viewed.Ids);
+            Assert.Equal(viewed.Ids, viewed.Select(d => d.Id));
+        }
+    }
+
+    [Fact]
     public async Task ARenamedTagStaysAndADeletedTagOrRemovedSiteDropsOutAtOnce()
     {
         var b = Sites.Add("Building B");

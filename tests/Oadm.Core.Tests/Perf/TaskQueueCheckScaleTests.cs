@@ -61,7 +61,7 @@ public sealed class TaskQueueCheckScaleTests(ITestOutputHelper output) : DeviceG
             Interlocked.Increment(ref ran);
             return Task.CompletedTask;
         })
-        { Limit = 8 }, new PluginOrigin("test", "1.0.0", null)));
+        { Limit = 8 }, new PluginOrigin("test", "1.0.0", null) { MinSdkVersion = SdkInfo.Version }));
         await using var engine = new TaskEngine(Db.Get<EfTaskStore>(), registry, Devices, new FakeVapixClientFactory()) { Views = Views };
         var devices = await view.GetAsync([.. (await view.IdsAsync(Ct))], Ct);
 

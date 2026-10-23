@@ -34,7 +34,11 @@ public sealed class TaskViewTests : DeviceGroupTestBase
         return (user, caller, await Views.ForAsync(caller, Ct));
     }
 
-    private void Register(ITaskPlugin plugin) => Assert.True(_registry.RegisterTaskPlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
+    private void Register(DelegateTaskPlugin plugin, string minSdk = SdkInfo.Version) =>
+        Assert.True(_registry.RegisterTaskPlugin(plugin, new PluginOrigin("test." + plugin.Id, "1.0.0", null) { MinSdkVersion = minSdk }));
+
+    private async Task<AuthenticatedCaller> AllDevicesCallerAsync() =>
+        CallerOf(await Users.AddAsync("boss", "pw", BuiltInRoles.OperatorId, DeviceScope.All, Ct));
 
     private static TaskRecord Finished(Guid deviceId, DateTimeOffset created) =>
         new(Guid.NewGuid(), "t.any", "Any", TaskState.Done, "tester@pc", created, created, created, 100, null,
@@ -74,6 +78,88 @@ public sealed class TaskViewTests : DeviceGroupTestBase
         Assert.False(seen.Contains(outside));
         Assert.IsType<DevicesNotAvailableException>(vapixRefused);
         Assert.IsType<DevicesNotAvailableException>(runRefused);
+    }
+
+    [Fact]
+    public async Task AGroupUsersRunOfAPackageBeforeSdk040IsRefusedWholeAndAllDevicesRunIt()
+    {
+        var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var (_, caller, view) = await GroupUserAsync();
+        var ran = 0;
+        Register(new DelegateTaskPlugin("t.old", (_, _, _) =>
+        {
+            Interlocked.Increment(ref ran);
+            return Task.CompletedTask;
+        }), minSdk: "0.3.0");
+        await using var engine = Engine();
+
+        var viewed = await view.GetAsync([inside.Id], Ct);
+        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => engine.RunAsync("t.old", viewed, null, TaskCaller.Of(caller), Ct));
+        Assert.Equal(DeviceAccessRefusedException.PluginNeedsAllDevices, refused.Message);
+        Assert.Empty(await engine.ListAsync(Ct));
+
+        // call.Tasks of the group user's call is refused the same way.
+        var call = engine.ForView(view, TaskCaller.Of(caller));
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => call.RunAsync("t.old", [inside.Id], null, "x", Ct));
+
+        var boss = await AllDevicesCallerAsync();
+        var ids = await engine.RunAsync("t.old", await (await Views.ForAsync(boss, Ct)).GetAsync([inside.Id], Ct), null, TaskCaller.Of(boss), Ct);
+        await engine.WaitForCompletionAsync(ids[0], Ct);
+        Assert.Equal(TaskState.Done, (await engine.GetAsync(ids[0], Ct))!.State);
+        Assert.Equal(1, ran);
+    }
+
+    [Fact]
+    public async Task AGroupOwnersTaskRunsUnderAPluginCallThatRefusesTheFullAccesses()
+    {
+        var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var (_, caller, view) = await GroupUserAsync();
+        var marks = new System.Collections.Concurrent.ConcurrentQueue<(string User, PluginCallMark? Mark)>();
+        Register(new DelegateTaskPlugin("t.mark", (ctx, _, _) =>
+        {
+            marks.Enqueue((ctx.Caller?.UserName ?? "system", CallerContext.PluginCall));
+            return Task.CompletedTask;
+        }));
+        await using var engine = Engine();
+
+        var groupRun = await engine.RunAsync("t.mark", await view.GetAsync([inside.Id], Ct), null, TaskCaller.Of(caller), Ct);
+        await engine.WaitForCompletionAsync(groupRun[0], Ct);
+        var adminCaller = await AllDevicesCallerAsync();
+        var adminRun = await engine.RunAsync("t.mark", await (await Views.ForAsync(adminCaller, Ct)).GetAsync([inside.Id], Ct), null, TaskCaller.Of(adminCaller), Ct);
+        await engine.WaitForCompletionAsync(adminRun[0], Ct);
+
+        var seen = marks.ToArray();
+        Assert.Equal(2, seen.Length);
+        Assert.Equal("anna", seen[0].User);
+        Assert.False(seen[0].Mark!.HasAllDevices);
+        Assert.False(seen[0].Mark!.SystemAllowed);
+        Assert.Equal(view.ScopeKey, seen[0].Mark!.ScopeKey);
+        Assert.Null(seen[1].Mark);
+    }
+
+    [Fact]
+    public async Task TheTaskIdsOfARunPairWithTheRequestedDevicesInTheirOrder()
+    {
+        var a = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var b = await AddDeviceAsync("ACCC8E000002", tags: [Tag]);
+        var c = await AddDeviceAsync("ACCC8E000003", tags: [Tag]);
+        var (_, caller, view) = await GroupUserAsync();
+        Register(new DelegateTaskPlugin("t.order", (_, _, _) => Task.CompletedTask));
+        await using var engine = Engine();
+        Guid[] request = [c.Id, a.Id, b.Id];
+
+        var ids = await engine.RunAsync("t.order", await view.GetAsync(request, Ct), null, TaskCaller.Of(caller), Ct);
+        var viaCall = await engine.ForView(view, TaskCaller.Of(caller)).RunAsync("t.order", request, null, "x", Ct);
+
+        foreach (var run in new[] { ids, viaCall })
+        {
+            Assert.Equal(request.Length, run.Count);
+            for (var i = 0; i < request.Length; i++)
+            {
+                await engine.WaitForCompletionAsync(run[i], Ct);
+                Assert.Equal(request[i], (await engine.GetAsync(run[i], Ct))!.Devices[0].DeviceId);
+            }
+        }
     }
 
     [Fact]

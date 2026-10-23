@@ -594,11 +594,14 @@ public sealed class CanaryTests
     }
 
     /// <summary>A task plugin that runs and answers on every device without contacting it.</summary>
-    internal sealed class CanaryTaskPlugin : Sdk.Plugins.ITaskPlugin, Sdk.Plugins.ITaskPluginQuery
+    internal sealed class CanaryTaskPlugin(string id = CanaryTaskPlugin.PluginId) : Sdk.Plugins.ITaskPlugin, Sdk.Plugins.ITaskPluginQuery
     {
         public const string PluginId = "test.canary";
 
-        public string Id => PluginId;
+        /// <summary>The same task in a package built before SDK 0.4.0 (users with all devices only).</summary>
+        public const string OldPluginId = "test.canary-old-task";
+
+        public string Id => id;
 
         public string DisplayName => "Canary";
 
@@ -615,10 +618,17 @@ public sealed class CanaryTests
         public Task<string?> QueryAsync(Sdk.Plugins.ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
             Task.FromResult<string?>("{}");
 
+        /// <summary>Both canary tasks: the converted one and the one of an old package.</summary>
+        public static void Register(Core.Plugins.PluginRegistry registry)
+        {
+            registry.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(PluginId, "1.0.0", null) { MinSdkVersion = Sdk.Plugins.SdkInfo.Version });
+            registry.RegisterTaskPlugin(new CanaryTaskPlugin(OldPluginId), new Core.Plugins.PluginOrigin(OldPluginId, "1.0.0", null) { MinSdkVersion = "0.3.0" });
+        }
+
         public static async Task RegisterAsync(TestServerHost host)
         {
             var registry = host.Get<Core.Plugins.PluginRegistry>();
-            registry.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(PluginId, "1.0.0", null) { MinSdkVersion = Sdk.Plugins.SdkInfo.Version });
+            Register(registry);
             await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(registry), CancellationToken.None);
         }
     }
@@ -708,7 +718,7 @@ public sealed class CanaryTests
             // The role may open the web interface (DeviceWebService needs the Web View plugin's permission; the plugin is not loaded).
             var webView = new Core.Plugins.PluginRegistry();
             webView.RegisterCorePlugin(new WebViewPermission(), new Core.Plugins.PluginOrigin(WebViewPermission.PluginId, "1.0.0", null));
-            webView.RegisterTaskPlugin(new CanaryTaskPlugin(), new Core.Plugins.PluginOrigin(CanaryTaskPlugin.PluginId, "1.0.0", null) { MinSdkVersion = Sdk.Plugins.SdkInfo.Version }); // one catalog: both permissions
+            CanaryTaskPlugin.Register(webView); // one catalog: every permission
             await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(webView), CancellationToken.None);
 
             var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);

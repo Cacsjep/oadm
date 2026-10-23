@@ -58,6 +58,27 @@ public sealed class PluginServiceGroupTests
     }
 
     [Fact]
+    public async Task ATaskOfAPackageBeforeSdk040IsLeftOutAndRefusedForGroupUsersOnly()
+    {
+        await using var canary = await CanaryTests.Canary.StartAsync();
+        var group = new Proto.TaskService.TaskServiceClient(canary.Invoker);
+        var admin = new Proto.TaskService.TaskServiceClient(canary.Host.Invoker);
+        const string old = CanaryTests.CanaryTaskPlugin.OldPluginId;
+
+        var groupMenu = (await group.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest())).Plugins.Select(p => p.Id).ToList();
+        Assert.Contains(CanaryTests.CanaryTaskPlugin.PluginId, groupMenu);
+        Assert.DoesNotContain(old, groupMenu);
+        Assert.Contains(old, (await admin.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest())).Plugins.Select(p => p.Id));
+
+        var before = (await canary.Host.Get<Core.Tasks.ITaskStore>().ListAsync(CancellationToken.None)).Count;
+        var refused = await Assert.ThrowsAsync<RpcException>(() => group.RunAsync(new Proto.RunTaskRequest { PluginId = old, DeviceIds = { canary.Inside.ToString() } }).ResponseAsync);
+        Assert.Equal((StatusCode.PermissionDenied, DeviceAccessRefusedException.PluginNeedsAllDevices), (refused.StatusCode, refused.Status.Detail));
+        Assert.Equal(before, (await canary.Host.Get<Core.Tasks.ITaskStore>().ListAsync(CancellationToken.None)).Count);
+
+        Assert.Single((await admin.RunAsync(new Proto.RunTaskRequest { PluginId = old, DeviceIds = { canary.Inside.ToString() } })).TaskIds);
+    }
+
+    [Fact]
     public async Task AGroupUserWatchesOnlyTheEventsItsAudienceCovers()
     {
         await using var canary = await CanaryTests.Canary.StartAsync();

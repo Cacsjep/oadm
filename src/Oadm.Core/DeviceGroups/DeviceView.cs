@@ -163,6 +163,7 @@ public sealed class DeviceView
     /// <summary>
     /// The devices of <paramref name="ids"/>, all of them in the view, or <see cref="DevicesNotAvailableException"/> with the
     /// number of ids that are unknown or outside it (the whole batch is refused, nothing runs in part). Duplicate ids count once.
+    /// The devices come in the order of <paramref name="ids"/> (first appearance).
     /// </summary>
     public async Task<ViewedDevices> GetAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
     {
@@ -186,7 +187,9 @@ public sealed class DeviceView
             throw new DevicesNotAvailableException(distinct.Count - allowed.Count);
         }
 
-        return new ViewedDevices(this, allowed);
+        // In the order of the request (the first time an id appears): a run pairs its task ids with the requested devices.
+        var byId = allowed.ToDictionary(d => d.Id);
+        return new ViewedDevices(this, [.. distinct.Select(id => byId[id])]);
     }
 
     /// <summary>
