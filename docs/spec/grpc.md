@@ -120,6 +120,14 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   dialogs, 30 s timeout; NOT_FOUND, UNIMPLEMENTED, FAILED_PRECONDITION for an incompatible device,
   changed certificate or rejected credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT;
   the status detail is the user message).
+  Device groups (`docs/spec/device-scope.md`, Tasks): every method works on the caller's view. `Run` and `Query` take
+  their devices from it (any unknown or outside id: NOT_FOUND "N devices are no longer available.", the whole run
+  refused, the same for every user); `ListTaskPlugins` intersects every runnable set and reason with the view before it
+  is encoded; `List` and the `Watch` snapshot are filtered in the query (`json_each`), the limit counts after the filter,
+  and `Watch` sends only changes of the view's devices (a task whose device left the view comes once as Removed);
+  `GetLog`, `Cancel`, `Delete` answer a task outside the view like an unknown one ("Task … not found."). Tasks of
+  removed devices only for users with all devices; `DeleteAll` only for them. Users with all devices get the
+  unfiltered answers.
 - `FileService`: `Upload` (client stream: header {name, size} then 256 KB data chunks; returns
   id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`, over the 10 GB of
   all uploads together or when less than 1 GB of disk would stay free, see "Security and access" 4),
