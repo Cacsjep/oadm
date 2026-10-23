@@ -1,7 +1,7 @@
 {
   "id": "oadm.web-view",
   "version": "0.1.0",
-  "minSdkVersion": "0.1.0",
+  "minSdkVersion": "0.4.0",
   "displayName": "Web View",
   "description": "Opens the web interface of the devices in tabs, logged in with the stored login.",
   "siteSupport": "full"

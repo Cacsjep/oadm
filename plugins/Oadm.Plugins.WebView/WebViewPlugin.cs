@@ -27,6 +27,13 @@ public sealed class WebViewPlugin : ICorePlugin
         throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
 
     /// <summary>
+    /// No page methods: the tabs go through the host's DeviceWebService, which takes the device from the user's view and
+    /// ends a tab's requests when its device leaves that view.
+    /// </summary>
+    public Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct) =>
+        throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+
+    /// <summary>
     /// Opening devices (DeviceWebService) is a right of its own and off for operators by default: the relay logs in with the
     /// stored device login, so whoever opens a device can change everything on it.
     /// </summary>
