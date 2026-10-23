@@ -128,6 +128,11 @@ an independent security review the same day). A user may be limited to part of t
   checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
   devices").
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary.
+- Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
+  `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
+  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md);
+  fake mode (`FakeOadmApi.DeviceGroups`) has Building B, Building A, Head office and Lobby, tech2 in Building B and
+  guard in Lobby. Tests `DeviceGroupsTests`, `Perf/DeviceGroupEditorScaleTests`.
 - Audit: created, changed (rules), deleted groups; a user's group changed.
 
 ## Tests

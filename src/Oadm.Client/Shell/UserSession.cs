@@ -49,6 +49,19 @@ public sealed partial class UserSession : ObservableObject
     [NotifyPropertyChangedFor(nameof(RoleText))]
     public partial string RoleName { get; private set; } = "";
 
+    /// <summary>
+    /// The user may reach every device (docs/spec/device-scope.md): the Administrator role, a user with All devices, or a
+    /// server before device groups. False for a user limited to a device group (or left without devices): the actions only
+    /// users with all devices may take are hidden (tag rename and delete, Delete all, Clear log, the server log, turning
+    /// compliance on or off). The server refuses them anyway.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool HasAllDevices { get; private set; }
+
+    /// <summary>The user's device group ("Building B"); empty with all devices or no devices.</summary>
+    [ObservableProperty]
+    public partial string DeviceGroupName { get; private set; } = "";
+
     /// <summary>The page the role starts on after a login (a rail key; empty = Devices).</summary>
     public string StartPage { get; private set; } = "";
 
@@ -101,6 +114,8 @@ public sealed partial class UserSession : ObservableObject
         Volatile.Write(ref _rights, Rights.None);
         UserName = null;
         IsAdmin = false;
+        HasAllDevices = false;
+        DeviceGroupName = "";
         RoleName = "";
         StartPage = "";
     }
@@ -113,11 +128,16 @@ public sealed partial class UserSession : ObservableObject
         // A server before roles sends neither a role id nor permissions.
         bool legacy = string.IsNullOrEmpty(user.RoleId);
         Rights before = _rights;
-        bool changed = admin != IsAdmin || legacy != before.Legacy || !permissions.SetEquals(before.Keys) || user.RoleName != RoleName;
+        // A server before device groups sends no all_devices: every device, like before.
+        bool allDevices = admin || !user.HasAllDevices || user.AllDevices;
+        bool changed = admin != IsAdmin || legacy != before.Legacy || !permissions.SetEquals(before.Keys) || user.RoleName != RoleName
+            || allDevices != HasAllDevices;
         Volatile.Write(ref _rights, new Rights(LoggedIn: true, admin, legacy, permissions));
         RoleName = user.RoleName;
         StartPage = user.StartPage;
         IsAdmin = admin;
+        HasAllDevices = allDevices;
+        DeviceGroupName = allDevices ? "" : user.DeviceGroupName;
         if (changed)
         {
             PermissionsChanged?.Invoke(this, EventArgs.Empty);

@@ -200,7 +200,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     public bool MayChange => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsManage) ?? true;
 
     /// <summary>The role may delete the event log ("events.clearLog").</summary>
-    public bool MayClearLog => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsClearLog) ?? true;
+    public bool MayClearLog => (_session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsClearLog) ?? true) && (_session?.HasAllDevices ?? true);
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(DuplicateCommand), nameof(DeleteCommand))]

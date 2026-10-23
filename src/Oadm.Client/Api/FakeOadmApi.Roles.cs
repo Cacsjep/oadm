@@ -128,7 +128,7 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             SeedAuthLocked();
-            var reply = new MyRole { RoleName = "Administrator", AllPermissions = true };
+            var reply = new MyRole { RoleName = "Administrator", AllPermissions = true, Devices = MyDevicesLocked(_users.First(u => u.UserName == FakeUserName)) };
             reply.Permissions.AddRange(PermissionsLocked().Select(p => p.Clone()));
             return Task.FromResult(reply);
         }

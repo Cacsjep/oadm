@@ -375,7 +375,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             return;
         }
 
-        var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, Can(HostPermissionKeys.TagsManage), _dialogs.ConfirmAsync);
+        var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, Can(HostPermissionKeys.TagsManage) && (_session?.HasAllDevices ?? true), _dialogs.ConfirmAsync);
         await _dialogs.ShowDeviceTagsAsync(dialog).ConfigureAwait(true);
     }
 

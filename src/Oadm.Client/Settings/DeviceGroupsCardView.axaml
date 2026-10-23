@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:settings="using:Oadm.Client.Settings"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             x:Class="Oadm.Client.Settings.DeviceGroupsCardView"
+             x:DataType="settings:DeviceGroupsViewModel">
+  <!-- Card "Device groups" of the Users page (Admin only): the groups with rules, device count and users. New and Edit
+       open the group editor (the shared device picker with sites and tags); Delete asks first. -->
+  <Border Classes="card">
+    <StackPanel Spacing="12">
+      <StackPanel Orientation="Horizontal" Spacing="4">
+        <TextBlock Classes="cardTitle" Text="Device groups" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <Button Classes="secondary" Command="{Binding NewCommand}" VerticalAlignment="Center">
+          <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New device group" />
+        </Button>
+      </StackPanel>
+      <ui:ProgressRow Text="Opening the device group" IsVisible="{Binding IsOpening}" />
+      <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding IsEmpty}"
+                 Text="No device groups yet. Create one to limit users to part of the devices." />
+      <DataGrid x:Name="GroupsGrid" ItemsSource="{Binding Groups}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                SelectionMode="Single" MaxHeight="300" Classes="wrapRows" IsVisible="{Binding !IsEmpty}">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Header="Group" Width="180" SortMemberPath="Name" x:DataType="settings:DeviceGroupRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="settings:DeviceGroupRowViewModel">
+                <TextBlock Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding DescriptionTip}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Rules" Width="2*" SortMemberPath="Summary" x:DataType="settings:DeviceGroupRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="settings:DeviceGroupRowViewModel">
+                <TextBlock Text="{Binding Summary}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Width="100" Binding="{Binding DeviceCountText}" SortMemberPath="DeviceCount" CellStyleClasses="number"
+                              x:DataType="settings:DeviceGroupRowViewModel">
+            <DataGridTextColumn.Header>
+              <TextBlock Classes="numberHeader" Text="Devices" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Header="Users" Width="*" Binding="{Binding UsersText}" x:DataType="settings:DeviceGroupRowViewModel" />
+          <!-- Row actions: icon buttons in fixed places, Delete in red -->
+          <DataGridTemplateColumn Width="80" CanUserSort="False" x:DataType="settings:DeviceGroupRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="settings:DeviceGroupRowViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0" HorizontalAlignment="Left">
+                  <Button Classes="toolbar iconOnly" ToolTip.Tip="Edit device group"
+                          Command="{Binding $parent[UserControl].((settings:DeviceGroupsViewModel)DataContext).EditCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.edit}" />
+                  </Button>
+                  <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
+                          Command="{Binding $parent[UserControl].((settings:DeviceGroupsViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                  </Button>
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+    </StackPanel>
+  </Border>
+</UserControl>

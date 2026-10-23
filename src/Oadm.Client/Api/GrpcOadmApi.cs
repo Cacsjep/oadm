@@ -105,8 +105,8 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<UserInfo> WatchSessionAsync(CancellationToken ct) =>
         ReadAll(C.Auth.WatchSession(new Empty(), cancellationToken: ct), ct);
 
-    public async Task<UserInfo> AddUserAsync(string userName, string password, string roleId, CancellationToken ct) =>
-        await C.Users.AddAsync(new AddUserRequest { UserName = userName, Password = password, RoleId = roleId }, cancellationToken: ct);
+    public async Task<UserInfo> AddUserAsync(AddUserRequest request, CancellationToken ct) =>
+        await C.Users.AddAsync(request, cancellationToken: ct);
 
     public async Task<RoleMatrix> GetRoleMatrixAsync(CancellationToken ct) =>
         await C.Roles.GetMatrixAsync(new Empty(), cancellationToken: ct);
@@ -119,6 +119,21 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
 
     public async Task<MyRole> GetMyRoleAsync(CancellationToken ct) =>
         await C.Roles.MineAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<DeviceGroupList> ListDeviceGroupsAsync(CancellationToken ct) =>
+        await C.DeviceGroups.ListAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<DeviceGroupInfo> GetDeviceGroupAsync(string id, CancellationToken ct) =>
+        await C.DeviceGroups.GetAsync(new DeviceGroupIdRequest { Id = id }, cancellationToken: ct);
+
+    public async Task<DeviceGroupInfo> SaveDeviceGroupAsync(SaveDeviceGroupRequest request, CancellationToken ct) =>
+        await C.DeviceGroups.SaveAsync(request, cancellationToken: ct);
+
+    public async Task<DeleteDeviceGroupReply> DeleteDeviceGroupAsync(string id, CancellationToken ct) =>
+        await C.DeviceGroups.DeleteAsync(new DeviceGroupIdRequest { Id = id }, cancellationToken: ct);
+
+    public async Task<DeviceGroupPreview> PreviewDeviceGroupAsync(PreviewDeviceGroupRequest request, CancellationToken ct) =>
+        await C.DeviceGroups.PreviewAsync(request, cancellationToken: ct);
 
     public async Task<UserInfo> UpdateUserAsync(UpdateUserRequest request, CancellationToken ct) =>
         await C.Users.UpdateAsync(request, cancellationToken: ct);
@@ -666,6 +681,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public AuthService.AuthServiceClient Auth { get; } = new(channel);
         public UserService.UserServiceClient Users { get; } = new(channel);
         public RoleService.RoleServiceClient Roles { get; } = new(channel);
+        public DeviceGroupService.DeviceGroupServiceClient DeviceGroups { get; } = new(channel);
         public AuditService.AuditServiceClient Audit { get; } = new(channel);
 
         public ServerLogService.ServerLogServiceClient ServerLog { get; } = new(channel);
