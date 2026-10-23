@@ -167,6 +167,7 @@ export default defineConfig({
 					collapsed: true,
 					items: [
 						{ label: 'Users and roles', slug: 'admin/users' },
+						{ label: 'Device groups', slug: 'admin/device-groups' },
 						{ label: 'Turn plugins on or off', slug: 'admin/plugins' },
 						{ label: 'Settings', slug: 'admin/settings' },
 						{ label: 'Ports, data and backup', slug: 'admin/ports-and-data' },
@@ -190,6 +191,7 @@ export default defineConfig({
 						{ label: 'Event rules', slug: 'dev/event-rules' },
 						{ label: 'Compliance checks', slug: 'dev/compliance-checks' },
 						{ label: 'Sites', slug: 'dev/sites' },
+						{ label: 'Device groups', slug: 'dev/device-groups' },
 						{ label: 'UI kit', slug: 'dev/ui' },
 						{ label: 'Testing', slug: 'dev/testing' },
 						{ label: 'Debug a plugin', slug: 'dev/debugging' },
