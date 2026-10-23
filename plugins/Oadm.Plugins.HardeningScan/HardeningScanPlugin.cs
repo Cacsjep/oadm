@@ -8,12 +8,14 @@ namespace Oadm.Plugins.HardeningScan;
 /// guide's two levels Basic and Extended, shown on its page as one column per check. Read-only for devices (param.cgi
 /// list, VAPIX get / list methods, config/rest GETs, the SOAP Get of the web server settings). Every method is for operators
 /// (nothing changes server configuration) and no scan is audited (like the snapshot report).
-/// Page backend methods: <see cref="HardeningMethods"/>.
+/// Page backend methods: <see cref="HardeningMethods"/>. Device groups (SDK 0.4.0): every method works on the user's view,
+/// a scan is a job of its user, one scan at a time per device scope.
 /// </summary>
 public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
 {
     private readonly HardeningScanOptions _options;
     private HardeningScanService? _service;
+    private ICorePluginContext? _ctx;
 
     public HardeningScanPlugin()
         : this(new HardeningScanOptions())
@@ -43,6 +45,7 @@ public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
         await StopAsync(ct).ConfigureAwait(false);
         var service = new HardeningScanService(ctx.Devices, ctx.Vapix, ctx.Settings, ctx.Events, ctx.Logger, _options);
         await service.LoadAsync(ct).ConfigureAwait(false);
+        _ctx = ctx;
         _service = service;
     }
 
@@ -69,6 +72,23 @@ public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
 
     public string? RequiredPermission(string method) => method is HardeningMethods.StartScan or HardeningMethods.CancelScan ? "scan" : PermissionKeys.Show;
 
+    /// <summary>A user's call: the devices of the user's view; scans are the user's jobs.</summary>
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var service = _service ?? throw new InvalidOperationException("The hardening scan plugin is not running.");
+        var jobs = _ctx?.Jobs ?? throw new InvalidOperationException("This OADM server cannot run scans.");
+        return method switch
+        {
+            HardeningMethods.GetState => HardeningJson.Serialize(await service.GetStateAsync(caller, ct).ConfigureAwait(false)),
+            HardeningMethods.StartScan => HardeningJson.Serialize(await service.StartAsync(caller, jobs, HardeningJson.Deserialize<StartScanRequest>(payloadJson), ct).ConfigureAwait(false)),
+            HardeningMethods.CancelScan => HardeningJson.Serialize(service.Cancel(caller, jobs, HardeningJson.Deserialize<CancelScanRequest>(payloadJson).JobId)),
+            HardeningMethods.GetDetail => HardeningJson.Serialize(await service.GetDetailAsync(caller, HardeningJson.Deserialize<DetailRequest>(payloadJson), ct).ConfigureAwait(false)),
+            _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
+        };
+    }
+
+    /// <summary>In-process callers (tests): the plugin's own devices (the context refuses them in a group user's call).</summary>
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The hardening scan plugin is not running.");

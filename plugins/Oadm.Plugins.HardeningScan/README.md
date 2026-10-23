@@ -131,6 +131,13 @@ of the level is Warn or Fail.
 - Methods (`HardeningMethods`, camelCase JSON, `Shared/HardeningModels.cs`): `getState` -> catalog, column ids, compact results
   (one state character per column `p w f n e i -` plus the short values) and the job; `startScan {level, deviceIds}` -> job;
   `cancelScan {jobId}` -> job; `getDetail {deviceIds}` -> the stored results with details. Events `progress`, `results`.
+- Device groups (SDK 0.4.0): every method works on the user's view. One scan at a time per device scope (all devices, or
+  one device group); a scan is a job of its user (`ctx.Jobs`) and reads through the user's view; only that user can stop
+  it (another user's id or an unknown one: "The scan has ended or was started by another user."). For a user with a device
+  group a device outside the group answers like an unknown one (NOT_FOUND, the whole request is refused), an empty list
+  means the user's view, `getState` returns only the results of the user's devices (removed devices are dropped only by a
+  view of every device). `progress` and `results` go to the pages of the scan's scope (`DeviceScope`; the rows of a
+  group's scan also to users with all devices). The overload without a call (in-process callers) uses the plugin's context.
 
 ## Page
 
@@ -172,7 +179,7 @@ at start, and a scan simulated over 3 s with progress and result events.
 
 ## Tests
 
-`tests/Oadm.Plugins.HardeningScan.Tests`: `CheckTests` (every rule from the recorded answers, old firmware without REST APIs
+`tests/Oadm.Plugins.HardeningScan.Tests`: `CanaryTests` (the device-group canary, a group's scan and results), `CheckTests` (every rule from the recorded answers, old firmware without REST APIs
 with `# Error` lines and unprefixed parameters, hardened and weak variants, failures isolated per read, unreachable and refused
 devices, catalog), `ParserTests`, `ScanServiceTests` (bounded parallelism, device timeout, refused statuses, stop, persistence
 across a restart, removed devices, event batches, parallelism setting, store bound; the fake camera records a violation for

@@ -261,6 +261,8 @@ decisions: plugin `README.md`.
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
   information only; every method is Operator and not audited; results kept per device and level (at most 10,000).
+- Device groups (SDK 0.4.0): one scan at a time per device scope, a job of its user (only that user stops it), results
+  and devices of the user's view only.
 - Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (+ read-only hardware test).
 
 ## Web View (core plugin)
