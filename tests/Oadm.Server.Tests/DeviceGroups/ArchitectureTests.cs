@@ -38,7 +38,8 @@ public sealed partial class ArchitectureTests
     internal static readonly Dictionary<string, string> ServiceAllowList = new(StringComparer.Ordinal)
     {
         ["TaskPluginQueries.QueryAsync"] = "the device id is resolved through the PluginCaller's view (outside = NOT_FOUND); the overload without a caller is system work and tests",
-        ["EventLog.Write"] = "the writer of the rule engine and the action runner (system work); the gRPC class only reads through the caller's view",
+        ["EventLog.Write"] = "the writer of the rule engine and the action runner (system work); EventService is for users with all devices only (AccessRule.AllDevices)",
+        ["ActionRunner.TestAsync"] = "Test of an action: EventService is for users with all devices only (AccessRule.AllDevices)",
         ["TaskEngine.RunAsync"] = "the raw-id form is the system ITaskRunner (ctx.System.Tasks, event rule actions; a group caller is refused outside the view); Run uses the ViewedDevices overload (converted in tasks)",
     };
 

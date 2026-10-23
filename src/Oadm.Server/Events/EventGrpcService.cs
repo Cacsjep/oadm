@@ -7,13 +7,10 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 
 using Oadm.Core.Auth;
-using Oadm.Core.DeviceGroups;
 using Oadm.Core.Events;
 using Oadm.Sdk.Actions;
 using Oadm.Sdk.Events;
-using Oadm.Server.Auth;
 using Oadm.Server.Common;
-using Oadm.Server.Mapping;
 
 using Proto = Oadm.Contracts.V1;
 
@@ -21,23 +18,19 @@ namespace Oadm.Server.Events;
 
 /// <summary>
 /// gRPC EventService: the catalog of events and actions, the rules (Admin to change, audited), their live state and the
-/// event log (<see cref="EventRulesService"/>, <see cref="EventLog"/>). Every method works on the caller's view
-/// (docs/spec/device-scope.md): users of a device group see the events of their devices, sites and checks, only the rules
-/// of their group and the log lines of those rules and of their devices; Test uses only a device of the view.
+/// event log (<see cref="EventRulesService"/>, <see cref="EventLog"/>).
 /// </summary>
 public sealed class EventGrpcService(
     EventRulesService rules,
     ActionRunner actions,
     EventLog log,
     AuditLog audit,
-    DeviceViewFactory views,
     IHostApplicationLifetime lifetime) : Proto.EventService.EventServiceBase
 {
-    public override async Task<Proto.EventCatalog> GetCatalog(Proto.Empty request, ServerCallContext context)
+    public override Task<Proto.EventCatalog> GetCatalog(Proto.Empty request, ServerCallContext context)
     {
-        var view = await views.ForAsync(context).ConfigureAwait(false);
         var catalog = new Proto.EventCatalog();
-        foreach (var type in await rules.EventTypesAsync(view, context.CancellationToken).ConfigureAwait(false))
+        foreach (var type in rules.Catalog.EventTypes)
         {
             var entry = new Proto.EventTypeEntry
             {
@@ -59,16 +52,15 @@ public sealed class EventGrpcService(
             catalog.Actions.Add(ToProto(action));
         }
 
-        return catalog;
+        return Task.FromResult(catalog);
     }
 
     public override async Task<Proto.RuleList> ListRules(Proto.Empty request, ServerCallContext context) =>
-        ToProto(await rules.ListAsync(await views.ForAsync(context).ConfigureAwait(false), context.CancellationToken).ConfigureAwait(false));
+        ToProto(await rules.ListAsync(context.CancellationToken).ConfigureAwait(false));
 
     /// <summary>The list now and after every change; a burst sends the newest list once (at most every 500 ms).</summary>
     public override async Task WatchRules(Proto.Empty request, IServerStreamWriter<Proto.RuleList> responseStream, ServerCallContext context)
     {
-        var view = await views.ForAsync(context).ConfigureAwait(false);
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
         var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -77,12 +69,12 @@ public sealed class EventGrpcService(
         rules.Changed += OnChanged;
         try
         {
-            await responseStream.WriteAsync(ToProto(await rules.ListAsync(view, ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
+            await responseStream.WriteAsync(ToProto(await rules.ListAsync(ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
             while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
                 signal.Reader.TryRead(out _);
-                await responseStream.WriteAsync(ToProto(await rules.ListAsync(view, ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
+                await responseStream.WriteAsync(ToProto(await rules.ListAsync(ct).ConfigureAwait(false)), ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -99,8 +91,7 @@ public sealed class EventGrpcService(
     public override async Task<Proto.RuleDetail> GetRule(Proto.RuleId request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "rule id");
-        var view = await views.ForAsync(context).ConfigureAwait(false);
-        var rule = await rules.GetAsync(id, view, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(EventRulesService.NoLongerExists);
+        var rule = await rules.GetAsync(id, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound("The rule no longer exists.");
         return ToProto(rule.Definition, rule.Summary);
     }
 
@@ -117,11 +108,9 @@ public sealed class EventGrpcService(
         }
 
         var ct = context.CancellationToken;
-        var view = await views.ForAsync(context).ConfigureAwait(false);
-        var owner = OwnerMapping.FromProto(request.Owner);
         try
         {
-            var (saved, summary, created) = await rules.SaveAsync(definition, view, owner, AuthInterceptor.CallerOf(context).IsAdmin, ct).ConfigureAwait(false);
+            var (saved, summary, created) = await rules.SaveAsync(definition, ct).ConfigureAwait(false);
             await audit.WriteAsync(created ? AuditActions.RuleCreated : AuditActions.RuleChanged, saved.Name, summary.ConditionsText + " -> " + summary.ActionsText, ct).ConfigureAwait(false);
             return ToProto(saved, summary);
         }
@@ -133,17 +122,12 @@ public sealed class EventGrpcService(
         {
             throw GrpcGuard.NotFound(ex.Message);
         }
-        catch (UnauthorizedAccessException ex)
-        {
-            throw new RpcException(new Status(StatusCode.PermissionDenied, ex.Message));
-        }
     }
 
     public override async Task<Proto.Empty> DeleteRule(Proto.RuleId request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "rule id");
-        var view = await views.ForAsync(context).ConfigureAwait(false);
-        var removed = await rules.DeleteAsync(id, view, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(EventRulesService.NoLongerExists);
+        var removed = await rules.DeleteAsync(id, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound("The rule no longer exists.");
         await audit.WriteAsync(AuditActions.RuleDeleted, removed.Definition.Name, null, context.CancellationToken).ConfigureAwait(false);
         return new Proto.Empty();
     }
@@ -151,18 +135,8 @@ public sealed class EventGrpcService(
     public override async Task<Proto.RuleSummary> SetRuleEnabled(Proto.SetRuleEnabledRequest request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "rule id");
-        var view = await views.ForAsync(context).ConfigureAwait(false);
-        RuleSummaryModel summary;
-        try
-        {
-            summary = await rules.SetEnabledAsync(id, request.Enabled, view, context.CancellationToken).ConfigureAwait(false)
-                ?? throw GrpcGuard.NotFound(EventRulesService.NoLongerExists);
-        }
-        catch (RuleValidationException ex)
-        {
-            throw GrpcGuard.FailedPrecondition(ex.Message);
-        }
-
+        var summary = await rules.SetEnabledAsync(id, request.Enabled, context.CancellationToken).ConfigureAwait(false)
+            ?? throw GrpcGuard.NotFound("The rule no longer exists.");
         await audit.WriteAsync(request.Enabled ? AuditActions.RuleTurnedOn : AuditActions.RuleTurnedOff, summary.Name, null, context.CancellationToken).ConfigureAwait(false);
         return ToProto(summary);
     }
@@ -170,24 +144,15 @@ public sealed class EventGrpcService(
     public override async Task<Proto.RuleDetail> DuplicateRule(Proto.RuleId request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "rule id");
-        var view = await views.ForAsync(context).ConfigureAwait(false);
         try
         {
-            var copy = await rules.DuplicateAsync(id, view, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(EventRulesService.NoLongerExists);
+            var copy = await rules.DuplicateAsync(id, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound("The rule no longer exists.");
             await audit.WriteAsync(AuditActions.RuleCreated, copy.Definition.Name, "copy", context.CancellationToken).ConfigureAwait(false);
             return ToProto(copy.Definition, copy.Summary);
         }
-        catch (RuleValidationException ex) when (ex.Message.StartsWith("At most", StringComparison.Ordinal))
-        {
-            throw new RpcException(new Status(StatusCode.ResourceExhausted, ex.Message));
-        }
         catch (RuleValidationException ex)
         {
-            throw GrpcGuard.InvalidArgument(ex.Message);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            throw GrpcGuard.NotFound(ex.Message);
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, ex.Message));
         }
     }
 
@@ -195,8 +160,7 @@ public sealed class EventGrpcService(
     {
         try
         {
-            var view = await views.ForAsync(context).ConfigureAwait(false);
-            var choices = await actions.ListChoicesAsync(request.ActionId, request.FieldKey, view, context.CancellationToken).ConfigureAwait(false);
+            var choices = await actions.ListChoicesAsync(request.ActionId, request.FieldKey, context.CancellationToken).ConfigureAwait(false);
             var reply = new Proto.ActionChoiceList();
             reply.Choices.AddRange(choices.Select(c => new Proto.ActionChoiceEntry { Value = c.Value, Label = c.Label }));
             return reply;
@@ -214,9 +178,7 @@ public sealed class EventGrpcService(
     public override async Task<Proto.EventLogPage> ListLog(Proto.ListEventLogRequest request, ServerCallContext context)
     {
         Guid? ruleId = string.IsNullOrEmpty(request.RuleId) ? null : GrpcGuard.ParseId(request.RuleId, "rule id");
-        var view = await views.ForAsync(context).ConfigureAwait(false);
-        var scope = await LogScopeAsync(view, context.CancellationToken).ConfigureAwait(false);
-        var (lines, total) = await log.ListAsync(request.Limit, request.Offset, ruleId, scope, context.CancellationToken).ConfigureAwait(false);
+        var (lines, total) = await log.ListAsync(request.Limit, request.Offset, ruleId, context.CancellationToken).ConfigureAwait(false);
         var page = new Proto.EventLogPage { TotalCount = total };
         page.Entries.AddRange(lines.Select(ToProto));
         return page;
@@ -245,17 +207,9 @@ public sealed class EventGrpcService(
         Guid? ruleId = string.IsNullOrEmpty(request.RuleId) ? null : GrpcGuard.ParseId(request.RuleId, "rule id");
         Guid? actionKey = string.IsNullOrEmpty(request.ActionKey) ? null : GrpcGuard.ParseId(request.ActionKey, "action key");
         Guid? deviceId = string.IsNullOrEmpty(request.DeviceId) ? null : GrpcGuard.ParseId(request.DeviceId, "device id");
-        var view = await views.ForAsync(context).ConfigureAwait(false);
-        var device = await view.GetAsync(deviceId is { } id ? [id] : [], context.CancellationToken).ConfigureAwait(false); // outside: NOT_FOUND
-        if (ruleId is { } rule && await rules.GetAsync(rule, view, context.CancellationToken).ConfigureAwait(false) is null)
-        {
-            ruleId = null; // a rule the caller does not see (or a new one): no stored passwords from it
-            actionKey = null;
-        }
-
         var (ok, message) = await actions.TestAsync(
             request.ActionId, settings, request.RuleName, ruleId, actionKey, string.IsNullOrEmpty(request.EventTypeId) ? null : request.EventTypeId,
-            device, OwnerScopes.OwnerOf(view), context.CancellationToken).ConfigureAwait(false);
+            deviceId, context.CancellationToken).ConfigureAwait(false);
         var name = rules.Catalog.FindAction(request.ActionId)?.Plugin.DisplayName ?? request.ActionId;
         await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(request.RuleName) ? string.Empty : " · " + request.RuleName), context.CancellationToken).ConfigureAwait(false);
         return new Proto.TestActionReply { Ok = ok, Message = message };
@@ -263,35 +217,14 @@ public sealed class EventGrpcService(
 
     public override async Task WatchLog(Proto.Empty request, IServerStreamWriter<Proto.EventLogPage> responseStream, ServerCallContext context)
     {
-        var view = await views.ForAsync(context).ConfigureAwait(false);
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
-        var rulesChanged = 1; // the rules of the group are read again after a rule changed
-        void OnRulesChanged(object? sender, EventArgs e) => Interlocked.Exchange(ref rulesChanged, 1);
-        rules.Changed += OnRulesChanged;
-        IReadOnlySet<Guid> ruleIds = new HashSet<Guid>();
         try
         {
             await foreach (var batch in log.WatchAsync(ct).ConfigureAwait(false))
             {
-                IReadOnlyList<EventLogLine> lines = batch;
-                if (!view.HasAllDevices)
-                {
-                    if (Interlocked.Exchange(ref rulesChanged, 0) == 1)
-                    {
-                        ruleIds = await rules.VisibleIdsAsync(view, ct).ConfigureAwait(false);
-                    }
-
-                    var scope = new EventLogScope(await view.IdsAsync(ct).ConfigureAwait(false), ruleIds);
-                    lines = [.. batch.Where(scope.Covers)];
-                    if (lines.Count == 0)
-                    {
-                        continue;
-                    }
-                }
-
-                var page = new Proto.EventLogPage { TotalCount = lines.Count };
-                page.Entries.AddRange(lines.Select(ToProto));
+                var page = new Proto.EventLogPage { TotalCount = batch.Count };
+                page.Entries.AddRange(batch.Select(ToProto));
                 await responseStream.WriteAsync(page, ct).ConfigureAwait(false);
             }
         }
@@ -299,15 +232,7 @@ public sealed class EventGrpcService(
         {
             // Client went away or server is stopping.
         }
-        finally
-        {
-            rules.Changed -= OnRulesChanged;
-        }
     }
-
-    /// <summary>The lines a user of a group sees (null: every line, users with all devices).</summary>
-    private async Task<EventLogScope?> LogScopeAsync(DeviceView view, CancellationToken ct) =>
-        view.HasAllDevices ? null : new EventLogScope(await view.IdsAsync(ct).ConfigureAwait(false), await rules.VisibleIdsAsync(view, ct).ConfigureAwait(false));
 
     internal static Proto.ActionEntry ToProto(CatalogAction action)
     {
@@ -373,14 +298,14 @@ public sealed class EventGrpcService(
         }
     }
 
-    private Proto.RuleList ToProto(IEnumerable<RuleSummaryModel> summaries)
+    private static Proto.RuleList ToProto(IEnumerable<RuleSummaryModel> summaries)
     {
         var list = new Proto.RuleList();
         list.Rules.AddRange(summaries.Select(ToProto));
         return list;
     }
 
-    private Proto.RuleSummary ToProto(RuleSummaryModel s)
+    private static Proto.RuleSummary ToProto(RuleSummaryModel s)
     {
         var proto = new Proto.RuleSummary
         {
@@ -393,7 +318,6 @@ public sealed class EventGrpcService(
             ActiveCount = s.ActiveCount,
             StateText = s.StateText,
             Problem = s.Problem ?? string.Empty,
-            Owner = OwnerMapping.ToProto(s.Owner, rules.Owners.Scopes),
         };
         if (s.LastFiredUtc is { } fired)
         {
@@ -403,7 +327,7 @@ public sealed class EventGrpcService(
         return proto;
     }
 
-    private Proto.RuleDetail ToProto(RuleDefinition definition, RuleSummaryModel summary) => new()
+    private static Proto.RuleDetail ToProto(RuleDefinition definition, RuleSummaryModel summary) => new()
     {
         Summary = ToProto(summary),
         DefinitionJson = definition.ToJson(),

@@ -24,7 +24,7 @@ public sealed class DynamicEventTypesTests
         await rig.SettleAsync();
         Assert.NotNull(rig.Catalog.FindEventType(TriggerType));
         await rig.SaveAsync(EventRulesRig.Rule(TriggerType, rig.OnEventDevice()));
-        Assert.StartsWith("Waiting for Dynamic", Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).StateText, StringComparison.Ordinal);
+        Assert.StartsWith("Waiting for Dynamic", Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).StateText, StringComparison.Ordinal);
 
         var publisher = rig.Engine.PublisherFor(source.Id);
         publisher.ReplaceStates(TriggerType, [camera.Id]);
@@ -46,7 +46,7 @@ public sealed class DynamicEventTypesTests
         await rig.SettleAsync();
 
         Assert.Equal([ActionEdge.TurnedOn, ActionEdge.TurnedOff], rig.OnDevice.Edges.Select(e => e.Edge));
-        Assert.Equal("Not available: an event of this rule no longer exists", Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).Problem);
+        Assert.Equal("Not available: an event of this rule no longer exists", Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).Problem);
     }
 
     [Fact]
@@ -65,13 +65,13 @@ public sealed class DynamicEventTypesTests
         var late = new DynamicSource();
         await using var second = await EventRulesRig.StartAsync(folder, r => r.Registry.RegisterCorePlugin(late, new PluginOrigin("test.dynamic", "1.0", null) { DisplayName = "Dynamic" }));
         await second.SettleAsync();
-        Assert.Equal("Waiting for its events", Assert.Single(await second.Rules.ListAsync(second.AllView, CancellationToken.None)).StateText);
+        Assert.Equal("Waiting for its events", Assert.Single(await second.Rules.ListAsync(CancellationToken.None)).StateText);
 
         late.Set(new EventTypeInfo(TriggerType, "Virtual input 3", "Device triggers", EventKind.Stateful));
         second.Engine.PublisherFor(late.Id).ReplaceStates(TriggerType, [camera]);
         await second.SettleAsync();
         Assert.Empty(second.OnDevice.Edges); // still on: nothing to do
-        Assert.Equal("On", Assert.Single(await second.Rules.ListAsync(second.AllView, CancellationToken.None)).StateText);
+        Assert.Equal("On", Assert.Single(await second.Rules.ListAsync(CancellationToken.None)).StateText);
     }
 
     [Fact]

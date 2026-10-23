@@ -82,15 +82,16 @@ an independent security review the same day). A user may be limited to part of t
 - **Tags:** users with a group tag devices of their group, but never add or remove a tag that any group uses (that would
   move devices between groups). The guard lives in `DeviceTagStore` (the only writer), also for file imports added later
   in the background (the waiting entry remembers who queued it).
-- **Shared objects** (event rules, device triggers, compliance checks, Live View views, dashboards): each object stores
-  its owning group (or all devices); an administrator editing it keeps the owner; a duplicate gets the group of the user
-  who duplicates. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices
-  of that group (conditions and actions intersected when it fires; "All devices" and the "Any device" counts = the
-  group; site events only for the group's sites). Users see and edit only objects of their own group; others are hidden.
-  A deleted group disables its objects. The event catalog lists only devices of the user's view. **Test** of an action
-  uses only devices of the view.
-- **Send HTTP request / Send TCP message** in rules owned by a group: only to addresses on an administrator's allow-list
-  (Settings, e.g. the VMS or alarm server); everything else is refused when saving and when sending.
+- **Shared objects** (device triggers, compliance checks, Live View views, dashboards): each object stores its owning
+  group (or all devices); an administrator editing it keeps the owner; a duplicate gets the group of the user who
+  duplicates. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices of that
+  group ("All devices" = the group). Users see and edit only objects of their own group; others are hidden. A deleted
+  group disables its objects.
+- **Event rules are not limited by device groups** (decision 2026-10-23): rules are for administrators and operators
+  with all devices. Users with a group get no event rules: the rules, the event log, the event catalog and **Test**
+  (every `EventService` method) are `AccessRule.AllDevices`, and the client hides the Event rules page for them. Rules
+  have no owner and run on all devices as before device groups. Send HTTP request, Send TCP message and Send email send
+  to any address (no allowed-address list), as in 4.1.0.
 - **Server-wide services** (NTP, DHCP, PKI and EST settings, the VAPIX Commander command library): managing them stays with users who have all devices; users with a group may view the pages, rows filtered to
   their group (by device, address or serial). The role and user editors say so.
 - **Server log:** hidden for users with a group (its text names devices). System report, backups, audit log, support
@@ -156,8 +157,8 @@ an independent security review the same day). A user may be limited to part of t
   stage and is empty when stage 4 ends.
 - **Security tests:** credential list never sent for a group user; deleting a group and restoring an old backup stay
   closed; races (group change during stream registration, view shrinking with queued tasks, group save during tagging);
-  job, stream and download ids of user A refused for user B; rule save, Test and Any-device counts within the view;
-  empty ids touch only the view; runnable sets, the event catalog and address checks leak no ids or addresses; a
+  job, stream and download ids of user A refused for user B; every `EventService` method refused for a group user;
+  empty ids touch only the view; runnable sets and address checks leak no ids or addresses; a
   removed serial does not join a group when re-added by someone outside it.
 - Perf tests with 30,000 devices and 50,000 tasks: views, streams, task history paging.
 
@@ -167,9 +168,10 @@ an independent security review the same day). A user may be limited to part of t
   case-insensitive 1..64, Description 0..200, `ThisServer`, `SiteIds`, `TagIds`, `Serials`, `ExceptSerials` as JSON
   columns, `Revision` from 1, at most 200 groups, 100 sites, 500 tags and 30,000 serials each); `Users.AllDevices` +
   `Users.DeviceGroupId` (FK Restrict); `Devices.AddedByAllDevices` + `AddedByGroupId` (no FK: a deleted group leaves the
-  serial dormant); `WaitingDevices.QueuedByUserId`; `EventRules` and `ComplianceChecks` `OwnerAllDevices` +
-  `OwnerGroupId` (FK Restrict). The migration sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on
-  every existing row; new rows have no database default (C# default false: every writer chooses).
+  serial dormant); `WaitingDevices.QueuedByUserId`; `ComplianceChecks` `OwnerAllDevices` + `OwnerGroupId` (FK
+  Restrict; `DeviceGroups` gave `EventRules` the same columns, the migration `EventRulesWithoutOwner` drops them again).
+  `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; new rows have
+  no database default (C# default false: every writer chooses).
 - **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. The
   caller: `AuthenticatedCaller.Devices` (`CallerDevices(Access, GroupRevision)`, default `None`), `HasAllDevices`
   (Administrator always), `DeviceGroupId`, `SessionId` (opaque, for plugins). Sessions carry the access
@@ -177,7 +179,7 @@ an independent security review the same day). A user may be limited to part of t
 - **Store**: `DeviceGroupStore` (in memory after `LoadAsync`; `SaveAsync(id?, name, description, rules,
   expectedRevision)`, `DeleteAsync`, `RevisionOf`, `GroupsUsingTag`, `GroupsUsingSite`, `TagIdsInUse`, events `Changed`
   (group id) and `Deleted`). Delete: users to no devices and every `IDeviceGroupOwnedObjects` (core: `CoreOwnedObjects`
-  for event rules and compliance checks: owner cleared, turned off) in one transaction, then
+  for compliance checks: owner cleared, turned off) in one transaction, then
   `UserStore.NotifyDeviceAccessChanged`. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
   never "no devices" by choice; the overloads without it give all devices: first administrator, older clients),
   `UpdateAsync(..., DeviceScope? access, ...)`, event `UserDeviceAccessChanged`; texts `DeviceGroupTexts`.
@@ -192,7 +194,8 @@ an independent security review the same day). A user may be limited to part of t
   `DeviceChangeFeed.Version`), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
   `views.ForAsync(ServerCallContext)` (`Oadm.Server.Auth.CallerViews`, the caller from the call's `UserState`,
   `AuthInterceptor.CallerOf`); the interceptor maps `DevicesNotAvailableException` of any service to NOT_FOUND.
-- **Access rule**: `AccessRule.AllDevices` (`.ForAllDevices()`): tag rename and delete, task Delete all, event log Clear,
+- **Access rule**: `AccessRule.AllDevices` (`.ForAllDevices()`): tag rename and delete, task Delete all, every `EventService` method (rules, event log,
+  catalog, Test, Clear),
   server log, compliance on / off, server settings Set and the credential list; refused "Only users with all devices can
   do this." (`DeviceGroupTexts.AllDevicesOnly`, `AuthInterceptor.RequireAllDevices` for checks inside a call).
 - **Background boundary**: `CallerContext.Suppress`, `RunDetached`, `Detached`, `Raise`: task runs, discovery and login
@@ -287,19 +290,16 @@ an independent security review the same day). A user may be limited to part of t
   view; `TagService` fills `group_names` for users with all devices and audits membership moves (`DeviceGroupMembership`
   with the rules captured before the write).
 - **Owners**: `OwnerScopes` (the owner's compiled filter, its sites, `Changed` / `GroupDeleted`, `Sees`, `OwnerOf`),
-  `OwnerRules` (only administrators choose the owner; tags of a group's object), `RuleOwners` (event types an owner may use,
-  the allowed addresses), `IEventTypeOwners` (the compliance engine: owners of the check events), `DeviceViewRepository`
+  `OwnerRules` (only administrators choose the owner; tags of a group's object), `DeviceViewRepository`
   (plugin choices list only the caller's view), `Mapping/OwnerMapping` (`DeviceOwner`).
 - **Compliance**: `ComplianceCheck.Owner`, the engine intersects every check with its owner and re-reconciles the checks of
   groups on `OwnerScopes.Changed` (only devices that came in are evaluated), `ComplianceService` takes the caller's view.
-- **Event rules**: `StoredRule.Owner`, `RuleEngine` (owner filter in `Selects` and `StateOf`: group counts of "Any
-  device" and "Any site offline"), `ActionRunner` (`RuleEdgeJob.Owner`, targets intersected, `IsDestinationAllowed`),
-  `EventRulesService` (the view on every method, save checks), `EventLog.ListAsync(scope)` / `EventLogScope`,
-  `Core.Settings.ActionDestinations`.
-- **Tests**: `Oadm.Core.Tests/DeviceGroups/TagGuardTests`, `Compliance/ComplianceOwnerTests`, `Events/RuleOwnerTests`, Perf
+- **Event rules**: no owner, no view (decision 2026-10-23): every `EventService` method is `.ForAllDevices()`, the
+  engine, the action runner and the event log work as in 4.1.0; the canary counts EventService as closed by the rule.
+- **Tests**: `Oadm.Core.Tests/DeviceGroups/TagGuardTests`, `Compliance/ComplianceOwnerTests`, Perf
   `Compliance/ComplianceOwnerScaleTests`, `DeviceGroups/SharedCoreScaleTests`; `Oadm.Server.Tests/DeviceGroups/SharedCore/*`
-  (tags, compliance, events, settings, server log); `Oadm.Plugins.Notifications.Tests/DestinationTests`; the canary cases of
-  TagService, ComplianceService and EventService.
+  (tags, compliance, events: every EventService method refused for a group user, a deleted group changes no rule); the
+  canary cases of TagService and ComplianceService.
 
 ## Stages
 
@@ -307,7 +307,7 @@ an independent security review the same day). A user may be limited to part of t
    device feed and the device id methods; the architecture and canary tests.
 2. Lists and counts (tasks, compliance, event log, tags, sites), the waiting list, discovery and the add page; sessions
    ending when a device leaves the view.
-3. Shared objects of the core with owning groups: event rules, compliance checks.
+3. Shared objects of the core with owning groups: compliance checks (event rules: all devices only).
 4. SDK 0.4.0 call context, per-device events and the job registry; every bundled plugin, with its shared objects
-   (device triggers, Live View views, dashboards) and the address allow-list of Send HTTP request / Send TCP message.
+   (device triggers, Live View views, dashboards).
 5. Perf tests with 30,000 devices, docs, review.

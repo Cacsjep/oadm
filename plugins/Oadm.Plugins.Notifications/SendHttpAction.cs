@@ -13,9 +13,7 @@ namespace Oadm.Plugins.Notifications;
 /// (none, Basic, Digest, Bearer token), a body with a format (JSON, XML, text, form) and "Allow untrusted certificates".
 /// Every text takes the placeholders; their values are escaped for the part they go into (URL-encoded in the URL and the
 /// query, JSON or XML escaped in the body), so "objectId": "{objectId}" stays valid JSON. Runs once per rule edge, no
-/// device. Success = any 2xx answer. Redirects are followed here (at most <see cref="MaxRedirects"/>), so every address the
-/// request goes to is checked with <see cref="IActionContext.IsDestinationAllowed"/> (rules of device groups send only to
-/// the administrator's addresses); the login header goes only to the first address.
+/// device. Success = any 2xx answer.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The user's own servers on the server's network, not devices.")]
 public sealed class SendHttpAction : IActionPlugin
@@ -24,9 +22,6 @@ public sealed class SendHttpAction : IActionPlugin
 
     /// <summary>Most characters of the answer kept for an error message.</summary>
     private const int ExcerptLength = 200;
-
-    /// <summary>Most redirects followed (like HttpClient's default of 50 would be far more than a webhook needs).</summary>
-    public const int MaxRedirects = 10;
 
     public string Id => ActionId;
 
@@ -107,15 +102,6 @@ public sealed class SendHttpAction : IActionPlugin
         return $"{invocation.Get("method") ?? "POST"} {invocation.Get("url")}";
     }
 
-    /// <summary>The host and port of the URL as written (a URL with placeholders in its host is no address of the list).</summary>
-    public IReadOnlyList<ActionDestination> Destinations(JsonElement settings)
-    {
-        var url = (settings.ValueKind == JsonValueKind.Object && settings.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null)?.Trim() ?? string.Empty;
-        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsHttpUrl(url)
-            ? [new ActionDestination(uri.Host, uri.Port)]
-            : [new ActionDestination(url, 0)];
-    }
-
     public bool RunsOn(ActionEdge edge, JsonElement settings) =>
         edge != ActionEdge.TurnedOff || (settings.ValueKind == JsonValueKind.Object && settings.TryGetProperty("onOff", out var on) && on.ValueKind == JsonValueKind.True);
 
@@ -144,11 +130,10 @@ public sealed class SendHttpAction : IActionPlugin
         }
 
         var uri = new Uri(url);
-        RequireAllowed(ctx, uri);
         var auth = invocation.Get("auth") ?? "none";
         using var handler = new SocketsHttpHandler
         {
-            AllowAutoRedirect = false, // followed below: every address is checked
+            AllowAutoRedirect = true,
             ConnectTimeout = TimeSpan.FromSeconds(10),
             PooledConnectionLifetime = TimeSpan.Zero,
         };
@@ -168,55 +153,43 @@ public sealed class SendHttpAction : IActionPlugin
         }
 
         using var client = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        using var request = new HttpRequestMessage(new HttpMethod(invocation.Get("method") ?? "POST"), uri);
         var bodyType = invocation.Get("bodyType") ?? "none";
-        var body = bodyType == "none" ? null : invocation.Get("body") ?? string.Empty;
-        var bodyText = body is null ? null : bodyType switch
+        if (bodyType != "none")
         {
-            "json" => ctx.Text(body, PlaceholderEscape.Json),
-            "xml" => ctx.Text(body, PlaceholderEscape.Xml),
-            "form" => Form(ctx, body),
-            _ => ctx.Text(body),
-        };
-        var headers = invocation.GetPairs("headers")
-            .Select(h => (h.Key, Value: ctx.Text(h.Value).Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)))
-            .ToList();
-        AuthenticationHeaderValue? login = auth switch
-        {
-            "basic" => new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes((invocation.Get("user") ?? string.Empty) + ":" + (invocation.Get("password") ?? string.Empty)))),
-            "bearer" => new AuthenticationHeaderValue("Bearer", invocation.Get("token") ?? string.Empty),
-            _ => null,
-        };
-
-        HttpRequestMessage Build(HttpMethod method, Uri target, bool withBody, bool withLogin)
-        {
-            var request = new HttpRequestMessage(method, target);
-            if (withBody && bodyText is not null)
+            var body = invocation.Get("body") ?? string.Empty;
+            request.Content = bodyType switch
             {
-                request.Content = bodyType switch
-                {
-                    "json" => new StringContent(bodyText, Encoding.UTF8, "application/json"),
-                    "xml" => new StringContent(bodyText, Encoding.UTF8, "application/xml"),
-                    "form" => new StringContent(bodyText, Encoding.UTF8, "application/x-www-form-urlencoded"),
-                    _ => new StringContent(bodyText, Encoding.UTF8, "text/plain"),
-                };
-            }
+                "json" => new StringContent(ctx.Text(body, PlaceholderEscape.Json), Encoding.UTF8, "application/json"),
+                "xml" => new StringContent(ctx.Text(body, PlaceholderEscape.Xml), Encoding.UTF8, "application/xml"),
+                "form" => new StringContent(Form(ctx, body), Encoding.UTF8, "application/x-www-form-urlencoded"),
+                _ => new StringContent(ctx.Text(body), Encoding.UTF8, "text/plain"),
+            };
+        }
 
-            foreach (var (name, value) in headers)
+        foreach (var (name, template) in invocation.GetPairs("headers"))
+        {
+            var value = ctx.Text(template).Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
+            if (!request.Headers.TryAddWithoutValidation(name, value))
             {
-                if (!request.Headers.TryAddWithoutValidation(name, value))
+                if (request.Content is null)
                 {
-                    request.Content ??= new ByteArrayContent([]);
-                    request.Content.Headers.Remove(name);
-                    request.Content.Headers.TryAddWithoutValidation(name, value);
+                    request.Content = new ByteArrayContent([]);
                 }
-            }
 
-            if (withLogin && login is not null)
-            {
-                request.Headers.Authorization = login;
+                request.Content.Headers.Remove(name);
+                request.Content.Headers.TryAddWithoutValidation(name, value);
             }
+        }
 
-            return request;
+        if (auth == "basic")
+        {
+            var pair = Encoding.UTF8.GetBytes((invocation.Get("user") ?? string.Empty) + ":" + (invocation.Get("password") ?? string.Empty));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(pair));
+        }
+        else if (auth == "bearer")
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", invocation.Get("token") ?? string.Empty);
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -224,35 +197,7 @@ public sealed class SendHttpAction : IActionPlugin
         HttpResponseMessage response;
         try
         {
-            var method = new HttpMethod(invocation.Get("method") ?? "POST");
-            var target = uri;
-            var withBody = true;
-            var hops = 0;
-            while (true)
-            {
-                using var request = Build(method, target, withBody, withLogin: hops == 0);
-                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
-                if (!IsRedirect(response.StatusCode) || response.Headers.Location is not { } location || hops >= MaxRedirects)
-                {
-                    break;
-                }
-
-                var next = location.IsAbsoluteUri ? location : new Uri(target, location);
-                if ((next.Scheme != Uri.UriSchemeHttp && next.Scheme != Uri.UriSchemeHttps) || (target.Scheme == Uri.UriSchemeHttps && next.Scheme == Uri.UriSchemeHttp))
-                {
-                    break; // like HttpClient: no other schemes, never from https to http (the redirect is the answer)
-                }
-
-                RequireAllowed(ctx, next);
-                response.Dispose();
-                hops++;
-                target = next;
-                if (response.StatusCode == HttpStatusCode.SeeOther || ((int)response.StatusCode is 301 or 302 && method == HttpMethod.Post))
-                {
-                    method = method == HttpMethod.Head ? method : HttpMethod.Get;
-                    withBody = false;
-                }
-            }
+            response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -310,17 +255,6 @@ public sealed class SendHttpAction : IActionPlugin
     }
 
     private static string Inner(Exception ex) => (ex.InnerException ?? ex).Message;
-
-    private static bool IsRedirect(HttpStatusCode status) => (int)status is 301 or 302 or 303 or 307 or 308;
-
-    /// <summary>Refuses an address the rule may not send to (rules of device groups: the administrator's list).</summary>
-    private static void RequireAllowed(IActionContext ctx, Uri target)
-    {
-        if (!ctx.IsDestinationAllowed(target.Host, target.Port))
-        {
-            throw new InvalidOperationException(ActionDestination.NotAllowedText + " " + target.Host + " was not contacted.");
-        }
-    }
 
     internal static bool IsHttpUrl(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) && uri.Host.Length > 0;

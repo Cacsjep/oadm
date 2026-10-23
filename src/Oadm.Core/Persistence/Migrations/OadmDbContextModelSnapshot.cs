@@ -650,18 +650,10 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("OwnerAllDevices")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid?>("OwnerGroupId")
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OwnerGroupId");
 
                     b.ToTable("EventRules", (string)null);
                 });
@@ -1033,14 +1025,6 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasForeignKey("CheckId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Oadm.Core.Events.EventRuleEntity", b =>
-                {
-                    b.HasOne("Oadm.Core.DeviceGroups.DeviceGroup", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerGroupId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Oadm.Core.Events.EventRuleStateEntity", b =>

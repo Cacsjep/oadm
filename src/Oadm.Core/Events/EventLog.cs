@@ -24,25 +24,6 @@ public sealed record EventLogLine(
     string Message);
 
 /// <summary>
-/// The lines of the event log a user of a device group sees (docs/spec/device-scope.md): lines of the group's rules, and
-/// event lines of devices of the view; a line that names a device outside the view, a line of another owner's rule and a
-/// line of the server without a rule never.
-/// </summary>
-public sealed record EventLogScope(IReadOnlySet<Guid> DeviceIds, IReadOnlySet<Guid> RuleIds)
-{
-    /// <summary>Whether the line is in the scope (the same rule as the query).</summary>
-    public bool Covers(EventLogLine line)
-    {
-        ArgumentNullException.ThrowIfNull(line);
-        return Covers(line.DeviceId, line.RuleId);
-    }
-
-    /// <summary>Whether a line of this device and rule is in the scope.</summary>
-    public bool Covers(Guid? deviceId, Guid? ruleId) =>
-        (deviceId is not { } device || DeviceIds.Contains(device)) && (ruleId is { } rule ? RuleIds.Contains(rule) : deviceId is not null);
-}
-
-/// <summary>
 /// The event log (table EventLogEntries): <see cref="Write"/> only queues (never blocks the engine); a writer stores
 /// batches every <see cref="FlushInterval"/> and pushes them to every watcher. A full queue drops the newest lines and
 /// logs how many. Retention: <see cref="PruneAsync"/> (hourly, <c>Events.LogRetentionDays</c> / <c>Events.LogMaxEntries</c>).
@@ -125,14 +106,7 @@ public sealed partial class EventLog : IAsyncDisposable
     }
 
     /// <summary>Newest first. <paramref name="limit"/> 0 or above <see cref="ListLimit"/> = <see cref="ListLimit"/>.</summary>
-    public Task<(IReadOnlyList<EventLogLine> Lines, int Total)> ListAsync(int limit, int offset, Guid? ruleId, CancellationToken ct) =>
-        ListAsync(limit, offset, ruleId, null, ct);
-
-    /// <summary>
-    /// Newest first, only the lines <paramref name="scope"/> covers (null: every line, users with all devices); filtered in
-    /// the query, so paging and the total are those of the scope.
-    /// </summary>
-    public async Task<(IReadOnlyList<EventLogLine> Lines, int Total)> ListAsync(int limit, int offset, Guid? ruleId, EventLogScope? scope, CancellationToken ct)
+    public async Task<(IReadOnlyList<EventLogLine> Lines, int Total)> ListAsync(int limit, int offset, Guid? ruleId, CancellationToken ct)
     {
         limit = limit <= 0 || limit > ListLimit ? ListLimit : limit;
         offset = Math.Max(0, offset);
@@ -141,22 +115,6 @@ public sealed partial class EventLog : IAsyncDisposable
         if (ruleId is { } id)
         {
             query = query.Where(e => e.RuleId == id);
-        }
-
-        if (scope is not null)
-        {
-            // The scope is a set of up to 30,000 devices: the ids, devices and rules of the lines (at most the retention's
-            // 100,000) are read newest first and matched in memory (hash lookups), then only the page's rows are loaded.
-            var keys = await query.OrderByDescending(e => e.Id).Select(e => new { e.Id, e.DeviceId, e.RuleId }).ToListAsync(ct).ConfigureAwait(false);
-            var covered = keys.Where(k => scope.Covers(k.DeviceId, k.RuleId)).Select(k => k.Id).ToList();
-            var pageIds = covered.Skip(offset).Take(limit).ToList();
-            var pageRows = new List<EventLogEntryEntity>(pageIds.Count);
-            foreach (var chunk in pageIds.Chunk(500))
-            {
-                pageRows.AddRange(await db.EventLogEntries.AsNoTracking().Where(e => chunk.Contains(e.Id)).ToListAsync(ct).ConfigureAwait(false));
-            }
-
-            return ([.. pageRows.OrderByDescending(e => e.Id).Select(ToLine)], covered.Count);
         }
 
         var total = await query.CountAsync(ct).ConfigureAwait(false);

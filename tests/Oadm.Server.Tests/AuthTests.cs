@@ -128,11 +128,14 @@ public sealed class AuthTests
 
         // Device groups: Administrator only; the methods only users with all devices may call carry the marker.
         Assert.All(Proto.DeviceGroupService.Descriptor.Methods, m => Assert.Equal(AccessRule.Admin, AccessPolicy.For($"/oadm.v1.DeviceGroupService/{m.Name}")));
+        // Event rules: every EventService method (rules, the event log, the catalog, Test) only for users with all devices.
+        Assert.All(Proto.EventService.Descriptor.Methods, m => Assert.True(AccessPolicy.For($"/oadm.v1.EventService/{m.Name}").AllDevices, m.Name));
         Assert.Equal(
-            ["/oadm.v1.ComplianceService/SetEnabled", "/oadm.v1.EventService/ClearLog", "/oadm.v1.ServerLogService/List", "/oadm.v1.SettingsService/AddCredential",
+            ["/oadm.v1.ComplianceService/SetEnabled", "/oadm.v1.ServerLogService/List", "/oadm.v1.SettingsService/AddCredential",
                 "/oadm.v1.SettingsService/ListCredentials", "/oadm.v1.SettingsService/RemoveCredential", "/oadm.v1.SettingsService/RevealCredential", "/oadm.v1.SettingsService/Set",
                 "/oadm.v1.TagService/Delete", "/oadm.v1.TagService/Update", "/oadm.v1.TaskService/DeleteAll"],
-            methods.Where(m => AccessPolicy.For(m).AllDevices).Order(StringComparer.Ordinal).ToArray());
+            methods.Where(m => AccessPolicy.For(m).AllDevices && !m.StartsWith("/oadm.v1.EventService/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(), AccessPolicy.For("/oadm.v1.EventService/ListRules"));
         Assert.Equal(AccessRule.Needs(HostPermissions.TagsManage).ForAllDevices(), AccessPolicy.For("/oadm.v1.TagService/Delete"));
         Assert.False(AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags").AllDevices);
     }

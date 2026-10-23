@@ -7,10 +7,7 @@ Server-side in `Setting`. Keys: `Polling.IntervalSeconds` (60, 5..86400),
 100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500,
 Settings page "Scan timeout (ms)": range scans and the first contact of imported lines), `Devices.WaitingRetryMinutes` (15,
 1..1440, Settings page "Try waiting devices every (min)", proto `optional int32 waiting_retry_minutes = 10`; see "Waiting
-list"), `Events.ActionDestinations` (a JSON array of "host" / "host:port", at most 100, `Core.Settings.ActionDestinations`; empty by
-default): the only addresses Send HTTP request and Send TCP message of event rules of device groups may send to (a host
-without a port allows every port, compared as written, no name resolution; rules of users with all devices are not limited;
-`ServerSettings.action_destinations`, see `docs/spec/device-scope.md`), `Devices.AllowBasicOverHttp` (false; Settings page card **Security**, label "Device login", check box "Allow Basic
+list"), `Devices.AllowBasicOverHttp` (false; Settings page card **Security**, label "Device login", check box "Allow Basic
 login over HTTP", hint "Sends passwords unencrypted. Only for devices without HTTPS.", operators read On / Off; proto
 `optional bool allow_basic_over_http = 11`; read live by every device connection, see `docs/spec/vapix.md`),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings

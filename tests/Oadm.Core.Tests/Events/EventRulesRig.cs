@@ -60,19 +60,6 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public EventRulesService Rules { get; private set; } = null!;
 
-    /// <summary>The view of a user with all devices (the default caller of the rig).</summary>
-    public Oadm.Core.DeviceGroups.DeviceView AllView { get; private set; } = null!;
-
-    public Oadm.Core.DeviceGroups.DeviceViewFactory Views => _db.Get<Oadm.Core.DeviceGroups.DeviceViewFactory>();
-
-    public Oadm.Core.DeviceGroups.DeviceGroupStore Groups => _db.Get<Oadm.Core.DeviceGroups.DeviceGroupStore>();
-
-    public DeviceTagStore Tags => _db.Get<DeviceTagStore>();
-
-    public Oadm.Core.Settings.ActionDestinations Destinations => _db.Get<Oadm.Core.Settings.ActionDestinations>();
-
-    public RuleOwners Owners { get; private set; } = null!;
-
     public DeviceRepository Devices => _db.Get<DeviceRepository>();
 
     public IDbContextFactory<OadmDbContext> DbFactory => _db.Get<IDbContextFactory<OadmDbContext>>();
@@ -124,12 +111,10 @@ internal sealed class EventRulesRig : IAsyncDisposable
         Catalog = new EventCatalog(Registry, SiteEvents is null ? null : [SiteEvents]);
         Store = new RuleStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Log = new EventLog(dbFactory, Time);
-        Owners = new RuleOwners(_db.Get<Oadm.Core.DeviceGroups.OwnerScopes>(), Destinations);
-        Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog, owners: Owners);
+        Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
         Engine = new RuleEngine(Catalog, Store, Log, Runner, Devices, _db.Get<IDeviceChangeFeed>(), Time,
-            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity }, owners: Owners);
-        Rules = new EventRulesService(Catalog, Store, Engine, Devices, Views, Owners, Tags);
-        AllView = await Views.ForScopeAsync(Oadm.Core.Auth.DeviceScope.All, "admin", CancellationToken.None);
+            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity });
+        Rules = new EventRulesService(Catalog, Store, Engine, Devices);
         await Engine.StartAsync(CancellationToken.None);
         if (SiteEvents is { } siteEvents)
         {
@@ -188,7 +173,7 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public async Task<RuleDefinition> SaveAsync(RuleDefinition rule)
     {
-        var (saved, _, _) = await Rules.SaveAsync(rule, AllView, null, true, CancellationToken.None);
+        var (saved, _, _) = await Rules.SaveAsync(rule, CancellationToken.None);
         await SettleAsync();
         return saved;
     }

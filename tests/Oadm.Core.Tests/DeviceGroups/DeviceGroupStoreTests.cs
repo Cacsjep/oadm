@@ -65,8 +65,7 @@ public sealed class DeviceGroupStoreTests : DeviceGroupTestBase
         var bob = await Users.AddAsync("bob", "pw", BuiltInRoles.OperatorId, DeviceScope.Group(other.Id), Ct);
         await using (var db = await Db.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync())
         {
-            db.EventRules.Add(new EventRuleEntity { Id = Guid.NewGuid(), Name = "Owned", Enabled = true, OwnerGroupId = group.Id });
-            db.EventRules.Add(new EventRuleEntity { Id = Guid.NewGuid(), Name = "Everyone's", Enabled = true, OwnerAllDevices = true });
+            db.EventRules.Add(new EventRuleEntity { Id = Guid.NewGuid(), Name = "Rule", Enabled = true }); // rules have no owner
             db.ComplianceChecks.Add(new ComplianceCheckEntity { Id = Guid.NewGuid(), Name = "Owned", TypeId = "t", Enabled = true, OwnerGroupId = group.Id });
             await db.SaveChangesAsync();
         }
@@ -79,7 +78,7 @@ public sealed class DeviceGroupStoreTests : DeviceGroupTestBase
         var result = await Groups.DeleteAsync(group.Id, Ct);
 
         Assert.Equal(["anna"], result.UserNames);
-        Assert.Equal(["1 event rule, 1 compliance check"], result.DisabledObjects);
+        Assert.Equal(["1 compliance check"], result.DisabledObjects);
         Assert.Same(result, deleted);
         Assert.Equal([anna.Id], changedUsers);
         Assert.Null(await Groups.GetAsync(group.Id, Ct));
@@ -91,10 +90,7 @@ public sealed class DeviceGroupStoreTests : DeviceGroupTestBase
 
         await using (var db = await Db.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync())
         {
-            var owned = await db.EventRules.AsNoTracking().SingleAsync(r => r.Name == "Owned");
-            Assert.False(owned.Enabled);
-            Assert.True(owned.Owner.IsNone);
-            Assert.True((await db.EventRules.AsNoTracking().SingleAsync(r => r.Name == "Everyone's")).Enabled);
+            Assert.True((await db.EventRules.AsNoTracking().SingleAsync()).Enabled);
             var check = await db.ComplianceChecks.AsNoTracking().SingleAsync();
             Assert.False(check.Enabled);
             Assert.True(check.Owner.IsNone);

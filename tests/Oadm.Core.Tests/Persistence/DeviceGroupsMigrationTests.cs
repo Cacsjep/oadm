@@ -46,7 +46,10 @@ public sealed class DeviceGroupsMigrationTests
         Assert.Null(user.DeviceGroupId);
         Assert.Equal(DeviceScope.All, user.DeviceAccess);
         Assert.True((await db.Devices.AsNoTracking().SingleAsync()).AddedByAllDevices);
-        Assert.True((await db.EventRules.AsNoTracking().SingleAsync()).Owner.AllDevices);
+        Assert.True((await db.EventRules.AsNoTracking().SingleAsync()).Enabled); // rules have no owner (EventRulesWithoutOwner)
+        var ruleColumns = await db.Database.SqlQueryRaw<string>("SELECT \"name\" AS \"Value\" FROM pragma_table_info('EventRules')").ToListAsync();
+        Assert.DoesNotContain("OwnerAllDevices", ruleColumns);
+        Assert.DoesNotContain("OwnerGroupId", ruleColumns);
         Assert.True((await db.ComplianceChecks.AsNoTracking().SingleAsync()).Owner.AllDevices);
         Assert.Empty(await db.DeviceGroups.ToListAsync());
     }

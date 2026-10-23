@@ -156,18 +156,18 @@ public static class AccessPolicy
         ["/oadm.v1.ComplianceService/SetEnabled"] = AccessRule.Needs(HostPermissions.ComplianceManage).ForAllDevices(), // server-wide switch
 
         // Event rules.
-        ["/oadm.v1.EventService/GetCatalog"] = AccessRule.Needs(HostPermissions.EventsView),
-        ["/oadm.v1.EventService/ListRules"] = AccessRule.Needs(HostPermissions.EventsView),
-        ["/oadm.v1.EventService/WatchRules"] = AccessRule.Needs(HostPermissions.EventsView),
-        ["/oadm.v1.EventService/GetRule"] = AccessRule.Needs(HostPermissions.EventsView),
-        ["/oadm.v1.EventService/ListLog"] = AccessRule.Needs(HostPermissions.EventsView),
-        ["/oadm.v1.EventService/WatchLog"] = AccessRule.Needs(HostPermissions.EventsView),
-        ["/oadm.v1.EventService/SaveRule"] = AccessRule.Needs(HostPermissions.EventsManage),
-        ["/oadm.v1.EventService/DeleteRule"] = AccessRule.Needs(HostPermissions.EventsManage),
-        ["/oadm.v1.EventService/SetRuleEnabled"] = AccessRule.Needs(HostPermissions.EventsManage),
-        ["/oadm.v1.EventService/DuplicateRule"] = AccessRule.Needs(HostPermissions.EventsManage),
-        ["/oadm.v1.EventService/ListActionChoices"] = AccessRule.Needs(HostPermissions.EventsManage),
-        ["/oadm.v1.EventService/TestAction"] = AccessRule.Needs(HostPermissions.EventsManage),
+        ["/oadm.v1.EventService/GetCatalog"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/ListRules"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/WatchRules"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/GetRule"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/ListLog"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/WatchLog"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/SaveRule"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
+        ["/oadm.v1.EventService/DeleteRule"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
+        ["/oadm.v1.EventService/SetRuleEnabled"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
+        ["/oadm.v1.EventService/DuplicateRule"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
+        ["/oadm.v1.EventService/ListActionChoices"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
+        ["/oadm.v1.EventService/TestAction"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
         ["/oadm.v1.EventService/ClearLog"] = AccessRule.Needs(HostPermissions.EventsClearLog).ForAllDevices(),
         ["/oadm.v1.ServerLogService/List"] = AccessRule.Needs(HostPermissions.LogsServer).ForAllDevices(), // its text names devices
 

@@ -26,7 +26,7 @@ public sealed class RuleEngineTests
         // In order per device; devices do not wait for each other.
         Assert.Equal([ActionEdge.TurnedOn, ActionEdge.TurnedOff], rig.OnDevice.Edges.Where(e => e.Device == a.Id).Select(e => e.Edge));
         Assert.Equal([ActionEdge.TurnedOn], rig.OnDevice.Edges.Where(e => e.Device == b.Id).Select(e => e.Edge));
-        var rule = Assert.Single((await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)));
+        var rule = Assert.Single((await rig.Rules.ListAsync(CancellationToken.None)));
         Assert.Equal(1, rule.ActiveCount);
         Assert.Equal("On", rule.StateText);
     }
@@ -219,11 +219,11 @@ public sealed class RuleEngineTests
         var rule = await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice()));
         Assert.Equal([(ActionEdge.TurnedOn, (Guid?)camera.Id)], rig.OnDevice.Edges);
 
-        await rig.Rules.SetEnabledAsync(rule.Id, false, rig.AllView, CancellationToken.None);
+        await rig.Rules.SetEnabledAsync(rule.Id, false, CancellationToken.None);
         await rig.SettleAsync();
         Assert.Equal(ActionEdge.TurnedOff, rig.OnDevice.Edges[^1].Edge);
 
-        await rig.Rules.SetEnabledAsync(rule.Id, true, rig.AllView, CancellationToken.None);
+        await rig.Rules.SetEnabledAsync(rule.Id, true, CancellationToken.None);
         await rig.SettleAsync();
         Assert.Equal(ActionEdge.TurnedOn, rig.OnDevice.Edges[^1].Edge);
 
@@ -232,7 +232,7 @@ public sealed class RuleEngineTests
         await rig.SaveAsync(rule); // off with the old rule, then fresh: on again
         Assert.Equal([ActionEdge.TurnedOn, ActionEdge.TurnedOff, ActionEdge.TurnedOn, ActionEdge.TurnedOff, ActionEdge.TurnedOn], rig.OnDevice.Edges.Select(e => e.Edge));
 
-        await rig.Rules.DeleteAsync(rule.Id, rig.AllView, CancellationToken.None);
+        await rig.Rules.DeleteAsync(rule.Id, CancellationToken.None);
         await rig.SettleAsync();
         Assert.Equal(ActionEdge.TurnedOff, rig.OnDevice.Edges[^1].Edge);
     }
@@ -346,7 +346,7 @@ public sealed class RuleEngineTests
         rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, true); // a single change is not the full report
         await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice()));
         Assert.Empty(rig.OnDevice.Edges);
-        Assert.StartsWith("Waiting for Test source", Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).StateText, StringComparison.Ordinal);
+        Assert.StartsWith("Waiting for Test source", Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).StateText, StringComparison.Ordinal);
 
         rig.Time.Advance(TimeSpan.FromMinutes(2));
         rig.Engine.Tick();
@@ -392,7 +392,7 @@ public sealed class RuleEngineTests
         await rig.SettleAsync();
 
         Assert.Equal([ActionEdge.TurnedOn, ActionEdge.TurnedOff], rig.OnDevice.Edges.Select(e => e.Edge));
-        Assert.Equal("Not available: Test source is turned off", Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None)).Problem);
+        Assert.Equal("Not available: Test source is turned off", Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).Problem);
 
         rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, true); // ignored while off
         await rig.SettleAsync();

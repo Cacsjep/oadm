@@ -9,16 +9,8 @@ using Oadm.Sdk.Plugins;
 
 namespace Oadm.Core.Events;
 
-/// <summary>
-/// A rule as the server keeps it: password values encrypted (<see cref="RuleStore.SecretPrefix"/>), with its owner
-/// (docs/spec/device-scope.md, Shared objects: the rule runs only on the owner's devices; <see cref="Auth.DeviceScope.None"/>
-/// = its group was deleted, the rule is off).
-/// </summary>
-public sealed record StoredRule(RuleDefinition Definition, DateTime CreatedUtc, DateTime UpdatedUtc, DateTime? LastFiredUtc)
-{
-    /// <summary>The owner: all devices or a group.</summary>
-    public Auth.DeviceScope Owner { get; init; } = Auth.DeviceScope.None;
-}
+/// <summary>A rule as the server keeps it: password values encrypted (<see cref="RuleStore.SecretPrefix"/>).</summary>
+public sealed record StoredRule(RuleDefinition Definition, DateTime CreatedUtc, DateTime UpdatedUtc, DateTime? LastFiredUtc);
 
 /// <summary>
 /// The event rules in the database (table EventRules) and the subjects each rule is on for (EventRuleStates). Password
@@ -57,11 +49,10 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
     /// encrypted; an empty one listed in <see cref="RuleAction.StoredSecretFields"/> keeps the stored value of the action
     /// with the same <see cref="RuleAction.Key"/>. Returns the stored rule and the previous version (null when new).
     /// Throws <see cref="KeyNotFoundException"/> for an unknown id and <see cref="RuleValidationException"/> over
-    /// <see cref="MaxRules"/>. <paramref name="owner"/> is stored with the rule (the caller decides: the creator's devices,
-    /// the kept owner, or an administrator's choice).
+    /// <see cref="MaxRules"/>.
     /// </summary>
     public async Task<(StoredRule Rule, StoredRule? Previous)> SaveAsync(
-        RuleDefinition incoming, Func<RuleAction, IReadOnlyCollection<string>> passwordFields, Auth.DeviceScope owner, CancellationToken ct)
+        RuleDefinition incoming, Func<RuleAction, IReadOnlyCollection<string>> passwordFields, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(incoming);
         ArgumentNullException.ThrowIfNull(passwordFields);
@@ -106,8 +97,6 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
             row.Enabled = rule.Enabled;
             row.DefinitionJson = rule.ToJson();
             row.UpdatedUtc = now;
-            row.OwnerAllDevices = owner.AllDevices;
-            row.OwnerGroupId = owner.EffectiveGroupId;
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             return (ToStored(row), previous);
         }
@@ -171,10 +160,9 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
 
     /// <summary>
     /// A copy "&lt;name&gt; (copy)", turned off, with the stored password values (encrypted again for the copy). A value
-    /// that cannot be read (older master key) stays empty in the copy. The copy belongs to <paramref name="owner"/> (the
-    /// devices of the user who duplicates).
+    /// that cannot be read (older master key) stays empty in the copy.
     /// </summary>
-    public async Task<StoredRule?> DuplicateAsync(Guid id, Auth.DeviceScope owner, CancellationToken ct)
+    public async Task<StoredRule?> DuplicateAsync(Guid id, CancellationToken ct)
     {
         var source = await GetAsync(id, ct).ConfigureAwait(false);
         if (source is null)
@@ -218,7 +206,7 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
             secretKeys[action.Key] = [.. action.Settings.Where(p => IsSecret(p.Value)).Select(p => p.Key)];
         }
 
-        var (rule, _) = await SaveAsync(copy, action => secretKeys.GetValueOrDefault(action.Key) ?? [], owner, ct).ConfigureAwait(false);
+        var (rule, _) = await SaveAsync(copy, action => secretKeys.GetValueOrDefault(action.Key) ?? [], ct).ConfigureAwait(false);
         return rule;
     }
 
@@ -408,7 +396,7 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
         definition.Id = row.Id;
         definition.Name = row.Name;
         definition.Enabled = row.Enabled;
-        return new StoredRule(definition, row.CreatedUtc, row.UpdatedUtc, row.LastFiredUtc) { Owner = row.Owner };
+        return new StoredRule(definition, row.CreatedUtc, row.UpdatedUtc, row.LastFiredUtc);
     }
 
     /// <summary>The password field keys of an action (empty when the action is unknown).</summary>

@@ -5,7 +5,6 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
 using Oadm.Sdk.Actions;
 using Oadm.Sdk.Devices;
@@ -60,7 +59,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private readonly IActionDispatcher _actions;
     private readonly DeviceRepository? _deviceRepository;
     private readonly IDeviceChangeFeed? _deviceFeed;
-    private readonly RuleOwners? _owners;
     private readonly TimeProvider _time;
     private readonly RuleEngineOptions _options;
     private readonly ILogger _logger;
@@ -102,8 +100,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         IDeviceChangeFeed? deviceFeed = null,
         TimeProvider? time = null,
         RuleEngineOptions? options = null,
-        ILogger<RuleEngine>? logger = null,
-        RuleOwners? owners = null)
+        ILogger<RuleEngine>? logger = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -111,7 +108,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
         _actions = actions ?? throw new ArgumentNullException(nameof(actions));
         _deviceRepository = deviceRepository;
         _deviceFeed = deviceFeed;
-        _owners = owners;
         _time = time ?? TimeProvider.System;
         _options = options ?? new RuleEngineOptions();
         _logger = (ILogger?)logger ?? NullLogger.Instance;
@@ -155,14 +151,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
         }
 
         _catalog.Registry.EventTypesChanged += OnEventTypesChanged;
-        if (_owners is not null)
-        {
-            await _owners.Scopes.LoadAsync(ct).ConfigureAwait(false);
-            await _owners.Destinations.LoadAsync(ct).ConfigureAwait(false);
-            _owners.Scopes.Changed += OnOwnersChanged;
-            _owners.Scopes.GroupDeleted += OnGroupDeleted;
-        }
-
         if (_deviceRepository is not null)
         {
             foreach (var device in await _deviceRepository.ListDevicesAsync(ct).ConfigureAwait(false))
@@ -267,12 +255,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
         }
 
         _catalog.Registry.EventTypesChanged -= OnEventTypesChanged;
-        if (_owners is not null)
-        {
-            _owners.Scopes.Changed -= OnOwnersChanged;
-            _owners.Scopes.GroupDeleted -= OnGroupDeleted;
-        }
-
         _commands.Writer.TryComplete();
         await _stop.CancelAsync().ConfigureAwait(false);
         foreach (var task in new[] { _loop, _ticker })
@@ -313,25 +295,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private void OnDeviceChanged(object? sender, DeviceChange change) => Enqueue(new DeviceCommand(change));
 
     private void OnEventTypesChanged(object? sender, EventArgs e) => SourcesChanged();
-
-    /// <summary>A group's rules, a tag or a site changed: the rules of groups are evaluated again on their devices.</summary>
-    private void OnOwnersChanged(object? sender, EventArgs e) => EnqueueControl(new OwnersChangedCommand());
-
-    /// <summary>A group was deleted: its rules are off without an owner in the store; they are read again.</summary>
-    private async void OnGroupDeleted(object? sender, Guid groupId)
-    {
-        try
-        {
-            var rules = await _store.ListAsync(_stop.Token).ConfigureAwait(false);
-            EnqueueControl(new GroupDeletedCommand(groupId, rules));
-        }
-#pragma warning disable CA1031 // An event handler must not throw; the next start reads the rules anyway.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            LogCommandFailed(ex, nameof(GroupDeletedCommand));
-        }
-    }
 
     /// <summary>Queues a command that must not be dropped (subscribe, unsubscribe): waits for room when the queue is full.</summary>
     private void EnqueueControl(Command command)
@@ -466,21 +429,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
             case UnsubscribeCommand unsubscribe:
                 _subscriptions.Remove(unsubscribe.Subscription);
                 break;
-            case OwnersChangedCommand:
-                foreach (var runtime in _rules.Values.Where(r => !r.Owner.AllDevices && r.Stateful && IsEvaluable(r)))
-                {
-                    Reconcile(runtime, AllCandidates(runtime), runtime.TriggerTypeId);
-                }
-
-                break;
-            case GroupDeletedCommand deleted:
-                foreach (var runtime in _rules.Values.Where(r => r.Owner.EffectiveGroupId == deleted.GroupId).ToList())
-                {
-                    var fresh = deleted.Rules.FirstOrDefault(r => r.Definition.Id == runtime.Id);
-                    HandleRuleChanged(new RuleChanged(null, fresh, new TaskCompletionSource()));
-                }
-
-                break;
         }
     }
 
@@ -596,83 +544,14 @@ public sealed partial class RuleEngine : IAsyncDisposable
         return set;
     }
 
-    private bool IsOn(Runtime runtime, string typeId, Guid device, Dictionary<string, string> filter) =>
-        StateOf(runtime, typeId, device) is { } data && Matches(data, filter);
-
-    // ---------- owners (docs/spec/device-scope.md, Shared objects) ----------
-
-    /// <summary>The owner's devices now; without the owner scopes all devices for all devices, nothing for a group.</summary>
-    private DeviceGroupFilter OwnerFilter(Runtime runtime) =>
-        _owners?.Scopes.FilterOf(runtime.Owner)
-        ?? (runtime.Owner.AllDevices ? DeviceGroupFilter.Everything : DeviceGroupFilter.Nothing);
-
-    /// <summary>Whether the device is one of the rule owner's (a managed device; the server subject is no device).</summary>
-    private bool OwnerContains(Runtime runtime, Guid device)
+    private bool IsOn(string typeId, Guid device, Dictionary<string, string> filter)
     {
-        var filter = OwnerFilter(runtime);
-        return filter.IsEverything || (_devices.TryGetValue(device, out var info) && filter.Contains(info.Row));
-    }
-
-    /// <summary>
-    /// The state of an event as the rule sees it: for a rule of a group a device event only of the group's devices, the
-    /// "Any device" events counted over the group's devices, "Any site offline" over the group's sites. Null = off.
-    /// </summary>
-    private IReadOnlyDictionary<string, string>? StateOf(Runtime runtime, string typeId, Guid device)
-    {
-        if (runtime.Owner.AllDevices)
+        if (!_on.TryGetValue(typeId, out var set) || !set.TryGetValue(device, out var data))
         {
-            return _on.TryGetValue(typeId, out var all) && all.TryGetValue(device, out var data) ? data : null;
+            return false;
         }
 
-        if (device != Guid.Empty)
-        {
-            return OwnerContains(runtime, device) && _on.TryGetValue(typeId, out var set) && set.TryGetValue(device, out var data) ? data : null;
-        }
-
-        if (AnyTwin(typeId) is { } deviceType)
-        {
-            var count = _on.TryGetValue(deviceType, out var on) ? on.Keys.Count(d => OwnerContains(runtime, d)) : 0;
-            return count == 0 ? null : new Dictionary<string, string> { [BuiltInEvents.CountField] = count.ToString(CultureInfo.InvariantCulture) };
-        }
-
-        if (string.Equals(typeId, SiteEventSource.AnyOfflineTypeId, StringComparison.OrdinalIgnoreCase))
-        {
-            var names = new List<string>();
-            foreach (var site in _owners?.Scopes.SitesOf(runtime.Owner) ?? (IReadOnlySet<Guid>)new HashSet<Guid>())
-            {
-                if (_on.TryGetValue(SiteEventSource.OfflineTypeId(site), out var siteSet) && siteSet.TryGetValue(Guid.Empty, out var siteData))
-                {
-                    names.Add(siteData.GetValueOrDefault(SiteEventSource.SiteField) ?? string.Empty);
-                }
-            }
-
-            return names.Count == 0 ? null : new Dictionary<string, string>
-            {
-                [SiteEventSource.CountField] = names.Count.ToString(CultureInfo.InvariantCulture),
-                [SiteEventSource.SiteField] = string.Join(", ", names.Order(StringComparer.CurrentCultureIgnoreCase)),
-            };
-        }
-
-        if (SiteEventSource.SiteOf(typeId) is { } ofSite && _owners?.Scopes.SitesOf(runtime.Owner) is { } sites && !sites.Contains(ofSite))
-        {
-            return null; // another group's site
-        }
-
-        return _on.TryGetValue(typeId, out var server) && server.TryGetValue(Guid.Empty, out var serverData) ? serverData : null;
-    }
-
-    /// <summary>The device event of an "Any device" event, else null.</summary>
-    private static string? AnyTwin(string typeId)
-    {
-        foreach (var (deviceType, anyType) in BuiltInEvents.AnyOf)
-        {
-            if (string.Equals(anyType, typeId, StringComparison.OrdinalIgnoreCase))
-            {
-                return deviceType;
-            }
-        }
-
-        return null;
+        return Matches(data, filter);
     }
 
     private static bool SameData(IReadOnlyDictionary<string, string> a, IReadOnlyDictionary<string, string> b) =>
@@ -741,12 +620,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
     /// <summary>Whether a stateful rule holds for a subject now; <paramref name="shared"/> = <see cref="SharedHold"/>.</summary>
     private bool Holds(Runtime runtime, Guid subject, bool shared)
     {
-        if (runtime.TriggerScope == EventScope.Device && (subject == Guid.Empty || !Selects(runtime, runtime.Trigger, subject)))
+        if (runtime.TriggerScope == EventScope.Device && (subject == Guid.Empty || !Selects(runtime.Trigger, subject)))
         {
             return false;
         }
 
-        return shared && IsOn(runtime, runtime.TriggerTypeId, subject, runtime.Trigger.Condition.Data) && SubjectHold(runtime, subject);
+        return shared && IsOn(runtime.TriggerTypeId, subject, runtime.Trigger.Condition.Data) && SubjectHold(runtime, subject);
     }
 
     /// <summary>
@@ -776,12 +655,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
             var typeId = condition.TypeId;
             if (condition.Type is { DeviceScope: false })
             {
-                if (!IsOn(runtime, typeId, Guid.Empty, condition.Condition.Data))
+                if (!IsOn(typeId, Guid.Empty, condition.Condition.Data))
                 {
                     return false;
                 }
             }
-            else if (!_on.TryGetValue(typeId, out var set) || !set.Any(e => Selects(runtime, condition, e.Key) && Matches(e.Value, condition.Condition.Data)))
+            else if (!_on.TryGetValue(typeId, out var set) || !set.Any(e => Selects(condition, e.Key) && Matches(e.Value, condition.Condition.Data)))
             {
                 return false;
             }
@@ -795,7 +674,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     {
         foreach (var condition in runtime.Others)
         {
-            if (condition.PerSubject && !IsOn(runtime, condition.TypeId, subject, condition.Condition.Data))
+            if (condition.PerSubject && !IsOn(condition.TypeId, subject, condition.Condition.Data))
             {
                 return false;
             }
@@ -804,17 +683,13 @@ public sealed partial class RuleEngine : IAsyncDisposable
         return true;
     }
 
-    /// <summary>
-    /// Whether a selector picks a managed device (a late state of a removed device never counts) of the rule's owner
-    /// ("All devices" of a group's rule are the group's).
-    /// </summary>
-    private bool Selects(Runtime runtime, ConditionRuntime selector, Guid device) => selector.Condition.Devices.Mode switch
+    /// <summary>Whether a selector picks a managed device (a late state of a removed device never counts).</summary>
+    private bool Selects(ConditionRuntime selector, Guid device) => selector.Condition.Devices.Mode switch
     {
-        DeviceSelectorMode.All => _devices.ContainsKey(device) && OwnerContains(runtime, device),
+        DeviceSelectorMode.All => _devices.ContainsKey(device),
         DeviceSelectorMode.Devices or DeviceSelectorMode.Tags =>
             _devices.TryGetValue(device, out var info)
-            && (selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && selector.Tags.Overlaps(info.Tags)))
-            && OwnerContains(runtime, device),
+            && (selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && selector.Tags.Overlaps(info.Tags))),
         _ => false,
     };
 
@@ -888,7 +763,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 logged = true;
             }
 
-            if ((type.DeviceScope && !Selects(runtime, runtime.Trigger, device)) || !Matches(data ?? EmptyData, runtime.Trigger.Condition.Data)
+            if ((type.DeviceScope && !Selects(runtime.Trigger, device)) || !Matches(data ?? EmptyData, runtime.Trigger.Condition.Data)
                 || !SharedHold(runtime) || !SubjectHold(runtime, device))
             {
                 continue;
@@ -943,7 +818,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     {
         var type = _catalog.FindEventType(causeTypeId);
         _devices.TryGetValue(subject, out var device);
-        var eventData = data ?? StateOf(runtime, causeTypeId, subject) ?? EmptyData;
+        var eventData = data ?? (_on.TryGetValue(causeTypeId, out var set) && set.TryGetValue(subject, out var current) ? current : EmptyData);
         var trigger = new ActionTrigger(
             causeTypeId,
             type?.Info.DisplayName ?? causeTypeId,
@@ -953,7 +828,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             state,
             _time.GetUtcNow(),
             eventData);
-        _actions.Dispatch(new RuleEdgeJob(runtime.Definition, runtime.Stateful, edge, subject == Guid.Empty ? null : subject, aggregate, trigger) { Owner = runtime.Owner });
+        _actions.Dispatch(new RuleEdgeJob(runtime.Definition, runtime.Stateful, edge, subject == Guid.Empty ? null : subject, aggregate, trigger));
     }
 
     // ---------- rule changes ----------
@@ -1118,13 +993,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
         var previous = _devices.GetValueOrDefault(change.DeviceId);
         var current = DeviceRef.From(change.Device);
         _devices[change.DeviceId] = current;
-        var tagsChanged = previous is not null && !previous.Tags.SetEquals(current.Tags);
-        var membershipChanged = previous is not null && (tagsChanged || previous.Row.SiteId != current.Row.SiteId
-            || previous.Row.AddedByAllDevices != current.Row.AddedByAllDevices || previous.Row.AddedByGroupId != current.Row.AddedByGroupId);
-        if (tagsChanged || membershipChanged)
+        if (previous is not null && !previous.Tags.SetEquals(current.Tags))
         {
-            // Rules on tags, and rules of groups (the device may have entered or left the group).
-            foreach (var runtime in _rules.Values.Where(r => r.Stateful && IsEvaluable(r) && ((tagsChanged && r.UsesTags) || (membershipChanged && !r.Owner.AllDevices))))
+            foreach (var runtime in _rules.Values.Where(r => r.Stateful && r.UsesTags && IsEvaluable(r)))
             {
                 Reconcile(runtime, AllCandidates(runtime).Append(change.DeviceId), runtime.TriggerTypeId);
             }
@@ -1354,16 +1225,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private sealed record Barrier(TaskCompletionSource Done) : Command;
 
-    private sealed record OwnersChangedCommand : Command;
-
-    private sealed record GroupDeletedCommand(Guid GroupId, IReadOnlyList<StoredRule> Rules) : Command;
-
     private sealed class Runtime
     {
         public Runtime(StoredRule stored, EventCatalog catalog)
         {
             Definition = stored.Definition;
-            Owner = stored.Owner;
             LastFiredUtc = stored.LastFiredUtc;
             TriggerTypeId = Definition.Conditions.FirstOrDefault()?.EventTypeId ?? string.Empty;
             Trigger = new ConditionRuntime(Definition.Conditions.FirstOrDefault() ?? new RuleCondition());
@@ -1376,9 +1242,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
         }
 
         public RuleDefinition Definition { get; }
-
-        /// <summary>The owner: the rule runs only on its devices.</summary>
-        public Auth.DeviceScope Owner { get; }
 
         public Guid Id => Definition.Id;
 
@@ -1514,9 +1377,6 @@ public sealed record DeviceRef(string Address, string? Model, string Serial, Dev
     /// <summary>The device's site was removed with Keep devices: its status events are off.</summary>
     public bool SiteRemoved { get; init; }
 
-    /// <summary>What device groups read (serial, site, tags, who added it): the owner of a rule is checked on it.</summary>
-    public DeviceScopeRow Row { get; init; } = new(Guid.Empty, Serial, null, [.. Tags], false, null);
-
     public static DeviceRef From(Device device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -1525,7 +1385,6 @@ public sealed record DeviceRef(string Address, string? Model, string Serial, Dev
         {
             StoredStatus = device.StoredStatus,
             SiteRemoved = device.SiteRemoved,
-            Row = DeviceScopeRow.Of(device),
         };
     }
 
