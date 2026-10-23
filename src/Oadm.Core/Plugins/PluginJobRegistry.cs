@@ -18,8 +18,11 @@ namespace Oadm.Core.Plugins;
 /// group changed after the call began is refused (<see cref="AccessEpochs"/>), so no job keeps the old access. Jobs run detached (no caller: the background boundary) with the owner's call as their device access, and
 /// with the owner's plugin call mark, so a job of a user with a device group refuses <c>ctx.Devices</c> like the call.
 /// A job ends when its work ends, when it is cancelled, when its plugin stops and when its owner's devices, role or
-/// sessions change (<see cref="CancelOwner"/>, <see cref="CancelGroup"/>: such a job is also forgotten, so a finished
-/// result made for the old devices is no longer found). When devices move into or out of a group (a tag, site or
+/// sessions change (<see cref="CancelOwner"/>, <see cref="CancelSession"/>, <see cref="CancelGroup"/>: such a job is also
+/// forgotten, so a finished result made for the old devices is no longer found). A shared job belongs to its scope, not to
+/// the user who started it: the starter's logout or new role leaves it running for the scope's other users; it ends only
+/// when the scope's rules change (<see cref="CancelGroup"/>), when it is cancelled or its plugin stops (lead decision
+/// 2026-10-23). When devices move into or out of a group (a tag, site or
 /// membership change: <see cref="ScopeDevicesChanged"/>) the finished jobs of its users are forgotten and the running ones
 /// when they end. <see cref="IPluginJobs.Find"/> answers only a caller with the job's device scope. Each user keeps at most <see cref="MaxJobsPerUser"/> jobs per plugin.
 /// </summary>
@@ -73,7 +76,7 @@ public sealed partial class PluginJobRegistry
     public void CancelOwner(Guid userId)
     {
         Epochs.UserChanged(userId); // first: a job registered meanwhile is either refused or seen by Forget
-        Forget(j => j.UserId == userId);
+        Forget(j => !j.Shared && j.UserId == userId);
     }
 
     /// <summary>
@@ -126,12 +129,12 @@ public sealed partial class PluginJobRegistry
         }
     }
 
-    /// <summary>Cancels and forgets every job started in a session (the session ended), finished ones too.</summary>
+    /// <summary>Cancels and forgets every job started in a session (the session ended), finished ones too; shared jobs stay.</summary>
     public void CancelSession(string sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         Epochs.SessionEnded(sessionId);
-        Forget(j => string.Equals(j.Owner.SessionId, sessionId, StringComparison.Ordinal));
+        Forget(j => !j.Shared && string.Equals(j.Owner.SessionId, sessionId, StringComparison.Ordinal));
     }
 
     private ConcurrentDictionary<string, Job> Jobs(string pluginId) =>
@@ -160,7 +163,7 @@ public sealed partial class PluginJobRegistry
             }
 
             var mark = CallerContext.PluginCall;
-            var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence), shared);
+            var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence), shared, ex => LogCancelFailed(ex, pluginId, kind));
             jobs[job.Id] = job;
 
             // Registered first, then checked: an access change either came before (refused here) or comes after and
@@ -223,6 +226,9 @@ public sealed partial class PluginJobRegistry
     [LoggerMessage(Level = LogLevel.Warning, Message = "Job {Kind} of core plugin {PluginId} failed")]
     private partial void LogJobFailed(Exception ex, string pluginId, string kind);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cancelling job {Kind} of core plugin {PluginId}: a callback of the plugin failed")]
+    private partial void LogCancelFailed(Exception ex, string pluginId, string kind);
+
     private sealed class PluginJobs(PluginJobRegistry registry, string pluginId) : IPluginJobs
     {
         public IPluginJob Start(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work) =>
@@ -236,9 +242,12 @@ public sealed partial class PluginJobRegistry
         public IReadOnlyList<IPluginJob> List(ICallContext caller) => registry.List(pluginId, caller);
     }
 
-    private sealed class Job(string id, string kind, HostCallContext owner, long sequence, bool shared) : IPluginJob, IDisposable
+    private sealed class Job(string id, string kind, HostCallContext owner, long sequence, bool shared, Action<Exception> cancelFailed) : IPluginJob, IDisposable
     {
         private readonly CancellationTokenSource _cancel = new();
+
+        /// <summary>Started with <see cref="IPluginJobs.StartShared"/>: it belongs to the owner's scope, not to the owner.</summary>
+        public bool Shared => shared;
 
         public string Id { get; } = id;
 
@@ -267,6 +276,11 @@ public sealed partial class PluginJobRegistry
 
         public Task Completion { get; private set; } = Task.CompletedTask;
 
+        /// <summary>
+        /// Cancels the work. Never throws: the callers are the host's event handlers (a logout, a role change), and a
+        /// callback the plugin registered on the token that throws (an <see cref="AggregateException"/>, also one of a
+        /// source the plugin disposed) only gets logged.
+        /// </summary>
         public void Cancel()
         {
             try
@@ -276,6 +290,10 @@ public sealed partial class PluginJobRegistry
             catch (ObjectDisposedException)
             {
                 // Ended meanwhile.
+            }
+            catch (AggregateException ex)
+            {
+                cancelFailed(ex);
             }
         }
 

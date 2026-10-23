@@ -68,9 +68,11 @@ an independent security review the same day). A user may be limited to part of t
 - **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
   scan, export and monitor ids); every id-taking method and download checks it; ids of another user or session answer
   NOT_FOUND, and an ended session forgets its jobs, finished ones too. A shared job (`IPluginJobs.StartShared`, one scan
-  per scope) is found and stopped by every user with its device scope. A job started in a call whose user's devices, role
+  per scope) is found and stopped by every user with its device scope; it belongs to the scope, not to the user who
+  started it (lead decision 2026-10-23): the starter's logout, new role or other devices leave it running, it ends only
+  when the rules of its group change, on a cancel or when its plugin stops. A job started in a call whose user's devices, role
   or session changed after the call began is refused ("Your devices changed. Connect again.").
-  When the owner's devices change (another group, new rules of the group, another role) the owner's jobs end and are
+  When the owner's devices change (another group, new rules of the group, another role) the owner's own jobs end and are
   forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
   of the group (tag, site, add, remove; the coalesced `HostDeviceScopes.Changed`) the finished jobs of its users are
   forgotten (a Snapshot Report PDF, an event list read) and the running ones when they end. Tasks a call or a job

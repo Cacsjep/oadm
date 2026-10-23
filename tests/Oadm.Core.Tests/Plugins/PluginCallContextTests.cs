@@ -266,10 +266,46 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         Assert.Equal("cancelled", await rig.InvokeAsync(berta, "job.cancel", shared));
         await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 1, "the shared job ended");
 
-        // A shared job still ends with its owner's access.
+        // A shared job belongs to its scope: the starter's new access or logout leaves it to the scope's other users; new
+        // rules of the group end it.
         var second = (await rig.InvokeAsync(rig.Anna, "job.shared", null))!;
         rig.Host.Jobs.CancelOwner(rig.Anna.Caller.UserId);
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(berta, "job.find", second));
+        rig.Host.Jobs.CancelSession(rig.Anna.Caller.SessionId);
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 1, "anna's own job ended");
+        Assert.Equal("found", await rig.InvokeAsync(berta, "job.find", second));
+        rig.Host.Jobs.CancelGroup(rig.GroupId);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Fresh(berta), "job.find", second));
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "every job ended");
+    }
+
+    [Fact]
+    public async Task ASharedJobOfAllDevicesOutlivesItsStartersLogoutAndRoleChangeAndAnotherAdministratorStopsIt()
+    {
+        await using var rig = await RigAsync();
+        var second = await rig.CallerAsync("root2", DeviceScope.All);
+        var scan = (await rig.InvokeAsync(rig.Admin, "job.shared", null))!;
+
+        rig.Host.Jobs.CancelSession(rig.Admin.Caller.SessionId); // the starter logs out
+        rig.Host.Jobs.CancelOwner(rig.Admin.Caller.UserId); // and gets another role
+        Assert.Equal(1, rig.Host.Jobs.RunningCount(PluginId));
+        Assert.Equal("found", await rig.InvokeAsync(second, "job.find", scan));
+        Assert.Equal(1, await rig.JobCountAsync(second));
+
+        Assert.Equal("cancelled", await rig.InvokeAsync(second, "job.cancel", scan));
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "the scan ended");
+    }
+
+    [Fact]
+    public async Task ACancelCallbackOfThePluginThatThrowsNeverEscapesTheHostsEvents()
+    {
+        await using var rig = await RigAsync();
+        await rig.InvokeAsync(rig.Anna, "job.throwing", null);
+        await rig.InvokeAsync(rig.Admin, "job.throwing", null);
+        await rig.InvokeAsync(rig.Admin, "job.throwing", null);
+        Assert.Equal(3, rig.Host.Jobs.RunningCount(PluginId));
+
+        rig.Host.Jobs.CancelOwner(rig.Anna.Caller.UserId); // a role change
+        rig.Host.Jobs.CancelSession(rig.Admin.Caller.SessionId); // a logout: both of its jobs, the second one too
         await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "every job ended");
     }
 
@@ -735,6 +771,18 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                         catch (Exception ex)
                         {
                             JobResult.TrySetResult(ex);
+                        }
+                    }).Id;
+                case "job.throwing":
+                    return ctx.Jobs!.Start(caller, "throwing", async (_, token) =>
+                    {
+                        using var callback = token.Register(() => throw new InvalidOperationException("The plugin's callback failed."));
+                        try
+                        {
+                            await Task.Delay(Timeout.Infinite, token);
+                        }
+                        catch (OperationCanceledException)
+                        {
                         }
                     }).Id;
                 case "job.shared":
