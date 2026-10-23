@@ -274,6 +274,50 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public async Task An_administrators_form_shows_the_stored_group_and_a_role_change_sends_the_devices_choice()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var dialogs = Substitute.For<IDialogService>();
+        var users = new UsersViewModel(api, dialogs, Admin(), NullLogger<UsersViewModel>.Instance);
+        await users.LoadAsync();
+        string lobby = users.DeviceOptions.Single(o => o.Title == "Lobby").GroupId!;
+        string adminRole = users.Roles.Single(r => r.Kind == RoleKind.Administrator).Id;
+        await api.AddUserAsync(new AddUserRequest { UserName = "boss", Password = "Boss-pass-123", RoleId = adminRole, AllDevices = true }, CancellationToken.None);
+        string id = (await api.ListUsersAsync(CancellationToken.None)).Single(u => u.UserName == "boss").Id;
+
+        async Task<UserRowViewModel> AdminWithLobbyAsync()
+        {
+            await api.UpdateUserAsync(new UpdateUserRequest { Id = id, RoleId = adminRole, AllDevices = false, DeviceGroupId = lobby }, CancellationToken.None);
+            await users.LoadAsync();
+            return users.Users.Single(u => u.UserName == "boss");
+        }
+
+        // The administrator has all devices; the form shows the group stored on the account (locked).
+        var boss = await AdminWithLobbyAsync();
+        Assert.Equal("All devices", boss.DevicesText);
+        users.OpenEditCommand.Execute(boss);
+        Assert.Equal("Lobby", users.EditDevices?.Title);
+        Assert.False(users.IsEditDevicesEnabled);
+
+        // Operator with All devices chosen: All devices.
+        users.EditRole = users.Roles.Single(r => r.Kind == RoleKind.Operator);
+        Assert.True(users.IsEditDevicesEnabled);
+        users.EditDevices = DeviceAccessOption.All;
+        await users.SaveFormCommand.ExecuteAsync(null);
+        Assert.Equal("All devices", users.Users.Single(u => u.UserName == "boss").DevicesText);
+
+        // Operator with the shown group left as it is: the group is sent with the role, not applied unseen.
+        boss = await AdminWithLobbyAsync();
+        users.OpenEditCommand.Execute(boss);
+        users.EditRole = users.Roles.Single(r => r.Kind == RoleKind.Operator);
+        await users.SaveFormCommand.ExecuteAsync(null);
+        Assert.Equal(UserForm.None, users.Form);
+        UserInfo stored = (await api.ListUsersAsync(CancellationToken.None)).Single(u => u.UserName == "boss");
+        Assert.Equal((false, lobby), (stored.AllDevices, stored.DeviceGroupId));
+        Assert.Equal("Lobby", users.Users.Single(u => u.UserName == "boss").DevicesText);
+    }
+
+    [Fact]
     public async Task Your_role_shows_the_group_and_its_rules()
     {
         var api = Substitute.For<IOadmApi>();

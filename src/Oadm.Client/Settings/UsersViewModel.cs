@@ -382,7 +382,9 @@ public sealed partial class UsersViewModel : ValidatingViewModel
             request.RoleId = role.Id;
         }
 
-        bool devicesChange = role.Kind != RoleKind.Administrator && EditDevices is { } devices && !Equals(devices, CurrentDevices(row));
+        // Any role change below Administrator sends the Devices choice the form shows, so a group stored on an administrator
+        // never applies unseen.
+        bool devicesChange = role.Kind != RoleKind.Administrator && EditDevices is { } devices && (roleChanges || !Equals(devices, CurrentDevices(row)));
         if (devicesChange)
         {
             SetDevices(request, EditDevices!);
@@ -415,10 +417,25 @@ public sealed partial class UsersViewModel : ValidatingViewModel
 
     partial void OnNewRoleChanged(RoleOption? value) => Validation.Validate();
 
-    /// <summary>The Devices choice of a user as stored: All devices, the group, or null (no devices).</summary>
-    private DeviceAccessOption? CurrentDevices(UserRowViewModel row) =>
-        row.HasAllDevices ? DeviceAccessOption.All
-        : DeviceOptions.FirstOrDefault(o => o.GroupId is not null && o.GroupId == row.Info.DeviceGroupId);
+    /// <summary>
+    /// The Devices choice of a user as stored: All devices, the group, or null (no devices). Also for an administrator (who
+    /// has all devices anyway): the form shows the group stored on the account, which applies once the role changes.
+    /// </summary>
+    private DeviceAccessOption? CurrentDevices(UserRowViewModel row)
+    {
+        var info = row.Info;
+        if (!info.HasAllDevices)
+        {
+            return DeviceAccessOption.All; // a server before device groups
+        }
+
+        if (info.DeviceGroupId.Length > 0)
+        {
+            return DeviceOptions.FirstOrDefault(o => o.GroupId == info.DeviceGroupId);
+        }
+
+        return info.AllDevices ? DeviceAccessOption.All : null;
+    }
 
     private static void SetDevices(UpdateUserRequest request, DeviceAccessOption devices)
     {
