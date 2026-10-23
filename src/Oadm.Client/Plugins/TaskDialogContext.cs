@@ -21,12 +21,16 @@ public sealed class TaskDialogContext : ITaskDialogContext
     private readonly Func<string, bool>? _has;
     private readonly Func<IReadOnlyList<IDeviceInfo>>? _allDevices;
     private readonly TaskStore? _tasks;
+    private readonly Func<bool>? _hasAllDevices;
 
     /// <param name="has">The user's permissions (<see cref="Shell.UserSession.Has"/>); null: everything.</param>
     /// <param name="allDevices">Every device of the client's device list; null: none.</param>
     /// <param name="tasks">The client's task mirror: with it the dialog can run its task itself (<see cref="CanRunTasks"/>).</param>
-    public TaskDialogContext(IOadmApi api, string pluginId, Func<string, bool>? has = null, Func<IReadOnlyList<IDeviceInfo>>? allDevices = null, TaskStore? tasks = null)
+    /// <param name="hasAllDevices">Whether the user may reach every device (<see cref="Shell.UserSession.HasAllDevices"/>); null: true.</param>
+    public TaskDialogContext(IOadmApi api, string pluginId, Func<string, bool>? has = null, Func<IReadOnlyList<IDeviceInfo>>? allDevices = null, TaskStore? tasks = null,
+        Func<bool>? hasAllDevices = null)
     {
+        _hasAllDevices = hasAllDevices;
         _tasks = tasks;
         ArgumentNullException.ThrowIfNull(api);
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
@@ -37,6 +41,8 @@ public sealed class TaskDialogContext : ITaskDialogContext
     }
 
     public bool Has(string permission) => _has?.Invoke(permission) ?? true;
+
+    public bool HasAllDevices => _hasAllDevices?.Invoke() ?? true;
 
     public IReadOnlyList<IDeviceInfo> AllDevices => _allDevices?.Invoke() ?? [];
 

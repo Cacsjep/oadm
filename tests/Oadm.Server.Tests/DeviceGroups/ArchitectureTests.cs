@@ -29,9 +29,6 @@ public sealed partial class ArchitectureTests
     /// </summary>
     internal static readonly Dictionary<string, string> GrpcAllowList = new(StringComparer.Ordinal)
     {
-        ["DeviceGrpcService(DeviceRepository)"] = "converted in devices-core (Watch, Remove, Refresh, SetCredentials, GetWebUiUrl)",
-        ["LiveViewGrpcService(DeviceRepository)"] = "converted in devices-core",
-        ["DeviceWebGrpcService(DeviceRepository)"] = "converted in devices-core",
     };
 
     /// <summary>
@@ -40,7 +37,6 @@ public sealed partial class ArchitectureTests
     /// </summary>
     internal static readonly Dictionary<string, string> ServiceAllowList = new(StringComparer.Ordinal)
     {
-        ["DeviceFirstPasswordService.ReadPoliciesAsync"] = "raw-id form kept for system work; GetPassphrasePolicies uses the ViewedDevices overload (converted)",
     };
 
     private static IEnumerable<Type> GrpcServiceClasses() =>
@@ -116,38 +112,12 @@ public sealed partial class ArchitectureTests
     /// <summary>Service methods with raw device ids that a later package converts (type.method → package).</summary>
     internal static readonly Dictionary<string, string> NotConvertedServiceMethods = new(StringComparer.Ordinal)
     {
-        ["DeviceLoginService.LogInAsync"] = "devices-core",
-        ["DeviceLoginService.SharedUserNameAsync"] = "devices-core",
-        ["DeviceFirstPasswordService.SetAsync"] = "devices-core",
-        ["CredentialStore.SetAsync"] = "devices-core",
-        ["CredentialStore.SetManyAsync"] = "devices-core",
-        ["CredentialStore.GetAsync"] = "devices-core",
-        ["DevicePollingService.QueueRefresh"] = "devices-core",
-        ["VapixClientFactory.CreateAsync"] = "devices-core",
-        ["VapixClientFactory.Invalidate"] = "devices-core",
         ["DeviceTagStore.SetDeviceTagsAsync"] = "shared-core",
         ["TaskEngine.RunAsync"] = "tasks",
         ["TaskPluginQueries.QueryAsync"] = "tasks",
         ["ActionRunner.TestAsync"] = "shared-core",
         ["ComplianceService.ListChoicesAsync"] = "shared-core",
         ["EventLog.Write"] = "shared-core",
-        ["CredentialStore.HasCredentialsAsync"] = "devices-core",
-        ["CredentialStore.ListUserNamesAsync"] = "devices-core",
-        ["CredentialStore.RemoveAsync"] = "devices-core",
-        ["DevicePollingService.IsRefreshQueued"] = "devices-core",
-        ["DevicePollingService.LastFullRefresh"] = "devices-core",
-        ["DevicePollingService.PollAsync"] = "devices-core",
-        ["DevicePollingService.RefreshAsync"] = "devices-core",
-        ["DeviceStatusNotes.Get"] = "devices-core",
-        ["DeviceStatusNotes.Set"] = "devices-core",
-        ["IDeviceOptics.GetAsync"] = "devices-core",
-        ["IDeviceOptics.SetAsync"] = "devices-core",
-        ["IDevicePtz.GetAsync"] = "devices-core",
-        ["IDevicePtz.SendAsync"] = "devices-core",
-        ["ILiveVideoSourceFactory.GetCapabilitiesAsync"] = "devices-core",
-        ["LiveViewHub.Invalidate"] = "devices-core",
-        ["LiveViewHub.SubscribeAsync"] = "devices-core",
-        ["VapixClientFactory.GetClientAsync"] = "devices-core",
     };
 
     private static bool IsRawDeviceIds(ParameterInfo parameter)

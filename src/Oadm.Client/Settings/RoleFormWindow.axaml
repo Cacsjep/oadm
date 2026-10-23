@@ -28,6 +28,7 @@
         <ui:FormField Label="Start from" IsVisible="{Binding IsNewEditor}">
           <ComboBox x:Name="StartFromBox" ItemsSource="{Binding StartChoices}" SelectedItem="{Binding StartFrom}" HorizontalAlignment="Stretch" />
         </ui:FormField>
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static settings:DeviceGroupWords.ServerWideNote}" />
       </StackPanel>
     </Border>
 

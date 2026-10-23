@@ -47,7 +47,11 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   version 0 = no check), INVALID_ARGUMENT names / over 50 roles), `DeleteRole(id)` (custom roles
   without users), `Mine` (the caller's role name and its permissions with names). `ServerSettings.roles_notice = 22`
   (administrators only): what operators lost with the upgrade to roles.
-- `DeviceService`: `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
+- `DeviceService` takes its devices from the caller's view (`docs/spec/device-scope.md`): `List` and `Watch` carry only
+  them (`Watch` sends REMOVED when a device leaves the view and ADDED when one enters it; new rules of the caller's group
+  end the stream), any id that is unknown or outside the view refuses the whole request with NOT_FOUND "N devices are no
+  longer available." for every user (Remove and Refresh no longer skip unknown ids), and no ids mean the caller's view.
+  `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
   API lists; clients do not use it), `Watch(WatchDevicesRequest)` (stream of DeviceChanged events: one
   ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
   changes; the request is wire compatible with the former Empty), `Remove` and `SetCredentials` (one
@@ -171,7 +175,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   stored in OADM, the devices are not changed; audited "Changed RTSP port in OADM"), `GetPtz(device_id, camera)` (live
   view permission; presets, home, move, zoom, center of a PTZ channel, `supported` false otherwise, never an error) and
   `MovePtz(device_id, camera, move, x, y, value, preset)` ("Optics Control"; not audited, a drag sends several a second;
-  FAILED_PRECONDITION "The camera refused: <camera text>"). See "Live view".
+  FAILED_PRECONDITION "The camera refused: <camera text>"). Every method only for devices of the caller's view (NOT_FOUND
+  "1 device is no longer available." like an unknown device, the camera is never asked; the RTSP port methods refuse the
+  whole selection); `Watch` ends with that NOT_FOUND when its device leaves the view. See "Live view".
 - `EventService` (`events.proto`, event rules, see "Event rules").
 - `ServerLogService` (`logs.proto`, permission `logs.server`): `List` (the server's log files, a page newest first), see
   "Logs page".
@@ -182,7 +188,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   request reaches the device) and while the Web View plugin is turned off, INVALID_ARGUMENT for a path that leaves the
   device; a user's requests to a device without an Open in the last 8 hours write the audit entry once; request bodies
   over 16 MB are spooled to `<datafolder>/web-relay/`, at most 4 at once, 1 GB of disk kept free, the folder emptied once
-  per start; a `Location` to the device's host on any scheme or port becomes a path).
+  per start; a `Location` to the device's host on any scheme or port becomes a path). Both only for devices of the
+  caller's view (NOT_FOUND "1 device is no longer available.", nothing reaches the device); an `Exchange` ends with it
+  when its device leaves the view.
 - `ComplianceService` (`compliance.proto`, see "Compliance"): `GetCatalog`, `ListChecks`, `WatchChecks`, `GetCheck`,
   `SaveCheck`, `DeleteCheck`, `SetCheckEnabled`, `ListChoices`, `CheckNow`, `WatchResults` (snapshot in batches of 5,000 with
   `snapshot_end`, then changes; `checking` while a result was asked for), `SetEnabled` (compliance on / off, off by default;

@@ -18,10 +18,10 @@
         <TextBlock Classes="cardTitle" HorizontalAlignment="Center" Text="Compliance checks are off" />
         <TextBlock Classes="secondary" TextWrapping="Wrap" TextAlignment="Center"
                    Text="See at first glance which devices need attention: devices OADM cannot reach or log in to, expiring certificates, and your own checks." />
-        <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding EnableCommand}" IsVisible="{Binding MayManage}">
+        <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding EnableCommand}" IsVisible="{Binding MayTurnOnOff}">
           <ui:IconLabel Icon="{StaticResource Icon.squareActivity}" Text="Enable Compliance Checks" />
         </Button>
-        <TextBlock Classes="secondary" HorizontalAlignment="Center" IsVisible="{Binding !MayManage}"
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" IsVisible="{Binding !MayTurnOnOff}"
                    Text="An administrator can turn them on." />
         <TextBlock Classes="error" HorizontalAlignment="Center" TextWrapping="Wrap" Text="{Binding ErrorText}"
                    IsVisible="{Binding ErrorText, Converter={x:Static ObjectConverters.IsNotNull}}" />
@@ -66,7 +66,7 @@
             <ui:ToolbarButton Text="Check now" IconKey="refresh" Command="{Binding CheckNowCommand}" ToolTip.Tip="The selected devices, else all" />
           </ui:ToolbarOverflowPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-            <Button Classes="toolbar danger" Command="{Binding TurnOffCommand}" IsVisible="{Binding MayManage}">
+            <Button Classes="toolbar danger" Command="{Binding TurnOffCommand}" IsVisible="{Binding MayTurnOnOff}">
               <ui:IconLabel Icon="{StaticResource Icon.stop}" Text="Turn off compliance" Spacing="8" />
             </Button>
             <ui:ToolbarButton Text="Export" IconKey="export" Command="{Binding ExportCommand}" />

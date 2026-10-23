@@ -83,6 +83,9 @@ public sealed class ToolbarContext : IToolbarContext
 
     public bool Has(string permission) => _session?.Has(permission) ?? true;
 
+    /// <summary>The user may reach every device (false for a user with a device group).</summary>
+    public bool HasAllDevices => _session?.HasAllDevices ?? true;
+
     private void OnPermissionsChanged(object? sender, EventArgs e) => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
     public IReadOnlyList<IDeviceInfo> SelectedDevices => [.. _selection];

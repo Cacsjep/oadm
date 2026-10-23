@@ -46,7 +46,7 @@ namespace Oadm.Server.AddDevices;
 public sealed partial class AddDevicesGrpcService(
     IDiscoveryBackend discovery,
     ServerSettingsStore settings,
-    DevicePollingService polling,
+    DeviceActions actions,
     DiscoveryAuthenticator authenticator,
     DeviceAdder adder,
     DeviceViewFactory views,
@@ -194,7 +194,16 @@ public sealed partial class AddDevicesGrpcService(
 
         if (ids.Length > 0)
         {
-            polling.QueueRefresh(ids);
+            try
+            {
+                // The first full refresh of the devices the caller just added (inside the caller's view by now).
+                actions.QueueRefresh(await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false));
+            }
+            catch (DevicesNotAvailableException)
+            {
+                // One was removed meanwhile: the polling's next round reads the others.
+            }
+
             var caller = AuthInterceptor.CallerOf(context);
             await MembershipAudit.AddedAsync(views, audit, caller.UserName, caller.ClientAddress, ids, string.Empty, ct).ConfigureAwait(false);
         }

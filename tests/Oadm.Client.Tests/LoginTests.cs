@@ -512,7 +512,9 @@ public sealed class LoginTests
             Assert.Contains("Who can log in to this server and what each role may do.", pageTexts);
             Assert.Contains("Contractor", pageTexts); // a role column of the matrix
             Assert.Contains("Rename and delete tags", pageTexts);
-            Assert.Equal(1, pageTexts.Count(t => t == "Users")); // the page title only, no card title repeating it
+            // The page title only, no card title repeating it (the device groups list has a column "Users").
+            Assert.Equal(1, usersWindow.GetVisualDescendants().OfType<TextBlock>()
+                .Count(t => t.Text == "Users" && !t.GetVisualAncestors().OfType<DataGrid>().Any()));
             Capture(usersWindow, outDir, "client-users-page.png");
 
             // The dialogs of the users card: Add user, Edit user, Change password.

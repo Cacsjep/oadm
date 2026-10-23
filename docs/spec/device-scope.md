@@ -128,6 +128,11 @@ an independent security review the same day). A user may be limited to part of t
   checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
   devices").
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary.
+- Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
+  `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
+  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md);
+  fake mode (`FakeOadmApi.DeviceGroups`) has Building B, Building A, Head office and Lobby, tech2 in Building B and
+  guard in Lobby. Tests `DeviceGroupsTests`, `Perf/DeviceGroupEditorScaleTests`.
 - Audit: created, changed (rules), deleted groups; a user's group changed.
 
 ## Tests
@@ -212,6 +217,39 @@ an independent security review the same day). A user may be limited to part of t
   (Commit, the waiting list, the automatic add, relocation and DHCP moves).
 - Waiting list: `WaitingDeviceStore` methods with a `WaitingScope` (list, counts, ids, remove), `QueuedByUserId` written
   by `AddAsync(..., queuedBy, ...)`; `WaitingDeviceGrpcService` through the caller; `WaitingDeviceRunner` per entry.
+
+## Code (devices-core)
+
+- **Device list**: `DeviceGrpcService` takes `DeviceViewFactory` and `DeviceActions` (Core: remove, refresh, credentials,
+  Log in, Set password, passphrase policies, the relay's VAPIX client, status notes; only `ViewedDevices`), never the
+  repository. `List` and the `Watch` snapshot read `DeviceView.PagesAsync(1,000)` (a group: the cached allowed ids, rows
+  per page); `DeviceView.Subscribe()` gives a `DeviceViewFeed` (subscribed at once; `Sent(id)` for the snapshot,
+  `ReadAsync(max)`): changes outside the view are dropped, a device that leaves becomes Removed, one that enters Added; a
+  change of the tag and site catalog (deleted tag, removed site) compares the sent ids with `IdsAsync` and reads the
+  entering rows in pages. All devices: every change passes as it is, no ids kept (today's feed). Remove, Refresh,
+  SetCredentials, LogIn, GetCredentialUserName, SetFirstPassword, GetPassphrasePolicies and GetWebUiUrl go through
+  `view.GetAsync(ids)` (Refresh without ids: `GetOrAllAsync`); unknown ids refuse the whole request for everyone.
+- **Sessions bound to one device**: `DeviceViewWatcher.WatchAsync(ViewedDevices one)` gives a `DeviceViewLease` whose
+  `Left` token fires (on the thread pool) when the device leaves its view: Removed, a device change outside the view, a
+  catalog change, the group's rules changed or the group deleted (checked again with `FindAsync`); registered first, then
+  checked, so nothing in between is missed; views with all devices get a lease that never ends. Used by `LiveViewService.Watch`
+  and `DeviceWebService.Exchange` (both end NOT_FOUND "1 device is no longer available."). `ViewedEventStreams`
+  (`IDeviceEventStreams` of one view): opens only devices of the view, an open source throws
+  `DevicesNotAvailableException` when its device leaves, RTSP ports only of viewed devices; for `ICallContext.EventStreams`.
+- **Live view**: `LiveViewGrpcService` takes `LiveViewAccess` (Core: hub, sources, optics, PTZ, RTSP ports; only
+  `ViewedDevices`); every method gets its device or devices from the view; GetRtspPort and SetRtspPort refuse unknown ids
+  whole (no more partial write).
+- **Sites page**: `SiteService.ListSites` / `WatchSites` (and the page `SetAccept` returns): users with all devices see every
+  row with `Site.group_names` (`DeviceGroupStore.GroupsUsingSite`); a group sees only bound sites its rules name
+  (`DeviceGroupFilter.CoversSite`; no removed sites, no waiting nodes) with `device_count` from
+  `DeviceView.CountsBySiteAsync` (one read of the scope rows per push, at most once a second).
+- **Address checks**: none in this area name another device (Log in and Set password say "Another device answers at this
+  address."); the address checks of plugins (Network settings, DHCP) belong to their packages.
+- **Tests**: `Oadm.Core.Tests/DeviceGroups/DeviceViewStreamsTests` (feed, catalog changes, pages, counts by site, leases,
+  event streams), `Oadm.Server.Tests/DeviceGroups/DeviceGroupStreamsTests` (feed over gRPC next to an administrator's,
+  new rules end the stream, unknown ids refused, live video ends, Sites page), canary cases for every converted method and
+  `Filtered` (List, Watch, ListSites, WatchSites: the reply never shows the outside device), perf
+  `DeviceGroupWatchScaleTests` (3,000 of 30,000 devices: snapshot, a burst over every device, 1,000 in and 1,000 out).
 
 ## Stages
 

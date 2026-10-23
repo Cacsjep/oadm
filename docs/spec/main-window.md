@@ -16,7 +16,8 @@ Layout, top to bottom:
    Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.
-3. Status line: "N devices, M selected".
+3. Status line: "N devices, M selected". A user with a device group sees only the devices of the group; a device that
+   leaves or enters it leaves or enters the grid (`docs/spec/device-scope.md`).
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
    interface, Refresh, **Log in**, **Set password**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
@@ -84,10 +85,11 @@ Layout, top to bottom:
    Log card (level chip, time, device address, message; `TaskService.GetLog`, re-read when the current
    step or the task state changes, new entries appended), built from the shared grid and chip styles; **Cancel task**
    in its footer while the task runs. Pane buttons: details, cancel, delete, a separator, **delete all** (red, with
-   confirmation; running tasks are cancelled first); all work per task.
+   confirmation; running tasks are cancelled first; hidden for users with a device group); all work per task.
 
 **Logs page** (rail, bottom; `Logging/LogsViewModel` + `LogsView`): the segmented switch **Server** | **Client** | **Audit**
-on top of each card. **Server** (first when the role may see it, permission `logs.server` "See the server log", group "Logs";
+on top of each card. **Server** (first when the role may see it, permission `logs.server` "See the server log", group "Logs", and only for users
+with all devices: its text names devices;
 Administrator always, Operator and Viewer off by default): the server's log files read on request by gRPC
 `ServerLogService.List(offset, limit, min_level, search)` (`logs.proto`; `Oadm.Server.Logging.ServerLogGrpcService` over
 `Oadm.Contracts.Logging.LogFileReader`: the files `oadm-server-*.log`, newest first, entries of the Serilog template, continuation

@@ -195,6 +195,9 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     /// <summary>The role may create, change and delete checks, and turn compliance on or off.</summary>
     public bool MayManage => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.ComplianceManage) ?? true;
 
+    /// <summary>Turning compliance on or off for the server: the role may manage checks and the user has all devices.</summary>
+    public bool MayTurnOnOff => MayManage && (_session?.HasAllDevices ?? true);
+
     /// <summary>Compliance is on for the server: the cards and the list show; else the empty state with Enable.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowOffState))]
@@ -474,7 +477,11 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
             _api, _dialogs, catalog, [.. _devices.Devices.Cast<IDeviceInfo>()], existing, _devices.Tags.Tags.Select(t => t.Name));
     }
 
-    private void OnPermissionsChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(MayManage));
+    private void OnPermissionsChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(MayManage));
+        OnPropertyChanged(nameof(MayTurnOnOff));
+    }
 
     private void OnChecksChanged(object? sender, EventArgs e)
     {

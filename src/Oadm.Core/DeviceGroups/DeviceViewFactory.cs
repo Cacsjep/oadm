@@ -48,6 +48,9 @@ public sealed class DeviceViewFactory
     /// <summary>The device groups behind the views.</summary>
     internal DeviceGroupStore Groups => _groups;
 
+    /// <summary>The device change feed behind the views' feeds (system work only).</summary>
+    internal IDeviceChangeFeed Feed => _feed;
+
     /// <summary>The tag and site catalog the filters resolve against.</summary>
     public DeviceScopeCatalog Catalog => _catalog;
 

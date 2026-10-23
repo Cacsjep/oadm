@@ -14,8 +14,17 @@ version and date, and the release workflow copies it into the GitHub release.
   upgrade every user keeps all devices.
 - Device groups: a user with a group finds and adds devices only at the sites of the group, and only with the passwords
   they enter (never the credential list). The waiting list shows each user the devices of their sites.
+- Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
+  single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
+- Device groups: the device list, live video, the web interface and the Sites page show only the devices and sites of
+  the user's group; live video stops when its device leaves the group.
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
+
+### Changed
+
+- Remove, Refresh and the other device actions do nothing when a chosen device was removed meanwhile and say "1 device
+  is no longer available." (before, Remove and Refresh skipped it).
 
 ## [4.1.0] - 2026-10-23
 
