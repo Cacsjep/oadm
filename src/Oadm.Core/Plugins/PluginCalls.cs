@@ -20,7 +20,14 @@ namespace Oadm.Core.Plugins;
 /// <param name="Method">The method (or "job:" + kind).</param>
 /// <param name="HasAllDevices">The user has all devices: nothing is refused.</param>
 /// <param name="SystemAllowed">The method declared <see cref="ICorePlugin.SystemAccessReason"/>: <c>ctx.System</c> of this plugin works.</param>
-public sealed record PluginCallMark(string PluginId, string Method, bool HasAllDevices, bool SystemAllowed);
+public sealed record PluginCallMark(string PluginId, string Method, bool HasAllDevices, bool SystemAllowed)
+{
+    /// <summary>
+    /// The caller's <see cref="ICallContext.DeviceScopeKey"/>: the only key <c>ctx.DeviceScopes</c> answers for in a group
+    /// user's call (null: none).
+    /// </summary>
+    public string? ScopeKey { get; init; }
+}
 
 /// <summary>
 /// The user's call of a plugin method as the server knows it: the authenticated caller and the caller's
@@ -69,7 +76,12 @@ internal sealed class HostCallContext : ICallContext
         var view = caller.View;
         Devices = new ViewDevices(view);
         Vapix = caller.HasAllDevices ? vapix : new ViewVapix(view, vapix);
-        Tasks = new ViewTasks(this, tasks, taskOwners);
+
+        // The engine's runner of the view: the tasks belong to the caller (owner shown, queue check of the caller's view,
+        // ITaskExecutionContext.Caller), also when a job starts them after the call ended.
+        Tasks = tasks is Oadm.Core.Tasks.TaskEngine engine
+            ? engine.ForView(view, Oadm.Core.Tasks.TaskCaller.Of(caller.Caller))
+            : new ViewTasks(this, tasks, taskOwners);
         EventStreams = eventStreams is null ? null
             : caller.HasAllDevices ? eventStreams
             : viewWatcher is null ? null
@@ -132,15 +144,17 @@ internal sealed class HostCallContext : ICallContext
         }
     }
 
+    /// <summary>The call's runner over another <see cref="ITaskRunner"/> than the engine (tests, tools).</summary>
     private sealed class ViewTasks(HostCallContext call, ITaskRunner inner, CallTaskOwners owners) : ITaskRunner
     {
         public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(deviceIds);
 
-            // The whole run is refused when any device is outside the view (nothing starts in part).
+            // The whole run is refused when any device is outside the view (nothing starts in part). The owner is the caller,
+            // never what the plugin says.
             _ = await call.Caller.View.GetAsync(deviceIds, ct).ConfigureAwait(false);
-            var ids = await inner.RunAsync(pluginId, deviceIds, payloadJson, owner, ct).ConfigureAwait(false);
+            var ids = await inner.RunAsync(pluginId, deviceIds, payloadJson, call.Caller.Caller.Owner, ct).ConfigureAwait(false);
             owners.Add(ids, call.UserId);
             return ids;
         }
@@ -213,13 +227,98 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
             return;
         }
 
+        throw Refused(member, mark);
+    }
+
+    /// <summary>
+    /// <see cref="DeviceAccessRefusedException"/> in a group user's call for every scope key other than the caller's own
+    /// (<c>ctx.DeviceScopes</c>); methods that declare <see cref="ICorePlugin.SystemAccessReason"/> reach every scope, like
+    /// <c>ctx.System</c>.
+    /// </summary>
+    public void CheckScope(string? scopeKey)
+    {
+        if (!InGroupCall)
+        {
+            return;
+        }
+
+        var mark = CallerContext.PluginCall;
+        if (mark is { SystemAllowed: true } && string.Equals(mark.PluginId, PluginId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Every group identity on the call must be that key: the plugin call's (also in jobs) and the gRPC caller's.
+        var own = (mark is not { HasAllDevices: false } || IsKey(mark.ScopeKey, scopeKey))
+            && (CallerContext.Current is not { HasAllDevices: false } current || IsKey(current.DeviceGroupId?.ToString(), scopeKey));
+        if (!own)
+        {
+            throw Refused("DeviceScopes", mark);
+        }
+
+        static bool IsKey(string? own, string? key) => own is not null && key is not null && string.Equals(own, key, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private DeviceAccessRefusedException Refused(string member, PluginCallMark? mark)
+    {
         var method = mark?.Method ?? "?";
         if (_logged.TryAdd((method, member), 0))
         {
             LogRefused(PluginId, member, method);
         }
 
-        throw new DeviceAccessRefusedException();
+        return new DeviceAccessRefusedException();
+    }
+
+    public IDeviceScopes? DeviceScopes(IDeviceScopes? inner) => inner is null ? null : new GuardedDeviceScopes(this, inner);
+
+    private sealed class GuardedDeviceScopes(PluginCallGuard guard, IDeviceScopes inner) : IDeviceScopes
+    {
+        public event EventHandler<string>? Changed
+        {
+            add => inner.Changed += value;
+            remove => inner.Changed -= value;
+        }
+
+        public bool Exists(string scopeKey)
+        {
+            guard.CheckScope(scopeKey);
+            return inner.Exists(scopeKey);
+        }
+
+        public bool Contains(string scopeKey, IDeviceInfo device)
+        {
+            guard.CheckScope(scopeKey);
+            return inner.Contains(scopeKey, device);
+        }
+
+        // Checked when made and when read: a repository made in background work is refused in another group's call.
+        public IDeviceRepository Devices(string scopeKey)
+        {
+            guard.CheckScope(scopeKey);
+            return new ScopeRepository(guard, scopeKey, inner.Devices(scopeKey));
+        }
+
+        public string? NameOf(string scopeKey)
+        {
+            guard.CheckScope(scopeKey);
+            return inner.NameOf(scopeKey);
+        }
+    }
+
+    private sealed class ScopeRepository(PluginCallGuard guard, string scopeKey, IDeviceRepository inner) : IDeviceRepository
+    {
+        public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
+        {
+            guard.CheckScope(scopeKey);
+            return inner.ListAsync(ct);
+        }
+
+        public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)
+        {
+            guard.CheckScope(scopeKey);
+            return inner.FindAsync(id, ct);
+        }
     }
 
     public IDeviceRepository Devices(IDeviceRepository inner, bool system = false) => new GuardedDevices(this, inner, system);
@@ -392,6 +491,6 @@ public static class PluginCallRules
     public static PluginCallMark MarkOf(PluginCaller caller, string pluginId, string method)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        return new PluginCallMark(pluginId, method, caller.HasAllDevices, SystemAllowed: false);
+        return new PluginCallMark(pluginId, method, caller.HasAllDevices, SystemAllowed: false) { ScopeKey = caller.View.ScopeKey };
     }
 }

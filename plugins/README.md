@@ -512,16 +512,21 @@ for them, and it keeps working unchanged for users with all devices.
 - **Jobs** (`ctx.Jobs`): work that outlives the call (a report, a scan, an export, a monitor) starts with
   `ctx.Jobs.Start(caller, "report", async (job, ct) => ...)` and reaches devices through `job.Owner` (the owner's view).
   It runs detached, ends with its work, on `job.Cancel()`, when the plugin stops and when the owner's devices, role or
-  session change. Every method and download that takes a job id looks it up with `ctx.Jobs.Find(caller, id)` and throws
-  the same `KeyNotFoundException` for null as for an unknown id: another user's id answers NOT_FOUND. Never keep your own
-  id table.
+  session change; after a change of devices or role its id answers like an unknown id, also once it finished (a report
+  made for the old devices). Tasks it or the call starts with `job.Owner.Tasks` / `caller.Tasks` belong to the user (the
+  `owner` argument is ignored) and check the user's devices again when they leave the queue. Every method and download
+  that takes a job id looks it up with `ctx.Jobs.Find(caller, id)` and throws the same `KeyNotFoundException` for null as
+  for an unknown id: another user's id answers NOT_FOUND. Never keep your own id table.
 - **Events**: `ctx.Events.Publish(topic, json, audience)`. `PluginEventAudience.Device(id)` (users who see the device),
   `DeviceRows(ids)` (a JSON array with one element per id: each watcher gets its own elements, in order),
   `User(name)`, `Session(caller.SessionId)` or `Of(caller)` (the page that started the work), `DeviceScope(key)` (state
   kept per group), `AllDevices` (server-wide state). The old `Publish(topic, json)` reaches only users with all devices.
 - **Objects kept per group** (dashboards, saved views, triggers, sweeps): store `caller.DeviceScopeKey` ("all" or the
   group id) with the object and run it on `ctx.DeviceScopes.Devices(key)`; `Exists(key)` is false for a deleted group
-  (its objects are off), `Changed` tells about changed and deleted groups. Table pages use
+  (its objects are off), `Changed` tells about changed and deleted groups and, about a second later, about groups whose
+  devices may have changed (devices added, removed, moved or tagged; tags and sites): prune there. In a group user's call
+  and jobs `ctx.DeviceScopes` answers only for `caller.DeviceScopeKey` (any other key refuses like `ctx.Devices`), except
+  in methods with a `SystemAccessReason`. Table pages use
   `DeviceSweeps<TRow>` (plugins/Shared/DeviceSweep.cs): `sweeps.For(caller)` is the sweep of the caller's scope (null
   for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`.
 - **Rows and saved objects after a device left**: the group's `Changed` can come later than the device's move, so answer

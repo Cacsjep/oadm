@@ -67,6 +67,13 @@ an independent security review the same day). A user may be limited to part of t
   kept per group, not per plugin.
 - **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
   scan, export and monitor ids); every id-taking method and download checks it; ids of another user answer NOT_FOUND.
+  When the owner's devices change (another group, new rules of the group, another role) the owner's jobs end and are
+  forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. Tasks a call or a job
+  starts through `call.Tasks` belong to the caller (`TaskEngine.ForView`: owner, queue check, `ITaskExecutionContext.Caller`).
+  `ctx.DeviceScopes` answers a group user's call (and its jobs) only for the caller's own scope key.
+- **Uploads have an owner:** an upload (`FileService.Upload`) belongs to the user and session that sent it
+  (`UploadOwner`); `FileService.Delete`, a backup restore and the tasks of another user or session answer like an unknown
+  id; tasks the system starts (no caller) read any upload. Uploads from before 4.2 and of the system belong to nobody.
 - Every bundled plugin moves to the call context before 4.2. Plugins built against SDK 0.3.0 load and run unchanged for
   users with all devices (new SDK members are default interface members); their methods are refused for group users.
 - Plugin testing: `Oadm.Sdk.Testing` gets a fake call with a group and the canary test (see Tests).

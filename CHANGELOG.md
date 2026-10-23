@@ -22,6 +22,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups: a device that leaves a group disappears at once from the group's tables, dashboard values and scan
   results, and an export of its recordings ends. An administrator can save a group's view or dashboard after one of its
   devices left the group: the save leaves that device out and says so.
+- Device groups: a file you upload for a task (firmware, an application, a backup) can be used only by you, in the same
+  login. Reports and other results of plugins are gone once your devices change.
 - Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
   single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
 - Device groups: the device list, live video, the web interface and the Sites page show only the devices and sites of

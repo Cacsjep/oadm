@@ -92,6 +92,23 @@ public sealed class PluginServiceGroupTests
         Assert.Equal(StatusCode.NotFound, unknown.StatusCode);
     }
 
+    [Fact]
+    public async Task AJobOfAGroupUserIsForgottenWhenTheGroupsRulesChange()
+    {
+        await using var canary = await CanaryTests.Canary.StartAsync();
+        await CanaryPlugin.EnsureAsync(canary);
+        var group = new Proto.PluginService.PluginServiceClient(canary.Invoker);
+        var job = (await group.InvokeAsync(Request(CanaryPlugin.Id, "job.start"))).PayloadJson;
+        Assert.Equal("found", (await group.InvokeAsync(Request(CanaryPlugin.Id, "job.find", job))).PayloadJson);
+
+        var groups = canary.Host.Get<Core.DeviceGroups.DeviceGroupStore>();
+        var saved = groups.Loaded![canary.Caller.DeviceGroupId!.Value];
+        await groups.SaveAsync(saved.Id, saved.Name, "changed", saved.Rules, saved.Revision, CancellationToken.None);
+
+        var gone = await Assert.ThrowsAsync<RpcException>(() => group.InvokeAsync(Request(CanaryPlugin.Id, "job.find", job)).ResponseAsync);
+        Assert.Equal(StatusCode.NotFound, gone.StatusCode);
+    }
+
     private static Proto.InvokeRequest Request(string pluginId, string method, string? payload = null) =>
         new() { PluginId = pluginId, Method = method, PayloadJson = payload ?? string.Empty };
 

@@ -4,8 +4,11 @@ using System.Text.Json;
 using Oadm.Core.Auth;
 using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
+using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
+using Oadm.Core.Tasks;
 using Oadm.Core.Tests.DeviceGroups;
+using Oadm.Core.Tests.Tasks;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
@@ -251,7 +254,117 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         Assert.False(scopes.InAnyGroup(rig.Inside));
     }
 
-    private async Task<Rig> RigAsync(string minSdk = "0.4.0")
+    [Fact]
+    public async Task DeviceScopesInAGroupUsersCallAnswerOnlyTheCallersOwnScope()
+    {
+        await using var rig = await RigAsync();
+        var own = rig.GroupId.ToString();
+        var other = (await SaveGroupAsync("Other", thisServer: true)).Group.Id.ToString();
+
+        Assert.Equal("1", await rig.InvokeAsync(rig.Anna, "scopes.devices", own));
+        Assert.Equal("True", await rig.InvokeAsync(rig.Anna, "scopes.exists", own));
+        Assert.Equal("B", await rig.InvokeAsync(rig.Anna, "scopes.name", own));
+        foreach (var key in new[] { ICallContext.AllDevicesScopeKey, other, Guid.NewGuid().ToString() })
+        {
+            foreach (var method in new[] { "scopes.devices", "scopes.exists", "scopes.name" })
+            {
+                var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Anna, method, key));
+                Assert.Equal("Only users with all devices can do this.", refused.Message);
+            }
+        }
+
+        // A method that declares its system access reaches every scope, like ctx.System.
+        Assert.Equal("2", await rig.InvokeAsync(rig.Anna, "system.scopes", ICallContext.AllDevicesScopeKey));
+
+        // The user's job: the same rule.
+        await rig.InvokeAsync(rig.Anna, "job.scopes", ICallContext.AllDevicesScopeKey);
+        Assert.IsType<DeviceAccessRefusedException>(await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+        rig.Plugin.JobResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await rig.InvokeAsync(rig.Anna, "job.scopes", own);
+        Assert.Equal(1, await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+
+        // A user with all devices and background work reach every scope.
+        Assert.Equal("2", await rig.InvokeAsync(rig.Admin, "scopes.devices", ICallContext.AllDevicesScopeKey));
+        Assert.Equal("1", await rig.InvokeAsync(rig.Admin, "scopes.devices", own));
+        Assert.Equal(2, (await rig.Plugin.Context!.DeviceScopes!.Devices(ICallContext.AllDevicesScopeKey).ListAsync(Ct)).Count);
+
+        // A repository made in background work is refused when read in another group's call.
+        rig.Plugin.Repository = rig.Plugin.Context!.DeviceScopes!.Devices(ICallContext.AllDevicesScopeKey);
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Anna, "scopes.kept", null));
+    }
+
+    [Fact]
+    public async Task TasksOfACallAndOfAJobBelongToTheCallerWhateverOwnerThePluginNames()
+    {
+        await using var rig = await RigAsync(engine: true);
+        var engine = rig.Engine!;
+
+        var fromCall = Guid.Parse((await rig.InvokeAsync(rig.Anna, "call.tasks.spoof", rig.Inside.Id))!);
+        await engine.WaitForCompletionAsync(fromCall, Ct);
+        var callTask = (await engine.GetAsync(fromCall, Ct))!;
+        Assert.Equal(rig.Anna.Caller.Owner, callTask.Owner);
+        Assert.True(callTask.State == TaskState.Done, callTask.State + " " + callTask.Devices[0].Message);
+
+        await rig.InvokeAsync(rig.Anna, "job.tasks", rig.Inside.Id);
+        var fromJob = Assert.IsType<Guid>(await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+        await engine.WaitForCompletionAsync(fromJob, Ct);
+        Assert.Equal(rig.Anna.Caller.Owner, (await engine.GetAsync(fromJob, Ct))!.Owner);
+
+        // The task got the owner's call (and so the queue check of the owner's view) both times.
+        Assert.Equal(2, rig.Plugin.TaskCallers.Count);
+        Assert.All(rig.Plugin.TaskCallers, c =>
+        {
+            Assert.NotNull(c);
+            Assert.Equal("anna", c!.UserName);
+            Assert.Equal(rig.GroupId.ToString(), c.DeviceScopeKey);
+        });
+
+        // Outside devices are refused in the job too.
+        rig.Plugin.JobResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await rig.InvokeAsync(rig.Anna, "job.tasks", rig.Outside.Id);
+        Assert.IsType<DevicesNotAvailableException>(await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+
+        // A user with all devices: the caller is the owner too.
+        var admins = Guid.Parse((await rig.InvokeAsync(rig.Admin, "call.tasks.spoof", rig.Outside.Id))!);
+        await engine.WaitForCompletionAsync(admins, Ct);
+        Assert.Equal(rig.Admin.Caller.Owner, (await engine.GetAsync(admins, Ct))!.Owner);
+    }
+
+    [Fact]
+    public async Task AJobIsForgottenWhenItsOwnersDevicesChange()
+    {
+        await using var rig = await RigAsync();
+
+        async Task<string> FinishedJobAsync()
+        {
+            rig.Plugin.JobDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var id = (await rig.InvokeAsync(rig.Anna, "job.start", null))!;
+            await rig.Plugin.JobDone.Task.WaitAsync(Eventually.DefaultTimeout);
+            Assert.Equal("found", await rig.InvokeAsync(rig.Anna, "job.find", id));
+            return id;
+        }
+
+        // Another group for the user (or other devices, another role): even a finished job's result is gone.
+        var first = await FinishedJobAsync();
+        rig.Host.Jobs.CancelOwner(rig.Anna.Caller.UserId);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "job.find", first));
+        Assert.Equal(0, await rig.JobCountAsync(rig.Anna));
+
+        // New rules of the user's group.
+        var second = await FinishedJobAsync();
+        rig.Host.Jobs.CancelGroup(rig.GroupId);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "job.find", second));
+
+        // The same user with the devices of another group finds nothing of the old group's jobs.
+        var third = await FinishedJobAsync();
+        var other = (await SaveGroupAsync("Other", thisServer: true)).Group;
+        var moved = new PluginCaller(rig.Anna.Caller, await Views.ForScopeAsync(DeviceScope.Group(other.Id), "anna", Ct));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(moved, "job.find", third));
+        Assert.Equal(0, await rig.JobCountAsync(moved));
+        Assert.Equal("found", await rig.InvokeAsync(rig.Anna, "job.find", third));
+    }
+
+    private async Task<Rig> RigAsync(string minSdk = "0.4.0", bool engine = false)
     {
         var b = Sites.Add("Building B");
         var inside = await AddDeviceAsync("ACCC8E000001", siteId: b);
@@ -264,9 +377,20 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         var tasks = new RecordingTasks();
         var streams = new RecordingStreams();
         var scopes = new HostDeviceScopes(Groups, Views);
-        var host = new CorePluginHost(registry, Devices, vapix, tasks, new InMemoryPluginSettingsProvider(), eventStreams: streams, deviceScopes: scopes, viewWatcher: Db.Get<DeviceViewWatcher>());
+        TaskEngine? taskEngine = null;
+        if (engine)
+        {
+            Assert.True(registry.RegisterTaskPlugin(new DelegateTaskPlugin("t.call", (ctx, _, _) =>
+            {
+                plugin.TaskCallers.Enqueue(ctx.Caller);
+                return Task.CompletedTask;
+            }), new PluginOrigin("test.tasks", "1.0.0", null) { DeclaredSiteSupport = Sdk.Sites.SiteSupport.Full }));
+            taskEngine = new TaskEngine(Db.Get<EfTaskStore>(), registry, Devices, new FakeVapixClientFactory()) { Views = Views };
+        }
+
+        var host = new CorePluginHost(registry, Devices, vapix, (ITaskRunner?)taskEngine ?? tasks, new InMemoryPluginSettingsProvider(), eventStreams: streams, deviceScopes: scopes, viewWatcher: Db.Get<DeviceViewWatcher>());
         await host.StartAllAsync(Ct);
-        var rig = new Rig(this, host, scopes, plugin, vapix, tasks, streams, inside, outside, group.Id);
+        var rig = new Rig(this, host, scopes, plugin, vapix, tasks, streams, inside, outside, group.Id) { Engine = taskEngine };
         rig.Anna = await rig.CallerAsync("anna", DeviceScope.Group(group.Id));
         rig.Admin = await rig.CallerAsync("root", DeviceScope.All);
         return rig;
@@ -294,6 +418,8 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
 
         public PluginCaller Admin { get; set; } = null!;
 
+        public TaskEngine? Engine { get; init; }
+
         public async Task<PluginCaller> CallerAsync(string name, DeviceScope scope)
         {
             var user = await test.Users.AddAsync(name, "pw", BuiltInRoles.OperatorId, scope, Ct);
@@ -316,6 +442,10 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         {
             await Host.DisposeAsync();
             scopes.Dispose();
+            if (Engine is not null)
+            {
+                await Engine.DisposeAsync();
+            }
         }
     }
 
@@ -342,6 +472,12 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
 
         public bool HoldJobs { get; set; }
 
+        public ConcurrentQueue<ICallContext?> TaskCallers { get; } = new();
+
+        public IDeviceRepository? Repository { get; set; }
+
+        public TaskCompletionSource<object?> JobResult { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public bool RequiresAllDevices(string method) => method switch
         {
             "save" => true,
@@ -349,7 +485,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
             _ => false,
         };
 
-        public string? SystemAccessReason(string method) => method is "system.count" or "system.count.ctx" ? "counts every device, shows no device data" : null;
+        public string? SystemAccessReason(string method) => method is "system.count" or "system.count.ctx" or "system.scopes" ? "counts every device, shows no device data" : null;
 
         public Task StartAsync(ICorePluginContext context, CancellationToken ct)
         {
@@ -456,6 +592,34 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                         }
 
                         JobDone.TrySetResult(new JobOutcome(CallerContext.Current, access, (await job.Owner.Devices.ListAsync(token)).Count));
+                    }).Id;
+                case "scopes.devices":
+                    return (await ctx.DeviceScopes!.Devices(payloadJson!).ListAsync(ct)).Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case "scopes.kept":
+                    return (await Repository!.ListAsync(ct)).Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case "scopes.exists":
+                    return ctx.DeviceScopes!.Exists(payloadJson!).ToString();
+                case "scopes.name":
+                    return ctx.DeviceScopes!.NameOf(payloadJson!);
+                case "system.scopes":
+                    return (await ctx.DeviceScopes!.Devices(payloadJson!).ListAsync(ct)).Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case "call.tasks.spoof":
+                    return (await caller.Tasks.RunAsync("t.call", [Id()], null, "spoofed", ct))[0].ToString();
+                case "job.scopes":
+                case "job.tasks":
+                    var argument = payloadJson!;
+                    return ctx.Jobs!.Start(caller, method, async (job, token) =>
+                    {
+                        try
+                        {
+                            JobResult.TrySetResult(method == "job.scopes"
+                                ? (await ctx.DeviceScopes!.Devices(argument).ListAsync(token)).Count
+                                : (await job.Owner.Tasks.RunAsync("t.call", [Guid.Parse(argument)], null, "spoofed", token))[0]);
+                        }
+                        catch (Exception ex)
+                        {
+                            JobResult.TrySetResult(ex);
+                        }
                     }).Id;
                 case "job.find":
                     return ctx.Jobs!.Find(caller, payloadJson!) is null ? throw new KeyNotFoundException("The report is no longer available.") : "found";

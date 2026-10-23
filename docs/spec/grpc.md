@@ -146,7 +146,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`, over the 10 GB of
   all uploads together or when less than 1 GB of disk would stay free, see "Security and access" 4),
   `Delete(fileId)`. Uploads live in `<datafolder>/uploads/<id>.bin` + `<id>.json`, are deleted
-  after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
+  after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`. An upload belongs to
+  the caller's user and session (`UploadOwner` in the `.json`): `Delete`, `BackupService.Inspect` / `Restore` and the tasks
+  that user starts in that session see it; for anyone else its id answers NOT_FOUND like an unknown one.
 - `PluginService`: Invoke, Watch and Download run with the caller's call (`PluginCaller`: user + device view, docs/spec/
   device-scope.md "Plugins"): for a user with a device group PERMISSION_DENIED "Only users with all devices can use this
   plugin." for a package whose `minSdkVersion` is below 0.4.0 (its pages are left out of `ListCorePlugins`), "Only users

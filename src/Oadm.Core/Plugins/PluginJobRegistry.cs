@@ -16,7 +16,9 @@ namespace Oadm.Core.Plugins;
 /// unknown id. Jobs run detached (no caller: the background boundary) with the owner's call as their device access, and
 /// with the owner's plugin call mark, so a job of a user with a device group refuses <c>ctx.Devices</c> like the call.
 /// A job ends when its work ends, when it is cancelled, when its plugin stops and when its owner's devices, role or
-/// sessions change (<see cref="CancelOwner"/>). Each user keeps at most <see cref="MaxJobsPerUser"/> jobs per plugin.
+/// sessions change (<see cref="CancelOwner"/>, <see cref="CancelGroup"/>: such a job is also forgotten, so a finished
+/// result made for the old devices is no longer found). <see cref="IPluginJobs.Find"/> answers only a caller with the
+/// job's device scope. Each user keeps at most <see cref="MaxJobsPerUser"/> jobs per plugin.
 /// </summary>
 public sealed partial class PluginJobRegistry
 {
@@ -57,14 +59,31 @@ public sealed partial class PluginJobRegistry
         }
     }
 
-    /// <summary>Cancels every job of a user (other devices, another role, the user was disabled or deleted).</summary>
-    public void CancelOwner(Guid userId)
+    /// <summary>
+    /// Cancels and forgets every job of a user (other devices, another role, the user was disabled or deleted): their ids
+    /// answer like unknown ids from now on, also those of finished jobs (a report made for the old devices).
+    /// </summary>
+    public void CancelOwner(Guid userId) => Forget(j => j.UserId == userId);
+
+    /// <summary>
+    /// Cancels and forgets every job whose owner has the devices of a group (the group's rules changed or it was deleted).
+    /// </summary>
+    public void CancelGroup(Guid groupId)
+    {
+        var key = groupId.ToString();
+        Forget(j => string.Equals(j.Owner.DeviceScopeKey, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void Forget(Func<Job, bool> which)
     {
         foreach (var jobs in _byPlugin.Values)
         {
-            foreach (var job in jobs.Values.Where(j => j.UserId == userId))
+            foreach (var job in jobs.Values.Where(which).ToList())
             {
-                job.Cancel();
+                if (jobs.TryRemove(job.Id, out _))
+                {
+                    job.Cancel();
+                }
             }
         }
     }
@@ -109,7 +128,10 @@ public sealed partial class PluginJobRegistry
             var mark = CallerContext.PluginCall;
             var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence));
             jobs[job.Id] = job;
-            var jobMark = new PluginCallMark(pluginId, "job:" + kind, call.HasAllDevices, mark is { SystemAllowed: true } && string.Equals(mark.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
+            var jobMark = new PluginCallMark(pluginId, "job:" + kind, call.HasAllDevices, mark is { SystemAllowed: true } && string.Equals(mark.PluginId, pluginId, StringComparison.OrdinalIgnoreCase))
+            {
+                ScopeKey = call.DeviceScopeKey,
+            };
 
             // The background boundary: the job never carries the caller of the call that started it, only its own mark.
             using (CallerContext.Suppress())
@@ -126,7 +148,7 @@ public sealed partial class PluginJobRegistry
     {
         ArgumentNullException.ThrowIfNull(caller);
         return jobId is not null && caller is HostCallContext call
-            && _byPlugin.TryGetValue(pluginId, out var jobs) && jobs.TryGetValue(jobId, out var job) && job.UserId == call.UserId
+            && _byPlugin.TryGetValue(pluginId, out var jobs) && jobs.TryGetValue(jobId, out var job) && job.BelongsTo(call)
             ? job
             : null;
     }
@@ -135,7 +157,7 @@ public sealed partial class PluginJobRegistry
     {
         ArgumentNullException.ThrowIfNull(caller);
         return caller is HostCallContext call && _byPlugin.TryGetValue(pluginId, out var jobs)
-            ? [.. jobs.Values.Where(j => j.UserId == call.UserId).OrderByDescending(j => j.Sequence)]
+            ? [.. jobs.Values.Where(j => j.BelongsTo(call)).OrderByDescending(j => j.Sequence)]
             : [];
     }
 
@@ -166,6 +188,10 @@ public sealed partial class PluginJobRegistry
         public ICallContext Owner => owner;
 
         public Guid UserId => owner.UserId;
+
+        /// <summary>The caller is the job's user and has the devices the job was started with (the same scope).</summary>
+        public bool BelongsTo(HostCallContext call) =>
+            call.UserId == owner.UserId && string.Equals(call.DeviceScopeKey, owner.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
 
         public long Sequence { get; } = sequence;
 

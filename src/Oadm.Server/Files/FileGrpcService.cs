@@ -1,6 +1,7 @@
 using Grpc.Core;
 
 using Oadm.Core.Uploads;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
 
@@ -8,7 +9,10 @@ using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Files;
 
-/// <summary>gRPC FileService: client uploads (firmware, ACAP packages) into the <see cref="UploadStore"/>.</summary>
+/// <summary>
+/// gRPC FileService: client uploads (firmware, ACAP packages) into the <see cref="UploadStore"/>. An upload belongs to the
+/// caller's session (<see cref="UploadOwner"/>): only that session deletes it and only its tasks read it.
+/// </summary>
 public sealed partial class FileGrpcService(UploadStore store, ILogger<FileGrpcService> logger) : Proto.FileService.FileServiceBase
 {
     /// <summary>Header first, then data chunks. Partial uploads are deleted when the stream fails.</summary>
@@ -24,7 +28,7 @@ public sealed partial class FileGrpcService(UploadStore store, ILogger<FileGrpcS
         var header = requestStream.Current.Header;
         try
         {
-            await using var writer = await store.BeginAsync(header.Name, header.Size, ct).ConfigureAwait(false);
+            await using var writer = await store.BeginAsync(header.Name, header.Size, UploadOwner.Of(AuthInterceptor.CallerOf(context)), ct).ConfigureAwait(false);
             while (await requestStream.MoveNext(ct).ConfigureAwait(false))
             {
                 var chunk = requestStream.Current;
@@ -55,7 +59,8 @@ public sealed partial class FileGrpcService(UploadStore store, ILogger<FileGrpcS
             throw GrpcGuard.InvalidArgument($"file id '{request.FileId}' is not a valid id.");
         }
 
-        if (!await store.DeleteAsync(request.FileId, context.CancellationToken).ConfigureAwait(false))
+        // Another user's or session's upload answers like an unknown id.
+        if (!await store.DeleteAsync(request.FileId, UploadOwner.Of(AuthInterceptor.CallerOf(context)), context.CancellationToken).ConfigureAwait(false))
         {
             throw GrpcGuard.NotFound($"Upload {request.FileId} not found.");
         }

@@ -6,6 +6,7 @@ using Oadm.Core.Persistence;
 using Oadm.Core.Settings;
 using Oadm.Core.Tests.Persistence;
 using Oadm.Core.Uploads;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Core.Tests.Uploads;
 
@@ -197,6 +198,44 @@ public sealed class UploadStoreTests : IAsyncLifetime
         var ex = await Assert.ThrowsAsync<UploadRejectedException>(() => _store.BeginAsync("too-big.bin", 800, CancellationToken.None));
         Assert.True(ex.TooLarge);
         Assert.Contains("1 GB must stay free", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnUploadBelongsToItsUsersSessionAndAnswersLikeAnUnknownIdForEveryoneElse()
+    {
+        var anna = new UploadOwner(Guid.NewGuid(), "session-a");
+        var content = RandomNumberGenerator.GetBytes(1_000);
+        UploadedFile file;
+        await using (var writer = await _store.BeginAsync("firmware.bin", content.Length, anna, CancellationToken.None))
+        {
+            await writer.WriteAsync(content, CancellationToken.None);
+            file = await writer.CompleteAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(file, await _store.FindAsync(file.Id, anna, CancellationToken.None));
+        Assert.Equal(file, await _store.For(anna).FindAsync(file.Id, CancellationToken.None));
+        await using (var read = await _store.For(anna).OpenReadAsync(file.Id, CancellationToken.None))
+        {
+            Assert.Equal(content.Length, read.Length);
+        }
+
+        // Another user, or the same user in another session: like an unknown id, and nothing is deleted.
+        foreach (var other in new[] { new UploadOwner(Guid.NewGuid(), "session-a"), anna with { SessionId = "session-b" } })
+        {
+            Assert.Null(await _store.FindAsync(file.Id, other, CancellationToken.None));
+            Assert.Null(await _store.For(other).FindAsync(file.Id, CancellationToken.None));
+            await Assert.ThrowsAsync<FileNotFoundException>(() => _store.For(other).OpenReadAsync(file.Id, CancellationToken.None));
+            Assert.False(await _store.DeleteAsync(file.Id, other, CancellationToken.None));
+        }
+
+        // The system reads every upload; an upload of the system (or from before owners) is no user's.
+        Assert.Equal(file, await _store.FindAsync(file.Id, CancellationToken.None));
+        var system = await UploadAsync("system.bin", [1, 2, 3]);
+        Assert.Null(await _store.FindAsync(system.Id, anna, CancellationToken.None));
+        Assert.False(await _store.DeleteAsync(system.Id, anna, CancellationToken.None));
+
+        Assert.True(await _store.DeleteAsync(file.Id, anna, CancellationToken.None));
+        Assert.Null(await _store.FindAsync(file.Id, CancellationToken.None));
     }
 
     private async Task<Oadm.Sdk.Plugins.UploadedFile> AgedUploadAsync(string name, int size, int minutesAgo)

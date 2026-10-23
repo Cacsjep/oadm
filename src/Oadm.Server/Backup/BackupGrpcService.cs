@@ -85,7 +85,7 @@ public sealed class BackupGrpcService(BackupManager backups, UploadStore uploads
 
     public override async Task<Proto.BackupInfo> Inspect(Proto.RestoreRequest request, ServerCallContext context)
     {
-        var (open, _) = await SourceAsync(request, context.CancellationToken).ConfigureAwait(false);
+        var (open, _) = await SourceAsync(request, UploadOwner.Of(Auth.AuthInterceptor.CallerOf(context)), context.CancellationToken).ConfigureAwait(false);
         var inspection = await backups.InspectAsync(open, request.Password, context.CancellationToken).ConfigureAwait(false);
         var info = new Proto.BackupInfo { WrongPassword = inspection.WrongPassword, Problem = inspection.Problem ?? string.Empty };
         if (inspection.Header is { } header)
@@ -102,7 +102,8 @@ public sealed class BackupGrpcService(BackupManager backups, UploadStore uploads
 
     public override async Task<Proto.RestoreReply> Restore(Proto.RestoreRequest request, ServerCallContext context)
     {
-        var (open, source) = await SourceAsync(request, context.CancellationToken).ConfigureAwait(false);
+        var uploader = UploadOwner.Of(Auth.AuthInterceptor.CallerOf(context));
+        var (open, source) = await SourceAsync(request, uploader, context.CancellationToken).ConfigureAwait(false);
         var caller = CallerContext.Current;
         try
         {
@@ -115,7 +116,7 @@ public sealed class BackupGrpcService(BackupManager backups, UploadStore uploads
                 context.CancellationToken).ConfigureAwait(false);
             if (request.SourceCase == Proto.RestoreRequest.SourceOneofCase.FileId)
             {
-                await uploads.DeleteAsync(request.FileId, CancellationToken.None).ConfigureAwait(false);
+                await uploads.DeleteAsync(request.FileId, uploader, CancellationToken.None).ConfigureAwait(false);
             }
 
             return new Proto.RestoreReply
@@ -130,14 +131,14 @@ public sealed class BackupGrpcService(BackupManager backups, UploadStore uploads
         }
     }
 
-    /// <summary>Opens the backup to restore: an upload of the client or a backup kept on the server; and its name.</summary>
-    private async Task<(Func<CancellationToken, Task<Stream>> Open, string Name)> SourceAsync(Proto.RestoreRequest request, CancellationToken ct)
+    /// <summary>Opens the backup to restore: an upload of the caller's session or a backup kept on the server; and its name.</summary>
+    private async Task<(Func<CancellationToken, Task<Stream>> Open, string Name)> SourceAsync(Proto.RestoreRequest request, UploadOwner uploader, CancellationToken ct)
     {
         switch (request.SourceCase)
         {
             case Proto.RestoreRequest.SourceOneofCase.FileId:
-                var upload = await uploads.FindAsync(request.FileId, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound("The uploaded backup is no longer on the server. Choose it again.");
-                return (c => uploads.OpenReadAsync(request.FileId, c), upload.Name);
+                var upload = await uploads.FindAsync(request.FileId, uploader, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound("The uploaded backup is no longer on the server. Choose it again.");
+                return (c => uploads.OpenReadAsync(request.FileId, uploader, c), upload.Name);
             case Proto.RestoreRequest.SourceOneofCase.Name:
                 var path = backups.PathOf(request.Name) ?? throw GrpcGuard.NotFound("There is no such backup on the server.");
                 return (_ => Task.FromResult<Stream>(File.OpenRead(path)), request.Name);
