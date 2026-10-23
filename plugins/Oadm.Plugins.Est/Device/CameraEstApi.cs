@@ -118,14 +118,41 @@ public static class CameraEstApi
     /// Changes a profile in place (PATCH): the camera enrolls again under the same name. Deleting and adding it again does
     /// not work while its previous certificate is still on the camera (seen on 10.0.0.48: the new one is never stored).
     /// </summary>
-    public static Task SetProfileAsync(IVapixClient vapix, string id, JsonObject profile, CancellationToken ct) =>
-        SendDataAsync(vapix, HttpMethod.Patch, $"{EstPath}/profiles/{Uri.EscapeDataString(id)}", profile, "Change EST profile", ct);
-
     public static Task RemoveProfileAsync(IVapixClient vapix, string id, CancellationToken ct) =>
         SendDataAsync(vapix, HttpMethod.Delete, $"{EstPath}/profiles/{Uri.EscapeDataString(id)}", null, "Remove EST profile", ct);
 
     public static async Task<IReadOnlyList<CameraCertificate>> ListCertificatesAsync(IVapixClient vapix, CancellationToken ct) =>
         ParseCertificates(await GetDataAsync(vapix, CertPath + "/certificates", "Read the camera's certificates", ct).ConfigureAwait(false));
+
+    /// <summary>One certificate by alias; null when the camera has none of that name.</summary>
+    public static async Task<CameraCertificate?> ReadCertificateAsync(IVapixClient vapix, string alias, CancellationToken ct)
+    {
+        var (status, body) = await SendAsync(vapix, HttpMethod.Get, CertPath + "/certificates/" + Uri.EscapeDataString(alias), null, ct).ConfigureAwait(false);
+        if (status == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return ReadData(status, body, "read the certificate " + alias) is JsonObject data && ParseCertificates(new JsonArray(data.DeepClone())) is { Count: > 0 } list ? list[0] : null;
+    }
+
+    /// <summary>
+    /// Deletes a certificate; false when the camera keeps it because a use (web server, network access, MQTT) still holds
+    /// it ("Certificate is in use", seen on 10.0.0.48 also after its EST profile was removed) or it is not there.
+    /// </summary>
+    public static async Task<bool> TryDeleteCertificateAsync(IVapixClient vapix, string alias, CancellationToken ct)
+    {
+        var (status, body) = await SendAsync(vapix, HttpMethod.Delete, CertPath + "/certificates/" + Uri.EscapeDataString(alias), null, ct).ConfigureAwait(false);
+        try
+        {
+            ReadData(status, body, "delete the certificate " + alias);
+            return true;
+        }
+        catch (CameraApiException)
+        {
+            return false;
+        }
+    }
 
     public static async Task<IReadOnlyList<CameraCertificate>> ListCaCertificatesAsync(IVapixClient vapix, CancellationToken ct) =>
         ParseCertificates(await GetDataAsync(vapix, CertPath + "/ca_certificates", "Read the camera's CA certificates", ct).ConfigureAwait(false));

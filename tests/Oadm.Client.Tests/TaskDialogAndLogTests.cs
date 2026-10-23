@@ -32,6 +32,41 @@ public sealed class TaskDialogAndLogTests
     }
 
     [Fact]
+    public async Task DialogContextRunsItsTaskAndFollowsItUntilEveryTaskEnded()
+    {
+        using var api = new FakeOadmApi(seedSampleData: false);
+        var tasks = new TaskStore(new DeviceStore());
+        var ctx = new TaskDialogContext(api, FakeOadmApi.RestartPluginId, tasks: tasks);
+        Assert.True(ctx.CanRunTasks);
+        Assert.False(new TaskDialogContext(api, FakeOadmApi.RestartPluginId).CanRunTasks);
+        var devices = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var reports = new List<IReadOnlyList<Oadm.Sdk.Client.TaskRunState>>();
+
+        var run = ctx.RunTaskAsync(devices, null, new SyncProgress<IReadOnlyList<Oadm.Sdk.Client.TaskRunState>>(reports.Add), CancellationToken.None);
+        Assert.False(run.IsCompleted);
+        var first = reports[^1];
+        Assert.All(first, s => Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.Queued, s.Status)); // not in the mirror yet
+        Assert.Equal(devices, first.Select(s => s.DeviceId));
+
+        TaskInfo Task(int i, TaskState state, string message = "") => new()
+        {
+            Id = first[i].TaskId, PluginId = FakeOadmApi.RestartPluginId, State = state, DeviceId = devices[i].ToString(),
+            Devices = { new TaskDeviceResult { DeviceId = devices[i].ToString(), State = state, Message = message } },
+        };
+        tasks.ApplyBatch([new TaskChanged { Kind = TaskChanged.Types.Kind.Added, Task = Task(0, TaskState.Running) },
+            new TaskChanged { Kind = TaskChanged.Types.Kind.Added, Task = Task(1, TaskState.Queued) }]);
+        tasks.Apply(new TaskChanged { Kind = TaskChanged.Types.Kind.Added, Task = new TaskInfo { Id = "other", State = TaskState.Done } }); // not this run
+        tasks.Apply(new TaskChanged { Kind = TaskChanged.Types.Kind.Updated, Task = Task(0, TaskState.Done) });
+        Assert.False(run.IsCompleted);
+        Assert.Equal([Oadm.Sdk.Client.TaskRunStatus.Done, Oadm.Sdk.Client.TaskRunStatus.Queued], reports[^1].Select(s => s.Status));
+
+        tasks.Apply(new TaskChanged { Kind = TaskChanged.Types.Kind.Updated, Task = Task(1, TaskState.Failed, "Connection refused") });
+        var ended = await run;
+        Assert.Equal([Oadm.Sdk.Client.TaskRunStatus.Done, Oadm.Sdk.Client.TaskRunStatus.Failed], ended.Select(s => s.Status));
+        Assert.Equal("Connection refused", ended[1].Message);
+    }
+
+    [Fact]
     public async Task APluginWithoutQueriesSurfacesAsUnimplemented()
     {
         using var api = new FakeOadmApi(seedSampleData: false);
@@ -147,5 +182,10 @@ public sealed class TaskDialogAndLogTests
     private sealed class SyncProgress(Action<double> report) : IProgress<double>
     {
         public void Report(double value) => report(value);
+    }
+
+    private sealed class SyncProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }

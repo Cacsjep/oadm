@@ -27,7 +27,7 @@ public sealed record EnrollmentProfileRow(CameraProfileInfo Profile)
     public string Server => Profile.Server ?? string.Empty;
 
     /// <summary>Set up by OADM (named "oadm_...") or by another EST server.</summary>
-    public bool IsOadm => Profile.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal);
+    public bool IsOadm => EstTaskIds.IsOadm(Profile.Id);
 
     public string SetUpBy => IsOadm ? "OADM" : "Other";
 
@@ -58,7 +58,9 @@ public sealed record EnrollmentProfileRow(CameraProfileInfo Profile)
 /// "Certificate enrollment" (like the Applications dialog): the enrollment profiles of the chosen camera, read through the
 /// task's read-only query; <b>Remove</b> (any profile, confirmed) and <b>Set up</b> apply to every selected camera. For
 /// cameras with IEEE 802.1X on the choice to replace their network access certificate too (off by default: a RADIUS
-/// server that does not trust the OADM CA would lock them out).
+/// server that does not trust the OADM CA would lock them out). The dialog stays open while they run
+/// (<see cref="ITaskDialogContext.RunTaskAsync"/>): the run line shows the step, then the result, and the profiles are read
+/// again; an older host without it gets the payload and the dialog closes.
 /// </summary>
 public sealed partial class EstSetupViewModel : ObservableObject
 {
@@ -102,6 +104,39 @@ public sealed partial class EstSetupViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     [NotifyCanExecuteChangedFor(nameof(RemoveCommand), nameof(RefreshCommand))]
     public partial bool IsLoading { get; set; }
+
+    /// <summary>A Set up or Remove started from the dialog runs: its buttons wait.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRunLine))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveCommand), nameof(RefreshCommand), nameof(OkCommand))]
+    public partial bool IsRunning { get; set; }
+
+    /// <summary>The run line: "Set up: Wait for the https certificate" while it runs, then its result.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRunLine))]
+    public partial string? RunText { get; set; }
+
+    /// <summary>The camera's message of an ended run (the error or warning), below the result.</summary>
+    [ObservableProperty]
+    public partial string? RunDetail { get; set; }
+
+    [ObservableProperty]
+    public partial bool RunOk { get; set; }
+
+    [ObservableProperty]
+    public partial bool RunWarning { get; set; }
+
+    [ObservableProperty]
+    public partial bool RunError { get; set; }
+
+    /// <summary>The run line shows while a run goes (progress) and after it ended (result).</summary>
+    public bool ShowRunLine => IsRunning || RunText is not null;
+
+    /// <summary>The dialog runs its task itself and stays open (hosts with <see cref="ITaskDialogContext.CanRunTasks"/>).</summary>
+    public bool RunsInDialog => _ctx?.CanRunTasks == true;
+
+    /// <summary>"Close" once the dialog runs its task itself (nothing is left to cancel), else "Cancel".</summary>
+    public string CloseText => RunsInDialog ? "Close" : "Cancel";
 
     /// <summary>Why the profiles cannot be shown (read failed, no certificate enrollment on the camera).</summary>
     [ObservableProperty]
@@ -223,7 +258,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
             : EstJson.Deserialize<CameraProfileList>(json);
     }
 
-    private bool CanRefresh() => !IsLoading;
+    private bool CanRefresh() => !IsLoading && !IsRunning;
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private Task RefreshAsync()
@@ -236,7 +271,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
         return LoadProfilesAsync();
     }
 
-    private bool CanRemove() => SelectedProfile is not null && !IsLoading;
+    private bool CanRemove() => SelectedProfile is not null && !IsLoading && !IsRunning;
 
     /// <summary>Asks first (inline, like the Applications dialog); <see cref="ConfirmRemoveCommand"/> completes the dialog.</summary>
     [RelayCommand(CanExecute = nameof(CanRemove))]
@@ -267,22 +302,106 @@ public sealed partial class EstSetupViewModel : ObservableObject
     {
         if (ConfirmRemoveVisible && _pendingRemove is { } profile)
         {
-            Complete(new SetupPayload { Action = SetupAction.Remove, Profiles = [profile.Id] });
+            ConfirmRemoveVisible = false;
+            _ = CompleteAsync(new SetupPayload { Action = SetupAction.Remove, Profiles = [profile.Id] }, "Remove " + profile.Id);
         }
     }
 
     [RelayCommand]
     private void CancelRemove() => ConfirmRemoveVisible = false;
 
-    [RelayCommand]
-    private void Ok() => Complete(new SetupPayload(ShowDot1x && ReplaceDot1x));
+    private bool CanOk() => !IsRunning;
+
+    [RelayCommand(CanExecute = nameof(CanOk))]
+    private Task OkAsync() => CompleteAsync(new SetupPayload(ShowDot1x && ReplaceDot1x), "Set up");
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
-    private void Complete(SetupPayload payload)
+    /// <summary>
+    /// Runs the task here and stays open (the step while it runs, the result, the profiles read again), or on an older host
+    /// hands the payload to the host and closes.
+    /// </summary>
+    private async Task CompleteAsync(SetupPayload payload, string what)
     {
         Payload = EstJson.Serialize(payload);
-        CloseRequested?.Invoke(this, true);
+        if (!RunsInDialog)
+        {
+            CloseRequested?.Invoke(this, true);
+            return;
+        }
+
+        IsRunning = true;
+        RunDetail = null;
+        (RunOk, RunWarning, RunError) = (false, false, false);
+        RunText = what + ": starting";
+        try
+        {
+            // The host reports on the UI thread: applied at once (Progress<T> would post it later).
+            var progress = new InlineProgress(states => RunText = what + ": " + RunningText(states));
+            var states = await _ctx!.RunTaskAsync([.. Devices.Select(d => d.Device.Id)], Payload, progress, CancellationToken.None).ConfigureAwait(true);
+            ShowResult(what, states);
+        }
+#pragma warning disable CA1031 // A refusal (role, plugin off) is shown in the dialog.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            (RunOk, RunWarning, RunError) = (false, false, true);
+            RunText = what + ": the task could not be started";
+            RunDetail = ServerErrors.Message(ex);
+        }
+        finally
+        {
+            IsRunning = false;
+        }
+
+        // What the cameras have now.
+        _cache.Clear();
+        await LoadProfilesAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>One camera: the step it is on; several: "3 of 12 done · 1 failed".</summary>
+    internal static string RunningText(IReadOnlyList<TaskRunState> states)
+    {
+        if (states.Count == 1)
+        {
+            return states[0].Status == TaskRunStatus.Queued ? "waiting to start"
+                : states[0].IsActive ? (states[0].Step.Length > 0 ? states[0].Step : "running")
+                : "ending";
+        }
+
+        var ended = states.Count(s => !s.IsActive);
+        var failed = states.Count(s => s.Status == TaskRunStatus.Failed);
+        return string.Create(CultureInfo.InvariantCulture, $"{ended:N0} of {states.Count:N0} cameras done") + (failed > 0 ? string.Create(CultureInfo.InvariantCulture, $" · {failed:N0} failed") : "");
+    }
+
+    /// <summary>Done, Done with warnings or Failed; with several cameras the ones that did not end well, by address.</summary>
+    internal void ShowResult(string what, IReadOnlyList<TaskRunState> states)
+    {
+        var failed = states.Where(s => s.Status is TaskRunStatus.Failed or TaskRunStatus.Cancelled).ToList();
+        var warned = states.Where(s => s.Status == TaskRunStatus.DoneWithWarnings).ToList();
+        RunError = failed.Count > 0;
+        RunWarning = !RunError && warned.Count > 0;
+        RunOk = !RunError && !RunWarning;
+        var problems = failed.Count > 0 ? failed : warned;
+        if (states.Count == 1)
+        {
+            RunText = what + ": " + (RunError ? (failed[0].Status == TaskRunStatus.Cancelled ? "cancelled" : "failed") : RunWarning ? "done with warnings" : "done");
+            RunDetail = problems.Count > 0 && problems[0].Message.Length > 0 ? problems[0].Message : null;
+            return;
+        }
+
+        RunText = what + ": " + (RunOk
+            ? string.Create(CultureInfo.InvariantCulture, $"done on {states.Count:N0} cameras")
+            : string.Create(CultureInfo.InvariantCulture, $"{problems.Count:N0} of {states.Count:N0} cameras {(RunError ? "failed" : "with warnings")}"));
+        var labels = Devices.ToDictionary(d => d.Device.Id, d => d.Device.Address);
+        RunDetail = problems.Count == 0 ? null : string.Join(Environment.NewLine, problems.Take(5).Select(p =>
+                (labels.GetValueOrDefault(p.DeviceId) ?? p.DeviceId.ToString()) + (p.Message.Length > 0 ? ": " + p.Message : "")))
+            + (problems.Count > 5 ? string.Create(CultureInfo.InvariantCulture, $"{Environment.NewLine}+{problems.Count - 5:N0} more in the tasks pane") : "");
+    }
+
+    private sealed class InlineProgress(Action<IReadOnlyList<TaskRunState>> report) : IProgress<IReadOnlyList<TaskRunState>>
+    {
+        public void Report(IReadOnlyList<TaskRunState> value) => report(value);
     }
 }

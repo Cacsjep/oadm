@@ -176,7 +176,11 @@ and actions before any plugin call.
 
 ## Client side
 
-`ITaskPluginDialog.ShowAsync(ctx, devices, owner)` shows a window and returns the payload JSON (null = cancelled).
+`ITaskPluginDialog.ShowAsync(ctx, devices, owner)` shows a window and returns the payload JSON (null = cancelled). A
+dialog that should stay open while its task runs checks `ctx.CanRunTasks`, starts the run with
+`ctx.RunTaskAsync(deviceIds, payload, progress, ct)` (progress: every task's `TaskRunState`; the result once all ended),
+shows the result in the dialog and returns null (nothing runs twice); without `CanRunTasks` (older hosts) it returns the
+payload as before.
 `ctx.QueryAsync(deviceId, method, payload, ct)` calls the plugin's query; `ctx.UploadAsync(path, progress, ct)`
 uploads a file (progress 0.0 to 1.0) and returns its id for the payload. Failures are `Grpc.Core.RpcException`; show
 `Status.Detail` to the user.

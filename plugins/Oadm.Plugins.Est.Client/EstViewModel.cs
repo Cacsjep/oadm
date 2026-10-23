@@ -111,6 +111,9 @@ public sealed record EnrollmentRow(Enrollment Source)
 
     public string Reason => Source.Reason;
 
+    /// <summary>An enrollment that issued a certificate this OADM kept: View certificate shows it.</summary>
+    public bool HasCertificate => Source.Ok && !string.IsNullOrEmpty(Source.SerialNumber);
+
     /// <summary>Device, profile, kind, result or reason contains <paramref name="search"/> (empty: every row).</summary>
     public bool Matches(string search) =>
         search.Length == 0
@@ -218,6 +221,38 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     [ObservableProperty]
     public partial string EnrollmentSearch { get; set; } = string.Empty;
+
+    /// <summary>The enrollment selected in the list: View certificate shows its certificate.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ViewCertificateCommand))]
+    public partial EnrollmentRow? SelectedEnrollment { get; set; }
+
+    /// <summary>The view opens the details window (<see cref="EstCertificateWindow"/>) with this.</summary>
+    public event EventHandler<EstCertificateViewModel>? CertificateRequested;
+
+    private bool CanViewCertificate => SelectedEnrollment is { HasCertificate: true };
+
+    /// <summary>"View certificate" (and a double click on a row): the certificate the enrollment issued, read from the server.</summary>
+    [RelayCommand(CanExecute = nameof(CanViewCertificate))]
+    private async Task ViewCertificateAsync()
+    {
+        if (SelectedEnrollment is not { HasCertificate: true } row)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = await _ctx.InvokeAsync(EstMethods.GetCertificate, EstJson.Serialize(new CertificateQuery(row.Source.SerialNumber!)), CancellationToken.None).ConfigureAwait(true);
+            CertificateRequested?.Invoke(this, new EstCertificateViewModel(EstJson.Deserialize<CertificateDescription>(json), row, DateTime.UtcNow));
+        }
+#pragma warning disable CA1031 // Shown to the user.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync("View certificate", ServerErrors.Message(ex)).ConfigureAwait(true);
+        }
+    }
 
     /// <summary>The certificates the cameras did not renew in time (the section shows only when there are any).</summary>
     public RangeObservableCollection<NotRenewedRow> NotRenewed { get; } = [];

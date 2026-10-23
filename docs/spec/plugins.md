@@ -81,8 +81,14 @@ the UI thread.
 - `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel); `ITaskDialogContext` gives
   `QueryAsync` (TaskService.Query), `UploadAsync` (FileService.Upload with progress), `Has(permission)` (the dialog
   hides the choices the role lacks: Users modes, firmware factory default and downgrade, application actions, the
-  connection settings area, dangerous parameters) and `AllDevices` (every device of the client, e.g. a source device that is
-  not selected; DIM empty).
+  connection settings area, dangerous parameters), `AllDevices` (every device of the client, e.g. a source device that is
+  not selected; DIM empty) and `CanRunTasks` + `RunTaskAsync(deviceIds, payload, progress, ct)` (DIM false / throws): a
+  dialog that stays open starts its task itself (TaskService.Run, the tasks show in the tasks pane too) and follows it in
+  the client's task mirror (`TaskDialogContext`, `TaskStore`: no extra stream) as `TaskRunState` {DeviceId, TaskId,
+  `TaskRunStatus`, Step, Message} until every task ended; it then returns null from `ShowAsync`. Records:
+  `IPluginRecords.GetAsync(collection, key)` reads one record (DIM through `ListAsync`; the host and
+  `MemoryPluginRecords` read only that row). First user: Certificate
+  enrollment (EST). Tests `TaskDialogAndLogTests.DialogContextRunsItsTask...`.
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
   shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,

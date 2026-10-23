@@ -59,7 +59,7 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
         var caBefore = (await CameraEstApi.ListCaCertificatesAsync(vapix, ct)).Select(c => c.Alias).ToHashSet(StringComparer.Ordinal);
         var certificatesBefore = (await CameraEstApi.ListCertificatesAsync(vapix, ct)).Select(c => c.Alias).ToHashSet(StringComparer.Ordinal);
         output.WriteLine($"Web server before: certificate {webBefore.CertificateAlias}");
-        Assert.False(webBefore.CertificateAlias?.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) == true, "The camera still uses a test certificate: restore it first.");
+        Assert.False(webBefore.CertificateAlias is { } inUse && EstTaskIds.IsOadm(inUse), "The camera still uses a test certificate: restore it first.");
 
         using var ca = new FakeAuthority();
         var devices = new Devices();
@@ -123,8 +123,9 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
 
             Assert.DoesNotContain(again.Lines, l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal));
 
-            // A changed profile (another name of the camera: other SANs) is written again under the same id while the
-            // previous certificate is still on the camera: the camera must enroll a new one.
+            // A changed profile (another name of the camera: other SANs): the camera never stores a certificate over the
+            // previous one of the same name (it reported ENROLLED and kept it after a change in place), so the profile is
+            // removed and added under its other name; the new certificate takes the web server.
             var renamed = device with { HostName = "oadm-est-renamed" };
             var beforeRewrite = est.Store.Current().Single().SerialNumber;
             await RetryAsync(() => CameraEstApi.DiscoverAsync(vapix, ct));
@@ -157,30 +158,62 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
                 }
             }
 
-            Assert.Contains(rewrite.Lines, l => l.StartsWith(EstTaskIds.ChangeStep("https"), StringComparison.Ordinal));
+            Assert.Contains(rewrite.Lines, l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal));
             Assert.NotEqual(beforeRewrite, est.Store.Current().Single().SerialNumber);
-            Assert.Contains("DNS:oadm-est-renamed", (await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct))).Single().SubjectAlternativeNames);
+            var rewritten = (await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct))).Single();
+            Assert.Equal(EstTaskIds.AlternatePrefix + "https", rewritten.Id);
+            Assert.Contains("DNS:oadm-est-renamed", rewritten.SubjectAlternativeNames);
+            await PresentsAsync(camera.Address, est.Store.Current().Single().Fingerprint!);
+
+            Assert.DoesNotContain(await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct)), c => c.Alias == "oadm_https");
 
             // The dialog's read-only query lists the new profile.
             var listed = EstJson.Deserialize<CameraProfileList>(await task.QueryAsync(new QueryContext(vapix), device, EstTaskIds.ListProfilesMethod, null, ct));
             output.WriteLine("Listed: " + string.Join(", ", listed.Profiles.Select(p => $"{p.Id} {p.Status} {string.Join("/", p.Services)} {p.Server}")));
-            Assert.Contains(listed.Profiles, p => p.Id == "oadm_https" && p.Status == "ENROLLED");
+            Assert.Contains(listed.Profiles, p => p.Id == rewritten.Id && p.Status == "ENROLLED");
 
             var remove = new TaskContext(vapix, new FakeDeviceNetwork());
-            await task.ExecuteAsync(remove, device, EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["oadm_https"] }), ct);
+            await task.ExecuteAsync(remove, device, EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = [rewritten.Id] }), ct);
             Assert.Empty(await CameraEstApi.ReadProfilesAsync(vapix, ct));
+
+            // Set up again after Remove (the reported case): the web server still holds the removed profile's certificate
+            // ("Certificate is in use"), so the profile takes the other name, enrolls, and the older certificate is deleted
+            // once the new one took the web server.
+            Assert.False(await CameraEstApi.TryDeleteCertificateAsync(vapix, rewritten.Id, ct), "the web server holds the removed profile's certificate");
+            var readd = new TaskContext(vapix, new FakeDeviceNetwork { LocalAddress = serverAddress });
+            try
+            {
+                await task.ExecuteAsync(readd, device, "{}", ct);
+            }
+            finally
+            {
+                readd.Flush();
+                foreach (var line in readd.Lines)
+                {
+                    output.WriteLine("Set up again: " + line);
+                }
+            }
+
+            var readded = Assert.Single(await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct)));
+            Assert.Equal((EstTaskIds.ProfilePrefix + "https", "ENROLLED"), (readded.Id, readded.Status));
+            var newest = est.Store.Current().Single();
+            Assert.Equal(newest.Fingerprint, readd.PinnedFingerprint);
+            await PresentsAsync(camera.Address, newest.Fingerprint!);
+
+            Assert.DoesNotContain(await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct)), c => c.Alias == rewritten.Id);
+            await task.ExecuteAsync(new TaskContext(vapix, new FakeDeviceNetwork()), device, EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = [readded.Id] }), ct);
         }
         finally
         {
             // Back to how it was: no OADM EST profile, the previous web server certificate, no test certificates.
-            foreach (var left in (await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct))).Where(p => p.Id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal)))
+            foreach (var left in (await RetryAsync(() => CameraEstApi.ReadProfilesAsync(vapix, ct))).Where(p => EstTaskIds.IsOadm(p.Id)))
             {
                 await RetryAsync(() => CameraEstApi.RemoveProfileAsync(vapix, left.Id, ct));
             }
 
             await RetryAsync(() => Pki.Device.WebServerTls.SetAsync(vapix, webBefore, ct));
             await Task.Delay(TimeSpan.FromSeconds(10), ct); // the web server restarts with its certificate
-            foreach (var certificate in (await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct))).Where(c => c.Alias.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal) && !certificatesBefore.Contains(c.Alias)))
+            foreach (var certificate in (await RetryAsync(() => CameraEstApi.ListCertificatesAsync(vapix, ct))).Where(c => EstTaskIds.IsOadm(c.Alias) && !certificatesBefore.Contains(c.Alias)))
             {
                 await RetryAsync(() => Pki.Device.CertApi.DeleteCertificateAsync(vapix, certificate.Alias, ct));
             }
@@ -218,6 +251,38 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
     });
 
     /// <summary>The certificate the camera's web server presents once it is issued by <paramref name="issuer"/> (up to 60 s).</summary>
+    /// <summary>Waits until the web server presents the certificate (it switches a few seconds after ENROLLED), up to 60 s.</summary>
+    private static async Task PresentsAsync(string address, string fingerprint)
+    {
+        var last = "";
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            try
+            {
+                using var tcp = new TcpClient();
+                await tcp.ConnectAsync(address, 443);
+                await using var tls = new SslStream(tcp.GetStream(), false, (_, certificate, _, _) =>
+                {
+                    last = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(certificate!.GetRawCertData()));
+                    return true;
+                });
+                await tls.AuthenticateAsClientAsync(address);
+                if (string.Equals(last, fingerprint, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException)
+            {
+                // the web server restarts with the new certificate
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+
+        Assert.Fail($"The web server presents {last}, not {fingerprint}.");
+    }
+
     private static async Task<X509Certificate2> HandshakeAsync(string address, string issuer)
     {
         X509Certificate2? seen = null;

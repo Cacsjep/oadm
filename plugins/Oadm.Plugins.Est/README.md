@@ -32,13 +32,17 @@ Apache 2.0).
     profile, reason), only for managed devices; "Certificate not renewed" (`oadm.est.notrenewed`: profile, validUntil)
     from the hourly `CheckRenewalsAsync` (newest certificate per device and profile, halfway through its lifetime plus
     `NotRenewedGrace`: Axis cameras renew halfway and retry daily; removing an `oadm_` profile stops the check).
-  - Methods: `getState`, `getEnrollments`, `getNotRenewed` (500 at most) for everyone; `save` and `clearEnrollments`
+  - Methods: `getState`, `getEnrollments`, `getNotRenewed` (500 at most), `getCertificate` (the certificate of a listed
+    enrollment, records collection `issued`, described by `Serving/CertificateDescriber`) for everyone; `save` and `clearEnrollments`
     Admin (permission `oadm.est:manage`).
 - Task **Certificate enrollment** (`Tasks/EstTasks.cs`, Security; the dialog `EstSetupWindow` like the Applications
   dialog: the chosen camera's profiles through the read-only query `listProfiles`, Remove with an inline confirmation, Set
   up with the IEEE 802.1X choice): set up
-  (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` with the device ID, the OADM
-  CA chain, this server as EST server; waits for ENROLLED; pins a new HTTPS certificate) or remove the chosen profiles (any
+  (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` or `oadm2_<profile>` with
+  the device ID, the OADM CA chain, this server as EST server; waits until the camera holds the new certificate; pins a new
+  HTTPS certificate; deletes OADM's older certificates no use holds any more). The camera never stores a certificate over
+  an older one of the same name and keeps a removed profile's certificate bound to its use, so a changed profile or one
+  set up again after Remove takes the other name (spec "Two names per profile") or remove the chosen profiles (any
   profile; payload `SetupPayload.Action`). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
   stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`), whose connections get the site's own
   server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.

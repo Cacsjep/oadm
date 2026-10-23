@@ -53,6 +53,12 @@ public static class EstMethods
     /// <summary>() -> (): deletes every enrollment (Admin).</summary>
     public const string ClearEnrollments = "clearEnrollments";
 
+    /// <summary><see cref="CertificateQuery"/> -> <see cref="CertificateDescription"/> of a certificate an enrollment issued.</summary>
+    public const string GetCertificate = "getCertificate";
+
+    /// <summary>The certificate of an enrollment that is no longer listed (or of an older OADM, which kept none).</summary>
+    public const string CertificateGone = "OADM no longer keeps this certificate.";
+
     /// <summary>Event: <see cref="EstState"/> changed (status, a relay, the settings).</summary>
     public const string StateTopic = "state";
 
@@ -147,7 +153,49 @@ public sealed record Enrollment
 
     /// <summary>Why it was refused, or "Valid until 2027-10-22".</summary>
     public string Reason { get; init; } = string.Empty;
+
+    /// <summary>The certificate it issued (upper hex; <see cref="EstMethods.GetCertificate"/>); null for a refusal and older entries.</summary>
+    public string? SerialNumber { get; init; }
 }
+
+/// <summary>A name and its value as the certificate details show it ("Common name", "10.0.0.48").</summary>
+public sealed record NameValue(string Name, string Value);
+
+/// <summary>A certificate EST issued, described for the page (<see cref="EstMethods.GetCertificate"/>).</summary>
+public sealed record CertificateDescription
+{
+    /// <summary>"7D FD 05 49 ...".</summary>
+    public string SerialNumber { get; init; } = string.Empty;
+
+    /// <summary>The subject's parts in the certificate's order ("Common name" = "10.0.0.48").</summary>
+    public IReadOnlyList<NameValue> Subject { get; init; } = [];
+
+    public IReadOnlyList<NameValue> Issuer { get; init; } = [];
+
+    public DateTime NotBeforeUtc { get; init; }
+
+    public DateTime NotAfterUtc { get; init; }
+
+    /// <summary>"ECC P-256", "RSA 2048".</summary>
+    public string Key { get; init; } = string.Empty;
+
+    /// <summary>"SHA-256 with ECDSA".</summary>
+    public string Signature { get; init; } = string.Empty;
+
+    public int Version { get; init; }
+
+    /// <summary>What it may be used for ("Digital signature", "Server authentication").</summary>
+    public IReadOnlyList<string> Uses { get; init; } = [];
+
+    /// <summary>The names in it ("IP 10.0.0.48", "DNS axis-b8a44f631339.local").</summary>
+    public IReadOnlyList<string> Names { get; init; } = [];
+
+    /// <summary>SHA-256 of the certificate, upper hex in pairs.</summary>
+    public string Fingerprint { get; init; } = string.Empty;
+}
+
+/// <summary>The payload of <see cref="EstMethods.GetCertificate"/>.</summary>
+public sealed record CertificateQuery(string SerialNumber);
 
 /// <summary>A certificate EST issued.</summary>
 public sealed record IssuedCertificate

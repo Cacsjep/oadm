@@ -13,6 +13,13 @@ public interface IPluginRecords
     Task<IReadOnlyDictionary<string, string>> ListAsync(string collection, CancellationToken ct);
 
     /// <summary>
+    /// One record of <paramref name="collection"/>: its JSON, or null when there is none of <paramref name="key"/>. Reads only
+    /// that record (default for other implementations: through <see cref="ListAsync"/>).
+    /// </summary>
+    async Task<string?> GetAsync(string collection, string key, CancellationToken ct) =>
+        (await ListAsync(collection, ct).ConfigureAwait(false)).TryGetValue(key, out var value) ? value : null;
+
+    /// <summary>
     /// Writes several records of <paramref name="collection"/> in one transaction; a null value deletes its key. Keys: 1 to
     /// 255 characters; values: valid JSON.
     /// </summary>
@@ -45,6 +52,16 @@ public sealed class MemoryPluginRecords : IPluginRecords
                 ? new Dictionary<string, string>(records, StringComparer.Ordinal)
                 : new Dictionary<string, string>(StringComparer.Ordinal);
             return Task.FromResult(list);
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<string?> GetAsync(string collection, string key, CancellationToken ct)
+    {
+        PluginRecordRules.ValidateCollection(collection);
+        lock (_gate)
+        {
+            return Task.FromResult(_collections.TryGetValue(collection, out var records) && records.TryGetValue(key, out var value) ? value : null);
         }
     }
 

@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Plugins.Est.Client;
 using Oadm.Plugins.Est.Serving;
@@ -34,6 +35,113 @@ public sealed class PageTests : IAsyncLifetime
     {
         await _plugin.DisposeAsync();
         _ca.Dispose();
+    }
+
+    /// <summary>A CA and a camera certificate it signed, like the OADM CA's (ECC P-256, server authentication, IP and DNS names).</summary>
+    private static (byte[] Leaf, string Serial) CameraCertificate(DateTimeOffset now)
+    {
+        using var caKey = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var caRequest = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=OADM Root CA acs, O=OADM", caKey, System.Security.Cryptography.HashAlgorithmName.SHA256);
+        caRequest.CertificateExtensions.Add(new System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension(true, false, 0, true));
+        using var ca = caRequest.CreateSelfSigned(now.AddDays(-1), now.AddYears(10));
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=10.0.0.48", key, System.Security.Cryptography.HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new System.Security.Cryptography.X509Certificates.X509KeyUsageExtension(System.Security.Cryptography.X509Certificates.X509KeyUsageFlags.DigitalSignature, true));
+        request.CertificateExtensions.Add(new System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension([new System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.1")], false));
+        var san = new System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder();
+        san.AddIpAddress(System.Net.IPAddress.Parse("10.0.0.48"));
+        san.AddDnsName("axis-b8a44f631339.local");
+        request.CertificateExtensions.Add(san.Build());
+        using var leaf = request.Create(ca, now.AddMinutes(-5), now.AddDays(365), [0x7D, 0xFD, 0x05, 0x49]);
+        return (leaf.RawData, leaf.SerialNumber);
+    }
+
+    [Fact]
+    public async Task An_enrollment_keeps_its_certificate_and_view_certificate_shows_it_in_plain_names()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (der, serial) = CameraCertificate(now);
+        var store = _plugin.Service!.Store;
+        store.AddEnrollment(new Enrollment { TimeUtc = now.UtcDateTime, Device = "10.0.0.48", Profile = "https", Ok = true, Reason = "Valid until 2027-10-22", SerialNumber = serial }, der);
+        store.AddEnrollment(new Enrollment { TimeUtc = now.UtcDateTime, Device = "10.0.0.49", Profile = "https", Ok = false, Reason = EstRefusals.NotManaged });
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+
+        vm.SelectedEnrollment = vm.Enrollments.Single(e => e.Refused);
+        Assert.False(vm.ViewCertificateCommand.CanExecute(null)); // a refusal issued nothing
+        vm.SelectedEnrollment = vm.Enrollments.Single(e => e.Ok);
+        EstCertificateViewModel? shown = null;
+        vm.CertificateRequested += (_, c) => shown = c;
+        await store.FlushAsync(CancellationToken.None); // read back from the records
+        await vm.ViewCertificateCommand.ExecuteAsync(null);
+
+        Assert.NotNull(shown);
+        Assert.Equal("Certificate · 10.0.0.48 · https", shown.Title);
+        Assert.Equal("Valid, 364 days left", shown.ValidityText);
+        Assert.True(shown.IsValid);
+        Assert.Equal([new NameValue("Common name", "10.0.0.48")], shown.IssuedTo);
+        Assert.Equal([new NameValue("Common name", "OADM Root CA acs"), new NameValue("Organization", "OADM")], shown.IssuedBy);
+        Assert.Equal(("ECC P-256", "SHA-256 with ECDSA", "3", "7D FD 05 49"), (shown.Key, shown.Signature, shown.Version, shown.SerialNumber));
+        Assert.Equal("Digital signature, Server authentication", shown.Uses);
+        Assert.Equal("IP 10.0.0.48" + Environment.NewLine + "DNS axis-b8a44f631339.local", shown.Names);
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(der)), shown.Fingerprint.Replace(" ", "", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_certificate_goes_with_its_enrollment()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (der, serial) = CameraCertificate(now);
+        var service = _plugin.Service!;
+        await service.SaveAsync(new SaveRequest(service.Store.Config with { EnrollmentsKept = 100 }), CancellationToken.None);
+        service.Store.AddEnrollment(new Enrollment { TimeUtc = now.UtcDateTime, Device = "10.0.0.48", Profile = "https", Ok = true, SerialNumber = serial }, der);
+        await service.Store.FlushAsync(CancellationToken.None);
+        Assert.Equal(der, await service.Store.IssuedAsync(serial, CancellationToken.None));
+
+        // 100 newer enrollments push it out of the list: its certificate goes too.
+        for (var i = 0; i < 100; i++)
+        {
+            service.Store.AddEnrollment(new Enrollment { TimeUtc = now.UtcDateTime, Device = "10.0.0.49", Profile = "https", Ok = false, Reason = EstRefusals.NotManaged });
+        }
+
+        Assert.Null(await service.Store.IssuedAsync(serial, CancellationToken.None));
+        await service.Store.FlushAsync(CancellationToken.None);
+        Assert.Null(await _core.PluginRecords.GetAsync(EstStore.IssuedKey, serial, CancellationToken.None));
+        var gone = await Assert.ThrowsAsync<ArgumentException>(() => _plugin.InvokeAsync(EstMethods.GetCertificate, EstJson.Serialize(new CertificateQuery(serial)), CancellationToken.None));
+        Assert.Equal(EstMethods.CertificateGone, gone.Message);
+
+        // Delete all: every certificate goes.
+        var (der2, serial2) = CameraCertificate(now);
+        service.Store.AddEnrollment(new Enrollment { TimeUtc = now.UtcDateTime, Device = "10.0.0.48", Profile = "https", Ok = true, SerialNumber = serial2 }, der2);
+        await service.Store.FlushAsync(CancellationToken.None);
+        service.ClearEnrollments();
+        Assert.Null(await service.Store.IssuedAsync(serial2, CancellationToken.None));
+        await service.Store.FlushAsync(CancellationToken.None);
+        Assert.Empty(await _core.PluginRecords.ListAsync(EstStore.IssuedKey, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_certificate_window_renders()
+    {
+        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var now = DateTimeOffset.UtcNow;
+        var (der, _) = CameraCertificate(now);
+        var row = new EnrollmentRow(new Enrollment { TimeUtc = now.UtcDateTime, Device = "10.0.0.48", Profile = "https", Ok = true });
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        await session.Dispatch(() =>
+        {
+            var window = new EstCertificateWindow { DataContext = new EstCertificateViewModel(Oadm.Plugins.Est.Serving.CertificateDescriber.Describe(der), row, now.UtcDateTime) };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Pump();
+            Capture(window, outDir, "est-certificate.png");
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+            Assert.Contains("Issued by", texts);
+            Assert.Contains("OADM Root CA acs", texts);
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+        GC.KeepAlive(session);
     }
 
     [Fact]
@@ -281,6 +389,73 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Set_up_and_remove_run_in_the_dialog_which_stays_open_shows_the_step_and_the_result_and_reads_again()
+    {
+        var camera = new FakeDevice { Address = "10.0.0.48", Model = "AXIS P3265-V", Dot1xEnabled = false };
+        var cameras = new DialogContext { RunsTasks = true };
+        cameras.Profiles[camera.Id] = new CameraProfileList(true, []);
+        var vm = new EstSetupViewModel([camera], cameras);
+        var closed = false;
+        vm.CloseRequested += (_, _) => closed = true;
+        await vm.LoadAsync();
+        Assert.Equal("Close", vm.CloseText);
+
+        var seen = new List<string?>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(EstSetupViewModel.RunText))
+            {
+                seen.Add(vm.RunText);
+            }
+        };
+        cameras.Run = (devices, payload, progress) =>
+        {
+            Assert.Equal(SetupAction.Setup, SetupPayload.Read(payload)!.Action);
+            cameras.Profiles[camera.Id] = new CameraProfileList(true, [new CameraProfileInfo("oadm2_https", ["WEBSERVER"], "10.0.0.17:9454/.well-known/est/https", "ENROLLED")]);
+            var running = new TaskRunState(devices[0], "t1", TaskRunStatus.Running, "Step 5/7 · Wait for the https certificate", "");
+            progress?.Report([running]);
+            return [running with { Status = TaskRunStatus.Done, Step = "Completed" }];
+        };
+
+        await vm.OkCommand.ExecuteAsync(null);
+
+        Assert.False(closed); // stays open
+        Assert.Contains("Set up: Step 5/7 · Wait for the https certificate", seen);
+        Assert.Equal(("Set up: done", true, false, false), (vm.RunText, vm.RunOk, vm.RunWarning, vm.RunError));
+        Assert.Equal(["oadm2_https"], vm.Profiles.Select(p => p.Id)); // read again
+        Assert.Equal(2, cameras.Queries[camera.Id]);
+
+        // Remove that fails: the camera's message below the result.
+        cameras.Run = (devices, payload, progress) =>
+        {
+            Assert.Equal(("oadm2_https", SetupAction.Remove), (Assert.Single(SetupPayload.Read(payload)!.Profiles), SetupPayload.Read(payload)!.Action));
+            return [new TaskRunState(devices[0], "t2", TaskRunStatus.Failed, "Step 2/2 · Remove the enrollment profiles", "The camera did not answer.")];
+        };
+        vm.SelectedProfile = vm.Profiles[0];
+        vm.RemoveCommand.Execute(null);
+        vm.ConfirmRemoveCommand.Execute(null);
+        await Eventually.TrueAsync(() => !vm.IsRunning && !vm.IsLoading, "the remove ended");
+        Assert.Equal(("Remove oadm2_https: failed", "The camera did not answer.", true), (vm.RunText, vm.RunDetail, vm.RunError));
+        Assert.False(closed);
+    }
+
+    [Fact]
+    public void Several_cameras_count_while_they_run_and_name_the_ones_that_failed()
+    {
+        var devices = Enumerable.Range(1, 7).Select(i => new FakeDevice { Address = $"10.0.0.{i}" }).ToList();
+        var vm = new EstSetupViewModel(devices);
+        var states = devices.Select((d, i) => new TaskRunState(d.Id, "t" + i, i < 3 ? TaskRunStatus.Done : TaskRunStatus.Running, "", "")).ToList();
+        states[3] = states[3] with { Status = TaskRunStatus.Failed, Message = "No room." };
+        Assert.Equal("4 of 7 cameras done · 1 failed", EstSetupViewModel.RunningText(states));
+
+        var ended = devices.Select((d, i) => new TaskRunState(d.Id, "t" + i, i == 0 ? TaskRunStatus.Done : TaskRunStatus.Failed, "", "Error " + i)).ToList();
+        vm.ShowResult("Set up", ended);
+        Assert.Equal("Set up: 6 of 7 cameras failed", vm.RunText);
+        Assert.StartsWith("10.0.0.2: Error 1", vm.RunDetail, StringComparison.Ordinal);
+        Assert.EndsWith("+1 more in the tasks pane", vm.RunDetail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Set_up_offers_the_8021x_choice_only_for_cameras_with_8021x_on()
     {
         string? payload = null;
@@ -344,6 +519,22 @@ public sealed class PageTests : IAsyncLifetime
             await Eventually.TrueAsync(() => !vm.IsLoading && vm.HasError, "the camera without enrollment");
             Pump();
             Capture(window, outDir, "est-setup-dialog-unsupported.png");
+
+            // The run line: while a run goes, then its result.
+            vm.SelectedDevice = vm.Devices[0];
+            await Eventually.TrueAsync(() => !vm.IsLoading, "the first camera");
+            vm.IsRunning = true;
+            vm.RunText = "Set up: 1 of 3 cameras done";
+            Pump();
+            Capture(window, outDir, "est-setup-dialog-running.png");
+            vm.IsRunning = false;
+            vm.ShowResult("Set up", [
+                new TaskRunState(first.Id, "a", TaskRunStatus.Done, "", ""),
+                new TaskRunState(second.Id, "b", TaskRunStatus.Failed, "", "The camera has no certificate enrollment. Needs AXIS OS 12.10 or later. Nothing was changed."),
+                new TaskRunState(empty.Id, "c", TaskRunStatus.Done, "", ""),
+            ]);
+            Pump();
+            Capture(window, outDir, "est-setup-dialog-result.png");
             window.Close();
         }, CancellationToken.None);
         GC.KeepAlive(session);
@@ -364,6 +555,17 @@ public sealed class PageTests : IAsyncLifetime
         }
 
         public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) => throw new NotSupportedException();
+
+        /// <summary>The host can run tasks from the dialog.</summary>
+        public bool RunsTasks { get; init; }
+
+        public bool CanRunTasks => RunsTasks;
+
+        /// <summary>What a run does: the devices, the payload, the progress; returns the ended states.</summary>
+        public Func<IReadOnlyList<Guid>, string?, IProgress<IReadOnlyList<TaskRunState>>?, IReadOnlyList<TaskRunState>>? Run { get; set; }
+
+        public Task<IReadOnlyList<TaskRunState>> RunTaskAsync(IReadOnlyList<Guid> deviceIds, string? payloadJson, IProgress<IReadOnlyList<TaskRunState>>? progress, CancellationToken ct) =>
+            Task.FromResult(Run!(deviceIds, payloadJson, progress));
     }
 
     private static Window Host(Control view)

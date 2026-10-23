@@ -21,7 +21,14 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
     MQTT, RTSPS), validity (days), key (RSA 2048+ / ECC P-256+). Two ready-made: **HTTPS** (server certificates) and
     **IEEE 802.1X** (client certificates).
-  - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). Search in
+  - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). **View
+    certificate** (toolbar, or a double click on a row; decision 2026-10-23) shows the certificate an enrollment issued
+    in OADM's own window (`EstCertificateWindow`): validity with a status chip, issued to and issued by, key and
+    signature, version, serial number, SHA-256 fingerprint, uses, the names in it; values selectable. The server keeps the
+    certificate (DER) of every listed enrollment in the records collection `issued` by serial number and deletes it when
+    its enrollment leaves the list or on Delete all (`Enrollment.SerialNumber`, `EstStore.IssuedAsync`, read one at a time
+    through `IPluginRecords.GetAsync`); method `getCertificate` (everyone who sees the page) describes it in plain names
+    (`CertificateDescriber`); older entries have none ("OADM no longer keeps this certificate."). Search in
     the page (device, profile, kind, result, reason; one pass and one grid reset over at most 5,000 rows, new rows
     under the search as they come); **Delete all** (red toolbar button like the event log, confirmed, Admin, every
     client's list empties: topic `enrollmentsCleared`).
@@ -34,7 +41,12 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set
   up by OADM or Other, EST server, status Enrolled / No certificate / Server not reached), **Remove** (red, inline
   confirmation; any profile, also of another EST server, decision 2026-10-22) and **Set up**; runs are named "Set up
-  certificate enrollment" or "Remove enrollment profile <id>".
+  certificate enrollment" or "Remove enrollment profile <id>". **The dialog stays open** (decision 2026-10-23: it closed
+  and the user did not see what happened): Set up and Remove start the task from the dialog (`RunTaskAsync`), the run line
+  below the list shows the step ("Set up: Step 5/7 · Wait for the https certificate"; several cameras "3 of 12 cameras
+  done · 1 failed"), then the result as a status chip (done, done with warnings, failed with the camera's message;
+  several cameras name up to 5 by address, "+N more in the tasks pane"), and the profiles are read again; the footer says
+  Close. The runs also show in the tasks pane.
 - **Event rules**: "Certificate enrolled", "Enrollment refused" (device, profile, reason), "Certificate not renewed"
   (device, profile, valid until).
 
@@ -119,13 +131,22 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
 - Set up counts the profiles that stay on the camera (another EST server's for other uses, kept network access
   profiles): it picks the most of the EST server's profiles that fit in two, preferring those that replace a profile
   (`EstSetupTask.Fitting`), else "leave no room ... Nothing was changed" before any write.
-- OADM's own profile that differs is changed in place (`PATCH /profiles/<id>` with only the fields that differ, never
-  `id`, `services` only when they change, `subject` always): seen on 10.0.0.48, deleting and adding it again under the
-  same name never stores the new certificate while the previous one is on the camera (status stays CONNECTED), and a
-  PATCH that repeats the profile's own services is refused ("Service ... exists in a different EST profile"). Step
-  "Change the <profile> profile"; `EstHardwareWriteTests` covers it (another host name, then set up again).
+- **Two names per profile** (seen on 10.0.0.48, AXIS OS 12.11.77, 2026-10-23): the camera stores the certificate under
+  the profile's id and **never over an older certificate of that name** ("simple enroll failed: Certificate is in use"
+  in its log while the EST server answered 200), not after a change in place either (`PATCH` reported ENROLLED and kept
+  the old one). A certificate stays bound to its use (web server, network access, MQTT) after its profile is removed;
+  deleting it is refused ("Certificate is in use") until a certificate of another name takes the use, then it can be
+  deleted. So OADM's profile is `oadm_<profile>` or `oadm2_<profile>` (`EstTaskIds.IsOadm`, `IdsOf`; the prefix
+  `oadm2_` never comes from a profile name). Set up keeps the name of OADM's profile that is identical; one that differs
+  is removed and added again, like a profile set up after **Remove**: `FreeNameAsync` takes the first name without a
+  certificate (an older one no use holds is deleted first), else the other one; both held: that profile fails "keeps no
+  name free", the others are set up. Once the new certificate is in, every `oadm_` / `oadm2_` certificate no profile
+  uses is deleted when the camera lets it go (`DeleteFreedCertificatesAsync`; PKI names its certificates "OADM HTTPS
+  ..."). `EstHardwareWriteTests` covers it (set up, again, another host name, Remove and set up again).
 - Set up changes per profile: an identical profile stays (no new certificate, no web server restart); a written one is
-  done only once a new certificate was issued for it ("kept its previous certificate" otherwise); an add whose answer got
+  done only once a new certificate was issued for it **and the camera holds it** (the certificate under the profile's
+  name has its fingerprint: the camera may report ENROLLED with the older one; "The EST server issued the certificate,
+  but the camera did not store it." otherwise); an add whose answer got
   lost is checked and tried once more. IEEE 802.1X: its profiles stay untouched unless this run writes OADM's IEEE 802.1X
   profile (replace chosen and the profile fits). "Nothing to remove" is a warning (Done with warnings).
 - Sites: a site that leaves the bound ones (removed, or its node reset and waiting to be replaced) loses its relay; its
@@ -167,8 +188,8 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
    written. Otherwise remove those of OADM's profiles (`oadm_...`) and of the camera's profiles serving the same services
    that are not identical to a wanted one (others stay), and add the missing ones **one at a time**, each waited for:
-   `POST /config/rest/cert-est/v1/profiles` with `id` = `oadm_<profile>` (the camera refuses `-` in ids, so profile names
-   are letters, digits and `_`), `server` = `<address>:9454/.well-known/est/<profile>` (no scheme; the server's address
+   `POST /config/rest/cert-est/v1/profiles` with `id` = `oadm_<profile>` or `oadm2_<profile>` (see "Two names per
+   profile"; the camera refuses `-` in ids, so profile names are letters, digits and `_`), `server` = `<address>:9454/.well-known/est/<profile>` (no scheme; the server's address
    toward the camera, `LocalAddressTowardsAsync`), `caCertificates` (the aliases of step 3), `certificate` = the device
    ID alias, `services` (`WEBSERVER` for HTTPS, `NETAUTH` for IEEE 802.1X, `MQTT`, `RTSPS`), `subject.cn` (the device's
    address) and `subjectAlternativeNames` (`IP:` the address, `DNS:` host name and `axis-<serial>.local`).

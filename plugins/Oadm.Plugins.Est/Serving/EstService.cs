@@ -853,7 +853,7 @@ public sealed partial class EstService : IAsyncDisposable
             return;
         }
 
-        _store.AddEnrollment(enrollment);
+        _store.AddEnrollment(enrollment, result.IssuedDer);
         _host.Events?.Publish(EstMethods.EnrollmentsTopic, EstJson.Serialize(new EnrollmentList([enrollment])));
         if (enrollment.DeviceId is { } deviceId && _host.Publisher is { } publisher)
         {

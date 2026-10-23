@@ -20,7 +20,8 @@ public sealed record ClientIdentity(X509Certificate2? Certificate, IReadOnlyList
 public sealed record RequestOrigin(Guid? SiteId, IPAddress? Remote);
 
 /// <summary>The answer and what the page lists of it.</summary>
-public sealed record EstResult(HttpResponse Response, string Operation, string Profile, Enrollment? Enrollment = null, IssuedCertificate? Issued = null);
+/// <param name="IssuedDer">The certificate issued (DER): kept with its enrollment for the page's certificate details.</param>
+public sealed record EstResult(HttpResponse Response, string Operation, string Profile, Enrollment? Enrollment = null, IssuedCertificate? Issued = null, byte[]? IssuedDer = null);
 
 /// <summary>Texts of refusals, the same in the HTTP answer, the log and the Enrollments list.</summary>
 public static class EstRefusals
@@ -190,7 +191,8 @@ public sealed partial class EstEndpoint(
         store.AddCertificate(certificate);
         var reason = "Valid until " + issued.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var response = Certificates(EstMessages.CertsOnlyContentType, [issued.Certificate, .. issued.Chain]);
-        return new EstResult(response, operation, profile.Name, Record(device, device.Address, profile, kind, ok: true, reason), certificate);
+        return new EstResult(response, operation, profile.Name, Record(device, device.Address, profile, kind, ok: true, reason) with { SerialNumber = issued.SerialNumber },
+            certificate, issued.Certificate);
     }
 
     /// <summary>The camera's serial: from its Axis device ID, or from the EST certificate it signs in with.</summary>

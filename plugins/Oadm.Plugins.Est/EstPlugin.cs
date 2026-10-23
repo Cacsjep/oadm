@@ -94,7 +94,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     /// <summary>Reading is for everyone; Save and Delete all change the server (Admin, audited).</summary>
     public UserRole RequiredRole(string method) =>
-        method is EstMethods.GetState or EstMethods.GetEnrollments or EstMethods.GetNotRenewed ? UserRole.Operator : UserRole.Admin;
+        method is EstMethods.GetState or EstMethods.GetEnrollments or EstMethods.GetNotRenewed or EstMethods.GetCertificate ? UserRole.Operator : UserRole.Admin;
 
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
@@ -111,6 +111,9 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             EstMethods.GetNotRenewed => EstJson.Serialize(service.Store.NotRenewed(EstPluginInfo.CertificatesPageSize)),
             EstMethods.Save => EstJson.Serialize(await service.SaveAsync(EstJson.Deserialize<SaveRequest>(payloadJson), ct).ConfigureAwait(false)),
             EstMethods.ClearEnrollments => ClearEnrollments(service),
+            EstMethods.GetCertificate => EstJson.Serialize(CertificateDescriber.Describe(
+                await service.Store.IssuedAsync(EstJson.Deserialize<CertificateQuery>(payloadJson).SerialNumber, ct).ConfigureAwait(false)
+                ?? throw new ArgumentException(EstMethods.CertificateGone))),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
     }

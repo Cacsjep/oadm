@@ -36,6 +36,22 @@ public interface ITaskDialogContext
     /// Device"). Default (older hosts): empty, the dialog then offers its selected devices only.
     /// </summary>
     IReadOnlyList<IDeviceInfo> AllDevices => [];
+
+    /// <summary>
+    /// True when the dialog may start its task itself with <see cref="RunTaskAsync"/> and stay open while it runs. Default
+    /// (older hosts): false, the dialog then returns its payload from <c>ShowAsync</c> and closes.
+    /// </summary>
+    bool CanRunTasks => false;
+
+    /// <summary>
+    /// Starts the dialog's task plugin now on <paramref name="deviceIds"/> (one task per device, like a run from the
+    /// menu; the tasks also show in the tasks pane) and follows them: <paramref name="progress"/> gets every task's state
+    /// whenever one changes; the result is their states once all ended. Cancelling <paramref name="ct"/> stops following
+    /// only, the tasks go on. The server checks the permissions; a refusal throws its RpcException. A dialog that ran its
+    /// task returns null from <c>ShowAsync</c>, so nothing runs twice. Default (older hosts): NotSupportedException.
+    /// </summary>
+    Task<IReadOnlyList<TaskRunState>> RunTaskAsync(IReadOnlyList<Guid> deviceIds, string? payloadJson, IProgress<IReadOnlyList<TaskRunState>>? progress, CancellationToken ct) =>
+        throw new NotSupportedException("This OADM cannot run tasks from a dialog.");
 }
 
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>

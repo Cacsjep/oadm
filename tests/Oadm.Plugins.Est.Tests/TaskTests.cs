@@ -264,6 +264,95 @@ public sealed class TaskTests : IAsyncLifetime
         Assert.Equal("The EST server refused the camera: " + EstRefusals.NotManaged, error.Message);
     }
 
+    [Fact]
+    public async Task A_profile_set_up_again_after_remove_takes_the_other_name_and_the_older_certificate_goes()
+    {
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        var task = new EstSetupTask(() => _est);
+        var first = Context();
+        await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, _device, "{}", CancellationToken.None));
+        Assert.Equal(["oadm_https"], _camera.Profiles.Keys);
+
+        // Remove: the profile goes, its certificate stays with the web server (like 10.0.0.48).
+        var remove = Context();
+        await StepRun.RunAsync(remove.Steps, () => task.ExecuteAsync(remove, _device, EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["oadm_https"] }), CancellationToken.None));
+        Assert.Empty(_camera.Profiles);
+        Assert.Equal("WEBSERVER", _camera.Certificates["oadm_https"].Use);
+
+        var again = Context();
+        await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, "{}", CancellationToken.None));
+
+        Assert.All(StepRun.Lines(again.Steps), line => Assert.EndsWith(": Done", line, StringComparison.Ordinal));
+        Assert.Equal(["oadm2_https"], _camera.Profiles.Keys);
+        Assert.Equal(["oadm2_https"], _camera.Certificates.Keys); // the new one took the web server, the older one was deleted
+        Assert.Contains("Info: Older certificate \"oadm_https\" deleted.", again.LogLines);
+
+        // Removed and set up once more: back to the first name.
+        var remove2 = Context();
+        await StepRun.RunAsync(remove2.Steps, () => task.ExecuteAsync(remove2, _device, EstJson.Serialize(new SetupPayload { Action = SetupAction.Remove, Profiles = ["oadm2_https"] }), CancellationToken.None));
+        var third = Context();
+        await StepRun.RunAsync(third.Steps, () => task.ExecuteAsync(third, _device, "{}", CancellationToken.None));
+        Assert.Equal(["oadm_https"], _camera.Profiles.Keys);
+        Assert.Equal(["oadm_https"], _camera.Certificates.Keys);
+
+        // Its second run changes nothing: OADM's profile keeps whichever name it has.
+        var writes = _camera.Writes;
+        var fourth = Context();
+        await StepRun.RunAsync(fourth.Steps, () => task.ExecuteAsync(fourth, _device, "{}", CancellationToken.None));
+        Assert.Equal(writes, _camera.Writes);
+    }
+
+    [Fact]
+    public async Task An_older_certificate_no_use_holds_is_deleted_and_its_name_taken()
+    {
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        _camera.Certificates["oadm_mqtt"] = new(null, "old"); // left over, no use holds it
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+
+        Assert.Equal(["oadm_mqtt"], _camera.Profiles.Keys);
+        Assert.NotEqual("old", _camera.Certificates["oadm_mqtt"].Fingerprint);
+        Assert.Contains("Info: Older certificate \"oadm_mqtt\" deleted.", ctx.LogLines);
+    }
+
+    [Fact]
+    public async Task Both_names_held_by_uses_fail_that_profile_and_the_other_profile_is_still_set_up()
+    {
+        _camera.Certificates["oadm_dot1x"] = new("NETAUTH", "a");
+        _camera.Certificates["oadm2_dot1x"] = new("MQTT", "b");
+        var ctx = Context();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None)));
+
+        Assert.Equal(EstTaskIds.NoFreeName("dot1x"), error.Message);
+        Assert.Equal(["oadm_https"], _camera.Profiles.Keys);
+    }
+
+    [Fact]
+    public async Task A_camera_that_reports_enrolled_but_keeps_its_older_certificate_says_so()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time });
+        await est.StartAsync(CancellationToken.None);
+        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        _camera.Server = est;
+        _camera.KeepsOlderCertificate = true; // the server issues, the camera answers ENROLLED and stores nothing
+        _camera.Certificates["oadm_https"] = new(null, "old");
+        _camera.Certificates["oadm2_https"] = new(null, "old");
+        var ctx = Context();
+
+        var running = new EstSetupTask(() => est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None);
+        while (!running.IsCompleted)
+        {
+            time.Advance(TimeSpan.FromSeconds(3));
+            await Task.Delay(1);
+        }
+
+        var error = await Assert.ThrowsAsync<TimeoutException>(() => running);
+        Assert.Equal(EstTaskIds.NotStored, error.Message);
+    }
+
     [Theory]
     [InlineData("CONNECTED", false)]
     [InlineData("UNCONNECTED", true)]
@@ -328,7 +417,7 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_changed_profile_of_oadm_is_changed_in_place_with_only_what_differs()
+    public async Task A_changed_profile_of_oadm_comes_back_under_its_other_name_with_a_new_certificate()
     {
         var task = new EstSetupTask(() => _est);
         var first = Context();
@@ -339,10 +428,13 @@ public sealed class TaskTests : IAsyncLifetime
         var again = Context();
         await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, renamed, "{}", CancellationToken.None));
 
-        Assert.Contains(_camera.RequestLog, r => r == "PATCH config/rest/cert-est/v1/profiles/oadm_https");
-        Assert.DoesNotContain(_camera.RequestLog, r => r.StartsWith("DELETE config/rest/cert-est", StringComparison.Ordinal));
-        Assert.Contains("DNS:cam-renamed", _camera.Profiles["oadm_https"]["subjectAlternativeNames"]!.AsArray().Select(n => n!.GetValue<string>()));
+        // The camera never stores a certificate over an older one of the same name (also not after a change in place).
+        Assert.DoesNotContain(_camera.RequestLog, r => r.StartsWith("PATCH", StringComparison.Ordinal));
+        Assert.Equal("oadm_dot1x, oadm_https", StepRun.Detail(again.Steps, EstTaskIds.RemoveOldStep)); // both name the camera
+        Assert.Equal(["oadm2_dot1x", "oadm2_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+        Assert.Contains("DNS:cam-renamed", _camera.Profiles["oadm2_https"]["subjectAlternativeNames"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.NotEqual(issued, _est.Store.NewestOf(_device.Id, "https")!.SerialNumber); // a new certificate
+        Assert.Equal(["oadm2_dot1x", "oadm2_https"], _camera.Certificates.Keys.Order(StringComparer.Ordinal)); // the new ones took the uses, the older ones were deleted
         Assert.All(StepRun.Lines(again.Steps), line => Assert.EndsWith(": Done", line, StringComparison.Ordinal));
     }
 
@@ -424,6 +516,15 @@ public sealed class TaskTests : IAsyncLifetime
         public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult<IDeviceInfo?>(null);
     }
 
+    /// <summary>A certificate the camera's EST client stored: the use that holds it (null: none) and its fingerprint.</summary>
+    internal sealed record StoredCertificate(string? Use, string Fingerprint, string Pem = "")
+    {
+        public StoredCertificate(string? use, string fingerprint)
+            : this(use, fingerprint, "")
+        {
+        }
+    }
+
     /// <summary>A camera with the cert and cert-est APIs: the device ID certificates of 10.0.0.48, profiles that enroll at once.</summary>
     internal sealed class EstCamera : FakeCamera
     {
@@ -455,6 +556,16 @@ public sealed class TaskTests : IAsyncLifetime
 
         public Dictionary<string, string> CaCertificates { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// Certificates the camera's EST client stored, by alias (= the profile id), with the use that holds it: the
+        /// camera keeps a certificate bound to its use after its profile is removed, refuses to delete it while a use
+        /// holds it and never stores a new one over it ("Certificate is in use", 10.0.0.48).
+        /// </summary>
+        public Dictionary<string, StoredCertificate> Certificates { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The camera reports ENROLLED but stores nothing new.</summary>
+        public bool KeepsOlderCertificate { get; set; }
+
         public List<string> RequestLog { get; } = [];
 
         public new int Writes { get; private set; }
@@ -480,13 +591,18 @@ public sealed class TaskTests : IAsyncLifetime
                 }),
                 ("GET", "config/rest/cert-est/v1/profiles") => Data(ProfilesJson()),
                 ("POST", "config/rest/cert-est/v1/profiles") => AddProfile(body!),
-                ("PATCH", _) when path.StartsWith("config/rest/cert-est/v1/profiles/", StringComparison.Ordinal) =>
-                    ChangeProfile(Uri.UnescapeDataString(path["config/rest/cert-est/v1/profiles/".Length..]), body!),
                 ("DELETE", _) when path.StartsWith("config/rest/cert-est/v1/profiles/", StringComparison.Ordinal) =>
                     Remove(Uri.UnescapeDataString(path["config/rest/cert-est/v1/profiles/".Length..])),
-                ("GET", "config/rest/cert/v1/certificates") => Data(new JsonArray(
+                ("GET", "config/rest/cert/v1/certificates") => Data(new JsonArray([
                     Certificate("Axis device ID ECC-P256 (802.1AR)", "device-id-ecc-p256-12.11.pem"),
-                    Certificate("Axis device ID RSA-2048 (802.1AR)", "device-id-rsa-2048-12.11.pem"))),
+                    Certificate("Axis device ID RSA-2048 (802.1AR)", "device-id-rsa-2048-12.11.pem"),
+                    .. Certificates.Select(c => (JsonNode)new JsonObject { ["alias"] = c.Key, ["certificate"] = c.Value.Pem, ["keystore"] = "SE0" })])),
+                ("GET", _) when path.StartsWith("config/rest/cert/v1/certificates/", StringComparison.Ordinal) =>
+                    Certificates.TryGetValue(Uri.UnescapeDataString(path["config/rest/cert/v1/certificates/".Length..]), out var held)
+                        ? Data(new JsonObject { ["alias"] = Uri.UnescapeDataString(path["config/rest/cert/v1/certificates/".Length..]), ["certificate"] = held.Pem, ["keystore"] = "SE0" })
+                        : new HttpResponseMessage(HttpStatusCode.NotFound),
+                ("DELETE", _) when path.StartsWith("config/rest/cert/v1/certificates/", StringComparison.Ordinal) =>
+                    DeleteCertificate(Uri.UnescapeDataString(path["config/rest/cert/v1/certificates/".Length..])),
                 ("GET", "config/rest/cert/v1/ca_certificates") => Data(new JsonArray([.. CaCertificates.Select(c => (JsonNode)new JsonObject { ["alias"] = c.Key, ["certificate"] = c.Value })])),
                 ("POST", "config/rest/cert/v1/ca_certificates") => AddCa(body!),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound),
@@ -494,30 +610,6 @@ public sealed class TaskTests : IAsyncLifetime
         }
 
         private JsonArray ProfilesJson() => new([.. Profiles.Values.Select(p => (JsonNode)p.DeepClone())]);
-
-        private HttpResponseMessage ChangeProfile(string id, string body)
-        {
-            if (!Profiles.TryGetValue(id, out var profile))
-            {
-                return Json("""{"status":"error","error":{"code":2,"message":"Item does not exist"}}""");
-            }
-
-            var changes = JsonNode.Parse(body)!["data"]!.AsObject();
-            if (changes.ContainsKey("id") || (changes["services"] is JsonArray services
-                && services.Select(n => n!.GetValue<string>()).ToHashSet().SetEquals(profile["services"]!.AsArray().Select(n => n!.GetValue<string>()))))
-            {
-                // like the camera: its own unchanged services count as another profile's
-                return Json("""{"status":"error","error":{"code":5,"message":"Validation error: Service exists in a different EST profile"}}""");
-            }
-
-            Profiles.Remove(id);
-            foreach (var (key, value) in changes)
-            {
-                profile[key] = value?.DeepClone();
-            }
-
-            return AddProfile(new JsonObject { ["data"] = profile }.ToJsonString());
-        }
 
         private HttpResponseMessage AddProfile(string body)
         {
@@ -530,14 +622,34 @@ public sealed class TaskTests : IAsyncLifetime
             profile["status"] = Enroll ? "ENROLLED" : ProfileStatus;
             var id = profile["id"]!.GetValue<string>();
             Profiles[id] = profile;
-            if (Enroll && Server is { } server && Device is { } device && id.StartsWith(EstTaskIds.ProfilePrefix, StringComparison.Ordinal))
+            if (Enroll && Server is { } server && Device is { } device && EstTaskIds.IsOadm(id))
             {
+                var pem = NewCertificatePem(out var fingerprint);
                 server.Store.AddCertificate(new IssuedCertificate
                 {
                     SerialNumber = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)), DeviceId = device.Id,
-                    Device = device.Address, Profile = id[EstTaskIds.ProfilePrefix.Length..], IssuedUtc = server.Time.GetUtcNow().UtcDateTime,
+                    Device = device.Address, Profile = EstTaskIds.ProfileNameOf(id), IssuedUtc = server.Time.GetUtcNow().UtcDateTime,
                     NotAfterUtc = server.Time.GetUtcNow().UtcDateTime.AddDays(365),
+                    Fingerprint = KeepsOlderCertificate ? fingerprint : null, // with a fingerprint the task pins HTTPS, which this context cannot
                 });
+
+                if (Certificates.ContainsKey(id) || KeepsOlderCertificate)
+                {
+                    // never over an older certificate of that name, also not after a change in place; 10.0.0.48
+                    // reported CONNECTED after an add and ENROLLED (with the old one) after a change
+                    profile["status"] = KeepsOlderCertificate ? "ENROLLED" : "CONNECTED";
+                }
+                else
+                {
+                    // the new certificate takes the use: the certificate that held it before is free
+                    var use = profile["services"]!.AsArray().Select(n => n!.GetValue<string>()).First();
+                    foreach (var key in Certificates.Where(c => c.Value.Use == use).Select(c => c.Key).ToList())
+                    {
+                        Certificates[key] = Certificates[key] with { Use = null };
+                    }
+
+                    Certificates[id] = new(use, fingerprint, pem);
+                }
             }
 
             OnProfileAdded?.Invoke();
@@ -548,6 +660,27 @@ public sealed class TaskTests : IAsyncLifetime
         {
             Profiles.Remove(id);
             return Json("""{"status":"success"}""");
+        }
+
+        private HttpResponseMessage DeleteCertificate(string alias)
+        {
+            if (Certificates.TryGetValue(alias, out var held) && held.Use is not null)
+            {
+                return Json("""{"status":"error","error":{"code":5,"message":"Validation error: Certificate is in use"}}""");
+            }
+
+            Certificates.Remove(alias);
+            return Json("""{"status":"success"}""");
+        }
+
+        /// <summary>A certificate for the camera's store (any key; only its fingerprint matters).</summary>
+        private static string NewCertificatePem(out string fingerprint)
+        {
+            using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+            var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=10.0.0.48", key, System.Security.Cryptography.HashAlgorithmName.SHA256);
+            using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(365));
+            fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(certificate.RawData));
+            return certificate.ExportCertificatePem();
         }
 
         private HttpResponseMessage AddCa(string body)

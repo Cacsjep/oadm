@@ -45,6 +45,16 @@ public sealed class DbPluginRecords : IPluginRecords
             .ToDictionaryAsync(r => r.Key, r => r.ValueJson, StringComparer.Ordinal, ct).ConfigureAwait(false);
     }
 
+    public async Task<string?> GetAsync(string collection, string key, CancellationToken ct)
+    {
+        PluginRecordRules.ValidateCollection(collection);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.PluginRecords.AsNoTracking()
+            .Where(r => r.PluginId == _pluginId && r.Collection == collection && r.Key == key)
+            .Select(r => r.ValueJson)
+            .FirstOrDefaultAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task SetManyAsync(string collection, IReadOnlyCollection<KeyValuePair<string, string?>> records, CancellationToken ct)
     {
         PluginRecordRules.Validate(collection, records);

@@ -135,6 +135,7 @@ public sealed class MyDialog : ITaskPluginDialog
 | `UploadAsync(path, progress, ct)` | Upload a local file (firmware, a package); put the returned id into the payload |
 | `Has(permission)` | Hide choices the user's role does not allow |
 | `AllDevices` | Every device, e.g. to copy settings from a device that is not selected |
+| `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there; then return null from `ShowAsync` |
 
 Failed calls throw `RpcException`; show `Status.Detail`, or use `ServerErrors.Message(ex)`.
 

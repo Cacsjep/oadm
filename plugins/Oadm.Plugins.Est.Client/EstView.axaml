@@ -86,6 +86,9 @@
     <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" Margin="{DynamicResource Oadm.GapTop}">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
         <TextBlock Classes="sectionTitle" Text="Enrollments" VerticalAlignment="Center" />
+        <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
+          <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
+        </Button>
         <Button Classes="toolbar danger" Command="{Binding ClearEnrollmentsCommand}" IsVisible="{Binding MayManage}">
           <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
         </Button>
@@ -93,8 +96,8 @@
       <ui:SearchBox Grid.Column="2" Text="{Binding EnrollmentSearch}" Placeholder="Search device, profile, result, reason" Width="260" />
     </Grid>
     <Panel Grid.Row="2" Margin="0,8,0,0">
-      <DataGrid ItemsSource="{Binding Enrollments}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
-                SelectionMode="Single" MinHeight="140">
+      <DataGrid x:Name="EnrollmentsGrid" ItemsSource="{Binding Enrollments}" SelectedItem="{Binding SelectedEnrollment}" Classes="wrapRows" IsReadOnly="True"
+                CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single" MinHeight="140">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Time" Width="160" Binding="{Binding Time}" SortMemberPath="TimeSortKey" x:DataType="vm:EnrollmentRow" />
           <DataGridTextColumn Header="Device" Width="160" Binding="{Binding Device}" x:DataType="vm:EnrollmentRow" />
