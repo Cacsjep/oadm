@@ -111,6 +111,18 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     /// </summary>
     public Func<Guid, bool>? InScope { get; set; }
 
+    /// <summary>The key of the device scope <see cref="InScope"/> checks (set with it by <see cref="DeviceSweeps{TRow}"/>).</summary>
+    public string? ScopeKey { get; set; }
+
+    /// <summary>Whether the table has a row of the device (one lookup, e.g. after a task on it).</summary>
+    public bool HasRow(Guid deviceId)
+    {
+        lock (_sync)
+        {
+            return _rows.ContainsKey(deviceId);
+        }
+    }
+
     /// <summary>Whether a sweep runs.</summary>
     public bool IsRunning
     {
@@ -176,6 +188,13 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     public async Task<SweepSnapshot<TRow>> SnapshotAsync(ICallContext caller, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
+        if (InScope is not null && string.Equals(ScopeKey, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+        {
+            // The sweep's scope is the caller's devices: a few hash lookups per row instead of listing every device (the
+            // pages read the state about once a second while a sweep runs).
+            return ScopedSnapshot();
+        }
+
         HashSet<Guid> ids;
         try
         {
@@ -265,20 +284,13 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     /// </summary>
     public Task ReadOneAsync(Guid deviceId, CancellationToken ct) => Detached.Run(async () =>
     {
-        if (await _devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { } device && _include(device))
+        if (await _devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { } device && _include(device) && Covers(device.Id))
         {
             await ReadIntoRowAsync(device, ct).ConfigureAwait(false);
             return;
         }
 
-        lock (_sync)
-        {
-            if (_rows.ContainsKey(deviceId))
-            {
-                Remove(deviceId);
-                _stateDirty = true;
-            }
-        }
+        DropRow(deviceId);
     });
 
     /// <summary>
@@ -325,8 +337,19 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
             List<TRow> rows;
             List<Guid> removed;
             bool state;
+            var inScope = InScope;
             lock (_sync)
             {
+                if (inScope is not null)
+                {
+                    // A device that left the scope since its row was read goes out as removed, never as a row.
+                    foreach (var gone in _dirty.Where(id => _rows.ContainsKey(id) && !inScope(id)).ToList())
+                    {
+                        Remove(gone);
+                        _stateDirty = true;
+                    }
+                }
+
                 rows = [.. _dirty.Where(_rows.ContainsKey).Select(id => _rows[id])];
                 _dirty.Clear();
                 removed = [.. _dirtyRemoved];
@@ -385,7 +408,15 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
             await Parallel.ForEachAsync(devices, new ParallelOptions { MaxDegreeOfParallelism = _options.Parallelism, CancellationToken = ct },
                 async (device, token) =>
                 {
-                    await ReadIntoRowAsync(device, token).ConfigureAwait(false);
+                    if (Covers(device.Id))
+                    {
+                        await ReadIntoRowAsync(device, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        DropRow(device.Id); // it left the scope during the sweep: never read, never stored
+                    }
+
                     lock (_sync)
                     {
                         _done++;
@@ -455,7 +486,7 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
             }
 
             _rowRead[device.Id] = read;
-            if (row is null)
+            if (row is null || !Covers(device.Id))
             {
                 if (_rows.ContainsKey(device.Id))
                 {
@@ -470,6 +501,21 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
             }
 
             _stateDirty = true;
+        }
+    }
+
+    /// <summary>Whether the device is in the sweep's scope now (always without <see cref="InScope"/>).</summary>
+    private bool Covers(Guid id) => InScope is not { } inScope || inScope(id);
+
+    private void DropRow(Guid id)
+    {
+        lock (_sync)
+        {
+            if (_rows.ContainsKey(id))
+            {
+                Remove(id);
+                _stateDirty = true;
+            }
         }
     }
 
@@ -591,6 +637,7 @@ internal sealed class DeviceSweeps<TRow> : IAsyncDisposable
                 {
                     var key = scopeKey;
                     sweep.InScope = id => scopes.Contains(key, id);
+                    sweep.ScopeKey = key;
                 }
 
                 _sweeps[scopeKey] = sweep;

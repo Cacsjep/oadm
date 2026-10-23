@@ -135,7 +135,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     {
         foreach (var sweep in _sweeps?.All ?? [])
         {
-            if (sweep.Snapshot().Rows.All(r => r.DeviceId != deviceId))
+            if (!sweep.HasRow(deviceId))
             {
                 continue;
             }

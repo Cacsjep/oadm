@@ -376,7 +376,10 @@ an independent security review the same day). A user may be limited to part of t
   only rows of devices the caller sees now and drops the others from the table (a tag or site change, before any prune);
   `ReadOneAsync` removes the row of a device no longer in the scope; no rows when the caller's devices cannot be listed.
   What the sweep publishes in the background (the state and its counts) comes from `ScopedSnapshot()`: rows of devices
-  no longer in the scope (`IDeviceScopes.Contains(key, deviceId)`, a few hash lookups) are dropped first.
+  no longer in the scope (`IDeviceScopes.Contains(key, deviceId)`, a few hash lookups) are dropped first. A device that
+  leaves the scope during a sweep is not read, a read that ends after it left stores no row, and a changed row of such a
+  device goes out as removed. `SnapshotAsync(caller)` on the sweep of the caller's scope answers from the same lookups
+  (no device list per state read; the list only on hosts without groups); a task end asks `HasRow(id)`.
 - **Action Rule Editor**: user calls never use the guarded `ctx.Tasks` and declare no `SystemAccessReason`; Undo asks the
   caller's runner whether the run's tasks ended (`call.Tasks.AnyActiveAsync`: a group user's answer covers the tasks of
   the group's devices, whichever user of the group started them). A task end counts the run down in O(1), whatever the
