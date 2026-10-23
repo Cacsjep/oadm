@@ -136,6 +136,13 @@ public sealed record TriggerDefinition
     public bool AllDevices { get; init; }
 
     /// <summary>
+    /// The device group that owns the trigger (docs/spec/device-scope.md, Shared objects): it watches only that group's
+    /// devices ("All devices" and tags mean the group's), and only the group's users see and change it. Null = all devices
+    /// (also every trigger saved before device groups). Set by the server, never taken from a page.
+    /// </summary>
+    public string? Owner { get; init; }
+
+    /// <summary>
     /// Server only, not stored: the devices that came in through <see cref="Tags"/> or <see cref="AllDevices"/>. Such a
     /// device without the event is left out quietly ("Does not offer this event"), never "connection lost".
     /// </summary>

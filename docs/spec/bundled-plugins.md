@@ -179,6 +179,9 @@ Automation, icon `flame`), **off by default**. A trigger is an event the chosen 
 temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item; every trigger is an
 event of the event rules, plus "<Trigger>: connection lost". Decisions, device research and details: plugin `README.md`.
 
+- Device groups: every trigger belongs to the group of the user who made it (none = all devices) and watches only that
+  group's devices ("All devices" and tags = the group's), so its events reach rules only for them; group users see and
+  change only their group's triggers; a deleted group's triggers watch nothing; the editor's reads are the user's jobs.
 - Rules that must hold: the event list is read live from the devices for every create and edit, never cached; devices
   come from the shared device picker (All devices, tags, single devices), resolved after every change and every 30 s; all
   turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`; one permanent connection each, Windows

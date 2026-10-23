@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 
 using Oadm.Plugins.DeviceTriggers.Device;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -10,27 +11,49 @@ namespace Oadm.Plugins.DeviceTriggers.Runtime;
 /// <summary>
 /// The editor's live reads of event lists (always read from the devices when a trigger is created or
 /// edited, never from a cache: an app that is stopped or removed has no events). One job per read, 16 devices at a time,
-/// kept in memory for <see cref="DeviceTriggersOptions.ReadJobLifetime"/>.
+/// kept in memory for <see cref="DeviceTriggersOptions.ReadJobLifetime"/>. A read belongs to the user who started it
+/// (<see cref="ICorePluginContext.Jobs"/>): it reaches devices through that user's devices, and another user's job id is
+/// answered like an unknown one.
 /// </summary>
 internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptions options, TimeProvider time)
 {
     private readonly ConcurrentDictionary<string, Job> _jobs = new(StringComparer.Ordinal);
 
-    public ReadStatusReply Start(IReadOnlyList<Guid> deviceIds, CancellationToken stopping)
+    /// <summary>Starts a read of <paramref name="deviceIds"/> (checked against the caller's devices before) for the caller.</summary>
+    public ReadStatusReply Start(ICallContext caller, IReadOnlyList<Guid> deviceIds, CancellationToken stopping)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(deviceIds);
         Expire();
         var ids = deviceIds.Distinct().Take(DeviceTriggersPluginInfo.MaxDevicesPerTrigger).ToList();
+        if (UsesJobs(caller, out var jobs))
+        {
+            // The host's job: owned by the caller, run detached with the caller's devices, ended when the plugin stops.
+            var ready = new TaskCompletionSource<Job>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var started = jobs.Start(caller, "read", async (owned, ct) =>
+            {
+                var job = await ready.Task.ConfigureAwait(false);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, stopping);
+                await RunAsync(job, owned.Owner, linked.Token).ConfigureAwait(false);
+            });
+            var read = new Job(started.Id, ids, time.GetUtcNow()) { Task = started.Completion };
+            _jobs[read.Id] = read;
+            ready.SetResult(read);
+            return Status(read);
+        }
+
         var job = new Job(Guid.NewGuid().ToString("N"), ids, time.GetUtcNow());
         _jobs[job.Id] = job;
-        job.Task = Task.Run(() => RunAsync(job, stopping), CancellationToken.None);
+        job.Task = Task.Run(() => RunAsync(job, caller, stopping), CancellationToken.None);
         return Status(job);
     }
 
-    public ReadStatusReply? StatusOf(string jobId)
+    /// <summary>The progress of a read of the caller; null for an unknown id and for another user's read.</summary>
+    public ReadStatusReply? StatusOf(ICallContext caller, string jobId)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         Expire();
-        if (!_jobs.TryGetValue(jobId, out var job))
+        if ((UsesJobs(caller, out var jobs) && jobs.Find(caller, jobId) is null) || !_jobs.TryGetValue(jobId, out var job))
         {
             return null;
         }
@@ -118,13 +141,23 @@ internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptio
         };
     }
 
-    private async Task RunAsync(Job job, CancellationToken stopping)
+    /// <summary>
+    /// Reads go through the host's jobs when it has them and the call is a user's; in-process calls without a user (and
+    /// hosts before SDK 0.4.0) keep the plugin's own reads.
+    /// </summary>
+    private bool UsesJobs(ICallContext caller, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IPluginJobs? jobs)
+    {
+        jobs = caller is ContextCall ? null : ctx.Jobs;
+        return jobs is not null;
+    }
+
+    private async Task RunAsync(Job job, ICallContext owner, CancellationToken stopping)
     {
         try
         {
             await Parallel.ForEachAsync(job.DeviceIds, new ParallelOptions { MaxDegreeOfParallelism = options.ReadParallelism, CancellationToken = stopping }, async (id, ct) =>
             {
-                job.Results[id] = await ReadOneAsync(id, ct).ConfigureAwait(false);
+                job.Results[id] = await ReadOneAsync(owner, id, ct).ConfigureAwait(false);
                 Interlocked.Increment(ref job.Done);
             }).ConfigureAwait(false);
         }
@@ -137,9 +170,9 @@ internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptio
         }
     }
 
-    private async Task<(string? Error, IReadOnlyList<DeviceEvent>? Events)> ReadOneAsync(Guid id, CancellationToken ct)
+    private async Task<(string? Error, IReadOnlyList<DeviceEvent>? Events)> ReadOneAsync(ICallContext owner, Guid id, CancellationToken ct)
     {
-        var device = await ctx.Devices.FindAsync(id, ct).ConfigureAwait(false);
+        var device = await owner.Devices.FindAsync(id, ct).ConfigureAwait(false);
         if (device is null)
         {
             return (DeviceMessages.Removed, null);
@@ -158,7 +191,7 @@ internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptio
 
         try
         {
-            var vapix = await ctx.Vapix.CreateAsync(id, ct).ConfigureAwait(false);
+            var vapix = await owner.Vapix.CreateAsync(id, ct).ConfigureAwait(false);
             return (null, await EventDeclarations.ReadAsync(vapix, options.RequestTimeout, ct).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
