@@ -263,6 +263,28 @@ public sealed class AddDevicesScopeTests
     }
 
     [Fact]
+    public async Task AGroupWithThisServerSeesOnlyItsOwnWaitingEntriesWithoutASite()
+    {
+        await using var world = await World.StartAsync();
+        var local = await world.GroupUserAsync("local", new Proto.DeviceGroupRules { ThisServer = true });
+        var adminWaiting = new Proto.WaitingDeviceService.WaitingDeviceServiceClient(world.Host.Invoker);
+        await adminWaiting.AddAsync(new Proto.AddWaitingRequest { Lines = { new Proto.WaitingLine { Address = "10.9.0.40" } } });
+        await local.Waiting.AddAsync(new Proto.AddWaitingRequest { Lines = { new Proto.WaitingLine { Address = "10.9.0.41" } } });
+
+        // The administrator's entry is tried as the administrator (with the credential list): never in another user's list.
+        var mine = await local.Waiting.ListAsync(new Proto.ListWaitingRequest());
+        Assert.Equal(["10.9.0.41"], mine.Devices.Select(d => d.Address));
+        Assert.Equal(1, mine.TotalCount);
+        var adminsEntry = (await adminWaiting.ListAsync(new Proto.ListWaitingRequest())).Devices.Single(d => d.Address == "10.9.0.40").Id;
+        Assert.Equal(StatusCode.NotFound, (await Assert.ThrowsAsync<RpcException>(async () =>
+            await local.Waiting.RemoveAsync(new Proto.WaitingIds { Ids = { adminsEntry } }))).StatusCode);
+        Assert.Equal(StatusCode.NotFound, (await Assert.ThrowsAsync<RpcException>(async () =>
+            await local.Waiting.TryNowAsync(new Proto.WaitingIds { Ids = { adminsEntry } }))).StatusCode);
+        await local.Waiting.RemoveAsync(new Proto.WaitingIds { All = true });
+        Assert.Equal(["10.9.0.40"], (await adminWaiting.ListAsync(new Proto.ListWaitingRequest())).Devices.Select(d => d.Address));
+    }
+
+    [Fact]
     public async Task TheWaitingListIsScopedBySiteAndTriesAsTheUserWhoKeptIt()
     {
         await using var world = await World.StartAsync();

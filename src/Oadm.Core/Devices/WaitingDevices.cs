@@ -78,10 +78,11 @@ public sealed class WaitingDevice
 /// <summary>
 /// The entries of the waiting list a user sees and changes (docs/spec/device-scope.md, Decisions "New devices": the waiting
 /// list is scoped by site). A user with all devices: every entry. A user with a device group: the entries of the group's
-/// sites, the entries for everywhere when the group has "This server", and the entries for everywhere the user kept.
+/// sites and the entries for everywhere the user kept, never those of other users (also with "This server": they may
+/// have been kept by an administrator, and Try now runs as their keeper with the credential list).
 /// </summary>
 /// <param name="All">Every entry.</param>
-/// <param name="Local">The group has "This server".</param>
+/// <param name="Local">The group has "This server" (where the user's own entries are tried; it never widens the scope).</param>
 /// <param name="Sites">The group's sites.</param>
 /// <param name="UserId">The user (their own entries for everywhere).</param>
 public sealed record WaitingScope(bool All, bool Local, IReadOnlySet<Guid> Sites, Guid? UserId)
@@ -91,7 +92,7 @@ public sealed record WaitingScope(bool All, bool Local, IReadOnlySet<Guid> Sites
 
     /// <summary>True when the entry of <paramref name="siteId"/> kept by <paramref name="queuedBy"/> is in the scope.</summary>
     public bool Covers(Guid? siteId, Guid? queuedBy) =>
-        All || (siteId is { } site ? Sites.Contains(site) : Local || (UserId is { } user && queuedBy == user));
+        All || (siteId is { } site ? Sites.Contains(site) : UserId is { } user && queuedBy == user);
 
     internal IQueryable<WaitingDevice> Apply(IQueryable<WaitingDevice> query)
     {
@@ -101,9 +102,12 @@ public sealed record WaitingScope(bool All, bool Local, IReadOnlySet<Guid> Sites
         }
 
         var sites = Sites.Select(s => (Guid?)s).ToList();
-        var local = Local;
-        var user = UserId;
-        return query.Where(w => w.SiteId == null ? local || (user != null && w.QueuedByUserId == user) : sites.Contains(w.SiteId));
+        if (UserId is not { } user)
+        {
+            return query.Where(w => w.SiteId != null && sites.Contains(w.SiteId));
+        }
+
+        return query.Where(w => w.SiteId == null ? w.QueuedByUserId == user : sites.Contains(w.SiteId));
     }
 }
 

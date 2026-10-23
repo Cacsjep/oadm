@@ -114,7 +114,7 @@ an independent security review the same day). A user may be limited to part of t
   before they are encoded; a queued task checks the owner's view again when it leaves the queue.
 - **Add and discovery sessions** belong to the user who started them; Retry and Commit take only that user's sessions;
   a found device must be on a route of the group; the network scan and zero-conf on the server's network only for
-  groups with "This server"; the waiting list is scoped by site and checks the queuing user's current view.
+  groups with "This server"; the waiting list is scoped by site (entries without a site: only the user's own) and checks the queuing user's current view.
 - **Sessions:** a stream checks the user's group revision like the role right after it registers; a change of a group's
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
   key is (group revision, tag and site catalog revision, `DeviceChangeFeed.Version`). The view never follows the "no

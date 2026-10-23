@@ -181,9 +181,21 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
         Assert.Equal(new HashSet<Guid> { all["10.0.0.1"] }, await _store.InScopeAsync([all["10.0.0.1"], all["10.0.0.2"], all["10.0.0.3"]], siteOnly, CancellationToken.None));
         Assert.Equal(2, (await _store.IdsAsync(siteOnly, CancellationToken.None)).Count);
 
-        // "This server": every entry for everywhere, not the other site.
-        var local = new WaitingScope(false, true, new HashSet<Guid>(), Guid.NewGuid());
-        Assert.Equal(["10.0.0.3", "10.0.0.4"], (await _store.ListAsync(null, 0, local, CancellationToken.None)).Items.Select(i => i.Address));
+        // "This server": only the user's own entries for everywhere, never another user's (an administrator's entry is
+        // tried as the administrator, with the credential list).
+        var local = new WaitingScope(false, true, new HashSet<Guid>(), user);
+        Assert.Equal(["10.0.0.4"], (await _store.ListAsync(null, 0, local, CancellationToken.None)).Items.Select(i => i.Address));
+        Assert.Equal((1, 0), await _store.CountsAsync(local, CancellationToken.None));
+        Assert.Empty(await _store.InScopeAsync([all["10.0.0.3"]], local, CancellationToken.None));
+        Assert.Equal(0, await _store.RemoveAsync([all["10.0.0.3"]], all: false, local, CancellationToken.None));
+        var stranger = new WaitingScope(false, true, new HashSet<Guid>(), Guid.NewGuid());
+        Assert.Empty((await _store.ListAsync(null, 0, stranger, CancellationToken.None)).Items);
+        Assert.False(local.Covers(null, Guid.NewGuid()));
+        Assert.False(local.Covers(null, null));
+        Assert.True(local.Covers(null, user));
+        Assert.True(siteOnly.Covers(siteA, Guid.NewGuid()));
+        Assert.False(siteOnly.Covers(siteB, user));
+        Assert.False(new WaitingScope(false, true, new HashSet<Guid>(), null).Covers(null, null));
 
         // Remove all of a scope removes only its entries; ids outside it stay.
         Assert.Equal(0, await _store.RemoveAsync([all["10.0.0.2"]], all: false, siteOnly, CancellationToken.None));
