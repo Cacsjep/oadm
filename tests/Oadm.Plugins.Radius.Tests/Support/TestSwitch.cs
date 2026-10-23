@@ -43,16 +43,35 @@ public sealed class TestSwitch(RadiusProcessor processor)
     public bool StartWithEapStart { get; init; }
 
     /// <summary>The State of the running conversation.</summary>
-    public byte[]? State { get; private set; }
+    public byte[]? State { get; set; }
+
+    /// <summary>Every EAP packet this switch sent, in order.</summary>
+    public List<byte[]> SentEap { get; } = [];
+
+    /// <summary>The camera's next answer when a conversation was paused.</summary>
+    public byte[]? NextEap { get; private set; }
 
     /// <summary>Runs a whole conversation between the camera and the processor.</summary>
-    public Conversation Run(TestSupplicant camera, int maxRoundTrips = 200)
+    /// <summary>
+    /// Runs a conversation between the camera and the processor. <paramref name="stopWhen"/> pauses it after a result
+    /// (<see cref="NextEap"/> then holds the camera's next answer); <paramref name="resume"/> continues from there.
+    /// </summary>
+    public Conversation Run(TestSupplicant camera, int maxRoundTrips = 200, Func<RadiusResult, bool>? stopWhen = null, bool resume = false)
     {
         ArgumentNullException.ThrowIfNull(camera);
-        State = null;
         List<RadiusResult> results = [];
-        var identity = Encoding.UTF8.GetBytes("axis-accc8e123456");
-        var eap = StartWithEapStart ? [] : EapPacket.Response(1, EapType.Identity, identity).ToBytes();
+        byte[] eap;
+        if (resume && NextEap is { } next)
+        {
+            eap = next;
+        }
+        else
+        {
+            State = null;
+            var identity = Encoding.UTF8.GetBytes("axis-accc8e123456");
+            eap = StartWithEapStart ? [] : EapPacket.Response(1, EapType.Identity, identity).ToBytes();
+        }
+
         for (var round = 1; round <= maxRoundTrips; round++)
         {
             var (result, answer, authenticator) = Send(eap);
@@ -70,6 +89,12 @@ public sealed class TestSwitch(RadiusProcessor processor)
                     State = answer.Find(RadiusAttributeType.State)?.Value.ToArray() ?? throw new InvalidOperationException("Challenge without State");
                     var response = camera.Respond(packet ?? throw new InvalidOperationException("Challenge without EAP"));
                     eap = response!.ToBytes();
+                    NextEap = eap;
+                    if (stopWhen?.Invoke(result) == true)
+                    {
+                        return new Conversation(null, round, null, answer, results);
+                    }
+
                     break;
                 case RadiusCode.AccessAccept:
                     if (packet is not null)
@@ -95,6 +120,7 @@ public sealed class TestSwitch(RadiusProcessor processor)
     public (RadiusResult Result, RadiusPacket? Answer, byte[] Authenticator) Send(byte[] eap, bool withState = true, Action<List<RadiusAttribute>>? edit = null)
     {
         var authenticator = RandomNumberGenerator.GetBytes(16);
+        SentEap.Add(eap);
         var request = Build(eap, authenticator, withState, edit);
         var result = processor.Process(request, Client, Source);
         return (result, Check(result, authenticator, request), authenticator);
@@ -162,7 +188,8 @@ public sealed class TestSwitch(RadiusProcessor processor)
         }
 
         var echoed = answer.All(RadiusAttributeType.ProxyState).Select(a => Convert.ToHexString(a.Value.Span)).ToList();
-        if (!echoed.SequenceEqual(ProxyStates.Select(Convert.ToHexString)))
+        var sent = RadiusPacket.Parse(request).Packet!.All(RadiusAttributeType.ProxyState).Select(a => Convert.ToHexString(a.Value.Span));
+        if (!echoed.SequenceEqual(sent))
         {
             throw new InvalidOperationException("Proxy-State not echoed in order");
         }

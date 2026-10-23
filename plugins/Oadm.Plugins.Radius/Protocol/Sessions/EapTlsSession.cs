@@ -35,6 +35,7 @@ internal sealed class EapTlsSession
 {
 
     private readonly RadiusProtocolOptions _options;
+    private readonly Func<TlsServerIdentity?> _identity;
     private readonly IClientCertificateValidator _validator;
     private readonly Action<EapSessionSnapshot> _changed;
     private readonly TimeProvider _time;
@@ -64,13 +65,14 @@ internal sealed class EapTlsSession
 
     private EapSessionSnapshot _snapshot;
 
-    public EapTlsSession(Guid id, string client, byte[] state, AccessRequest first, RadiusProtocolOptions options, IClientCertificateValidator validator, TimeProvider time, Action<EapSessionSnapshot> changed)
+    public EapTlsSession(Guid id, string client, byte[] state, AccessRequest first, RadiusProtocolOptions options, Func<TlsServerIdentity?> identity, IClientCertificateValidator validator, TimeProvider time, Action<EapSessionSnapshot> changed)
     {
         Id = id;
         Client = client;
         State = state;
         PortKey = PortKeyOf(client, first);
         _options = options;
+        _identity = identity;
         _validator = validator;
         _time = time;
         _changed = changed;
@@ -174,6 +176,7 @@ internal sealed class EapTlsSession
         _previousIdentifier = _outstandingIdentifier;
         return response.Type switch
         {
+            _ when _phase == Phase.AwaitFailureAck => Fail(response.Identifier, _pendingReason ?? EapSessionTexts.UnexpectedMessage),
             EapType.Nak => Fail(response.Identifier, EapSessionTexts.NotEapTls(response.Data.ToArray())),
             EapType.Identity when _phase == Phase.AwaitIdentity => StartTls(response),
             EapType.Tls when _phase != Phase.AwaitIdentity => HandleTls(response),
@@ -376,7 +379,7 @@ internal sealed class EapTlsSession
     {
         if (_tls is null)
         {
-            var identity = _options.ServerIdentity;
+            var identity = _identity(); // the current one: a renewed certificate applies to every handshake that starts after it
             if (identity is null)
             {
                 return Fail(responseIdentifier, EapSessionTexts.NoServerCertificate);

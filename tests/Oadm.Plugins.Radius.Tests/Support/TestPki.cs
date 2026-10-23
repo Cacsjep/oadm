@@ -101,8 +101,7 @@ public static class TestPki
         var san = new SubjectAlternativeNameBuilder();
         san.AddDnsName(name);
         request.CertificateExtensions.Add(san.Build());
-        var issuerWithKey = issuer.Certificate;
-        using var certificate = request.Create(issuerWithKey, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(2), RandomNumberGenerator.GetBytes(12));
+        using var certificate = request.Create(issuer.Certificate.SubjectName, X509SignatureGenerator.CreateForECDsa(issuer.Key), DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(2), RandomNumberGenerator.GetBytes(12));
         var pkcs8 = rsa ? rsaKey!.ExportPkcs8PrivateKey() : ec!.ExportPkcs8PrivateKey();
         return new TestCertificate([certificate.RawData, issuer.Certificate.RawData], pkcs8, rsa ? ServerKeyKind.Rsa : ServerKeyKind.Ecdsa);
     }

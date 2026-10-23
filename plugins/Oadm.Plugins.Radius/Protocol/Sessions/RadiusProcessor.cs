@@ -33,6 +33,8 @@ public enum RadiusDropReason
     StaleEapResponse,
     /// <summary>The answer would exceed 4,096 bytes (e.g. huge Proxy-State attributes).</summary>
     AnswerTooLarge,
+    /// <summary>A fault of the server itself while processing (never expected; the session ends, the request is dropped).</summary>
+    InternalError,
 }
 
 /// <summary>The result of one datagram.</summary>
@@ -169,6 +171,12 @@ public sealed class RadiusProcessor
         {
             result = Handle(request, client);
             return result;
+        }
+#pragma warning disable CA1031 // one bad request must never stop the listener; fail closed (no answer)
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            return RadiusResult.Dropped(RadiusDropReason.InternalError, ex.GetType().Name);
         }
         finally
         {
@@ -446,7 +454,7 @@ public sealed class RadiusProcessor
             }
 
             var state = RandomNumberGenerator.GetBytes(16);
-            var session = new EapTlsSession(Guid.NewGuid(), client.Key, state, request, options, _validator, _time, s => SessionChanged?.Invoke(s));
+            var session = new EapTlsSession(Guid.NewGuid(), client.Key, state, request, options, () => _options.ServerIdentity, _validator, _time, s => SessionChanged?.Invoke(s));
             _sessions[KeyOf(client.Key, state)] = session;
             _perClient[client.Key] = perClient + 1;
             if (session.PortKey is { } key)
