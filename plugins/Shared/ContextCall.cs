@@ -44,11 +44,29 @@ internal static class OwnerScope
     /// <summary>The owner of a stored object (none = all devices, objects from before device groups).</summary>
     public static string Of(string? stored) => string.IsNullOrWhiteSpace(stored) ? ICallContext.AllDevicesScopeKey : stored;
 
-    /// <summary>Whether <paramref name="caller"/> sees and may change an object of <paramref name="owner"/>.</summary>
+    /// <summary>The refusal of a save by a user without devices (no group, or the group was deleted).</summary>
+    public const string NoDevicesRefusal = "Your account has no devices.";
+
+    /// <summary>
+    /// Whether <paramref name="caller"/> has no devices: not all devices and no group. A group's scope key is the group's id
+    /// (a GUID); any other key of a user without all devices ("none", or a key the host makes per user or session) is no
+    /// group, whatever the host calls it. Such callers share no objects, jobs or slots (fail closed).
+    /// </summary>
+    public static bool HasNoDevices(ICallContext caller)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return !caller.HasAllDevices && !Guid.TryParse(caller.DeviceScopeKey, out _);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="caller"/> sees and may change an object of <paramref name="owner"/>; never for a caller
+    /// without devices (<see cref="HasNoDevices"/>), so such users never see each other's objects.
+    /// </summary>
     public static bool Sees(ICallContext caller, string? owner)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        return caller.HasAllDevices || string.Equals(Of(owner), caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
+        return caller.HasAllDevices
+            || (!HasNoDevices(caller) && string.Equals(Of(owner), caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Whether the owner still exists (false for a deleted group: its objects are off). Hosts without groups: only all devices.</summary>
@@ -61,11 +79,17 @@ internal static class OwnerScope
 
     /// <summary>
     /// The owner a saved object gets: a new one the caller's scope; a changed one keeps its owner, except that a user with
-    /// all devices who saves an object of a deleted group gives it to all devices (it runs again).
+    /// all devices who saves an object of a deleted group gives it to all devices (it runs again). A caller without devices
+    /// (<see cref="HasNoDevices"/>) saves nothing (<see cref="DeviceAccessRefusedException"/>, <see cref="NoDevicesRefusal"/>).
     /// </summary>
     public static string ForSave(ICorePluginContext ctx, ICallContext caller, string? stored, bool isNew)
     {
         ArgumentNullException.ThrowIfNull(caller);
+        if (HasNoDevices(caller))
+        {
+            throw new DeviceAccessRefusedException(NoDevicesRefusal);
+        }
+
         if (isNew)
         {
             return caller.DeviceScopeKey;

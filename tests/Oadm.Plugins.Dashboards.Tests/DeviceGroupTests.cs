@@ -209,6 +209,73 @@ public sealed class DeviceGroupTests
     }
 
     [Fact]
+    public async Task An_unwatch_while_a_watch_registers_keeps_its_session_job()
+    {
+        var (fake, _, plugin, a, _, keyA, _) = await StartAsync();
+        using var _ = plugin;
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        using var reached = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        plugin.AfterSessionJob = () =>
+        {
+            reached.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+        };
+
+        // The watch holds between its job and its register; the page's other tab unwatches meanwhile.
+        var watch = Task.Run(() => plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None));
+        Assert.True(reached.Wait(TimeSpan.FromSeconds(30)));
+        plugin.AfterSessionJob = null;
+        await plugin.InvokeAsync(anna, DashboardsMethods.Unwatch, Json(new UnwatchRequest("tab 2")), CancellationToken.None);
+        var job = Assert.Single(fake.FakeJobs.All);
+        Assert.False(job.Completion.IsCompleted);
+        release.Set();
+
+        await watch.WaitAsync(TimeSpan.FromSeconds(30)); // registered, not refused
+        Assert.Equal(1, plugin.SessionJobCount);
+        Assert.Equal(1, plugin.WatchedCount);
+        Assert.False(job.Completion.IsCompleted);
+
+        // The last unwatch still ends it.
+        await plugin.InvokeAsync(anna, DashboardsMethods.Unwatch, Json(new UnwatchRequest("page")), CancellationToken.None);
+        await job.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(0, plugin.SessionJobCount);
+    }
+
+    [Fact]
+    public async Task Two_watches_of_a_session_that_start_together_share_one_job()
+    {
+        var (fake, _, plugin, a, _, keyA, _) = await StartAsync();
+        using var _ = plugin;
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        using var reached = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var first = 0;
+        plugin.AfterJobStarted = () =>
+        {
+            if (Interlocked.Exchange(ref first, 1) == 0)
+            {
+                reached.Set();
+                release.Wait(TimeSpan.FromSeconds(30));
+            }
+        };
+
+        // The first watch started its job but has not kept it yet; the second starts and keeps its own meanwhile.
+        var one = Task.Run(() => plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None));
+        Assert.True(reached.Wait(TimeSpan.FromSeconds(30)));
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("tab 2", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        release.Set();
+        await one.WaitAsync(TimeSpan.FromSeconds(30)); // reuses the running job of the same scope, not refused
+
+        Assert.Equal(1, plugin.SessionJobCount);
+        Assert.Equal(2, fake.FakeJobs.All.Count);
+        await Testing.Eventually.TrueAsync(() => fake.FakeJobs.All.Count(j => j.Completion.IsCompleted) == 1, "the extra job ended");
+        Assert.Single(fake.FakeJobs.All, j => !j.Completion.IsCompleted);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Unwatch, Json(new UnwatchRequest("page")), CancellationToken.None);
+        Assert.Equal(1, plugin.SessionJobCount); // tab 2 still watches
+    }
+
+    [Fact]
     public async Task An_administrator_saves_a_groups_dashboard_whose_device_left_the_group()
     {
         var (fake, _, plugin, a, b, keyA, _) = await StartAsync();

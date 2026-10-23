@@ -144,6 +144,9 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
     /// <summary>The trigger as saved (after Save).</summary>
     public TriggerDefinition? Saved { get; private set; }
 
+    /// <summary>Devices the server left out of the save (no longer in the device group); the page says so.</summary>
+    public int SavedDropped { get; internal set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Problem), nameof(CanSave))]
     public partial string Name { get; set; }
@@ -373,6 +376,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             if (reply.Trigger is { } saved)
             {
                 Saved = saved;
+                SavedDropped = reply.Dropped;
                 CloseRequested?.Invoke(this, true);
                 return;
             }

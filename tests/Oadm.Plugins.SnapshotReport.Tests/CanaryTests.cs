@@ -1,3 +1,5 @@
+using Oadm.Plugins.SnapshotReport.Report;
+
 using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
@@ -43,5 +45,24 @@ public sealed class CanaryTests
         Assert.Equal([inside.Id], tiles.Select(t => t.Device.DeviceId).Distinct());
         Assert.Empty(ctx.RefusedAccesses);
         Assert.False(ctx.ClientsCreated.ContainsKey(ctx.DeviceList[1].Id));
+    }
+
+    [Fact]
+    public async Task A_device_the_report_cannot_reach_says_the_one_phrase()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var camera = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.48" });
+        using var service = new SnapshotService(ctx.Devices, ctx.Vapix);
+        using var jobs = new ReportJobs(service);
+        var gone = Guid.NewGuid(); // removed, or outside the user's devices: the same answer
+        var request = new ReportRequest { Site = "Site", Items = [new ReportItem { DeviceId = camera.Id, Camera = 1 }, new ReportItem { DeviceId = gone, Camera = 1 }] };
+
+        var entries = await jobs.CollectAsync(request, null, CancellationToken.None);
+
+        var missing = entries[1];
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1), missing.Tile.Error);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1), missing.Snapshot.Error);
+        Assert.DoesNotContain("removed", missing.Tile.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(camera.Id, entries[0].Tile.Device.DeviceId);
     }
 }

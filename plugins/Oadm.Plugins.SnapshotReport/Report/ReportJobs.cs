@@ -326,12 +326,14 @@ public sealed partial class ReportJobs : IDisposable
             };
         }
 
+        // Not in the user's devices now (removed, or outside the user's device group): the one phrase for both, so the
+        // report never tells them apart (docs/spec/device-scope.md, one phrase for a device the user cannot reach).
         return new SnapshotTile
         {
             Device = new DeviceFacts { DeviceId = Guid.Empty, Address = item.DeviceId.ToString("N")[..8] },
             Camera = item.Camera,
-            Title = "Removed device " + item.DeviceId.ToString("N")[..8],
-            Error = "The device was removed from OADM or has no video.",
+            Title = "Device " + item.DeviceId.ToString("N")[..8],
+            Error = Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1),
         };
     }
 

@@ -117,6 +117,85 @@ public sealed class CanaryTests
         Assert.Equal(ScanJobStates.Cancelled, plugin.Service.JobOf(key)!.State);
     }
 
+    [Theory]
+    [InlineData("none")]
+    [InlineData("none:7")]
+    public async Task Users_without_devices_share_no_scan_slot(string key)
+    {
+        var ctx = new Testing.FakeCoreContext();
+        ctx.Add(new Testing.FakeDevice { Address = "10.0.0.48" });
+        await using var plugin = Plugin();
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var first = Testing.FakeCallContext.WithGroup(ctx, [], "former-g1", key);
+        var second = Testing.FakeCallContext.WithGroup(ctx, [], "former-g2", key);
+
+        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => ctx.InvokeAsync(plugin, first, HardeningMethods.StartScan, """{"level":"Basic"}"""));
+        Assert.Equal(Oadm.Plugins.Shared.OwnerScope.NoDevicesRefusal, refused.Message);
+        Assert.Null(plugin.Service!.JobOf(key));
+        Assert.Empty(ctx.FakeJobs.All);
+        var stop = await Assert.ThrowsAsync<KeyNotFoundException>(() => ctx.InvokeAsync(plugin, second, HardeningMethods.CancelScan, """{"jobId":null}"""));
+        Assert.Equal(HardeningScanService.NotYours, stop.Message);
+        Assert.Null(HardeningJson.Deserialize<HardeningState>(await ctx.InvokeAsync(plugin, second, HardeningMethods.GetState, null)).Job);
+    }
+
+    [Fact]
+    public async Task Stopping_a_finished_scan_whose_run_still_ends_after_a_new_scan_started_throws_nothing()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        ctx.Add(new Testing.FakeDevice { Address = "10.0.0.48" });
+        var settings = new GatedSettings();
+        await using var service = new HardeningScanService(ctx.Devices, ctx.Vapix, settings, ctx.Events, null, new HardeningScanOptions { Time = new FakeTimeProvider() });
+        await service.LoadAsync(CancellationToken.None);
+        var admin = ctx.CallAsAllDevices();
+        var jobs = new Testing.FakePluginJobs();
+
+        // The first scan is Done but its run is held in its last write: its stop registration is still on the job's token.
+        Exception? stop;
+        IPluginJob owned;
+        try
+        {
+            var first = await service.StartAsync(admin, jobs, new StartScanRequest { Level = ScanLevel.Basic }, CancellationToken.None);
+            await settings.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.Equal(ScanJobStates.Done, service.JobOf(ICallContext.AllDevicesScopeKey)!.State);
+            var second = await service.StartAsync(admin, jobs, new StartScanRequest { Level = ScanLevel.Basic }, CancellationToken.None);
+            Assert.NotEqual(first.JobId, second.JobId);
+
+            // The plugin stopping (or the user's session ending) cancels the old job: its source must not be disposed yet.
+            owned = jobs.Find(admin, first.JobId)!;
+            stop = Record.Exception(owned.Cancel);
+        }
+        finally
+        {
+            settings.Release.TrySetResult();
+        }
+
+        Assert.Null(stop);
+        await service.WaitAsync();
+        await owned.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>Settings whose first write of the results waits until the test releases it.</summary>
+    private sealed class GatedSettings : IPluginSettings
+    {
+        private int _held;
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<string?> GetAsync(string key, CancellationToken ct) => Task.FromResult<string?>(null);
+
+        public async Task SetAsync(string key, string? valueJson, CancellationToken ct)
+        {
+            if (Interlocked.Exchange(ref _held, 1) == 0)
+            {
+                Entered.TrySetResult();
+            }
+
+            await Release.Task.WaitAsync(ct).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>A camera whose requests wait until the scan is stopped.</summary>
     private sealed class HoldingCamera : Testing.FakeCamera
     {

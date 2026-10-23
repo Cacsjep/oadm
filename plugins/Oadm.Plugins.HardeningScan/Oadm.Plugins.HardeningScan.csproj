@@ -39,6 +39,8 @@
     <Compile Include="..\Oadm.Plugins.SnapshotReport\SnapshotRequests.cs" Link="Readers\SnapshotReport\SnapshotRequests.cs" />
     <Compile Include="..\Oadm.Plugins.SnapshotReport\Shared\SnapshotReportModels.cs" Link="Readers\SnapshotReport\SnapshotReportModels.cs" />
     <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
+    <!-- OwnerScope.HasNoDevices: a user without devices gets no shared scan. -->
+    <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
     <!-- The disk list of the Edge storage plugin, shared with Edge Recording Export and Edge storage. -->
     <Compile Include="..\Oadm.Plugins.EdgeStorage\Disks\*.cs" Link="Readers\EdgeStorage\%(Filename)%(Extension)" />
   </ItemGroup>

@@ -476,7 +476,10 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         return new SaveReply(saved, null, null) { Dropped = left.Count };
     }
 
-    /// <summary>A copy of a trigger the caller sees, owned by the caller's devices (turned off).</summary>
+    /// <summary>
+    /// A copy of a trigger the caller sees, owned by the caller's devices (turned off). A group user's copy keeps only the
+    /// devices the user sees now: stored ids of devices that left the group are dropped (counted in <c>Dropped</c>).
+    /// </summary>
     private async Task<SaveReply> DuplicateAsync(ICorePluginContext ctx, ICallContext caller, Guid id, CancellationToken ct)
     {
         var source = Visible(caller).FirstOrDefault(t => t.Id == id);
@@ -490,7 +493,16 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             return new SaveReply(null, $"At most {DeviceTriggersPluginInfo.MaxTriggers} triggers.", null);
         }
 
-        var owner = caller.DeviceScopeKey;
+        var owner = OwnerScope.ForSave(ctx, caller, null, isNew: true);
+        var dropped = 0;
+        if (!caller.HasAllDevices && source.DeviceIds.Count > 0)
+        {
+            var mine = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+            List<Guid> kept = [.. source.DeviceIds.Where(mine.Contains)];
+            dropped = source.DeviceIds.Count - kept.Count;
+            source = source with { DeviceIds = kept };
+        }
+
         var names = Triggers.Where(t => OwnerScope.Of(t.Owner) == owner).Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var name = CopyName(source.Name, names);
         var copy = source with { Id = Guid.NewGuid(), Name = name, Enabled = false, Owner = owner == ICallContext.AllDevicesScopeKey ? null : owner };
@@ -499,7 +511,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             list.Add(copy);
             return true;
         }, typesChanged: true, copy.Owner, ct).ConfigureAwait(false);
-        return new SaveReply(copy, null, null);
+        return new SaveReply(copy, null, null) { Dropped = dropped };
     }
 
     /// <summary>"&lt;name&gt; (copy)", "(copy 2)", ... within the name limit.</summary>

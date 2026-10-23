@@ -533,7 +533,9 @@ for them, and it keeps working unchanged for users with all devices.
   (its objects are off), `Changed` tells about changed and deleted groups and, about a second later, about groups whose
   devices may have changed (devices added, removed, moved or tagged; tags and sites): prune there. In a group user's call
   and jobs `ctx.DeviceScopes` answers only for `caller.DeviceScopeKey` (any other key refuses like `ctx.Devices`), except
-  `Exists` and `Contains` in methods with a `SystemAccessReason`. Table pages use
+  `Exists` and `Contains` in methods with a `SystemAccessReason`. A user without devices has a scope key that is no group
+  id: `OwnerScope.Sees` answers false and `OwnerScope.ForSave` refuses for them (`OwnerScope.HasNoDevices`); never share a
+  job or slot by such a key. Table pages use
   `DeviceSweeps<TRow>` (plugins/Shared/DeviceSweep.cs): `sweeps.For(caller)` is the sweep of the caller's scope (null
   for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`, and counts from
   `sweep.ScopedSnapshot()` (rows of devices that left the scope dropped first). A device that leaves during a sweep is

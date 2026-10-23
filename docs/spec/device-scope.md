@@ -100,9 +100,11 @@ an independent security review the same day). A user may be limited to part of t
   in the background (the waiting entry remembers who queued it).
 - **Shared objects** (device triggers, compliance checks, Live View views, dashboards): each object stores its owning
   group (or all devices); an administrator editing it keeps the owner; a duplicate gets the group of the user who
-  duplicates. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices of that
+  duplicates and, for a user with a group, only the devices the user sees now. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices of that
   group ("All devices" = the group). Users see and edit only objects of their own group; others are hidden. A deleted
-  group disables its objects.
+  group disables its objects. A user without devices (no group, or the group was deleted) sees no shared object, saves
+  none ("Your account has no devices.", `OwnerScope.HasNoDevices`: a scope key that is not a group id) and gets no
+  shared job or slot (the hardening scan refuses), whatever key the host gives such a user.
 - **Event rules are not limited by device groups** (decision 2026-10-23): rules are for administrators and operators
   with all devices. Users with a group get no event rules: the rules, the event log, the event catalog and **Test**
   (every `EventService` method) are `AccessRule.AllDevices`, and the client hides the Event rules page for them. Rules
@@ -187,7 +189,9 @@ an independent security review the same day). A user may be limited to part of t
   changes); every role change below Administrator sends the Devices choice the form shows.
 - Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
   `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
-  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md);
+  `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md),
+  `MainWindowViewModel.RefreshMyDevicesAsync` (Your role's devices for Add, read again after every device stream connect:
+  a change of the group's rules keeps its name but ends the stream);
   fake mode (`FakeOadmApi.DeviceGroups`) has Building B, Building A, Head office and Lobby, tech2 in Building B and
   guard in Lobby. Tests `DeviceGroupsTests`, `Perf/DeviceGroupEditorScaleTests`.
 - Audit: created, changed (rules), deleted groups; a user's group changed.
@@ -447,7 +451,9 @@ an independent security review the same day). A user may be limited to part of t
   also on the group's own devices (`EventTypeInfo.OwnerScopeKey`, SDK 0.4.0, filled by Device triggers). Every push checks
   the group's devices now; a renewal naming a device that left ends the old watch. A group user's watches are bound to one
   job per session (kind `watch`): when the user's devices, role or session change the host ends it and the session's
-  watches go at once (no values for the old devices until the next renewal); the session's last unwatch ends it.
+  watches go at once (no values for the old devices until the next renewal); the session's last unwatch ends it. Two
+  watches of a session that start together share the running job of the same scope, and a watch still registering
+  counts as busy, so an unwatch meanwhile never ends its job.
 - **Saved objects** (`OwnerScope.LeftOwnerAsync`): a user with all devices who saves a group's view or dashboard whose
   devices left the group gets the save without them (`Dropped` in the answer, never stored); devices the save adds outside
   the group and every outside id of a group user stay NOT_FOUND. The page says so below its toolbar in plain secondary

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Plugins.HardeningScan.Checks;
 using Oadm.Plugins.HardeningScan.Device;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -114,10 +115,11 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     public Task<HardeningState> GetStateAsync(ICallContext caller, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        return GetStateAsync(caller.Devices, caller.DeviceScopeKey, caller.HasAllDevices, ct);
+        return GetStateAsync(caller.Devices, OwnerScope.HasNoDevices(caller) ? null : caller.DeviceScopeKey, caller.HasAllDevices, ct);
     }
 
-    private async Task<HardeningState> GetStateAsync(IDeviceRepository devices, string scope, bool all, CancellationToken ct)
+    /// <param name="scope">The scope whose scan the state shows; null for a user without devices (no scan is shared with them).</param>
+    private async Task<HardeningState> GetStateAsync(IDeviceRepository devices, string? scope, bool all, CancellationToken ct)
     {
         var managed = (await devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
 
@@ -132,7 +134,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
             Catalog = HardeningCatalog.All,
             Columns = HardeningCatalog.ColumnIds,
             Results = [.. _store.All().Where(d => all || managed.Contains(d.DeviceId)).Select(ResultStore.ToResult)],
-            Job = JobOf(scope),
+            Job = scope is null ? null : JobOf(scope),
         };
     }
 
@@ -203,13 +205,19 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     /// <summary>
     /// Starts a scan of the user's devices (all of the user's view for an empty list; a user with a device group: every id
     /// must be in the view) as a job of the user, reading through the user's view. While a scan of the user's device scope
-    /// runs, returns that one.
+    /// runs, returns that one. A user without devices (<see cref="OwnerScope.HasNoDevices"/>) is refused: users without
+    /// devices share no scan slot.
     /// </summary>
     public async Task<ScanJobStatus> StartAsync(ICallContext caller, IPluginJobs jobs, StartScanRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(jobs);
         ArgumentNullException.ThrowIfNull(request);
+        if (OwnerScope.HasNoDevices(caller))
+        {
+            throw new DeviceAccessRefusedException(OwnerScope.NoDevicesRefusal);
+        }
+
         var scope = caller.DeviceScopeKey;
         if (JobOf(scope) is { State: ScanJobStates.Running } running)
         {
@@ -252,12 +260,17 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     /// scope and the scope's users share it (they see its progress and results), so any user with the same devices may stop
     /// it, whoever started it (decision 2026-10-23). A scan id of another scope, an ended scan and an unknown id answer
     /// <see cref="NotYours"/> (<see cref="KeyNotFoundException"/>). The scan is looked up by the caller's scope key, which only
-    /// the host sets, never by the id alone.
+    /// the host sets, never by the id alone. A user without devices has no scan (<see cref="NotYours"/>).
     /// </summary>
     public ScanJobStatus Cancel(ICallContext caller, IPluginJobs jobs, string? jobId)
     {
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(jobs);
+        if (OwnerScope.HasNoDevices(caller))
+        {
+            throw new KeyNotFoundException(NotYours);
+        }
+
         lock (_gate)
         {
             var job = _jobs.GetValueOrDefault(caller.DeviceScopeKey);
@@ -424,7 +437,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
 
             if (_jobs.GetValueOrDefault(scope) is { } previous)
             {
-                previous.Cancel.Dispose(); // the previous scan of the scope has ended
+                DisposeWhenEnded(previous);
             }
 
             _jobs[scope] = job;
@@ -438,6 +451,21 @@ public sealed partial class HardeningScanService : IAsyncDisposable
 
         ready?.SetResult();
         return job.Status();
+    }
+
+    /// <summary>
+    /// Disposes the token source of a replaced scan once its run ended. Its state says Done before the run returns: the user's
+    /// job still has the stop registration on its token, and a stop then would cancel a disposed source.
+    /// </summary>
+    private static void DisposeWhenEnded(Job previous)
+    {
+        if (previous.Run is not { } run)
+        {
+            previous.Cancel.Dispose();
+            return;
+        }
+
+        _ = run.ContinueWith(_ => previous.Cancel.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     private static ScanJobStatus Cancel(Job job)

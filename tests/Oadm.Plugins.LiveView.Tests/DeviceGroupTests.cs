@@ -104,6 +104,34 @@ public sealed class DeviceGroupTests
         await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ctx.InvokeAsync(plugin, anna, "save", Request(hall.Id, "Hall 3", saved.Version, a.Id, b.Id)));
     }
 
+    [Theory]
+    [InlineData("none")]
+    [InlineData("none:7")]
+    public async Task Users_without_devices_neither_see_nor_save_views(string key)
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        using (var seed = new LiveViewPlugin())
+        {
+            await seed.StartAsync(ctx, CancellationToken.None);
+            await ctx.InvokeAsync(seed, ctx.CallAsAllDevices(), "save", Request(null, "Hall", 0, a.Id));
+        }
+
+        // A view stored with that key (e.g. by an older version) is no one's to see, change or delete.
+        var stored = JsonSerializer.Deserialize<List<SavedView>>(ctx.PluginSettings.Values["views"], LiveViewPluginInfo.Json)!.Single() with { Owner = key };
+        ctx.PluginSettings.Values["views"] = JsonSerializer.Serialize(new[] { stored }, LiveViewPluginInfo.Json);
+        using var plugin = new LiveViewPlugin();
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var first = Testing.FakeCallContext.WithGroup(ctx, [], "former-g1", key);
+        var second = Testing.FakeCallContext.WithGroup(ctx, [], "former-g2", key);
+
+        Assert.Empty(await ListAsync(plugin, ctx, second));
+        await ctx.InvokeAsync(plugin, second, "delete", JsonSerializer.Serialize(new DeleteViewRequest(stored.Id), LiveViewPluginInfo.Json));
+        Assert.Single(await ListAsync(plugin, ctx, ctx.CallAsAllDevices()));
+        var refused = await Assert.ThrowsAsync<Oadm.Sdk.Plugins.DeviceAccessRefusedException>(() => ctx.InvokeAsync(plugin, first, "save", Request(null, "Mine", 0, a.Id)));
+        Assert.Equal("Your account has no devices.", refused.Message);
+    }
+
     private static async Task<IReadOnlyList<SavedView>> ListAsync(LiveViewPlugin plugin, Testing.FakeCoreContext ctx, Testing.FakeCallContext call) =>
         JsonSerializer.Deserialize<ViewList>((await ctx.InvokeAsync(plugin, call, "list", null))!, LiveViewPluginInfo.Json)!.Views;
 

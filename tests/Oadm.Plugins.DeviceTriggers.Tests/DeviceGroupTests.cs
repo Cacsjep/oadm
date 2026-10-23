@@ -132,6 +132,61 @@ public sealed class DeviceGroupTests
     }
 
     [Fact]
+    public async Task A_group_users_duplicate_keeps_only_the_devices_the_user_sees()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var b = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var keyA = ctx.FakeScopes.Add("Building A", [a.Id, b.Id]);
+        await using var plugin = new DeviceTriggersPlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var anna = Testing.FakeCallContext.WithGroup(ctx, [a.Id, b.Id], "anna", keyA);
+        var saved = await SaveAsync(ctx, plugin, anna, new TriggerDefinition { Name = "Door", Topic = "t", Enabled = false, DeviceIds = [a.Id, b.Id] });
+
+        // b leaves the group; the stored trigger still names it until it is saved again.
+        ctx.FakeScopes.Add("Building A", [a.Id], keyA);
+        var now = Testing.FakeCallContext.WithGroup(ctx, [a.Id], "anna", keyA);
+        var reply = TriggerJson.Deserialize<SaveReply>(await ctx.InvokeAsync(plugin, now, DeviceTriggersMethods.Duplicate, TriggerJson.Serialize(new IdRequest(saved.Id))));
+
+        Assert.Equal([a.Id], reply.Trigger!.DeviceIds);
+        Assert.Equal(1, reply.Dropped);
+        Assert.Equal(keyA, reply.Trigger.Owner);
+        Assert.Equal([a.Id], plugin.Triggers.Single(t => t.Id == reply.Trigger.Id).DeviceIds);
+
+        // A user with all devices copies every stored device.
+        var all = TriggerJson.Deserialize<SaveReply>(await ctx.InvokeAsync(plugin, ctx.CallAsAllDevices(), DeviceTriggersMethods.Duplicate, TriggerJson.Serialize(new IdRequest(saved.Id))));
+        Assert.Equal([a.Id, b.Id], all.Trigger!.DeviceIds);
+        Assert.Equal(0, all.Dropped);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("none:7")]
+    public async Task Users_without_devices_neither_see_nor_save_triggers(string key)
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+
+        // A trigger stored with that key (e.g. by an older version) is no one's to see, change or delete.
+        var stored = new TriggerDefinition { Id = Guid.NewGuid(), Name = "Door", Topic = "t", Enabled = false, DeviceIds = [a.Id], Owner = key };
+        ctx.PluginSettings.Values[DeviceTriggersPlugin.SettingsKey] = TriggerJson.Serialize(new[] { stored });
+        await using var plugin = new DeviceTriggersPlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var first = Testing.FakeCallContext.WithGroup(ctx, [], "former-g1", key);
+        var second = Testing.FakeCallContext.WithGroup(ctx, [], "former-g2", key);
+        Assert.Single(plugin.Triggers);
+
+        Assert.Empty(await ListAsync(ctx, plugin, second));
+        Assert.Null(TriggerJson.Deserialize<GetReply>(await ctx.InvokeAsync(plugin, second, DeviceTriggersMethods.Get, TriggerJson.Serialize(new IdRequest(stored.Id)))).Trigger);
+        await ctx.InvokeAsync(plugin, second, DeviceTriggersMethods.Delete, TriggerJson.Serialize(new IdRequest(stored.Id)));
+        Assert.Single(plugin.Triggers);
+        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => ctx.InvokeAsync(plugin, first, DeviceTriggersMethods.Save,
+            TriggerJson.Serialize(new SaveRequest(new TriggerDefinition { Name = "Mine", Topic = "t", Enabled = false }))));
+        Assert.Equal("Your account has no devices.", refused.Message);
+        Assert.Single(plugin.Triggers);
+    }
+
+    [Fact]
     public async Task The_event_types_carry_the_owner_of_their_trigger()
     {
         var ctx = new Testing.FakeCoreContext();

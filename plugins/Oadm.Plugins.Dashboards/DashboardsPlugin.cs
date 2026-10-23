@@ -43,6 +43,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private readonly ValueStore _values;
     private readonly Dictionary<(string Session, string Watch), Watcher> _watchers = [];
     private readonly Dictionary<string, IPluginJob> _sessionJobs = new(StringComparer.Ordinal);
+
+    /// <summary>Registers in flight per session (from <see cref="SessionJob"/> to the end of <see cref="Register"/>): a session with one is busy.</summary>
+    private readonly Dictionary<string, int> _registering = new(StringComparer.Ordinal);
     private readonly HashSet<ValueKey> _watched = [];
     private readonly HashSet<ValueKey> _dirty = [];
     private readonly Dictionary<Guid, Dictionary<string, string>> _deviceProblems = [];
@@ -731,26 +734,54 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         return keys.Count > DashboardsPluginInfo.MaxWatchedKeys ? throw new ArgumentException(DashboardTexts.TooManyOpen) : keys;
     }
 
+    /// <summary>Test seam: runs in <see cref="Register"/> after the session's job was found or started (tests hold it with a gate).</summary>
+    internal Action? AfterSessionJob { get; set; }
+
+    /// <summary>Test seam: runs in <see cref="SessionJob"/> after a new job started, before it is kept.</summary>
+    internal Action? AfterJobStarted { get; set; }
+
     /// <summary>Keeps the watch of the caller's session and answers the values now.</summary>
     private ValuesReply Register(ICallContext caller, WatchRequest request, HashSet<ValueKey> keys)
     {
         var job = caller.HasAllDevices ? null : SessionJob(caller);
-        lock (_gate)
+        try
         {
-            if (job is not null && (!_sessionJobs.TryGetValue(caller.SessionId, out var current) || current != job))
+            AfterSessionJob?.Invoke();
+            lock (_gate)
             {
-                // The user's devices changed while the job started: no watch for the old devices.
-                throw new DevicesNotAvailableException(Math.Max(1, keys.Count(k => k.DeviceId is not null)));
-            }
+                if (job is not null && (!_sessionJobs.TryGetValue(caller.SessionId, out var current) || current != job))
+                {
+                    // The user's devices changed while the job started: no watch for the old devices.
+                    throw new DevicesNotAvailableException(Math.Max(1, keys.Count(k => k.DeviceId is not null)));
+                }
 
-            var id = (caller.SessionId, request.WatchId);
-            if (!_watchers.ContainsKey(id) && _watchers.Count >= 1_000)
+                var id = (caller.SessionId, request.WatchId);
+                if (!_watchers.ContainsKey(id) && _watchers.Count >= 1_000)
+                {
+                    throw new InvalidOperationException("Too many pages watch the dashboards.");
+                }
+
+                _watchers[id] = new Watcher(keys, _time.GetUtcNow(), caller.SessionId, caller.HasAllDevices ? ICallContext.AllDevicesScopeKey : caller.DeviceScopeKey, caller.HasAllDevices);
+                RebuildWatched();
+            }
+        }
+        finally
+        {
+            if (job is not null)
             {
-                throw new InvalidOperationException("Too many pages watch the dashboards.");
-            }
+                List<IPluginJob> idle;
+                lock (_gate)
+                {
+                    if (--_registering[caller.SessionId] == 0)
+                    {
+                        _registering.Remove(caller.SessionId);
+                    }
 
-            _watchers[id] = new Watcher(keys, _time.GetUtcNow(), caller.SessionId, caller.HasAllDevices ? ICallContext.AllDevicesScopeKey : caller.DeviceScopeKey, caller.HasAllDevices);
-            RebuildWatched();
+                    idle = IdleJobsLocked(); // a refused register leaves no watch: its job ends
+                }
+
+                idle.ForEach(j => j.Cancel());
+            }
         }
 
         return new ValuesReply([.. keys.Select(Snapshot)]);
@@ -760,7 +791,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     /// The job that binds the watches of a group user's session to the user's devices now: the host ends it when the user's
     /// devices, role or session change (another group, new rules), and its end drops the session's watches at once, so values
     /// for the old devices stop before the page renews its watch. One job per session; it ends with the session's last
-    /// watch. Null on hosts without jobs (they have no device groups).
+    /// watch. Null on hosts without jobs (they have no device groups). A returned job counts the session as busy (an
+    /// in-flight register) until <see cref="Register"/> ends, so an unwatch meanwhile never ends it; two concurrent calls
+    /// of the session share one job of the same scope.
     /// </summary>
     private IPluginJob? SessionJob(ICallContext caller)
     {
@@ -771,10 +804,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
         lock (_gate)
         {
-            if (_sessionJobs.TryGetValue(caller.SessionId, out var current)
-                && !current.Completion.IsCompleted
-                && string.Equals(current.Owner.DeviceScopeKey, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+            if (RunningJobLocked(caller) is { } current)
             {
+                Registering(caller.SessionId);
                 return current;
             }
         }
@@ -790,17 +822,40 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             {
             }
         });
+        AfterJobStarted?.Invoke();
         IPluginJob? replaced;
         lock (_gate)
         {
-            replaced = _sessionJobs.GetValueOrDefault(session);
-            _sessionJobs[session] = job;
+            if (RunningJobLocked(caller) is { } other)
+            {
+                // Another call of the session kept its job of the same scope meanwhile: use that one, end ours.
+                Registering(session);
+                replaced = job;
+                job = other;
+            }
+            else
+            {
+                replaced = _sessionJobs.GetValueOrDefault(session);
+                _sessionJobs[session] = job;
+                Registering(session);
+                var kept = job;
+                _ = kept.Completion.ContinueWith(_ => SessionJobEnded(session, kept), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
         }
 
         replaced?.Cancel();
-        _ = job.Completion.ContinueWith(_ => SessionJobEnded(session, job), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         return job;
     }
+
+    /// <summary>The running job of the caller's session for the caller's scope, if any (under <c>_gate</c>).</summary>
+    private IPluginJob? RunningJobLocked(ICallContext caller) =>
+        _sessionJobs.TryGetValue(caller.SessionId, out var current)
+        && !current.Completion.IsCompleted
+        && string.Equals(current.Owner.DeviceScopeKey, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase)
+            ? current
+            : null;
+
+    private void Registering(string session) => _registering[session] = _registering.GetValueOrDefault(session) + 1;
 
     /// <summary>A session's job ended: its group watches go (unless a newer job took over).</summary>
     private void SessionJobEnded(string session, IPluginJob job)
@@ -830,6 +885,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private List<IPluginJob> IdleJobsLocked()
     {
         var busy = _watchers.Values.Where(w => !w.HasAllDevices).Select(w => w.SessionId).ToHashSet(StringComparer.Ordinal);
+        busy.UnionWith(_registering.Keys);
         var idle = _sessionJobs.Where(j => !busy.Contains(j.Key)).ToList();
         foreach (var (session, _) in idle)
         {

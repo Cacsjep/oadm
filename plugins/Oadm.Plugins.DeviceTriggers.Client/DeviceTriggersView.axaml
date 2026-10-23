@@ -55,6 +55,7 @@
         <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:DeviceTriggersViewModel.EmptyText}"
                    IsVisible="{Binding ShowEmpty}" />
         <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock Grid.Row="3" Classes="secondary" Text="{Binding NoticeText}" IsVisible="{Binding HasNotice}" TextWrapping="Wrap" Margin="0,8,0,0" />
       </Grid>
     </Border>
 
