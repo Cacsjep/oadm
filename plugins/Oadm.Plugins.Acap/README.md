@@ -128,3 +128,7 @@ is installed, by default also running, optionally at least a version (leading nu
 from device"). Read only: one `applications/list.cgi` per device and run (shared key `oadm.acap:list`). Detail texts:
 "AXIS Object Analytics is stopped", "parking is not installed", "AXIS Object Analytics 1.26.205, needs 1.30",
 "AXIS License Plate Verifier: license missing". Tests `ApplicationRunningCheckTests`.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the queries read only the queried device, which the host checks. Test: `DeviceGroupTests` (`PluginCanary`).

@@ -12,6 +12,12 @@ Common to all: every device request and every wait is a named step; every succes
   address**, **Export / Import configuration**: in their READMEs. A new static address (IPv4, IPv6) is probed
   before the first write (`IAddressProbe`: ping, 2 tries x 1 s, plus TCP 80 / 443; the device's own addresses are not
   probed); an answer fails "<address> is already in use (answers ping). Nothing was changed.".
+- **Device groups** (SDK 0.4.0, docs/spec/device-scope.md): these task plugins, **Set output** (`oadm.outputs`) and the
+  VAPIX Commander set `minSdkVersion` 0.4.0. Their tasks run only on devices of the user's view (the host refuses the
+  whole run otherwise) and touch only their own device; their queries read only the queried device, which the host
+  checks. Each test project runs a `PluginCanary` (task-only packages through `tests/Shared/TaskPluginCanaryHost.cs`).
+  Set output switches only the device the rule engine gives it, and the engine gives a rule of a group only the group's
+  devices.
 
 ## Network settings and Assign IP address
 
@@ -28,6 +34,9 @@ behavior: plugin `README.md`.
   write; the address family OADM connects with is written last; after a new static address OADM follows the device (90 s,
   serial verified, `UpdateDeviceAddressAsync`; otherwise a Warning and the record stays); with DHCP the periodic re-find
   moves the record.
+- Device groups: `checkAddresses` of a user with a device group names only the group's devices; an address another
+  managed device on the route has comes back "In use" (`AddressStatus.UsedByDevice`, from
+  `ITaskQueryContext.ManagedAddressesAsync`), never with its name or id.
 
 ## Snapshot report (core plugin)
 
@@ -67,6 +76,12 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   below the page. The request builder is its own dialog: start from scratch or from an existing command, send it to
   try, save (a saved command is replaced in place).
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
+- Device groups: devices, clients and tasks only through the call (`tryRequest`, `checkCompatibility`, `rollout`: an id
+  outside the user's view refuses the request like an unknown one); `save`, `delete` and `import` only for users with
+  all devices (`RequiresAllDevices`; the page hides New command, Import, Edit, Delete and Save with values); a saved
+  command's stored passwords only for users with all devices and rules of users with all devices (others get
+  `CommanderTexts.SavedPasswordsRefused` and enter the passwords; the rule dialog of a group user does not offer such a
+  command); the task owner is the caller.
 - Methods are Operator; `tryRequest` and `rollout` are audited. Scale: 30,000 target devices, every list action under
   200 ms (test).
 - Tests: `tests/Oadm.Plugins.VapixCommander.Tests`, `.Library.Tests`; read-only hardware test `VapixCommanderHardwareTests`.
@@ -394,6 +409,9 @@ plugin `README.md`.
   ("Nothing was changed" otherwise); no backup by OADM (export first); the device validates and OADM shows its answer per
   area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog,
   never a task.
+- Device groups: the source device of Configure devices and Create configuration file is read with the user's query
+  (only devices of the user's view); configuration files stay on the client (an import uploads its file for its own
+  run), so the server keeps no shared file with saved passwords that a group user could use.
 - **Configure devices** rules that must hold: values come from the source (a device or an ADM `.cfg` file), definitions
   are read once per model and AXIS OS (one `listdefinitions` request while it stays below the 1 MB XML limit, else per
   group); internal, hidden, read-only, constant, write-only and write-level-7 parameters are never offered; each device

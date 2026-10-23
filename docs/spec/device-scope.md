@@ -278,6 +278,21 @@ an independent security review the same day). A user may be limited to part of t
 - **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch, backstop),
   `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks), the canary cases of TaskService.
 
+## Code (task plugins)
+
+- Restart, Users, Date and time, Upgrade firmware, Applications, Network settings, Assign IP address, Device
+  configuration, Set output and the VAPIX Commander set `minSdkVersion` 0.4.0. Their queries implement the call overload
+  and read only the queried device; tasks touch only their own device. Each test project runs a `PluginCanary`;
+  packages without a page through `tests/Shared/TaskPluginCanaryHost.cs` (tasks started through the call, actions run on
+  one device of the call). `tests/Oadm.Plugins.Restart.Tests` is new for that.
+- Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
+  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use").
+- VAPIX Commander: devices, clients and tasks through the call; `save` / `delete` / `import` `RequiresAllDevices`; stored
+  passwords of saved commands only with all devices (`ResolveAsync(..., allowSavedSecrets)`, the action through
+  `IActionContext.RuleHasAllDevices`, the rule dialog's choices through `IActionQueryContext.HasAllDevices`).
+- Device configuration keeps no shared files on the server (files stay on the client), so its rule on saved passwords
+  has nothing to cover.
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered

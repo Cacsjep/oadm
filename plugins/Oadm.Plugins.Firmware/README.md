@@ -182,3 +182,7 @@ Never run against hardware: upload, commit, any factory default. Still to verify
 Keys `task:oadm.firmware:upgrade` (every run), `:factoryDefault` (a soft or hard factory default) and `:downgrade`
 ("Allow downgrade"). The dialog offers the factory default select and "Allow downgrade" only with their permission.
 Operator default: upgrade only.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query `status` reads only the queried device, which the host checks; uploads are read by their id for the run. Test: `DeviceGroupTests` (`PluginCanary`).

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1859</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The plugin compiles against the SDK without copying it; the tests need it at run time. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Restart\Oadm.Plugins.Restart.csproj" />
+    <Compile Include="..\Shared\TaskPluginCanaryHost.cs" Link="Shared\TaskPluginCanaryHost.cs" />
+  </ItemGroup>
+</Project>

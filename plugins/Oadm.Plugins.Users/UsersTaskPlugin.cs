@@ -328,6 +328,10 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
         };
     }
 
+    /// <summary>The user's query (SDK 0.4.0): reads only the queried device, which the host checked against the user's view.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        QueryAsync(ctx, device, method, payloadJson, ct);
+
     /// <summary>Read-only. <c>listUsers</c> returns <see cref="UsersQueryResult"/> JSON for the dialog.</summary>
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {

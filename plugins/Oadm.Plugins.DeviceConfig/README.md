@@ -322,3 +322,7 @@ with the file's settings; extra rules and profiles on the device are fine. Never
 not have are skipped ("3 not on this model"). Failed: "2 settings differ" and up to 20 differences
 ("ImageSource.I0.CaptureFrequency: 50Hz (file: 60Hz)", "Action rule X: missing"). Read only. Tests
 `ConfigMatchCheckTests` (the fake camera the recorded ADM file was made from).
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device. The source device of Configure devices and Create configuration file is read with the user's query, so only a device of the user's view can be the source; the dialog picks it from the client's device list, which holds only those. Configuration files stay on the client (an import uploads its file for its own run): the server keeps no shared file with saved passwords. Test: `DeviceGroupTests` (`PluginCanary`).
