@@ -10,7 +10,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   UseHostName (bool: Address is a name, not an IP), HostName (the verified DNS name or the typed name), Model (ProdNbr), FirmwareVersion, DhcpEnabled, HttpsEnabled,
   Dot1xEnabled, UpnpFriendlyName, ServerName, Status (enum below), Scheme (http/https),
   ProductType (raw basicdeviceinfo ProdType, e.g. "Dome Camera"), Soc (raw basicdeviceinfo Soc, e.g. "Axis Artpec-8",
-  max 64, migration `DeviceSoc`; proto `soc = 29`), Category (enum below),
+  max 64, migration `DeviceSoc`; proto `soc = 29`), Architecture (raw basicdeviceinfo Architecture, e.g. "aarch64", max 32,
+  migration `DeviceArchitecture`; proto `architecture = 33`), Category (enum below),
   HasVideo (derived from Category, not stored),
   CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
   CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown

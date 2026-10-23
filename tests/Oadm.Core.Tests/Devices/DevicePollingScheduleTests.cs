@@ -170,6 +170,7 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         Assert.Equal(CertificatePinning.ComputeFingerprint(cert), row.CertFingerprintSha256);
         Assert.Equal("Dome Camera", row.ProductType); // recorded P3265-V
         Assert.Equal("Axis Artpec-8", row.Soc);
+        Assert.Equal("aarch64", row.Architecture);
         Assert.Equal(DeviceCategory.Camera, row.Category);
         Assert.True(row.HasVideo);
 

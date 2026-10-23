@@ -34,6 +34,9 @@ public sealed class ColumnLayoutViewModel
     /// <summary>The Compliance column (the worst result); hidden while each check has its own column.</summary>
     public const string ComplianceKey = "compliance";
 
+    /// <summary>The Architecture column ("aarch64"), off until turned on in the column chooser.</summary>
+    public const string ArchitectureKey = "architecture";
+
     /// <summary>Default columns in the order of the spec table.</summary>
     public static IReadOnlyList<(string Key, string Header)> DefaultColumns { get; } =
     [
@@ -45,6 +48,7 @@ public sealed class ColumnLayoutViewModel
         ("mac", "MAC address"),
         ("firmware", "Firmware"),
         ("soc", "SoC"),
+        (ArchitectureKey, "Architecture"),
         ("tags", "Tags"),
         ("site", "Site"),
         ("dhcp", "DHCP"),
@@ -96,8 +100,8 @@ public sealed class ColumnLayoutViewModel
         }
     }
 
-    /// <summary>Every column shows by default except Compliance (turned on in the column chooser).</summary>
-    public static bool DefaultVisible(string key) => key != ComplianceKey;
+    /// <summary>Every column shows by default except Compliance and Architecture (turned on in the column chooser).</summary>
+    public static bool DefaultVisible(string key) => key is not (ComplianceKey or ArchitectureKey);
 
     /// <summary>The device grid shows one column per compliance check, persisted per client.</summary>
     public bool ExpandCompliance

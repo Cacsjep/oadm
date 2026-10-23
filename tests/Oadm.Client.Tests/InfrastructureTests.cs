@@ -265,10 +265,12 @@ public sealed class ColumnLayoutTests
         var layout = new ColumnLayoutViewModel(new InMemoryClientSettingsStore());
 
         Assert.Equal(
-            ["icon", "address", "model", "status", "compliance", "mac", "firmware", "soc", "tags", "site", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
+            ["icon", "address", "model", "status", "compliance", "mac", "firmware", "soc", "architecture", "tags", "site", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
             layout.Columns.Select(c => c.Key).ToArray());
         Assert.DoesNotContain(layout.Choosable, c => c.Key == "icon");
         Assert.Equal("IEEE 802.1X", layout.Find("dot1x")!.Header);
+        Assert.False(layout.Find("architecture")!.IsVisible); // off until chosen, like Compliance
+        Assert.True(layout.Find("soc")!.IsVisible);
     }
 
     [Fact]
@@ -284,6 +286,18 @@ public sealed class ColumnLayoutTests
         Assert.False(restored.Find("dot1x")!.IsVisible);
         Assert.Equal(200.0, restored.Find("model")!.Width);
         Assert.True(restored.Find("model")!.DisplayIndex < restored.Find("mac")!.DisplayIndex);
+    }
+
+    [Fact]
+    public void A_layout_saved_before_the_architecture_column_keeps_it_hidden()
+    {
+        var settings = new InMemoryClientSettingsStore();
+        settings.Current.DeviceColumns.Add(new ColumnLayoutEntry { Key = "soc", IsVisible = true, DisplayIndex = 7 });
+
+        var layout = new ColumnLayoutViewModel(settings);
+
+        Assert.False(layout.Find("architecture")!.IsVisible);
+        Assert.True(layout.Find("soc")!.IsVisible);
     }
 }
 

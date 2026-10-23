@@ -104,6 +104,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
     /// <summary>SoC of the device, "ARTPEC-8" (<see cref="DeviceSocText"/>); null until the server read it.</summary>
     [ObservableProperty] public partial string? Soc { get; private set; }
+
+    /// <summary>CPU architecture as the device reports it ("aarch64"); null until the server read it.</summary>
+    [ObservableProperty] public partial string? Architecture { get; private set; }
     [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
     [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
     [ObservableProperty] public partial bool HasVideo { get; private set; }
@@ -182,6 +185,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         Category = device.Category;
         ProductType = string.IsNullOrEmpty(device.ProductType) ? null : device.ProductType;
         Soc = DeviceSocText.ToText(device.Soc);
+        Architecture = string.IsNullOrEmpty(device.Architecture) ? null : device.Architecture;
         CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
         CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, ProductType);
         HasVideo = device.HasVideo;
@@ -237,7 +241,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc)
-            || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
+            || Contains(Architecture) || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

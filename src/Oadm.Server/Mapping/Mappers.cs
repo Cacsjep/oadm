@@ -37,6 +37,7 @@ public static class Mappers
             ReplacementModel = device.ReplacementModel ?? string.Empty,
             ProductType = device.ProductType ?? string.Empty,
             Soc = device.Soc ?? string.Empty,
+            Architecture = device.Architecture ?? string.Empty,
             Category = ToProto(device.Category),
             HasVideo = device.HasVideo,
             CertTrust = ToProto(device.CertTrust),

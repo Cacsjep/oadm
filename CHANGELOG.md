@@ -6,6 +6,11 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- Device list: an **Architecture** column ("aarch64", "armv7hf"), off by default; turn it on in the column chooser.
+  Also in the search and the export.
+
 ## [4.1.0] - 2026-10-23
 
 ### Added

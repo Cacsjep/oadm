@@ -532,6 +532,11 @@ public sealed partial class DevicePollingService : IDisposable
             {
                 observation.Soc = info.Soc.Trim();
             }
+
+            if (!string.IsNullOrWhiteSpace(info.Architecture))
+            {
+                observation.Architecture = info.Architecture.Trim();
+            }
             observation.LastSeen = _time.GetUtcNow().UtcDateTime;
         }
         catch (Exception ex) when (Sites.SiteErrors.Find(ex) is { } site)
@@ -815,6 +820,8 @@ public sealed partial class DevicePollingService : IDisposable
 
         public string? Soc { get; set; }
 
+        public string? Architecture { get; set; }
+
         public DeviceCategory Category { get; set; }
 
         public CertificateInfo? Certificate { get; set; }
@@ -833,6 +840,7 @@ public sealed partial class DevicePollingService : IDisposable
             d.CertFingerprintSha256 = RenewedFingerprint ?? d.CertFingerprintSha256 ?? Fingerprint;
             d.ServerName = ServerName ?? d.ServerName;
             d.Soc = Soc ?? d.Soc;
+            d.Architecture = Architecture ?? d.Architecture;
             if (ProductType is not null)
             {
                 d.ProductType = ProductType;

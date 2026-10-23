@@ -1666,6 +1666,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         HasCredentials = status != DeviceStatus.PasswordNotSet,
         ProductType = SampleProductType(model),
         Soc = SampleSoc(model),
+        Architecture = SampleSoc(model) == "Axis Artpec-6" ? "armv7hf" : "aarch64",
         Category = SampleCategory(model),
         HasVideo = SampleCategory(model) is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom,
         CertTrust = CertificateTrust.SelfSigned,

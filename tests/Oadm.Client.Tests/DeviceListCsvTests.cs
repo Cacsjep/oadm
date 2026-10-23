@@ -27,6 +27,7 @@ public sealed class DeviceListCsvTests
         device.Category = DeviceCategory.Camera;
         device.ProductType = "Dome Camera";
         device.Soc = "Axis Artpec-8";
+        device.Architecture = "aarch64";
         device.CertNotAfter = Timestamp.FromDateTime(new DateTime(2027, 3, 4, 10, 0, 0, DateTimeKind.Utc));
         device.CertTrust = CertificateTrust.SelfSigned;
         device.Tags.AddRange(["Building A", "PTZ"]);
@@ -34,8 +35,8 @@ public sealed class DeviceListCsvTests
         string csv = DeviceListCsv.Write([Row(device)]);
 
         string[] lines = csv.Split("\r\n");
-        Assert.Equal("MAC address,Status,Address,Tags,Site,Host name,Model,Firmware,SoC,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X,Compliance", lines[0]);
-        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,,cam-entrance,AXIS P3265-V,12.11.77,ARTPEC-8,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled,", lines[1]);
+        Assert.Equal("MAC address,Status,Address,Tags,Site,Host name,Model,Firmware,SoC,Architecture,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X,Compliance", lines[0]);
+        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,,cam-entrance,AXIS P3265-V,12.11.77,ARTPEC-8,aarch64,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled,", lines[1]);
         Assert.Equal("", lines[2]); // CRLF after the last record
     }
 
@@ -59,6 +60,18 @@ public sealed class DeviceListCsvTests
         Assert.Equal("ARTPEC-8", row.Soc);
         Assert.True(row.Matches("artpec-8"));
         Assert.False(row.Matches("artpec-7"));
+    }
+
+    [Fact]
+    public void The_search_finds_devices_by_architecture()
+    {
+        Device device = TestSupport.Device("1", "ACCC8E5F6071", "10.0.0.48", "AXIS P3265-V");
+        device.Architecture = "aarch64";
+        DeviceRowViewModel row = Row(device);
+
+        Assert.Equal("aarch64", row.Architecture);
+        Assert.True(row.Matches("aarch64"));
+        Assert.False(row.Matches("armv7hf"));
     }
 
     [Theory]

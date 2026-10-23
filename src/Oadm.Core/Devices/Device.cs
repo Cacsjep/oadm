@@ -45,6 +45,9 @@ public sealed class Device : IDeviceInfo
     /// <summary>Raw basicdeviceinfo Soc, e.g. "Axis Artpec-8"; null until read (older firmware does not report it).</summary>
     public string? Soc { get; set; }
 
+    /// <summary>Raw basicdeviceinfo Architecture, e.g. "aarch64"; null until read.</summary>
+    public string? Architecture { get; set; }
+
     /// <summary>Category mapped from <see cref="ProductType"/> by <see cref="DeviceCategoryMapper"/>.</summary>
     public DeviceCategory Category { get; set; } = DeviceCategory.Unknown;
 
