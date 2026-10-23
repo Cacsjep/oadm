@@ -5,7 +5,8 @@ description: Services on the server with their own page in the navigation rail, 
 
 A core plugin runs inside the server for as long as it runs: an NTP server, a CA, a table of every SD card. It usually
 has a page in the navigation rail. The page calls the server part with `InvokeAsync` and gets live updates through
-events. A core plugin can also contribute task plugins, actions and event types.
+events. Every call carries the user's call context; a user limited to a [device group](../device-groups/) reaches only
+the devices of that group. A core plugin can also contribute task plugins, actions and event types.
 
 ## The server part: `ICorePlugin`
 
@@ -16,9 +17,11 @@ events. A core plugin can also contribute task plugins, actions and event types.
 | `HasPage` | False: no rail entry (a toolbar button or only tasks) |
 | `TaskPlugins` | Task plugins it contributes; they reach the owner through `ctx.Owner` |
 | `StartAsync(ctx, ct)`, `StopAsync(ct)` | When the server starts or stops, and when an administrator turns the plugin on or off |
-| `InvokeAsync(method, payloadJson, ct)` | The backend of the page: JSON in, JSON out |
+| `InvokeAsync(caller, method, payloadJson, ct)` | The backend of the page: JSON in, JSON out. `caller` is the user's call with the devices that user may reach, see [Device groups](../device-groups/) |
 | `Permissions`, `RequiredPermission(method)` | Named rights for the role matrix, see [Permissions](#permissions) |
 | `IsAudited(method)` | Write the call to the audit log |
+| `RequiresAllDevices(method)` | Only users with all devices may call it (saves of server-wide settings) |
+| `SystemAccessReason(method)` | Why the method needs every device during a group user's call; null for most |
 
 `StartAsync` must return fast. Never wait for a device or the network there: start a background loop instead. A
 plugin that throws on start is marked as failed; the others keep running.
@@ -27,13 +30,13 @@ plugin that throws on start is marked as failed; the others keep running.
 
 | Member | Use |
 |---|---|
-| `Devices` | Every managed device (`ListAsync`, `FindAsync`), see [Devices and VAPIX](../devices/) |
-| `Vapix` | `CreateAsync(deviceId, ct)`: a logged-in client. The host caches it; never dispose it |
-| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)`, `IsActive(taskId)` (queued or running) |
+| `Devices` | Every managed device (`ListAsync`, `FindAsync`), see [Devices and VAPIX](../devices/). Background work only: in a method use `caller.Devices` |
+| `Vapix` | `CreateAsync(deviceId, ct)`: a logged-in client. The host caches it; never dispose it. In a method: `caller.Vapix` |
+| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)`, `IsActive(taskId)` (queued or running). In a method: `caller.Tasks` |
 | `Settings` | `GetAsync` / `SetAsync(key, json)`: the plugin's own settings in the server database |
 | `Logger` | The server log |
 | `Secrets` | `Protect` / `Unprotect`: encrypt what you store in the settings with the server's key |
-| `Events` | `Publish(topic, json)`: live events to every page that watches |
+| `Events` | `Publish(topic, json, audience)`: live events to the pages the audience covers (`PluginEventAudience`); `Publish(topic, json)` reaches users with all devices |
 | `DataDirectory` | A private folder for working files, inside the protected data folder |
 | `PluginDirectory` | The plugin's folder, for data files you ship. Never use `Assembly.Location` |
 | `EventStreams` | RTSP event streams of devices |
@@ -45,6 +48,9 @@ plugin that throws on start is marked as failed; the others keep running.
 | `Network` | `IPluginNetwork`: network checks on a device's route (`ForDevice(device)`, `ForSite(siteId)`) and listeners on the server's own network (`ListenUdpAsync`, `ListenTcpAsync`), see [Sites](../sites/) |
 | `Sites` | `ISites`: the bound sites and relays that listen at a site (`OpenUdpRelayAsync`, `OpenTcpRelayAsync`), see [Sites](../sites/) |
 | `License` | `IPluginLicense`: the package's license, live (`IsValid`, `Has(feature)`, `Limit(name)`, `Changed`), see [Licenses](../licenses/) |
+| `System` | `ISystemAccess`: every device, for background work and methods with a `SystemAccessReason` |
+| `Jobs` | `IPluginJobs`: work a method starts for its user (reports, scans, monitors), owned by that user |
+| `DeviceScopes` | `IDeviceScopes`: the devices of a device group, for objects kept per group (dashboards, views) |
 
 Every member after `Logger` may be null on an older host or where it does not apply. Check before you use it.
 
@@ -149,13 +155,13 @@ Never send a stored password back to the page. Show that one is set, and keep it
 
 A core plugin can run its own tasks on many devices, like VAPIX Commander's rollouts. Contribute a task plugin with
 `ShowInMenus => false` (not in the context menu), start it with `ctx.Tasks.RunAsync`, and set `ShowTasksPane` on the
-page so the user watches the tasks below it. Pass `ctx.OwnerName` from the page in the payload so the tasks show who
-started them.
+page so the user watches the tasks below it. Start them through the call, so they run only on the user's devices and
+show who started them.
 
 ```csharp
 public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }   // e.g. [new RolloutTask(this)]
 
-var ids = await ctx.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJson, owner, ct);
+var ids = await caller.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJson, caller.UserName, ct);
 ```
 
 ## Downloads
@@ -163,7 +169,7 @@ var ids = await ctx.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJson,
 A core plugin that also implements `ICorePluginDownloads` sends files to its page without storing them on the server:
 
 ```csharp
-public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct);
+public Task<PluginDownload> OpenDownloadAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct);
 ```
 
 Return a `PluginDownload` with the stream, the file name and the length when known. The host checks the permission,
@@ -254,4 +260,4 @@ Each has a `README.md` in its folder with its decisions and details.
 
 ## Reference
 
-Every member with its signature in the [SDK reference](../../api/): [`ICorePlugin`](../../api/sdk/plugins/icoreplugin/), [`ICorePluginContext`](../../api/sdk/plugins/icoreplugincontext/), [`IPluginSettings`](../../api/sdk/plugins/ipluginsettings/), [`ISecretProtector`](../../api/sdk/plugins/isecretprotector/), [`IPluginEvents`](../../api/sdk/plugins/ipluginevents/), [`ICorePluginDownloads`](../../api/sdk/plugins/icoreplugindownloads/), [`ICorePluginPage`](../../api/sdk/client/icorepluginpage/), [`ICorePluginClientContext`](../../api/sdk/client/icorepluginclientcontext/), [`IToolbarPlugin`](../../api/sdk/client/itoolbarplugin/), [`IToolbarContext`](../../api/sdk/client/itoolbarcontext/).
+Every member with its signature in the [SDK reference](../../api/): [`ICorePlugin`](../../api/sdk/plugins/icoreplugin/), [`ICorePluginContext`](../../api/sdk/plugins/icoreplugincontext/), [`ICallContext`](../../api/sdk/plugins/icallcontext/), [`IPluginSettings`](../../api/sdk/plugins/ipluginsettings/), [`ISecretProtector`](../../api/sdk/plugins/isecretprotector/), [`IPluginEvents`](../../api/sdk/plugins/ipluginevents/), [`ICorePluginDownloads`](../../api/sdk/plugins/icoreplugindownloads/), [`ICorePluginPage`](../../api/sdk/client/icorepluginpage/), [`ICorePluginClientContext`](../../api/sdk/client/icorepluginclientcontext/), [`IToolbarPlugin`](../../api/sdk/client/itoolbarplugin/), [`IToolbarContext`](../../api/sdk/client/itoolbarcontext/).

@@ -144,16 +144,22 @@ Failed calls throw `RpcException`; show `Status.Detail`, or use `ServerErrors.Me
 ```csharp
 public sealed class MyTask : ITaskPlugin, ITaskPluginQuery
 {
-    public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+    public async Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
         method switch
         {
             "users" => await ReadUsersAsync(ctx.Vapix, ct),
             _ => throw new ArgumentException("Unknown query " + method),
         };
+
+    // The host calls the overload above; keep the old one.
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException();
 }
 ```
 
-A query must never change the device. It runs on the server with the stored login and a 30 s limit.
+A query must never change the device. It runs on the server with the stored login and a 30 s limit. It reads devices
+other than the queried one only through `caller` (the devices of the user who asks, see
+[Device groups](../device-groups/)); an address-in-use check asks `ctx.ManagedAddressesAsync(addresses, ct)`.
 
 ### Uploaded files
 

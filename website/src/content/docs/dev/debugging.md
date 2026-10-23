@@ -58,7 +58,7 @@ Look in the server log first. Every plugin folder writes one of these lines at s
 
 ```text
 Loaded plugin package acme.hello 1.0.0 from G:\odam\artifacts\plugins\acme.hello (1 plugin(s))
-Plugin problem in G:\odam\artifacts\plugins\acme.hello: Plugin acme.hello requires SDK 0.4.0, host has 0.3.0.
+Plugin problem in G:\odam\artifacts\plugins\acme.hello: Plugin acme.hello requires SDK 0.5.0, host has 0.4.0.
 ```
 
 | You see | Check |

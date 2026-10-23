@@ -130,6 +130,9 @@ them in one file of the server project means a typo cannot break the page.
 - **`ctx.Vapix.CreateAsync`** gives a client that is already logged in to the device. The server keeps it; never
   dispose it.
 - **`Publish`** stores the new state with the next version and sends it to every page.
+- The sample reads devices through `ctx`, so it serves users with all devices. A user limited to a device group gets
+  "Only users with all devices can do this." from it. To serve them too, implement `InvokeAsync(caller, ...)` and read
+  through `caller.Devices` and `caller.Vapix`: see [Device groups](../device-groups/).
 
 <Code code={template(plugin)} lang="csharp" title="MyCoolPagePlugin.cs" />
 

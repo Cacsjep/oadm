@@ -191,6 +191,7 @@ export default defineConfig({
 						{ label: 'Event rules', slug: 'dev/event-rules' },
 						{ label: 'Compliance checks', slug: 'dev/compliance-checks' },
 						{ label: 'Sites', slug: 'dev/sites' },
+						{ label: 'Device groups', slug: 'dev/device-groups' },
 						{ label: 'UI kit', slug: 'dev/ui' },
 						{ label: 'Testing', slug: 'dev/testing' },
 						{ label: 'Debug a plugin', slug: 'dev/debugging' },

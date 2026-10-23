@@ -49,12 +49,14 @@ if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
 | Where | How |
 |---|---|
 | Task plugin | `ExecuteAsync(ctx, device, payload, ct)` gets its device; `ctx.Vapix` is logged in to it |
-| Task query | `QueryAsync(ctx, device, ...)` the same; `ctx.Devices` lists all managed devices |
-| Core plugin | `ctx.Devices.ListAsync(ct)` and `ctx.Devices.FindAsync(id, ct)`; `ctx.Vapix.CreateAsync(id, ct)` for a client |
+| Task query | `QueryAsync(ctx, caller, device, ...)` the same; `caller.Devices` lists the devices of the user who asks |
+| Core plugin method | `caller.Devices.ListAsync(ct)` and `caller.Devices.FindAsync(id, ct)`; `caller.Vapix.CreateAsync(id, ct)` for a client. Only the user's devices, see [Device groups](../device-groups/) |
+| Core plugin background work | `ctx.Devices` and `ctx.Vapix`: every managed device |
 | Action | `ctx.Vapix` for the target device when `NeedsDevice` is true |
 
 A core plugin that reads many devices does it with bounded parallelism, a timeout per device and the status check
-first. This reads the AXIS OS version of every video device, 16 at a time:
+first. This background work reads the AXIS OS version of every video device, 16 at a time (in a method, pass
+`caller.Devices` and `caller.Vapix` instead):
 
 ```csharp
 public sealed record FirmwareRow(Guid DeviceId, string Address, string? Version, string? Error);

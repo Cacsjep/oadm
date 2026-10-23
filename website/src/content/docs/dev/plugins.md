@@ -81,7 +81,7 @@ Both parts use the project SDK `Oadm.Plugin.Sdk`. It names the assemblies after 
 build:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.0.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.2.0">
   <PropertyGroup>
     <OadmPluginId>acme.hello</OadmPluginId>
     <Version>1.0.0</Version>
@@ -101,7 +101,7 @@ other packages go into the plugin folder with your plugin.
 |---|---|---|
 | `OadmPluginId` | `id` | Unique and stable. It names the folder, the settings and the permissions. Never change it |
 | `Version` | `version` | Your plugin's version |
-| (the SDK's) | `minSdkVersion` | The SDK your plugin is built with (`SdkInfo.Version`). An older host skips the plugin and logs why |
+| (the SDK's) | `minSdkVersion` | The SDK your plugin is built with (`SdkInfo.Version`). An older host skips the plugin and logs why. Below 0.4.0 users with a device group cannot use it, see [SDK versions](../compatibility/#plugins-built-before-040) |
 | `OadmDisplayName`, `OadmDescription` | `displayName`, `description` | The row on the **Plugins** page: the name and one short sentence |
 | `OadmEnabledByDefault` | `enabledByDefault` | `false`: off until an administrator turns it on. Use it for anything that runs in the background |
 | `OadmLicense...` | `license` | A plugin you sell: [Sell a plugin with a license](../licenses/) |
@@ -140,6 +140,8 @@ These rules hold for the built-in plugins too. Pull requests that break them are
   connection last. Details in [Task plugins](../tasks/#device-safety).
 - **Trust.** Your plugin runs with the server's rights (Local System or root as a service) and reaches every managed
   device. Administrators are told to install only plugins they trust: keep yours small, open and free of surprises.
+- **The user's devices.** A method reaches devices only through the user's call (`caller.*`), never `ctx.*`: a user can
+  be limited to a device group. See [Device groups](../device-groups/).
 - **Network.** Never open your own sockets: reach devices through the host (`IVapixClient`, `ctx.EventStreams`,
   `ctx.Network` / `IDeviceNetwork`), so devices at a site work too. The build warns (RS0030). See [Sites](../sites/).
 - **Secrets.** Payloads live in memory only. Never log or store a password; store secrets only encrypted
