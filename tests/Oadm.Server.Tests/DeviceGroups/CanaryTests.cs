@@ -634,11 +634,11 @@ public sealed class CanaryTests
     /// </summary>
     internal sealed class Canary : IAsyncDisposable
     {
-        private Canary(TestServerHost host, CallInvoker invoker, AuthenticatedCaller caller, Guid inside, Guid outside, FakeAxisDevice outsideDevice, RecordingStreams streams)
+        private Canary(TestServerHost host, CallInvoker invoker, Guid groupId, Guid inside, Guid outside, FakeAxisDevice outsideDevice, RecordingStreams streams)
         {
             Host = host;
             Invoker = invoker;
-            Caller = caller;
+            GroupId = groupId;
             Inside = inside;
             Outside = outside;
             OutsideDevice = outsideDevice;
@@ -650,7 +650,8 @@ public sealed class CanaryTests
         /// <summary>Calls as the group user (a role with every permission).</summary>
         public CallInvoker Invoker { get; }
 
-        public AuthenticatedCaller Caller { get; }
+        /// <summary>The group user's device group (the tag "Inside").</summary>
+        public Guid GroupId { get; }
 
         public Guid Inside { get; }
 
@@ -708,7 +709,6 @@ public sealed class CanaryTests
             var inside = await repo.AddAsync(new Device { Serial = InsideSerial, Address = "10.9.0.1", AddedByAllDevices = true }, CancellationToken.None);
             var outside = await repo.AddAsync(new Device { Serial = OutsideSerial, Address = "10.9.0.2", AddedByAllDevices = true }, CancellationToken.None);
             await host.Tags.SetDeviceTagsAsync(new Proto.SetDeviceTagsRequest { DeviceIds = { inside.Id.ToString() }, Add = { "Inside" } });
-            var tag = (await host.Tags.ListAsync(new Proto.Empty())).Tags.Single(t => t.Name == "Inside").Id;
 
             // The role may open the web interface (DeviceWebService needs the Web View plugin's permission; the plugin is not loaded).
             var webView = new Core.Plugins.PluginRegistry();
@@ -716,22 +716,8 @@ public sealed class CanaryTests
             CanaryTaskPlugin.Register(webView); // one catalog: every permission
             await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(webView), CancellationToken.None);
 
-            var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);
-            var keys = (await roles.GetMatrixAsync(new Proto.Empty())).Permissions.Select(p => p.Key);
-            var role = (await roles.SaveRolesAsync(new Proto.SaveRolesRequest { Roles = { new Proto.RoleChange { Name = "Everything", Permissions = { keys } } } }))
-                .Roles.Single(r => r.Name == "Everything").Id;
-            var group = await new Proto.DeviceGroupService.DeviceGroupServiceClient(host.Invoker).SaveAsync(new Proto.SaveDeviceGroupRequest
-            {
-                Name = "Canary",
-                Rules = new Proto.DeviceGroupRules { TagIds = { tag } },
-            });
-            var user = await host.Users.AddAsync(new Proto.AddUserRequest { UserName = "canary", Password = "pw", RoleId = role, DeviceGroupId = group.Id });
-            var invoker = await host.InvokerForRoleAsync("canary", Guid.Parse(role));
-            var caller = new AuthenticatedCaller(Guid.Parse(user.Id), "canary", Guid.Parse(role), PermissionSet.All, "local", "", "x")
-            {
-                Devices = new CallerDevices(DeviceScope.Group(Guid.Parse(group.Id)), group.Revision),
-            };
-            return new Canary(host, invoker, caller, inside.Id, outside.Id, outsideDevice, streams);
+            var user = await GroupCallers.ForTagAsync(host, "canary", "Inside");
+            return new Canary(host, user.Invoker, user.GroupId, inside.Id, outside.Id, outsideDevice, streams);
         }
 
         /// <summary>Adds one more device inside the view (calls that remove the device they get).</summary>

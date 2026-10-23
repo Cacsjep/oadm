@@ -418,8 +418,6 @@ public sealed class AddDevicesScopeTests
     /// <summary>The server with two fake sites and the cameras at 192.168.0.20 (one per site, one on the server's network).</summary>
     private sealed class World : IAsyncDisposable
     {
-        private int _roles;
-
         private World(TestServerHost host, FakeSiteTransport sites, FakeSiteTransport.FakeSite a, FakeSiteTransport.FakeSite b, FakeAxisNetwork network)
         {
             Host = host;
@@ -467,15 +465,8 @@ public sealed class AddDevicesScopeTests
         /// <summary>A user with every permission and a new device group with <paramref name="rules"/> (named like the user).</summary>
         public async Task<GroupUser> GroupUserAsync(string name, Proto.DeviceGroupRules rules)
         {
-            var roles = new Proto.RoleService.RoleServiceClient(Host.Invoker);
-            var keys = (await roles.GetMatrixAsync(new Proto.Empty())).Permissions.Select(p => p.Key);
-            var roleName = "Everything " + Interlocked.Increment(ref _roles);
-            var role = (await roles.SaveRolesAsync(new Proto.SaveRolesRequest { Roles = { new Proto.RoleChange { Name = roleName, Permissions = { keys } } } }))
-                .Roles.Single(r => r.Name == roleName).Id;
-            var group = await new Proto.DeviceGroupService.DeviceGroupServiceClient(Host.Invoker).SaveAsync(new Proto.SaveDeviceGroupRequest { Name = name, Rules = rules });
-            var user = await Host.Users.AddAsync(new Proto.AddUserRequest { UserName = name, Password = "pw", RoleId = role, AllDevices = false, DeviceGroupId = group.Id });
-            var invoker = await Host.InvokerForRoleAsync(name, Guid.Parse(role));
-            return new GroupUser(invoker, Guid.Parse(user.Id), Guid.Parse(group.Id));
+            var user = await GroupCallers.ForRulesAsync(Host, name, rules);
+            return new GroupUser(user.Invoker, user.UserId, user.GroupId);
         }
 
         public ValueTask DisposeAsync() => Host.DisposeAsync();

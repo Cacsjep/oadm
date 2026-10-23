@@ -39,15 +39,6 @@ public sealed class DeviceGroupServiceTests
         return device;
     }
 
-    /// <summary>A custom role with every permission: what is refused then is refused for the devices, not the role.</summary>
-    private static async Task<string> EverythingRoleAsync(TestServerHost host)
-    {
-        var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);
-        var keys = (await roles.GetMatrixAsync(new Proto.Empty())).Permissions.Select(p => p.Key);
-        var matrix = await roles.SaveRolesAsync(new Proto.SaveRolesRequest { Roles = { new Proto.RoleChange { Name = "Everything", Permissions = { keys } } } });
-        return matrix.Roles.Single(r => r.Name == "Everything").Id;
-    }
-
     [Fact]
     public async Task AdministratorsCreateListPreviewChangeAndDeleteGroups()
     {
@@ -157,12 +148,9 @@ public sealed class DeviceGroupServiceTests
     {
         await using var host = await TestServerHost.StartAsync();
         await AddDeviceAsync(host, "ACCC8E000001", "PTZ");
-        var role = await EverythingRoleAsync(host);
-        var group = await Groups(host).SaveAsync(new Proto.SaveDeviceGroupRequest { Name = "Server", Rules = new Proto.DeviceGroupRules { ThisServer = true } });
-        await host.Users.AddAsync(new Proto.AddUserRequest { UserName = "grouped", Password = "pw", RoleId = role, DeviceGroupId = group.Id });
-        await host.Users.AddAsync(new Proto.AddUserRequest { UserName = "everywhere", Password = "pw", RoleId = role, AllDevices = true });
-        var grouped = await host.InvokerForRoleAsync("grouped", Guid.Parse(role));
-        var everywhere = await host.InvokerForRoleAsync("everywhere", Guid.Parse(role));
+        // A role with every permission: what is refused then is refused for the devices, not the role.
+        var grouped = (await GroupCallers.ForRulesAsync(host, "grouped", new Proto.DeviceGroupRules { ThisServer = true })).Invoker;
+        var everywhere = await GroupCallers.AllDevicesUserAsync(host, "everywhere");
 
         var denied = await Assert.ThrowsAsync<RpcException>(async () => await new Proto.TagService.TagServiceClient(grouped).DeleteAsync(new Proto.TagName { Name = "PTZ" }));
         Assert.Equal(StatusCode.PermissionDenied, denied.StatusCode);

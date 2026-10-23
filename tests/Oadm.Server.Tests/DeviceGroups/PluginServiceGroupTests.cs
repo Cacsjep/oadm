@@ -123,7 +123,7 @@ public sealed class PluginServiceGroupTests
         Assert.Equal("found", (await group.InvokeAsync(Request(CanaryPlugin.Id, "job.find", job))).PayloadJson);
 
         var groups = canary.Host.Get<Core.DeviceGroups.DeviceGroupStore>();
-        var saved = groups.Loaded![canary.Caller.DeviceGroupId!.Value];
+        var saved = groups.Loaded![canary.GroupId];
 
         // A new description alone keeps the job.
         saved = (await groups.SaveAsync(saved.Id, saved.Name, "changed", saved.Rules, saved.Revision, CancellationToken.None)).Group;

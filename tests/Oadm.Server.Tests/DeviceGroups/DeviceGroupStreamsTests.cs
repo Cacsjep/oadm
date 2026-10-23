@@ -179,7 +179,7 @@ public sealed class DeviceGroupStreamsTests
             Name = "Building B",
             Rules = new Proto.DeviceGroupRules { SiteIds = { b.ToString() }, ExceptSerials = { FakeSerials.Make(1) } },
         });
-        var invoker = await GroupUser.InvokerAsync(server.Host, Guid.Parse(group.Id));
+        var invoker = (await GroupCallers.UserAsync(server.Host, "anna", Guid.Parse(group.Id))).Invoker;
         var client = new Proto.SiteService.SiteServiceClient(invoker);
 
         await Eventually.TrueAsync(async () => (await server.ListAsync()).Sites.Sum(s => s.DeviceCount) == 5, "the device counts of both sites");
@@ -249,24 +249,8 @@ public sealed class DeviceGroupStreamsTests
         public static async Task<GroupUser> CreateAsync(TestServerHost host, params Guid[] tagged)
         {
             await host.Tags.SetDeviceTagsAsync(new Proto.SetDeviceTagsRequest { DeviceIds = { tagged.Select(t => t.ToString()) }, Add = { Tag } });
-            var tagId = (await host.Tags.ListAsync(new Proto.Empty())).Tags.Single(t => t.Name == Tag).Id;
-            var group = await new Proto.DeviceGroupService.DeviceGroupServiceClient(host.Invoker).SaveAsync(new Proto.SaveDeviceGroupRequest
-            {
-                Name = "B",
-                Rules = new Proto.DeviceGroupRules { TagIds = { tagId } },
-            });
-            var invoker = await InvokerAsync(host, Guid.Parse(group.Id));
-            return new GroupUser(invoker, new Proto.DeviceService.DeviceServiceClient(invoker));
-        }
-
-        public static async Task<CallInvoker> InvokerAsync(TestServerHost host, Guid groupId)
-        {
-            var roles = new Proto.RoleService.RoleServiceClient(host.Invoker);
-            var keys = (await roles.GetMatrixAsync(new Proto.Empty())).Permissions.Select(p => p.Key);
-            var role = (await roles.SaveRolesAsync(new Proto.SaveRolesRequest { Roles = { new Proto.RoleChange { Name = "Everything", Permissions = { keys } } } }))
-                .Roles.Single(r => r.Name == "Everything").Id;
-            await host.Users.AddAsync(new Proto.AddUserRequest { UserName = "anna", Password = "pw", RoleId = role, DeviceGroupId = groupId.ToString() });
-            return await host.InvokerForRoleAsync("anna", Guid.Parse(role));
+            var user = await GroupCallers.ForTagAsync(host, "anna", Tag);
+            return new GroupUser(user.Invoker, new Proto.DeviceService.DeviceServiceClient(user.Invoker));
         }
     }
 
