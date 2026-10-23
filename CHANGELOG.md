@@ -6,6 +6,26 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [4.1.0-rc.4] - 2026-10-23
+
+### Added
+
+- EST server: **View certificate** in the **Enrollments** list (also a double click on a row) shows the certificate an
+  enrollment issued: validity, issued to and by, key, serial number, fingerprint, uses and names. Enrollments from this
+  version on keep their certificate as long as they are listed.
+- **Certificate enrollment** stays open while Set up or Remove runs: the step it is on, then the result with the
+  camera's message, and the profiles are read again.
+- SDK: `ITaskDialogContext.CanRunTasks` and `RunTaskAsync`: a task dialog can start its task and follow it while it
+  stays open. `IPluginRecords.GetAsync` reads one record.
+
+### Fixed
+
+- Set up certificate enrollment after **Remove** failed after 2 minutes with "got no certificate": the camera keeps the
+  removed profile's certificate in use and never stores a new one under the same name. The profile now takes a second
+  name (`oadm2_...`), the camera switches to the new certificate and the older one is deleted. The same applies to a
+  profile whose settings changed (it used to keep its old certificate).
+- Set up certificate enrollment says so when the camera reports Enrolled but did not store the new certificate.
+
 ## [4.1.0-rc.3] - 2026-10-22
 
 ### Added
