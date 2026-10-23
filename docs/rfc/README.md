@@ -23,7 +23,7 @@ source of truth for the protocol code: read the RFC, not a summary, and cite the
 | [5246](rfc5246.txt) | TLS 1.2: handshake, alerts (7.2), PRF |
 | [8446](rfc8446.txt) | TLS 1.3: handshake, alerts (6) |
 | [5705](rfc5705.txt) | TLS keying material exporters |
-| [8996](rfc8996.txt) | TLS 1.0 and 1.1 deprecated (why the minimum is 1.2) |
+| [8996](rfc8996.txt) | TLS 1.0 and 1.1 deprecated (why the default minimum is 1.2 and lower ones warn) |
 | [9325](rfc9325.txt) | TLS recommendations: cipher suites (the default set of Advanced) |
 
 Not an RFC, also read: the Blast-RADIUS advisory (2024, blastradius.fail): why Message-Authenticator is required on every
