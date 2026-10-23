@@ -100,6 +100,19 @@ public sealed class RenewalTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_revoked_certificate_is_never_flagged_as_not_renewed()
+    {
+        var issued = Issue("A1", "https", _time.GetUtcNow().UtcDateTime);
+        _ca.Revoke(issued.SerialNumber); // its renewal is refused on purpose
+
+        _time.Advance(Due + TimeSpan.FromHours(1));
+        await _est.CheckRenewalsAsync(CancellationToken.None);
+
+        Assert.Empty(_publisher.Fired);
+        Assert.False(_est.Store.FindCertificate(issued.SerialNumber)!.NotRenewed);
+    }
+
+    [Fact]
     public async Task Stopped_renewals_are_never_flagged_and_removed_devices_are_forgotten()
     {
         var now = _time.GetUtcNow().UtcDateTime;
