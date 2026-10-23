@@ -42,7 +42,7 @@ public sealed partial class FakeOadmApi
         var result = new JsonObject { ["deviceId"] = deviceId, ["recordings"] = new JsonArray() };
         if (device is null || !device.HasVideo)
         {
-            result["problem"] = device is null ? "The device was removed from OADM." : "Not a video device";
+            result["problem"] = device is null ? Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1) : "Not a video device";
             return result.ToJsonString();
         }
 

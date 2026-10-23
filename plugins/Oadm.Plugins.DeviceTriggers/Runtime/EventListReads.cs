@@ -175,7 +175,7 @@ internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptio
         var device = await owner.Devices.FindAsync(id, ct).ConfigureAwait(false);
         if (device is null)
         {
-            return (DeviceMessages.Removed, null);
+            return (DeviceMessages.NoLongerAvailable(1), null);
         }
 
         if (DeviceConnection.RefusalFor(device) is { } refusal)

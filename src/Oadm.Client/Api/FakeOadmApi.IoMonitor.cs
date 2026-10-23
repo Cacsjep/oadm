@@ -53,7 +53,7 @@ public sealed partial class FakeOadmApi
 
         if (device is null || !device.Apis.Any(a => a.Id == "io-port-management"))
         {
-            return JsonSerializer.Serialize(new { error = device is null ? Oadm.Sdk.Devices.DeviceMessages.Removed : "The device has no inputs or outputs to show" }, FakeJson);
+            return JsonSerializer.Serialize(new { error = device is null ? Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1) : "The device has no inputs or outputs to show" }, FakeJson);
         }
 
         var streamId = Guid.NewGuid().ToString("N");

@@ -118,6 +118,8 @@
           <!-- A refused save or drop of the active view -->
           <TextBlock Grid.Row="1" Margin="12,8,12,0" Classes="error" TextWrapping="Wrap" Text="{Binding ActiveTab.Error, FallbackValue={x:Null}}"
                      IsVisible="{Binding ActiveTab.HasError, FallbackValue=False}" />
+          <TextBlock Grid.Row="1" Margin="12,8,12,0" Classes="secondary" TextWrapping="Wrap" Text="{Binding ActiveTab.Notice, FallbackValue={x:Null}}"
+                     IsVisible="{Binding ActiveTab.HasNotice, FallbackValue=False}" />
 
           <Panel Grid.Row="2" Margin="0,5,0,0">
             <TextBlock Classes="secondary" Text="{x:Static vm:LiveViewTexts.NoTabs}" IsVisible="{Binding ShowNoTabs}"

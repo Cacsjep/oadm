@@ -121,14 +121,7 @@ public sealed class TagStore
         ArgumentNullException.ThrowIfNull(tag);
         TagInfo info = Resolve(tag.Name);
         info.Update(tag.Name, tag.Defined ? tag.Color : TagColor.Unspecified, tag.Defined, info.DeviceCount);
-        if (tag.GroupNames.Count > 0)
-        {
-            info.SetGroupNames([.. tag.GroupNames]);
-        }
-        else if (previousName is not null && _byName.TryGetValue(previousName, out TagInfo? renamed) && renamed != info)
-        {
-            info.SetGroupNames(renamed.GroupNames); // a rename keeps the tag in its groups
-        }
+        info.SetGroupNames([.. tag.GroupNames]); // the server's answer names the groups now (a rename keeps them), none = none
 
         if (previousName is not null && !string.Equals(previousName, tag.Name, StringComparison.OrdinalIgnoreCase)
             && _byName.TryGetValue(previousName, out TagInfo? old))

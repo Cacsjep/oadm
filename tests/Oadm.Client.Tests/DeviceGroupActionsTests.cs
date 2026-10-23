@@ -130,6 +130,28 @@ public sealed class DeviceGroupActionsTests
     }
 
     [Fact]
+    public async Task A_server_before_device_groups_gives_the_check_form_no_owner_field()
+    {
+        await using var ui = new UiThread();
+        await ui.RunAsync(async () =>
+        {
+            var api = Substitute.For<IOadmApi>();
+            api.GetComplianceCatalogAsync(Arg.Any<CancellationToken>()).Returns(new ComplianceCatalog());
+            api.ListDeviceGroupsAsync(Arg.Any<CancellationToken>()).Returns<DeviceGroupList>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "Unknown service")));
+            var dialogs = Substitute.For<IDialogService>();
+            ComplianceCheckEditorViewModel? shown = null;
+            dialogs.ShowComplianceCheckAsync(Arg.Do<ComplianceCheckEditorViewModel>(e => shown = e)).Returns(false);
+            using var page = new ComplianceViewModel(api, dialogs, new DeviceStore(), ui, new InMemoryClientSettingsStore(), Admin());
+
+            await page.NewCheckCommand.ExecuteAsync(null);
+
+            Assert.Null(page.ErrorText);
+            Assert.NotNull(shown);
+            Assert.False(shown!.ShowOwner);
+        });
+    }
+
+    [Fact]
     public async Task The_add_buttons_are_disabled_with_the_refusal_as_tooltip()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
@@ -292,6 +314,15 @@ public sealed class DeviceGroupActionsTests
             fixture.Store.Tags.Reset(await api.ListTagsAsync(CancellationToken.None));
             Assert.Equal(["Building B"], fixture.Store.Tags.Find("PTZ")!.GroupNames);
             Assert.Empty(fixture.Store.Tags.Find("Outdoor")!.GroupNames);
+
+            // An answer of the server replaces the names, also with none (a tag the groups no longer use).
+            var store = new Oadm.Client.Tags.TagStore();
+            store.Apply(new DeviceTag { Name = "Dome", Defined = true, GroupNames = { "Lobby" } });
+            Assert.Equal(["Lobby"], store.Find("Dome")!.GroupNames);
+            store.Apply(new DeviceTag { Name = "Dome", Defined = true });
+            Assert.Empty(store.Find("Dome")!.GroupNames);
+            store.Apply(new DeviceTag { Name = "Dome 2", Defined = true, GroupNames = { "Lobby" } }, previousName: "Dome"); // a rename
+            Assert.Equal(["Lobby"], store.Find("Dome 2")!.GroupNames);
 
             string? question = null;
             var dialog = new DeviceTagsViewModel(api, fixture.Store.Tags, fixture.Store.Devices.Take(1).ToList(), fixture.Store.Devices, isAdmin: true,

@@ -302,7 +302,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         if (device is null)
         {
             // A user with a device group: an unknown device and one outside the group answer the same, nothing is sent.
-            return caller is { HasAllDevices: false } ? throw new DevicesNotAvailableException() : new TryCommandReply { Error = DeviceMessages.Removed };
+            return caller is { HasAllDevices: false } ? throw new DevicesNotAvailableException() : new TryCommandReply { Error = DeviceMessages.NoLongerAvailable(1) };
         }
 
         if (device.Status == DeviceStatus.CertificateChanged)

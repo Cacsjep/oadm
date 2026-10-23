@@ -71,6 +71,190 @@ public sealed class DeviceSweepsTests
         Assert.Equal([first.Id], sweep.Rows.Select(r => r.Id));
     }
 
+    [Fact]
+    public async Task ADeviceThatLeavesTheGroupBeforeItsReadIsNeverRead()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var first = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var leaves = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var key = ctx.FakeScopes.Add("B", [first.Id, leaves.Id]);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var read = new List<Guid>();
+        var published = new List<(IReadOnlyList<Row> Rows, IReadOnlyList<Guid> Removed)>();
+        await using var sweeps = Sweeps(ctx, 1, async (device, token) =>
+        {
+            lock (read)
+            {
+                read.Add(device.Id);
+            }
+
+            if (device.Id == first.Id)
+            {
+                await gate.Task.WaitAsync(token);
+            }
+        }, published);
+        var sweep = sweeps.For(key)!;
+        sweep.Start();
+        await Testing.Eventually.TrueAsync(() => Count(read) == 1, "the first read started");
+
+        ctx.FakeScopes.Add("B", [first.Id], key); // a tag change moves the second device out; no prune yet
+        gate.SetResult();
+        await sweep.Current;
+
+        lock (read)
+        {
+            Assert.Equal([first.Id], read);
+        }
+
+        Assert.False(sweep.HasRow(leaves.Id));
+        Assert.DoesNotContain(published.SelectMany(p => p.Rows), r => r.Id == leaves.Id);
+
+        static int Count(List<Guid> list)
+        {
+            lock (list)
+            {
+                return list.Count;
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ADeviceThatLeavesTheGroupDuringItsReadGetsNoRow()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var leaves = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var key = ctx.FakeScopes.Add("B", [leaves.Id]);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var published = new List<(IReadOnlyList<Row> Rows, IReadOnlyList<Guid> Removed)>();
+        await using var sweeps = Sweeps(ctx, 4, async (_, token) =>
+        {
+            started.TrySetResult();
+            await gate.Task.WaitAsync(token);
+        }, published);
+        var sweep = sweeps.For(key)!;
+        sweep.Start();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        ctx.FakeScopes.Add("B", [], key);
+        gate.SetResult();
+        await sweep.Current;
+
+        Assert.False(sweep.HasRow(leaves.Id));
+        Assert.Empty(sweep.Snapshot().Rows);
+        Assert.DoesNotContain(published.SelectMany(p => p.Rows), r => r.Id == leaves.Id);
+    }
+
+    [Fact]
+    public async Task ARowOfADeviceThatLeftBeforeThePublishGoesOutAsRemoved()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var stays = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var leaves = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var key = ctx.FakeScopes.Add("B", [stays.Id, leaves.Id]);
+        var published = new List<(IReadOnlyList<Row> Rows, IReadOnlyList<Guid> Removed)>();
+        await using var sweeps = Sweeps(ctx, 4, (_, _) => Task.CompletedTask, published);
+        var sweep = sweeps.For(key)!;
+        sweep.Start();
+        await sweep.Current; // the sweep's last publish went out with both rows
+        await sweep.ReadOneAsync(leaves.Id, CancellationToken.None); // read again: changed, not published yet
+        await sweep.ReadOneAsync(stays.Id, CancellationToken.None);
+        published.Clear();
+
+        ctx.FakeScopes.Add("B", [stays.Id], key);
+        sweep.Publish();
+
+        Assert.Equal([stays.Id], published.SelectMany(p => p.Rows).Select(r => r.Id));
+        Assert.Contains(leaves.Id, published.SelectMany(p => p.Removed));
+        Assert.False(sweep.HasRow(leaves.Id));
+        Assert.True(sweep.HasRow(stays.Id));
+    }
+
+    [Fact]
+    public async Task TheCallersRowsComeFromTheScopeWithoutListingTheDevices()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var stays = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var leaves = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var key = ctx.FakeScopes.Add("B", [stays.Id, leaves.Id]);
+        await using var sweeps = Sweeps(ctx, 4, (_, _) => Task.CompletedTask, []);
+        var sweep = sweeps.For(key)!;
+        sweep.Start();
+        await sweep.Current;
+        var all = new CountingCall(ctx.CallAsAllDevices());
+        var allSweep = sweeps.For(all)!;
+        allSweep.Start();
+        await allSweep.Current;
+
+        ctx.FakeScopes.Add("B", [stays.Id], key); // left the group
+        var group = new CountingCall(Testing.FakeCallContext.WithGroup(ctx, [stays.Id], "anna", key));
+        Assert.Equal([stays.Id], (await sweep.SnapshotAsync(group, CancellationToken.None)).Rows.Select(r => r.Id));
+        Assert.Equal(2, (await allSweep.SnapshotAsync(all, CancellationToken.None)).Rows.Count);
+        Assert.Equal(0, group.Lists + all.Lists);
+    }
+
+    private static DeviceSweeps<Row> Sweeps(
+        Testing.FakeCoreContext ctx,
+        int parallelism,
+        Func<IDeviceInfo, CancellationToken, Task> read,
+        List<(IReadOnlyList<Row> Rows, IReadOnlyList<Guid> Removed)> published) => new(
+            ctx,
+            new DeviceSweepOptions { Parallelism = parallelism, PublishInterval = TimeSpan.FromHours(1), DeviceTimeout = TimeSpan.FromSeconds(30) },
+            _ => true,
+            async (device, _, token) =>
+            {
+                await read(device, token);
+                return new Row(device.Id, device.Address);
+            },
+            r => r.Address,
+            (_, rows, removed) =>
+            {
+                lock (published)
+                {
+                    published.Add((rows, removed));
+                }
+            },
+            _ => { });
+
+    /// <summary>A call that counts how often its devices are listed.</summary>
+    private sealed class CountingCall(ICallContext inner) : ICallContext
+    {
+        private int _lists;
+
+        public int Lists => Volatile.Read(ref _lists);
+
+        public string UserName => inner.UserName;
+
+        public string SessionId => inner.SessionId;
+
+        public string DeviceScopeKey => inner.DeviceScopeKey;
+
+        public bool HasAllDevices => inner.HasAllDevices;
+
+        public IDeviceRepository Devices => new Counting(this, inner.Devices);
+
+        public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => inner.Vapix;
+
+        public Oadm.Sdk.Tasks.ITaskRunner Tasks => inner.Tasks;
+
+        public IDeviceEventStreams? EventStreams => inner.EventStreams;
+
+        public bool Has(string permission) => inner.Has(permission);
+
+        public bool Contains(IDeviceInfo device) => inner.Contains(device);
+
+        private sealed class Counting(CountingCall call, IDeviceRepository devices) : IDeviceRepository
+        {
+            public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
+            {
+                Interlocked.Increment(ref call._lists);
+                return devices.ListAsync(ct);
+            }
+
+            public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => devices.FindAsync(id, ct);
+        }
+    }
+
     internal sealed record Row(Guid Id, string Address);
 
     /// <summary>A plugin with one sweep per scope; its read uses the context's VAPIX factory like the table pages.</summary>

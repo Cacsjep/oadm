@@ -127,7 +127,7 @@ input, error or hint below the input; classes `wide` and `inline`), `StatCard` (
 title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
 needs attention; a card that filters a list sits in `Button.statCardButton`, the chosen one with `selected`), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
 search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be used greyed
-with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; `ShowOneAsync` (`DevicePickerOptions.SingleDevice`: checking a device
+with the reason; virtualized, 5,000 devices tested; while its `Accept` runs (the host saves) Cancel, Escape and the X wait (`IsAccepting`); `DevicePickerWindow.ShowAsync` returns the ids or null; `ShowOneAsync` (`DevicePickerOptions.SingleDevice`: checking a device
 unchecks the one before, no Select all / none) returns one id; with
 `DevicePickerOptions` a left column offers the device of the event, All devices, or Chosen devices and tags with the tag
 list (the devices of a chosen tag show checked with "Tag <name>"), `ShowChoiceAsync` / `DevicePickerViewModel.Choice`

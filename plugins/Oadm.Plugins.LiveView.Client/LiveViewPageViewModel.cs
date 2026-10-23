@@ -214,6 +214,7 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
         if (ActiveTab is { IsEditing: false } tab && tab.Id == entry.Id)
         {
             tab.Error = null;
+            tab.Notice = null;
             tab.IsEditing = true;
         }
     }
@@ -236,6 +237,7 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
 
         tab.IsSaving = true;
         tab.Error = null;
+        tab.Notice = null;
         try
         {
             var json = await _ctx.InvokeAsync("save", JsonSerializer.Serialize(tab.ToRequest(), LiveViewPluginInfo.Json), _life.Token).ConfigureAwait(true);
@@ -246,7 +248,7 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
             Upsert(saved);
             if (saved.Dropped > 0)
             {
-                tab.Error = ViewRules.DroppedText(saved.Dropped);
+                tab.Notice = ViewRules.DroppedText(saved.Dropped);
             }
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested)

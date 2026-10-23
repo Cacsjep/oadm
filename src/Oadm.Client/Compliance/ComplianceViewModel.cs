@@ -493,6 +493,10 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
                 var groups = await _api.ListDeviceGroupsAsync(CancellationToken.None).ConfigureAwait(true);
                 owners = [Settings.DeviceAccessOption.All, .. groups.Groups.Select(g => new Settings.DeviceAccessOption(g.Id, g.Name))];
             }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
+            {
+                // A server before device groups: its checks have no owner, the form has no Owner field.
+            }
             catch (RpcException ex)
             {
                 ErrorText = ex.Status.Detail;

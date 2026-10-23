@@ -89,6 +89,28 @@ public sealed class DeviceGroupTests
             e => ImageHealthJson.Deserialize<RowsEvent>(e.PayloadJson).Removed.Contains(leaves.Id));
     }
 
+    [Fact]
+    public async Task The_published_counts_leave_out_a_camera_that_left_the_group_before_any_prune()
+    {
+        var ctx = new FakeCoreContext();
+        var stays = ctx.Add(new FakeDevice { Address = "10.0.0.1" }, Camera());
+        var leaves = ctx.Add(new FakeDevice { Address = "10.0.0.2" }, Camera());
+        var key = ctx.FakeScopes.Add("Building B", [stays.Id, leaves.Id]);
+        await using var plugin = new ImageHealthPlugin(Fast());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        await ctx.InvokeAsync(plugin, FakeCallContext.WithGroup(ctx, [stays.Id, leaves.Id], "anna", key), ImageHealthMethods.Check, null);
+        await plugin.Monitor!.CurrentCheckOf(key);
+        Assert.Equal(2, plugin.Monitor.Snapshot(key, withRows: false).Running);
+
+        // A tag change moves the camera out of the group; no call and no prune came yet. The state the scope's users get
+        // in the background (PublishState) counts only the cameras in the group now.
+        ctx.FakeScopes.Add("Building B", [stays.Id], key);
+        var state = plugin.Monitor.Snapshot(key, withRows: true);
+
+        Assert.Equal(1, state.Running);
+        Assert.Equal([stays.Id], state.Rows.Select(r => r.DeviceId));
+    }
+
     private static FakeCamera Camera() => new()
     {
         Respond = (request, _) => request.RequestUri!.OriginalString.Contains(ImageHealthPluginInfo.StatusPath, StringComparison.Ordinal)

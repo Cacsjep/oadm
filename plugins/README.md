@@ -536,7 +536,10 @@ for them, and it keeps working unchanged for users with all devices.
   `Exists` and `Contains` in methods with a `SystemAccessReason`. Table pages use
   `DeviceSweeps<TRow>` (plugins/Shared/DeviceSweep.cs): `sweeps.For(caller)` is the sweep of the caller's scope (null
   for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`, and counts from
-  `sweep.ScopedSnapshot()` (rows of devices that left the scope dropped first).
+  `sweep.ScopedSnapshot()` (rows of devices that left the scope dropped first). A device that leaves during a sweep is
+  neither read nor published, and `sweep.SnapshotAsync(caller)` answers from the scope without listing the devices.
+  Event types of such objects carry their owner (`EventTypeInfo.OwnerScopeKey`): pages hide other owners' events from
+  group users.
 - **Rows and saved objects after a device left**: the group's `Changed` can come later than the device's move, so answer
   table rows with `DeviceSweep.SnapshotAsync(caller)` (only devices the caller sees now) and let a user with all devices
   save a group's object whose devices left with `OwnerScope.LeftOwnerAsync` (drop them, say how many). Bind ids that a task
@@ -544,7 +547,8 @@ for them, and it keeps working unchanged for users with all devices.
   service can name any id.
 - **Task plugins and actions**: a query reads devices other than the queried one only through `caller`; for an
   address-in-use check ask `ITaskQueryContext.ManagedAddressesAsync(candidates)` (every device on the route, never
-  named) and name only devices of `ctx.Devices` (Network settings `checkAddresses`). A task that sets a static address
+  named) and name only devices of `ctx.Devices` (Network settings `checkAddresses`); probe addresses that are not
+  devices only on a route the caller's group names (`caller.CoversRoute(siteId)`, null = the server's network). A task that sets a static address
   asks `ITaskExecutionContext.ManagedAddressesAsync` again before the first write and refuses an address in use (at
   most 256 addresses per call; `FakeTaskContext.OtherDeviceAddresses` in tests). Secrets kept for everyone (a saved
   command's passwords) only when `caller.HasAllDevices`. A package without a page tests with

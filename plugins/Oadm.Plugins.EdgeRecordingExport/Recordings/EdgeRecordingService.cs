@@ -70,7 +70,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
         if (device is null)
         {
             // A user with a device group: outside the group and unknown answer alike (users with all devices: as before).
-            return caller.HasAllDevices ? Failed(request.DeviceId, DeviceMessages.Removed) : throw new DevicesNotAvailableException();
+            return caller.HasAllDevices ? Failed(request.DeviceId, DeviceMessages.NoLongerAvailable(1)) : throw new DevicesNotAvailableException();
         }
 
         if (!device.HasVideo)
@@ -130,7 +130,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
 
         var format = request.Format is EdgeStorageRequests.Mp4 ? EdgeStorageRequests.Mp4 : EdgeStorageRequests.Matroska;
         var device = await caller.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false)
-            ?? (caller.HasAllDevices ? throw new InvalidOperationException(DeviceMessages.Removed) : throw new DevicesNotAvailableException());
+            ?? (caller.HasAllDevices ? throw new InvalidOperationException(DeviceMessages.NoLongerAvailable(1)) : throw new DevicesNotAvailableException());
         if (!device.HasVideo)
         {
             throw new InvalidOperationException(EdgeRecordingTexts.NotVideo);
@@ -365,7 +365,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
     internal static string ErrorText(Exception ex, TimeSpan timeout) => ex switch
     {
         OperationCanceledException or TimeoutException => DeviceMessages.Timeout(timeout),
-        KeyNotFoundException => DeviceMessages.Removed,
+        KeyNotFoundException => DeviceMessages.NoLongerAvailable(1),
         EdgeStorageException storage => storage.Message,
         HttpRequestException { StatusCode: { } code } => DeviceMessages.ForHttpStatus((int)code) ?? DeviceMessages.ServerError((int)code),
         HttpRequestException { InnerException: SocketException socket } => DeviceMessages.Unreachable(socket.Message),

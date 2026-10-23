@@ -110,9 +110,9 @@ public sealed class DeviceGroupsTests
         Assert.Equal(["ACCC8E000001"], choice.Serials);
         Assert.Equal(["ACCC8E000003"], choice.ExceptSerials);
 
-        // An except of a device no site or tag covers any more is not kept.
+        // An except of a device no site or tag covers now is kept (hidden): the device stays out when its site comes back.
         picker.Sites[1].IsChecked = false;
-        Assert.Empty(picker.GroupChoice.ExceptSerials);
+        Assert.Equal(["ACCC8E000003"], picker.GroupChoice.ExceptSerials);
         Assert.False(atB.CanInclude);
         Assert.Null(atB.Note);
         picker.Sites[1].IsChecked = true;
@@ -144,6 +144,26 @@ public sealed class DeviceGroupsTests
         Assert.True(choice.ThisServer);
         Assert.Equal(["ACCC8E000004", "B8A44F000099"], choice.Serials);
         Assert.Equal(["ACCC8E000002", "B8A44F000098"], choice.ExceptSerials);
+    }
+
+    [Fact]
+    public void An_excepted_single_device_is_not_counted_and_ticking_it_takes_it_back()
+    {
+        // As stored: the device is a single device and excepted (its site was removed from the rules later).
+        var initial = new DeviceGroupChoice(false, [], [], ["ACCC8E000001"], ["ACCC8E000001"]);
+        var picker = new DevicePickerViewModel(Devices(), initial, Options);
+        DevicePickItem single = picker.Visible.Single(i => i.Address == "10.0.0.1");
+
+        Assert.False(single.Chosen); // the server leaves it out: excepted wins
+        Assert.Equal(0, picker.CoveredCount);
+        Assert.Equal("0 of 6 devices", picker.Summary);
+
+        single.Chosen = true;
+        Assert.True(single.Chosen);
+        Assert.False(single.IsExcepted);
+        Assert.Equal("1 of 6 devices", picker.Summary);
+        Assert.Equal(["ACCC8E000001"], picker.GroupChoice.Serials);
+        Assert.Empty(picker.GroupChoice.ExceptSerials);
     }
 
     [Fact]
@@ -274,6 +294,50 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public async Task An_administrators_form_shows_the_stored_group_and_a_role_change_sends_the_devices_choice()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var dialogs = Substitute.For<IDialogService>();
+        var users = new UsersViewModel(api, dialogs, Admin(), NullLogger<UsersViewModel>.Instance);
+        await users.LoadAsync();
+        string lobby = users.DeviceOptions.Single(o => o.Title == "Lobby").GroupId!;
+        string adminRole = users.Roles.Single(r => r.Kind == RoleKind.Administrator).Id;
+        await api.AddUserAsync(new AddUserRequest { UserName = "boss", Password = "Boss-pass-123", RoleId = adminRole, AllDevices = true }, CancellationToken.None);
+        string id = (await api.ListUsersAsync(CancellationToken.None)).Single(u => u.UserName == "boss").Id;
+
+        async Task<UserRowViewModel> AdminWithLobbyAsync()
+        {
+            await api.UpdateUserAsync(new UpdateUserRequest { Id = id, RoleId = adminRole, AllDevices = false, DeviceGroupId = lobby }, CancellationToken.None);
+            await users.LoadAsync();
+            return users.Users.Single(u => u.UserName == "boss");
+        }
+
+        // The administrator has all devices; the form shows the group stored on the account (locked).
+        var boss = await AdminWithLobbyAsync();
+        Assert.Equal("All devices", boss.DevicesText);
+        users.OpenEditCommand.Execute(boss);
+        Assert.Equal("Lobby", users.EditDevices?.Title);
+        Assert.False(users.IsEditDevicesEnabled);
+
+        // Operator with All devices chosen: All devices.
+        users.EditRole = users.Roles.Single(r => r.Kind == RoleKind.Operator);
+        Assert.True(users.IsEditDevicesEnabled);
+        users.EditDevices = DeviceAccessOption.All;
+        await users.SaveFormCommand.ExecuteAsync(null);
+        Assert.Equal("All devices", users.Users.Single(u => u.UserName == "boss").DevicesText);
+
+        // Operator with the shown group left as it is: the group is sent with the role, not applied unseen.
+        boss = await AdminWithLobbyAsync();
+        users.OpenEditCommand.Execute(boss);
+        users.EditRole = users.Roles.Single(r => r.Kind == RoleKind.Operator);
+        await users.SaveFormCommand.ExecuteAsync(null);
+        Assert.Equal(UserForm.None, users.Form);
+        UserInfo stored = (await api.ListUsersAsync(CancellationToken.None)).Single(u => u.UserName == "boss");
+        Assert.Equal((false, lobby), (stored.AllDevices, stored.DeviceGroupId));
+        Assert.Equal("Lobby", users.Users.Single(u => u.UserName == "boss").DevicesText);
+    }
+
+    [Fact]
     public async Task Your_role_shows_the_group_and_its_rules()
     {
         var api = Substitute.For<IOadmApi>();
@@ -358,6 +422,34 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public async Task The_card_shows_that_it_reads_the_groups()
+    {
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var api = Substitute.For<IOadmApi>();
+            var reply = new TaskCompletionSource<DeviceGroupList>();
+            api.ListDeviceGroupsAsync(Arg.Any<CancellationToken>()).Returns(reply.Task);
+            var groups = new DeviceGroupsViewModel(api, Substitute.For<IDialogService>(), Admin());
+            var window = new Window { Width = 800, Height = 400, Content = new DeviceGroupsCardView { DataContext = groups } };
+            window.Show();
+            Task load = groups.LoadAsync();
+            Dispatcher.UIThread.RunJobs();
+            ProgressRow row = window.GetVisualDescendants().OfType<ProgressRow>().Single(r => r.Text == "Reading the device groups");
+            Assert.True(row.IsVisible);
+            Assert.False(groups.IsEmpty); // no "No device groups yet" while reading
+
+            reply.SetResult(new DeviceGroupList());
+            await load;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(row.IsVisible);
+            Assert.True(groups.IsEmpty);
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
     public async Task Screenshots_of_the_card_the_editor_and_the_user_form()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
@@ -372,8 +464,20 @@ public sealed class DeviceGroupsTests
             var users = new UsersViewModel(api, dialogs, Admin(), NullLogger<UsersViewModel>.Instance, groups: groups);
             await users.LoadAsync();
 
-            var page = new Window { Width = 1400, Height = 1100, Content = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) } };
+            // A wide page: users and device groups side by side; a small or scaled screen: the groups below the users.
+            var view = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) };
+            var page = new Window { Width = 1900, Height = 1100, Content = view };
             page.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(view.HasTwoColumns);
+            Capture(page, outDir, "client-permissions-wide.png");
+            page.Width = 1050; // the page of a 1280 px window with the rail
+            page.Height = 640;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(view.HasTwoColumns);
+            Capture(page, outDir, "client-permissions-1280.png");
+            page.Width = 1400;
+            page.Height = 1100;
             Dispatcher.UIThread.RunJobs();
             List<string> texts = page.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("Device groups", texts);

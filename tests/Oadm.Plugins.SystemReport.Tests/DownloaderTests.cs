@@ -175,7 +175,7 @@ public sealed class DownloaderTests : IDisposable
         Assert.Equal("No server report API (serverreport.cgi) - HTTP 404", ServerReportRequests.HttpError(HttpStatusCode.NotFound, null, null));
         Assert.Equal("Error: busy - HTTP 503", ServerReportRequests.HttpError(HttpStatusCode.ServiceUnavailable, "text/plain", "Error: busy\nmore"));
         Assert.Equal("Request failed - HTTP 500", ServerReportRequests.HttpError(HttpStatusCode.InternalServerError, null, ""));
-        Assert.Equal("The device was removed from OADM.", ServerReportRequests.ExceptionError(new KeyNotFoundException(), TimeSpan.FromSeconds(1)));
+        Assert.Equal("1 device is no longer available.", ServerReportRequests.ExceptionError(new KeyNotFoundException(), TimeSpan.FromSeconds(1)));
         Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", ServerReportRequests.ExceptionError(new InvalidOperationException("serverreport.cgi: HTTP 401"), TimeSpan.FromSeconds(1)));
         Assert.Equal("axis-cgi/serverreport.cgi?mode=zip_with_image", ServerReportRequests.BuildUri(ServerReportRequests.ModeZipWithImage));
     }

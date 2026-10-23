@@ -92,7 +92,7 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        return RunQueryAsync(ctx, device, method, payloadJson, _probe, outsideView: !caller.HasAllDevices, ct);
+        return RunQueryAsync(ctx, device, method, payloadJson, _probe, outsideView: !caller.HasAllDevices, mayProbe: caller.HasAllDevices || caller.CoversRoute(device.SiteId), ct);
     }
 
     /// <summary>
@@ -103,16 +103,17 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     /// <summary>The queries of both network plugins ("getNetworkInfo", "checkAddresses").</summary>
     internal static Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, CancellationToken ct) =>
-        RunQueryAsync(ctx, device, method, payloadJson, probe, outsideView: false, ct);
+        RunQueryAsync(ctx, device, method, payloadJson, probe, outsideView: false, mayProbe: true, ct);
 
     /// <param name="outsideView">The caller has a device group (see <see cref="AddressCheck"/>).</param>
-    internal static async Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, bool outsideView, CancellationToken ct)
+    /// <param name="mayProbe">The caller may reach the network of the device's route (<see cref="ICallContext.CoversRoute"/>).</param>
+    internal static async Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, bool outsideView, bool mayProbe, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         if (string.Equals(method, AddressCheck.QueryMethod, StringComparison.Ordinal))
         {
-            return await AddressCheck.QueryAsync(ctx, device, payloadJson, probe, outsideView, ct).ConfigureAwait(false);
+            return await AddressCheck.QueryAsync(ctx, device, payloadJson, probe, outsideView, mayProbe, ct).ConfigureAwait(false);
         }
 
         if (!string.Equals(method, QueryGetNetworkInfo, StringComparison.Ordinal))

@@ -132,8 +132,10 @@ of the level is Warn or Fail.
   (one state character per column `p w f n e i -` plus the short values) and the job; `startScan {level, deviceIds}` -> job;
   `cancelScan {jobId}` -> job; `getDetail {deviceIds}` -> the stored results with details. Events `progress`, `results`.
 - Device groups (SDK 0.4.0): every method works on the user's view. One scan at a time per device scope (all devices, or
-  one device group); a scan is a job of its user (`ctx.Jobs`) and reads through the user's view; only that user can stop
-  it (another user's id or an unknown one: "The scan has ended or was started by another user."). For a user with a device
+  one device group); a scan is a job of its user (`ctx.Jobs`) and reads through the user's view. The scope's users share
+  it: `startScan` of a second user returns the running scan, and every user of the scope may stop it (decision
+  2026-10-23); the running scan is found by the caller's scope key. A scan of another scope, an ended one of another user
+  and an unknown id answer "The scan has ended or was started by another user.". For a user with a device
   group a device outside the group answers like an unknown one (NOT_FOUND, the whole request is refused), an empty list
   means the user's view, `getState` returns only the results of the user's devices (removed devices are dropped only by a
   view of every device). `progress` and `results` go to the pages of the scan's scope (`DeviceScope`; the rows of a

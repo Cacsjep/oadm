@@ -202,7 +202,16 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             {
                 var id = TriggerJson.Deserialize<IdRequest>(payloadJson).Id;
                 var trigger = Visible(caller).FirstOrDefault(t => t.Id == id);
-                return TriggerJson.Serialize(new GetReply(trigger, trigger is null || _runtime is null ? [] : _runtime.StatesOf(Resolved(trigger))));
+                var states = trigger is null || _runtime is null ? [] : _runtime.StatesOf(Resolved(trigger));
+                if (trigger is not null && !caller.HasAllDevices)
+                {
+                    // Stored ids of devices that left the group (a tag or site change) are not the caller's to see.
+                    var mine = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+                    trigger = trigger with { DeviceIds = [.. trigger.DeviceIds.Where(mine.Contains)] };
+                    states = [.. states.Where(s => mine.Contains(s.DeviceId))];
+                }
+
+                return TriggerJson.Serialize(new GetReply(trigger, states));
             }
 
             case DeviceTriggersMethods.StartRead:
@@ -334,6 +343,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         {
             Description = what + "." + values,
             DeviceIds = devices,
+            OwnerScopeKey = OwnerScope.Of(trigger.Owner),
         };
         yield return new EventTypeInfo(
             DeviceTriggersPluginInfo.LostTypeId(trigger.Id),
@@ -344,6 +354,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         {
             Description = $"No events of this trigger from the device for {DeviceTriggersPluginInfo.LostDelay.TotalSeconds:0} s.\n\nValues:\n• {{reason}}",
             DeviceIds = devices,
+            OwnerScopeKey = OwnerScope.Of(trigger.Owner),
         };
     }
 
@@ -384,6 +395,14 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
         var stored = incoming.Id == Guid.Empty ? null : Visible(caller).FirstOrDefault(t => t.Id == incoming.Id);
         var owner = OwnerScope.ForSave(ctx, caller, stored?.Owner, stored is null);
+
+        // A user with all devices saving a group's trigger: its devices that left the group are dropped (counted).
+        var left = await OwnerScope.LeftOwnerAsync(ctx, caller, owner, incoming.DeviceIds ?? [], stored?.DeviceIds ?? [], ct).ConfigureAwait(false);
+        if (left.Count > 0)
+        {
+            incoming = incoming with { DeviceIds = [.. (incoming.DeviceIds ?? []).Where(id => !left.Contains(id))] };
+        }
+
         await OwnerScope.RequireDevicesAsync(ctx, caller, owner, incoming.DeviceIds ?? [], ct).ConfigureAwait(false);
 
         var trigger = incoming with
@@ -409,7 +428,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                 && !d.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion)).Select(id => devices[id].Address).ToList();
             if (unknown > 0)
             {
-                errors[TriggerValidation.DevicesField] = unknown == 1 ? "A chosen device was removed from OADM." : $"{unknown} chosen devices were removed from OADM.";
+                errors[TriggerValidation.DevicesField] = DeviceMessages.NoLongerAvailable(unknown);
             }
             else if (unsupported.Count > 0)
             {
@@ -454,7 +473,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
             return true;
         }, typesChanged: true, saved.Owner, ct).ConfigureAwait(false);
-        return new SaveReply(saved, null, null);
+        return new SaveReply(saved, null, null) { Dropped = left.Count };
     }
 
     /// <summary>A copy of a trigger the caller sees, owned by the caller's devices (turned off).</summary>

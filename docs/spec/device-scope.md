@@ -138,6 +138,11 @@ an independent security review the same day). A user may be limited to part of t
   device is added or removed or its serial, site, tags or adder change, never for a status, so at 30,000 devices a polling
   round reads no allowed ids again). One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
+- **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
+  the user's devices, say "1 device is no longer available." (`DeviceMessages.NoLongerAvailable`), also as a row or
+  state text (monitors, reports, snapshots, event list reads, trigger saves); "The device was removed from OADM."
+  (`DeviceMessages.Removed`) stays for background state of a stored object whose device is gone (a trigger's device row)
+  and for the host.
 - **Small leaks closed:** address checks answer only "in use"; conflict and log texts never name devices outside the
   view; discovery rows of such devices say only "already added"; Your role shows no excepted serials. "This server"
   means exactly devices without a site (devices kept from a removed site keep its id).
@@ -161,12 +166,18 @@ an independent security review the same day). A user may be limited to part of t
 ## The editors
 
 - **Permissions page (formerly Users), card "Device groups"** right of the users (administrator): name, rules summary ("Site Building B, tag PTZ,
-  3 devices, except 1") and users; New, Edit, Delete (red, says which users lose their devices).
+  3 devices, except 1") and users; New, Edit, Delete (red, says which users lose their devices). On a page narrower than
+  1,640 px (small or scaled screens, `UsersPageView.TwoColumnWidth`) the card moves below the users and both scroll in
+  the upper half, the roles card below the splitter.
 - **Group editor:** the shared device picker (`DevicePickerWindow`) extended: left **Sites** (with counts and "This
   server") and **Tags** (with counts); right the searchable, virtualized device list: devices covered by a site or tag
   checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
-  devices").
-- **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary.
+  devices") that counts like the server (an excepted device is out, also when it is a single device; ticking it takes it
+  back). An except stays stored while no chosen site or tag covers the device. Owner fields of compliance checks are left
+  out for a server before device groups (UNIMPLEMENTED).
+- **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary. For an
+  administrator the field is locked and shows what the account stores (a group stays stored and applies once the role
+  changes); every role change below Administrator sends the Devices choice the form shows.
 - Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
   `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
   `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md);
@@ -340,7 +351,10 @@ an independent security review the same day). A user may be limited to part of t
   packages without a page through `tests/Shared/TaskPluginCanaryHost.cs` (tasks started through the call, actions run on
   one device of the call). `tests/Oadm.Plugins.Restart.Tests` is new for that.
 - Address checks: `ITaskQueryContext.ManagedAddressesAsync` (host: `TaskPluginQueries`, every device on the route); Network
-  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). At run time
+  `checkAddresses` names only the view's devices and marks the others `UsedByDevice` ("In use"). It probes addresses only
+  on a route the caller's group names (`ICallContext.CoversRoute(siteId)`, SDK 0.4.0: the group's sites, the server's
+  network only with "This server"; a device in the group through a tag or a serial does not open its network); otherwise
+  it answers from the managed devices only, as without probes. At run time
   `ITaskExecutionContext.ManagedAddressesAsync` (host: the engine's execution context, every other device on the task's
   route, `Core/Tasks/ManagedAddresses`): Network settings and Assign IP address refuse, for every user and before the
   first write, a static address another managed device has ("Another device managed by OADM uses this address. Nothing
@@ -397,7 +411,10 @@ an independent security review the same day). A user may be limited to part of t
   only rows of devices the caller sees now and drops the others from the table (a tag or site change, before any prune);
   `ReadOneAsync` removes the row of a device no longer in the scope; no rows when the caller's devices cannot be listed.
   What the sweep publishes in the background (the state and its counts) comes from `ScopedSnapshot()`: rows of devices
-  no longer in the scope (`IDeviceScopes.Contains(key, deviceId)`, a few hash lookups) are dropped first.
+  no longer in the scope (`IDeviceScopes.Contains(key, deviceId)`, a few hash lookups) are dropped first. A device that
+  leaves the scope during a sweep is not read, a read that ends after it left stores no row, and a changed row of such a
+  device goes out as removed. `SnapshotAsync(caller)` on the sweep of the caller's scope answers from the same lookups
+  (no device list per state read; the list only on hosts without groups); a task end asks `HasRow(id)`.
 - **Action Rule Editor**: user calls never use the guarded `ctx.Tasks` and declare no `SystemAccessReason`; Undo asks the
   caller's runner whether the run's tasks ended (`call.Tasks.AnyActiveAsync`: a group user's answer covers the tasks of
   the group's devices, whichever user of the group started them). A task end counts the run down in O(1), whatever the
@@ -410,15 +427,23 @@ an independent security review the same day). A user may be limited to part of t
   0.4.0; Device triggers fill it, the host fills it for compliance checks) and Dashboards hides the types of another
   owner. Group users see device events with a device list of their devices, OADM's own device status events and
   the site events of their sites; events without a device list from other sources (compliance checks, which carry no
-  owner) are hidden, also as watch keys. Every push checks the group's devices now; a renewal naming a device that left
-  ends the old watch.
+  owner) are hidden, also as watch keys, and so are the device triggers of other owners (all devices or another group),
+  also on the group's own devices (`EventTypeInfo.OwnerScopeKey`, SDK 0.4.0, filled by Device triggers). Every push checks
+  the group's devices now; a renewal naming a device that left ends the old watch. A group user's watches are bound to one
+  job per session (kind `watch`): when the user's devices, role or session change the host ends it and the session's
+  watches go at once (no values for the old devices until the next renewal); the session's last unwatch ends it.
 - **Saved objects** (`OwnerScope.LeftOwnerAsync`): a user with all devices who saves a group's view or dashboard whose
   devices left the group gets the save without them (`Dropped` in the answer, never stored); devices the save adds outside
-  the group and every outside id of a group user stay NOT_FOUND.
+  the group and every outside id of a group user stay NOT_FOUND. The page says so below its toolbar in plain secondary
+  text (`Notice`), not as an error.
 - **Device triggers**: tags are not checked on save (the SDK has no tag catalog); a group's tag covers only the group's
-  devices.
+  devices. `get` answers a group user only the stored devices the user sees now; a user with all devices who saves a
+  group's trigger whose devices left the group gets the save without them (`SaveReply.Dropped`, `LeftOwnerAsync`). Its
+  event types carry the trigger's owner (`OwnerScopeKey`).
 - **Edge Recording Export**: a group user's export stream checks the camera's membership every 5 s and ends when it left.
-- **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row.
+- **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row. One
+  scan per device scope, shared by the scope's users: any of them may stop it, whoever started it (found by the caller's
+  scope key; a scan of another scope answers like an unknown id).
 - **I/O Monitor**: the reading of a device starts detached from the first page's call (it carries no user) and reads
   through the call of one of its pages.
 

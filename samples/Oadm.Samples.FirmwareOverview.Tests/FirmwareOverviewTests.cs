@@ -88,7 +88,8 @@ public sealed class FirmwareOverviewTests
     public async Task A_user_with_a_device_group_reads_and_sees_only_its_devices()
     {
         var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
-        var operatorB = server.CallAsGroup([server.DeviceList[0].Id]);
+        var key = server.FakeScopes.Add("Building B", [server.DeviceList[0].Id]);
+        var operatorB = FakeCallContext.WithGroup(server, [server.DeviceList[0].Id], groupId: key);
 
         await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, []), operatorB);
         var state = await NextStateAsync(server, s => !s.Reading);
@@ -96,6 +97,23 @@ public sealed class FirmwareOverviewTests
         Assert.Equal("10.0.0.48", Assert.Single(state.Rows).Address); // "all" = the user's devices
         Assert.Equal(0, server.Cameras[server.DeviceList[1].Id].Reads);
         Assert.Empty(server.EventsSeenBy(server.CallAsAllDevices())); // the table of the group goes to its users only
+    }
+
+    [Fact]
+    public async Task A_device_that_left_the_group_drops_out_of_its_table()
+    {
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
+        var ids = server.DeviceList.Select(d => d.Id).ToList();
+        var key = server.FakeScopes.Add("Building B", ids);
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, []), FakeCallContext.WithGroup(server, ids, groupId: key));
+        Assert.Equal(2, (await NextStateAsync(server, s => !s.Reading)).Rows.Count);
+
+        // A tag change moves 10.0.0.49 out of the group; the plugin has not been told yet.
+        server.FakeScopes.Add("Building B", [ids[0]], key);
+        var now = FakeCallContext.WithGroup(server, [ids[0]], groupId: key);
+        var state = JsonSerializer.Deserialize<FirmwareState>((await server.InvokeAsync(plugin, now, FirmwareOverview.GetState, null))!, FirmwareOverview.Json)!;
+
+        Assert.Equal("10.0.0.48", Assert.Single(state.Rows).Address);
     }
 
     /// <summary>The canary: a user whose group holds only "inside" calls every method with "outside" and with an unknown id.</summary>

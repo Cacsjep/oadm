@@ -23,7 +23,10 @@ version and date, and the release workflow copies it into the GitHub release.
   Action Rule Editor show each group its own table.
 - Device groups: a device that leaves a group disappears at once from the group's tables, dashboard values and scan
   results, and an export of its recordings ends. An administrator can save a group's view or dashboard after one of its
-  devices left the group: the save leaves that device out and says so.
+  devices left the group: the save leaves that device out and says so. The same for a group's device trigger.
+- Hardening scan: every user with the same devices may stop a running scan, not only the user who started it.
+- Device groups: the dashboards of a user with a group offer only the group's own device triggers, and their live values
+  stop at once when the user's devices change.
 - Device groups: a file you upload for a task (firmware, an application, a backup) can be used only by you, in the same
   login. Reports and other results of plugins are gone once your devices change.
 - Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
@@ -65,8 +68,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
-- The **Users** page is now **Permissions**: users and device groups side by side, the roles below. The user list no longer
-  shows the last login.
+- The **Users** page is now **Permissions**: users and device groups side by side (on small screens one below the
+  other), the roles below. The user list no longer shows the last login.
 - Remove, Refresh, Check now, tagging, the RTSP port, the first password, the queries of task dialogs and the other
   device actions do nothing when a chosen device was removed meanwhile and say "1 device is no longer available."
   (before, Remove and Refresh skipped it).

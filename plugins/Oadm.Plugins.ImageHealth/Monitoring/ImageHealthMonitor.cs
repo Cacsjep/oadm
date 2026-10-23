@@ -113,7 +113,7 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     public ImageHealthState Snapshot(string scopeKey, bool withRows) =>
         (_ctx.DeviceScopes is { } scopes && !scopes.Exists(scopeKey)) || _sweeps.Existing(scopeKey) is not { } sweep
             ? Empty
-            : Snapshot(scopeKey, sweep, sweep.Snapshot(), withRows);
+            : Snapshot(scopeKey, sweep, sweep.ScopedSnapshot(), withRows);
 
     /// <summary>
     /// The counts and rows of the caller's table, only of cameras the caller sees now (a camera that left the group drops out

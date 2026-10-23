@@ -79,7 +79,7 @@ public sealed class JobTests : IDisposable
             status.Devices.Select(d => d.State).ToArray());
         Assert.Equal("Credentials required - the device rejects the stored credentials", status.Devices[2].Error);
         Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", status.Devices[3].Error);
-        Assert.Equal("The device was removed from OADM.", status.Devices[4].Error);
+        Assert.Equal("1 device is no longer available.", status.Devices[4].Error);
         Assert.Empty(_vapix.Cameras[locked.Id].Requests);
 
         var bytes = await ReadAllAsync(jobs, status.JobId);

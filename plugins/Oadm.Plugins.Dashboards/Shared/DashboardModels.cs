@@ -57,6 +57,9 @@ public static class DashboardsPluginInfo
 
     public static readonly TimeSpan WatchLifetime = TimeSpan.FromSeconds(30);
 
+    /// <summary>The job kind that binds a group user's watches to the user's devices (server only).</summary>
+    public const string WatchJobKind = "watch";
+
     /// <summary>Changed values go to the pages at most this often (4 a second per widget).</summary>
     public static readonly TimeSpan PushInterval = TimeSpan.FromMilliseconds(250);
 

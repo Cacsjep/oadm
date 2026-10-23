@@ -163,7 +163,7 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         if (device is null)
         {
             // A user with a device group: a device outside the group and an unknown one answer alike.
-            return caller.HasAllDevices ? new StartReply(null, DeviceMessages.Removed) : throw new DevicesNotAvailableException();
+            return caller.HasAllDevices ? new StartReply(null, DeviceMessages.NoLongerAvailable(1)) : throw new DevicesNotAvailableException();
         }
 
         if (caller.EventStreams is null || ctx.Events is not { } events)

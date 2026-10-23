@@ -145,7 +145,7 @@ public static partial class SnapshotRequests
 
         if (ex is KeyNotFoundException)
         {
-            return DeviceMessages.Removed;
+            return DeviceMessages.NoLongerAvailable(1);
         }
 
         // VAPIX client errors carry "HTTP <code>" in the message (e.g. "param.cgi: HTTP 401").

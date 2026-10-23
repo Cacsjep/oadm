@@ -68,6 +68,7 @@ public sealed class DeviceGroupTests
         ctx.Logger.Returns(NullLogger.Instance);
         ctx.EventSubscriptions.Returns(feed);
         ctx.DeviceScopes.Returns(fake.FakeScopes);
+        ctx.Jobs.Returns(fake.FakeJobs);
         using var plugin = new DashboardsPlugin(time);
         await plugin.StartAsync(ctx, CancellationToken.None);
         var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
@@ -150,6 +151,64 @@ public sealed class DeviceGroupTests
     }
 
     [Fact]
+    public async Task Group_users_never_see_the_device_triggers_of_other_owners_on_their_devices()
+    {
+        var (fake, feed, plugin, a, _, keyA, _) = await StartAsync();
+        using var _ = plugin;
+        var keyB = fake.FakeScopes.Add("Building B", [a.Id]); // a is in both groups
+        feed.TypeList.AddRange(
+        [
+            new(new EventTypeInfo("oadm.device-triggers.mine", "Mine", "Device triggers", EventKind.Stateful) { DeviceIds = [a.Id], OwnerScopeKey = keyA }, DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true),
+            new(new EventTypeInfo("oadm.device-triggers.admins", "Admins", "Device triggers", EventKind.Stateful) { DeviceIds = [a.Id], OwnerScopeKey = ICallContext.AllDevicesScopeKey }, DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true),
+            new(new EventTypeInfo("oadm.device-triggers.theirs", "Theirs", "Device triggers", EventKind.Stateful) { DeviceIds = [a.Id], OwnerScopeKey = keyB }, DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true),
+        ]);
+        feed.ChangeTypes(_ => { });
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+
+        var catalog = Read<CatalogReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Catalog, null, CancellationToken.None));
+        Assert.Contains(catalog.Events, e => e.TypeId == "oadm.device-triggers.mine");
+        Assert.DoesNotContain(catalog.Events, e => e.TypeId is "oadm.device-triggers.admins" or "oadm.device-triggers.theirs");
+        Assert.Equal([], Read<DevicesReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Devices, Json(new DevicesRequest("oadm.device-triggers.theirs")), CancellationToken.None)).DeviceIds!);
+
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey("oadm.device-triggers.mine", a.Id), new ValueKey("oadm.device-triggers.admins", a.Id), new ValueKey("oadm.device-triggers.theirs", a.Id)])), CancellationToken.None);
+        Assert.Equal(1, plugin.WatchedCount);
+
+        // A user with all devices sees every trigger.
+        var all = Read<CatalogReply>(await plugin.InvokeAsync(fake.CallAsAllDevices(), DashboardsMethods.Catalog, null, CancellationToken.None));
+        Assert.Contains(all.Events, e => e.TypeId == "oadm.device-triggers.theirs");
+    }
+
+    [Fact]
+    public async Task A_group_users_watches_end_when_the_users_devices_change()
+    {
+        var (fake, feed, plugin, a, _, keyA, time) = await StartAsync();
+        using var _ = plugin;
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("tab 2", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        Assert.Equal(1, plugin.SessionJobCount); // one job per session
+        var job = Assert.Single(fake.FakeJobs.All);
+        Assert.Equal(anna.SessionId, job.Owner.SessionId);
+
+        // The host ends the session's jobs: anna was moved to another group. Her watches go at once.
+        job.Cancel();
+        await Testing.Eventually.TrueAsync(() => plugin.WatchedCount == 0 && plugin.SessionJobCount == 0, "the watches of the old devices ended");
+        var admin = fake.CallAsAllDevices();
+        await plugin.InvokeAsync(admin, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        feed.Publish(Trigger, a.Id, PublishedEventKind.On);
+        time.Advance(DashboardsPluginInfo.PushInterval);
+        await Testing.Eventually.TrueAsync(() => fake.EventsSeenBy(admin).Any(e => e.Topic == DashboardsMethods.ValuesTopic), "the push went out");
+        Assert.DoesNotContain(fake.EventsSeenBy(anna), e => e.Topic == DashboardsMethods.ValuesTopic);
+
+        // A new watch gets a new job; the last unwatch ends it.
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        var second = Assert.Single(fake.FakeJobs.All, j => j != job);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Unwatch, Json(new UnwatchRequest("page")), CancellationToken.None);
+        await second.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(0, plugin.SessionJobCount);
+    }
+
+    [Fact]
     public async Task An_administrator_saves_a_groups_dashboard_whose_device_left_the_group()
     {
         var (fake, _, plugin, a, b, keyA, _) = await StartAsync();
@@ -194,6 +253,7 @@ public sealed class DeviceGroupTests
         ctx.Logger.Returns(NullLogger.Instance);
         ctx.EventSubscriptions.Returns(feed);
         ctx.DeviceScopes.Returns(fake.FakeScopes);
+        ctx.Jobs.Returns(fake.FakeJobs);
         var plugin = new DashboardsPlugin(time);
         await plugin.StartAsync(ctx, CancellationToken.None);
         return (fake, feed, plugin, a, b, keyA, time);

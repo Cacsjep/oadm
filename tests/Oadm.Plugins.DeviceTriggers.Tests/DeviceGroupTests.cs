@@ -1,3 +1,6 @@
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
+
 using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
@@ -93,6 +96,55 @@ public sealed class DeviceGroupTests
         Assert.All(plugin.EventTypes.Where(t => t.Id == DeviceTriggersPluginInfo.TypeId(vault.Id)), t => Assert.Empty(t.DeviceIds!));
         Assert.All(plugin.EventTypes.Where(t => t.Id == DeviceTriggersPluginInfo.TypeId(lobby.Id)), t => Assert.Equal([a.Id], t.DeviceIds!));
         Assert.Equal(0, ctx.ClientsCreated.GetValueOrDefault(b.Id));
+    }
+
+    [Fact]
+    public async Task A_device_that_left_the_group_is_neither_shown_nor_kept_by_a_save()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var b = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var c = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.3" });
+        var keyA = ctx.FakeScopes.Add("Building A", [a.Id, b.Id]);
+        await using var plugin = new DeviceTriggersPlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var anna = Testing.FakeCallContext.WithGroup(ctx, [a.Id, b.Id], "anna", keyA);
+        var admin = ctx.CallAsAllDevices();
+        var saved = await SaveAsync(ctx, plugin, anna, new TriggerDefinition { Name = "Door", Topic = "t", Enabled = false, DeviceIds = [a.Id, b.Id] });
+
+        // A tag change moves b out of the group.
+        ctx.FakeScopes.Add("Building A", [a.Id], keyA);
+        var now = Testing.FakeCallContext.WithGroup(ctx, [a.Id], "anna", keyA);
+        var got = TriggerJson.Deserialize<GetReply>(await ctx.InvokeAsync(plugin, now, DeviceTriggersMethods.Get, TriggerJson.Serialize(new IdRequest(saved.Id))));
+        Assert.Equal([a.Id], got.Trigger!.DeviceIds);
+        Assert.All(got.Devices, d => Assert.Equal(a.Id, d.DeviceId));
+
+        // The administrator saves the group's trigger as it was: b is dropped and counted, the owner stays.
+        var reply = TriggerJson.Deserialize<SaveReply>(await ctx.InvokeAsync(plugin, admin, DeviceTriggersMethods.Save, TriggerJson.Serialize(new SaveRequest(saved with { Name = "Door 2" }))));
+        Assert.Equal(1, reply.Dropped);
+        Assert.Equal([a.Id], reply.Trigger!.DeviceIds);
+        Assert.Equal(keyA, reply.Trigger.Owner);
+        Assert.Equal([a.Id], plugin.Triggers.Single().DeviceIds);
+
+        // A device the administrator adds outside the group, and the group user's own save of b, stay refused.
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ctx.InvokeAsync(plugin, admin, DeviceTriggersMethods.Save, TriggerJson.Serialize(new SaveRequest(reply.Trigger with { DeviceIds = [a.Id, c.Id] }))));
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ctx.InvokeAsync(plugin, now, DeviceTriggersMethods.Save, TriggerJson.Serialize(new SaveRequest(reply.Trigger with { DeviceIds = [a.Id, b.Id] }))));
+    }
+
+    [Fact]
+    public async Task The_event_types_carry_the_owner_of_their_trigger()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var keyA = ctx.FakeScopes.Add("Building A", [a.Id]);
+        await using var plugin = new DeviceTriggersPlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var groups = await SaveAsync(ctx, plugin, Testing.FakeCallContext.WithGroup(ctx, [a.Id], "anna", keyA), new TriggerDefinition { Name = "Door", Topic = "t", Enabled = false, DeviceIds = [a.Id] });
+        var admins = await SaveAsync(ctx, plugin, ctx.CallAsAllDevices(), new TriggerDefinition { Name = "Door", Topic = "t", Enabled = false, DeviceIds = [a.Id] });
+
+        Assert.All(plugin.EventTypes.Where(t => t.Id.StartsWith(DeviceTriggersPluginInfo.TypeId(groups.Id), StringComparison.Ordinal)), t => Assert.Equal(keyA, t.OwnerScopeKey));
+        Assert.All(plugin.EventTypes.Where(t => t.Id.StartsWith(DeviceTriggersPluginInfo.TypeId(admins.Id), StringComparison.Ordinal)), t => Assert.Equal(ICallContext.AllDevicesScopeKey, t.OwnerScopeKey));
+        Assert.Equal(4, plugin.EventTypes.Count);
     }
 
     private static async Task<TriggerDefinition> SaveAsync(Testing.FakeCoreContext ctx, DeviceTriggersPlugin plugin, Testing.FakeCallContext call, TriggerDefinition trigger)

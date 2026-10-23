@@ -10,7 +10,7 @@ client saves one ZIP for Axis support. Read-only for devices.
   OS 12.11): `application/zip`, chunked, zip_with_image about 0.3 MB in 34-37 s (`serverreport_cgi.txt` 1.3 MB unpacked +
   `serverreport_image.jpg`), zip about 0.16 MB in 31 s; `Content-Disposition: attachment; filename=Axis_SR_<date>_<time>_<MAC>.zip`.
   Devices with CertificateChanged / CredentialsRequired / PasswordNotSet are refused without a request (snapshot report
-  texts); unknown ids "The device was removed from OADM.".
+  texts); unknown ids "1 device is no longer available." (the shared text of a device the user cannot reach).
 - Jobs (`SystemReportJobs`, server memory, files in `ICorePluginContext.DataDirectory/jobs/<job id>/`, leftovers deleted at
   start): one file per device, then `bundle.zip` = every report stored unchanged (no compression) as
   `<address>_<MAC>_<model without "AXIS ">_<yyyyMMdd-HHmmss UTC>.zip` (other characters than letters, digits, '.', '-' become

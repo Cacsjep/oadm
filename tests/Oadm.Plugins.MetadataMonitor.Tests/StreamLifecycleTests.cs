@@ -134,7 +134,7 @@ public sealed class StreamLifecycleTests
     {
         await using (var rig = await new Rig().StartAsync())
         {
-            Assert.Equal("The device was removed from OADM.", (await rig.StartStreamAsync(Guid.NewGuid())).Error);
+            Assert.Equal("1 device is no longer available.", (await rig.StartStreamAsync(Guid.NewGuid())).Error);
         }
 
         await using var old = await new Rig().StartAsync(withStreams: false);
