@@ -4,18 +4,17 @@ namespace Oadm.Plugins.DhcpServer.Serving;
 
 /// <summary>
 /// What a user limited to a device group sees of the server-wide DHCP server (docs/spec/device-scope.md, server-wide
-/// services): the leases of the group's devices, by MAC address (an Axis serial number is its MAC address) or by address
-/// (devices on the server's own network, the network the DHCP server serves). Settings and status are the same for everyone.
+/// services): the leases of the group's devices by MAC address only (an Axis serial number is its MAC address). Never by
+/// address: a lease of a device outside the group (another managed device, or one OADM does not manage) at the address a
+/// group device had before would show to the group. Settings and status are the same for everyone.
 /// </summary>
 internal sealed class DhcpGroupView
 {
     private readonly HashSet<string> _serials;
-    private readonly HashSet<string> _addresses;
 
-    private DhcpGroupView(HashSet<string> serials, HashSet<string> addresses)
+    private DhcpGroupView(HashSet<string> serials)
     {
         _serials = serials;
-        _addresses = addresses;
     }
 
     /// <summary>The view of <paramref name="devices"/> (one pass).</summary>
@@ -23,24 +22,19 @@ internal sealed class DhcpGroupView
     {
         ArgumentNullException.ThrowIfNull(devices);
         var serials = new HashSet<string>(devices.Count, StringComparer.Ordinal);
-        var addresses = new HashSet<string>(StringComparer.Ordinal);
         foreach (var device in devices)
         {
             serials.Add(Normalize(device.Serial));
-            if (device.SiteId is null)
-            {
-                addresses.Add(device.Address);
-            }
         }
 
-        return new DhcpGroupView(serials, addresses);
+        return new DhcpGroupView(serials);
     }
 
     /// <summary>True when the lease belongs to a device of the group.</summary>
     public bool Covers(LeaseInfo lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
-        return _serials.Contains(Normalize(lease.Mac)) || _addresses.Contains(lease.Address);
+        return _serials.Contains(Normalize(lease.Mac));
     }
 
     /// <summary>The leases of the group's devices.</summary>
