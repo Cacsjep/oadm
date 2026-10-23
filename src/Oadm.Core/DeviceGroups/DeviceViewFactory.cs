@@ -10,7 +10,7 @@ namespace Oadm.Core.DeviceGroups;
 /// (<see cref="ForAsync(AuthenticatedCaller, CancellationToken)"/>), from a stored scope (the owner of a task, a rule or a
 /// waiting entry), and the named <see cref="System"/> view for background work. Never "no caller = allow": a missing caller
 /// throws. Compiled filters are cached per group revision and catalog key, allowed id sets per (group revision, catalog key,
-/// <see cref="DeviceChangeFeed.Version"/>), both lazily.
+/// <see cref="DeviceChangeFeed.MembershipVersion"/>), both lazily: a status change never reads the device table again.
 /// </summary>
 public sealed class DeviceViewFactory
 {
@@ -156,7 +156,10 @@ public sealed class DeviceViewFactory
         return compiled;
     }
 
-    /// <summary>The allowed ids of a view, cached lazily per (group revision, catalog key, device feed version).</summary>
+    /// <summary>
+    /// The allowed ids of a view, cached lazily per (group revision, catalog key, membership version of the device feed). One
+    /// read is shared by concurrent callers; it never runs on one caller's token (each caller's own token ends only its wait).
+    /// </summary>
     internal async Task<IReadOnlySet<Guid>> AllowedIdsAsync(DeviceView view, CancellationToken ct)
     {
         if (view.Kind == ViewKind.None)
@@ -164,17 +167,17 @@ public sealed class DeviceViewFactory
             return EmptyIds;
         }
 
-        // The feed version is read before the rows: a result keyed with an older version is read again next time.
-        var feedVersion = _feed is DeviceChangeFeed feed ? feed.Version : -1;
+        // The membership version is read before the rows: a result keyed with an older version is read again next time.
+        var feedVersion = _feed is DeviceChangeFeed feed ? feed.MembershipVersion : -1;
         var filter = view.Filter;
         var cacheKey = view.HasAllDevices ? Guid.Empty : view.GroupId!.Value;
         var key = new IdsKey(filter.Revision, filter.Catalog, feedVersion);
         if (feedVersion >= 0 && _ids.TryGetValue(cacheKey, out var entry) && entry.Key == key)
         {
-            return await entry.Ids.ConfigureAwait(false);
+            return await entry.Ids.WaitAsync(ct).ConfigureAwait(false);
         }
 
-        var load = LoadIdsAsync(filter, ct);
+        var load = LoadIdsAsync(filter, CancellationToken.None);
         if (feedVersion >= 0)
         {
             _ids[cacheKey] = new IdsEntry(key, load);
@@ -182,13 +185,33 @@ public sealed class DeviceViewFactory
 
         try
         {
-            return await load.ConfigureAwait(false);
+            return await load.WaitAsync(ct).ConfigureAwait(false);
         }
-        catch
+        catch when (load.IsFaulted || load.IsCanceled)
         {
             _ids.TryRemove(new KeyValuePair<Guid, IdsEntry>(cacheKey, new IdsEntry(key, load)));
             throw;
         }
+    }
+
+    /// <summary>The cached allowed ids of a view when the cache entry is current and read, else null (never reads).</summary>
+    internal IReadOnlySet<Guid>? CachedIds(DeviceView view)
+    {
+        if (view.Kind == ViewKind.None)
+        {
+            return EmptyIds;
+        }
+
+        if (_feed is not DeviceChangeFeed feed)
+        {
+            return null;
+        }
+
+        var filter = view.Filter;
+        var key = new IdsKey(filter.Revision, filter.Catalog, feed.MembershipVersion);
+        return _ids.TryGetValue(view.HasAllDevices ? Guid.Empty : view.GroupId!.Value, out var entry) && entry.Key == key && entry.Ids.IsCompletedSuccessfully
+            ? entry.Ids.GetAwaiter().GetResult() // completed: no wait
+            : null;
     }
 
     private async Task<IReadOnlySet<Guid>> LoadIdsAsync(DeviceGroupFilter filter, CancellationToken ct)

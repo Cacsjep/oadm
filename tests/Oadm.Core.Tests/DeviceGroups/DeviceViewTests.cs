@@ -138,12 +138,25 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
         await AddDeviceAsync("ACCC8E000001", siteId: b);
         var group = (await SaveGroupAsync("G", sites: [b])).Group;
         var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+        Assert.Null(view.CachedIds()); // nothing read yet: no answer without a read
         var first = await view.IdsAsync(Ct);
         Assert.Single(first);
         Assert.Same(first, await view.IdsAsync(Ct)); // cached while nothing changed
+        Assert.Same(first, view.CachedIds());
 
         var added = await AddDeviceAsync("ACCC8E000002", siteId: b);
-        Assert.Contains(added.Id, await view.IdsAsync(Ct)); // a new device of a chosen site is in at once
+        Assert.Null(view.CachedIds()); // a device came in: the cached ids are no longer current
+        var withAdded = await view.IdsAsync(Ct);
+        Assert.Contains(added.Id, withAdded); // a new device of a chosen site is in at once
+
+        // A status or firmware change keeps the ids; a change of what groups decide on (tags, site) reads them again.
+        await Devices.UpdateAsync(added.Id, d => d.Status = DeviceStatus.Unreachable, Ct);
+        await Devices.UpdateAsync(added.Id, d => d.FirmwareVersion = "12.0.0", Ct);
+        Assert.Same(withAdded, await view.IdsAsync(Ct));
+        await Devices.UpdateAsync(added.Id, d => d.SiteId = null, Ct);
+        Assert.DoesNotContain(added.Id, await view.IdsAsync(Ct));
+        await Devices.UpdateAsync(added.Id, d => d.SiteId = b, Ct);
+        Assert.Contains(added.Id, await view.IdsAsync(Ct));
 
         await SaveGroupAsync("G", thisServer: true, id: group.Id, revision: group.Revision);
         Assert.Empty(await view.IdsAsync(Ct)); // the new rules apply to the same view

@@ -219,9 +219,15 @@ public sealed class DeviceView
 
     /// <summary>
     /// The ids of every device of the view, cached per key (the group's revision, the tag and site catalog,
-    /// <c>DeviceChangeFeed.Version</c>): task history, runnable sets and counts intersect with it.
+    /// <c>DeviceChangeFeed.MembershipVersion</c>: a status change keeps them): task history, runnable sets and counts intersect with it.
     /// </summary>
     public Task<IReadOnlySet<Guid>> IdsAsync(CancellationToken ct) => _factory.AllowedIdsAsync(this, ct);
+
+    /// <summary>
+    /// The ids of <see cref="IdsAsync"/> when they are cached and current (no read), else null. For checks that must never
+    /// wait, such as the publisher of plugin events.
+    /// </summary>
+    public IReadOnlySet<Guid>? CachedIds() => _factory.CachedIds(this);
 
     /// <summary>How many devices the view has.</summary>
     public async Task<int> CountAsync(CancellationToken ct) => (await IdsAsync(ct).ConfigureAwait(false)).Count;

@@ -134,7 +134,9 @@ an independent security review the same day). A user may be limited to part of t
   groups with "This server"; the waiting list is scoped by site (entries without a site: only the user's own) and checks the queuing user's current view.
 - **Sessions:** a stream checks the user's group revision like the role right after it registers; a change of a group's
   rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
-  key is (group revision, tag and site catalog revision, `DeviceChangeFeed.Version`). The view never follows the "no
+  key is (group revision, tag and site catalog revision, `DeviceChangeFeed.MembershipVersion`: it moves only when a
+  device is added or removed or its serial, site, tags or adder change, never for a status, so at 30,000 devices a polling
+  round reads no allowed ids again). One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **Small leaks closed:** address checks answer only "in use"; conflict and log texts never name devices outside the
   view; discovery rows of such devices say only "already added"; Your role shows no excepted serials. "This server"
@@ -220,7 +222,7 @@ an independent security review the same day). A user may be limited to part of t
   `ForUserAsync(userId)`, `System` (background work), `CountAsync(rules)`, `CountGroupsAsync`; `DeviceView.ListAsync`,
   `AllAsync`, `GetAsync(ids)` / `GetOrAllAsync(ids)` (in the order of the request; any unknown or outside id: `DevicesNotAvailableException`, NOT_FOUND
   `DeviceMessages.NoLongerAvailable(n)`), `FindAsync`, `Contains`, `IdsAsync` (cached per group revision, catalog key and
-  `DeviceChangeFeed.Version`), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
+  `DeviceChangeFeed.MembershipVersion`), `CachedIds()` (the cached ids when current, never a read), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
   `views.ForAsync(ServerCallContext)` (`Oadm.Server.Auth.CallerViews`, the caller from the call's `UserState`,
   `AuthInterceptor.CallerOf`); the interceptor maps `DevicesNotAvailableException` of any service to NOT_FOUND.
 - **Access rule**: `AccessRule.AllDevices` (`.ForAllDevices()`): tag rename and delete, task Delete all, every `EventService` method (rules, event log,

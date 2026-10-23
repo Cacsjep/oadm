@@ -128,7 +128,9 @@ tell"; `AnyActiveAsync` answers for every task of the user's devices, null when 
   `ScopeDevicesChanged`) its finished jobs are forgotten at once and its running ones when they end; at most 50 per user and plugin (finished
   ones dropped first, else "Wait until your earlier work has finished."). **Events**: `PluginEventHub.WatchAsync(pluginId,
   PluginWatcher, ct)`; the old `Publish(topic, json)` = `PluginEventAudience.AllDevices`; `Device` / `DeviceRows` are
-  checked against the watcher's view ids in the watcher's own loop (rows filtered in order; a payload that is not an array
+  left out before they are queued for a group watcher when its view's ids are cached and name none of their devices (so
+  events of other devices never push its own out of its 256 places; no read in the publisher), and always checked
+  against the watcher's view ids in the watcher's own loop (rows filtered in order; a payload that is not an array
   of one element per id is dropped for group watchers and logged); `User` (name, case-insensitive), `Session`,
   `DeviceScope` (scope key, SDK 0.4.0 addition for state kept per group). **Device scopes**: `HostDeviceScopes`
   (`ctx.DeviceScopes`, over `DeviceGroupStore` + the factory's filters; unknown and deleted keys cover nothing;
