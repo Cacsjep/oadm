@@ -134,4 +134,37 @@ internal sealed class ViewTaskRunner(TaskEngine engine, DeviceView view, TaskCal
     public bool Cancel(Guid taskId) => view.HasAllDevices ? engine.Cancel(taskId) : engine.CancelOwn(taskId, caller.UserId);
 
     public bool? IsActive(Guid taskId) => view.HasAllDevices ? engine.IsActive(taskId) : engine.IsActiveOwn(taskId, caller.UserId);
+
+    /// <summary>
+    /// For a user with a device group: the tasks of devices in the view, whoever started them (a run of the Action Rule
+    /// Editor may hold tasks of several users of the same group); an active task on a device outside the view: null.
+    /// </summary>
+    public async Task<bool?> AnyActiveAsync(IReadOnlyCollection<Guid> taskIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(taskIds);
+        if (view.HasAllDevices)
+        {
+            return taskIds.Any(id => engine.IsActive(id) == true);
+        }
+
+        IReadOnlySet<Guid>? ids = null;
+        var outside = false;
+        foreach (var taskId in taskIds)
+        {
+            if (!engine.TryGetActiveDevice(taskId, out var deviceId))
+            {
+                continue;
+            }
+
+            ids ??= await view.IdsAsync(ct).ConfigureAwait(false);
+            if (ids.Contains(deviceId))
+            {
+                return true;
+            }
+
+            outside = true;
+        }
+
+        return outside ? null : false;
+    }
 }

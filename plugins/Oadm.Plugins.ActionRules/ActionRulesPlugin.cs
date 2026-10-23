@@ -79,15 +79,6 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         _ => null,
     };
 
-    /// <summary>
-    /// Undo asks the task engine whether every task of the run ended (a task cancelled while queued never reports). The tasks
-    /// of a run may belong to another user of the same group, which the caller's task runner does not answer for, so this
-    /// one read-only check goes through <see cref="ICorePluginContext.System"/>; it shows nothing about any device.
-    /// </summary>
-    public string? SystemAccessReason(string method) => method == ActionRulesMethods.Undo
-        ? "checks that the tasks of the change ended, shows no device"
-        : null;
-
     /// <summary>Every run is in the audit log.</summary>
     public bool IsAudited(string method) => RequiredPermission(method) is ActionRulesMethods.ManagePermission or ActionRulesMethods.DeletePermission;
 
@@ -176,8 +167,9 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     internal SemaphoreSlim DeviceGate(Guid deviceId) => _deviceGates.GetOrAdd(deviceId, _ => new SemaphoreSlim(1, 1));
 
     /// <summary>
-    /// A task of a run ended (whatever its result). Runs whose tasks all ended without reporting (cancelled while queued)
-    /// are forgotten here, on the task's side (no user's call), never in a user's call.
+    /// A task of a run ended (whatever its result): one less task that may write. O(1) per task end, also for a run over
+    /// 30,000 devices. Tasks cancelled while queued never report; Undo asks the task engine about those
+    /// (<see cref="IsRunningAsync"/>) and <see cref="RunningLimit"/> forgets the run in the end.
     /// </summary>
     internal void TaskEnded(Guid runId)
     {
@@ -194,24 +186,24 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             }
         }
 
-        ForgetEndedRuns();
+        ForgetOldRuns();
     }
 
     /// <summary>
-    /// Whether tasks of the run may still write. Tasks that were cancelled while queued never report: the task engine says
-    /// whether any task of the run is still queued or running (<see cref="ICorePluginContext.System"/>: in a group user's call
-    /// only from Undo, which declares it in <see cref="SystemAccessReason"/>); a host that cannot tell counts the run as done
-    /// after <see cref="RunningLimit"/>; after a server restart nothing runs.
+    /// Whether tasks of the run may still write. Tasks that were cancelled while queued never report: the caller's task
+    /// runner says whether any task of the run is still queued or running (<see cref="Oadm.Sdk.Tasks.ITaskRunner.AnyActiveAsync"/>: for a
+    /// user with a device group the tasks of the group's devices, whichever user of the group started them); a host that
+    /// cannot tell counts the run as running until <see cref="RunningLimit"/>; after a server restart nothing runs.
     /// </summary>
-    internal bool IsRunning(Guid runId)
+    internal async Task<bool> IsRunningAsync(ICallContext caller, Guid runId, CancellationToken ct)
     {
         if (!_running.TryGetValue(runId, out var r) || r.Left <= 0 || _options.Time.GetUtcNow() - r.Started >= RunningLimit)
         {
             return false;
         }
 
-        if (_ctx?.System.Tasks is { } tasks && _runTasks.TryGetValue(runId, out var ids) && ids.Count > 0
-            && ids.All(id => tasks.IsActive(id) == false))
+        if (_runTasks.TryGetValue(runId, out var ids) && ids.Count > 0
+            && await caller.Tasks.AnyActiveAsync(ids, ct).ConfigureAwait(false) == false)
         {
             _running.TryRemove(runId, out _);
             _runTasks.TryRemove(runId, out _);
@@ -223,7 +215,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
 
     internal static readonly TimeSpan RunningLimit = TimeSpan.FromHours(6);
 
-    /// <summary>Runs past <see cref="RunningLimit"/> are forgotten (the task engine is not asked: safe in any user's call).</summary>
+    /// <summary>Runs past <see cref="RunningLimit"/> are forgotten (O(runs), the task engine is not asked).</summary>
     private void ForgetOldRuns()
     {
         var now = _options.Time.GetUtcNow();
@@ -234,25 +226,6 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
                 _running.TryRemove(runId, out _);
                 _runTasks.TryRemove(runId, out _);
             }
-        }
-    }
-
-    /// <summary>
-    /// Runs whose tasks all ended without reporting (cancelled while queued) or that passed the limit are forgotten. Called
-    /// when a task ends (no user's call); a refusal of the host leaves the run to <see cref="IsRunning"/> and the limit.
-    /// </summary>
-    private void ForgetEndedRuns()
-    {
-        ForgetOldRuns();
-        try
-        {
-            foreach (var runId in _running.Keys)
-            {
-                IsRunning(runId); // removes runs whose tasks all ended
-            }
-        }
-        catch (DeviceAccessRefusedException)
-        {
         }
     }
 
@@ -385,7 +358,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
         var run = await Undo.FindAsync(request.RunId, ct).ConfigureAwait(false) is { } found && Sees(caller, found) ? found
             : throw new ArgumentException("This change can no longer be undone.", nameof(request));
-        if (IsRunning(run.RunId))
+        if (await IsRunningAsync(caller, run.RunId, ct).ConfigureAwait(false))
         {
             throw new ArgumentException("This change is still running. Undo it when its tasks are finished.", nameof(request));
         }
@@ -729,7 +702,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     {
         if (_sweeps?.Existing(scopeKey) is { } sweep && _ctx?.Events is { } events)
         {
-            var now = sweep.Snapshot();
+            var now = sweep.ScopedSnapshot();
             events.Publish(ActionRulesMethods.StateTopic, ActionRulesJson.Serialize(new RulesState(now.Running, now.Done, now.Total, now.FinishedUtc, [])), PluginEventAudience.DeviceScope(scopeKey));
         }
     }

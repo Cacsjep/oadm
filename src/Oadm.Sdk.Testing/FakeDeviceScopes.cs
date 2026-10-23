@@ -69,6 +69,25 @@ public sealed class FakeDeviceScopes(FakeCoreContext core) : IDeviceScopes
     }
 
     /// <inheritdoc />
+    public bool Contains(string scopeKey, Guid deviceId)
+    {
+        if (!_owner.DeviceList.Exists(d => d.Id == deviceId))
+        {
+            return false;
+        }
+
+        if (scopeKey == ICallContext.AllDevicesScopeKey)
+        {
+            return true;
+        }
+
+        lock (_groups)
+        {
+            return _groups.TryGetValue(scopeKey, out var group) && group.Devices.Contains(deviceId);
+        }
+    }
+
+    /// <inheritdoc />
     public IDeviceRepository Devices(string scopeKey) => new Scoped(this, scopeKey);
 
     /// <inheritdoc />

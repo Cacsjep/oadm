@@ -414,6 +414,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   - `ctx.Secrets` (`ISecretProtector`): encrypt secrets you store in `Settings`; null = do not store them.
   - `ctx.EventStreams`: device event streams, see below. `ctx.Tasks.Cancel(taskId)`; `ctx.Tasks.IsActive(taskId)` (queued
     or running; null when the host cannot tell): a task cancelled while queued never runs, so ask instead of waiting for it.
+    In a user's call ask `caller.Tasks`: `IsActive` answers a group user only for the user's own tasks,
+    `AnyActiveAsync(ids)` for the tasks of the user's devices whoever started them (a run shared by a group).
   - `ctx.AutoAdd` (`IDeviceAutoAdd`, null when the host has none). `AddAsync(ipAddress, expectedSerial, source, ct)`
     adds an Axis device the plugin saw on the network, through the add page's pipeline (anonymous Axis check, factory
     default check, login with the credential list; passwords never reach the plugin). It returns a
@@ -513,7 +515,8 @@ for them, and it keeps working unchanged for users with all devices.
   `ctx.Jobs.Start(caller, "report", async (job, ct) => ...)` and reaches devices through `job.Owner` (the owner's view).
   It runs detached, ends with its work, on `job.Cancel()`, when the plugin stops and when the owner's devices, role or
   session change; after a change of devices or role its id answers like an unknown id, also once it finished (a report
-  made for the old devices). Tasks it or the call starts with `job.Owner.Tasks` / `caller.Tasks` belong to the user (the
+  made for the old devices). When devices move into or out of the owner's group (a tag or site change) its finished jobs
+  are forgotten, a running one once it ended. Tasks it or the call starts with `job.Owner.Tasks` / `caller.Tasks` belong to the user (the
   `owner` argument is ignored) and check the user's devices again when they leave the queue. Every method and download
   that takes a job id looks it up with `ctx.Jobs.Find(caller, id)` and throws the same `KeyNotFoundException` for null as
   for an unknown id: another user's id answers NOT_FOUND. Never keep your own id table.
@@ -526,9 +529,10 @@ for them, and it keeps working unchanged for users with all devices.
   (its objects are off), `Changed` tells about changed and deleted groups and, about a second later, about groups whose
   devices may have changed (devices added, removed, moved or tagged; tags and sites): prune there. In a group user's call
   and jobs `ctx.DeviceScopes` answers only for `caller.DeviceScopeKey` (any other key refuses like `ctx.Devices`), except
-  in methods with a `SystemAccessReason`. Table pages use
+  `Exists` and `Contains` in methods with a `SystemAccessReason`. Table pages use
   `DeviceSweeps<TRow>` (plugins/Shared/DeviceSweep.cs): `sweeps.For(caller)` is the sweep of the caller's scope (null
-  for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`.
+  for a deleted group); publish its rows and progress with `PluginEventAudience.DeviceScope(key)`, and counts from
+  `sweep.ScopedSnapshot()` (rows of devices that left the scope dropped first).
 - **Rows and saved objects after a device left**: the group's `Changed` can come later than the device's move, so answer
   table rows with `DeviceSweep.SnapshotAsync(caller)` (only devices the caller sees now) and let a user with all devices
   save a group's object whose devices left with `OwnerScope.LeftOwnerAsync` (drop them, say how many). Bind ids that a task

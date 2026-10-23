@@ -102,7 +102,16 @@ internal sealed class RecordingRunner : ITaskRunner
 
     public bool Cancel(Guid taskId) => Active.TryRemove(taskId, out _);
 
-    public bool? IsActive(Guid taskId) => Active.ContainsKey(taskId);
+    /// <summary>How often a plugin asked whether a task is active.</summary>
+    public int IsActiveCalls => _isActiveCalls;
+
+    private int _isActiveCalls;
+
+    public bool? IsActive(Guid taskId)
+    {
+        Interlocked.Increment(ref _isActiveCalls);
+        return Active.ContainsKey(taskId);
+    }
 }
 
 internal sealed class RecordingEvents : IPluginEvents

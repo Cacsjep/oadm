@@ -159,7 +159,8 @@ public sealed class DeviceGroupTests
             await ctx.CallAsync(plugin, group, ActionRulesMethods.Undo, ActionRulesJson.Serialize(new UndoRequest(first.RunId)));
             Assert.Equal(3, runner.Runs.Count);
             Assert.Empty(ctx.Refused);
-            Assert.Contains("System.Tasks", ctx.Used);
+            Assert.DoesNotContain("System.Tasks", ctx.Used); // the caller's own runner answered
+            Assert.Null(((ICorePlugin)plugin).SystemAccessReason(ActionRulesMethods.Undo));
         }
         finally
         {
@@ -385,6 +386,10 @@ public sealed class DeviceGroupTests
 
         public bool Cancel(Guid taskId) => false;
 
-        public bool? IsActive(Guid taskId) => false;
+        // Like the host: one by one only the user's own tasks, together the tasks of the group's devices.
+        public bool? IsActive(Guid taskId) => null;
+
+        public Task<bool?> AnyActiveAsync(IReadOnlyCollection<Guid> taskIds, CancellationToken ct) =>
+            Task.FromResult<bool?>(taskIds.Any(runner.Active.ContainsKey));
     }
 }

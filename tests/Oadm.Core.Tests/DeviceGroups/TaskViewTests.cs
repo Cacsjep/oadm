@@ -253,6 +253,40 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task TheCallsRunnerTellsOnlyOwnTasksOneByOneAndTheViewsTasksTogether()
+    {
+        var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var outside = await AddDeviceAsync("ACCC8E000002");
+        var (_, anna, annaView) = await GroupUserAsync();
+        var ben = await Users.AddAsync("ben", "pw", BuiltInRoles.OperatorId, DeviceScope.Group(annaView.GroupId!.Value), Ct);
+        var benCaller = CallerOf(ben);
+        var benView = await Views.ForAsync(benCaller, Ct);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Register(new DelegateTaskPlugin("t.hold", async (_, _, ct) => await gate.Task.WaitAsync(ct)));
+        await using var engine = Engine();
+        var annaTasks = engine.ForView(annaView, TaskCaller.Of(anna));
+        var benTasks = engine.ForView(benView, TaskCaller.Of(benCaller));
+
+        var annas = (await annaTasks.RunAsync("t.hold", [inside.Id], null, "x", Ct))[0];
+        var system = (await engine.RunAsync("t.hold", [outside.Id], null, "plugin", Ct))[0];
+
+        Assert.True(annaTasks.IsActive(annas));
+        Assert.Null(benTasks.IsActive(annas)); // another user's task: cannot tell, never false
+        Assert.Null(benTasks.IsActive(system));
+        Assert.False(benTasks.IsActive(Guid.NewGuid()));
+        Assert.True(await benTasks.AnyActiveAsync([annas], Ct)); // a task of the view, whoever started it
+        Assert.Null(await benTasks.AnyActiveAsync([system], Ct)); // a device outside the view
+        Assert.True(await engine.ForView(Views.System, TaskCaller.Of(anna)).AnyActiveAsync([system], Ct));
+
+        gate.SetResult();
+        await engine.WaitForCompletionAsync(annas, Ct);
+        await engine.WaitForCompletionAsync(system, Ct);
+
+        Assert.False(benTasks.IsActive(annas));
+        Assert.False(await benTasks.AnyActiveAsync([annas, system], Ct));
+    }
+
+    [Fact]
     public async Task TaskIdMethodsAnswerATaskOutsideTheViewLikeAnUnknownOne()
     {
         var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);

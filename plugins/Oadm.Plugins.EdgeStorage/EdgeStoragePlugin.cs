@@ -305,7 +305,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     {
         if (_sweeps?.Existing(scopeKey) is { } sweep && _ctx?.Events is { } events)
         {
-            events.Publish(EdgeStorageMethods.StateTopic, EdgeStorageJson.Serialize(State(sweep, sweep.Snapshot(), withRows: false)), PluginEventAudience.DeviceScope(scopeKey));
+            events.Publish(EdgeStorageMethods.StateTopic, EdgeStorageJson.Serialize(State(sweep, sweep.ScopedSnapshot(), withRows: false)), PluginEventAudience.DeviceScope(scopeKey));
         }
     }
 

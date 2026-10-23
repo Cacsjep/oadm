@@ -88,5 +88,35 @@ public sealed class DeviceGroupTests
             e => EdgeStorageJson.Deserialize<RowsEvent>(e.PayloadJson).Removed.Contains(leaves.Id));
     }
 
+    [Fact]
+    public async Task The_published_counts_leave_out_a_camera_that_left_the_group_before_any_prune()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var stays = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1", Apis = Slot });
+        var leaves = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2", Apis = Slot });
+        var key = ctx.FakeScopes.Add("Building B", [stays.Id, leaves.Id]);
+        await using var plugin = new EdgeStoragePlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        await ctx.InvokeAsync(plugin, Testing.FakeCallContext.WithGroup(ctx, [stays.Id, leaves.Id], "anna", key), EdgeStorageMethods.Read, null);
+        var sweep = plugin.Sweeps!.For(key)!;
+        await sweep.Current;
+        sweep.Publish();
+        var group = Testing.FakeCallContext.WithGroup(ctx, [stays.Id], "anna", key);
+        Assert.Equal(2, Counted(ctx.EventsSeenBy(group).Last(e => e.Topic == EdgeStorageMethods.StateTopic).PayloadJson));
+
+        // A tag change moves the camera out of the group; no call and no prune came yet.
+        ctx.FakeScopes.Add("Building B", [stays.Id], key);
+        await sweep.ReadOneAsync(stays.Id, CancellationToken.None); // e.g. after a task: a new state goes out
+        sweep.Publish();
+
+        Assert.Equal(1, Counted(ctx.EventsSeenBy(group).Last(e => e.Topic == EdgeStorageMethods.StateTopic).PayloadJson));
+
+        static int Counted(string? json)
+        {
+            var state = EdgeStorageJson.Deserialize<StorageState>(json);
+            return state.Ok + state.Warnings + state.Problems + state.NoCard + state.Failed;
+        }
+    }
+
     private static DeviceSweepOptions Options() => new() { PublishInterval = TimeSpan.FromHours(1), DeviceTimeout = TimeSpan.FromSeconds(30) };
 }

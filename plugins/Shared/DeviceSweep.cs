@@ -105,6 +105,12 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     /// <summary>Called after every sweep that read all its devices (the plugin's summary log).</summary>
     public Action? Finished { get; set; }
 
+    /// <summary>
+    /// Whether a device is in the sweep's scope now (<see cref="IDeviceScopes.Contains(string, Guid)"/>, set by
+    /// <see cref="DeviceSweeps{TRow}"/>); null: every row counts (hosts without groups).
+    /// </summary>
+    public Func<Guid, bool>? InScope { get; set; }
+
     /// <summary>Whether a sweep runs.</summary>
     public bool IsRunning
     {
@@ -134,6 +140,29 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     {
         lock (_sync)
         {
+            return new SweepSnapshot<TRow>(_running, _done, _total, _finishedUtc, [.. _rows.Values]);
+        }
+    }
+
+    /// <summary>
+    /// Progress and the rows of devices in the sweep's scope now (<see cref="InScope"/>): rows of devices that left it are
+    /// dropped first, like <see cref="SnapshotAsync"/>, without a request. For what goes to the scope's users in the background
+    /// (the published state and its counts), between a device leaving the group and the prune.
+    /// </summary>
+    public SweepSnapshot<TRow> ScopedSnapshot()
+    {
+        var inScope = InScope;
+        lock (_sync)
+        {
+            if (inScope is not null)
+            {
+                foreach (var gone in _rows.Keys.Where(id => !inScope(id)).ToList())
+                {
+                    Remove(gone);
+                    _stateDirty = true;
+                }
+            }
+
             return new SweepSnapshot<TRow>(_running, _done, _total, _finishedUtc, [.. _rows.Values]);
         }
     }
@@ -558,6 +587,12 @@ internal sealed class DeviceSweeps<TRow> : IAsyncDisposable
                 // Older hosts have no groups: the plugin's devices (the sweep runs detached, as background work).
                 var devices = scopes?.Devices(scopeKey) ?? _ctx.Devices;
                 sweep = _create(scopeKey, devices);
+                if (scopes is not null)
+                {
+                    var key = scopeKey;
+                    sweep.InScope = id => scopes.Contains(key, id);
+                }
+
                 _sweeps[scopeKey] = sweep;
             }
 
