@@ -91,7 +91,7 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         var certsCa = aliases.Take(radiusCas.Count).ToList();
 
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.Dot1xAliasPrefix, service.Time);
-        var names = CertificateDeployment.NamesFor(device, network);
+        var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
         var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Dot1x, alias, stepPrefix, ct).ConfigureAwait(false);
         await ConfigureAsync(ctx, service.Config.Dot1x, device, apis, network, issued.Alias, certsCa, stepPrefix, ct).ConfigureAwait(false);
         await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Dot1x, [issued.Alias], PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);

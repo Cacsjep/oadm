@@ -78,7 +78,7 @@ later. Nothing was changed."), SOAP web server TLS (`WebServerTls`: `aweb:Get/Se
 Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback).
 - Issuing (`CertificateDeployment.IssueAsync`, `DeviceCertificateIssuer`): key on the device (`create_certificate` RSA-2048 in
   the default keystore) -> `get_csr` -> OADM signs (its own subject `CN=<OADM address>`, SAN IP addresses, host name, FQDN,
-  `axis-<serial>.local`; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
+  `axis-<serial>.local`, the reported ones only for a device no group covers; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
   keyEncipherment; AKI = CA SKI; 16 random serial bytes; validity `deviceCertValidityDays` from now - 5 min, capped at the
   CA) -> `PATCH certificates/<alias>`; the entry goes into `issued`. A failure after the key was created deletes the
   unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
@@ -169,9 +169,11 @@ only of the caller's devices (`ViewedSet` of `plugins/Shared/ViewerScopes.cs`); 
 (the CA, its trust and the settings are server-wide). The `state` event goes to `AllDevices` with every device and to
 `DeviceScope(key)` of each group that read the page with that group's counts. The page hides the CA actions, the trust
 button and Save for a user with a group (`HasAllDevices`). The tasks get their device from the host;
-`CertificateDeployment.NamesFor` passes `IDeviceInfo.AddedByAllDevices` to `CertificateNames.For(..., trustNames)`: false
-leaves the host name, the FQDN and a name address out (only IP addresses and `axis-<serial>.local`, CN the OADM address
-when it is an IP address, else the first IP address or the axis name). Tests: `DeviceGroupTests` (the `PluginCanary`,
+`CertificateDeployment.NamesFor(device, network, inAnyGroup)` passes `IDeviceInfo.AddedByAllDevices` to
+`CertificateNames.For(..., trustNames)`: false leaves the host name, the FQDN and a name address out (only IP addresses
+and `axis-<serial>.local`, CN the OADM address when it is an IP address, else the first IP address or the axis name).
+`inAnyGroup` (`PkiService.InAnyGroup`, `IDeviceScopes.InAnyGroup`; no scopes: true) leaves out everything the camera
+reports (host name, FQDN, further IP addresses): a group user could change them on the camera. Tests: `DeviceGroupTests` (the `PluginCanary`,
 counts and events per group, names, Enable HTTPS on a device a group user added, the page).
 
 ## Permissions

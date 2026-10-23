@@ -49,9 +49,13 @@ public sealed partial class EstEndpoint(
     Func<IDeviceCertificateAuthority?> authority,
     Func<bool> proActive,
     TimeProvider? time = null,
-    Func<Guid, CancellationToken, Task<bool>>? isManaged = null)
+    Func<Guid, CancellationToken, Task<bool>>? isManaged = null,
+    Func<IDeviceInfo, bool>? inAnyGroup = null)
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+
+    // Without the host's groups every device counts as covered (fail closed): no host name the camera reports.
+    private readonly Func<IDeviceInfo, bool> _inAnyGroup = inAnyGroup ?? (_ => true);
 
     public async Task<EstResult> HandleAsync(HttpRequest request, ClientIdentity identity, RequestOrigin origin, CancellationToken ct)
     {
@@ -160,7 +164,7 @@ public sealed partial class EstEndpoint(
         try
         {
             issued = await ca.SignAsync(
-                new DeviceCertificateRequest(csr, CommonName(device), IpAddresses(device, origin), DnsNames(device), profile.CertificateUse)
+                new DeviceCertificateRequest(csr, CommonName(device), IpAddresses(device, origin), DnsNames(device, _inAnyGroup(device)), profile.CertificateUse)
                 {
                     DeviceId = device.Id,
                     Validity = TimeSpan.FromDays(profile.ValidityDays),
@@ -300,7 +304,12 @@ public sealed partial class EstEndpoint(
     internal static bool NamesOtherCamera(string name, string serial) =>
         AxisNamePrefix().Match(name) is { Success: true } match && !string.Equals(match.Groups[1].Value, serial, StringComparison.OrdinalIgnoreCase);
 
-    internal static IReadOnlyList<string> DnsNames(IDeviceInfo device)
+    /// <summary>
+    /// The DNS names of the device's certificate (docs/spec/device-scope.md "Host names in certificates"): names only for a
+    /// device a user with all devices added; the host name the camera reports only when no device group covers it
+    /// (<paramref name="inAnyGroup"/>: a user of the group could change it on the camera), else only the name address.
+    /// </summary>
+    internal static IReadOnlyList<string> DnsNames(IDeviceInfo device, bool inAnyGroup)
     {
         var names = new List<string>();
         if (!device.AddedByAllDevices)
@@ -312,7 +321,7 @@ public sealed partial class EstEndpoint(
 
         // The camera reports its host name itself: only plain names (no wildcard, no odd characters) go into a certificate
         // every OADM device trusts, never another camera's axis name.
-        if (IsPlainHostName(device.HostName) && !NamesOtherCamera(device.HostName!.Trim(), device.Serial))
+        if (!inAnyGroup && IsPlainHostName(device.HostName) && !NamesOtherCamera(device.HostName!.Trim(), device.Serial))
         {
             names.Add(device.HostName!.Trim());
         }

@@ -108,13 +108,17 @@ public static class CertificateDeployment
     }
 
     /// <summary>
-    /// Names for the device certificate from the OADM address and the device's network info; host names only for a device
-    /// a user with all devices added (docs/spec/device-scope.md "Host names in certificates").
+    /// Names for the device certificate (docs/spec/device-scope.md "Host names in certificates"): a name address only for a
+    /// device a user with all devices added; the host name, FQDN and IP addresses the device reports only when, in addition
+    /// (names) or alone (addresses), no device group covers the device (<paramref name="inAnyGroup"/>: a user of the group
+    /// could change them on the camera). A covered device gets its stored address and <c>axis-&lt;serial&gt;.local</c>.
     /// </summary>
-    public static CertificateNames NamesFor(IDeviceInfo device, DeviceNetworkInfo? network)
+    public static CertificateNames NamesFor(IDeviceInfo device, DeviceNetworkInfo? network, bool inAnyGroup)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return CertificateNames.For(device.Address, device.Serial, network?.HostName ?? device.HostName, network?.Fqdn, network?.Addresses ?? [], device.AddedByAllDevices);
+        return inAnyGroup
+            ? CertificateNames.For(device.Address, device.Serial, null, null, [], device.AddedByAllDevices)
+            : CertificateNames.For(device.Address, device.Serial, network?.HostName ?? device.HostName, network?.Fqdn, network?.Addresses ?? [], device.AddedByAllDevices);
     }
 
     /// <summary>The CA certificate and the issuers above it, with OADM aliases.</summary>

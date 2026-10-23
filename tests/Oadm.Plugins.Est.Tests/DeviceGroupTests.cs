@@ -116,11 +116,30 @@ public sealed class DeviceGroupTests : IAsyncLifetime
         var trusted = new FakeDevice { Serial = "B8A44F631339", Address = "cam.example.com", HostName = "cam-entrance" };
         var untrusted = trusted with { AddedByAllDevices = false };
 
-        Assert.Equal(["cam-entrance", "cam.example.com", "axis-b8a44f631339.local"], EstEndpoint.DnsNames(trusted));
+        Assert.Equal(["cam-entrance", "cam.example.com", "axis-b8a44f631339.local"], EstEndpoint.DnsNames(trusted, inAnyGroup: false));
         Assert.Equal("cam.example.com", EstEndpoint.CommonName(trusted));
-        Assert.Equal(["axis-b8a44f631339.local"], EstEndpoint.DnsNames(untrusted));
+        Assert.Equal(["axis-b8a44f631339.local"], EstEndpoint.DnsNames(untrusted, inAnyGroup: false));
+        Assert.Equal(["axis-b8a44f631339.local"], EstEndpoint.DnsNames(untrusted, inAnyGroup: true));
         Assert.Equal("axis-b8a44f631339.local", EstEndpoint.CommonName(untrusted));
         Assert.Equal("10.0.0.48", EstEndpoint.CommonName(untrusted with { Address = "10.0.0.48" })); // an IP address stays
+    }
+
+    [Fact]
+    public void A_device_a_group_covers_gets_only_the_address_it_was_added_with_never_the_host_name_the_camera_reports()
+    {
+        var device = new FakeDevice { Serial = "B8A44F631339", Address = "cam.example.com", HostName = "bank.example.com" };
+        Assert.False(_plugin.Service!.InAnyGroup(_inside));
+        _core.FakeScopes.Add("Building B", [_inside.Id, device.Id]);
+
+        Assert.True(_plugin.Service.InAnyGroup(_inside));
+        Assert.False(_plugin.Service.InAnyGroup(_outside));
+        Assert.Equal(["cam.example.com", "axis-b8a44f631339.local"], EstEndpoint.DnsNames(device, _plugin.Service.InAnyGroup(device)));
+
+        // The camera's profile: the same names.
+        var (_, json) = Tasks.EstSetupTask.Wanted(new EstProfile("https", ProfileUse.Https), device, _plugin.Service.InAnyGroup(device),
+            System.Net.IPAddress.Parse("10.0.0.17"), 9454, ["OADM CA 1"], "Axis device ID");
+        Assert.Equal(["DNS:cam.example.com", "DNS:axis-b8a44f631339.local"], json["subjectAlternativeNames"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal("cam.example.com", json["subject"]!["cn"]!.GetValue<string>());
     }
 
     [Fact]

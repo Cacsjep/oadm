@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.TrustStore;
 using Oadm.Plugins.Shared;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
@@ -46,6 +47,7 @@ public sealed partial class PkiService : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ITrustStoreInstaller _trustStore;
     private readonly IssuedRegistry _issued;
+    private readonly IDeviceScopes? _scopes;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
     private volatile CaMaterial? _ca;
@@ -60,6 +62,7 @@ public sealed partial class PkiService : IAsyncDisposable
     public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger, IDeviceScopes? scopes = null)
     {
         Viewers = new ViewerScopes(scopes);
+        _scopes = scopes;
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _store = new PkiStore(settings ?? throw new ArgumentNullException(nameof(settings)));
         _secrets = secrets;
@@ -80,6 +83,12 @@ public sealed partial class PkiService : IAsyncDisposable
 
     /// <summary>The registry of issued device certificates (written by the task plugins).</summary>
     public IssuedRegistry Issued => _issued;
+
+    /// <summary>
+    /// True when a device group covers the device (also without the host's groups: fail closed). Its certificates then
+    /// take no names or addresses the camera reports (docs/spec/device-scope.md "Host names in certificates").
+    /// </summary>
+    public bool InAnyGroup(IDeviceInfo device) => _scopes is null || _scopes.InAnyGroup(device);
 
     /// <summary>The device groups whose users read the page: each gets the state with the counts of its own devices.</summary>
     internal ViewerScopes Viewers { get; }

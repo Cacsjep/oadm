@@ -12,6 +12,7 @@ using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
+using Oadm.Sdk.Testing;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Pki.Tests;
@@ -122,13 +123,19 @@ internal sealed class TestCoreContext(IPluginSettings settings, ISecretProtector
     public IPluginEvents? Events { get; } = events;
 
     public ITrustAnchors? TrustAnchors { get; } = anchors;
+
+    /// <summary>The device groups (none until a test adds one).</summary>
+    public FakeDeviceScopes Scopes { get; } = new FakeCoreContext().FakeScopes;
+
+    public IDeviceScopes? DeviceScopes => Scopes;
 }
 
 /// <summary>A started PKI plugin over in-memory settings (fast 2048-bit keys), with its hub and anchors.</summary>
 internal sealed class PkiHarness : IAsyncDisposable
 {
-    private PkiHarness(PkiPlugin plugin, InMemoryPluginSettingsProvider settings, PluginEventHub hub, TrustAnchorRegistry anchors, FakeTrustStore trust, ISecretProtector? secrets)
+    private PkiHarness(PkiPlugin plugin, InMemoryPluginSettingsProvider settings, PluginEventHub hub, TrustAnchorRegistry anchors, FakeTrustStore trust, ISecretProtector? secrets, FakeDeviceScopes scopes)
     {
+        Scopes = scopes;
         Plugin = plugin;
         SettingsProvider = settings;
         Hub = hub;
@@ -138,6 +145,9 @@ internal sealed class PkiHarness : IAsyncDisposable
     }
 
     public PkiPlugin Plugin { get; }
+
+    /// <summary>The device groups of the host.</summary>
+    public FakeDeviceScopes Scopes { get; }
 
     public PkiService Service => Plugin.Service!;
 
@@ -175,13 +185,14 @@ internal sealed class PkiHarness : IAsyncDisposable
         var anchors = new TrustAnchorRegistry();
         var trust = new FakeTrustStore();
         var plugin = new PkiPlugin(Options(trust, time));
-        await plugin.StartAsync(new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId)), CancellationToken.None);
+        var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId));
+        await plugin.StartAsync(core, CancellationToken.None);
         if (waitForDefault)
         {
             await plugin.Service!.Background;
         }
 
-        return new PkiHarness(plugin, settings, hub, anchors, trust, protector);
+        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes);
     }
 
     public async Task<T> InvokeAsync<T>(string method, object? payload = null) =>

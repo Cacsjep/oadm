@@ -45,7 +45,7 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
     {
         await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCa), CertificateDeployment.CaChain(ca), ct).ConfigureAwait(false);
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.HttpsAliasPrefix, service.Time);
-        var names = CertificateDeployment.NamesFor(device, network);
+        var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
         var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, stepPrefix, ct).ConfigureAwait(false);
         await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
         await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), ct).ConfigureAwait(false);

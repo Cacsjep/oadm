@@ -117,8 +117,14 @@ public sealed partial class EstService : IAsyncDisposable
         _certificates = new ServerCertificates(host.Authority, host.Time);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time,
-            async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null);
+            async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null, InAnyGroup);
     }
+
+    /// <summary>
+    /// True when a device group covers the device (also without the host's groups: fail closed). Its certificates then
+    /// take no host name the camera reports (docs/spec/device-scope.md "Host names in certificates").
+    /// </summary>
+    public bool InAnyGroup(IDeviceInfo device) => _host.Scopes is null || _host.Scopes.InAnyGroup(device);
 
     public EstStore Store => _store;
 

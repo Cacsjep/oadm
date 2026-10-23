@@ -27,6 +27,7 @@ public sealed class ServerTests : IAsyncLifetime
     private readonly FakePublisher _publisher = new();
     private readonly FakeSites _sites = new();
     private readonly FakeCoreContext _events = new();
+    private readonly FakeCoreContext _groups = new();
     private X509Certificate2 _intermediate = null!;
     private X509Certificate2 _deviceId = null!;
     private EstService _service = null!;
@@ -45,6 +46,7 @@ public sealed class ServerTests : IAsyncLifetime
             Publisher = _publisher,
             Sites = _sites,
             Events = _events,
+            Scopes = _groups.FakeScopes,
         });
         await _service.StartAsync(CancellationToken.None);
     }
@@ -76,6 +78,24 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Contains(IPAddress.Parse("10.0.0.17"), names.EnumerateIPAddresses());
         Assert.Contains("oadm-server", names.EnumerateDnsNames());
         Assert.Equal("Running on port 9454", _service.GetState().StatusText);
+    }
+
+    [Fact]
+    public async Task A_camera_a_device_group_covers_gets_no_host_name_it_reports()
+    {
+        // A user of the group could have set the camera's host name (Network settings, VAPIX Commander, Web View).
+        _groups.FakeScopes.Add("Building B", [_devices.List[0].Id]);
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+
+        var response = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+
+        Assert.Equal(200, response.Status);
+        using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(response.Body))[0]);
+        Assert.Equal("CN=10.0.0.48", issued.Subject);
+        var names = issued.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Equal(["axis-b8a44f631339.local"], names.EnumerateDnsNames());
+        Assert.Equal([IPAddress.Parse("10.0.0.48")], names.EnumerateIPAddresses());
     }
 
     [Fact]
@@ -200,7 +220,7 @@ public sealed class ServerTests : IAsyncLifetime
     public void Only_plain_host_names_go_into_a_certificate(string name, bool plain)
     {
         Assert.Equal(plain, EstEndpoint.IsPlainHostName(name));
-        var names = EstEndpoint.DnsNames(new FakeDevice { Serial = Serial, Address = "10.0.0.48", HostName = name });
+        var names = EstEndpoint.DnsNames(new FakeDevice { Serial = Serial, Address = "10.0.0.48", HostName = name }, inAnyGroup: false);
         Assert.Equal(plain, names.Contains(name));
         Assert.Contains("axis-b8a44f631339.local", names);
     }
@@ -265,7 +285,7 @@ public sealed class ServerTests : IAsyncLifetime
     {
         var device = new FakeDevice { Serial = Serial, Address = "axis-accc8e000099.local", HostName = "axis-accc8e000099" };
 
-        Assert.Equal(["axis-" + Serial.ToLowerInvariant() + ".local"], EstEndpoint.DnsNames(device));
+        Assert.Equal(["axis-" + Serial.ToLowerInvariant() + ".local"], EstEndpoint.DnsNames(device, inAnyGroup: false));
         Assert.True(Oadm.Plugins.Pki.Ca.CertificateNames.NamesOtherCamera("axis-ACCC8E000099.local", Serial));
         Assert.False(Oadm.Plugins.Pki.Ca.CertificateNames.NamesOtherCamera("axis-" + Serial + ".local", Serial));
         Assert.False(Oadm.Plugins.Pki.Ca.CertificateNames.NamesOtherCamera("axis-entrance", Serial));
