@@ -268,7 +268,7 @@ Commercial plugins (decision 2026-10-17): OADM checks, the plugin decides. User 
   `RemovePackageLicense(id)` (Admin, audited "Entered plugin license" / "Removed plugin license"; INVALID_ARGUMENT with the
   reason, NOT_FOUND, FAILED_PRECONDITION for a free plugin).
 - **Client**: Settings page, card License: "Server ID" + copy (`docs/spec/licensing.md`; `ServerSettings.server_id = 23`, read only). Plugins
-  page: "Server ID" + copy at the top and a **License** column, both only while a plugin needs a license: status chip
+  page: a **License** column only while a plugin needs a license (no server ID, Settings shows it): status chip
   (Licensed ok, Trial warning, else error; reason as tooltip), Enter / Change license, Remove (red, confirmed); a licensed
   package is listed even when always on. Dialog `Settings/PluginLicenseWindow` (`PluginLicenseViewModel`, single operation):
   server ID + copy, "License key" (one-line text box, mono), its hint = what the key says ("ACME GmbH, until 2027-12-31,

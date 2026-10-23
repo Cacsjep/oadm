@@ -265,23 +265,6 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public bool IsEmpty => Plugins.Count == 0;
 
-    /// <summary>This server's ID, which plugin licenses name; empty for an older server.</summary>
-    public string ServerId => _store.ServerId;
-
-    public bool HasServerId => ServerId.Length > 0;
-
-    /// <summary>The server ID shows here only while a plugin needs a license (the Settings page always shows it).</summary>
-    public bool ShowServerId => HasServerId && HasLicensedPlugins;
-
-    [RelayCommand]
-    private async Task CopyServerIdAsync()
-    {
-        if (_clipboard is not null && HasServerId)
-        {
-            await _clipboard.SetTextAsync(ServerId).ConfigureAwait(true);
-        }
-    }
-
     /// <summary>Reads the plugin list again (the page opened): the PRO lock follows a license that ended or changed elsewhere.</summary>
     public Task RefreshAsync() => _store.LoadAsync(CancellationToken.None);
 
@@ -350,10 +333,7 @@ public sealed partial class PluginsViewModel : ObservableObject
         OnPropertyChanged(nameof(Groups));
         Plugins.ReplaceAll(rows);
         OnPropertyChanged(nameof(IsEmpty));
-        OnPropertyChanged(nameof(ServerId));
-        OnPropertyChanged(nameof(HasServerId));
         OnPropertyChanged(nameof(HasLicensedPlugins));
-        OnPropertyChanged(nameof(ShowServerId));
     }
 
     /// <summary>gRPC errors carry the user message in Status.Detail.</summary>

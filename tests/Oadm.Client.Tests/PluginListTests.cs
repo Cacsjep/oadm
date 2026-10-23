@@ -206,8 +206,6 @@ public sealed class PluginListTests
             var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
             await store.LoadAsync(CancellationToken.None);
 
-            Assert.Equal(FakeOadmApi.FakeServerId, plugins.ServerId);
-            Assert.True(plugins.ShowServerId); // a plugin needs a license
             Assert.True(plugins.HasLicensedPlugins);
             var row = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SampleLicensedPluginId);
             Assert.True(row.NeedsLicense);
@@ -225,7 +223,7 @@ public sealed class PluginListTests
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
-            Assert.Contains(FakeOadmApi.FakeServerId, texts);
+            Assert.DoesNotContain(FakeOadmApi.FakeServerId, texts); // Settings > License shows it
             Assert.Contains("Trial", texts);
             // No sites known to this page: the Sites column stays hidden, like every Site column.
             Assert.DoesNotContain("Works at sites", window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? ""));

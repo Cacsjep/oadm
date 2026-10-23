@@ -18,6 +18,10 @@ version and date, and the release workflow copies it into the GitHub release.
 - SDK: `ITaskDialogContext.CanRunTasks` and `RunTaskAsync`: a task dialog can start its task and follow it while it
   stays open. `IPluginRecords.GetAsync` reads one record.
 
+### Changed
+
+- Plugins: the page no longer shows the server ID; it is in Settings > **License**.
+
 ### Fixed
 
 - Set up certificate enrollment after **Remove** failed after 2 minutes with "got no certificate": the camera keeps the
