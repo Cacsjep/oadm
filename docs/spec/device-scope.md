@@ -170,8 +170,9 @@ an independent security review the same day). A user may be limited to part of t
   `Users.DeviceGroupId` (FK Restrict); `Devices.AddedByAllDevices` + `AddedByGroupId` (no FK: a deleted group leaves the
   serial dormant); `WaitingDevices.QueuedByUserId`; `ComplianceChecks` `OwnerAllDevices` + `OwnerGroupId` (FK
   Restrict; `DeviceGroups` gave `EventRules` the same columns, the migration `EventRulesWithoutOwner` drops them again).
-  `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; new rows have
-  no database default (C# default false: every writer chooses).
+  `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; the migration
+  `DeviceGroupFlagsWithoutDefault` removes the database default 1 it left on the three columns, so a row inserted without
+  them fails (NOT NULL) instead of getting all devices; C# default false: every writer chooses.
 - **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. The
   caller: `AuthenticatedCaller.Devices` (`CallerDevices(Access, GroupRevision)`, default `None`), `HasAllDevices`
   (Administrator always), `DeviceGroupId`, `SessionId` (opaque, for plugins). Sessions carry the access

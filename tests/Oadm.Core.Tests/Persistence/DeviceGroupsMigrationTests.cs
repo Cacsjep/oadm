@@ -133,4 +133,62 @@ public sealed class DeviceGroupsMigrationTests
             TestDatabase.DeleteDirectory(targetDir);
         }
     }
+    [Fact]
+    public async Task TheFlagsOfDeviceGroupsHaveNoDatabaseDefaultSoARawInsertFailsClosed()
+    {
+        var dir = TestDatabase.NewTempDirectory();
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var options = new DbContextOptionsBuilder<OadmDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(dir, "oadm.db")};Pooling=False")
+                .Options;
+            await using (var before = new OadmDbContext(options))
+            {
+                await SeedOlderAsync(before);
+                await before.GetService<IMigrator>().MigrateAsync("20261023092453_EventRulesWithoutOwner");
+            }
+
+            await using var after = new OadmDbContext(options);
+            await after.Database.MigrateAsync();
+
+            // The rebuilt tables keep their rows and values.
+            await AssertNobodyLostDevicesAsync(after);
+
+            foreach (var (table, column) in new[] { ("Users", "AllDevices"), ("Devices", "AddedByAllDevices"), ("ComplianceChecks", "OwnerAllDevices") })
+            {
+                var sql = "SELECT COALESCE(\"dflt_value\", 'none') AS \"Value\" FROM pragma_table_info('" + table + "') WHERE \"name\" = '" + column + "'";
+                var defaults = await after.Database.SqlQueryRaw<string>(sql).ToListAsync();
+                Assert.Equal(["none"], defaults);
+            }
+
+            // A row inserted without its flag is refused, never given all devices; with the flag (the only missing column) it goes in.
+            var userId = BuiltInRoles.OperatorId.ToString();
+            var inserts = new (string Table, string Flag, string Columns, string Values)[]
+            {
+                ("Users", "AllDevices", "\"Id\", \"UserName\", \"NormalizedName\", \"PasswordHash\", \"RoleId\", \"Disabled\", \"CreatedUtc\"",
+                    "'55555555-5555-5555-5555-555555555555', 'raw', 'RAW', 'x', '" + userId + "', 0, '2026-01-01 00:00:00'"),
+                ("Devices", "AddedByAllDevices", "\"Id\", \"Serial\", \"Address\", \"UseHostName\", \"Status\", \"Scheme\", \"Category\", \"CertTrust\", \"Tags\", \"Apis\"",
+                    "'66666666-6666-6666-6666-666666666666', 'ACCC8E000002', '10.0.0.2', 0, 'Ok', 'Https', 'Camera', 'Unknown', '[]', '[]'"),
+                ("ComplianceChecks", "OwnerAllDevices", "\"Id\", \"Name\", \"TypeId\", \"SettingsJson\", \"DevicesJson\", \"Severity\", \"IntervalMinutes\", \"Enabled\", \"BuiltIn\", \"Version\", \"CreatedUtc\", \"ChangedUtc\"",
+                    "'77777777-7777-7777-7777-777777777777', 'Raw check', 't', '{{}}', '{{}}', 0, 0, 1, 0, 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'"),
+            };
+            foreach (var (table, flag, columns, values) in inserts)
+            {
+                var without = "INSERT INTO \"" + table + "\" (" + columns + ") VALUES (" + values + ")";
+                var error = await Assert.ThrowsAsync<SqliteException>(() => after.Database.ExecuteSqlRawAsync(without));
+                Assert.Contains(flag, error.Message, StringComparison.Ordinal);
+                var with = "INSERT INTO \"" + table + "\" (" + columns + ", \"" + flag + "\") VALUES (" + values + ", 0)";
+                await after.Database.ExecuteSqlRawAsync(with);
+            }
+
+            Assert.False((await after.Users.AsNoTracking().SingleAsync(u => u.UserName == "raw")).AllDevices);
+            Assert.Equal(2, await after.Devices.CountAsync());
+            Assert.Equal(2, await after.ComplianceChecks.CountAsync());
+        }
+        finally
+        {
+            TestDatabase.DeleteDirectory(dir);
+        }
+    }
 }
