@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using Oadm.Sdk.Devices;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.LiveView.Tests;
@@ -22,7 +23,7 @@ public sealed class DeviceGroupTests
         using var plugin = new LiveViewPlugin();
         await plugin.StartAsync(ctx, CancellationToken.None);
 
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method("save", """{"name":"Hall","version":0,"tiles":[{"deviceId":"{inside}","camera":0,"x":0,"y":0,"width":4,"height":4},{"deviceId":"{device}","camera":0,"x":4,"y":0,"width":4,"height":4}]}""")
             .WithoutDevices("list", "the views of the caller's own group, cameras filtered to the group")
             .WithoutDevices("delete", "only a view of the caller's own group", """{"id":"none"}""")

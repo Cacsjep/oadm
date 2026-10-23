@@ -1,3 +1,4 @@
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.DeviceTriggers.Tests;
@@ -18,7 +19,7 @@ public sealed class DeviceGroupTests
         await using var plugin = new DeviceTriggersPlugin(Options());
         await plugin.StartAsync(ctx, CancellationToken.None);
 
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(DeviceTriggersMethods.StartRead, """{"deviceIds":["{inside}","{device}"]}""")
             .Method(DeviceTriggersMethods.Save, """{"trigger":{"name":"Door","topic":"tns1:Device/tnsaxis:IO/VirtualInput","enabled":false,"deviceIds":["{inside}","{device}"]}}""")
             .Job(DeviceTriggersMethods.ReadStatus, """{"jobId":"{job}"}""", async owner =>

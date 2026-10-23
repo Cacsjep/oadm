@@ -4,6 +4,7 @@ using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Vapix;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.ActionRules.Tests;
@@ -26,7 +27,7 @@ public sealed class DeviceGroupTests
         await using var plugin = new ActionRulesPlugin(Options());
         await plugin.StartAsync(ctx, CancellationToken.None);
 
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(ActionRulesMethods.Read, """{"deviceIds":["{inside}","{device}"]}""")
             .Method(ActionRulesMethods.Events, """{"deviceIds":["{inside}","{device}"]}""")
             .Method(ActionRulesMethods.Edit, Targets + ""","patch":{"enabled":false}}""")

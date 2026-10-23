@@ -9,6 +9,7 @@ using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Dashboards.Tests;
@@ -33,7 +34,7 @@ public sealed class DeviceGroupTests
         using var plugin = new DashboardsPlugin(new FakeTimeProvider());
         await plugin.StartAsync(ctx, CancellationToken.None);
 
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(DashboardsMethods.Save, """{"name":"Doors","version":0,"widgets":[{"id":"1","kind":"number","x":0,"y":0,"width":4,"height":4,"typeId":"t","field":"f","deviceId":"{inside}"},{"id":"2","kind":"video","x":4,"y":0,"width":4,"height":4,"deviceId":"{device}"}]}""")
             .Method(DashboardsMethods.Watch, """{"watchId":"page","keys":[{"typeId":"t","deviceId":"{inside}"},{"typeId":"t","deviceId":"{device}"}]}""")
             .WithoutDevices(DashboardsMethods.List, "the dashboards of the caller's own group, widgets filtered to the group")

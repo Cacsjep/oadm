@@ -1,6 +1,7 @@
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Vapix;
 
+using PluginCanary = Oadm.Sdk.Testing.PluginCanary;
 using Testing = Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.EdgeStorage.Tests;
@@ -22,7 +23,7 @@ public sealed class DeviceGroupTests
         await using var plugin = new EdgeStoragePlugin(Options());
         await plugin.StartAsync(ctx, CancellationToken.None);
 
-        await new Testing.PluginCanary(ctx, plugin, inside, outside)
+        await new PluginCanary(ctx, plugin, inside, outside)
             .Method(EdgeStorageMethods.Read, """{"deviceIds":["{inside}","{device}"]}""")
             .Method(EdgeStorageMethods.Change, """{"action":"check","deviceIds":["{inside}","{device}"]}""")
             .Method(EdgeStorageMethods.Format, """{"action":"format","deviceIds":["{device}"]}""")
