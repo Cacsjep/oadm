@@ -55,6 +55,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     private CancellationTokenSource? _active;
     private bool _formLoaded;
     private string? _clientCheckedCaId;
+    private bool _certificatesStale = true;
 
     /// <param name="ctx">Page context of the host.</param>
     /// <param name="clientTrust">This computer's trusted root store (<see cref="TrustStoreInstallers.ForClient"/>); tests pass a fake.</param>
@@ -79,6 +80,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         };
         _clientTrust = clientTrust ?? throw new ArgumentNullException(nameof(clientTrust));
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
+        Certificates = new IssuedCertificatesViewModel(ctx);
         Identity = IdentityChoices[0];
         RadiusCa = RadiusChoices[0];
         EapolVersion = EapolChoices[0];
@@ -266,6 +268,34 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     public bool IsActive => _active is not null;
 
+    // ---------------------------------------------------------------- tabs
+
+    /// <summary>The Certificates tab: every certificate the OADM CA issued, revoke.</summary>
+    public IssuedCertificatesViewModel Certificates { get; }
+
+    /// <summary>The Certificates tab is shown (else Certificate authority: the cards).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCaTab))]
+    public partial bool IsCertificatesTab { get; set; }
+
+    public bool IsCaTab => !IsCertificatesTab;
+
+    [RelayCommand]
+    private void ShowCaTab() => IsCertificatesTab = false;
+
+    [RelayCommand]
+    private Task ShowCertificatesTabAsync()
+    {
+        IsCertificatesTab = true;
+        if (!_certificatesStale)
+        {
+            return Task.CompletedTask;
+        }
+
+        _certificatesStale = false;
+        return Certificates.LoadAsync();
+    }
+
     // ---------------------------------------------------------------- lifecycle
 
     /// <summary>Page shown: read the state and watch the live events.</summary>
@@ -320,6 +350,13 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public Task HandleEventAsync(PluginEvent item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        if (item.Topic == PkiMethods.CertificatesTopic)
+        {
+            // Only the shown tab reads again; the other reads when it is opened.
+            _certificatesStale = !IsCertificatesTab;
+            return IsCertificatesTab ? Certificates.HandleEventAsync(item.Topic) : Task.CompletedTask;
+        }
+
         return item.Topic == PkiMethods.StateTopic && !string.IsNullOrEmpty(item.PayloadJson)
             ? ApplyStateAsync(PkiJson.Deserialize<PkiState>(item.PayloadJson))
             : Task.CompletedTask;
@@ -773,6 +810,14 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
                     // Subscribe first, then read the state: nothing published in between is lost.
                     var next = events.MoveNextAsync();
                     await LoadAsync(ct).ConfigureAwait(true);
+                    if (IsCertificatesTab)
+                    {
+                        await Certificates.LoadAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
+                    }
+                    else
+                    {
+                        _certificatesStale = true;
+                    }
                     while (await next.ConfigureAwait(true))
                     {
                         await HandleEventAsync(events.Current).ConfigureAwait(true);

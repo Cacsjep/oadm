@@ -30,6 +30,12 @@ public static class PkiPluginInfo
     /// <summary>Shortest backup password.</summary>
     public const int MinBackupPasswordLength = 8;
 
+    /// <summary>Rows of one page of the Certificates tab.</summary>
+    public const int CertificatesPageSize = 500;
+
+    /// <summary>Most serial numbers of one Revoke.</summary>
+    public const int MaxRevokeAtOnce = 5000;
+
     /// <summary>"OADM Root CA &lt;server name&gt;".</summary>
     public static string DefaultCommonName(string serverName) => "OADM Root CA " + serverName;
 }
@@ -72,6 +78,83 @@ public static class PkiMethods
 
     /// <summary>Event: <see cref="PkiState"/> after every change.</summary>
     public const string StateTopic = "state";
+
+    /// <summary><see cref="CertificatesRequest"/> -> <see cref="CertificatesReply"/>: one page of the issued certificates.</summary>
+    public const string GetCertificates = "getCertificates";
+
+    /// <summary><see cref="CertificateDetailsRequest"/> -> <see cref="CertificateDetailsReply"/>: one issued certificate in plain names.</summary>
+    public const string GetCertificate = "getCertificate";
+
+    /// <summary><see cref="RevokeRequest"/> -> <see cref="RevokeReply"/> (users with all devices, audited).</summary>
+    public const string Revoke = "revoke";
+
+    /// <summary><see cref="RevokeDeviceRequest"/> -> <see cref="RevokeReply"/>: every certificate of one device that is still valid.</summary>
+    public const string RevokeDevice = "revokeDevice";
+
+    /// <summary>Event (payload <c>{}</c>): the issued certificates or the revocation list changed; pages read their page again.</summary>
+    public const string CertificatesTopic = "certificates";
+}
+
+/// <summary>The payload of <see cref="PkiMethods.GetCertificates"/>; filters as in <see cref="Oadm.Sdk.Certificates.IssuedCertificateQuery"/>.</summary>
+public sealed record CertificatesRequest
+{
+    public Oadm.Sdk.Certificates.IssuedCertificateState? State { get; init; }
+
+    public string? Purpose { get; init; }
+
+    public string? Source { get; init; }
+
+    public string? Search { get; init; }
+
+    public int Offset { get; init; }
+
+    public int Limit { get; init; } = PkiPluginInfo.CertificatesPageSize;
+}
+
+/// <summary>One page of the issued certificates, newest first.</summary>
+public sealed record CertificatesReply
+{
+    public IReadOnlyList<Oadm.Sdk.Certificates.IssuedCertificateInfo> Rows { get; init; } = [];
+
+    /// <summary>How many match.</summary>
+    public int Total { get; init; }
+
+    /// <summary>The first row's position (the request's, or the last page's when fewer match now).</summary>
+    public int Offset { get; init; }
+
+    /// <summary>The days before the end that count as "Expires soon".</summary>
+    public int WarningDays { get; init; } = 30;
+}
+
+/// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>.</summary>
+public sealed record CertificateDetailsRequest(string SerialNumber);
+
+/// <summary>One issued certificate; <see cref="Error"/> when it is not listed (or not one of the user's devices).</summary>
+public sealed record CertificateDetailsReply
+{
+    public Oadm.Sdk.Certificates.CertificateDescription? Certificate { get; init; }
+
+    public Oadm.Sdk.Certificates.CertificateRevocation? Revocation { get; init; }
+
+    public string? Error { get; init; }
+}
+
+/// <summary>The payload of <see cref="PkiMethods.Revoke"/>.</summary>
+public sealed record RevokeRequest(IReadOnlyList<string> SerialNumbers, Oadm.Sdk.Certificates.RevocationReason Reason);
+
+/// <summary>The payload of <see cref="PkiMethods.RevokeDevice"/>.</summary>
+public sealed record RevokeDeviceRequest(Guid DeviceId, Oadm.Sdk.Certificates.RevocationReason Reason);
+
+/// <summary>What a revoke did.</summary>
+public sealed record RevokeReply
+{
+    public int Revoked { get; init; }
+
+    public int AlreadyRevoked { get; init; }
+
+    public int NotFound { get; init; }
+
+    public string? Error { get; init; }
 }
 
 /// <summary>EAP identity choices of 802.1X.</summary>
@@ -99,8 +182,10 @@ public static class CaSource
 /// <summary>Purpose of an issued device certificate.</summary>
 public static class CertificatePurpose
 {
-    public const string Https = "https";
-    public const string Dot1x = "dot1x";
+    public const string Https = Oadm.Sdk.Certificates.DeviceCertificatePurposes.Https;
+    public const string Dot1x = Oadm.Sdk.Certificates.DeviceCertificatePurposes.Dot1x;
+    public const string Mqtt = Oadm.Sdk.Certificates.DeviceCertificatePurposes.Mqtt;
+    public const string Rtsps = Oadm.Sdk.Certificates.DeviceCertificatePurposes.Rtsps;
 }
 
 /// <summary>Plugin setting <c>config</c>.</summary>
@@ -163,15 +248,25 @@ public sealed record StoredPreviousCa
     public DateTime ReplacedUtc { get; init; }
 }
 
-/// <summary>Plugin setting <c>issued</c>: one device certificate OADM issued (written by the task plugins).</summary>
+/// <summary>
+/// One device certificate the OADM CA issued: a row of the plugin records <c>issued</c> (by serial number; its DER in
+/// <c>issuedDer</c>), written by <see cref="Ca.IssuedRegistry"/> only. Before 4.2 the plugin setting <c>issued</c> held them.
+/// </summary>
 public sealed record IssuedCertificate
 {
+    /// <summary>Upper-case hex as <c>X509Certificate2.SerialNumber</c> gives it (compared with <c>CertificateSerials.Normalize</c>).</summary>
     public string SerialNumber { get; init; } = string.Empty;
 
     public Guid DeviceId { get; init; }
 
-    /// <summary><see cref="CertificatePurpose"/>.</summary>
+    /// <summary>The device's serial from the certificate's <c>axis-&lt;serial&gt;.local</c> name; null for entries from before 4.2.</summary>
+    public string? DeviceSerial { get; init; }
+
+    /// <summary><see cref="CertificatePurpose"/>: https, dot1x, mqtt, rtsps.</summary>
     public string Purpose { get; init; } = CertificatePurpose.Https;
+
+    /// <summary>Start of validity; null for entries from before 4.2.</summary>
+    public DateTime? NotBeforeUtc { get; init; }
 
     public string CaId { get; init; } = string.Empty;
 

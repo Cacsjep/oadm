@@ -531,7 +531,7 @@ public sealed class HeadlessPageTests
         }
     }
 
-    private static Window Host(Control view)
+    internal static Window Host(Control view)
     {
         // The real host page (title, ui:PageHeader subtitle and status, own cards), like in the client.
         var page = new Oadm.Client.Shell.CorePluginPageView
@@ -543,7 +543,7 @@ public sealed class HeadlessPageTests
         return window;
     }
 
-    private static void Pump()
+    internal static void Pump()
     {
         for (var i = 0; i < 3; i++)
         {
@@ -554,7 +554,7 @@ public sealed class HeadlessPageTests
         Dispatcher.UIThread.RunJobs();
     }
 
-    private static void Capture(Window window, string? outDir, string name)
+    internal static void Capture(Window window, string? outDir, string name)
     {
         var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);

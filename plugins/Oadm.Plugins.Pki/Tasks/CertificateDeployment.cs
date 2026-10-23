@@ -248,12 +248,14 @@ public static class CertificateDeployment
             {
                 SerialNumber = serial,
                 DeviceId = device.Id,
+                DeviceSerial = device.Serial,
                 Purpose = purpose,
                 CaId = ca.Id,
+                NotBeforeUtc = signed.NotBefore.ToUniversalTime(),
                 NotAfterUtc = notAfter,
                 IssuedUtc = service.Time.GetUtcNow().UtcDateTime,
                 Alias = alias,
-            }, ct).ConfigureAwait(false);
+            }, signed.RawData, ct).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" issued by {CaCertificates.CommonName(ca.Certificate)} (serial {serial}, valid until {notAfter:yyyy-MM-dd}).");
             return new IssuedOnDevice(alias, fingerprint, serial, notAfter);
         }
@@ -348,7 +350,6 @@ public static class CertificateDeployment
         var registry = await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
         var prefix = string.Equals(purpose, CertificatePurpose.Dot1x, StringComparison.Ordinal) ? Dot1xAliasPrefix : HttpsAliasPrefix;
         var removed = new List<string>();
-        var serials = new List<string>();
         foreach (var certificate in certificates)
         {
             if (inUse.Contains(certificate.Alias, StringComparer.Ordinal) || !certificate.Alias.StartsWith(prefix, StringComparison.Ordinal))
@@ -362,15 +363,12 @@ public static class CertificateDeployment
                 continue;
             }
 
+            // Deleted from the device, still in the list of issued certificates (as Replaced): a copy could still be in use,
+            // so it can be revoked until it ends.
             await CertApi.DeleteCertificateAsync(ctx.Vapix, certificate.Alias, ct).ConfigureAwait(false);
             removed.Add(certificate.Alias);
-            if (serial is not null)
-            {
-                serials.Add(serial);
-            }
         }
 
-        await service.Issued.RemoveAsync(device.Id, serials, ct).ConfigureAwait(false);
         if (removed.Count == 0)
         {
             step.Skip("No previous OADM certificate");
@@ -387,7 +385,7 @@ public static class CertificateDeployment
     {
         ArgumentNullException.ThrowIfNull(certificate);
         ArgumentNullException.ThrowIfNull(registry);
-        if (serial is not null && registry.Any(e => string.Equals(e.SerialNumber, serial, StringComparison.OrdinalIgnoreCase)))
+        if (serial is not null && registry.Any(e => string.Equals(Oadm.Sdk.Certificates.CertificateSerials.Normalize(e.SerialNumber), Oadm.Sdk.Certificates.CertificateSerials.Normalize(serial), StringComparison.Ordinal)))
         {
             return true;
         }

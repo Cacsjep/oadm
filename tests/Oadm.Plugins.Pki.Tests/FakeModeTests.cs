@@ -54,6 +54,27 @@ public sealed class FakeModeTests : IDisposable
     }
 
     [Fact]
+    public async Task The_certificates_tab_of_the_fake_backend_lists_filters_shows_and_revokes()
+    {
+        var page = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest()));
+        Assert.True(page.Total > 20);
+        Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Revoked && r.Revocation is not null);
+        Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Replaced);
+        Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Expired);
+        Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.ExpiresSoon);
+        var dot1x = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = "dot1x" }));
+        Assert.All(dot1x.Rows, r => Assert.Equal("dot1x", r.Purpose));
+
+        var valid = page.Rows.First(r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Valid);
+        var details = PkiJson.Deserialize<CertificateDetailsReply>(await Invoke(PkiMethods.GetCertificate, new CertificateDetailsRequest(valid.SerialNumber)));
+        Assert.Contains("IP " + valid.Device, details.Certificate!.Names);
+        var revoked = PkiJson.Deserialize<RevokeReply>(await Invoke(PkiMethods.Revoke, new RevokeRequest([valid.SerialNumber], Oadm.Sdk.Certificates.RevocationReason.DeviceRemoved)));
+        Assert.Equal(1, revoked.Revoked);
+        Assert.NotNull(PkiJson.Deserialize<CertificateDetailsReply>(await Invoke(PkiMethods.GetCertificate, new CertificateDetailsRequest(valid.SerialNumber))).Revocation);
+        Assert.True(PkiJson.Deserialize<RevokeReply>(await Invoke(PkiMethods.RevokeDevice, new RevokeDeviceRequest(valid.DeviceId, Oadm.Sdk.Certificates.RevocationReason.DeviceRemoved))).AlreadyRevoked >= 1); // the one revoked above
+    }
+
+    [Fact]
     public async Task Page_against_the_fake_backend_never_touches_this_computer()
     {
         var clientTrust = new FakeClientTrust();

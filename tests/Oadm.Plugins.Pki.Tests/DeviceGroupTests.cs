@@ -22,6 +22,7 @@ public sealed class DeviceGroupTests
     [
         PkiMethods.Generate, PkiMethods.Import, PkiMethods.PreviewReplace, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
         PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust, PkiMethods.SaveSettings, PkiMethods.ImportRadiusCa,
+        PkiMethods.Revoke, PkiMethods.RevokeDevice,
     ];
 
     [Fact]
@@ -34,7 +35,9 @@ public sealed class DeviceGroupTests
         await plugin.StartAsync(ctx, CancellationToken.None);
 
         var canary = new PluginCanary(ctx, plugin, inside, outside)
-            .WithoutDevices(PkiMethods.GetState, "the CA and the settings; the counts of issued certificates only of the user's devices");
+            .WithoutDevices(PkiMethods.GetState, "the CA and the settings; the counts of issued certificates only of the user's devices")
+            .WithoutDevices(PkiMethods.GetCertificates, "the issued certificates only of the user's devices (no device ids in the payload)", "{}")
+            .WithoutDevices(PkiMethods.GetCertificate, "a certificate of another device answers like one that is not listed", """{"serialNumber":"01"}""");
         foreach (var method in ManageMethods)
         {
             canary.AllDevicesOnly(method, "{}");
@@ -73,6 +76,57 @@ public sealed class DeviceGroupTests
         Assert.Equal((1, 45), (Last(group).IssuedDevices, Last(group).Config.ExpiryWarningDays));
         Assert.Equal(2, Last(admin).IssuedDevices);
         Assert.DoesNotContain(ctx.EventsSeenBy(ctx.CallAsGroup([outside.Id])), e => e.Topic == PkiMethods.StateTopic); // never read the page
+    }
+
+    [Fact]
+    public async Task A_group_user_sees_only_the_certificates_of_the_groups_devices_and_cannot_revoke()
+    {
+        var ctx = new FakeCoreContext() { Secrets = TestSecrets.Create() };
+        var inside = ctx.Add(new FakeDevice { Address = "10.0.0.48", Serial = "B8A44F631339" });
+        var outside = ctx.Add(new FakeDevice { Address = "10.0.0.49", Serial = "ACCC8E000001" });
+        await using var plugin = new PkiPlugin(PkiHarness.Options(new FakeTrustStore()));
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        await plugin.Service!.Background;
+        var authority = ctx.FakeServices.Find<Oadm.Sdk.Certificates.IDeviceCertificateAuthority>()!;
+        var mine = await RevocationTests.SignAsync(authority, inside.Id);
+        var theirs = await RevocationTests.SignAsync(authority, outside.Id, "ACCC8E000001");
+        var gone = await RevocationTests.SignAsync(authority, Guid.NewGuid(), "ACCC8E000002"); // a device OADM no longer manages
+        var key = ctx.FakeScopes.Add("Building B", [inside.Id]);
+        var group = FakeCallContext.WithGroup(ctx, [inside.Id], "tech2", key);
+        var admin = ctx.CallAsAllDevices();
+
+        var seen = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(plugin, group, PkiMethods.GetCertificates, "{}"));
+        var row = Assert.Single(seen.Rows);
+        Assert.Equal((inside.Id, "10.0.0.48", true), (row.DeviceId, row.Device, row.DeviceManaged));
+        async Task<int> CountAsync(ICallContext call, string search) =>
+            PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(plugin, call, PkiMethods.GetCertificates, PkiJson.Serialize(new CertificatesRequest { Search = search }))).Total;
+        Assert.Equal(1, await CountAsync(group, "10.0.0.48"));
+        Assert.Equal(0, await CountAsync(group, "10.0.0.49"));
+        Assert.Equal(1, await CountAsync(admin, "10.0.0.49"));
+        Assert.Equal(0, await CountAsync(group, "ACCC8E"));
+        var all = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(plugin, admin, PkiMethods.GetCertificates, "{}"));
+        Assert.Equal(3, all.Total);
+        Assert.False(all.Rows.Single(r => r.SerialNumber == Oadm.Sdk.Certificates.CertificateSerials.Normalize(gone.SerialNumber)).DeviceManaged);
+
+        // A certificate of another device answers like an unknown one.
+        async Task<string> DetailsAsync(ICallContext call, string serial) =>
+            PkiJson.Deserialize<CertificateDetailsReply>(await ctx.InvokeAsync(plugin, call, PkiMethods.GetCertificate, PkiJson.Serialize(new CertificateDetailsRequest(serial)))).Error ?? "shown";
+        Assert.Equal("shown", await DetailsAsync(group, mine.SerialNumber));
+        Assert.Equal(PkiCertificateTexts.NotListed, await DetailsAsync(group, theirs.SerialNumber));
+        Assert.Equal(PkiCertificateTexts.NotListed, await DetailsAsync(group, gone.SerialNumber));
+        Assert.Equal(PkiCertificateTexts.NotListed, await DetailsAsync(group, "0BAD"));
+        Assert.Equal("shown", await DetailsAsync(admin, theirs.SerialNumber));
+        Assert.Empty(ctx.RefusedAccesses);
+
+        // Revoking is for users with all devices; the group's page hears of it with its own audience.
+        Assert.True(plugin.RequiresAllDevices(PkiMethods.Revoke));
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => ctx.InvokeAsync(plugin, group, PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([mine.SerialNumber], Oadm.Sdk.Certificates.RevocationReason.Other))));
+        Assert.False(authority.IsRevoked(mine.SerialNumber));
+        await ctx.InvokeAsync(plugin, admin, PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([mine.SerialNumber], Oadm.Sdk.Certificates.RevocationReason.Other)));
+        Assert.True(authority.IsRevoked(mine.SerialNumber));
+        Assert.Equal("admin", authority.FindRevocation(mine.SerialNumber)!.UserName);
+        Assert.Contains(ctx.EventsSeenBy(group), e => e.Topic == PkiMethods.CertificatesTopic);
+        Assert.Contains(ctx.EventsSeenBy(admin), e => e.Topic == PkiMethods.CertificatesTopic);
     }
 
     [Fact]

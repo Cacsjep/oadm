@@ -27,6 +27,15 @@ public sealed class PkiOptions
 
     /// <summary>The server's machine root store; null = the installer of the server OS.</summary>
     public ITrustStoreInstaller? TrustStore { get; init; }
+
+    /// <summary>New issued certificates are written at most this often (tests: shorter).</summary>
+    public TimeSpan IssuedFlushDelay { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>The pages hear of new issued certificates at most this often (tests: zero, at once).</summary>
+    public TimeSpan CertificatesEventDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>The one pass that reads the certificates of every device starts this long after the plugin (tests: zero).</summary>
+    public TimeSpan ExistingImportDelay { get; init; } = TimeSpan.FromMinutes(5);
 }
 
 /// <summary>
@@ -59,7 +68,17 @@ public sealed partial class PkiService : IAsyncDisposable
     private volatile string? _serverTrustError;
     private Task _background = Task.CompletedTask;
 
-    public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger, IDeviceScopes? scopes = null)
+    /// <param name="options">Clock, key size, trust store.</param>
+    /// <param name="settings">The plugin settings (CA, previous CAs, config).</param>
+    /// <param name="secrets">The master key protection of the CA key; null = no CA can be kept.</param>
+    /// <param name="events">The page events.</param>
+    /// <param name="anchors">The server's trust anchors.</param>
+    /// <param name="logger">The plugin's log.</param>
+    /// <param name="scopes">The device groups (null: none known, fail closed).</param>
+    /// <param name="records">The plugin records of the issued certificates and the revocation list; null = in memory only (a host without records).</param>
+    /// <param name="systemDevices">Every managed device (background work and other plugins' list queries); null = none.</param>
+    public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger,
+        IDeviceScopes? scopes = null, IPluginRecords? records = null, Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? systemDevices = null)
     {
         Viewers = new ViewerScopes(scopes);
         _scopes = scopes;
@@ -70,7 +89,14 @@ public sealed partial class PkiService : IAsyncDisposable
         _anchors = anchors;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _trustStore = options.TrustStore ?? TrustStoreInstallers.ForServer(logger);
-        _issued = new IssuedRegistry(_store, options.Time);
+        _systemDevices = systemDevices;
+        if (records is null)
+        {
+            LogNoRecords();
+        }
+
+        _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
+        _issued.Changed += OnIssuedChanged;
     }
 
     /// <summary>The server offers no secret protection: no CA can be kept.</summary>
@@ -105,10 +131,18 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <summary>Raised after a new CA became active (generated, imported, replaced).</summary>
     public event EventHandler? CaChanged;
 
+    /// <summary>Raised after certificates were revoked or left the revocation list (the CA service's <c>RevocationChanged</c>).</summary>
+    public event EventHandler? RevocationChanged
+    {
+        add => _issued.RevocationChanged += value;
+        remove => _issued.RevocationChanged -= value;
+    }
+
     private DateTimeOffset Now => _options.Time.GetUtcNow();
 
     public async Task StartAsync(CancellationToken ct)
     {
+        await _issued.LoadAsync(ct).ConfigureAwait(false); // the revocation list counts from the first request on
         _config = await _store.LoadConfigAsync(ct).ConfigureAwait(false);
         _previous = await PrunePreviousAsync(await _store.LoadPreviousAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
         if (_secrets is null)
@@ -148,6 +182,7 @@ public sealed partial class PkiService : IAsyncDisposable
             // stopping
         }
 
+        _issued.Changed -= OnIssuedChanged;
         await _issued.DisposeAsync().ConfigureAwait(false);
         _stopping.Dispose();
         _gate.Dispose();

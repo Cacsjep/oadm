@@ -46,7 +46,7 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
   - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, IP address, result (status chip
     Authenticated / Failed), reason, VLAN; **search** over every column (one pass, one grid reset), **View
-    certificate** (the client certificate of the row, `EstCertificateWindow` moved to a shared control first), **Delete
+    certificate** (the client certificate of the row, the shared `ui:CertificateWindow`, built with stage 1), **Delete
     all** (red, confirmed, users with all devices). Kept entries per the setting, newest first.
 - **Event rules:** "Device authenticated" (device, switch, port, VLAN), "Authentication failed" (device or unknown,
   switch, port, reason).
@@ -215,24 +215,59 @@ Switches differ; the server assumes nothing a switch may leave out and is strict
 ## Certificates and revocation (PKI)
 
 Decision 2026-10-23: **PKI owns the list of issued certificates and the revocation list**; EST and the 802.1X server read
-it. One list, so a revoked certificate can neither authenticate nor renew. Stage 1 (below).
+it. One list, so a revoked certificate can neither authenticate nor renew. Stage 1, built 2026-10-24 (code:
+`plugins/Oadm.Plugins.Pki/README.md` "Issued certificates and revocation").
 
-- **PKI page, new tab "Certificates":** every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X,
-  Renew) or by EST: device, use (HTTPS, IEEE 802.1X, MQTT, RTSPS), issued by (Task, EST), valid from, valid until,
-  serial number, state chip (Valid, Expires soon (30 days), Expired, Replaced (a newer one of the same device and use
-  exists), Revoked). Filters (state, use, issued by) and search (device, serial, address); virtualized, paged from the
-  server (30,000 devices with several certificates each); **View certificate** (the shared certificate window).
-- **Revoke** (red, toolbar; one or several rows, confirmed, a reason: Key compromised, Device replaced, Device removed,
-  Other): the serials go into the revocation list with time and reason; **Revoke all of this device** in the device's
-  row menu. No undo (a revoked certificate stays revoked; the device gets a new one by Enable 802.1X or EST setup).
-  Users with all devices only (`RequiresAllDevices`), audited.
-- **Kept:** every issued certificate's serial, device, use, source, validity and DER, in the PKI's records; a
-  certificate expired more than 1 year ago leaves the list (revoked ones stay while they could still be valid).
-  Existing certificates from before this feature: read once from the devices by the next full refresh where the PKI can
-  see them (the device's certificate list), else they appear when renewed.
-- **EST:** `simplereenroll` with a revoked certificate is refused ("Certificate revoked"), listed in Enrollments.
-- **802.1X server:** a revoked client certificate fails "Certificate revoked on 2026-11-02 (Key compromised)"; the check
-  is a hash lookup of the serial, the list is kept in memory and replaced when PKI changes it.
+- **PKI page, tab "Certificates"** (fixed `ui:PageTab`s "Certificate authority" and "Certificates"; nothing is read
+  before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
+  EST: device (its address; a device OADM no longer manages shows its serial with "(removed)"), use (HTTPS, IEEE 802.1X,
+  MQTT, RTSPS), issued by (Task, EST), valid from, valid until, serial number, state chip (Valid, Expires soon (the
+  settings' warning days, 30 by default), Expired, Replaced (a newer one of the same device and use exists), Revoked
+  (tooltip: date, reason, user)). Filters (state, use, issued by) and search (device address, host name, device serial,
+  certificate serial in any notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of
+  12,345"), virtualized grid, `RangeObservableCollection`, overlay on the first read and a progress row on later ones;
+  **View certificate** (toolbar, row menu, double click: the shared `ui:CertificateWindow`, a revoked one says "Certificate
+  revoked on ..."). An event `certificates` (at most one per second) makes every open tab read its page again.
+- **Revoke** (red toolbar button and row menu; one or several rows, at most 5,000 at once; the confirmation
+  `ui:MessageWindow` with the choice **Reason**: Key compromised, Device replaced, Device removed, Other; red Revoke):
+  the serials go into the revocation list with time, reason and user; **Revoke all of this device** (row menu, last):
+  every certificate of the row's device that is still valid. Expired and unknown serials are skipped and counted, an
+  existing revocation is never changed. No undo (the device gets a new certificate by Enable IEEE 802.1X or Certificate
+  enrollment). Methods `revoke` and `revokeDevice`: Admin with "Manage the certificate authority", `RequiresAllDevices`,
+  audited by the host (Admin methods), and logged with the count, reason and user.
+- **Device groups:** a user with a group sees the tab with the certificates of the group's devices only (none of removed
+  devices); View certificate of another device's certificate answers like an unknown one ("This certificate is not in
+  the list."); Revoke is hidden (and refused by the host).
+- **Kept** (plugin records, one row each, only changed rows written, new certificates batched every 2 s, a revocation
+  written before the call returns): `issued` (serial, device id, device serial from the `axis-<serial>.local` name, use,
+  source, CA id, valid from, valid until, issued, alias), `issuedDer` (the DER, read one at a time) and `revoked`
+  (serial, time, reason, user, device, valid until). A certificate leaves the list a year after it ended; a revocation
+  when its certificate ended (it can no longer be used). Checked at the start and every hour. The plugin setting `issued`
+  of OADM 4.1 moves into the records at the first start and is deleted (those entries have no DER: View certificate says
+  "OADM keeps no copy of this certificate."). A certificate a task deletes from the device stays listed (as Replaced):
+  a copy could still be in use.
+- **Existing certificates** (decision 2026-10-24, the cheapest robust way without a new hook in the host's full refresh):
+  (1) whenever PKI reads a device's certificate list (View / Delete certificates, Renew certificates), every certificate
+  there that one of the OADM CAs (active or previous) signed (checked by a chain build to that CA) and that names this
+  device's `axis-<serial>.local` is added once (use: IEEE 802.1X for clientAuth, else HTTPS; issued by EST for the
+  `oadm_` / `oadm2_` EST profile names, else Task; issued = its valid-from); (2) once per server, 5 minutes after the
+  start, one background pass reads the certificate list (REST `cert` v1, read only) of every device that answers and has
+  AXIS OS 11.11 or later, 4 at a time (plugin setting `existingImported` when it ran to its end; a stop runs it again at
+  the next start). Devices that did not answer come in by (1) or when renewed.
+- **EST:** `simpleenroll` and `simplereenroll` with a revoked client certificate are refused (403, "Certificate revoked
+  on 2026-11-02 (Key compromised)"), listed in Enrollments; the camera's Axis device ID is never revoked, so Set up still
+  works. A revoked certificate is never flagged "Not renewed".
+- **802.1X server:** a revoked client certificate fails "Certificate revoked on 2026-11-02 (Key compromised)"
+  (`CertificateRevocation.Describe()`); the check is a hash lookup of the serial (`IDeviceCertificateAuthority.IsRevoked`:
+  an immutable set in memory, replaced when PKI changes it).
+- **SDK 0.4.0** (`src/Oadm.Sdk/Certificates`), default members of `IDeviceCertificateAuthority` (the offer of PKI):
+  `IsRevoked(serial)`, `FindRevocation(serial)`, `Revocations`, event `RevocationChanged` (subscribe again when `Find`
+  returns another instance), `ListIssuedAsync(IssuedCertificateQuery)` (filters, search, `DeviceIds`, paging; rows
+  `IssuedCertificateInfo` with `IssuedCertificateState` and the revocation), `GetIssuedCertificateAsync(serial)` (DER),
+  `RevokeAsync(serials, RevocationReason, userName)` (`RevokeResult`); `DeviceCertificateRequest.Purpose`
+  (`DeviceCertificatePurposes`: https, dot1x, mqtt, rtsps); `IssuedCertificateSources` (Task, EST); `CertificateSerials.Normalize`
+  (any notation: upper hex, no separators, no leading zeros; .NET keeps a leading zero byte, BouncyCastle drops it);
+  `CertificateDescriber` / `CertificateDescription` for the shared certificate window.
 - **802.1X page, tab "Revoked":** the revoked certificates (from PKI's list) and **Revoke**, which opens the PKI
   certificate list as a picker (search, filters) and revokes the chosen ones. A second door to the same list.
 - **Later:** PKI publishes a CRL (and maybe OCSP) for RADIUS servers of other vendors.
@@ -298,12 +333,11 @@ and reason, never secrets or key material.
 
 ## Stages
 
-1. PKI: the list of issued certificates and the revocation list (Certificates tab, Revoke); EST refuses revoked
-   certificates.
+1. **Built 2026-10-24:** PKI: the list of issued certificates and the revocation list (Certificates tab, Revoke, the SDK
+   members), device groups filtering of the Certificates tab; EST refuses revoked certificates.
 2. RADIUS and EAP-TLS core (own RADIUS codec, BouncyCastle TLS proof first), fragmentation, the server certificate,
    switches (changed while running), Sessions and Log, the TLS alert texts, Advanced, the Revoked tab.
-3. VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab too: group users see the
-   certificates of their devices).
+3. VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab was filtered in stage 1).
 4. Switches at sites through the site node.
 
 The switches, VLAN rules, settings, the issued certificates and the revocation list are part of the encrypted backup

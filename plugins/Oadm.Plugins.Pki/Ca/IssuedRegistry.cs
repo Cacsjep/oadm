@@ -1,81 +1,571 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json.Nodes;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Plugins.Pki.Ca;
 
 /// <summary>
-/// The registry of device certificates OADM issued (plugin setting <c>issued</c>). Tasks of thousands of devices add to it
-/// in parallel, so changes go to memory and are written at most every <see cref="FlushDelay"/> (and on stop) instead of
-/// rewriting the whole list per task. Reads return the pending state while a write is due, else the stored list.
-/// Entries whose certificate ended more than 30 days ago are dropped when the registry changes.
+/// The list of every device certificate the OADM CA issued and the revocation list (docs/spec/radius-server.md
+/// "Certificates and revocation"). Both live in memory, indexed by serial number and by device, and in the plugin records:
+/// <c>issued</c> (one row per certificate, no DER), <c>issuedDer</c> (the certificate, read one at a time) and <c>revoked</c>.
+/// Tasks of thousands of devices add in parallel, so new certificates are written at most every <see cref="FlushDelay"/>
+/// (and on stop), only the changed rows; a revocation is written before <see cref="RevokeAsync"/> returns. Kept: a
+/// certificate until a year after it ended (<see cref="KeptAfterEnd"/>), a revocation while its certificate could still be
+/// valid. <see cref="IsRevoked"/> is one lookup in an immutable set that a change replaces.
 /// </summary>
-public sealed class IssuedRegistry : IAsyncDisposable
+public sealed partial class IssuedRegistry : IAsyncDisposable
 {
-    private readonly PkiStore _store;
-    private readonly TimeProvider _time;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private List<IssuedCertificate>? _entries;
-    private bool _dirty;
-    private bool _disposed;
+    public const string IssuedCollection = "issued";
+    public const string DerCollection = "issuedDer";
+    public const string RevokedCollection = "revoked";
 
-    public IssuedRegistry(PkiStore store, TimeProvider time)
+    /// <summary>Rows per write: one transaction each.</summary>
+    private const int WriteBatch = 2000;
+
+    /// <summary>A certificate leaves the list this long after it ended.</summary>
+    public static readonly TimeSpan KeptAfterEnd = TimeSpan.FromDays(365);
+
+    private static readonly IReadOnlyDictionary<string, CertificateRevocation> NoRevocations = new Dictionary<string, CertificateRevocation>(StringComparer.Ordinal);
+
+    private readonly PkiStore _store;
+    private readonly IPluginRecords _records;
+    private readonly TimeProvider _time;
+    private readonly ILogger _logger;
+    private readonly Lock _gate = new();
+    private readonly SemaphoreSlim _flushGate = new(1, 1);
+
+    // Everything below under _gate. Keys: CertificateSerials.Normalize.
+    private readonly Dictionary<string, IssuedCertificate> _bySerial = new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, List<string>> _byDevice = [];
+    private readonly Dictionary<(Guid Device, string Purpose), IssuedCertificate> _newest = [];
+    private readonly Dictionary<string, CertificateRevocation> _revoked = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _dirtyIssued = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, byte[]?> _pendingDer = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _dirtyRevoked = new(StringComparer.Ordinal);
+    private List<(string Key, IssuedCertificate Entry)> _ordered = [];
+    private bool _orderDirty;
+    private bool _flushScheduled;
+    private bool _loaded;
+    private bool _disposed;
+    private ITimer? _pruneTimer;
+
+    // Read without the gate.
+    private volatile IReadOnlyDictionary<string, CertificateRevocation> _revokedView = NoRevocations;
+
+    public IssuedRegistry(PkiStore store, TimeProvider time, IPluginRecords? records = null, ILogger? logger = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _records = records ?? new MemoryPluginRecords();
+        _logger = logger ?? NullLogger.Instance;
     }
 
     public TimeSpan FlushDelay { get; init; } = TimeSpan.FromSeconds(2);
 
-    /// <summary>All entries (a copy).</summary>
-    public async Task<IReadOnlyList<IssuedCertificate>> SnapshotAsync(CancellationToken ct)
+    /// <summary>How often old certificates and revocations are dropped (also at the start).</summary>
+    public TimeSpan PruneInterval { get; init; } = TimeSpan.FromHours(1);
+
+    /// <summary>Raised (outside the lock, on the caller's thread) after certificates were added, revoked or dropped.</summary>
+    public event EventHandler? Changed;
+
+    /// <summary>Raised after the revocation list changed (revoked, or ended revocations dropped).</summary>
+    public event EventHandler? RevocationChanged;
+
+    /// <summary>How many certificates the list holds.</summary>
+    public int Count
     {
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        get
+        {
+            lock (_gate)
+            {
+                return _bySerial.Count;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads the records (once): the certificates, the revocations, and the plugin setting <c>issued</c> of OADM before 4.2,
+    /// which moves into the records and is deleted. Drops what is too old. Further calls do nothing.
+    /// </summary>
+    public async Task LoadAsync(CancellationToken ct)
+    {
+        await _flushGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (!_dirty || _entries is null)
+            if (_loaded)
             {
-                _entries = await _store.LoadIssuedAsync(ct).ConfigureAwait(false);
+                return;
             }
 
-            return [.. _entries];
+            var issued = await _records.ListAsync(IssuedCollection, ct).ConfigureAwait(false);
+            var revoked = await _records.ListAsync(RevokedCollection, ct).ConfigureAwait(false);
+            var legacy = await _store.LoadIssuedAsync(ct).ConfigureAwait(false);
+            lock (_gate)
+            {
+                foreach (var json in issued.Values)
+                {
+                    if (PkiJson.TryDeserialize<IssuedCertificate>(json) is { SerialNumber.Length: > 0 } entry)
+                    {
+                        Index(entry);
+                    }
+                }
+
+                foreach (var json in revoked.Values)
+                {
+                    if (PkiJson.TryDeserialize<CertificateRevocation>(json) is { SerialNumber.Length: > 0 } revocation)
+                    {
+                        _revoked[CertificateSerials.Normalize(revocation.SerialNumber)] = revocation;
+                    }
+                }
+
+                foreach (var entry in legacy.Where(e => e.SerialNumber.Length > 0))
+                {
+                    var key = CertificateSerials.Normalize(entry.SerialNumber);
+                    if (!_bySerial.ContainsKey(key))
+                    {
+                        Index(entry);
+                        _dirtyIssued.Add(key);
+                    }
+                }
+
+                _orderDirty = true;
+                _revokedView = new Dictionary<string, CertificateRevocation>(_revoked, StringComparer.Ordinal);
+                _loaded = true;
+            }
+
+            if (legacy.Count > 0)
+            {
+                await WriteAsync(ct).ConfigureAwait(false);
+                await _store.DeleteIssuedSettingAsync(ct).ConfigureAwait(false);
+                LogMoved(legacy.Count);
+            }
         }
         finally
         {
-            _gate.Release();
+            _flushGate.Release();
+        }
+
+        await PruneAsync(ct).ConfigureAwait(false);
+        _pruneTimer = _time.CreateTimer(_ => _ = PruneQuietlyAsync(), null, PruneInterval, PruneInterval);
+    }
+
+    // ------------------------------------------------------------------ the list
+
+    /// <summary>All certificates (a copy).</summary>
+    public IReadOnlyList<IssuedCertificate> Snapshot()
+    {
+        lock (_gate)
+        {
+            return [.. _bySerial.Values];
         }
     }
 
-    /// <summary>The entries of one device.</summary>
-    public async Task<IReadOnlyList<IssuedCertificate>> ForDeviceAsync(Guid deviceId, CancellationToken ct) =>
-        [.. (await SnapshotAsync(ct).ConfigureAwait(false)).Where(e => e.DeviceId == deviceId)];
+    /// <summary>All certificates (a copy); kept for the callers of the settings registry.</summary>
+    public Task<IReadOnlyList<IssuedCertificate>> SnapshotAsync(CancellationToken ct) => Task.FromResult(Snapshot());
 
-    public Task AddAsync(IssuedCertificate entry, CancellationToken ct)
+    /// <summary>The certificates of one device (an index: no pass over the list).</summary>
+    public IReadOnlyList<IssuedCertificate> ForDevice(Guid deviceId)
     {
-        ArgumentNullException.ThrowIfNull(entry);
-        return ChangeAsync(list => list.Add(entry), ct);
+        lock (_gate)
+        {
+            return _byDevice.TryGetValue(deviceId, out var serials) ? [.. serials.Select(s => _bySerial[s])] : [];
+        }
     }
 
-    /// <summary>Forgets the certificates with these serial numbers on the device (deleted from it).</summary>
-    public Task RemoveAsync(Guid deviceId, IReadOnlyCollection<string> serialNumbers, CancellationToken ct)
+    public Task<IReadOnlyList<IssuedCertificate>> ForDeviceAsync(Guid deviceId, CancellationToken ct) => Task.FromResult(ForDevice(deviceId));
+
+    /// <summary>The certificate with <paramref name="serialNumber"/> (any notation); null when the list does not hold it.</summary>
+    public IssuedCertificate? Find(string serialNumber)
+    {
+        lock (_gate)
+        {
+            return _bySerial.GetValueOrDefault(CertificateSerials.Normalize(serialNumber));
+        }
+    }
+
+    /// <summary>Adds a certificate the OADM CA issued (with its DER when known); a serial already listed keeps its entry.</summary>
+    public Task AddAsync(IssuedCertificate entry, CancellationToken ct) => AddAsync(entry, null, ct);
+
+    /// <inheritdoc cref="AddAsync(IssuedCertificate, CancellationToken)"/>
+    public Task AddAsync(IssuedCertificate entry, byte[]? der, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (entry.SerialNumber.Length == 0)
+        {
+            throw new ArgumentException("A certificate without a serial number.", nameof(entry));
+        }
+
+        var added = false;
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(entry.SerialNumber);
+            if (!_bySerial.ContainsKey(key))
+            {
+                Index(entry);
+                _dirtyIssued.Add(key);
+                added = true;
+            }
+
+            if (der is not null && (added || !_pendingDer.ContainsKey(key)))
+            {
+                _pendingDer[key] = der;
+            }
+
+            ScheduleFlush();
+        }
+
+        if (added)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The certificate (DER) with <paramref name="serialNumber"/>: waiting for its write, or one record read.</summary>
+    public async Task<byte[]?> GetDerAsync(string serialNumber, CancellationToken ct)
+    {
+        var key = CertificateSerials.Normalize(serialNumber);
+        lock (_gate)
+        {
+            if (!_bySerial.ContainsKey(key))
+            {
+                return null;
+            }
+
+            if (_pendingDer.TryGetValue(key, out var pending))
+            {
+                return pending;
+            }
+        }
+
+        var json = await _records.GetAsync(DerCollection, key, ct).ConfigureAwait(false);
+        try
+        {
+            return json is null || JsonNode.Parse(json)?["der"]?.GetValue<string>() is not { } base64 ? null : Convert.FromBase64String(base64);
+        }
+        catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The certificates of the OADM CAs found in a device's certificate list (OADM before the list existed, or an answer that
+    /// got lost): each one signed by one of <paramref name="cas"/> and naming this device (<c>axis-&lt;serial&gt;.local</c>)
+    /// is added once. Use: IEEE 802.1X for a client certificate, else HTTPS; source EST for the EST profile names
+    /// (<c>oadm_</c>, <c>oadm2_</c>), else Task. Returns how many were added.
+    /// </summary>
+    public async Task<int> ImportFoundAsync(IDeviceInfo device, IEnumerable<(string Alias, string Pem)> certificates, IReadOnlyList<X509Certificate2> cas, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(certificates);
+        ArgumentNullException.ThrowIfNull(cas);
+        var added = 0;
+        if (cas.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var (alias, pem) in certificates)
+        {
+            X509Certificate2 certificate;
+            try
+            {
+                certificate = X509Certificate2.CreateFromPem(pem);
+            }
+            catch (CryptographicException)
+            {
+                continue;
+            }
+
+            using (certificate)
+            {
+                if (Find(certificate.SerialNumber) is not null || SignedBy(certificate, cas) is not { } ca)
+                {
+                    continue;
+                }
+
+                var names = AxisSerials(certificate);
+                if (names.Count != 1 || !string.Equals(names[0], device.Serial, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // names another camera (a copied certificate) or none: not listed under this device
+                }
+
+                var client = certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>()
+                    .Any(e => e.EnhancedKeyUsages.Cast<Oid>().Any(o => o.Value == DeviceCertificateIssuer.ClientAuthOid));
+                var notBefore = certificate.NotBefore.ToUniversalTime();
+                await AddAsync(new IssuedCertificate
+                {
+                    SerialNumber = certificate.SerialNumber.ToUpperInvariant(),
+                    DeviceId = device.Id,
+                    DeviceSerial = names[0],
+                    Purpose = client ? CertificatePurpose.Dot1x : CertificatePurpose.Https,
+                    CaId = CaCertificates.Fingerprint(ca),
+                    NotBeforeUtc = notBefore,
+                    NotAfterUtc = certificate.NotAfter.ToUniversalTime(),
+                    IssuedUtc = notBefore,
+                    Alias = alias,
+                    Source = alias.StartsWith("oadm_", StringComparison.Ordinal) || alias.StartsWith("oadm2_", StringComparison.Ordinal) ? IssuedCertificateSources.Est : null,
+                }, certificate.RawData, ct).ConfigureAwait(false);
+                added++;
+            }
+        }
+
+        return added;
+    }
+
+    /// <summary>The serials of the <c>axis-&lt;12 hex&gt;.local</c> names in a certificate (upper case, distinct).</summary>
+    public static IReadOnlyList<string> AxisSerials(X509Certificate2 certificate)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+        var san = certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
+        return [.. (san?.EnumerateDnsNames() ?? [])
+            .Select(name => name.Length == 23 && name.StartsWith("axis-", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+                && name.AsSpan(5, 12).ToString().All(Uri.IsHexDigit) ? name.Substring(5, 12).ToUpperInvariant() : null)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)];
+    }
+
+    // ------------------------------------------------------------------ revocation
+
+    /// <summary>True when the certificate is on the revocation list (any notation of the serial). Lock-free.</summary>
+    public bool IsRevoked(string serialNumber) => _revokedView.ContainsKey(CertificateSerials.Normalize(serialNumber));
+
+    /// <summary>The revocation of the certificate; null when it is not revoked.</summary>
+    public CertificateRevocation? FindRevocation(string serialNumber) => _revokedView.GetValueOrDefault(CertificateSerials.Normalize(serialNumber));
+
+    /// <summary>The revocation list, newest first.</summary>
+    public IReadOnlyList<CertificateRevocation> Revocations => [.. _revokedView.Values.OrderByDescending(r => r.RevokedUtc).ThenBy(r => r.SerialNumber, StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Revokes listed certificates that are still valid (no undo, a revocation is never changed) and writes the list before
+    /// it returns. Unknown and expired ones are counted as not found.
+    /// </summary>
+    public async Task<RevokeResult> RevokeAsync(IEnumerable<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(serialNumbers);
-        return serialNumbers.Count == 0
-            ? Task.CompletedTask
-            : ChangeAsync(list => list.RemoveAll(e => e.DeviceId == deviceId && serialNumbers.Contains(e.SerialNumber, StringComparer.OrdinalIgnoreCase)), ct);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+        var now = Now;
+        int revoked = 0, already = 0, missing = 0;
+        lock (_gate)
+        {
+            foreach (var key in serialNumbers.Select(CertificateSerials.Normalize).Distinct(StringComparer.Ordinal))
+            {
+                if (_revoked.ContainsKey(key))
+                {
+                    already++;
+                }
+                else if (!_bySerial.TryGetValue(key, out var entry) || entry.NotAfterUtc <= now)
+                {
+                    missing++;
+                }
+                else
+                {
+                    _revoked[key] = new CertificateRevocation(key, now, reason, userName) { DeviceId = entry.DeviceId, NotAfterUtc = entry.NotAfterUtc };
+                    _dirtyRevoked.Add(key);
+                    revoked++;
+                }
+            }
+
+            if (revoked > 0)
+            {
+                _revokedView = new Dictionary<string, CertificateRevocation>(_revoked, StringComparer.Ordinal);
+            }
+        }
+
+        if (revoked > 0)
+        {
+            await FlushAsync(ct).ConfigureAwait(false); // a revocation is never left only in memory
+            var reasonText = CertificateRevocation.ReasonText(reason);
+            LogRevoked(revoked, reasonText, userName);
+            RevocationChanged?.Invoke(this, EventArgs.Empty);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return new RevokeResult(revoked, already, missing);
+    }
+
+    /// <summary>The serials of a device's certificates that are still valid and not revoked (Revoke all of this device).</summary>
+    public IReadOnlyList<string> RevocableOf(Guid deviceId)
+    {
+        var now = Now;
+        lock (_gate)
+        {
+            return _byDevice.TryGetValue(deviceId, out var serials)
+                ? [.. serials.Where(s => !_revoked.ContainsKey(s) && _bySerial[s].NotAfterUtc > now)]
+                : [];
+        }
+    }
+
+    // ------------------------------------------------------------------ the page
+
+    /// <summary>The state of a certificate now (revoked, expired, replaced, expires soon, valid; in that order).</summary>
+    public IssuedCertificateState StateOf(IssuedCertificate entry, DateTime nowUtc, int warningDays)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        lock (_gate)
+        {
+            return StateLocked(CertificateSerials.Normalize(entry.SerialNumber), entry, nowUtc, warningDays);
+        }
+    }
+
+    /// <summary>
+    /// One page of the list, newest first: filters, search, and only the devices of <paramref name="devices"/> when
+    /// <paramref name="onlyListedDevices"/> (a user limited to a group), else every certificate (a device that is gone:
+    /// empty device). One pass over the list.
+    /// </summary>
+    public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, int warningDays)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(devices);
+        var now = Now;
+        var limit = Math.Clamp(query.Limit, 1, IssuedCertificateQuery.MaxLimit);
+        var offset = Math.Max(0, query.Offset);
+        var search = query.Search?.Trim() ?? string.Empty;
+        var searchHex = search.Length == 0 ? string.Empty : CertificateSerials.Normalize(search);
+        var rows = new List<IssuedCertificateInfo>(limit);
+        var total = 0;
+        lock (_gate)
+        {
+            if (_orderDirty)
+            {
+                _ordered.Sort((a, b) => Compare(a.Entry, b.Entry));
+                _orderDirty = false;
+            }
+
+            for (var i = _ordered.Count - 1; i >= 0; i--)
+            {
+                var (key, entry) = _ordered[i];
+                var device = devices.GetValueOrDefault(entry.DeviceId);
+                if ((onlyListedDevices && device is null)
+                    || (query.DeviceIds is { } ids && !ids.Contains(entry.DeviceId))
+                    || (query.Purpose is { } purpose && !string.Equals(entry.Purpose, purpose, StringComparison.Ordinal))
+                    || (query.Source is { } source && !string.Equals(SourceOf(entry), source, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                var state = StateLocked(key, entry, now, warningDays);
+                if (query.State is { } wanted && wanted != state)
+                {
+                    continue;
+                }
+
+                var deviceSerial = entry.DeviceSerial ?? device?.Serial ?? string.Empty;
+                if (search.Length > 0
+                    && !(device is not null && (device.Address.Contains(search, StringComparison.OrdinalIgnoreCase) || (device.HostName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)))
+                    && !deviceSerial.Contains(searchHex, StringComparison.OrdinalIgnoreCase)
+                    && !key.Contains(searchHex, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (total++ < offset || rows.Count >= limit)
+                {
+                    continue;
+                }
+
+                rows.Add(new IssuedCertificateInfo
+                {
+                    SerialNumber = key,
+                    DeviceId = entry.DeviceId,
+                    DeviceSerial = deviceSerial,
+                    Device = device?.Address ?? string.Empty,
+                    DeviceManaged = device is not null,
+                    Purpose = entry.Purpose,
+                    Source = SourceOf(entry),
+                    NotBeforeUtc = entry.NotBeforeUtc ?? entry.IssuedUtc,
+                    NotAfterUtc = entry.NotAfterUtc,
+                    IssuedUtc = entry.IssuedUtc,
+                    State = state,
+                    Revocation = _revoked.GetValueOrDefault(key),
+                });
+            }
+        }
+
+        return new IssuedCertificatePage(rows, total);
+    }
+
+    /// <summary>Task (PKI's own) or EST.</summary>
+    public static string SourceOf(IssuedCertificate entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return string.Equals(entry.Source, IssuedCertificateSources.Est, StringComparison.OrdinalIgnoreCase) ? IssuedCertificateSources.Est : IssuedCertificateSources.Task;
+    }
+
+    // ------------------------------------------------------------------ keeping and writing
+
+    /// <summary>Drops certificates that ended more than <see cref="KeptAfterEnd"/> ago and revocations of ended certificates.</summary>
+    public async Task PruneAsync(CancellationToken ct)
+    {
+        var now = Now;
+        var limit = now - KeptAfterEnd;
+        bool changed, revocations;
+        lock (_gate)
+        {
+            var old = _bySerial.Where(p => p.Value.NotAfterUtc < limit).Select(p => p.Key).ToList();
+            foreach (var key in old)
+            {
+                Unindex(key);
+                _dirtyIssued.Add(key);
+                _pendingDer[key] = null; // delete the DER too
+            }
+
+            if (old.Count > 0)
+            {
+                var gone = old.ToHashSet(StringComparer.Ordinal);
+                _ordered = [.. _ordered.Where(e => !gone.Contains(e.Key))];
+            }
+
+            var ended = _revoked.Where(p => p.Value.NotAfterUtc <= now).Select(p => p.Key).ToList();
+            foreach (var key in ended)
+            {
+                _revoked.Remove(key);
+                _dirtyRevoked.Add(key);
+            }
+
+            revocations = ended.Count > 0;
+            changed = old.Count > 0 || revocations;
+            if (revocations)
+            {
+                _revokedView = new Dictionary<string, CertificateRevocation>(_revoked, StringComparer.Ordinal);
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        await FlushAsync(ct).ConfigureAwait(false);
+        if (revocations)
+        {
+            RevocationChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Writes pending changes now.</summary>
     public async Task FlushAsync(CancellationToken ct)
     {
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await _flushGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_dirty && _entries is not null)
-            {
-                await _store.SaveIssuedAsync(_entries, ct).ConfigureAwait(false);
-                _dirty = false;
-            }
+            await WriteAsync(ct).ConfigureAwait(false);
         }
         finally
         {
-            _gate.Release();
+            _flushGate.Release();
         }
     }
 
@@ -87,46 +577,273 @@ public sealed class IssuedRegistry : IAsyncDisposable
         }
 
         _disposed = true;
+        if (_pruneTimer is { } timer)
+        {
+            await timer.DisposeAsync().ConfigureAwait(false);
+        }
+
         await FlushAsync(CancellationToken.None).ConfigureAwait(false);
-        _gate.Dispose();
+        _flushGate.Dispose();
     }
 
-    private async Task ChangeAsync(Action<List<IssuedCertificate>> change, CancellationToken ct)
+    /// <summary>Writes the changed rows (inside the flush gate). A failed write keeps them for the next flush.</summary>
+    private async Task WriteAsync(CancellationToken ct)
     {
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        List<KeyValuePair<string, string?>> issued, der, revoked;
+        List<KeyValuePair<string, byte[]?>> derTaken;
+        lock (_gate)
+        {
+            issued = [.. _dirtyIssued.Select(k => new KeyValuePair<string, string?>(k, _bySerial.TryGetValue(k, out var e) ? PkiJson.Serialize(e) : null))];
+            derTaken = [.. _pendingDer];
+            revoked = [.. _dirtyRevoked.Select(k => new KeyValuePair<string, string?>(k, _revoked.TryGetValue(k, out var r) ? PkiJson.Serialize(r) : null))];
+            _dirtyIssued.Clear();
+            _dirtyRevoked.Clear();
+            _flushScheduled = false;
+        }
+
+        der = [.. derTaken.Select(p => new KeyValuePair<string, string?>(p.Key, p.Value is null ? null : new JsonObject { ["der"] = Convert.ToBase64String(p.Value) }.ToJsonString()))];
+        if (issued.Count == 0 && der.Count == 0 && revoked.Count == 0)
+        {
+            return;
+        }
+
         try
         {
-            if (!_dirty || _entries is null)
+            await WriteBatchesAsync(RevokedCollection, revoked, ct).ConfigureAwait(false);
+            await WriteBatchesAsync(IssuedCollection, issued, ct).ConfigureAwait(false);
+            await WriteBatchesAsync(DerCollection, der, ct).ConfigureAwait(false);
+            lock (_gate)
             {
-                _entries = await _store.LoadIssuedAsync(ct).ConfigureAwait(false);
+                // Written: read from the records from now on. One set again while writing stays pending.
+                foreach (var (key, value) in derTaken)
+                {
+                    if (_pendingDer.TryGetValue(key, out var now) && ReferenceEquals(now, value))
+                    {
+                        _pendingDer.Remove(key);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+            {
+                foreach (var (key, _) in issued)
+                {
+                    _dirtyIssued.Add(key);
+                }
+
+                foreach (var (key, _) in revoked)
+                {
+                    _dirtyRevoked.Add(key);
+                }
+
+                if (ex is not OperationCanceledException)
+                {
+                    ScheduleFlush();
+                }
             }
 
-            change(_entries);
-            var limit = _time.GetUtcNow().UtcDateTime.AddDays(-30);
-            _entries.RemoveAll(e => e.NotAfterUtc < limit);
-            if (!_dirty)
+            if (ex is not OperationCanceledException)
             {
-                _dirty = true;
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(FlushDelay, _time, CancellationToken.None).ConfigureAwait(false);
-                    try
-                    {
-                        if (!_disposed)
-                        {
-                            await FlushAsync(CancellationToken.None).ConfigureAwait(false);
-                        }
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // stopped meanwhile: DisposeAsync wrote the changes
-                    }
-                }, CancellationToken.None);
+                LogWriteFailed(ex);
             }
-        }
-        finally
-        {
-            _gate.Release();
+
+            throw;
         }
     }
+
+    private async Task WriteBatchesAsync(string collection, List<KeyValuePair<string, string?>> rows, CancellationToken ct)
+    {
+        for (var i = 0; i < rows.Count; i += WriteBatch)
+        {
+            await _records.SetManyAsync(collection, rows.GetRange(i, Math.Min(WriteBatch, rows.Count - i)), ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>One write after <see cref="FlushDelay"/> for every change in between (call inside the gate).</summary>
+    private void ScheduleFlush()
+    {
+        if (_flushScheduled || _disposed)
+        {
+            return;
+        }
+
+        _flushScheduled = true;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(FlushDelay, _time, CancellationToken.None).ConfigureAwait(false);
+                if (!_disposed)
+                {
+                    await FlushAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // stopped meanwhile: DisposeAsync wrote the changes
+            }
+#pragma warning disable CA1031 // Logged in WriteAsync; the next change or the stop writes again.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }, CancellationToken.None);
+    }
+
+    private async Task PruneQuietlyAsync()
+    {
+        try
+        {
+            if (!_disposed)
+            {
+                await PruneAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // stopped
+        }
+#pragma warning disable CA1031 // Tried again at the next interval; logged in WriteAsync.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
+    private DateTime Now => _time.GetUtcNow().UtcDateTime;
+
+    private IssuedCertificateState StateLocked(string key, IssuedCertificate entry, DateTime nowUtc, int warningDays)
+    {
+        if (_revoked.ContainsKey(key))
+        {
+            return IssuedCertificateState.Revoked;
+        }
+
+        if (entry.NotAfterUtc <= nowUtc)
+        {
+            return IssuedCertificateState.Expired;
+        }
+
+        if (_newest.TryGetValue((entry.DeviceId, entry.Purpose ?? string.Empty), out var newest)
+            && !string.Equals(CertificateSerials.Normalize(newest.SerialNumber), key, StringComparison.Ordinal))
+        {
+            return IssuedCertificateState.Replaced;
+        }
+
+        return entry.NotAfterUtc <= nowUtc.AddDays(warningDays) ? IssuedCertificateState.ExpiresSoon : IssuedCertificateState.Valid;
+    }
+
+    /// <summary>Adds to the indexes (inside the gate; not to the ordered list).</summary>
+    private void Index(IssuedCertificate entry)
+    {
+        var key = CertificateSerials.Normalize(entry.SerialNumber);
+        _bySerial[key] = entry;
+        if (!_byDevice.TryGetValue(entry.DeviceId, out var serials))
+        {
+            _byDevice[entry.DeviceId] = serials = [];
+        }
+
+        serials.Add(key);
+        var newestKey = (entry.DeviceId, entry.Purpose ?? string.Empty);
+        if (!_newest.TryGetValue(newestKey, out var known) || Compare(known, entry) <= 0)
+        {
+            _newest[newestKey] = entry;
+        }
+
+        _ordered.Add((key, entry));
+        _orderDirty |= _ordered.Count > 1 && Compare(_ordered[^2].Entry, entry) > 0;
+    }
+
+    private void Unindex(string key)
+    {
+        if (!_bySerial.Remove(key, out var entry))
+        {
+            return;
+        }
+
+        if (_byDevice.TryGetValue(entry.DeviceId, out var serials))
+        {
+            serials.Remove(key);
+            if (serials.Count == 0)
+            {
+                _byDevice.Remove(entry.DeviceId);
+            }
+        }
+
+        var newestKey = (entry.DeviceId, entry.Purpose ?? string.Empty);
+        if (_newest.TryGetValue(newestKey, out var newest) && ReferenceEquals(newest, entry))
+        {
+            _newest.Remove(newestKey);
+            foreach (var other in serials ?? [])
+            {
+                var candidate = _bySerial[other];
+                if (string.Equals(candidate.Purpose ?? string.Empty, newestKey.Item2, StringComparison.Ordinal)
+                    && (!_newest.TryGetValue(newestKey, out var best) || Compare(best, candidate) <= 0))
+                {
+                    _newest[newestKey] = candidate;
+                }
+            }
+        }
+    }
+
+    /// <summary>Older first: by the time it was issued, then by serial (a stable order for the pages).</summary>
+    private static int Compare(IssuedCertificate a, IssuedCertificate b)
+    {
+        var byTime = a.IssuedUtc.CompareTo(b.IssuedUtc);
+        return byTime != 0 ? byTime : string.CompareOrdinal(a.SerialNumber, b.SerialNumber);
+    }
+
+    /// <summary>The CA of <paramref name="cas"/> that signed <paramref name="certificate"/> (name and signature), else null.</summary>
+    private static X509Certificate2? SignedBy(X509Certificate2 certificate, IReadOnlyList<X509Certificate2> cas)
+    {
+        foreach (var ca in cas)
+        {
+            if (!certificate.IssuerName.RawData.AsSpan().SequenceEqual(ca.SubjectName.RawData))
+            {
+                continue;
+            }
+
+            using var chain = new X509Chain();
+            chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            chain.ChainPolicy.CustomTrustStore.Add(ca);
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            chain.ChainPolicy.DisableCertificateDownloads = true;
+            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.AllowUnknownCertificateAuthority;
+            try
+            {
+                // Element 1 must be this CA: the signature is checked by the chain build.
+                if (chain.Build(certificate) && chain.ChainElements.Count >= 2 && chain.ChainElements[1].Certificate.RawData.AsSpan().SequenceEqual(ca.RawData))
+                {
+                    return ca;
+                }
+            }
+            catch (CryptographicException)
+            {
+                // not readable: not ours
+            }
+            finally
+            {
+                foreach (var element in chain.ChainElements)
+                {
+                    if (!ReferenceEquals(element.Certificate, certificate))
+                    {
+                        element.Certificate.Dispose();
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: moved {Count} issued certificates from the settings to the records")]
+    private partial void LogMoved(int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: revoked {Count} certificates ({Reason}) for {User}")]
+    private partial void LogRevoked(int count, string reason, string user);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: writing the issued certificates failed; tried again with the next change")]
+    private partial void LogWriteFailed(Exception ex);
 }

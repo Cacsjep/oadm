@@ -2,7 +2,7 @@ using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Pki.Ca;
 
-/// <summary>The plugin settings of the PKI: <c>ca</c>, <c>previousCas</c>, <c>issued</c> (written by the task plugins), <c>config</c>.</summary>
+/// <summary>The plugin settings of the PKI: <c>ca</c>, <c>previousCas</c>, <c>config</c> (and <c>issued</c> of OADM before 4.2, moved to the records).</summary>
 public sealed class PkiStore(IPluginSettings settings)
 {
     public const string CaKey = "ca";
@@ -23,12 +23,15 @@ public sealed class PkiStore(IPluginSettings settings)
     public Task SavePreviousAsync(IReadOnlyList<StoredPreviousCa> previous, CancellationToken ct) =>
         _settings.SetAsync(PreviousCasKey, PkiJson.Serialize(previous), ct);
 
-    /// <summary>The registry of issued device certificates (see <see cref="IssuedRegistry"/>).</summary>
+    /// <summary>
+    /// The issued certificates as OADM before 4.2 kept them (one settings value); <see cref="IssuedRegistry.LoadAsync"/> moves
+    /// them into the plugin records once and deletes the value.
+    /// </summary>
     public async Task<List<IssuedCertificate>> LoadIssuedAsync(CancellationToken ct) =>
         PkiJson.TryDeserialize<List<IssuedCertificate>>(await _settings.GetAsync(IssuedKey, ct).ConfigureAwait(false)) ?? [];
 
-    public Task SaveIssuedAsync(IReadOnlyList<IssuedCertificate> issued, CancellationToken ct) =>
-        _settings.SetAsync(IssuedKey, PkiJson.Serialize(issued), ct);
+    /// <summary>Deletes the settings value of OADM before 4.2 (after the move).</summary>
+    public Task DeleteIssuedSettingAsync(CancellationToken ct) => _settings.SetAsync(IssuedKey, null, ct);
 
     public async Task<PkiConfig> LoadConfigAsync(CancellationToken ct) =>
         PkiJson.TryDeserialize<PkiConfig>(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false)) ?? new PkiConfig();

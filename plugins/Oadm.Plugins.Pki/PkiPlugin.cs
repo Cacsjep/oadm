@@ -16,6 +16,11 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
 {
     private readonly PkiOptions _options;
     private volatile PkiService? _service;
+    private CancellationTokenSource? _importStop;
+    private Task _import = Task.CompletedTask;
+
+    /// <summary>Who revokes in calls without a user (in-process callers, tests).</summary>
+    public const string InProcessUser = "OADM";
 
     public PkiPlugin()
         : this(new PkiOptions())
@@ -57,14 +62,30 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger, ctx.DeviceScopes);
+        var system = ctx.System;
+        var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger, ctx.DeviceScopes, ctx.Records,
+            token => system.Devices.ListAsync(token));
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
         ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
+
+        // Certificates of the OADM CAs from before the list of issued certificates: one pass over the devices, in the background.
+        var stopping = new CancellationTokenSource();
+        _importStop = stopping;
+        var import = new ExistingCertificateImport(service, system, ctx.Settings, _options.Time, _options.ExistingImportDelay, ctx.Logger);
+        _import = Task.Run(() => import.RunAsync(stopping.Token), CancellationToken.None);
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
+        if (_importStop is { } stop)
+        {
+            _importStop = null;
+            await stop.CancelAsync().ConfigureAwait(false);
+            await _import.ConfigureAwait(false); // never throws: the pass logs its own errors
+            stop.Dispose();
+        }
+
         if (_service is { } service)
         {
             _service = null;
@@ -72,11 +93,17 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
+    /// <summary>The one pass over the devices for certificates from before the list (tests wait for it).</summary>
+    public Task ExistingImport => _import;
+
     /// <summary>
-    /// Reading the state is for everyone; generate, import, export, backup, install in the server root store and the
-    /// settings are Admin only (and audited). The Security tasks are task plugins and need no more than Operator.
+    /// Reading the state and the issued certificates is for everyone; generate, import, export, backup, install in the server
+    /// root store, the settings and revoking are Admin only (and audited). The Security tasks are task plugins and need no
+    /// more than Operator.
     /// </summary>
-    public UserRole RequiredRole(string method) => method == PkiMethods.GetState ? UserRole.Operator : UserRole.Admin;
+    public UserRole RequiredRole(string method) => IsRead(method) ? UserRole.Operator : UserRole.Admin;
+
+    private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate;
 
     /// <summary>The certificate authority ("manage") and the server's trust in it ("trustServer") are rights of their own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
@@ -92,35 +119,66 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     /// The CA and the trust in it are server-wide (docs/spec/device-scope.md "Server-wide services"): users limited to a
     /// device group may read the state (counts of their own devices), every other method is for users with all devices.
     /// </summary>
-    public bool RequiresAllDevices(string method) => method != PkiMethods.GetState;
+    public bool RequiresAllDevices(string method) => !IsRead(method);
 
-    /// <summary>The page backend with the user's call: the state of a user limited to a group counts only that group's devices.</summary>
+    /// <summary>
+    /// The page backend with the user's call: the state of a user limited to a group counts only that group's devices, the
+    /// issued certificates are only those of the group's devices; revoking names the caller.
+    /// </summary>
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        if (method != PkiMethods.GetState)
+        var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");
+        if (!IsRead(method))
         {
             if (!caller.HasAllDevices)
             {
                 throw new DeviceAccessRefusedException(); // the host refuses these first (RequiresAllDevices); fail closed
             }
 
-            return await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+            return method switch
+            {
+                PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
+                PkiMethods.RevokeDevice => PkiJson.Serialize(await service.RevokeDeviceAsync(PkiJson.Deserialize<RevokeDeviceRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
+                _ => await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false),
+            };
         }
 
-        var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");
         service.Viewers.Seen(caller);
-        var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
-        return PkiJson.Serialize(await service.GetStateAsync(view, ct).ConfigureAwait(false));
+        switch (method)
+        {
+            case PkiMethods.GetCertificates:
+            {
+                // The caller's devices: every device for a user with all devices (rows of removed devices too), else the group's.
+                var devices = await caller.Devices.ListAsync(ct).ConfigureAwait(false);
+                return PkiJson.Serialize(service.GetCertificates(PkiJson.Deserialize<CertificatesRequest>(payloadJson), devices, onlyListed: !caller.HasAllDevices));
+            }
+
+            case PkiMethods.GetCertificate:
+            {
+                var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
+                return PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), view, ct).ConfigureAwait(false));
+            }
+
+            default:
+            {
+                var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
+                return PkiJson.Serialize(await service.GetStateAsync(view, ct).ConfigureAwait(false));
+            }
+        }
     }
 
-    /// <summary>In-process callers and tests: the view of a user with all devices.</summary>
+    /// <summary>In-process callers and tests: the view of a user with all devices (revocations by "OADM").</summary>
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");
         return method switch
         {
             PkiMethods.GetState => PkiJson.Serialize(await service.GetStateAsync(ct).ConfigureAwait(false)),
+            PkiMethods.GetCertificates => PkiJson.Serialize(await service.GetCertificatesForEveryDeviceAsync(PkiJson.Deserialize<CertificatesRequest>(payloadJson), ct).ConfigureAwait(false)),
+            PkiMethods.GetCertificate => PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), null, ct).ConfigureAwait(false)),
+            PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
+            PkiMethods.RevokeDevice => PkiJson.Serialize(await service.RevokeDeviceAsync(PkiJson.Deserialize<RevokeDeviceRequest>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
             PkiMethods.Generate => PkiJson.Serialize(await service.GenerateAsync(PkiJson.Deserialize<GenerateRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.Import => PkiJson.Serialize(await service.ImportAsync(PkiJson.Deserialize<ImportRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.PreviewReplace => PkiJson.Serialize(await service.PreviewReplaceAsync(ct).ConfigureAwait(false)),

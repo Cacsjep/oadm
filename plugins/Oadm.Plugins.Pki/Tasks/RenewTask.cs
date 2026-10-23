@@ -36,6 +36,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         var certificates = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
             var list = await CertApi.ListCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+            await service.ImportFoundAsync(device, list.Select(c => (c.Alias, c.Pem)), ct).ConfigureAwait(false); // from before the list
             step.Complete($"{list.Count} certificates");
             return list;
         }).ConfigureAwait(false);
