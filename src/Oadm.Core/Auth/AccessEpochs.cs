@@ -46,11 +46,17 @@ public sealed class AccessEpochs
     }
 
     /// <summary>True when the user's access, the session or the scope's rules changed after <paramref name="epoch"/> was captured.</summary>
+    /// <remarks>
+    /// The entries are looked up first and the floor is read last. <see cref="Prune"/> raises the floor before it removes
+    /// an entry, and it removes only entries at or below the new floor: an entry this check misses because a prune removed
+    /// it meanwhile had an epoch at or below a floor that was already raised, so the floor read afterwards catches it. With
+    /// the floor read first, a prune between the two reads could hide the change (old floor, entry already gone).
+    /// </remarks>
     public bool ChangedSince(long epoch, Guid userId, string? sessionId, string? scopeKey) =>
-        epoch < Interlocked.Read(ref _floor)
-        || After(epoch, "u:" + userId)
+        After(epoch, "u:" + userId)
         || (sessionId is not null && After(epoch, "s:" + sessionId))
-        || (scopeKey is not null && After(epoch, "g:" + scopeKey));
+        || (scopeKey is not null && After(epoch, "g:" + scopeKey))
+        || epoch < Interlocked.Read(ref _floor);
 
     private bool After(long epoch, string key) => _changed.TryGetValue(key, out var at) && at > epoch;
 
