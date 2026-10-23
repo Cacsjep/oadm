@@ -15,6 +15,7 @@ internal static class Guides
     private static readonly Guide Rules = new("Event rules", "dev/event-rules/");
     private static readonly Guide Ui = new("UI kit", "dev/ui/");
     private static readonly Guide Basics = new("Plugin basics", "dev/plugins/");
+    private static readonly Guide Groups = new("Device groups and the call context", "dev/device-groups/");
 
     public static readonly IReadOnlyDictionary<string, string> Namespaces = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -87,6 +88,15 @@ internal static class Guides
         ["DevicePickerWindow"] = Ui,
         ["FormField"] = Ui,
         ["StatusChip"] = Ui,
+        ["ICallContext"] = Groups,
+        ["ISystemAccess"] = Groups,
+        ["IPluginJobs"] = Groups,
+        ["IPluginJob"] = Groups,
+        ["IDeviceScopes"] = Groups,
+        ["PluginEventAudience"] = Groups,
+        ["PluginEventAudienceKind"] = Groups,
+        ["DeviceAccessRefusedException"] = Groups,
+        ["DevicesNotAvailableException"] = Groups,
     };
 
     public static Guide? ForType(string name) => Types.GetValueOrDefault(name);
