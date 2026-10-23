@@ -16,10 +16,11 @@
   </StackPanel>
 
   <!-- ============================== Certificates ============================== -->
+  <!-- The shared list of issued certificates (filters, search, pages, View certificate); the page adds Revoke. -->
   <Border Grid.Row="1" Classes="card" IsVisible="{Binding IsCertificatesTab}">
-    <Grid RowDefinitions="Auto,Auto,*,Auto" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
-      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+    <ui:IssuedCertificateList x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
+      <ui:IssuedCertificateList.Toolbar>
+        <StackPanel Orientation="Horizontal" Spacing="8">
           <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
             <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
           </Button>
@@ -27,75 +28,16 @@
             <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Revoke" Spacing="8" />
           </Button>
         </StackPanel>
-        <WrapPanel Grid.Column="2" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" HorizontalAlignment="Right">
-          <ComboBox Width="150" ItemsSource="{Binding StateChoices}" SelectedItem="{Binding StateFilter}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:Choice"><TextBlock Text="{Binding Label}" /></DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <ComboBox Width="150" ItemsSource="{Binding UseChoices}" SelectedItem="{Binding UseFilter}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:Choice"><TextBlock Text="{Binding Label}" /></DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <ComboBox Width="150" ItemsSource="{Binding SourceChoices}" SelectedItem="{Binding SourceFilter}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:Choice"><TextBlock Text="{Binding Label}" /></DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <ui:SearchBox Text="{Binding Search}" Placeholder="Search device, serial number" Width="260" />
-        </WrapPanel>
-      </Grid>
-
-      <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="Reading the certificates" IsVisible="{Binding IsReloading}" />
-
-      <Panel Grid.Row="2" Margin="0,8,0,0">
-        <DataGrid x:Name="CertificatesGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
-                  SelectionMode="Extended" MinHeight="200">
-          <DataGrid.ContextMenu>
-            <ContextMenu>
-              <MenuItem Header="View certificate" Command="{Binding ViewCertificateCommand}" />
-              <Separator IsVisible="{Binding MayRevoke}" />
-              <MenuItem Header="Revoke" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}" />
-              <MenuItem Header="Revoke all of this device" Command="{Binding RevokeDeviceCommand}" IsVisible="{Binding MayRevoke}" />
-            </ContextMenu>
-          </DataGrid.ContextMenu>
-          <DataGrid.Columns>
-            <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:IssuedCertificateRow" />
-            <DataGridTextColumn Header="Use" Width="120" Binding="{Binding Use}" x:DataType="vm:IssuedCertificateRow" />
-            <DataGridTextColumn Header="Issued by" Width="100" Binding="{Binding IssuedBy}" x:DataType="vm:IssuedCertificateRow" />
-            <DataGridTextColumn Header="Valid from" Width="110" Binding="{Binding ValidFrom}" x:DataType="vm:IssuedCertificateRow" />
-            <DataGridTextColumn Header="Valid until" Width="110" Binding="{Binding ValidUntil}" x:DataType="vm:IssuedCertificateRow" />
-            <DataGridTextColumn Header="Serial number" Width="2*" Binding="{Binding SerialNumber}" x:DataType="vm:IssuedCertificateRow" />
-            <DataGridTemplateColumn Header="State" Width="140" x:DataType="vm:IssuedCertificateRow">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="vm:IssuedCertificateRow">
-                  <ui:StatusChip Margin="8,0" Text="{Binding State}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
-                                 ToolTip.Tip="{Binding StateTip}" />
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-          </DataGrid.Columns>
-        </DataGrid>
-        <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-        <ui:LoadingOverlay Text="Reading the certificates" IsVisible="{Binding IsLoading}" />
-      </Panel>
-
-      <!-- A whole-table error directly below the table; the pages at the right. -->
-      <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
-        <TextBlock Grid.Column="0" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" VerticalAlignment="Center" />
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-          <TextBlock Classes="secondary" Text="{Binding PageText}" VerticalAlignment="Center" />
-          <Button Classes="toolbar" Command="{Binding PreviousPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Previous 500">
-            <ui:IconLabel Icon="{StaticResource Icon.chevronLeft}" Text="Previous" Spacing="4" />
-          </Button>
-          <Button Classes="toolbar" Command="{Binding NextPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Next 500">
-            <ui:IconLabel Icon="{StaticResource Icon.chevronRight}" Text="Next" Spacing="4" />
-          </Button>
-        </StackPanel>
-      </Grid>
-    </Grid>
+      </ui:IssuedCertificateList.Toolbar>
+      <ui:IssuedCertificateList.RowContextMenu>
+        <ContextMenu>
+          <MenuItem Header="View certificate" Command="{Binding ViewCertificateCommand}" />
+          <Separator IsVisible="{Binding MayRevoke}" />
+          <MenuItem Header="Revoke" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}" />
+          <MenuItem Header="Revoke all of this device" Command="{Binding RevokeDeviceCommand}" IsVisible="{Binding MayRevoke}" />
+        </ContextMenu>
+      </ui:IssuedCertificateList.RowContextMenu>
+    </ui:IssuedCertificateList>
   </Border>
 
   <!-- ============================== Certificate authority ============================== -->

@@ -194,9 +194,11 @@ the CA service.
   (`RevokeDeviceRequest`: every certificate of the device that is still valid) -> `RevokeReply` (revoked, already
   revoked, not found or expired); the revoking user is the caller. Event `certificates` at most once per
   `PkiOptions.CertificatesEventDelay` (1 s) to `AllDevices` and to each group that read the page.
-- Client (`IssuedCertificatesViewModel`, in `PkiView.axaml`): filters (state, use, issued by), search (300 ms after the
-  last key), Previous / Next, `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one
-  step and kept over a new page, View certificate (`ui:CertificateWindow`, a double click too), Revoke and Revoke all of
+- Client (`IssuedCertificatesViewModel`, in `PkiView.axaml`): the client SDK's shared list of issued certificates
+  (`ui:IssuedCertificateList` with `IssuedCertificateListViewModel`, also the 802.1X server's certificate choice; PKI reads
+  through `PkiCertificateSource`): filters (state, use, issued by), search (300 ms after the last key), Previous / Next,
+  `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one step and kept over a new
+  page, View certificate (`ui:CertificateWindow`, a double click too); the page adds Revoke and Revoke all of
   this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
   "manage". The tab reads only when shown; an event while the other tab is shown marks it to read when opened.
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;

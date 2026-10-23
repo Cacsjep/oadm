@@ -7,72 +7,22 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Pki.Client;
 
 /// <summary>
-/// Page view. View only: activates the view model while shown, opens the dialogs and the file pickers, hands the
-/// Certificates grid's selection to its view model in one step and a double click to View certificate.
+/// Page view. View only: activates the view model while shown and opens the dialogs and the file pickers; the shared
+/// certificate list (<see cref="IssuedCertificateList"/>) hands its grid's selection and double clicks to its view model.
 /// </summary>
 public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDialogs
 {
-    private IssuedCertificatesViewModel? _certificates;
-    private bool _restoring;
-
     public PkiView()
     {
         InitializeComponent();
         Files = new PkiFilePicker(() => TopLevel.GetTopLevel(this));
-        CertificatesGrid.SelectionChanged += (_, _) =>
-        {
-            if (!_restoring)
-            {
-                _certificates?.SetSelection(CertificatesGrid.SelectedItems.OfType<IssuedCertificateRow>());
-            }
-        };
-        CertificatesGrid.DoubleTapped += (_, _) =>
-        {
-            if (_certificates?.ViewCertificateCommand.CanExecute(null) == true)
-            {
-                _certificates.ViewCertificateCommand.Execute(null);
-            }
-        };
     }
 
     public Task ShowCertificateAsync(CertificateDetails certificate) =>
         TopLevel.GetTopLevel(this) is Window owner ? CertificateWindow.ShowAsync(certificate, owner) : Task.CompletedTask;
 
-    public async Task<RevocationReason?> ConfirmRevokeAsync(string title, string message)
-    {
-        if (TopLevel.GetTopLevel(this) is not Window owner)
-        {
-            return null;
-        }
-
-        var reasons = IssuedCertificatesViewModel.Reasons;
-        var chosen = await MessageWindow.ConfirmWithChoiceAsync(owner, title, message, "Revoke", "Reason",
-            [.. reasons.Select(CertificateRevocation.ReasonText)], danger: true).ConfigureAwait(true);
-        return chosen is { } index && index >= 0 && index < reasons.Count ? reasons[index] : null;
-    }
-
-    /// <summary>Selects the kept rows again after the page was read (the grid lost them with the rows).</summary>
-    private void OnSelectionRestored(object? sender, EventArgs e)
-    {
-        if (_certificates is null)
-        {
-            return;
-        }
-
-        _restoring = true;
-        try
-        {
-            CertificatesGrid.SelectedItems.Clear();
-            foreach (var row in _certificates.Selected)
-            {
-                CertificatesGrid.SelectedItems.Add(row);
-            }
-        }
-        finally
-        {
-            _restoring = false;
-        }
-    }
+    public Task<RevocationReason?> ConfirmRevokeAsync(string title, string message) =>
+        TopLevel.GetTopLevel(this) is Window owner ? IssuedCertificateList.ConfirmRevokeAsync(owner, title, message) : Task.FromResult<RevocationReason?>(null);
 
     public IPkiFiles Files { get; }
 
@@ -85,18 +35,10 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (_certificates is not null)
-        {
-            _certificates.SelectionRestored -= OnSelectionRestored;
-            _certificates = null;
-        }
-
         if (DataContext is PkiViewModel vm)
         {
             vm.Dialogs = this;
-            _certificates = vm.Certificates;
-            _certificates.Dialogs = this;
-            _certificates.SelectionRestored += OnSelectionRestored;
+            vm.Certificates.Dialogs = this;
         }
     }
 
