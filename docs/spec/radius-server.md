@@ -40,9 +40,9 @@ the RFCs below.
   - **VLANs** (card, below; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
     a **site** or a **tag** → **VLAN ID** (1..4094); **Default VLAN** (optional; empty = no VLAN for devices no rule
     matches). Applies to the next authentication of each device.
-  - **Sessions** (tab): the authentications in progress, live: started, switch, port, MAC address, EAP identity, device
-    (once the certificate named it), **state** (below), duration. Virtualized; at most 10,000 open sessions.
-  - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, result (status chip
+  - **Sessions** (tab): the authentications in progress, live: started, switch, port, MAC address, EAP identity, device,
+    **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
+  - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, IP address, result (status chip
     Authenticated / Failed), reason, VLAN; **search** over every column (one pass, one grid reset), **View
     certificate** (the client certificate of the row, `EstCertificateWindow` moved to a shared control first), **Delete
     all** (red, confirmed, users with all devices). Kept entries per the setting, newest first.
@@ -50,6 +50,20 @@ the RFCs below.
   switch, port, reason).
 - **PKI task "IEEE 802.1X"** (exists): its dialog names this server ("Uses the OADM 802.1X server" when it is on) and the
   EAP identity it sets on the camera (`axis-<serial>`, the default).
+
+## MAC address, device and IP address
+
+- **MAC address** from the switch's `Calling-Station-Id` (RFC 3580), normalized to `AC:CC:8E:12:34:56` whatever the
+  vendor's format (`AC-CC-8E-…`, `accc.8e12.3456`, …); empty when the switch sends none.
+- **Device** before the certificate is checked: the managed device whose serial equals the MAC (an Axis serial is its
+  MAC address), shown in italics as a guess; after the check: the device the certificate names. Only the certificate
+  decides, never the MAC (it can be faked).
+- **MAC does not match:** when the certificate names device A but the MAC is another device's or no managed device's,
+  the session still passes, the log row gets the warning "MAC address AC:CC:8E:65:43:21 does not match the certificate
+  of ACCC8E123456" (a copied certificate shows this way) and the event rule "Authentication failed" is not raised; a
+  later setting may refuse it.
+- **IP address:** the device's address from the device list (its last known address; at authentication time the port is
+  not open yet, so the device may get or change its address afterwards, e.g. in a new VLAN). Empty for an unknown device.
 
 ## Session states
 
