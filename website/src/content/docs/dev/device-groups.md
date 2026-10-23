@@ -45,7 +45,8 @@ ones (they may throw).
 
 A task touches only its own device through `ctx.Vapix`. A task or query that reads other devices (a source device) goes
 through the call. For an address-in-use check, ask `ITaskQueryContext.ManagedAddressesAsync(candidates)`: it checks
-every device on the route and never names one. Name only devices the user sees. A task that sets a static address asks
+every device on the route and never names one. Name only devices the user sees. Probe addresses that are not devices only
+on a route the user's group names: `caller.CoversRoute(device.SiteId)` (null = the server's own network). A task that sets a static address asks
 `ITaskExecutionContext.ManagedAddressesAsync(addresses)` again before its first write and refuses an address in use
 (test with `FakeTaskContext.OtherDeviceAddresses`). Both take at most 256 addresses per call.
 
@@ -106,6 +107,10 @@ Dashboards, saved views, triggers and sweeps belong to a group:
   another owner. `Changed` tells about changed and deleted groups.
 - A table page uses `DeviceSweeps<TRow>` (`plugins/Shared/DeviceSweep.cs` in the OADM repository): `sweeps.For(caller)`
   is the sweep of the caller's group (null for a deleted group); publish its rows with `PluginEventAudience.DeviceScope(key)`.
+- A device can leave a group (a tag or site change) before `Changed` comes: check `ctx.DeviceScopes.Contains(key, id)`
+  (a few lookups) before you read a device for the group and before you show or publish its row.
+- Event types of such objects carry the owner (`EventTypeInfo.OwnerScopeKey`), so pages can hide other owners' events
+  from users with a group.
 
 ## A converted method
 
