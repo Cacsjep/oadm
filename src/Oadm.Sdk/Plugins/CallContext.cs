@@ -134,6 +134,12 @@ public enum PluginEventAudienceKind
 
     /// <summary>The watchers of one login session (<see cref="ICallContext.SessionId"/>).</summary>
     Session = 4,
+
+    /// <summary>
+    /// The watchers whose <see cref="ICallContext.DeviceScopeKey"/> is the key (state a plugin keeps per group, e.g. the rows
+    /// and progress of a sweep of that group's devices).
+    /// </summary>
+    DeviceScope = 5,
 }
 
 /// <summary>
@@ -142,12 +148,13 @@ public enum PluginEventAudienceKind
 /// </summary>
 public sealed class PluginEventAudience
 {
-    private PluginEventAudience(PluginEventAudienceKind kind, IReadOnlyList<Guid> deviceIds, string? userName, string? sessionId)
+    private PluginEventAudience(PluginEventAudienceKind kind, IReadOnlyList<Guid> deviceIds, string? userName, string? sessionId, string? scopeKey = null)
     {
         Kind = kind;
         DeviceIds = deviceIds;
         UserName = userName;
         SessionId = sessionId;
+        ScopeKey = scopeKey;
     }
 
     /// <summary>Who receives it.</summary>
@@ -161,6 +168,9 @@ public sealed class PluginEventAudience
 
     /// <summary>The session of <see cref="PluginEventAudienceKind.Session"/>.</summary>
     public string? SessionId { get; }
+
+    /// <summary>The device scope key of <see cref="PluginEventAudienceKind.DeviceScope"/>.</summary>
+    public string? ScopeKey { get; }
 
     /// <summary>Watchers whose user has all devices (server-wide state: NTP, DHCP, PKI pages).</summary>
     public static PluginEventAudience AllDevices { get; } = new(PluginEventAudienceKind.AllDevices, [], null, null);
@@ -190,6 +200,16 @@ public sealed class PluginEventAudience
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         return new(PluginEventAudienceKind.Session, [], null, sessionId);
+    }
+
+    /// <summary>
+    /// The watchers whose <see cref="ICallContext.DeviceScopeKey"/> is <paramref name="scopeKey"/>: state kept per group
+    /// (<see cref="ICallContext.AllDevicesScopeKey"/> = the watchers with all devices).
+    /// </summary>
+    public static PluginEventAudience DeviceScope(string scopeKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scopeKey);
+        return new(PluginEventAudienceKind.DeviceScope, [], null, null, scopeKey);
     }
 
     /// <summary>The session of <paramref name="caller"/>: events of work the user started.</summary>

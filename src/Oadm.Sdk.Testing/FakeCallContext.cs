@@ -49,6 +49,9 @@ public sealed class FakeCallContext : ICallContext
     /// <inheritdoc />
     public string UserName { get; }
 
+    /// <summary>The context the call belongs to.</summary>
+    internal FakeCoreContext Core => _core;
+
     /// <inheritdoc />
     public string SessionId { get; init; } = Guid.NewGuid().ToString("N");
 
@@ -112,7 +115,7 @@ public sealed class FakeCallContext : ICallContext
         public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct)
         {
             call.RequireAll([deviceId]);
-            return call._core.Vapix.CreateAsync(deviceId, ct);
+            return call._core.ClientFor(deviceId);
         }
     }
 
@@ -122,7 +125,7 @@ public sealed class FakeCallContext : ICallContext
         {
             ArgumentNullException.ThrowIfNull(deviceIds);
             call.RequireAll(deviceIds);
-            return call._core.Tasks.RunAsync(pluginId, deviceIds, payloadJson, owner, ct);
+            return call._core.Run(pluginId, deviceIds, payloadJson, owner);
         }
 
         public bool Cancel(Guid taskId) => call._core.Tasks.Cancel(taskId);
