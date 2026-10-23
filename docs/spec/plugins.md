@@ -125,7 +125,8 @@ tell"; `AnyActiveAsync` answers for every task of the user's devices, null when 
   of its group change (`CancelGroup`). A job started in a call whose user's access, session or
   group changed after the call began is refused ("Your devices changed. Connect again.", `AccessEpochs`: the interceptor
   captures the epoch before it reads the session, `CancelOwner`, `CancelGroup` and `CancelSession` record the change
-  before they look, the new job is registered before it is checked); a job runs detached
+  before they look, the new job is registered before it is checked; at most 4,096 changes are kept, the older half is
+  dropped and becomes a floor below which every capture counts as changed, fail closed); a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
   the owner's devices or role change, the rules of the owner's group change (`CancelGroup` on `DeviceGroupStore.Changed`
   and `Deleted`; a new name or description raises only `Updated`) or the session or the user's sessions end (also an
