@@ -88,7 +88,7 @@ public sealed class ShellNavigationTests
         MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Admin));
 
         Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
-        Assert.Equal(["Plugins", "Users", "Credentials", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
+        Assert.Equal(["Plugins", "Access", "Credentials", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
         Assert.Equal(["plugin", "users", "key", "logs", "settings", "info"], vm.BottomNavItems.Select(n => n.IconKey).ToArray());
         Assert.IsType<PluginsViewModel>(vm.BottomNavItems[0].Page);
         Assert.True(vm.BottomNavItems[0].HasSeparatorAfter); // a divider below Plugins

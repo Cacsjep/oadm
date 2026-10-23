@@ -52,7 +52,7 @@ Inside these, the SDK gives you:
 - settings per plugin, encrypted secrets, a private data folder;
 - live events from the server part to its page, file downloads to the client;
 - the shared controls and theme of the app, so a plugin looks like the rest of OADM ([UI kit](../ui/));
-- permissions that administrators give per role on the **Users** page.
+- permissions that administrators give per role on the **Access** page.
 
 ## Where the code is
 

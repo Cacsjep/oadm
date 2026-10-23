@@ -4,12 +4,13 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.UsersCardView"
              x:DataType="settings:UsersViewModel">
-  <!-- Card of the Users page (Admin only). Add user, Edit user and Change password are dialogs (UserFormWindow);
+  <!-- Card "Users" of the Access page (Admin only). Add user, Edit user and Change password are dialogs (UserFormWindow);
        refusals of the row actions in the message window. -->
   <Border Classes="card">
     <StackPanel Spacing="12">
-      <StackPanel Orientation="Horizontal">
-        <Button Classes="secondary" Command="{Binding OpenAddCommand}">
+      <StackPanel Orientation="Horizontal" Spacing="4">
+        <TextBlock Classes="cardTitle" Text="Users" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <Button Classes="secondary" Command="{Binding OpenAddCommand}" VerticalAlignment="Center">
           <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New user" />
         </Button>
       </StackPanel>
@@ -25,7 +26,6 @@
           </DataGridTemplateColumn>
           <DataGridTextColumn Header="Role" Width="180" Binding="{Binding RoleText}" x:DataType="settings:UserRowViewModel" />
           <DataGridTextColumn Header="Devices" Width="160" Binding="{Binding DevicesText}" x:DataType="settings:UserRowViewModel" />
-          <DataGridTextColumn Header="Last login" Width="140" Binding="{Binding LastLoginText}" x:DataType="settings:UserRowViewModel" />
           <DataGridTemplateColumn Header="State" Width="100" SortMemberPath="StateText" x:DataType="settings:UserRowViewModel">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="settings:UserRowViewModel">

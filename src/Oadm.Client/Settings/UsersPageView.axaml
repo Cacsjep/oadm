@@ -4,15 +4,15 @@
              xmlns:c="using:Oadm.Client.Controls"
              x:Class="Oadm.Client.Settings.UsersPageView"
              x:DataType="settings:UsersViewModel">
-  <!-- Navigation page Users (Admin only): the users card and the device groups card on top, the roles card (permission matrix) below with a
-       splitter, like the Devices page and its tasks. The users card takes the height it needs, the roles card the rest. -->
+  <!-- Navigation page Access (Admin only): users left and device groups right on top, the roles card (permission matrix) below with a
+       splitter, like the Devices page and its tasks. The top row takes the height it needs, the roles card the rest. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
-    <c:PageTitleBar Grid.Row="0" Title="Users" Subtitle="Who can log in to this server and what each role may do." Margin="0,0,0,16" />
+    <c:PageTitleBar Grid.Row="0" Title="Access" Subtitle="Who can log in, which devices they reach and what each role may do." Margin="0,0,0,16" />
     <ScrollViewer Grid.Row="1">
-      <StackPanel Spacing="16" MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top">
-        <settings:UsersCardView />
-        <settings:DeviceGroupsCardView DataContext="{Binding DeviceGroups}" />
-      </StackPanel>
+      <Grid ColumnDefinitions="*,16,*" VerticalAlignment="Top">
+        <settings:UsersCardView Grid.Column="0" VerticalAlignment="Top" />
+        <settings:DeviceGroupsCardView Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding DeviceGroups}" />
+      </Grid>
     </ScrollViewer>
     <GridSplitter Grid.Row="2" Classes="paneSplitter" />
     <settings:RolesCardView Grid.Row="3" DataContext="{Binding RolesCard}" />

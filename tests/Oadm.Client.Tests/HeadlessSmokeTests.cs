@@ -161,7 +161,7 @@ public sealed class HeadlessSmokeTests
             Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
             var pageTitles = new Dictionary<string, string>
             {
-                ["users"] = "Who can log in to this server and what each role may do.",
+                ["users"] = "Who can log in, which devices they reach and what each role may do.",
                 ["credentials"] = "Passwords OADM tries when it adds devices.",
                 ["plugins"] = "A plugin that is off shows no page, menu entry or toolbar button.",
                 ["settings"] = "Discovery duration (s)",

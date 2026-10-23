@@ -509,12 +509,12 @@ public sealed class LoginTests
             Capture(usersWindow, outDir, "client-users-page.png");
             Assert.Contains(usersWindow.GetVisualDescendants().OfType<DataGrid>().First().GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "anna.berg");
             List<string> pageTexts = usersWindow.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
-            Assert.Contains("Who can log in to this server and what each role may do.", pageTexts);
+            Assert.Contains("Who can log in, which devices they reach and what each role may do.", pageTexts);
             Assert.Contains("Contractor", pageTexts); // a role column of the matrix
             Assert.Contains("Rename and delete tags", pageTexts);
-            // The page title only, no card title repeating it (the device groups list has a column "Users").
+            // The page title only, no card title repeating it.
             Assert.Equal(1, usersWindow.GetVisualDescendants().OfType<TextBlock>()
-                .Count(t => t.Text == "Users" && !t.GetVisualAncestors().OfType<DataGrid>().Any()));
+                .Count(t => t.Text == "Access" && !t.GetVisualAncestors().OfType<DataGrid>().Any()));
             Capture(usersWindow, outDir, "client-users-page.png");
 
             // The dialogs of the users card: Add user, Edit user, Change password.

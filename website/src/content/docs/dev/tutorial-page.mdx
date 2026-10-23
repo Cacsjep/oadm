@@ -171,7 +171,7 @@ The device picker needs the window, so the view hands the view model a way to op
 <Aside title="Who may do what">
 Every page gets the permission "show" by itself. When a method changes something, declare a permission for it
 (`Permissions` and `RequiredPermission(method)` in the core plugin) so administrators can give or withhold it per role on
-the **Users** page. The server checks every call; the page asks `ctx.Has(...)` to hide what the role lacks.
+the **Access** page. The server checks every call; the page asks `ctx.Has(...)` to hide what the role lacks.
 </Aside>
 
 ## 7. The tests

@@ -145,7 +145,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
         };
 
-        _usersItem = new NavItemViewModel(HostPages.Users, "Users", "users", users);
+        _usersItem = new NavItemViewModel(HostPages.Users, "Access", "users", users);
         _credentialsItem = new NavItemViewModel(HostPages.Credentials, "Credentials", "key", credentials);
         _pluginsItem = pluginList is null ? null : new NavItemViewModel(HostPages.Plugins, "Plugins", "plugin", pluginList);
         _logsItem = new NavItemViewModel(HostPages.Logs, "Logs", "logs", logs);
