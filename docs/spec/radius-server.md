@@ -147,7 +147,7 @@ certificate").
   "EXPORTER_EAP_TLS_Key_Material"), sent as MS-MPPE-Recv-Key / MS-MPPE-Send-Key (RFC 2548) in the Access-Accept, encrypted
   with the shared secret.
 - **VLAN** (RFC 3580): Tunnel-Type = VLAN (13), Tunnel-Medium-Type = 802 (6), Tunnel-Private-Group-ID = the VLAN ID.
-- **TLS library:** BouncyCastle TLS (already a dependency) in its **non-blocking mode**: one `TlsServerProtocol` per
+- **TLS library** (see Libraries): BouncyCastle TLS in its **non-blocking mode**: one `TlsServerProtocol` per
   session without a stream; the bytes of each incoming EAP-TLS message go in with `OfferInput`, the bytes to send come
   out with `ReadOutput` and are cut into fragments; the handshake lives in memory only, no socket. `TlsServer` overrides
   give the minimum version and the cipher suites of Advanced, `NotifyAlertReceived` / `NotifyAlertRaised` the alert
@@ -156,6 +156,23 @@ certificate").
   unit test.
 - **Server certificate:** issued by the OADM CA (PKI) for the server, names = the listen addresses and the server's host
   name, renewed automatically 30 days before it expires; the cameras trust it through the PKI task "IEEE 802.1X".
+
+## Libraries (research 2026-10-23)
+
+Nothing is written from scratch that a maintained library or the SDK already does well:
+
+| Part | Use | Why |
+|---|---|---|
+| UDP socket, firewall, Listen on | the SDK: `ctx.Network.ListenUdpAsync` (`IUdpRelay`), like NTP and DHCP | plugins may not open sockets (banned APIs); the host binds, opens the firewall and later relays sites the same way |
+| TLS handshake in memory | **BouncyCastle** (`BouncyCastle.Cryptography` 2.7.0, already shipped): `TlsServerProtocol()` non-blocking, `OfferInput` / `ReadOutput` / `GetAvailableOutputBytes`, `TlsServer.GetSupportedVersions` / `GetSupportedCipherSuites`, `NotifyClientCertificate`, `NotifyAlertRaised` / `NotifyAlertReceived`, `TlsContext.ExportKeyingMaterial` (all present in 2.7.0) | the only .NET TLS stack with the key export and alert numbers on all three systems |
+| RADIUS packets | **candidate: `Flexinets.Radius.Core`** 3.0.1 (MIT, netstandard2.1, last release 2024-11): parse and build packets with a dictionary, Message-Authenticator required and checked by default (BlastRADIUS), RFC 2865 / 2866 / 5997 | Stage 1 starts with a spike: our switch fixtures, the "Parsing and RFC compliance" rules and the fuzz tests run against it. It is taken if it passes them (Proxy-State order, silent discard of malformed packets without exceptions escaping, attribute limits); otherwise a small own codec (the packet format is a few hundred lines) with the same tests |
+| EAP and EAP-TLS framing | own code (RFC 3748, 5216, 9190) | no .NET library exists; the format is a few header bytes, the logic is the session state |
+| MS-MPPE key encryption | own code (RFC 2548 2.4.2) with the RFC's construction and test vectors | a few lines; not in the RADIUS library |
+| Certificate checks | .NET `X509Chain` and the existing PKI / EST checks (OADM CA, trusted roots, Axis device ID roots, `axis-<serial>.local`) | already tested in EST |
+| MAC address parsing | own code | small, vendor formats listed below |
+
+No RADIUS server with EAP-TLS exists for .NET (FreeRADIUS is C, ToughRADIUS Go; neither fits a self-contained
+cross-platform app), so the server logic is ours; the libraries above carry the hard parts.
 
 ## Parsing and RFC compliance
 
