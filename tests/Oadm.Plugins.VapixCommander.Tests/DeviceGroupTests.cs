@@ -55,6 +55,67 @@ public sealed class DeviceGroupTests
     }
 
     [Fact]
+    public async Task A_task_started_by_hand_never_joins_a_rollout_of_another_user()
+    {
+        var ctx = new SdkTesting.FakeCoreContext();
+        var inside = ctx.Add(new SdkTesting.FakeDevice());
+        var plugin = new VapixCommanderPlugin(Samples.Directory);
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var tech2 = ctx.CallAsGroup([inside.Id], "tech2");
+        await ctx.InvokeAsync(plugin, tech2, CommanderMethods.Rollout, $$"""{"deviceIds":["{{inside.Id}}"],"commands":[{"command":{{Brand}}}],"stopOnFirstError":true}""");
+        var payload = Assert.Single(ctx.TaskRuns).PayloadJson;
+        var task = plugin.TaskPlugins.Single();
+
+        // Another user names tech2's rollout in a task of their own: refused before the device is asked.
+        var camera = new SdkTesting.FakeCamera();
+        var eve = new CallerTaskContext(camera, ctx.CallAsGroup([inside.Id], "eve"));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => task.ExecuteAsync(eve, inside, payload, CancellationToken.None));
+        Assert.Equal(RolloutTaskPlugin.ForeignRolloutText, refused.Message);
+        Assert.Empty(camera.Requests);
+        Assert.False(plugin.Rollouts.All.Single().IsAborted);
+
+        // tech2's own task joins it.
+        var own = new CallerTaskContext(new SdkTesting.FakeCamera(), ctx.CallAsGroup([inside.Id], "tech2"));
+        try
+        {
+            await task.ExecuteAsync(own, inside, payload, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex.Message != RolloutTaskPlugin.ForeignRolloutText)
+        {
+        }
+
+        Assert.NotEmpty(((SdkTesting.FakeCamera)own.Vapix).Requests);
+    }
+
+    /// <summary>A task's context with the user who started it.</summary>
+    private sealed class CallerTaskContext(SdkTesting.FakeCamera camera, ICallContext caller) : ITaskExecutionContext
+    {
+        private readonly SdkTesting.FakeTaskContext _inner = new(camera);
+
+        public Guid TaskId => _inner.TaskId;
+
+        public Oadm.Sdk.Vapix.IVapixClient Vapix => _inner.Vapix;
+
+        public Microsoft.Extensions.Logging.ILogger Logger => _inner.Logger;
+
+        public ICorePlugin? Owner => null;
+
+        public IUploadedFiles Files => _inner.Files;
+
+        public ICallContext? Caller => caller;
+
+        public void ReportProgress(int percent, string? message = null) => _inner.ReportProgress(percent, message);
+
+        public void ReportWarning(string message) => _inner.ReportWarning(message);
+
+        public void Log(TaskLogLevel level, string message) => _inner.Log(level, message);
+
+        public void PlanSteps(params string[] names) => ((ITaskExecutionContext)_inner).PlanSteps(names);
+
+        public ITaskStep BeginStep(string name) => ((ITaskExecutionContext)_inner).BeginStep(name);
+    }
+
+    [Fact]
     public async Task A_group_user_runs_a_saved_command_only_with_the_passwords_typed()
     {
         var host = new FakeCoreContext(); // with the master key: the saved password is stored

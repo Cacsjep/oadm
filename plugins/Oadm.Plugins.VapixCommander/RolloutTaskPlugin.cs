@@ -21,6 +21,9 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
     public const string StoppedHereReason = "Not run: stopped on the first error.";
     public const string StoppedElsewhereReason = "Not run: the rollout stopped after an error on another device.";
 
+    /// <summary>A task that names a rollout another user started.</summary>
+    public const string ForeignRolloutText = "This rollout was started by another user. Nothing was changed.";
+
     /// <summary>Commands per rollout; with "Check compatibility" this stays below the 200 steps of a task.</summary>
     public const int MaxCommands = 100;
 
@@ -120,7 +123,13 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
         }
 
         var owner = _owner;
-        var rollout = owner.Rollouts.Get(payload.RolloutId, payload.StopOnFirstError);
+        var user = ctx.Caller?.UserName;
+        var rollout = owner.Rollouts.Get(payload.RolloutId, payload.StopOnFirstError, user);
+        if (!rollout.Admits(user))
+        {
+            throw new InvalidOperationException(ForeignRolloutText); // before any step or request
+        }
+
         var commands = payload.Commands.Select(c => c.Command).ToList();
         var names = StepNames(commands);
         ctx.PlanSteps([CompatibilityStep, .. names]);

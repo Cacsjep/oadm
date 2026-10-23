@@ -72,6 +72,29 @@ public sealed class DeviceGroupTests
         await Testing.Eventually.TrueAsync(() => plugin.EventTypes.Where(t => t.Id == DeviceTriggersPluginInfo.TypeId(saved.Id)).All(t => t.DeviceIds!.Count == 0), "the trigger of the deleted group has no devices");
     }
 
+    /// <summary>
+    /// The SDK offers plugins no tag catalog, so a save cannot refuse a tag outside the owner's devices; it is harmless: a
+    /// group's tag covers only the group's devices, a tag that only outside devices carry watches nothing.
+    /// </summary>
+    [Fact]
+    public async Task ATagOutsideTheGroupCoversNothing()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var a = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1", Tags = ["Lobby"] });
+        var b = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2", Tags = ["Vault", "Lobby"] });
+        var keyA = ctx.FakeScopes.Add("Building A", [a.Id]);
+        await using var plugin = new DeviceTriggersPlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var anna = Testing.FakeCallContext.WithGroup(ctx, [a.Id], "anna", keyA);
+
+        var vault = await SaveAsync(ctx, plugin, anna, new TriggerDefinition { Name = "Vault", Topic = "t", Enabled = true, Tags = ["Vault"] });
+        var lobby = await SaveAsync(ctx, plugin, anna, new TriggerDefinition { Name = "Lobby", Topic = "t", Enabled = true, Tags = ["Lobby"] });
+
+        Assert.All(plugin.EventTypes.Where(t => t.Id == DeviceTriggersPluginInfo.TypeId(vault.Id)), t => Assert.Empty(t.DeviceIds!));
+        Assert.All(plugin.EventTypes.Where(t => t.Id == DeviceTriggersPluginInfo.TypeId(lobby.Id)), t => Assert.Equal([a.Id], t.DeviceIds!));
+        Assert.Equal(0, ctx.ClientsCreated.GetValueOrDefault(b.Id));
+    }
+
     private static async Task<TriggerDefinition> SaveAsync(Testing.FakeCoreContext ctx, DeviceTriggersPlugin plugin, Testing.FakeCallContext call, TriggerDefinition trigger)
     {
         var reply = TriggerJson.Deserialize<SaveReply>(await ctx.InvokeAsync(plugin, call, DeviceTriggersMethods.Save, TriggerJson.Serialize(new SaveRequest(trigger))));

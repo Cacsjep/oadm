@@ -18,11 +18,14 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
     /// <summary>Every rollout currently known (tests wait on <see cref="Rollout.IsAborted"/>).</summary>
     internal ICollection<Rollout> All => _rollouts.Values;
 
-    /// <summary>The rollout with this id, created on first use (a task started without the page knows only its payload).</summary>
-    public Rollout Get(Guid rolloutId, bool stopOnFirstError)
+    /// <summary>
+    /// The rollout with this id, created on first use (a task started without the page knows only its payload) for
+    /// <paramref name="ownerName"/>: the user who started it (null: the system).
+    /// </summary>
+    public Rollout Get(Guid rolloutId, bool stopOnFirstError, string? ownerName = null)
     {
         Sweep();
-        return _rollouts.GetOrAdd(rolloutId, id => new Rollout(this, id, stopOnFirstError, _time.GetUtcNow()));
+        return _rollouts.GetOrAdd(rolloutId, id => new Rollout(this, id, stopOnFirstError, _time.GetUtcNow()) { OwnerName = ownerName });
     }
 
     public bool TryGet(Guid rolloutId, out Rollout? rollout) => _rollouts.TryGetValue(rolloutId, out rollout);
@@ -57,6 +60,17 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
         public bool StopOnFirstError { get; } = stopOnFirstError;
 
         public DateTimeOffset CreatedUtc { get; } = createdUtc;
+
+        /// <summary>The user who started the rollout (null: the system). Only that user's tasks may join it.</summary>
+        public string? OwnerName { get; init; }
+
+        /// <summary>
+        /// Whether a task of <paramref name="userName"/> belongs to this rollout. A task started by hand through the task service
+        /// could name another user's rollout id and stop that rollout with a failure: refused. A task the host started without
+        /// a user (null) joins as before.
+        /// </summary>
+        public bool Admits(string? userName) =>
+            userName is null || string.Equals(OwnerName, userName, StringComparison.OrdinalIgnoreCase);
 
         public string? AbortReason { get; private set; }
 
