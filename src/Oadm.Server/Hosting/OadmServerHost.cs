@@ -389,6 +389,10 @@ public static partial class OadmServerHost
             var groups = sp.GetRequiredService<Core.DeviceGroups.DeviceGroupStore>();
             groups.Changed += (_, groupId) => jobs.CancelGroup(groupId);
             groups.Deleted += (_, deleted) => jobs.CancelGroup(deleted.Id);
+
+            // Devices moved into or out of a group (tags, sites, adds and removals; coalesced): finished results of its
+            // users are forgotten, running jobs when they end.
+            sp.GetRequiredService<HostDeviceScopes>().Changed += (_, scopeKey) => jobs.ScopeDevicesChanged(scopeKey);
             sp.GetRequiredService<Core.Auth.AuthTokenStore>().SessionsEnded += (_, ended) =>
             {
                 if (ended.UserId is { } userId)

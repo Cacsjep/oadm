@@ -273,8 +273,12 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
             }
         }
 
-        // A method that declares its system access reaches every scope, like ctx.System.
-        Assert.Equal("2", await rig.InvokeAsync(rig.Anna, "system.scopes", ICallContext.AllDevicesScopeKey));
+        // A method that declares its system access asks whether devices it has from ctx.System are in any scope; another
+        // scope's device list and name stay refused.
+        Assert.Equal("True,2,2", await rig.InvokeAsync(rig.Anna, "system.membership", ICallContext.AllDevicesScopeKey));
+        Assert.Equal("True,1,1", await rig.InvokeAsync(rig.Anna, "system.membership", other)); // "This server": the device without a site
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Anna, "system.scopes", ICallContext.AllDevicesScopeKey));
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Anna, "system.name", other));
 
         // The user's job: the same rule.
         await rig.InvokeAsync(rig.Anna, "job.scopes", ICallContext.AllDevicesScopeKey);
@@ -362,6 +366,35 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(moved, "job.find", third));
         Assert.Equal(0, await rig.JobCountAsync(moved));
         Assert.Equal("found", await rig.InvokeAsync(rig.Anna, "job.find", third));
+    }
+
+    [Fact]
+    public async Task WhenDevicesMoveInOrOutOfAGroupItsUsersFinishedJobsAreForgottenAndRunningOnesWhenTheyEnd()
+    {
+        await using var rig = await RigAsync();
+        rig.Plugin.JobDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = (await rig.InvokeAsync(rig.Anna, "job.start", null))!;
+        await rig.Plugin.JobDone.Task.WaitAsync(Eventually.DefaultTimeout);
+        var admins = (await rig.InvokeAsync(rig.Admin, "job.start", null))!;
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "the jobs ended");
+
+        rig.Plugin.HoldJobs = true;
+        rig.Plugin.JobGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.Plugin.JobDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = (await rig.InvokeAsync(rig.Anna, "job.start", null))!;
+
+        // A tag or site change moved devices into or out of the group (the coalesced signal of the device scopes).
+        rig.Host.Jobs.ScopeDevicesChanged(rig.GroupId.ToString());
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "job.find", finished));
+        Assert.Equal("found", await rig.InvokeAsync(rig.Anna, "job.find", running)); // still running: its page goes on
+        Assert.Equal("found", await rig.InvokeAsync(rig.Admin, "job.find", admins)); // all devices: untouched
+
+        rig.Plugin.JobGate.SetResult();
+        await rig.Plugin.JobDone.Task.WaitAsync(Eventually.DefaultTimeout);
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "the held job ended");
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "job.find", running));
+        Assert.Equal(0, await rig.JobCountAsync(rig.Anna));
     }
 
     private async Task<Rig> RigAsync(string minSdk = "0.4.0", bool engine = false)
@@ -472,6 +505,9 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
 
         public bool HoldJobs { get; set; }
 
+        /// <summary>With <see cref="HoldJobs"/>: held jobs go on when it is set (none: until cancelled).</summary>
+        public TaskCompletionSource? JobGate { get; set; }
+
         public ConcurrentQueue<ICallContext?> TaskCallers { get; } = new();
 
         public IDeviceRepository? Repository { get; set; }
@@ -485,7 +521,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
             _ => false,
         };
 
-        public string? SystemAccessReason(string method) => method is "system.count" or "system.count.ctx" or "system.scopes" ? "counts every device, shows no device data" : null;
+        public string? SystemAccessReason(string method) => method is "system.count" or "system.count.ctx" or "system.scopes" or "system.membership" or "system.name" ? "counts every device, shows no device data" : null;
 
         public Task StartAsync(ICorePluginContext context, CancellationToken ct)
         {
@@ -578,7 +614,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                     {
                         if (HoldJobs)
                         {
-                            await Task.Delay(Timeout.Infinite, token);
+                            await (JobGate?.Task ?? Task.Delay(Timeout.Infinite, token)).WaitAsync(token);
                         }
 
                         Exception? access = null;
@@ -600,6 +636,12 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                 case "scopes.exists":
                     return ctx.DeviceScopes!.Exists(payloadJson!).ToString();
                 case "scopes.name":
+                    return ctx.DeviceScopes!.NameOf(payloadJson!);
+                case "system.membership":
+                    var everyDevice = await ctx.System.Devices.ListAsync(ct);
+                    return string.Join(',', ctx.DeviceScopes!.Exists(payloadJson!), everyDevice.Count(d => ctx.DeviceScopes.Contains(payloadJson!, d)),
+                        everyDevice.Count(d => ctx.DeviceScopes.Contains(payloadJson!, d.Id)));
+                case "system.name":
                     return ctx.DeviceScopes!.NameOf(payloadJson!);
                 case "system.scopes":
                     return (await ctx.DeviceScopes!.Devices(payloadJson!).ListAsync(ct)).Count.ToString(System.Globalization.CultureInfo.InvariantCulture);

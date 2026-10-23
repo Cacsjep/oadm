@@ -17,8 +17,9 @@ namespace Oadm.Core.Plugins;
 /// with the owner's plugin call mark, so a job of a user with a device group refuses <c>ctx.Devices</c> like the call.
 /// A job ends when its work ends, when it is cancelled, when its plugin stops and when its owner's devices, role or
 /// sessions change (<see cref="CancelOwner"/>, <see cref="CancelGroup"/>: such a job is also forgotten, so a finished
-/// result made for the old devices is no longer found). <see cref="IPluginJobs.Find"/> answers only a caller with the
-/// job's device scope. Each user keeps at most <see cref="MaxJobsPerUser"/> jobs per plugin.
+/// result made for the old devices is no longer found). When devices move into or out of a group (a tag, site or
+/// membership change: <see cref="ScopeDevicesChanged"/>) the finished jobs of its users are forgotten and the running ones
+/// when they end. <see cref="IPluginJobs.Find"/> answers only a caller with the job's device scope. Each user keeps at most <see cref="MaxJobsPerUser"/> jobs per plugin.
 /// </summary>
 public sealed partial class PluginJobRegistry
 {
@@ -72,6 +73,32 @@ public sealed partial class PluginJobRegistry
     {
         var key = groupId.ToString();
         Forget(j => string.Equals(j.Owner.DeviceScopeKey, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Devices moved into or out of the group with <paramref name="scopeKey"/> (<see cref="HostDeviceScopes.Changed"/>, the
+    /// coalesced membership signal): the finished jobs of its users are forgotten at once (a report or a read that may name a
+    /// device that left), the running ones keep running (their reads go through the owner's view now) and are forgotten
+    /// when they end. O(jobs); jobs of users with all devices are never touched.
+    /// </summary>
+    public void ScopeDevicesChanged(string scopeKey)
+    {
+        if (string.IsNullOrWhiteSpace(scopeKey) || string.Equals(scopeKey, ICallContext.AllDevicesScopeKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        foreach (var jobs in _byPlugin.Values)
+        {
+            foreach (var job in jobs.Values.Where(j => string.Equals(j.Owner.DeviceScopeKey, scopeKey, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                job.MarkStale();
+                if (job.Completion.IsCompleted)
+                {
+                    jobs.TryRemove(job.Id, out _);
+                }
+            }
+        }
     }
 
     private void Forget(Func<Job, bool> which)
@@ -149,15 +176,28 @@ public sealed partial class PluginJobRegistry
         ArgumentNullException.ThrowIfNull(caller);
         return jobId is not null && caller is HostCallContext call
             && _byPlugin.TryGetValue(pluginId, out var jobs) && jobs.TryGetValue(jobId, out var job) && job.BelongsTo(call)
+            && !ForgetIfStale(jobs, job)
             ? job
             : null;
+    }
+
+    /// <summary>A job that ended after its group's devices moved is forgotten when next asked for.</summary>
+    private static bool ForgetIfStale(ConcurrentDictionary<string, Job> jobs, Job job)
+    {
+        if (!job.IsStale || !job.Completion.IsCompleted)
+        {
+            return false;
+        }
+
+        jobs.TryRemove(job.Id, out _);
+        return true;
     }
 
     private IReadOnlyList<IPluginJob> List(string pluginId, ICallContext caller)
     {
         ArgumentNullException.ThrowIfNull(caller);
         return caller is HostCallContext call && _byPlugin.TryGetValue(pluginId, out var jobs)
-            ? [.. jobs.Values.Where(j => j.BelongsTo(call)).OrderByDescending(j => j.Sequence)]
+            ? [.. jobs.Values.Where(j => j.BelongsTo(call) && !ForgetIfStale(jobs, j)).OrderByDescending(j => j.Sequence)]
             : [];
     }
 
@@ -194,6 +234,13 @@ public sealed partial class PluginJobRegistry
             call.UserId == owner.UserId && string.Equals(call.DeviceScopeKey, owner.DeviceScopeKey, StringComparison.OrdinalIgnoreCase);
 
         public long Sequence { get; } = sequence;
+
+        private int _stale;
+
+        /// <summary>The devices of the job's group moved while it ran: its result is not shown once it ended.</summary>
+        public bool IsStale => Volatile.Read(ref _stale) != 0;
+
+        public void MarkStale() => Volatile.Write(ref _stale, 1);
 
         public Task Completion { get; private set; } = Task.CompletedTask;
 
