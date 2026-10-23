@@ -319,8 +319,6 @@ public sealed class CanaryTests
     /// </summary>
     internal static readonly Dictionary<string, string> PluginsNotConverted = new(StringComparer.Ordinal)
     {
-        ["oadm.pki"] = "plugins-certs",
-        ["oadm.est"] = "plugins-certs",
         ["oadm.device-config"] = "plugins-tasks",
         ["oadm.vapix-commander"] = "plugins-tasks",
         ["oadm.network"] = "plugins-tasks",

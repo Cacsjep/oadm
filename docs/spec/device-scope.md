@@ -102,7 +102,9 @@ an independent security review the same day). A user may be limited to part of t
 - **Secrets in shared items** (library commands and configuration files with saved passwords): users with a group may
   run only items without saved passwords.
 - **Host names in certificates:** PKI and EST put a device's host name into its certificate only when a user with all
-  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name).
+  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name). Built:
+  `CertificateNames.For(..., trustNames)` and `EstEndpoint.DnsNames` read `IDeviceInfo.AddedByAllDevices` (IP addresses and
+  `axis-<serial>.local` only).
 - **Membership:** a single-device serial of a removed device is dormant; it counts again only when a user with all
   devices or a user of that group adds the device. Every change of a device's membership (tag, site, relocation, add,
   remove) is audited as "left / entered group X".

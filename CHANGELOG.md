@@ -25,6 +25,8 @@ version and date, and the release workflow copies it into the GitHub release.
   their own devices, reports and live updates.
 - Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
   user's group.
+- Device groups: users with a group see the PKI and EST server pages read only, with the certificates and enrollments of
+  their own devices. Certificates of a device such a user added name only its IP addresses, never its host name.
 
 ### Changed
 
