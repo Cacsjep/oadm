@@ -212,7 +212,7 @@ internal sealed class TestCoreContext(FakeDevices devices, IPluginEvents? events
 }
 
 /// <summary>The page context against the in-process plugin (InvokeAsync) and the real event hub (WatchEventsAsync).</summary>
-internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEventHub hub, TestCall call) : ICorePluginClientContext
+internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEventHub hub, Oadm.Sdk.Testing.FakeCallContext call) : ICorePluginClientContext
 {
     public List<IDeviceInfo> DeviceList { get; } = [];
 
@@ -262,7 +262,7 @@ internal sealed class Rig : IAsyncDisposable
     public TestDevice Camera { get; }
 
     /// <summary>The user's call (all devices, one session): the plugin publishes to its session.</summary>
-    public TestCall Call => field ??= new TestCall(Devices, _withStreams ? Streams : null);
+    public Oadm.Sdk.Testing.FakeCallContext Call => field ??= Oadm.Sdk.Testing.FakeCallContext.Over(Devices, eventStreams: _withStreams ? Streams : null);
 
     private bool _withStreams = true;
 
@@ -374,36 +374,4 @@ internal static class Wait
     // Generous: the condition usually holds within milliseconds; a busy CI runner (ubuntu, v1.0.0) needed more than 5 s.
     public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
         Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout);
-}
-
-/// <summary>
-/// A user's call over the test's fakes (device groups, SDK 0.4.0): what the host passes to the plugin. All devices by
-/// default; <see cref="AllDevices"/> false is a user with a device group (the fakes then decide what the group holds).
-/// </summary>
-internal sealed class TestCall(IDeviceRepository devices, IDeviceEventStreams? eventStreams) : ICallContext
-{
-    public string UserName { get; init; } = "admin";
-
-    public string SessionId { get; init; } = Guid.NewGuid().ToString("N");
-
-    public bool AllDevices { get; init; } = true;
-
-    public string DeviceScopeKey => AllDevices ? ICallContext.AllDevicesScopeKey : "group";
-
-    public bool HasAllDevices => AllDevices;
-
-    public IDeviceRepository Devices => devices;
-
-    public IVapixClientFactory Vapix => throw new NotSupportedException();
-
-    public ITaskRunner Tasks => throw new NotSupportedException();
-
-    public IDeviceEventStreams? EventStreams => eventStreams;
-
-    public bool Has(string permission) => true;
-
-    public bool Contains(IDeviceInfo device) => true;
-
-    /// <summary>The page watcher of this call (its session) on the host's event hub.</summary>
-    public PluginWatcher Watcher => new(UserName, SessionId, DeviceScopeKey, AllDevices, _ => Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>()));
 }

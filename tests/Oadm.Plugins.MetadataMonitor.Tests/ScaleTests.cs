@@ -17,7 +17,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
     [Fact]
     public void Ten_thousand_messages_and_a_burst_of_two_thousand_stay_fast()
     {
-        var ctx = new PluginPageContext(new MetadataMonitorPlugin(), new Oadm.Core.Plugins.PluginEventHub(), new TestCall(new FakeDevices(), null));
+        var ctx = new PluginPageContext(new MetadataMonitorPlugin(), new Oadm.Core.Plugins.PluginEventHub(), Oadm.Sdk.Testing.FakeCallContext.Over(new FakeDevices()));
         using var vm = new MetadataMonitorViewModel(ctx, new MetadataClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-mm-tests", Guid.NewGuid().ToString("N"), "client.json")));
         var events = 0;
         vm.Messages.CollectionChanged += (_, _) => events++;

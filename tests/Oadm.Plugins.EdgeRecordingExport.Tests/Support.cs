@@ -318,12 +318,12 @@ internal sealed class Rig
     public Rig()
     {
         Plugin.StartAsync(new FakeContext(Devices, Cameras), CancellationToken.None).GetAwaiter().GetResult();
-        Call = new TestCall(Devices, Cameras);
+        Call = Oadm.Sdk.Testing.FakeCallContext.Over(Devices, Cameras);
         Page = new PageContext(this);
     }
 
     /// <summary>The user's call (all devices).</summary>
-    public TestCall Call { get; }
+    public Oadm.Sdk.Testing.FakeCallContext Call { get; }
 
     public FakeDevices Devices { get; } = new();
 
@@ -398,30 +398,4 @@ internal sealed class TempFolder : IDisposable
         {
         }
     }
-}
-
-/// <summary>
-/// A user's call with all devices over the test's fakes (device groups, SDK 0.4.0): what the host passes to the plugin.
-/// </summary>
-internal sealed class TestCall(Oadm.Sdk.Devices.IDeviceRepository devices, Oadm.Sdk.Vapix.IVapixClientFactory vapix, Oadm.Sdk.Devices.IDeviceEventStreams? eventStreams = null) : Oadm.Sdk.Plugins.ICallContext
-{
-    public string UserName { get; init; } = "admin";
-
-    public string SessionId { get; init; } = Guid.NewGuid().ToString("N");
-
-    public string DeviceScopeKey => Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey;
-
-    public bool HasAllDevices => true;
-
-    public Oadm.Sdk.Devices.IDeviceRepository Devices => devices;
-
-    public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => vapix;
-
-    public Oadm.Sdk.Tasks.ITaskRunner Tasks => throw new NotSupportedException();
-
-    public Oadm.Sdk.Devices.IDeviceEventStreams? EventStreams => eventStreams;
-
-    public bool Has(string permission) => true;
-
-    public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => true;
 }

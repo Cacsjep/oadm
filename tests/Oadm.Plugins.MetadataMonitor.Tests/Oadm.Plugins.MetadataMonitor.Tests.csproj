@@ -35,6 +35,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The page watcher of a call on the real event hub. -->
+    <Compile Include="..\Shared\CallWatchers.cs" Link="Shared\CallWatchers.cs" />
+    <Using Include="Oadm.Tests.Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Shared dev-cameras.yaml loader of the core hardware tests. -->
     <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
     <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
