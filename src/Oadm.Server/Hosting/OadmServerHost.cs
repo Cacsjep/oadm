@@ -368,7 +368,8 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<TimeProvider>()),
             services: sp.GetRequiredService<PluginServiceRegistry>(),
             jobs: sp.GetRequiredService<PluginJobRegistry>(),
-            deviceScopes: sp.GetRequiredService<HostDeviceScopes>()));
+            deviceScopes: sp.GetRequiredService<HostDeviceScopes>(),
+            viewWatcher: sp.GetRequiredService<Core.DeviceGroups.DeviceViewWatcher>()));
         services.AddSingleton<PluginServiceRegistry>();
         services.AddSingleton<HostDeviceScopes>();
         services.AddSingleton(sp =>

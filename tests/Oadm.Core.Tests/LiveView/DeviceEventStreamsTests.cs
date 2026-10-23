@@ -54,7 +54,8 @@ public sealed class DeviceEventStreamsTests
         await using (var host = new CorePluginHost(registry, devices, vapix, engine, new InMemoryPluginSettingsProvider(), eventStreams: streams))
         {
             await host.StartAllAsync(CancellationToken.None);
-            Assert.Same(streams, plugin.Context!.EventStreams);
+            // The host's streams behind the call guard (they refuse only in a group user's call).
+            await Assert.ThrowsAsync<NotSupportedException>(() => plugin.Context!.EventStreams!.OpenAsync(Guid.NewGuid(), CancellationToken.None));
             await host.StopAllAsync(CancellationToken.None);
         }
 

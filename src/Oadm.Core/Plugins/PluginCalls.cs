@@ -62,14 +62,18 @@ public sealed class PluginCaller
 /// </summary>
 internal sealed class HostCallContext : ICallContext
 {
-    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, CallTaskOwners taskOwners)
+    /// <param name="viewWatcher">Ends a group user's event streams when their device leaves the view; without it a group user gets no event streams (fail closed).</param>
+    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners)
     {
         Caller = caller;
         var view = caller.View;
         Devices = new ViewDevices(view);
         Vapix = caller.HasAllDevices ? vapix : new ViewVapix(view, vapix);
         Tasks = new ViewTasks(this, tasks, taskOwners);
-        EventStreams = eventStreams is null ? null : caller.HasAllDevices ? eventStreams : new ViewEventStreams(view, eventStreams);
+        EventStreams = eventStreams is null ? null
+            : caller.HasAllDevices ? eventStreams
+            : viewWatcher is null ? null
+            : new ViewedEventStreams(eventStreams, view, viewWatcher);
     }
 
     public PluginCaller Caller { get; }
@@ -145,41 +149,6 @@ internal sealed class HostCallContext : ICallContext
         public bool Cancel(Guid taskId) => (call.HasAllDevices || owners.IsOwner(taskId, call.UserId)) && inner.Cancel(taskId);
 
         public bool? IsActive(Guid taskId) => call.HasAllDevices || owners.IsOwner(taskId, call.UserId) ? inner.IsActive(taskId) : null;
-    }
-
-    private sealed class ViewEventStreams(DeviceView view, IDeviceEventStreams inner) : IDeviceEventStreams
-    {
-        public async Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct)
-        {
-            await RequireAsync(view, deviceId, ct).ConfigureAwait(false);
-            return await inner.OpenAsync(deviceId, ct).ConfigureAwait(false);
-        }
-
-        public async Task<int?> GetRtspPortAsync(Guid deviceId, CancellationToken ct)
-        {
-            await RequireAsync(view, deviceId, ct).ConfigureAwait(false);
-            return await inner.GetRtspPortAsync(deviceId, ct).ConfigureAwait(false);
-        }
-
-        public async Task SetRtspPortAsync(Guid deviceId, int? port, CancellationToken ct)
-        {
-            await RequireAsync(view, deviceId, ct).ConfigureAwait(false);
-            await inner.SetRtspPortAsync(deviceId, port, ct).ConfigureAwait(false);
-        }
-
-        public async Task<IReadOnlyDictionary<Guid, int>> GetRtspPortsAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
-        {
-            _ = await view.GetAsync(deviceIds, ct).ConfigureAwait(false);
-            return await inner.GetRtspPortsAsync(deviceIds, ct).ConfigureAwait(false);
-        }
-
-        public async Task SetRtspPortsAsync(IReadOnlyCollection<Guid> deviceIds, int? port, IReadOnlyCollection<Guid>? managed, CancellationToken ct)
-        {
-            _ = await view.GetAsync(deviceIds, ct).ConfigureAwait(false);
-
-            // Dropping the ports of devices that are no longer managed is system work: a group user's list is not every device.
-            await inner.SetRtspPortsAsync(deviceIds, port, null, ct).ConfigureAwait(false);
-        }
     }
 }
 
@@ -261,6 +230,23 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
 
     public IDeviceEventStreams? EventStreams(IDeviceEventStreams? inner, bool system = false) =>
         inner is null ? null : new GuardedEventStreams(this, inner, system);
+
+    public IDeviceAutoAdd? AutoAdd(IDeviceAutoAdd? inner) => inner is null ? null : new GuardedAutoAdd(this, inner);
+
+    private sealed class GuardedAutoAdd(PluginCallGuard guard, IDeviceAutoAdd inner) : IDeviceAutoAdd
+    {
+        public Task<DeviceAutoAddOutcome> AddAsync(string address, string expectedSerial, string source, CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.AddAsync(address, expectedSerial, source, ct);
+        }
+
+        public Task<DeviceFollowResult> FollowAsync(string serial, string address, string source, CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.FollowAsync(serial, address, source, ct);
+        }
+    }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} used ctx.{Member} in {Method} for a user with a device group: refused (use the call context)")]
     private partial void LogRefused(string pluginId, string member, string method);
@@ -394,12 +380,12 @@ public static class PluginCallRules
     /// clients, task runs and event streams only of the caller's view. For task plugin queries (no task runs: pass a runner
     /// that refuses) and other host code that calls plugins for a user.
     /// </summary>
-    public static ICallContext CreateCall(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams)
+    public static ICallContext CreateCall(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher = null)
     {
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(vapix);
         ArgumentNullException.ThrowIfNull(tasks);
-        return new HostCallContext(caller, vapix, tasks, eventStreams, new CallTaskOwners());
+        return new HostCallContext(caller, vapix, tasks, eventStreams, viewWatcher, new CallTaskOwners());
     }
 
     /// <summary>The mark of a user's call of <paramref name="pluginId"/> (see <see cref="CallerContext.UsePluginCall"/>).</summary>

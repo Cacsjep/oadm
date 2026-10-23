@@ -57,6 +57,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly Func<Sites.PluginNetworkScope>? _networks;
     private readonly PluginServiceRegistry? _services;
     private readonly HostDeviceScopes? _deviceScopes;
+    private readonly DeviceGroups.DeviceViewWatcher? _viewWatcher;
     private readonly CallTaskOwners _taskOwners = new();
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
@@ -83,7 +84,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         Func<Sites.PluginNetworkScope>? networks = null,
         PluginServiceRegistry? services = null,
         PluginJobRegistry? jobs = null,
-        HostDeviceScopes? deviceScopes = null)
+        HostDeviceScopes? deviceScopes = null,
+        DeviceGroups.DeviceViewWatcher? viewWatcher = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -106,6 +108,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _networks = networks;
         _services = services;
         _deviceScopes = deviceScopes;
+        _viewWatcher = viewWatcher;
         Jobs = jobs ?? new PluginJobRegistry();
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -174,7 +177,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     guard.EventStreams(entry.CallEventStreams),
                     _firewall,
                     _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
-                    _autoAdd,
+                    guard.AutoAdd(_autoAdd),
                     registered.Plugin is Sdk.Events.IEventSource ? _eventPublishers?.Invoke(registered.Id) : null,
                     entry.Subscriptions,
                     _registry.Licenses?.LicenseOf(registered.Origin.PackageId))
@@ -430,7 +433,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             systemAllowed = !string.IsNullOrWhiteSpace(Answer(registered, method, p => p.SystemAccessReason(method), fallback: null));
         }
 
-        var call = new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _taskOwners);
+        var call = new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _viewWatcher, _taskOwners);
         return (call, new PluginCallMark(registered.Id, method, caller.HasAllDevices, systemAllowed));
     }
 

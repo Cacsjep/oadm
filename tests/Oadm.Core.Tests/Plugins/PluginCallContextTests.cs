@@ -261,7 +261,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         var tasks = new RecordingTasks();
         var streams = new RecordingStreams();
         var scopes = new HostDeviceScopes(Groups, Views);
-        var host = new CorePluginHost(registry, Devices, vapix, tasks, new InMemoryPluginSettingsProvider(), eventStreams: streams, deviceScopes: scopes);
+        var host = new CorePluginHost(registry, Devices, vapix, tasks, new InMemoryPluginSettingsProvider(), eventStreams: streams, deviceScopes: scopes, viewWatcher: Db.Get<DeviceViewWatcher>());
         await host.StartAllAsync(Ct);
         var rig = new Rig(this, host, scopes, plugin, vapix, tasks, streams, inside, outside, group.Id);
         rig.Anna = await rig.CallerAsync("anna", DeviceScope.Group(group.Id));

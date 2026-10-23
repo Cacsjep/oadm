@@ -190,7 +190,9 @@ public sealed class DeviceAutoAddTests
         registry.RegisterCorePlugin(probe, new PluginOrigin("test", "1.0", null));
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
 
-        Assert.Same(host.Get<IDeviceAutoAdd>(), probe.AutoAdd);
+        // The server's service behind the call guard (refused only in a group user's call): it adds like the service.
+        Assert.NotNull(probe.AutoAdd);
+        Assert.Equal(DeviceFollowResult.NotManaged, await probe.AutoAdd.FollowAsync(FakeSerials.Make(77), "10.9.7.77", "DHCP server", CancellationToken.None));
     }
 
     private sealed class ContextProbe : Oadm.Sdk.Plugins.ICorePlugin
