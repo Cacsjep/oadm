@@ -169,6 +169,8 @@ no events, no actions, no switching. Details: plugin `README.md`.
   per request, 1 s pause after a failure); one reading per device shared by every page; stopped after 20 s without the
   page's keep-alive; at most 20 devices at once; refused statuses without a request; the VAPIX client always from the
   factory, never kept or disposed.
+- Device groups (SDK 0.4.0): streams are jobs of their user (another user's id answers like an unknown one), ports go
+  to the page's session only, a reading is shared within one device scope and ends when the device leaves its view.
 - Tests: `tests/Oadm.Plugins.IoMonitor.Tests` (+ read-only hardware test `IoMonitorHardwareTests`).
 
 ## Device triggers (core plugin)

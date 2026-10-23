@@ -35,6 +35,9 @@ public sealed class IoMonitorOptions
 /// outputs and shows their states live. While the page shows the device the server reads the ports every 200 ms
 /// (<c>getPorts</c> of the I/O port management API, stored credentials) and pushes them to the page when something
 /// changed. Pages showing the same device share one reading of it. Read-only for devices; no events, no actions.
+/// Device groups (SDK 0.4.0): each page's stream is a job of its user (<see cref="ICorePluginContext.Jobs"/>: another user's
+/// stream id answers like an unknown one), the device comes from the user's call, the reading of a device is shared only by
+/// pages of the same device scope and reads through their call, so it ends when the device leaves their view.
 /// </summary>
 public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
 {
@@ -42,7 +45,7 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
     private readonly Dictionary<string, PageStream> _streams = new(StringComparer.Ordinal);
-    private readonly Dictionary<Guid, DevicePoller> _pollers = [];
+    private readonly Dictionary<(Guid DeviceId, string Scope), DevicePoller> _pollers = [];
     private bool _accepting;
     private ICorePluginContext? _ctx;
     private CancellationTokenSource? _running;
@@ -112,12 +115,19 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
     public async Task StopAsync(CancellationToken ct)
     {
         List<DevicePoller> pollers;
+        List<PageStream> streams;
         lock (_gate)
         {
             _accepting = false; // a start still on its way is refused, so nothing keeps reading after the stop
             pollers = [.. _pollers.Values];
+            streams = [.. _streams.Values];
             _pollers.Clear();
             _streams.Clear();
+        }
+
+        foreach (var stream in streams)
+        {
+            stream.Job.Cancel();
         }
 
         foreach (var poller in pollers)
@@ -141,18 +151,24 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
-    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    /// <summary>Only through the user's call (<see cref="InvokeAsync(ICallContext, string, string?, CancellationToken)"/>).</summary>
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("Call the I/O Monitor plugin with the user's call.");
+
+    public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         _ = _ctx ?? throw new InvalidOperationException("The I/O Monitor plugin is not running.");
         switch (method)
         {
             case IoMonitorMethods.Start:
-                return IoMonitorJson.Serialize(await StartStreamAsync(IoMonitorJson.Deserialize<StartRequest>(payloadJson).DeviceId, ct).ConfigureAwait(false));
+                return IoMonitorJson.Serialize(await StartStreamAsync(caller, IoMonitorJson.Deserialize<StartRequest>(payloadJson).DeviceId, ct).ConfigureAwait(false));
             case IoMonitorMethods.Stop:
-                await StopStreamAsync(IoMonitorJson.Deserialize<StreamRequest>(payloadJson).StreamId).ConfigureAwait(false);
+                var stopped = FindJob(caller, IoMonitorJson.Deserialize<StreamRequest>(payloadJson).StreamId);
+                await StopStreamAsync(stopped.Id).ConfigureAwait(false);
                 return null;
             case IoMonitorMethods.KeepAlive:
-                return IoMonitorJson.Serialize(new KeepAliveReply(KeepAlive(IoMonitorJson.Deserialize<StreamRequest>(payloadJson).StreamId)));
+                return IoMonitorJson.Serialize(new KeepAliveReply(KeepAlive(FindJob(caller, IoMonitorJson.Deserialize<StreamRequest>(payloadJson).StreamId).Id)));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
@@ -211,7 +227,13 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
         ];
     }
 
-    private async Task<StartReply> StartStreamAsync(Guid deviceId, CancellationToken ct)
+    /// <summary>The user's stream job; another user's id and an unknown one answer alike.</summary>
+    private IPluginJob FindJob(ICallContext caller, string? streamId) =>
+        (streamId is null ? null : Jobs.Find(caller, streamId)) ?? throw new KeyNotFoundException(IoMonitorMethods.StreamEnded);
+
+    private IPluginJobs Jobs => _ctx?.Jobs ?? throw new InvalidOperationException("This OADM server cannot run the I/O Monitor.");
+
+    private async Task<StartReply> StartStreamAsync(ICallContext caller, Guid deviceId, CancellationToken ct)
     {
         var ctx = _ctx!;
         if (ctx.Events is not { } events)
@@ -219,10 +241,12 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
             return new StartReply(null, "This OADM server cannot push live updates");
         }
 
-        var device = deviceId == Guid.Empty ? null : await ctx.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
+        var jobs = Jobs;
+        var device = deviceId == Guid.Empty ? null : await caller.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
         if (device is null)
         {
-            return new StartReply(null, DeviceMessages.Removed);
+            // A user with a device group: a device outside the group and an unknown one answer alike.
+            return caller.HasAllDevices ? new StartReply(null, DeviceMessages.Removed) : throw new DevicesNotAvailableException();
         }
 
         if (RefusalFor(device) is { } refusal)
@@ -235,61 +259,99 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
             return new StartReply(null, "The device has no inputs or outputs to show");
         }
 
-        if (TooMany(deviceId) is { } tooMany)
+        var key = (deviceId, caller.DeviceScopeKey);
+        if (TooMany(key) is { } tooMany)
         {
             return tooMany;
         }
 
         try
         {
-            _ = await ctx.Vapix.CreateAsync(deviceId, ct).ConfigureAwait(false); // reachable now; each read asks the factory again
+            _ = await caller.Vapix.CreateAsync(deviceId, ct).ConfigureAwait(false); // reachable now; each read asks the factory again
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        catch (Exception ex) when (ex is not DevicesNotAvailableException && (ex is not OperationCanceledException || !ct.IsCancellationRequested))
         {
             return new StartReply(null, DeviceMessages.Unreachable(ex.Message));
         }
 
-        var stream = new PageStream(Guid.NewGuid().ToString("N"), deviceId, _time);
+        // The stream is a job of the user: it ends on Stop, without keep-alives, when the plugin stops and when the user's
+        // devices, role or session change (the host cancels it).
+        var registered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = jobs.Start(caller, "stream", async (job, token) =>
+        {
+            if (!await registered.Task.ConfigureAwait(false))
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, _time, token).ConfigureAwait(false);
+            }
+            finally
+            {
+                await StopStreamAsync(job.Id).ConfigureAwait(false);
+            }
+        });
+        var stream = new PageStream(job, deviceId, caller.DeviceScopeKey, _time);
         lock (_gate)
         {
             if (!_accepting)
             {
+                registered.SetResult(false);
                 return new StartReply(null, "The I/O Monitor plugin is turned off.");
             }
 
             // checked again with the insert: two starts must not pass the limit together
-            if (!_pollers.TryGetValue(deviceId, out var poller))
+            if (!_pollers.TryGetValue(key, out var poller))
             {
                 if (_pollers.Count >= _options.MaxStreams)
                 {
+                    registered.SetResult(false);
                     return TooManyReply();
                 }
 
-                poller = new DevicePoller(deviceId, ctx.Vapix, events, _options, _time);
-                _pollers[deviceId] = poller;
+                poller = new DevicePoller(deviceId, events, _options, _time, Gone);
+                _pollers[key] = poller;
                 poller.Start();
             }
 
             _streams[stream.Id] = stream;
-            poller.Add(stream.Id);
+            poller.Add(stream.Id, job.Owner);
         }
 
+        registered.SetResult(true);
         LogStarted(Logger, device.Address);
         return new StartReply(stream.Id, null);
     }
 
-    private StartReply? TooMany(Guid deviceId)
+    /// <summary>The device left the view of the poller's pages: every stream of it ends (its job removes it).</summary>
+    private void Gone(DevicePoller poller)
+    {
+        List<PageStream> ended;
+        lock (_gate)
+        {
+            ended = [.. _streams.Values.Where(s => _pollers.TryGetValue((s.DeviceId, s.Scope), out var p) && ReferenceEquals(p, poller))];
+        }
+
+        foreach (var stream in ended)
+        {
+            stream.Job.Cancel();
+        }
+    }
+
+    private StartReply? TooMany((Guid, string) key)
     {
         lock (_gate)
         {
-            return _pollers.ContainsKey(deviceId) || _pollers.Count < _options.MaxStreams ? null : TooManyReply();
+            return _pollers.ContainsKey(key) || _pollers.Count < _options.MaxStreams ? null : TooManyReply();
         }
     }
 
     private StartReply TooManyReply() =>
         new(null, $"Too many devices are shown at the same time ({_options.MaxStreams}); close one first");
 
-    /// <summary>False when the stream is unknown (stopped, expired, or the server restarted).</summary>
+    /// <summary>False when the user's stream no longer runs (stopped, expired).</summary>
     private bool KeepAlive(string? streamId)
     {
         lock (_gate)
@@ -307,20 +369,22 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
     private async Task StopStreamAsync(string? streamId)
     {
         DevicePoller? unused = null;
+        PageStream? stream;
         lock (_gate)
         {
-            if (streamId is null || !_streams.Remove(streamId, out var stream))
+            if (streamId is null || !_streams.Remove(streamId, out stream))
             {
                 return;
             }
 
-            if (_pollers.TryGetValue(stream.DeviceId, out var poller) && poller.Remove(streamId) == 0)
+            if (_pollers.TryGetValue((stream.DeviceId, stream.Scope), out var poller) && poller.Remove(streamId) == 0)
             {
-                _pollers.Remove(stream.DeviceId);
+                _pollers.Remove((stream.DeviceId, stream.Scope));
                 unused = poller;
             }
         }
 
+        stream.Job.Cancel(); // ends the user's job (outside the lock: its end runs this again, which finds nothing)
         if (unused is not null)
         {
             await unused.DisposeAsync().ConfigureAwait(false);
@@ -348,14 +412,19 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "I/O Monitor: reading the ports of {Address}")]
     private static partial void LogStarted(ILogger logger, string address);
 
-    /// <summary>One page watching one device; its keep-alives hold it.</summary>
-    private sealed class PageStream(string id, Guid deviceId, TimeProvider time)
+    /// <summary>One page watching one device (a job of its user); its keep-alives hold it.</summary>
+    private sealed class PageStream(IPluginJob job, Guid deviceId, string scope, TimeProvider time)
     {
         private long _keepAlive = time.GetTimestamp();
 
-        public string Id { get; } = id;
+        public string Id => Job.Id;
+
+        public IPluginJob Job { get; } = job;
 
         public Guid DeviceId { get; } = deviceId;
+
+        /// <summary>The device scope of the page's user: pages share a reading only within one scope.</summary>
+        public string Scope { get; } = scope;
 
         public TimeSpan SinceKeepAlive => time.GetElapsedTime(Interlocked.Read(ref _keepAlive));
 
@@ -363,29 +432,31 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
     }
 
     /// <summary>
-    /// The reading of one device for every stream that shows it: reads every <see cref="IoMonitorOptions.PollInterval"/>
-    /// (after a failure <see cref="IoMonitorOptions.RetryDelay"/> later) and publishes changes to each stream.
+    /// The reading of one device for every stream of one device scope that shows it: reads every
+    /// <see cref="IoMonitorOptions.PollInterval"/> (after a failure <see cref="IoMonitorOptions.RetryDelay"/> later) through
+    /// the call of one of its streams' users and publishes changes to each stream's session. When the device left their view
+    /// (<see cref="DevicesNotAvailableException"/>) it tells the pages and ends (<paramref name="gone"/>).
     /// </summary>
-    private sealed class DevicePoller(Guid deviceId, IVapixClientFactory vapix, IPluginEvents events, IoMonitorOptions options, TimeProvider time) : IAsyncDisposable
+    private sealed class DevicePoller(Guid deviceId, IPluginEvents events, IoMonitorOptions options, TimeProvider time, Action<DevicePoller> gone) : IAsyncDisposable
     {
         private readonly CancellationTokenSource _stop = new();
         private readonly Lock _gate = new();
-        private readonly HashSet<string> _streamIds = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ICallContext> _streamIds = new(StringComparer.Ordinal);
         private Task _loop = Task.CompletedTask;
         private string? _lastJson;
         private PortsEvent? _last;
 
         public void Start() => _loop = Task.Run(LoopAsync, CancellationToken.None);
 
-        /// <summary>Adds a stream; it gets the last read at once (a second page of the same device).</summary>
-        public void Add(string streamId)
+        /// <summary>Adds a stream of <paramref name="owner"/>; it gets the last read at once (a second page of the same device).</summary>
+        public void Add(string streamId, ICallContext owner)
         {
             lock (_gate)
             {
-                _streamIds.Add(streamId);
+                _streamIds[streamId] = owner;
                 if (_last is { } last)
                 {
-                    events.Publish(IoMonitorMethods.PortsTopic, IoMonitorJson.Serialize(last with { StreamId = streamId }));
+                    events.Publish(IoMonitorMethods.PortsTopic, IoMonitorJson.Serialize(last with { StreamId = streamId }), PluginEventAudience.Of(owner));
                 }
             }
         }
@@ -430,6 +501,13 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
                 {
                     return;
                 }
+                catch (DevicesNotAvailableException ex)
+                {
+                    // The device left the view of these pages (or was removed): tell them and end.
+                    Publish(last, ex.Message);
+                    gone(this);
+                    return;
+                }
 #pragma warning disable CA1031 // A failed read is shown on the page; the next read tries again.
                 catch (Exception ex)
 #pragma warning restore CA1031
@@ -460,11 +538,11 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
             IVapixClient client;
             try
             {
-                // per read: the factory replaces (and disposes) its client when the address, credentials or
-                // certificate change; it caches it, so it is never disposed here
-                client = await vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
+                // per read, through the call of a page's user (its view): the factory replaces (and disposes) its client
+                // when the address, credentials or certificate change; it caches it, so it is never disposed here
+                client = await Reader().CreateAsync(deviceId, ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException and not DevicesNotAvailableException)
             {
                 throw new InvalidOperationException(DeviceMessages.Unreachable(ex.Message), ex);
             }
@@ -483,6 +561,15 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
             return ParsePorts(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
         }
 
+        /// <summary>The VAPIX clients of one of the streams' users (all of them share the device scope).</summary>
+        private IVapixClientFactory Reader()
+        {
+            lock (_gate)
+            {
+                return _streamIds.Values.FirstOrDefault()?.Vapix ?? throw new OperationCanceledException();
+            }
+        }
+
         /// <summary>Only changes go to the pages: the ports or the error differ from the last push.</summary>
         private void Publish(IReadOnlyList<IoPort> ports, string? error)
         {
@@ -496,9 +583,9 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
 
                 _lastJson = json;
                 _last = new PortsEvent(string.Empty, ports, error, time.GetUtcNow());
-                foreach (var id in _streamIds)
+                foreach (var (id, owner) in _streamIds)
                 {
-                    events.Publish(IoMonitorMethods.PortsTopic, IoMonitorJson.Serialize(_last with { StreamId = id }));
+                    events.Publish(IoMonitorMethods.PortsTopic, IoMonitorJson.Serialize(_last with { StreamId = id }), PluginEventAudience.Of(owner));
                 }
             }
         }

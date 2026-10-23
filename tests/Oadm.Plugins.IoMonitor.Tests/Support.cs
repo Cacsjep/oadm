@@ -199,10 +199,12 @@ internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory
     public IDeviceEventStreams? EventStreams => null;
 
     public IFirewallRules? Firewall => null;
+
+    public IPluginJobs? Jobs { get; } = new Oadm.Sdk.Testing.FakePluginJobs();
 }
 
 /// <summary>The page context against the plugin in process (invoke + the event hub).</summary>
-internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub hub, IReadOnlyList<IDeviceInfo> devices) : ICorePluginClientContext
+internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub hub, IReadOnlyList<IDeviceInfo> devices, TestCall call) : ICorePluginClientContext
 {
     public ConcurrentQueue<string> Calls { get; } = new();
 
@@ -229,7 +231,7 @@ internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub h
             throw new IOException("The connection to the server was lost.");
         }
 
-        var reply = await plugin.InvokeAsync(method, payloadJson, ct);
+        var reply = await plugin.InvokeAsync(call, method, payloadJson, ct);
         if (method == IoMonitorMethods.Start && BeforeStartReply is { } before
             && IoMonitorJson.Deserialize<StartReply>(reply).StreamId is { } streamId)
         {
@@ -246,7 +248,7 @@ internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub h
             await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
         }
 
-        await foreach (var item in hub.WatchAsync(IoMonitorPluginInfo.PluginId, ct))
+        await foreach (var item in hub.WatchAsync(IoMonitorPluginInfo.PluginId, call.Watcher, ct))
         {
             yield return item;
         }
@@ -280,6 +282,9 @@ internal sealed class Rig : IAsyncDisposable
 
     public IoMonitorPlugin Plugin { get; }
 
+    /// <summary>The user's call (all devices, one session): the plugin publishes to its session.</summary>
+    public TestCall Call => field ??= new TestCall(Devices, Vapix);
+
     public async Task<Rig> StartAsync()
     {
         await Plugin.StartAsync(new FakeContext(Devices, Vapix, Hub.For(IoMonitorPluginInfo.PluginId)), CancellationToken.None);
@@ -287,7 +292,7 @@ internal sealed class Rig : IAsyncDisposable
     }
 
     public async Task<StartReply> StartStreamAsync(Guid deviceId) =>
-        IoMonitorJson.Deserialize<StartReply>(await Plugin.InvokeAsync(IoMonitorMethods.Start, IoMonitorJson.Serialize(new StartRequest(deviceId)), CancellationToken.None));
+        IoMonitorJson.Deserialize<StartReply>(await Plugin.InvokeAsync(Call, IoMonitorMethods.Start, IoMonitorJson.Serialize(new StartRequest(deviceId)), CancellationToken.None));
 
     public async ValueTask DisposeAsync() => await Plugin.DisposeAsync();
 }
@@ -371,4 +376,33 @@ internal sealed class CountingTimeProvider : Microsoft.Extensions.Time.Testing.F
             return Inner?.DisposeAsync() ?? ValueTask.CompletedTask;
         }
     }
+}
+
+/// <summary>
+/// A user's call with all devices over the test's fakes (device groups, SDK 0.4.0): what the host passes to the plugin.
+/// </summary>
+internal sealed class TestCall(Oadm.Sdk.Devices.IDeviceRepository devices, Oadm.Sdk.Vapix.IVapixClientFactory vapix, Oadm.Sdk.Devices.IDeviceEventStreams? eventStreams = null) : Oadm.Sdk.Plugins.ICallContext
+{
+    public string UserName { get; init; } = "admin";
+
+    public string SessionId { get; init; } = Guid.NewGuid().ToString("N");
+
+    public string DeviceScopeKey => Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey;
+
+    public bool HasAllDevices => true;
+
+    public Oadm.Sdk.Devices.IDeviceRepository Devices => devices;
+
+    public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => vapix;
+
+    public Oadm.Sdk.Tasks.ITaskRunner Tasks => throw new NotSupportedException();
+
+    public Oadm.Sdk.Devices.IDeviceEventStreams? EventStreams => eventStreams;
+
+    public bool Has(string permission) => true;
+
+    public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => true;
+
+    /// <summary>The page watcher of this call (its session) on the host's event hub.</summary>
+    public Oadm.Core.Plugins.PluginWatcher Watcher => new(UserName, SessionId, DeviceScopeKey, true, _ => Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>()));
 }

@@ -79,7 +79,7 @@ public sealed class ServerTests
         rig.Devices.Items.Add(device);
 
         var reply = await rig.StartStreamAsync(device.Id);
-        await rig.Plugin.InvokeAsync(IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(reply.StreamId)), CancellationToken.None);
+        await rig.Plugin.InvokeAsync(rig.Call, IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(reply.StreamId)), CancellationToken.None);
         Assert.Equal(0, rig.Plugin.StreamCount);
         var requests = rig.Vapix.Requests; // Stop waited for the reading to end
         await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => rig.Vapix.Requests == requests, "no read after Stop", TimeSpan.FromMilliseconds(150));
@@ -170,9 +170,9 @@ public sealed class ServerTests
         await time.ReadOnceAsync(() => events.Count == 4, TimeSpan.FromMilliseconds(20)); // each page gets the change
         Assert.Equal(new[] { first, second }.Order(), events.Skip(2).Select(e => IoMonitorJson.Deserialize<PortsEvent>(e.PayloadJson).StreamId).Order());
 
-        await rig.Plugin.InvokeAsync(IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(first)), CancellationToken.None);
+        await rig.Plugin.InvokeAsync(rig.Call, IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(first)), CancellationToken.None);
         Assert.Equal(1, rig.Plugin.DeviceCount); // the other page still shows it
-        await rig.Plugin.InvokeAsync(IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(second)), CancellationToken.None);
+        await rig.Plugin.InvokeAsync(rig.Call, IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(second)), CancellationToken.None);
         Assert.Equal(0, rig.Plugin.DeviceCount);
     }
 
@@ -250,18 +250,22 @@ public sealed class ServerTests
         var id = (await rig.StartStreamAsync(device.Id)).StreamId;
 
         Assert.True(await KeepAliveAsync(rig, id));
-        Assert.False(await KeepAliveAsync(rig, "unknown"));
+        var unknown = await Assert.ThrowsAsync<KeyNotFoundException>(() => KeepAliveAsync(rig, "unknown"));
+        Assert.Equal(IoMonitorMethods.StreamEnded, unknown.Message);
+
+        await rig.Plugin.InvokeAsync(rig.Call, IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(id)), CancellationToken.None);
+        Assert.False(await KeepAliveAsync(rig, id)); // the user's stream, ended
     }
 
     private static async Task<bool> KeepAliveAsync(Rig rig, string? streamId) =>
-        IoMonitorJson.Deserialize<KeepAliveReply>(await rig.Plugin.InvokeAsync(IoMonitorMethods.KeepAlive, IoMonitorJson.Serialize(new StreamRequest(streamId)), CancellationToken.None)).Running;
+        IoMonitorJson.Deserialize<KeepAliveReply>(await rig.Plugin.InvokeAsync(rig.Call, IoMonitorMethods.KeepAlive, IoMonitorJson.Serialize(new StreamRequest(streamId)), CancellationToken.None)).Running;
 
     private static async Task<ConcurrentQueue<PluginEvent>> WatchAsync(Rig rig)
     {
         var events = new ConcurrentQueue<PluginEvent>();
         _ = Task.Run(async () =>
         {
-            await foreach (var item in rig.Hub.WatchAsync(IoMonitorPluginInfo.PluginId, CancellationToken.None))
+            await foreach (var item in rig.Hub.WatchAsync(IoMonitorPluginInfo.PluginId, rig.Call.Watcher, CancellationToken.None))
             {
                 events.Enqueue(item);
             }
@@ -287,7 +291,7 @@ public sealed class PageTests : IDisposable
         var io = new TestDevice("10.0.0.70", "AXIS A9210");
         var camera = new TestDevice("10.0.0.48", "P3265-V", HasIo: false);
         rig.Devices.Items.AddRange([io, camera]);
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call);
         IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new IoMonitorViewModel(ctx);
 
@@ -339,7 +343,7 @@ public sealed class PageTests : IDisposable
             rig.Devices.Items.Add(new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", HasIo: i % 3 != 0));
         }
 
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call);
         using var vm = new IoMonitorViewModel(ctx);
         var count = 0;
         vm.PickDevice = (devices, _) =>
@@ -364,7 +368,7 @@ public sealed class PageTests : IDisposable
         await using var rig = await new Rig(TimeSpan.FromSeconds(1), time: time).StartAsync();
         var io = new TestDevice("10.0.0.70", "A9210");
         rig.Devices.Items.Add(io);
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call);
         IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new IoMonitorViewModel(ctx);
         vm.Activate();
@@ -392,7 +396,7 @@ public sealed class PageTests : IDisposable
         // The server sends a new stream's first reading at once; it can arrive before the page knows the stream id.
         await using var rig = await new Rig().StartAsync();
         rig.Devices.Items.Add(new TestDevice("10.0.0.70", "A9210"));
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items) { Watch = false };
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call) { Watch = false };
         using var vm = new IoMonitorViewModel(ctx);
         IoPort relay = new("0", "RELAY", IsOutput: true, "closed", "open", "Relay", Configurable: true);
         ctx.BeforeStartReply = id => vm.HandleEvent(new PluginEvent(
@@ -411,7 +415,7 @@ public sealed class PageTests : IDisposable
         await using var rig = await new Rig().StartAsync();
         var io = new TestDevice("10.0.0.70", "A9210");
         rig.Devices.Items.Add(io);
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call);
         IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new IoMonitorViewModel(ctx);
         vm.Activate();
@@ -437,7 +441,7 @@ public sealed class PageTests : IDisposable
         await using var rig = await new Rig().StartAsync();
         var io = new TestDevice("10.0.0.70", "A9210");
         rig.Devices.Items.Add(io);
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call);
         using var vm = new IoMonitorViewModel(ctx);
         vm.Activate();
         vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
@@ -469,7 +473,7 @@ public sealed class PageTests : IDisposable
         await using var rig = await new Rig().StartAsync();
         var io = new TestDevice("10.0.0.70", "A9210", Status: DeviceStatus.CredentialsRequired);
         rig.Devices.Items.Add(io);
-        using var vm = new IoMonitorViewModel(new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items));
+        using var vm = new IoMonitorViewModel(new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call));
         vm.Activate();
         vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
 
@@ -488,7 +492,7 @@ public sealed class PageTests : IDisposable
             rig.Vapix.SetClosed("0", "2", "7");
             var io = new TestDevice("10.0.0.70", "AXIS A9210");
             rig.Devices.Items.Add(io);
-            var vm = new IoMonitorViewModel(new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items));
+            var vm = new IoMonitorViewModel(new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call));
             var window = Headless.Host(new IoMonitorView { DataContext = vm });
             window.Show();
             vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);

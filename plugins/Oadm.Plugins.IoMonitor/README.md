@@ -16,6 +16,12 @@ Port 1); the tooltip says open / closed and the normal state. Read-only for devi
   restart, and the page then starts again). At most 20 devices read at once (pages of the same device count once; the
   limit is checked together with the insert); no start is accepted after the plugin stopped. Devices with Credentials
   required, Password not set or Certificate changed are refused without a request.
+- Device groups (SDK 0.4.0): every stream is a job of its user (`ctx.Jobs`): `stop` and `keepAlive` look it up for the
+  user, another user's id and an unknown one fail alike ("The live reading has ended.", `IoMonitorMethods.StreamEnded`;
+  the page then starts again). `start` takes the device from the user's call (a device outside the user's group answers
+  like an unknown one, NOT_FOUND "1 device is no longer available."); the ports go only to the page's session
+  (`PluginEventAudience.Of`). A reading is shared only by pages of the same device scope and reads through their call, so
+  when the device leaves their view the pages get "1 device is no longer available." and the reading ends.
 - Page: the device button (primary; it names the chosen device "10.0.0.70 · A9210", else "Choose a device") opens the
   shared `DevicePickerWindow.ShowOneAsync` (search, virtualized, 30,000 devices) with the devices above (others are not
   offered; the view hands it to the view model as `PickDevice`), status chip (Connecting, Live, Error + text) and the device as a faceplate: INPUTS and OUTPUTS rows
@@ -28,4 +34,5 @@ Port 1); the tooltip says open / closed and the normal state. Read-only for devi
 - Tests: `tests/Oadm.Plugins.IoMonitor.Tests` (recorded A9210 answer, pushes only on change, errors and recovery, stop
   and lease, refusals, device limit and concurrent starts, shared reading of one device, replaced clients, 1 s wait after
   a timeout (fake clock), keep-alive answers, page view model incl. keep-alive retry, restart after a forgotten stream,
-  the device button (offered devices, the chosen one starts the reading, Perf 30,000 devices) and device list changes, headless `io-monitor-page.png`). Fake mode: the A9188 (10.0.0.30).
+  the device button (offered devices, the chosen one starts the reading, Perf 30,000 devices) and device list changes, headless `io-monitor-page.png`;
+  `CanaryTests`: the device-group canary, the page's session only, the end when the device leaves the view). Fake mode: the A9188 (10.0.0.30).
