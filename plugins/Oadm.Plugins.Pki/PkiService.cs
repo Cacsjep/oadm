@@ -411,6 +411,43 @@ public sealed partial class PkiService : IAsyncDisposable
         return Export(ca.Certificate, ca.Chain, request.Format);
     }
 
+    /// <summary>
+    /// The previous CAs (public parts, DER) for other plugins' certificate checks, newest first: each the CA certificate,
+    /// then its chain; unreadable entries are left out.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<byte[]>> PreviousChains()
+    {
+        var chains = new List<IReadOnlyList<byte[]>>();
+        foreach (var previous in _previous)
+        {
+            try
+            {
+                var der = new List<byte[]>();
+                foreach (var pem in previous.ChainPem.Prepend(previous.CertificatePem))
+                {
+                    foreach (var certificate in CaCertificates.ReadPemCertificates(pem))
+                    {
+                        using (certificate)
+                        {
+                            der.Add(certificate.RawData);
+                        }
+                    }
+                }
+
+                if (der.Count > 0)
+                {
+                    chains.Add(der);
+                }
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
+            {
+                // unreadable entries are not trusted
+            }
+        }
+
+        return chains;
+    }
+
     public FileReply ExportPrevious(ExportPreviousRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

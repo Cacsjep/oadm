@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Core.Tests.Hardware;
 using Oadm.Core.Vapix;
-using Oadm.Plugins.Est.DeviceId;
+using Oadm.Plugins.DeviceIds;
 using Oadm.Plugins.Est.Device;
 using Oadm.Plugins.Est.Serving;
 using Oadm.Plugins.Est.Tasks;

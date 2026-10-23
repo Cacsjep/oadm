@@ -1,12 +1,13 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Oadm.Plugins.Est.DeviceId;
+namespace Oadm.Plugins.DeviceIds;
 
 /// <summary>
 /// The factory Axis device ID certificate of a camera (IEEE 802.1AR, AXIS Edge Vault): checked against the Axis device ID
 /// root CAs shipped with the plugin (RSA and ECC, as Axis publishes them with their intermediates), and the camera's serial
-/// number read from its subject (X.520 serialNumber).
+/// number read from its subject (X.520 serialNumber). Linked as source into the EST server and the 802.1X server, each with
+/// the PEM files of this folder as embedded resources (<c>Oadm.Plugins.Shared.DeviceId.*.pem</c>).
 /// </summary>
 public sealed class AxisDeviceId
 {
@@ -128,7 +129,7 @@ public sealed class AxisDeviceId
     {
         var certificates = new List<X509Certificate2>();
         var assembly = typeof(AxisDeviceId).Assembly;
-        foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Oadm.Plugins.Est.DeviceId.", StringComparison.Ordinal)))
+        foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Oadm.Plugins.Shared.DeviceId.", StringComparison.Ordinal)))
         {
             using var stream = assembly.GetManifestResourceStream(name)!;
             using var reader = new StreamReader(stream);

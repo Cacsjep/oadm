@@ -1,7 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-using Oadm.Plugins.Est.DeviceId;
+using Oadm.Plugins.DeviceIds;
 using Oadm.Plugins.Est.Protocol;
 
 namespace Oadm.Plugins.Est.Tests;

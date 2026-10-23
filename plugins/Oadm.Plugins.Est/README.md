@@ -19,7 +19,7 @@ Apache 2.0).
     identity), 403 (not managed, other site, certificate of another camera, a certificate on PKI's revocation list:
     `IDeviceCertificateAuthority.IsRevoked`, "Certificate revoked on ... (reason)"), 400 (request unreadable or refused by
     the CA), 503 (no PRO, no CA). Every request names its use (`DeviceCertificateRequest.Purpose`) for PKI's list.
-  - `DeviceId/AxisDeviceId`: the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
+  - `AxisDeviceId` (`plugins/Shared/DeviceId`, linked, shared with the 802.1X server): the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
     keep-alive); `Protocol/EstMessages`: PKCS#7 certs-only and PKCS#10 in base64.
