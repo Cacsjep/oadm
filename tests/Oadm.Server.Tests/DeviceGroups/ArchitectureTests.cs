@@ -12,8 +12,7 @@ namespace Oadm.Server.Tests.DeviceGroups;
 /// <summary>
 /// The capability type (docs/spec/device-scope.md, Tests): the gRPC classes get their devices from a <see cref="DeviceView"/>,
 /// never from the global repository, and the services they use take <see cref="ViewedDevices"/>, never raw device ids.
-/// Every exception is on an allow-list with a reason; today's services that are not converted yet say which package
-/// converts them, and each package removes its entries.
+/// Service methods that take raw ids are on an allow-list with a reason.
 /// </summary>
 public sealed partial class ArchitectureTests
 {
@@ -23,18 +22,7 @@ public sealed partial class ArchitectureTests
         typeof(DeviceRepository), typeof(Sdk.Devices.IDeviceRepository), typeof(IDeviceChangeFeed), typeof(DeviceChangeFeed),
     ];
 
-    /// <summary>
-    /// gRPC classes that may take the global device access, with the reason. "converted in &lt;package&gt;" entries are today's
-    /// services; the package removes the entry when it moves the class to <see cref="DeviceViewFactory"/>.
-    /// </summary>
-    internal static readonly Dictionary<string, string> GrpcAllowList = new(StringComparer.Ordinal)
-    {
-    };
-
-    /// <summary>
-    /// Service methods behind the gRPC classes that still take raw device ids, with the reason (type.method). Each package
-    /// adds a <see cref="ViewedDevices"/> overload, moves its gRPC class to it and removes the entry.
-    /// </summary>
+    /// <summary>Service methods behind the gRPC classes that take raw device ids, with the reason (type.method).</summary>
     internal static readonly Dictionary<string, string> ServiceAllowList = new(StringComparer.Ordinal)
     {
         ["TaskPluginQueries.QueryAsync"] = "the device id is resolved through the PluginCaller's view (outside = NOT_FOUND); the overload without a caller is system work and tests",
@@ -62,13 +50,7 @@ public sealed partial class ArchitectureTests
             }
         }
 
-        var unlisted = found.Where(f => !GrpcAllowList.ContainsKey(f)).ToList();
-        Assert.True(unlisted.Count == 0, "gRPC classes that take the global device access without a reason on the allow-list: " + string.Join(", ", unlisted));
-
-        // The allow-list shrinks: an entry whose class no longer takes it must go.
-        var stale = GrpcAllowList.Keys.Where(k => !found.Contains(k)).ToList();
-        Assert.True(stale.Count == 0, "Allow-list entries that are no longer needed (remove them): " + string.Join(", ", stale));
-        Assert.All(GrpcAllowList.Values, reason => Assert.False(string.IsNullOrWhiteSpace(reason)));
+        Assert.True(found.Count == 0, "gRPC classes that take the global device access: " + string.Join(", ", found));
     }
 
     [Fact]
@@ -94,9 +76,9 @@ public sealed partial class ArchitectureTests
             }
         }
 
-        var unlisted = found.Where(f => !ServiceAllowList.ContainsKey(f) && !NotConvertedServiceMethods.ContainsKey(f)).ToList();
+        var unlisted = found.Where(f => !ServiceAllowList.ContainsKey(f)).ToList();
         Assert.True(unlisted.Count == 0, "Service methods that take raw device ids without a reason on the allow-list: " + string.Join(", ", unlisted));
-        var stale = ServiceAllowList.Keys.Concat(NotConvertedServiceMethods.Keys).Where(k => !found.Contains(k)).ToList();
+        var stale = ServiceAllowList.Keys.Where(k => !found.Contains(k)).ToList();
         Assert.True(stale.Count == 0, "Allow-list entries that are no longer needed (remove them): " + string.Join(", ", stale));
     }
 
@@ -112,11 +94,6 @@ public sealed partial class ArchitectureTests
         // Its constructor is not public: only the core (DeviceView) can call it.
         Assert.All(typeof(ViewedDevices).GetConstructors(BindingFlags.Public | BindingFlags.Instance), _ => Assert.Fail("ViewedDevices has a public constructor."));
     }
-
-    /// <summary>Service methods with raw device ids that a later package converts (type.method → package).</summary>
-    internal static readonly Dictionary<string, string> NotConvertedServiceMethods = new(StringComparer.Ordinal)
-    {
-    };
 
     private static bool IsRawDeviceIds(ParameterInfo parameter)
     {

@@ -20,8 +20,7 @@ namespace Oadm.Server.Tests.DeviceGroups;
 /// The canary test (docs/spec/device-scope.md, Tests): a user limited to a device group calls every method of the access
 /// table with a device outside the group in every id field. The answer is NOT_FOUND "1 device is no longer available.",
 /// exactly as for an unknown id, nothing changes, and no VAPIX, RTSP, task or event stream contact reaches the device
-/// (recording network, video and event stream fakes). Methods not converted yet are listed with the package that converts
-/// them; the list shrinks with every package and is empty at the end. Methods without device data say why; Administrator
+/// (recording network, video and event stream fakes). Methods without device data say why; Administrator
 /// and all-devices methods are covered by the access rule (a group user never reaches them).
 /// </summary>
 public sealed class CanaryTests
@@ -29,10 +28,10 @@ public sealed class CanaryTests
     private const string InsideSerial = "ACCC8E00C001";
     private const string OutsideSerial = "ACCC8E00C002";
 
-    /// <summary>The converted methods: the call with the out-of-view id in every id field.</summary>
+    /// <summary>The methods with device ids: the call with the out-of-view id in every id field.</summary>
     private static readonly Dictionary<string, Func<Canary, Guid, Task>> Cases = new(StringComparer.Ordinal)
     {
-        // shared-core: tags and compliance
+        // tags and compliance
         ["/oadm.v1.TagService/SetDeviceTags"] = async (c, id) =>
             await new Proto.TagService.TagServiceClient(c.Invoker).SetDeviceTagsAsync(new Proto.SetDeviceTagsRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, Add = { "Free" } }),
         ["/oadm.v1.ComplianceService/SaveCheck"] = async (c, id) =>
@@ -59,7 +58,7 @@ public sealed class CanaryTests
         ["/oadm.v1.PluginService/Invoke"] = CanaryPlugin.InvokeAsync,
         ["/oadm.v1.PluginService/Download"] = CanaryPlugin.DownloadAsync,
 
-        // devices-core: the device list's actions, live view and the web interface relay.
+        // the device list's actions, live view and the web interface relay.
         ["/oadm.v1.DeviceService/Remove"] = async (c, id) =>
         {
             // Inside the view a spare device is removed (the inside device stays for the other cases).
@@ -166,7 +165,7 @@ public sealed class CanaryTests
             Assert.Contains(c.Inside.ToString(), text.ToString(), StringComparison.Ordinal);
             return text.ToString();
         },
-        // shared-core: tags and compliance
+        // tags and compliance
         ["/oadm.v1.TagService/List"] = async c => (await new Proto.TagService.TagServiceClient(c.Invoker).ListAsync(new Proto.Empty())).ToString(),
         ["/oadm.v1.TagService/Watch"] = async c =>
         {
@@ -210,7 +209,7 @@ public sealed class CanaryTests
     };
 
     /// <summary>
-    /// The converted methods that take a task id (tasks package): a task of the device outside the view, a task of a removed
+    /// The methods that take a task id a task of the device outside the view, a task of a removed
     /// device (history only for users with all devices) and an unknown id get the same NOT_FOUND "Task … not found.".
     /// </summary>
     private static readonly Dictionary<string, Func<Canary, Guid, Task>> TaskIdCases = new(StringComparer.Ordinal)
@@ -224,7 +223,7 @@ public sealed class CanaryTests
     };
 
     /// <summary>
-    /// The converted methods that list device data without an id field (tasks package): the answer as text; it must name the
+    /// The methods that list device data without an id field the answer as text; it must name the
     /// inside device's task and nothing of the device outside the view or of a removed device.
     /// </summary>
     private static readonly Dictionary<string, Func<Canary, Task<string>>> ListCases = new(StringComparer.Ordinal)
@@ -246,20 +245,15 @@ public sealed class CanaryTests
         },
     };
 
-    /// <summary>Methods that take device ids or deliver device data and are not converted yet: method → package.</summary>
-    internal static readonly Dictionary<string, string> NotConverted = new(StringComparer.Ordinal)
-    {
-    };
-
     /// <summary>
-    /// Converted methods that take no device id but objects of their own (discovery sessions, waiting entries): the group user
+    /// Methods that take no device id but objects of their own (discovery sessions, waiting entries): the group user
     /// (a group of tags only, so it cannot add devices) calls them with another user's objects that found or keep the device
     /// outside the view. Each case asserts its refusal; the test checks that nothing reached the device and nothing changed.
     /// The adds of a group with sites are in <see cref="AddDevicesScopeTests"/>.
     /// </summary>
     private static readonly Dictionary<string, Func<Canary, Task>> OwnObjectCases = new(StringComparer.Ordinal)
     {
-        // shared-core: a compliance check of all devices (the default Reachable) is hidden from the group user like an unknown one
+        // a compliance check of all devices (the default Reachable) is hidden from the group user like an unknown one
         ["/oadm.v1.ComplianceService/GetCheck"] = async c =>
             await HiddenAsync(() => new Proto.ComplianceService.ComplianceServiceClient(c.Invoker).GetCheckAsync(new Proto.ComplianceCheckId { Id = HiddenCheck }).ResponseAsync),
         ["/oadm.v1.ComplianceService/DeleteCheck"] = async c =>
@@ -362,7 +356,7 @@ public sealed class CanaryTests
         ["/oadm.v1.LicenseService/GetLicense"] = "the license (its device count is an accepted existence leak, docs/spec/device-scope.md)",
     };
 
-    /// <summary>Converted plugins that need no PluginCanary, with the reason and the tests that cover them.</summary>
+    /// <summary>Bundled plugins that need no PluginCanary, with the reason and the tests that cover them.</summary>
     internal static readonly Dictionary<string, string> PluginsConverted = new(StringComparer.Ordinal)
     {
         ["oadm.notifications"] = "no methods and no devices; its actions run only in event rules, which are for users with all devices",
@@ -379,17 +373,6 @@ public sealed class CanaryTests
     /// <summary>A package of task plugins only: the host scopes the run and the queried device.</summary>
     private const string TaskPluginOnly = "task plugin: the host scopes Run and Query (the TaskService/Run and TaskService/Query canary cases, TaskViewTests)";
 
-    /// <summary>
-    /// The bundled plugins not converted yet and the package that moves their methods to the call context. A converted
-    /// plugin leaves the list: its plugin.json says minSdkVersion 0.4.0 or later and its test project runs a
-    /// <c>Oadm.Sdk.Testing.PluginCanary</c> that names every method and its id fields (plugins/README.md, "Call context").
-    /// </summary>
-    internal static readonly Dictionary<string, string> PluginsNotConverted = new(StringComparer.Ordinal)
-    {
-    };
-
-    private static readonly string[] Packages = ["devices-core", "tasks", "add-devices", "shared-core", "client", "plugin-host", "plugins-certs", "plugins-tasks", "plugins-pages"];
-
     /// <summary>Administrator only or all devices only: a user with a device group never reaches the method.</summary>
     private static bool ClosedByTheRule(string method) =>
         AccessPolicy.For(method) is { } rule && (rule.Access == Access.Admin || rule.AllDevices);
@@ -399,13 +382,12 @@ public sealed class CanaryTests
     {
         foreach (var method in AccessPolicy.ListedMethods)
         {
-            var places = new[] { Cases.ContainsKey(method) || TaskIdCases.ContainsKey(method) || ListCases.ContainsKey(method) || OwnObjectCases.ContainsKey(method), Filtered.ContainsKey(method), NotConverted.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
-            Assert.True(places == 1, $"{method} is in {places} canary lists (a case, filtered, not converted, without devices, closed by the rule); it must be in exactly one.");
+            var places = new[] { Cases.ContainsKey(method) || TaskIdCases.ContainsKey(method) || ListCases.ContainsKey(method) || OwnObjectCases.ContainsKey(method), Filtered.ContainsKey(method), WithoutDevices.ContainsKey(method), ClosedByTheRule(method) }.Count(x => x);
+            Assert.True(places == 1, $"{method} is in {places} canary lists (a case, filtered, without devices, closed by the rule); it must be in exactly one.");
         }
 
         Assert.Empty(Cases.Keys.Intersect(OwnObjectCases.Keys));
-        Assert.All(NotConverted.Keys.Concat(Cases.Keys).Concat(TaskIdCases.Keys).Concat(ListCases.Keys).Concat(OwnObjectCases.Keys).Concat(Filtered.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
-        Assert.All(NotConverted.Values.Concat(PluginsNotConverted.Values), p => Assert.Contains(p, Packages));
+        Assert.All(Cases.Keys.Concat(TaskIdCases.Keys).Concat(ListCases.Keys).Concat(OwnObjectCases.Keys).Concat(Filtered.Keys).Concat(WithoutDevices.Keys), m => Assert.Contains(m, AccessPolicy.ListedMethods));
         Assert.All(WithoutDevices.Values, reason => Assert.False(string.IsNullOrWhiteSpace(reason)));
     }
 
@@ -420,10 +402,8 @@ public sealed class CanaryTests
             .ToList();
         var ids = manifests.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var minSdk = manifests.ToDictionary(m => m.Id, m => m.MinSdk, StringComparer.Ordinal);
-        Assert.All(PluginsNotConverted.Keys, id => Assert.Contains(id, ids));
-        Assert.Empty(PluginsNotConverted.Keys.Intersect(PluginsConverted.Keys));
         Assert.All(PluginsConverted.Keys, id => Assert.Contains(id, ids));
-        foreach (var (id, folder) in manifests.Where(m => !PluginsNotConverted.ContainsKey(m.Id)).Select(m => (m.Id, m.Folder)))
+        foreach (var (id, folder) in manifests.Select(m => (m.Id, m.Folder)))
         {
             Assert.True(Core.Plugins.PluginLoader.IsAtLeast(minSdk[id], Sdk.Plugins.SdkInfo.CallContextVersion), $"{id} is converted but its plugin.json says minSdkVersion {minSdk[id]}.");
             if (PluginsConverted.ContainsKey(id))
@@ -505,7 +485,7 @@ public sealed class CanaryTests
         Assert.All(closed, m => Assert.False(AccessPolicy.Allows(AccessPolicy.For(m), canary.Caller)));
     }
 
-    // ------------------------------------------------------------------ tasks package: task ids and lists
+    // ------------------------------------------------------------------ task ids and lists
 
     [Fact]
     public async Task AnOutOfViewTaskIsAnsweredLikeAnUnknownOneAndNeverChanged()
