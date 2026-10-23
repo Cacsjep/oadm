@@ -37,6 +37,7 @@ public sealed partial class ArchitectureTests
     /// </summary>
     internal static readonly Dictionary<string, string> ServiceAllowList = new(StringComparer.Ordinal)
     {
+        ["EventLog.Write"] = "the writer of the rule engine and the action runner (system work); the gRPC class only reads through the caller's view",
         ["TaskEngine.RunAsync"] = "the raw-id form is the system ITaskRunner (ctx.System.Tasks, event rule actions; a group caller is refused outside the view); Run uses the ViewedDevices overload (converted in tasks)",
     };
 
@@ -113,8 +114,6 @@ public sealed partial class ArchitectureTests
     /// <summary>Service methods with raw device ids that a later package converts (type.method → package).</summary>
     internal static readonly Dictionary<string, string> NotConvertedServiceMethods = new(StringComparer.Ordinal)
     {
-        ["ActionRunner.TestAsync"] = "shared-core",
-        ["EventLog.Write"] = "shared-core",
     };
 
     private static bool IsRawDeviceIds(ParameterInfo parameter)

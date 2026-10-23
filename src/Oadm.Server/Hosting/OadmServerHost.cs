@@ -432,7 +432,13 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            owners: sp.GetRequiredService<RuleOwners>()));
+        // The owners of event rules: devices and sites of groups, the compliance checks of groups, the allowed addresses.
+        services.AddSingleton(sp => new RuleOwners(
+            sp.GetRequiredService<Core.DeviceGroups.OwnerScopes>(),
+            sp.GetRequiredService<Core.Settings.ActionDestinations>(),
+            [sp.GetRequiredService<Core.Compliance.ComplianceEngine>()]));
         services.AddSingleton(new RuleEngineOptions());
         services.AddSingleton(sp => new RuleEngine(
             sp.GetRequiredService<EventCatalog>(),
@@ -443,7 +449,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<IDeviceChangeFeed>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<RuleEngineOptions>(),
-            sp.GetRequiredService<ILogger<RuleEngine>>()));
+            sp.GetRequiredService<ILogger<RuleEngine>>(),
+            sp.GetRequiredService<RuleOwners>()));
         services.AddSingleton<EventRulesService>();
         services.AddHostedService<EventLogRetentionHostedService>();
 

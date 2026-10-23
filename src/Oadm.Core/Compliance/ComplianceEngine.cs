@@ -51,7 +51,7 @@ public sealed record ComplianceCheckState(
 /// in memory, writes changes in batches, streams them to the pages and publishes one stateful event per check ("on" while
 /// the check fails on a device). Devices the server must not contact (status not Ok) are not read.
 /// </summary>
-public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposable
+public sealed partial class ComplianceEngine : IHostEventSource, Events.IEventTypeOwners, IAsyncDisposable
 {
     /// <summary>The event source of the compliance checks in the event rules.</summary>
     public const string EventSourceId = "oadm.compliance";
