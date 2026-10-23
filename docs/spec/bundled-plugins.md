@@ -141,6 +141,8 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
   a stream ends with Stop, a page switch or 20 s without the page's keep-alive; the client keeps the newest 10,000
   messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port of a camera behind a port forward is set in the
   device list (**OADM > RTSP port**); Start never changes it (an older client's port is ignored).
+- Device groups (SDK 0.4.0): streams are jobs of their user (another user's id answers like an unknown one), opened
+  through the user's call, sent to the page's session only, ended with Error when the camera leaves the user's view.
 - Tests: `tests/Oadm.Plugins.MetadataMonitor.Tests` (+ Perf `ScaleTests`, hardware `MetadataHardwareTests`); Core
   `MetadataDepacketizerTests`, `RtspMetadataSourceTests`, `DeviceEventStreamsTests`.
 

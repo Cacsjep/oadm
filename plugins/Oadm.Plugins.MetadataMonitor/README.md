@@ -72,13 +72,19 @@ Read-only for devices.
   by namespace: `tns1:` / `tnsaxis:` dropped, other prefixes kept). Device refusals use the snapshot report's status
   texts ("Credentials required - the device rejects the stored credentials", ...). A page's stream also ends without its
   keep-alive: the page calls `keepAlive` ({streamId}) every 5 s while a stream runs, the server stops streams without one
-  for 20 s (client closed or gone; switching pages stops the stream at once). The camera is chosen in the shared device
+  for 20 s (client closed or gone; switching pages stops the stream at once). Device groups (SDK 0.4.0): a stream is a
+  job of its user (`ctx.Jobs`); `stop` and `keepAlive` look it up for the user, another user's id and an unknown one fail
+  alike ("The event stream has ended.", `MetadataMethods.StreamEnded`; Stop on the page then just shows Stopped).
+  `start` and `getRtspPort` take the camera from the user's call (outside the user's group: NOT_FOUND "1 device is no
+  longer available."), the stream is opened with `caller.EventStreams`, so it ends with Error "1 device is no longer
+  available." when the camera leaves the user's view; messages and states go only to the page's session. The camera is chosen in the shared device
   picker, not a drop-down: a drop-down of every camera cannot be used with tens of thousands of devices. Autoscroll follows the
   grid's vertical scroll bar (wheel and bar: at the end on, above off); the selection is kept through the grid's Reset of
   each batch. Detail height in `LocalApplicationData/Oadm/plugins/oadm.metadata-monitor/client.json`; copy = the shown
   text (pretty or raw) through the TopLevel clipboard. Fake mode (`FakeOadmApi.MetadataMonitor.cs`): generated burst
   (64 virtual inputs, digital input, storage, temperature) then a change every 1.5 s, statuses refused like the server.
-  Test project `tests/Oadm.Plugins.MetadataMonitor.Tests` (parser, lifecycle with `FakeEventStreams`, view model, fake
+  Test project `tests/Oadm.Plugins.MetadataMonitor.Tests` (parser, lifecycle with `FakeEventStreams`, the device-group
+  canary and stream owners `CanaryTests`, view model, fake
   mode, headless screenshots, Perf `ScaleTests`, hardware `MetadataHardwareTests` through the in-process server and gRPC
   Watch); Core: `MetadataDepacketizerTests`, `RtspMetadataSourceTests` (scripted RTSP server), `DeviceEventStreamsTests`,
   `MetadataRecorderTests` (Hardware; re-records `Fixtures/LiveView/events.sdp` + `.rtp` with `OADM_RECORD_RTP_DIR`).

@@ -469,6 +469,17 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            if (Message(ex) == MetadataMethods.StreamEnded)
+            {
+                // the server no longer has the stream (it expired or the server restarted): it is stopped
+                if (StatusKind != "error")
+                {
+                    SetStatus("neutral", "Stopped", null);
+                }
+
+                return;
+            }
+
             SetStatus("error", Message(ex), null);
         }
     }

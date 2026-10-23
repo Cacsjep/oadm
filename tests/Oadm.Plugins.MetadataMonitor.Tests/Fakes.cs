@@ -68,6 +68,9 @@ internal sealed class FakeEventSource : IDeviceEventSource
 
     public void End() => _items.Writer.TryComplete();
 
+    /// <summary>The next read throws <paramref name="ex"/> (e.g. the device left the user's view).</summary>
+    public void Fail(Exception ex) => _items.Writer.TryWrite(ex);
+
     public async IAsyncEnumerable<DeviceMetadataDocument> ReadAsync([EnumeratorCancellation] CancellationToken ct)
     {
         while (await _items.Reader.WaitToReadAsync(ct))
@@ -204,10 +207,12 @@ internal sealed class TestCoreContext(FakeDevices devices, IPluginEvents? events
     public IPluginEvents? Events { get; } = events;
 
     public IDeviceEventStreams? EventStreams { get; } = streams;
+
+    public IPluginJobs? Jobs { get; } = new Oadm.Sdk.Testing.FakePluginJobs();
 }
 
 /// <summary>The page context against the in-process plugin (InvokeAsync) and the real event hub (WatchEventsAsync).</summary>
-internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEventHub hub) : ICorePluginClientContext
+internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEventHub hub, TestCall call) : ICorePluginClientContext
 {
     public List<IDeviceInfo> DeviceList { get; } = [];
 
@@ -222,12 +227,12 @@ internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEven
     {
         ct.ThrowIfCancellationRequested();
         Calls.Enqueue(method);
-        return await plugin.InvokeAsync(method, payloadJson, ct);
+        return await plugin.InvokeAsync(call, method, payloadJson, ct);
     }
 
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
-        await foreach (var item in hub.WatchAsync(MetadataMonitorPluginInfo.PluginId, ct))
+        await foreach (var item in hub.WatchAsync(MetadataMonitorPluginInfo.PluginId, call.Watcher, ct))
         {
             yield return item;
         }
@@ -256,6 +261,11 @@ internal sealed class Rig : IAsyncDisposable
 
     public TestDevice Camera { get; }
 
+    /// <summary>The user's call (all devices, one session): the plugin publishes to its session.</summary>
+    public TestCall Call => field ??= new TestCall(Devices, _withStreams ? Streams : null);
+
+    private bool _withStreams = true;
+
     public static MetadataMonitorOptions Fast() => new()
     {
         BatchInterval = TimeSpan.FromMilliseconds(20),
@@ -277,15 +287,16 @@ internal sealed class Rig : IAsyncDisposable
 
     public async Task<Rig> StartAsync(bool withStreams = true)
     {
+        _withStreams = withStreams; // a host without event streams offers none to the call either
         await Plugin.StartAsync(new TestCoreContext(Devices, Hub.For(MetadataMonitorPluginInfo.PluginId), withStreams ? Streams : null), CancellationToken.None);
         return this;
     }
 
     public async Task<StartReply> StartStreamAsync(Guid? deviceId = null) =>
-        MetadataJson.Deserialize<StartReply>(await Plugin.InvokeAsync(MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(deviceId ?? Camera.Id)), CancellationToken.None));
+        MetadataJson.Deserialize<StartReply>(await Plugin.InvokeAsync(Call, MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(deviceId ?? Camera.Id)), CancellationToken.None));
 
     public Task StopStreamAsync(string streamId) =>
-        Plugin.InvokeAsync(MetadataMethods.Stop, MetadataJson.Serialize(new StreamRequest(streamId)), CancellationToken.None);
+        Plugin.InvokeAsync(Call, MetadataMethods.Stop, MetadataJson.Serialize(new StreamRequest(streamId)), CancellationToken.None);
 
     public async ValueTask DisposeAsync() => await Plugin.DisposeAsync();
 }
@@ -298,12 +309,12 @@ internal sealed class EventLog : IAsyncDisposable
     private readonly Lock _gate = new();
     private readonly List<PluginEvent> _events = [];
 
-    public EventLog(PluginEventHub hub)
+    public EventLog(PluginEventHub hub, PluginWatcher watcher)
     {
         var subscribed = new TaskCompletionSource();
         _run = Task.Run(async () =>
         {
-            var enumerator = hub.WatchAsync(MetadataMonitorPluginInfo.PluginId, _cts.Token).GetAsyncEnumerator(_cts.Token);
+            var enumerator = hub.WatchAsync(MetadataMonitorPluginInfo.PluginId, watcher, _cts.Token).GetAsyncEnumerator(_cts.Token);
             var next = enumerator.MoveNextAsync();
             subscribed.SetResult();
             try
@@ -363,4 +374,36 @@ internal static class Wait
     // Generous: the condition usually holds within milliseconds; a busy CI runner (ubuntu, v1.0.0) needed more than 5 s.
     public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
         Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout);
+}
+
+/// <summary>
+/// A user's call over the test's fakes (device groups, SDK 0.4.0): what the host passes to the plugin. All devices by
+/// default; <see cref="AllDevices"/> false is a user with a device group (the fakes then decide what the group holds).
+/// </summary>
+internal sealed class TestCall(IDeviceRepository devices, IDeviceEventStreams? eventStreams) : ICallContext
+{
+    public string UserName { get; init; } = "admin";
+
+    public string SessionId { get; init; } = Guid.NewGuid().ToString("N");
+
+    public bool AllDevices { get; init; } = true;
+
+    public string DeviceScopeKey => AllDevices ? ICallContext.AllDevicesScopeKey : "group";
+
+    public bool HasAllDevices => AllDevices;
+
+    public IDeviceRepository Devices => devices;
+
+    public IVapixClientFactory Vapix => throw new NotSupportedException();
+
+    public ITaskRunner Tasks => throw new NotSupportedException();
+
+    public IDeviceEventStreams? EventStreams => eventStreams;
+
+    public bool Has(string permission) => true;
+
+    public bool Contains(IDeviceInfo device) => true;
+
+    /// <summary>The page watcher of this call (its session) on the host's event hub.</summary>
+    public PluginWatcher Watcher => new(UserName, SessionId, DeviceScopeKey, AllDevices, _ => Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>()));
 }

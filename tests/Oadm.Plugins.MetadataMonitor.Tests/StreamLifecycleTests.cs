@@ -9,7 +9,7 @@ public sealed class StreamLifecycleTests
     public async Task Start_streams_numbered_messages_in_batches_and_stop_tears_down()
     {
         await using var rig = await new Rig().StartAsync();
-        await using var log = new EventLog(rig.Hub);
+        await using var log = new EventLog(rig.Hub, rig.Call.Watcher);
 
         var reply = await rig.StartStreamAsync();
         Assert.Null(reply.Error);
@@ -39,7 +39,7 @@ public sealed class StreamLifecycleTests
     {
         await using var rig = await new Rig().StartAsync();
         rig.Streams.Ports = new() { [rig.Camera.Id] = 32077 };
-        async Task<string?> Invoke(string method, object payload) => await rig.Plugin.InvokeAsync(method, MetadataJson.Serialize(payload), CancellationToken.None);
+        async Task<string?> Invoke(string method, object payload) => await rig.Plugin.InvokeAsync(rig.Call, method, MetadataJson.Serialize(payload), CancellationToken.None);
 
         // An older client still sends a port of its own: ignored.
         var reply = MetadataJson.Deserialize<StartReply>(await Invoke(MetadataMethods.Start, new StartRequest(rig.Camera.Id, 1234)));
@@ -57,7 +57,7 @@ public sealed class StreamLifecycleTests
     public async Task A_broken_connection_reconnects_with_backoff_and_keeps_numbering()
     {
         await using var rig = await new Rig().StartAsync();
-        await using var log = new EventLog(rig.Hub);
+        await using var log = new EventLog(rig.Hub, rig.Call.Watcher);
         var reply = await rig.StartStreamAsync();
         var first = rig.Streams.Last!;
         first.Write(RecordedEvents.Notification("tns1:Device/tnsaxis:IO/VirtualInput", "Initialized", 1, 0));
@@ -86,7 +86,7 @@ public sealed class StreamLifecycleTests
     public async Task Rejected_credentials_during_a_reconnect_end_the_stream_with_an_error()
     {
         await using var rig = await new Rig().StartAsync();
-        await using var log = new EventLog(rig.Hub);
+        await using var log = new EventLog(rig.Hub, rig.Call.Watcher);
         await rig.StartStreamAsync();
         rig.Streams.Refuse(DeviceStreamError.Unauthorized, "Unauthorized - HTTP 401");
         rig.Streams.Last!.Break();
@@ -154,7 +154,7 @@ public sealed class StreamLifecycleTests
             LeaseCheckInterval = options.LeaseCheckInterval,
             Time = time,
         }).StartAsync();
-        await using var log = new EventLog(rig.Hub);
+        await using var log = new EventLog(rig.Hub, rig.Call.Watcher);
         var reply = await rig.StartStreamAsync();
         var start = time.GetUtcNow();
 
@@ -162,7 +162,7 @@ public sealed class StreamLifecycleTests
         for (var i = 0; i < 15; i++)
         {
             time.Advance(TimeSpan.FromMilliseconds(100));
-            await rig.Plugin.InvokeAsync(MetadataMethods.KeepAlive, MetadataJson.Serialize(new StreamRequest(reply.StreamId!)), CancellationToken.None);
+            await rig.Plugin.InvokeAsync(rig.Call, MetadataMethods.KeepAlive, MetadataJson.Serialize(new StreamRequest(reply.StreamId!)), CancellationToken.None);
         }
 
         Assert.Equal(1, rig.Plugin.StreamCount);
@@ -188,7 +188,7 @@ public sealed class StreamLifecycleTests
     public async Task A_burst_above_the_batch_limit_drops_the_oldest_and_counts_them()
     {
         await using var rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromSeconds(30) }).StartAsync(); // one flush: on Stop
-        await using var log = new EventLog(rig.Hub);
+        await using var log = new EventLog(rig.Hub, rig.Call.Watcher);
         var reply = await rig.StartStreamAsync();
         var source = rig.Streams.Last!;
         for (var i = 1; i <= 2000; i++)
@@ -213,7 +213,7 @@ public sealed class StreamLifecycleTests
     public async Task Large_batches_are_split_below_the_event_size_limit()
     {
         await using var rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromSeconds(30), MaxEventCharacters = 20_000 }).StartAsync();
-        await using var log = new EventLog(rig.Hub);
+        await using var log = new EventLog(rig.Hub, rig.Call.Watcher);
         var reply = await rig.StartStreamAsync();
         for (var i = 1; i <= 100; i++)
         {

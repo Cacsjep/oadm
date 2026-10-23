@@ -41,6 +41,9 @@ public static class MetadataMethods
     /// </summary>
     public const string KeepAlive = "keepAlive";
 
+    /// <summary>The answer to <see cref="Stop"/> and <see cref="KeepAlive"/> for a stream id the user does not have.</summary>
+    public const string StreamEnded = "The event stream has ended.";
+
     /// <summary>Event: <see cref="MessagesEvent"/>, new messages (batched every 250 ms, at most 500 per batch).</summary>
     public const string MessagesTopic = "messages";
 

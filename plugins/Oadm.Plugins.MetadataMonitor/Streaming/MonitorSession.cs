@@ -10,12 +10,15 @@ namespace Oadm.Plugins.MetadataMonitor.Streaming;
 /// One running event stream of one page: reads documents from the server's device event stream, parses them, numbers
 /// the messages, pushes them in batches (<see cref="MetadataMonitorOptions.BatchInterval"/>, at most
 /// <see cref="MetadataMonitorOptions.MaxBatchMessages"/>; above that the oldest are dropped and counted) and reconnects
-/// with backoff after a broken connection. Rejected credentials and a missing event stream end it with Error.
+/// with backoff after a broken connection. Rejected credentials, a missing event stream and a device that left the
+/// user's view (<see cref="DevicesNotAvailableException"/>) end it with Error. Events go to <see cref="_audience"/> only
+/// (the page's session).
 /// </summary>
 internal sealed partial class MonitorSession : IAsyncDisposable
 {
     private readonly IDeviceEventStreams _streams;
     private readonly IPluginEvents _events;
+    private readonly PluginEventAudience _audience;
     private readonly MetadataMonitorOptions _options;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
@@ -35,8 +38,9 @@ internal sealed partial class MonitorSession : IAsyncDisposable
     private long _lastKeepAlive;
     private int _stopped;
 
-    public MonitorSession(string id, Guid deviceId, string deviceLabel, IDeviceEventStreams streams, IPluginEvents events, MetadataMonitorOptions options, ILogger logger)
+    public MonitorSession(string id, Guid deviceId, string deviceLabel, IDeviceEventStreams streams, IPluginEvents events, PluginEventAudience audience, MetadataMonitorOptions options, ILogger logger)
     {
+        _audience = audience;
         Id = id;
         DeviceId = deviceId;
         DeviceLabel = deviceLabel;
@@ -90,6 +94,11 @@ internal sealed partial class MonitorSession : IAsyncDisposable
             const string text = DeviceMessages.Removed;
             SetState(MonitorStates.Error, text);
             return text;
+        }
+        catch (DevicesNotAvailableException ex)
+        {
+            SetState(MonitorStates.Error, ex.Message);
+            return ex.Message;
         }
 
         LogStarted(_logger, DeviceLabel, Id);
@@ -182,7 +191,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
 
         if (state is not null)
         {
-            _events.Publish(MetadataMethods.StateTopic, MetadataJson.Serialize(state));
+            _events.Publish(MetadataMethods.StateTopic, MetadataJson.Serialize(state), _audience);
         }
     }
 
@@ -195,7 +204,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
             var estimate = 300 + (message.Xml.Length * 2) + message.Info.Length + message.Topic.Length; // JSON escapes
             if (chunk.Count > 0 && size + estimate > _options.MaxEventCharacters)
             {
-                _events.Publish(MetadataMethods.MessagesTopic, MetadataJson.Serialize(new MessagesEvent(Id, chunk, dropped)));
+                _events.Publish(MetadataMethods.MessagesTopic, MetadataJson.Serialize(new MessagesEvent(Id, chunk, dropped)), _audience);
                 dropped = 0;
                 chunk = [];
                 size = 0;
@@ -205,7 +214,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
             size += estimate;
         }
 
-        _events.Publish(MetadataMethods.MessagesTopic, MetadataJson.Serialize(new MessagesEvent(Id, chunk, dropped)));
+        _events.Publish(MetadataMethods.MessagesTopic, MetadataJson.Serialize(new MessagesEvent(Id, chunk, dropped)), _audience);
     }
 
     private async Task FlushLoopAsync(CancellationToken ct)
@@ -256,6 +265,13 @@ internal sealed partial class MonitorSession : IAsyncDisposable
             }
             catch (DeviceStreamException ex) when (ex.Error is DeviceStreamError.Unauthorized or DeviceStreamError.NotSupported)
             {
+                await CloseSourceAsync(source).ConfigureAwait(false);
+                SetState(MonitorStates.Error, ex.Message);
+                return;
+            }
+            catch (DevicesNotAvailableException ex)
+            {
+                // The device left the user's view (or was removed): the stream ends for good.
                 await CloseSourceAsync(source).ConfigureAwait(false);
                 SetState(MonitorStates.Error, ex.Message);
                 return;
@@ -314,6 +330,11 @@ internal sealed partial class MonitorSession : IAsyncDisposable
                     SetState(MonitorStates.Error, DeviceMessages.Removed);
                     return false;
                 }
+                catch (DevicesNotAvailableException ex)
+                {
+                    SetState(MonitorStates.Error, ex.Message);
+                    return false;
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -356,7 +377,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
             _published = (snapshot.Messages, snapshot.Lost);
         }
 
-        _events.Publish(MetadataMethods.StateTopic, MetadataJson.Serialize(snapshot));
+        _events.Publish(MetadataMethods.StateTopic, MetadataJson.Serialize(snapshot), _audience);
     }
 
     private static async Task IgnoreCancel(Task task)

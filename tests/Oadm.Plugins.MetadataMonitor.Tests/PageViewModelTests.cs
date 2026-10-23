@@ -14,7 +14,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     public async Task InitializeAsync()
     {
         _rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromMilliseconds(20), LeaseTimeout = TimeSpan.FromSeconds(30) }).StartAsync();
-        _ctx = new PluginPageContext(_rig.Plugin, _rig.Hub);
+        _ctx = new PluginPageContext(_rig.Plugin, _rig.Hub, _rig.Call);
         _ctx.DeviceList.Add(_rig.Camera);
         foreach (var device in _rig.Devices.Items.Skip(1))
         {
