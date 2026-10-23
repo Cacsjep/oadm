@@ -228,8 +228,20 @@ Switches differ; the server assumes nothing a switch may leave out and is strict
 
 ## Sites
 
-The first version answers switches on the server's own network. Later stage: switches at a site reach OADM through the
-site node (a UDP relay of the node, like the TCP relay of EST; the node app asks to allow UDP 1812).
+Stage 3. A switch at a site sends its requests to the **site node**, which relays the datagrams to the server over its
+outgoing connection (`ctx.Sites.OpenUdpRelayAsync(site, 1812)`, the relay NTP uses; no new SDK). The RADIUS, EAP and TLS
+logic runs only on the server; the node never sees a secret or a key.
+
+- **Switch rows get a Site** ("This server" or a site). A request is matched by site + the switch address as the node
+  saw it, so the same private address at two sites is two switches. The switch is configured with the **node's address**
+  as its RADIUS server; the switch dialog shows it ("RADIUS server for this switch: 10.1.0.5, port 1812").
+- **The relay opens** for a site when its first switch is added and closes with its last; the node app asks to allow
+  UDP 1812 like NTP's port; the page shows sites whose node has not allowed it yet (like EST).
+- **Who passes at a site:** the device the certificate names must be a device of that site (as "Who passes" says).
+- **Node offline:** the switch gets no answer and applies its own fallback (switch configuration, not OADM); the switch
+  row shows "Site offline". Sessions of that site end as Timed out.
+- **Round trips:** EAP-TLS needs about 6..12 of them; each adds the node's latency. The defaults (30 s per message, 60 s
+  per session) leave room; switches usually wait 5 s per request with retries, which the duplicate cache answers.
 
 ## Device groups
 
