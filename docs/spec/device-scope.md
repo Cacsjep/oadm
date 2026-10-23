@@ -389,13 +389,19 @@ an independent security review the same day). A user may be limited to part of t
 - **VAPIX Commander**: a rollout belongs to the user who started it; a task of another user naming its id is refused.
 - **Dashboards**: group users see device events with a device list of their devices, OADM's own device status events and
   the site events of their sites; events without a device list from other sources (compliance checks, which carry no
-  owner) are hidden, also as watch keys. Every push checks the group's devices now; a renewal naming a device that left
-  ends the old watch.
+  owner) are hidden, also as watch keys, and so are the device triggers of other owners (all devices or another group),
+  also on the group's own devices (`EventTypeInfo.OwnerScopeKey`, SDK 0.4.0, filled by Device triggers). Every push checks
+  the group's devices now; a renewal naming a device that left ends the old watch. A group user's watches are bound to one
+  job per session (kind `watch`): when the user's devices, role or session change the host ends it and the session's
+  watches go at once (no values for the old devices until the next renewal); the session's last unwatch ends it.
 - **Saved objects** (`OwnerScope.LeftOwnerAsync`): a user with all devices who saves a group's view or dashboard whose
   devices left the group gets the save without them (`Dropped` in the answer, never stored); devices the save adds outside
-  the group and every outside id of a group user stay NOT_FOUND.
+  the group and every outside id of a group user stay NOT_FOUND. The page says so below its toolbar in plain secondary
+  text (`Notice`), not as an error.
 - **Device triggers**: tags are not checked on save (the SDK has no tag catalog); a group's tag covers only the group's
-  devices.
+  devices. `get` answers a group user only the stored devices the user sees now; a user with all devices who saves a
+  group's trigger whose devices left the group gets the save without them (`SaveReply.Dropped`, `LeftOwnerAsync`). Its
+  event types carry the trigger's owner (`OwnerScopeKey`).
 - **Edge Recording Export**: a group user's export stream checks the camera's membership every 5 s and ends when it left.
 - **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row.
 - **I/O Monitor**: the reading of a device starts detached from the first page's call (it carries no user) and reads

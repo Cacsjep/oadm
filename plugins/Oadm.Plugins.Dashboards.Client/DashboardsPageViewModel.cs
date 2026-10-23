@@ -212,6 +212,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         if (ActiveTab is { IsEditing: false } tab && tab.Id == entry.Id)
         {
             tab.Error = null;
+            tab.Notice = null;
             tab.IsEditing = true;
         }
     }
@@ -263,6 +264,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
         tab.IsSaving = true;
         tab.Error = null;
+        tab.Notice = null;
         try
         {
             var json = await _ctx.InvokeAsync(DashboardsMethods.Save, JsonSerializer.Serialize(tab.ToRequest(), DashboardsPluginInfo.Json), _life.Token).ConfigureAwait(true);
@@ -273,7 +275,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
             Upsert(saved);
             if (saved.Dropped > 0)
             {
-                tab.Error = DashboardRules.DroppedText(saved.Dropped);
+                tab.Notice = DashboardRules.DroppedText(saved.Dropped);
             }
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested)

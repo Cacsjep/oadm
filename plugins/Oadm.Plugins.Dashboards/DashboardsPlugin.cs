@@ -42,6 +42,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private readonly TimeProvider _time;
     private readonly ValueStore _values;
     private readonly Dictionary<(string Session, string Watch), Watcher> _watchers = [];
+    private readonly Dictionary<string, IPluginJob> _sessionJobs = new(StringComparer.Ordinal);
     private readonly HashSet<ValueKey> _watched = [];
     private readonly HashSet<ValueKey> _dirty = [];
     private readonly Dictionary<Guid, Dictionary<string, string>> _deviceProblems = [];
@@ -137,8 +138,11 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         }
 
         _values.Clear(); // memory only: a plugin that is off keeps nothing
+        List<IPluginJob> jobs;
         lock (_gate)
         {
+            jobs = [.. _sessionJobs.Values];
+            _sessionJobs.Clear();
             _watchers.Clear();
             _watched.Clear();
             _dirty.Clear();
@@ -148,6 +152,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             _types = null;
         }
 
+        jobs.ForEach(j => j.Cancel());
         _dashboards = null;
     }
 
@@ -673,12 +678,12 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     /// <summary>What a group user may see (null: every device, every event).</summary>
     private static async Task<Reach?> ReachOfAsync(ICallContext caller, CancellationToken ct) =>
-        caller.HasAllDevices ? null : Reach.Of(await caller.Devices.ListAsync(ct).ConfigureAwait(false));
+        caller.HasAllDevices ? null : Reach.Of(await caller.Devices.ListAsync(ct).ConfigureAwait(false), caller.DeviceScopeKey);
 
     /// <summary>The devices and sites of a device scope (the background push of a group's catalog).</summary>
     private async Task<Reach?> ReachOfAsync(string scopeKey, CancellationToken ct) =>
         scopeKey == ICallContext.AllDevicesScopeKey ? null
-        : Reach.Of(_ctx?.DeviceScopes is { } scopes && scopes.Exists(scopeKey) ? await scopes.Devices(scopeKey).ListAsync(ct).ConfigureAwait(false) : []);
+        : Reach.Of(_ctx?.DeviceScopes is { } scopes && scopes.Exists(scopeKey) ? await scopes.Devices(scopeKey).ListAsync(ct).ConfigureAwait(false) : [], scopeKey);
 
     // ------------------------------------------------------------------ watching
 
@@ -729,8 +734,15 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     /// <summary>Keeps the watch of the caller's session and answers the values now.</summary>
     private ValuesReply Register(ICallContext caller, WatchRequest request, HashSet<ValueKey> keys)
     {
+        var job = caller.HasAllDevices ? null : SessionJob(caller);
         lock (_gate)
         {
+            if (job is not null && (!_sessionJobs.TryGetValue(caller.SessionId, out var current) || current != job))
+            {
+                // The user's devices changed while the job started: no watch for the old devices.
+                throw new DevicesNotAvailableException(Math.Max(1, keys.Count(k => k.DeviceId is not null)));
+            }
+
             var id = (caller.SessionId, request.WatchId);
             if (!_watchers.ContainsKey(id) && _watchers.Count >= 1_000)
             {
@@ -744,19 +756,119 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         return new ValuesReply([.. keys.Select(Snapshot)]);
     }
 
+    /// <summary>
+    /// The job that binds the watches of a group user's session to the user's devices now: the host ends it when the user's
+    /// devices, role or session change (another group, new rules), and its end drops the session's watches at once, so values
+    /// for the old devices stop before the page renews its watch. One job per session; it ends with the session's last
+    /// watch. Null on hosts without jobs (they have no device groups).
+    /// </summary>
+    private IPluginJob? SessionJob(ICallContext caller)
+    {
+        if (Context.Jobs is not { } jobs)
+        {
+            return null;
+        }
+
+        lock (_gate)
+        {
+            if (_sessionJobs.TryGetValue(caller.SessionId, out var current)
+                && !current.Completion.IsCompleted
+                && string.Equals(current.Owner.DeviceScopeKey, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return current;
+            }
+        }
+
+        var session = caller.SessionId;
+        var job = jobs.Start(caller, DashboardsPluginInfo.WatchJobKind, async (_, ct) =>
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+        IPluginJob? replaced;
+        lock (_gate)
+        {
+            replaced = _sessionJobs.GetValueOrDefault(session);
+            _sessionJobs[session] = job;
+        }
+
+        replaced?.Cancel();
+        _ = job.Completion.ContinueWith(_ => SessionJobEnded(session, job), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return job;
+    }
+
+    /// <summary>A session's job ended: its group watches go (unless a newer job took over).</summary>
+    private void SessionJobEnded(string session, IPluginJob job)
+    {
+        lock (_gate)
+        {
+            if (!_sessionJobs.TryGetValue(session, out var current) || current != job)
+            {
+                return;
+            }
+
+            _sessionJobs.Remove(session);
+            var gone = _watchers.Where(w => w.Key.Session == session && !w.Value.HasAllDevices).Select(w => w.Key).ToList();
+            foreach (var id in gone)
+            {
+                _watchers.Remove(id);
+            }
+
+            if (gone.Count > 0)
+            {
+                RebuildWatched();
+            }
+        }
+    }
+
+    /// <summary>The jobs of sessions without a group watch any more (cancelled outside the lock).</summary>
+    private List<IPluginJob> IdleJobsLocked()
+    {
+        var busy = _watchers.Values.Where(w => !w.HasAllDevices).Select(w => w.SessionId).ToHashSet(StringComparer.Ordinal);
+        var idle = _sessionJobs.Where(j => !busy.Contains(j.Key)).ToList();
+        foreach (var (session, _) in idle)
+        {
+            _sessionJobs.Remove(session);
+        }
+
+        return [.. idle.Select(j => j.Value)];
+    }
+
+    /// <summary>Sessions whose group watches are bound to a running job (tests).</summary>
+    internal int SessionJobCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _sessionJobs.Count;
+            }
+        }
+    }
+
     /// <summary>Ends a page's watch (tests: a user with all devices).</summary>
     internal void Unwatch(string watchId) => Unwatch(System, watchId);
 
     /// <summary>Ends a watch of the caller's session; another session's watch id is nothing to do.</summary>
     internal void Unwatch(ICallContext caller, string watchId)
     {
+        List<IPluginJob> idle;
         lock (_gate)
         {
             if (_watchers.Remove((caller.SessionId, watchId ?? string.Empty)))
             {
                 RebuildWatched();
             }
+
+            idle = IdleJobsLocked();
         }
+
+        idle.ForEach(j => j.Cancel());
     }
 
     /// <summary>Keys any page watches (tests).</summary>
@@ -800,6 +912,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             List<ValueKey> changed;
             bool catalog;
             List<Watcher> groupWatchers;
+            List<IPluginJob> idle = [];
             lock (_gate)
             {
                 var expired = _watchers.Where(w => now - w.Value.LastSeen > DashboardsPluginInfo.WatchLifetime).Select(w => w.Key).ToList();
@@ -811,6 +924,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 if (expired.Count > 0)
                 {
                     RebuildWatched();
+                    idle = IdleJobsLocked();
                 }
 
                 changed = [.. _dirty];
@@ -824,6 +938,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
                 groupWatchers = [.. _watchers.Values.Where(w => !w.HasAllDevices)];
             }
+
+            idle.ForEach(j => j.Cancel());
 
             var events = _ctx?.Events;
             if (events is null)
@@ -902,30 +1018,40 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     /// What a user of a device group sees: the group's devices, the device events that can come from them (an event with a
     /// device list needs one of them; without a list only OADM's own device status events, never another source's such as
     /// the compliance checks, whose names belong to their owners) and the site events of the group's sites; no other server
-    /// events.
+    /// events, and never an event of an object another scope owns (<see cref="EventTypeInfo.OwnerScopeKey"/>: the device
+    /// triggers of all devices or of another group, also on the group's devices).
     /// </summary>
     internal sealed class Reach
     {
-        private Reach(HashSet<Guid> devices, HashSet<Guid> sites)
+        private Reach(HashSet<Guid> devices, HashSet<Guid> sites, string scopeKey)
         {
             Devices = devices;
             Sites = sites;
+            ScopeKey = scopeKey;
         }
 
         public HashSet<Guid> Devices { get; }
 
         public HashSet<Guid> Sites { get; }
 
-        public static Reach Of(IEnumerable<IDeviceInfo> devices)
+        /// <summary>The group's device scope key: events of objects another scope owns are hidden.</summary>
+        public string ScopeKey { get; }
+
+        public static Reach Of(IEnumerable<IDeviceInfo> devices, string scopeKey)
         {
             var list = devices.ToList();
-            return new Reach([.. list.Select(d => d.Id)], [.. list.Select(d => d.SiteId).OfType<Guid>()]);
+            return new Reach([.. list.Select(d => d.Id)], [.. list.Select(d => d.SiteId).OfType<Guid>()], scopeKey);
         }
 
         public bool Sees(SubscribedEventType type)
         {
             ArgumentNullException.ThrowIfNull(type);
             var info = type.Info;
+            if (info.OwnerScopeKey is { } owner && !string.Equals(owner, ScopeKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return false; // another owner's object (a device trigger of all devices or of another group), also on shared devices
+            }
+
             if (info.Scope == EventScope.Device)
             {
                 return info.DeviceIds is { } ids ? ids.Any(Devices.Contains) : type.SourceId == BuiltInSource;

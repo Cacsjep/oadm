@@ -85,6 +85,13 @@ public sealed record EventTypeInfo(
     /// </summary>
     public IReadOnlyList<Guid>? DeviceIds { get; init; }
 
+    /// <summary>
+    /// The device scope that owns the object behind this event (<c>ICallContext.DeviceScopeKey</c> of a device trigger's
+    /// owner, "all" for all devices); null = not owned by a scope (SDK 0.4.0). Pages of users with a device group hide the
+    /// events of other owners.
+    /// </summary>
+    public string? OwnerScopeKey { get; init; }
+
     /// <summary><see cref="Fields"/>, never null.</summary>
     public IReadOnlyList<EventField> DataFields => Fields ?? [];
 }

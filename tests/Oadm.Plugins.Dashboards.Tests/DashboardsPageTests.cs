@@ -507,6 +507,30 @@ public sealed class DashboardsPageTests
     });
 
     [Fact]
+    public Task A_save_without_widgets_of_devices_that_left_the_device_group_says_so_as_a_notice() => OnUi(async () =>
+    {
+        var (host, ctx, vm, camera, _) = Page();
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded));
+            ctx.Answer = (method, answer) => method == DashboardsMethods.Save
+                ? System.Text.Json.JsonSerializer.Serialize(System.Text.Json.JsonSerializer.Deserialize<Dashboard>(answer!, DashboardsPluginInfo.Json)! with { Dropped = 2 }, DashboardsPluginInfo.Json)
+                : answer;
+            vm.NewDashboardCommand.Execute(null);
+            vm.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>([camera.Id]);
+            await vm.AddCamerasCommand.ExecuteAsync(null);
+            var tab = vm.ActiveTab!;
+            await vm.SaveDashboardCommand.ExecuteAsync(null);
+
+            Assert.False(tab.IsEditing);
+            Assert.False(tab.HasError);
+            Assert.Equal(DashboardRules.DroppedText(2), tab.Notice);
+            Assert.True(tab.HasNotice);
+        }
+    });
+
+    [Fact]
     public Task Add_cameras_adds_live_videos_up_to_16() => OnUi(async () =>
     {
         var (host, ctx, vm, camera, io) = Page();

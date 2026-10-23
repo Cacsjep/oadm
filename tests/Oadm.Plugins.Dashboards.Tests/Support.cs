@@ -335,7 +335,14 @@ internal sealed class TestContext(PluginHost server, List<IDeviceInfo> devices) 
         return Task.CompletedTask;
     }
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => server.Plugin.InvokeAsync(method, payloadJson, ct);
+    /// <summary>Changes the server's answer of a method before the page gets it (method, answer: the new answer).</summary>
+    public Func<string, string?, string?>? Answer { get; set; }
+
+    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        var answer = await server.Plugin.InvokeAsync(method, payloadJson, ct);
+        return Answer is { } change ? change(method, answer) : answer;
+    }
 
     public IAsyncEnumerable<PluginEvent> WatchEventsAsync(CancellationToken ct) => server.Events.WatchAsync(ct);
 

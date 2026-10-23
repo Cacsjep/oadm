@@ -284,6 +284,33 @@ public sealed class LiveViewTests(ITestOutputHelper output)
     });
 
     [Fact]
+    public Task A_save_without_cameras_that_left_the_device_group_says_so_as_a_notice_not_an_error() => OnUi(async () =>
+    {
+        var (host, ctx, vm, cam1, _) = Page();
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded));
+            ctx.Answer = (method, answer) => method == "save"
+                ? JsonSerializer.Serialize(JsonSerializer.Deserialize<SavedView>(answer!, LiveViewPluginInfo.Json)! with { Dropped = 1 }, LiveViewPluginInfo.Json)
+                : answer;
+            vm.NewViewCommand.Execute(null);
+            var tab = vm.ActiveTab!;
+            tab.Drop(cam1, 0, 0);
+            await vm.SaveViewCommand.ExecuteAsync(null);
+
+            Assert.False(tab.IsEditing);
+            Assert.False(tab.HasError);
+            Assert.Equal(ViewRules.DroppedText(1), tab.Notice);
+            Assert.True(tab.HasNotice);
+
+            // The next edit starts without it.
+            vm.EditViewCommand.Execute(vm.Views[0]);
+            Assert.False(tab.HasNotice);
+        }
+    });
+
+    [Fact]
     public Task The_bin_of_a_row_asks_then_deletes_the_view_for_everyone_and_closes_its_tab() => OnUi(async () =>
     {
         var (host, ctx, vm, _, _) = Page();

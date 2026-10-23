@@ -219,7 +219,11 @@ public sealed record ReadStatusReply(string JobId, int Total, int Done, bool Fin
 public sealed record SaveRequest(TriggerDefinition Trigger);
 
 /// <summary><see cref="Errors"/>: field problems (Name, Event, Devices); <see cref="Error"/>: anything else.</summary>
-public sealed record SaveReply(TriggerDefinition? Trigger, string? Error, IReadOnlyDictionary<string, string>? Errors);
+public sealed record SaveReply(TriggerDefinition? Trigger, string? Error, IReadOnlyDictionary<string, string>? Errors)
+{
+    /// <summary>Devices left out of the save: a group's trigger saved by a user with all devices, devices no longer in the group (never stored).</summary>
+    public int Dropped { get; init; }
+}
 
 public sealed record SetEnabledRequest(Guid Id, bool Enabled);
 

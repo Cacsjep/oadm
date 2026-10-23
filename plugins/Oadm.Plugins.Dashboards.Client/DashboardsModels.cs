@@ -303,9 +303,17 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     /// <summary>A failed save or a refused drop: below the toolbar.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
     public partial string? Error { get; internal set; }
 
     public bool HasError => !string.IsNullOrEmpty(Error);
+
+    /// <summary>A save that left out devices no longer in the device group: below the toolbar, not an error.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    public partial string? Notice { get; internal set; }
+
+    public bool HasNotice => !string.IsNullOrEmpty(Notice) && !HasError;
 
     [ObservableProperty]
     public partial bool IsSaving { get; internal set; }
@@ -664,6 +672,7 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     {
         EndEditing();
         Error = null;
+        Notice = null;
         if (Saved is { } saved)
         {
             Name = saved.Name;
