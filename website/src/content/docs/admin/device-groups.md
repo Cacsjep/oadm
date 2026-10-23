@@ -21,7 +21,7 @@ of that group must add it.
 
 ## Create a group
 
-**Access** page > card **Device groups** (administrators) > **New device group**.
+**Permissions** page > card **Device groups** (administrators) > **New device group**.
 
 1. Enter a name and, optional, a description.
 2. On the left, tick sites and tags. Their devices show ticked on the right, with the site or tag that covers them.

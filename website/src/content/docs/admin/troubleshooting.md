@@ -20,7 +20,7 @@ The **Logs** page shows them without opening a file:
 
 - **Server**: the server's log, 200 entries a page, newest first, with **Newer** and **Older**. Filter by level and
   search; the tooltip of a message shows the whole entry. Every failed event rule action is here with its reason, also
-  when the event log was already cleared. Administrators see it; other roles need **See the server log** (Access page,
+  when the event log was already cleared. Administrators see it; other roles need **See the server log** (Permissions page,
   roles).
 - **Client**: what this client did since it started, the same way.
 - **Audit** (administrators): who did what on the server.

@@ -514,7 +514,7 @@ public sealed class LoginTests
             Assert.DoesNotContain("Rename and delete tags", pageTexts); // the permission groups start collapsed
             // The page title only, no card title repeating it.
             Assert.Equal(1, usersWindow.GetVisualDescendants().OfType<TextBlock>()
-                .Count(t => t.Text == "Access" && !t.GetVisualAncestors().OfType<DataGrid>().Any()));
+                .Count(t => t.Text == "Permissions" && !t.GetVisualAncestors().OfType<DataGrid>().Any()));
             Capture(usersWindow, outDir, "client-users-page.png");
 
             // The dialogs of the users card: Add user, Edit user, Change password.

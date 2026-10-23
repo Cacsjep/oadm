@@ -304,6 +304,9 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
             guard.CheckScope(scopeKey);
             return inner.NameOf(scopeKey);
         }
+
+        // Not a scope read: whether any group covers a device the plugin already has (the certificate name rule).
+        public bool InAnyGroup(IDeviceInfo device) => inner.InAnyGroup(device);
     }
 
     private sealed class ScopeRepository(PluginCallGuard guard, string scopeKey, IDeviceRepository inner) : IDeviceRepository

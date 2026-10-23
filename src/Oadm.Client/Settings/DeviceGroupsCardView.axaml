@@ -4,7 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.DeviceGroupsCardView"
              x:DataType="settings:DeviceGroupsViewModel">
-  <!-- Card "Device groups" of the Access page (Admin only): the groups with rules and users. New and Edit
+  <!-- Card "Device groups" of the Permissions page (Admin only): the groups with rules and users. New and Edit
        open the group editor (the shared device picker with sites and tags); Delete asks first. -->
   <Border Classes="card">
     <StackPanel Spacing="12">

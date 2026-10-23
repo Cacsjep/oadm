@@ -142,7 +142,7 @@ an independent security review the same day). A user may be limited to part of t
 
 ## The editors
 
-- **Access page (formerly Users), card "Device groups"** right of the users (administrator): name, rules summary ("Site Building B, tag PTZ,
+- **Permissions page (formerly Users), card "Device groups"** right of the users (administrator): name, rules summary ("Site Building B, tag PTZ,
   3 devices, except 1") and users; New, Edit, Delete (red, says which users lose their devices).
 - **Group editor:** the shared device picker (`DevicePickerWindow`) extended: left **Sites** (with counts and "This
   server") and **Tags** (with counts); right the searchable, virtualized device list: devices covered by a site or tag

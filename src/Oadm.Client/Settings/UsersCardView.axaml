@@ -4,7 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.UsersCardView"
              x:DataType="settings:UsersViewModel">
-  <!-- Card "Users" of the Access page (Admin only). Add user, Edit user and Change password are dialogs (UserFormWindow);
+  <!-- Card "Users" of the Permissions page (Admin only). Add user, Edit user and Change password are dialogs (UserFormWindow);
        refusals of the row actions in the message window. -->
   <Border Classes="card">
     <StackPanel Spacing="12">

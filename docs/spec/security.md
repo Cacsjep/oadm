@@ -149,7 +149,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `UserSession.ApplyDevices`): a group without "This server" and without a site gets the Add entries disabled with
   "Your device group has no site, so you cannot add devices." as tooltip. The shared group texts live in
   `Oadm.Sdk.Devices.DeviceGroupMessages` (Core `DeviceGroupTexts` and client `DeviceGroupWords` name them).
-- **Access page** (rail item **Access**, Admin only, subtitle "Who can log in, which devices they reach and what each role may do.";
+- **Permissions page** (rail item **Permissions**, Admin only, subtitle "Who can log in, which devices they reach and what each role may do.";
   `Settings/UsersPageView` = the users card left and the device groups card right at the height they need, the roles card
   below across the full width filling the rest, with a splitter): **New user** (secondary button) above the list, then users
   with role (plain text), state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
