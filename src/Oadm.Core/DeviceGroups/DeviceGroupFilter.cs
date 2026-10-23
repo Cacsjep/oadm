@@ -84,6 +84,9 @@ public sealed class DeviceGroupFilter
         return Compile(group.Id, group.Revision, group.Rules, tagNames, isLiveSite, catalog);
     }
 
+    /// <summary>True when the group's rules name the site (and it exists): the Sites page of a user with the group shows it.</summary>
+    public bool CoversSite(Guid siteId) => _everything || _sites.Contains(siteId);
+
     /// <summary>True when the device is in the group: a site, "This server", a tag or a single serial covers it and its serial is not excepted.</summary>
     public bool Contains(IDeviceInfo device)
     {
