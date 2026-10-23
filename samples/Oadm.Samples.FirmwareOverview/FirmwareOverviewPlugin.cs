@@ -46,7 +46,7 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
         switch (method)
         {
             case FirmwareOverview.GetState:
-                return Serialize(StateOf(scope));
+                return Serialize(InGroup(scope, StateOf(scope)));
 
             case FirmwareOverview.Refresh:
                 // Check the request before anything starts: the page sends "all" or the chosen ids, never nothing.
@@ -92,7 +92,10 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
         {
             await Parallel.ForEachAsync(devices, new ParallelOptions { MaxDegreeOfParallelism = 16, CancellationToken = ct }, async (device, token) =>
             {
-                rows.Add(await ReadAsync(owner, device, token));
+                if (InGroup(scope, device.Id)) // a device that left the group meanwhile is not read
+                {
+                    rows.Add(await ReadAsync(owner, device, token));
+                }
             });
         }
         catch (OperationCanceledException)
@@ -130,6 +133,13 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
         }
     }
 
+    /// <summary>Whether the device is in the group now (a few lookups, no request): a tag or site change can move it out.</summary>
+    private bool InGroup(string scope, Guid deviceId) => _ctx!.DeviceScopes!.Contains(scope, deviceId);
+
+    /// <summary>The state with only the rows of devices the group has now.</summary>
+    private FirmwareState InGroup(string scope, FirmwareState state) =>
+        state with { Rows = [.. state.Rows.Where(r => InGroup(scope, r.DeviceId))] };
+
     /// <summary>A group's devices changed or the group was deleted: its table may show devices it no longer has.</summary>
     private void OnGroupChanged(object? sender, string scope) => Publish(scope, new FirmwareState(0, false, []));
 
@@ -156,13 +166,13 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
         }
     }
 
-    /// <summary>Stores the new state with the next version and sends it to the pages of the group.</summary>
+    /// <summary>Stores the new state with the next version and sends it to the pages of the group (only its devices).</summary>
     private void Publish(string scope, FirmwareState state)
     {
         string json;
         lock (_gate)
         {
-            state = state with { Version = ++_version };
+            state = InGroup(scope, state) with { Version = ++_version };
             _states[scope] = state;
             json = Serialize(state);
         }

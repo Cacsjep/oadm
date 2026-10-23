@@ -141,6 +141,9 @@ them in one file of the server project means a typo cannot break the page.
 - **`Publish`** stores the new state with the next version and sends it to the pages of that group
   (`PluginEventAudience.DeviceScope`). When an administrator changes or deletes a group, `DeviceScopes.Changed` empties
   its table.
+- **`InGroup`** keeps only rows of devices the group has now (`DeviceScopes.Contains(scope, id)`, a few lookups): a tag
+  or site change can move a device out of the group before `Changed` comes. The read skips such a device, and the
+  published and the answered state leave it out.
 
 <Code code={template(plugin)} lang="csharp" title="MyCoolPagePlugin.cs" />
 
