@@ -88,54 +88,42 @@ public sealed class DeviceGroupTests
             CertificateNames.For("cam.example.com", "B8A44F631339", "cam-entrance", "cam-entrance.example.com", ["10.0.0.48"], trustNames: true).DnsNames);
     }
 
-    [Fact]
-    public async Task Enable_https_on_a_device_a_group_user_added_leaves_the_host_name_out()
+    /// <summary>
+    /// Enable HTTPS and what the camera reports: a user of a group could set it on the camera (Network settings, VAPIX
+    /// Commander, Web View). A device a group user added gets no host name or domain; a device a group covers gets only
+    /// the address it was added with; a device no group covers keeps everything the camera reports.
+    /// </summary>
+    [Theory]
+    [InlineData("added by a group user", "10.0.0.48,10.0.0.99", "axis-b8a44f631339.local")]
+    [InlineData("in a group", "10.0.0.48", "axis-b8a44f631339.local")]
+    [InlineData("in no group", "10.0.0.48,10.0.0.99", "bank,bank.example.com,axis-b8a44f631339.local")]
+    public async Task Enable_https_takes_from_the_camera_only_what_no_group_user_could_have_set(string device, string addresses, string names)
     {
         await using var h = await TaskHarness.StartAsync();
-        h.Device = h.Device with { AddedByAllDevices = false };
-
-        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable));
-
-        using var served = h.Served(h.Camera.WebServerAlias);
-        var san = served.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
-        Assert.Equal("CN=10.0.0.48", served.Subject);
-        Assert.Equal([IPAddress.Parse("10.0.0.48")], san.EnumerateIPAddresses());
-        Assert.Equal(["axis-b8a44f631339.local"], san.EnumerateDnsNames()); // not the host name axis-b8a44f631339 the device reports
-    }
-
-    [Fact]
-    public async Task A_device_a_group_covers_gets_no_host_name_or_second_address_the_camera_reports()
-    {
-        await using var h = await TaskHarness.StartAsync();
-        // What a user of the group could set on the camera (Network settings, VAPIX Commander, Web View).
         var system = h.Camera.NetworkInfo["data"]!["system"]!.AsObject();
         system["hostname"]!["hostname"] = "bank";
         system["resolver"]!["domainName"] = "example.com";
         h.Camera.NetworkInfo["data"]!["devices"]![0]!["IPv4"]!["addresses"]!.AsArray().Add(new JsonObject { ["address"] = "10.0.0.99", ["scope"] = "global" });
-        h.Pki.Scopes.Add("Building B", [h.Device.Id]);
+        switch (device)
+        {
+            case "added by a group user":
+                h.Device = h.Device with { AddedByAllDevices = false };
+                break;
+            case "in a group":
+                h.Pki.Scopes.Add("Building B", [h.Device.Id]);
+                break;
+            default:
+                h.Pki.Scopes.Add("Lobby", [Guid.NewGuid()]);
+                break;
+        }
 
         Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable));
 
         using var served = h.Served(h.Camera.WebServerAlias);
         var san = served.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
         Assert.Equal("CN=10.0.0.48", served.Subject);
-        Assert.Equal([IPAddress.Parse("10.0.0.48")], san.EnumerateIPAddresses());
-        Assert.Equal(["axis-b8a44f631339.local"], san.EnumerateDnsNames());
-    }
-
-    [Fact]
-    public async Task A_device_no_group_covers_keeps_the_names_and_addresses_the_camera_reports()
-    {
-        await using var h = await TaskHarness.StartAsync();
-        h.Camera.NetworkInfo["data"]!["devices"]![0]!["IPv4"]!["addresses"]!.AsArray().Add(new JsonObject { ["address"] = "10.0.0.99", ["scope"] = "global" });
-        h.Pki.Scopes.Add("Lobby", [Guid.NewGuid()]);
-
-        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable));
-
-        using var served = h.Served(h.Camera.WebServerAlias);
-        var san = served.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
-        Assert.Equal([IPAddress.Parse("10.0.0.48"), IPAddress.Parse("10.0.0.99")], san.EnumerateIPAddresses());
-        Assert.Equal(["axis-b8a44f631339", "axis-b8a44f631339.local"], san.EnumerateDnsNames());
+        Assert.Equal(addresses.Split(',').Select(IPAddress.Parse), san.EnumerateIPAddresses());
+        Assert.Equal(names.Split(','), san.EnumerateDnsNames());
     }
 
     [Fact]

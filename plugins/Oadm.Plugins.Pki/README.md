@@ -174,7 +174,7 @@ button and Save for a user with a group (`HasAllDevices`). The tasks get their d
 and `axis-<serial>.local`, CN the OADM address when it is an IP address, else the first IP address or the axis name).
 `inAnyGroup` (`PkiService.InAnyGroup`, `IDeviceScopes.InAnyGroup`; no scopes: true) leaves out everything the camera
 reports (host name, FQDN, further IP addresses): a group user could change them on the camera. Tests: `DeviceGroupTests` (the `PluginCanary`,
-counts and events per group, names, Enable HTTPS on a device a group user added, the page).
+counts and events per group, names, Enable HTTPS on a device a group user added, one a group covers and one no group covers, the page).
 
 ## Permissions
 
