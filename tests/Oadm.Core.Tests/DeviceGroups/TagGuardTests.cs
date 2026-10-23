@@ -15,6 +15,24 @@ namespace Oadm.Core.Tests.DeviceGroups;
 public sealed class TagGuardTests : DeviceGroupTestBase
 {
     [Fact]
+    public async Task AFailedReadOfTheTagNamesAfterACommittedWriteStillPublishesTheChange()
+    {
+        var device = await AddDeviceAsync("ACCC8E000001");
+        var changes = new System.Collections.Concurrent.ConcurrentQueue<DeviceChange>();
+        Views.Feed.Changed += (_, c) => changes.Enqueue(c);
+        var before = Views.Catalog.Key;
+        Tags.BeforeNamesReload = () => throw new InvalidOperationException("database is locked");
+
+        // A new tag on the device: written, published, and the catalog moved (the views compile again).
+        await Tags.SetDeviceTagsAsync(await Views.System.GetAsync([device.Id], Ct), ["Fresh"], [], Ct);
+
+        Assert.Contains(changes, c => c.DeviceId == device.Id && c.Device!.Tags.Contains("Fresh"));
+        Assert.NotEqual(before, Views.Catalog.Key);
+        Tags.BeforeNamesReload = null;
+        Assert.Contains("Fresh", (await Devices.GetAsync(device.Id, Ct))!.Tags);
+    }
+
+    [Fact]
     public async Task AGroupUserTagsWithFreeTagsButNeverAddsOrRemovesATagAGroupUses()
     {
         var mine = await AddDeviceAsync("ACCC8E000001", tags: ["Lobby"]);

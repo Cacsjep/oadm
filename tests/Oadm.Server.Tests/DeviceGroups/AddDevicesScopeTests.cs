@@ -285,6 +285,22 @@ public sealed class AddDevicesScopeTests
     }
 
     [Fact]
+    public async Task TheFirstRefreshAfterACommitKeepsTheDevicesThatAreStillThere()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var repo = host.Get<DeviceRepository>();
+        var kept = await repo.AddAsync(new Device { Serial = "ACCC8E00D001", Address = "10.9.7.1", AddedByAllDevices = true }, CancellationToken.None);
+        var removed = await repo.AddAsync(new Device { Serial = "ACCC8E00D002", Address = "10.9.7.2", AddedByAllDevices = true }, CancellationToken.None);
+        await repo.RemoveAsync(removed.Id, CancellationToken.None);
+        var view = await host.Get<DeviceViewFactory>().ForScopeAsync(DeviceScope.All, "admin", CancellationToken.None);
+
+        var refresh = await AddDevicesGrpcService.StillInViewAsync(view, [kept.Id, removed.Id], CancellationToken.None);
+
+        Assert.Equal([kept.Id], refresh!.Ids);
+        Assert.Null(await AddDevicesGrpcService.StillInViewAsync(view, [removed.Id], CancellationToken.None));
+    }
+
+    [Fact]
     public async Task AGroupUsersEntryForAnAddressAnotherUserKeepsLeavesThatEntryAndTheCountsAlone()
     {
         await using var world = await World.StartAsync();

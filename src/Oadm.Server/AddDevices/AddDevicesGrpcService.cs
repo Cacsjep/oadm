@@ -120,6 +120,33 @@ public sealed partial class AddDevicesGrpcService(
         }
     }
 
+    /// <summary>
+    /// The devices of <paramref name="ids"/> that are still in <paramref name="view"/> (one removed or moved out meanwhile is
+    /// left out); null when none is.
+    /// </summary>
+    internal static async Task<ViewedDevices?> StillInViewAsync(DeviceView view, IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(ids);
+        try
+        {
+            return await view.GetAsync(ids, ct).ConfigureAwait(false);
+        }
+        catch (DevicesNotAvailableException)
+        {
+            var known = await view.IdsAsync(ct).ConfigureAwait(false);
+            var rest = ids.Where(known.Contains).ToArray();
+            try
+            {
+                return rest.Length == 0 ? null : await view.GetAsync(rest, ct).ConfigureAwait(false);
+            }
+            catch (DevicesNotAvailableException)
+            {
+                return null; // still moving: the polling's next round reads them
+            }
+        }
+    }
+
     public override async Task<Proto.CommitReply> Commit(Proto.CommitRequest request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
@@ -194,14 +221,11 @@ public sealed partial class AddDevicesGrpcService(
 
         if (ids.Length > 0)
         {
-            try
+            // The first full refresh of the devices the caller just added (inside the caller's view by now); a device
+            // removed meanwhile leaves the others in.
+            if (await StillInViewAsync(await views.ForAsync(context).ConfigureAwait(false), ids, ct).ConfigureAwait(false) is { Count: > 0 } refresh)
             {
-                // The first full refresh of the devices the caller just added (inside the caller's view by now).
-                actions.QueueRefresh(await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false));
-            }
-            catch (DevicesNotAvailableException)
-            {
-                // One was removed meanwhile: the polling's next round reads the others.
+                actions.QueueRefresh(refresh);
             }
 
             var caller = AuthInterceptor.CallerOf(context);

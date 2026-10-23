@@ -286,12 +286,19 @@ public sealed partial class WaitingDeviceRunner(
                 }
             }
 
-            // The reach of each user who kept entries, read once per round (the add itself checks again).
-            var reaches = new ConcurrentDictionary<Guid, Lazy<Task<AddReach>>>();
+            // The reach of each user who kept entries, read once per round (the add itself checks again). A user whose reach
+            // cannot be read is skipped this round; the other users' entries are tried.
+            var reaches = new ConcurrentDictionary<Guid, Lazy<Task<AddReach?>>>();
             await Parallel.ForEachAsync(entries, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (entry, token) =>
             {
                 var reach = await reaches.GetOrAdd(entry.QueuedByUserId ?? Guid.Empty,
-                    _ => new Lazy<Task<AddReach>>(() => AddReach.ForUserAsync(views, entry.QueuedByUserId, entry.AddedBy, token))).Value.ConfigureAwait(false);
+                    _ => new Lazy<Task<AddReach?>>(() => ReachOrNullAsync(entry, token))).Value.ConfigureAwait(false);
+                if (reach is null)
+                {
+                    _checking.TryRemove(entry.Id, out _);
+                    return;
+                }
+
                 var outcome = await TryOneAsync(entry, reach, token).ConfigureAwait(false);
                 _checking.TryRemove(entry.Id, out _);
                 switch (outcome.Kind)
@@ -642,6 +649,26 @@ public sealed partial class WaitingDeviceRunner(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Waiting device {Serial} at {Address} added ({Source})")]
     private partial void LogAdded(string serial, string address, string source);
+
+    /// <summary>The reach of the entry's keeper now, or null when it cannot be read (logged; the entry waits for the next round).</summary>
+    private async Task<AddReach?> ReachOrNullAsync(WaitingTry entry, CancellationToken ct)
+    {
+        try
+        {
+            return await (ReachOf ?? AddReach.ForUserAsync)(views, entry.QueuedByUserId, entry.AddedBy, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            LogReachFailed(ex, entry.AddedBy);
+            return null;
+        }
+    }
+
+    /// <summary>Tests: reads a keeper's reach instead of <see cref="AddReach.ForUserAsync"/>.</summary>
+    internal Func<Core.DeviceGroups.DeviceViewFactory, Guid?, string, CancellationToken, Task<AddReach>>? ReachOf { get; set; }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Waiting list: the devices of {UserName} could not be read; their entries wait for the next round")]
+    private partial void LogReachFailed(Exception ex, string userName);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Waiting list round failed")]
     private partial void LogRoundFailed(Exception ex);
