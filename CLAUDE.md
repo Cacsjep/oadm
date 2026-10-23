@@ -185,6 +185,9 @@ must never break.
   license): RFC 7030 on TCP 9454, cameras enroll with their Axis device ID and only if OADM manages them, the OADM CA of
   PKI signs, cameras renew by themselves (renewals the OADM CA issued directly never show Certificate changed), also at
   sites (a relay of the site node).
+- **[Device groups](docs/spec/device-scope.md)** (in work for 4.2): a user limited to a device group (sites, tags,
+  single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
+  (`call.Devices`); shared objects owned by a group; Administrator always all devices.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

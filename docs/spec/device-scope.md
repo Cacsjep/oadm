@@ -1,0 +1,162 @@
+# Device groups (planned)
+
+Status: in work for OADM 4.2 on branch `feature/device-groups` (plan and decisions 2026-10-22, updated 2026-10-23 after 4.1.0; revised after an independent RBAC review and
+an independent security review the same day). A user may be limited to part of the devices: everything the user sees and does follows that limit.
+
+## Model
+
+- **Device group:** a named object (table `DeviceGroups`, new migration): name, description, and its rules: **sites**
+  (with "This server" = devices without a site) and **tags**, by id, plus **single devices** and **except** single
+  devices, both by **serial number** (stable when a device is removed and added again, unlike its id).
+- **On the device:** whether a user with all devices added it (a new column, true for every existing device). The
+  dormant serial rule and the host-name rule of PKI and EST read it. A waiting entry stores the user who queued it. A device is in the
+  group when a site, a tag or a single serial covers it and its serial is not excepted. Sites and tags keep up: a new
+  device of a chosen site or tag is in the group at once.
+- **On the user**: an explicit choice "All devices" or a group (a flag plus the group id; never "null = all devices").
+  The foreign key is `OnDelete(Restrict)`. The migration sets "All devices" on every existing user, so an upgrade or
+  the restore of a backup from before 4.2 changes nobody's devices; after that, a user without the flag and without an
+  existing group has no devices. The role stays the rights; the group is the
+  devices. "Operator" + group "Building B" instead of a role per site. Administrator always has all devices (a group on
+  an administrator is ignored and the user form says so).
+- **Deleted tag or site:** drops out of the groups that use it; deleting asks first ("Used by device group Building B").
+  Deleting a group sets its users to **no devices** and disables the objects it owned in the same transaction (fail
+  closed) until an administrator gives them another; a test proves it.
+- **Group changes** (rules, a user's group): the user's streams that carry devices end and reconnect with the new view,
+  like a role change (`CallerStreams`).
+
+## Enforcement: explicit, fail closed
+
+- **Explicit caller.** gRPC services build a `DeviceView` from the authenticated caller (`AuthenticatedCaller` carries
+  the user's compiled group) and pass it down: `view.ListAsync`, `view.GetAsync(ids)` (an id outside the view answers like
+  an unknown device, NOT_FOUND; a batch with any such id is refused whole, "N devices are no longer available", never run
+  in part), `view.Contains(device)`. Unknown ids refuse the batch the same way for every user (today Remove and Refresh
+  skip them), so the answer never tells an unknown id from one outside the view. No scope check is written per method; the methods get their data from the view.
+- **Fail closed.** The global repository stays for system work, named as such. A scoped getter without a view throws; it
+  never allows everything. `CallerContext` (AsyncLocal) stays only a backstop.
+- **Background boundary.** The host never lets the caller flow into background work: it clears the caller where it starts
+  task runs (`TaskEngine`), plugin jobs (the SDK job registry), timers and the handlers of its events (device feed, tags,
+  waiting list, users, sites, plugin events). A task gets its owner's view explicitly. A plugin that starts its own work
+  inside a user's call (`Task.Run`) keeps the caller, so `ctx.*` refuses there too (fail closed); it uses the job registry.
+- **Compiled predicate, no patched index.** A group compiles to sets (site ids, tag names resolved from tag ids and
+  rebuilt when tag definitions change, serials, excepted serials); a check is a few hash lookups on the device row. Lists
+  cache the allowed id set lazily per cache key (see Sessions).
+- **Streams:** each stream keeps the ids it has sent; on a change a device that left the view becomes Removed, one that
+  entered becomes Added. Sessions bound to one device (live video, web interface, event streams, I/O and metadata
+  monitors) end when that device leaves the user's view.
+- **Tasks:** the engine checks the caller's view when a task is started (`TaskEngine.RunAsync` with the view passed in,
+  also through the plugin task runner); task history is filtered in the query (a temp table or `json_each` for large
+  views, never after the 10,000 snapshot limit). History of removed devices: only users with all devices.
+
+## Plugins (SDK 0.4.0, OADM 4.2)
+
+- **During the call of a user with a group, `ctx.Devices` / `ctx.Vapix` / `ctx.Tasks` / `ctx.EventStreams` refuse**
+  (fail closed): a plugin method uses `call.*`; the full list only through `ctx.System`, outside user calls or from call
+  sites on an allow-list with a reason. So a method nobody updated cannot reach devices outside the user's view. For
+  users with all devices `ctx.*` works as before (decision 2026-10-23): plugins built against SDK 0.3.0 (public on NuGet
+  since OADM 4.1.0) keep working for them and are refused for group users until they move to 0.4.0.
+- Plugin methods get the user's call explicitly: `InvokeAsync`, `OpenDownloadAsync` and task `QueryAsync` gain
+  overloads with an `ICallContext` (default interface members): `call.UserName`, `call.Has(permission)`,
+  `call.Devices` / `call.Vapix` / `call.Tasks` / `call.EventStreams` (scoped to the user's group), `call.Contains`,
+  `call.HasAllDevices`. A plugin declares its methods for users with all devices (saves of NTP, DHCP, PKI, EST, the
+  command library); the host refuses them for group users before the plugin runs, and the canary test reads the list.
+  `ctx.Devices` and the other `ctx.*` stay the full, system view for background work (sweeps, the EST server, the
+  trigger runtime, NTP, DHCP). Background work never carries a user.
+- Events: `IPluginEvents.Publish(topic, json, audience)` with the audience a device, a device set, a user or a session;
+  the host delivers each event (and filters rows of a set per watcher) only to watchers it covers; the old
+  `Publish(topic, json)` goes only to watchers with all devices. Sweep state (ActionRules, EdgeStorage, ImageHealth) is
+  kept per group, not per plugin.
+- **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
+  scan, export and monitor ids); every id-taking method and download checks it; ids of another user answer NOT_FOUND.
+- Every bundled plugin moves to the call context before 4.2. Plugins built against SDK 0.3.0 load and run unchanged for
+  users with all devices (new SDK members are default interface members); their methods are refused for group users.
+- Plugin testing: `Oadm.Sdk.Testing` gets a fake call with a group and the canary test (see Tests).
+
+## Decisions
+
+- **New devices:** a user with a group discovers and adds devices only at the sites of the group, so they land inside
+  it; a group of tags or single devices only cannot add devices.
+- **Tags:** users with a group tag devices of their group, but never add or remove a tag that any group uses (that would
+  move devices between groups). The guard lives in `DeviceTagStore` (the only writer), also for file imports added later
+  in the background (the waiting entry remembers who queued it).
+- **Shared objects** (event rules, device triggers, compliance checks, Live View views, dashboards): each object stores
+  its owning group (or all devices); an administrator editing it keeps the owner; a duplicate gets the group of the user
+  who duplicates. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices
+  of that group (conditions and actions intersected when it fires; "All devices" and the "Any device" counts = the
+  group; site events only for the group's sites). Users see and edit only objects of their own group; others are hidden.
+  A deleted group disables its objects. The event catalog lists only devices of the user's view. **Test** of an action
+  uses only devices of the view.
+- **Send HTTP request / Send TCP message** in rules owned by a group: only to addresses on an administrator's allow-list
+  (Settings, e.g. the VMS or alarm server); everything else is refused when saving and when sending.
+- **Server-wide services** (NTP, DHCP, PKI and EST settings, the VAPIX Commander command library): managing them stays with users who have all devices; users with a group may view the pages, rows filtered to
+  their group (by device, address or serial). The role and user editors say so.
+- **Server log:** hidden for users with a group (its text names devices). System report, backups, audit log, support
+  report: as today (administrator or users with all devices).
+- **Sites page:** users with a group see only the sites of their group, with their group's counts.
+- **Kept for users with all devices:** tag rename and delete, Delete all of tasks and the event log.
+- **Credential list:** never used for users with a group: adding devices, Retry, Log in and the waiting list use only
+  the password they type. (A fake camera at their site could otherwise collect every saved credential.)
+- **Secrets in shared items** (library commands and configuration files with saved passwords): users with a group may
+  run only items without saved passwords.
+- **Host names in certificates:** PKI and EST put a device's host name into its certificate only when a user with all
+  devices added it (a group user who controls the DNS at a site could otherwise get a certificate for any name).
+- **Membership:** a single-device serial of a removed device is dormant; it counts again only when a user with all
+  devices or a user of that group adds the device. Every change of a device's membership (tag, site, relocation, add,
+  remove) is audited as "left / entered group X".
+- **"Empty means all"** (Refresh, compliance Check now, sweeps, scans, reports): all means the caller's view.
+- **Tasks:** task id methods (log, cancel, delete) go through the view; runnable sets are intersected with the view
+  before they are encoded; a queued task checks the owner's view again when it leaves the queue.
+- **Add and discovery sessions** belong to the user who started them; Retry and Commit take only that user's sessions;
+  a found device must be on a route of the group; the network scan and zero-conf on the server's network only for
+  groups with "This server"; the waiting list is scoped by site and checks the queuing user's current view.
+- **Sessions:** a stream checks the user's group revision like the role right after it registers; a change of a group's
+  rules or of a user's group ends every non-session stream of the affected users (like `OnUserRoleChanged`). The cache
+  key is (group revision, tag and site catalog revision, `DeviceChangeFeed.Version`). The view never follows the "no
+  caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
+- **Small leaks closed:** address checks answer only "in use"; conflict and log texts never name devices outside the
+  view; discovery rows of such devices say only "already added"; Your role shows no excepted serials. "This server"
+  means exactly devices without a site (devices kept from a removed site keep its id).
+- **Existence leaks accepted** (documented, not hidden): "already added" on the add page and a duplicate add, the device
+  limit message, the license's device count.
+- **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
+
+## The editors
+
+- **Users page, new card "Device groups"** (administrator): list with name, rules summary ("Site Building B, tag PTZ,
+  3 devices, except 1"), device count and users; New, Edit, Delete (red, says which users lose their devices).
+- **Group editor:** the shared device picker (`DevicePickerWindow`) extended: left **Sites** (with counts and "This
+  server") and **Tags** (with counts); right the searchable, virtualized device list: devices covered by a site or tag
+  checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
+  devices").
+- **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary.
+- Audit: created, changed (rules), deleted groups; a user's group changed.
+
+## Tests
+
+- **Capability type:** the services the gRPC classes use (login, first password, credentials, polling, live view,
+  RTSP ports, tasks) take a `ViewedDevices` value only `DeviceView` can make, never raw device ids. The architecture
+  test fails for a service that takes raw ids or the global repository, except an allow-list with a reason per entry.
+  `AccessRule.AllDevices` marks gRPC methods only users with all devices may call (tag rename and delete, Delete all,
+  Clear log), enforced by the host and covered by the table test; plugin methods use the plugin's declaration (see
+  Plugins).
+- **Canary test over every method** of `AccessPolicy` and every bundled plugin method (opting out needs a written reason):
+  the out-of-view id injected in every id field; NOT_FOUND, no state change, and no VAPIX, RTSP, task or event stream
+  contact with that device (a recording client factory). Plugin methods take JSON, so each plugin's tests name the id
+  fields of its methods. The test starts in stage 1 with a list of methods not converted yet; the list shrinks each
+  stage and is empty when stage 4 ends.
+- **Security tests:** credential list never sent for a group user; deleting a group and restoring an old backup stay
+  closed; races (group change during stream registration, view shrinking with queued tasks, group save during tagging);
+  job, stream and download ids of user A refused for user B; rule save, Test and Any-device counts within the view;
+  empty ids touch only the view; runnable sets, the event catalog and address checks leak no ids or addresses; a
+  removed serial does not join a group when re-added by someone outside it.
+- Perf tests with 30,000 devices and 50,000 tasks: views, streams, task history paging.
+
+## Stages
+
+1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered
+   device feed and the device id methods; the architecture and canary tests.
+2. Lists and counts (tasks, compliance, event log, tags, sites), the waiting list, discovery and the add page; sessions
+   ending when a device leaves the view.
+3. Shared objects of the core with owning groups: event rules, compliance checks.
+4. SDK 0.4.0 call context, per-device events and the job registry; every bundled plugin, with its shared objects
+   (device triggers, Live View views, dashboards) and the address allow-list of Send HTTP request / Send TCP message.
+5. Perf tests with 30,000 devices, docs, review.
