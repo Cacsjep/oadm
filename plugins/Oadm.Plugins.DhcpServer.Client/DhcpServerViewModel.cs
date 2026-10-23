@@ -353,10 +353,10 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     private bool CanSave() => !IsSaving && IsFormValid && MayManage;
 
     /// <summary>
-    /// The role may change the DHCP server ("oadm.dhcp-server:manage": settings, static leases, release); without it the
-    /// page only shows.
+    /// The role may change the DHCP server ("oadm.dhcp-server:manage": settings, static leases, release) and the user has
+    /// all devices (the server serves the whole network); without it the page only shows.
     /// </summary>
-    public bool MayManage => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(DhcpServerPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
+    public bool MayManage => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(DhcpServerPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
     [RelayCommand]
     private async Task AddStaticAsync()

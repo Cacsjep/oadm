@@ -7,6 +7,7 @@ using Oadm.Plugins.DhcpServer.Leases;
 using Oadm.Plugins.DhcpServer.Protocol;
 using Oadm.Plugins.DhcpServer.Serving;
 using Oadm.Plugins.DhcpServer.Status;
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
@@ -44,6 +45,10 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     private long _lastPersist;
     private int _checkRunning;
     private string? _publishedState;
+    private string? _groupPublishedState;
+    private readonly Sdk.Plugins.IDeviceScopes? _scopes;
+    private readonly List<LeasesEvent> _groupPending = [];
+    private readonly Lock _groupGate = new();
 
     /// <param name="firewall">Host firewall (Windows service only): UDP rule for the server port while enabled.</param>
     /// <param name="network">The server's own network (the address-in-use probe when <see cref="DhcpServerOptions.Probe"/> is null).</param>
@@ -51,8 +56,11 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     /// The server's automatic add (<see cref="ICorePluginContext.AutoAdd"/>): leases of Axis devices are handed to it, so
     /// managed devices are followed to their new address and, with <see cref="DhcpConfig.AutoAddAxisDevices"/>, new ones added.
     /// </param>
-    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null, Sdk.Devices.IDeviceAutoAdd? autoAdd = null, Sdk.Sites.IDeviceNetwork? network = null)
+    /// <param name="scopes">The device groups: the pages of users with a group get the leases of their devices.</param>
+    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null, Sdk.Devices.IDeviceAutoAdd? autoAdd = null, Sdk.Sites.IDeviceNetwork? network = null, IDeviceScopes? scopes = null)
     {
+        _scopes = scopes;
+        Viewers = new ViewerScopes(scopes);
         _options = options ?? new DhcpServerOptions();
         _settings = settings;
         _events = events;
@@ -164,6 +172,12 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         [.. UsableInterfaces().Select(n => InterfaceOptions.From(n, $"{n.PrimaryIpv4}/{NetworkOf(n).PrefixLength}"))];
 
     public IReadOnlyList<DhcpNetworkInfo> ListNetworks() => [.. UsableInterfaces().Select(NetworkOf)];
+
+    /// <summary>The device groups whose users opened the page: their pages get the leases of their own devices.</summary>
+    internal ViewerScopes Viewers { get; }
+
+    /// <summary>The state as a user with a device group sees it (the leases of the group's devices).</summary>
+    internal DhcpState GetState(DhcpGroupView view) => view.Filter(GetState(full: true));
 
     public DhcpState GetState(bool full)
     {
@@ -468,6 +482,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
 
                 PublishLeases();
                 PublishState(force: false);
+                await PublishToGroupsAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -558,22 +573,30 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     {
         if (_store.TakeChanges() is { } changes)
         {
+            if (Viewers.Keys().Count > 0)
+            {
+                lock (_groupGate)
+                {
+                    _groupPending.Add(changes); // filtered per group by the background loop
+                }
+            }
+
             // Large changes (e.g. thousands at once) are split so each event stays far below the event size limit.
             const int chunk = 2_000;
             if (changes.Changed.Count + changes.Removed.Count <= chunk)
             {
-                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(changes));
+                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(changes), PluginEventAudience.AllDevices);
                 return;
             }
 
             foreach (var part in changes.Changed.Chunk(chunk))
             {
-                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(changes.Version, part, [])));
+                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(changes.Version, part, [])), PluginEventAudience.AllDevices);
             }
 
             foreach (var part in changes.Removed.Chunk(chunk))
             {
-                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(changes.Version, [], part)));
+                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(changes.Version, [], part)), PluginEventAudience.AllDevices);
             }
         }
     }
@@ -587,7 +610,63 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         }
 
         _publishedState = json;
-        _events?.Publish(DhcpServerMethods.StateTopic, json);
+        _events?.Publish(DhcpServerMethods.StateTopic, json, PluginEventAudience.AllDevices);
+    }
+
+    /// <summary>
+    /// The pages of users with a device group (<see cref="Viewers"/>): a changed state (the same for everyone, no leases) and
+    /// the lease changes of the group's own devices (<see cref="PluginEventAudience.DeviceScope"/>). Background work: the
+    /// group's devices come from the device scopes.
+    /// </summary>
+    private async Task PublishToGroupsAsync(CancellationToken ct)
+    {
+        List<LeasesEvent> pending;
+        lock (_groupGate)
+        {
+            pending = [.. _groupPending];
+            _groupPending.Clear();
+        }
+
+        if (_events is not { } events || _scopes is not { } scopes)
+        {
+            return;
+        }
+
+        var json = DhcpJson.Serialize(GetState(full: false) with { LeaseVersion = 0 });
+        var stateChanged = !string.Equals(json, _groupPublishedState, StringComparison.Ordinal);
+        _groupPublishedState = json;
+        var keys = Viewers.Keys();
+        if (keys.Count == 0 || (!stateChanged && pending.Count == 0))
+        {
+            return;
+        }
+
+        foreach (var key in keys)
+        {
+            var audience = PluginEventAudience.DeviceScope(key);
+            if (stateChanged)
+            {
+                events.Publish(DhcpServerMethods.StateTopic, json, audience);
+            }
+
+            if (pending.Count == 0)
+            {
+                continue;
+            }
+
+            var view = DhcpGroupView.From(await scopes.Devices(key).ListAsync(ct).ConfigureAwait(false));
+            foreach (var changes in pending)
+            {
+                foreach (var part in changes.Changed.Chunk(2_000).Select(c => changes with { Changed = c, Removed = [] })
+                    .Concat(changes.Removed.Chunk(2_000).Select(r => changes with { Changed = [], Removed = r })))
+                {
+                    if (view.Filter(part) is { } mine)
+                    {
+                        events.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(mine), audience);
+                    }
+                }
+            }
+        }
     }
 
     private DhcpNetworkInfo? CurrentNetwork()

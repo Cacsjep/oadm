@@ -104,6 +104,8 @@ setup and the manual test plan: plugin `README.md`.
   and follows managed devices to their new address also when it is off; tests never send DHCP on a real interface.
 - Roles: `save`, `saveStatic`, `deleteStatic`, `makeStatic`, `release` are Admin and audited. The Windows service opens
   UDP 67 in the firewall while enabled.
+- Device groups (SDK 0.4.0): every change only for users with all devices; users with a group see the leases of their
+  own devices (by MAC address = serial, or address), live through their group's scope.
 - Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (in-memory network and loopback with random ports).
 
 ## PKI (core plugin)

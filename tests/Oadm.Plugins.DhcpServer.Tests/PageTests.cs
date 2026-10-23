@@ -216,6 +216,16 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public void A_user_with_a_device_group_only_sees_the_page()
+    {
+        using var vm = new DhcpServerViewModel(_ctx);
+        Assert.True(vm.MayManage);
+        _ctx.AllDevices = false;
+        using var group = new DhcpServerViewModel(_ctx);
+        Assert.False(group.MayManage);
+    }
+
+    [Fact]
     public async Task Static_lease_dialog_shows_errors_under_the_fields()
     {
         await _plugin.InvokeAsync(DhcpServerMethods.SaveStatic, DhcpJson.Serialize(new StaticLeaseRequest("B8:A4:4F:63:13:39", "10.0.0.48", "Lobby")), default);

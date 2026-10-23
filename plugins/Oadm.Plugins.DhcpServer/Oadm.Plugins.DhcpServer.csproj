@@ -24,6 +24,7 @@
   <ItemGroup>
     <Compile Include="..\Oadm.Plugins.Network\AddressProbe.cs" Link="Network\AddressProbe.cs" />
     <Compile Include="..\Oadm.Plugins.Network\Model\Ipv4.cs" Link="Network\Ipv4.cs" />
+    <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
   </ItemGroup>
 
   <ItemGroup>
