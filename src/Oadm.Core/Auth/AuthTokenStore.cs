@@ -124,8 +124,14 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
 
         if (cached.ExpiresUtc <= now)
         {
-            _cache.TryRemove(hash, out _);
+            var ended = _cache.TryRemove(hash, out _);
             await DeleteAsync(hash, ct).ConfigureAwait(false);
+            if (ended)
+            {
+                // Like a logout: what belongs to the session (its jobs, its add page sessions, its streams) ends too.
+                CallerContext.Raise(SessionsEnded, this, new EndedSessions(null, hash));
+            }
+
             return (true, null);
         }
 
@@ -150,7 +156,10 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         return (true, new AuthSession(hash, cached.UserId, cached.UserName, cached.RoleId, expires, cached.DeviceAccess));
     }
 
-    /// <summary>Sessions ended: one token (logout) or every session of a user (password, disabled, deleted).</summary>
+    /// <summary>
+    /// Sessions ended: one token (logout, or the session expired: found on its next use or by <see cref="DeleteExpiredAsync"/>)
+    /// or every session of a user (password, disabled, deleted).
+    /// </summary>
     public event EventHandler<EndedSessions>? SessionsEnded;
 
     /// <summary>Logout: ends one session.</summary>
@@ -207,13 +216,25 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         CallerContext.Raise(SessionsEnded, this, new EndedSessions(userId, null));
     }
 
-    /// <summary>Deletes expired sessions (hourly).</summary>
+    /// <summary>
+    /// Deletes expired sessions (hourly). Each expired session that was in use since the server started raises
+    /// <see cref="SessionsEnded"/> (sessions not used since the start own nothing in memory).
+    /// </summary>
     public async Task<int> DeleteExpiredAsync(CancellationToken ct)
     {
         var now = time.GetUtcNow().UtcDateTime;
+        var ended = new List<string>();
         foreach (var pair in _cache.Where(p => p.Value.ExpiresUtc <= now).ToList())
         {
-            _cache.TryRemove(pair.Key, out _);
+            if (_cache.TryRemove(pair))
+            {
+                ended.Add(pair.Key);
+            }
+        }
+
+        foreach (var hash in ended)
+        {
+            CallerContext.Raise(SessionsEnded, this, new EndedSessions(null, hash));
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);

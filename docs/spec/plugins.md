@@ -128,7 +128,9 @@ tell"; `AnyActiveAsync` answers for every task of the user's devices, null when 
   before they look, the new job is registered before it is checked); a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
   the owner's devices or role change, the rules of the owner's group change (`CancelGroup` on `DeviceGroupStore.Changed`
-  and `Deleted`; a new name or description raises only `Updated`) or the session or the user's sessions end; for a change
+  and `Deleted`; a new name or description raises only `Updated`) or the session or the user's sessions end (also an
+  expired session: `AuthTokenStore.SessionsEnded`); cancelling never throws into the host's events (a plugin callback on
+  the token that throws is logged); for a change
   of devices, role, group or session the job is also forgotten (a finished report of the old devices answers NOT_FOUND). When
   devices move into or out of the owner's group (`HostDeviceScopes.Changed`, the coalesced membership signal:
   `ScopeDevicesChanged`) its finished jobs are forgotten at once and its running ones when they end; at most 50 per user and plugin (finished

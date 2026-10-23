@@ -312,6 +312,29 @@ public sealed class AuthTests
     }
 
     [Fact]
+    public async Task AnExpiredSessionEndsLikeALogoutOnItsNextUseOrInTheHourlyCleanup()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var time = new ManualTime();
+        var tokens = new AuthTokenStore(host.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Core.Persistence.OadmDbContext>>(), time);
+        var ended = new System.Collections.Concurrent.ConcurrentQueue<EndedSessions>();
+        tokens.SessionsEnded += (_, e) => ended.Enqueue(e);
+        var user = (await host.Get<UserStore>().FindByNameAsync(TestServerHost.AdminUserName, CancellationToken.None))!;
+        var used = await tokens.CreateAsync(user, remember: false, "test", CancellationToken.None);
+        var idle = await tokens.CreateAsync(user, remember: false, "test", CancellationToken.None);
+
+        time.Advance(AuthTokenStore.SessionLifetime + TimeSpan.FromMinutes(1));
+        Assert.Null(await tokens.ValidateAsync(used, CancellationToken.None));
+        Assert.Equal([new EndedSessions(null, AuthTokenStore.HashOf(used))], ended);
+
+        // The cleanup ends the session nobody used again, once; a second cleanup and a late use raise nothing more.
+        await tokens.DeleteExpiredAsync(CancellationToken.None);
+        await tokens.DeleteExpiredAsync(CancellationToken.None);
+        Assert.Null(await tokens.ValidateAsync(idle, CancellationToken.None));
+        Assert.Equal([new EndedSessions(null, AuthTokenStore.HashOf(used)), new EndedSessions(null, AuthTokenStore.HashOf(idle))], ended);
+    }
+
+    [Fact]
     public async Task UserRulesProtectTheLastAdministratorAndTheOwnAccount()
     {
         await using var host = await TestServerHost.StartAsync();

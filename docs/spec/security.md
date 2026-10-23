@@ -54,7 +54,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `AccessPolicy.DeniedMessage`); it sets `CallerContext` (user, role, the role's `PermissionSet`), so a task's Owner is
   "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes locked, logged.
   `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly. A new password or a disabled user
-  ends the sessions; a new role applies to the next call (`AuthTokenStore.SetRole`).
+  ends the sessions; a new role applies to the next call (`AuthTokenStore.SetRole`). An expired session ends like a
+  logout (`SessionsEnded` for its token, when its next use finds it expired or in the hourly cleanup): its streams, plugin
+  jobs and add page sessions end.
 - **Roles and permissions.** Every user has one role (table `Roles`: Id, Name 1..64 unique case-insensitive,
   Description 0..200, Kind Administrator / Operator / Viewer / Custom, PermissionsJson = the granted keys, KnownJson = every
   key the role has seen, CreatedUtc, ChangedUtc; at most 50 custom roles). Built-in roles with fixed ids
