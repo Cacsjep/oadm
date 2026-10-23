@@ -7,7 +7,7 @@ An OADM PRO plugin (`oadm.radius`, `"pro": true`, its own source-available licen
 of the network as their **RADIUS server** and authenticates the cameras on the switch ports with **EAP-TLS** (IEEE
 802.1X). It completes the certificate suite: PKI issues the camera's client certificate and trusts the OADM CA (task
 "IEEE 802.1X"), EST renews it, the 802.1X server checks it when the camera plugs in. A clean-room implementation from
-the RFCs below.
+the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one covers).
 
 ## Decisions (2026-10-23)
 
