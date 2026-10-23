@@ -124,6 +124,10 @@ an independent security review the same day). A user may be limited to part of t
   means exactly devices without a site (devices kept from a removed site keep its id).
 - **Existence leaks accepted** (documented, not hidden): "already added" on the add page and a duplicate add, the device
   limit message, the license's device count.
+- **Shared limits accepted** (security review 2026-10-23): the server-wide caps are shared by all users, so one user with
+  a group can fill them for everyone: 200 device triggers, 200 dashboards, 200 Live View views, 16 open event streams of
+  the Metadata Monitor and 20 of the I/O Monitor. They are no per-group quotas; an administrator deletes or stops what
+  fills them.
 - **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
 
 ## The editors
