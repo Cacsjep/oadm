@@ -13,6 +13,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the
   upgrade every user keeps all devices. Such a user sees and runs tasks only on the devices of the group; a queued task
   whose device left the group fails before it starts.
+- Device groups: renaming a group keeps its users' pages open; the DHCP server page shows a group's users the leases of
+  their devices by MAC address only.
 - Device groups: a user with a group finds and adds devices only at the sites of the group, and only with the passwords
   they enter (never the credential list). The waiting list shows each user the devices of their sites; devices waiting
   without a site only to the user who kept them.

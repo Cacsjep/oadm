@@ -395,9 +395,27 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     internal bool CancelOwn(Guid taskId, Guid userId) =>
         _active.TryGetValue(taskId, out var task) && task.Caller?.UserId == userId && task.Cancel();
 
-    /// <summary>Whether a task <paramref name="userId"/> started is queued or running; false for the tasks of others.</summary>
+    /// <summary>
+    /// Whether a task <paramref name="userId"/> started is queued or running; null ("cannot tell") for an active task of
+    /// another user or of the system, so a group user learns nothing about tasks that are not the user's own.
+    /// </summary>
     internal bool? IsActiveOwn(Guid taskId, Guid userId) =>
-        _active.TryGetValue(taskId, out var task) && task.Caller?.UserId == userId;
+        !_active.TryGetValue(taskId, out var task) ? false
+        : task.Caller?.UserId == userId ? true
+        : null;
+
+    /// <summary>The device of an active task (queued or running); false when the task is not active.</summary>
+    internal bool TryGetActiveDevice(Guid taskId, out Guid deviceId)
+    {
+        if (_active.TryGetValue(taskId, out var task) && task.DeviceIds.Count > 0)
+        {
+            deviceId = task.DeviceIds[0];
+            return true;
+        }
+
+        deviceId = Guid.Empty;
+        return false;
+    }
 
     // ------------------------------------------------------------------ the caller's view (docs/spec/device-scope.md, Tasks)
     // A user with all devices gets exactly the unfiltered answers. For a user with a device group, a task belongs to the view

@@ -186,7 +186,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
         void OnGroup(object? sender, Guid id) => signal.Writer.TryWrite(true);
         roles.Changed += OnRoles;
         users.Changed += OnUsers;
-        groups.Changed += OnGroup;
+        groups.Updated += OnGroup; // Your role shows the group's name too
         try
         {
             string? last = null;
@@ -211,7 +211,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
         {
             roles.Changed -= OnRoles;
             users.Changed -= OnUsers;
-            groups.Changed -= OnGroup;
+            groups.Updated -= OnGroup;
         }
     }
 

@@ -39,8 +39,15 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
     private volatile IReadOnlyDictionary<Guid, DeviceGroup>? _groups;
     private long _version;
 
-    /// <summary>Raised (without a caller) with the group's id after a group was created or its rules, name or description changed.</summary>
+    /// <summary>
+    /// Raised (without a caller) with the group's id after a group was created or its rules changed: the devices of its users
+    /// may have changed (their streams end, their plugin jobs are forgotten). A new name or description alone raises only
+    /// <see cref="Updated"/>.
+    /// </summary>
     public event EventHandler<Guid>? Changed;
+
+    /// <summary>Raised (without a caller) with the group's id after every save that changed anything (name, description or rules).</summary>
+    public event EventHandler<Guid>? Updated;
 
     /// <summary>Raised (without a caller) after a group was deleted (its users have no devices, its objects are off).</summary>
     public event EventHandler<DeviceGroupDeleteResult>? Deleted;
@@ -143,6 +150,7 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
 
         var normalizedRules = rules.Normalize();
         DeviceGroupSaveResult result;
+        var rulesChanged = false;
         await _write.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -167,6 +175,7 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
                 group = new DeviceGroup { Id = Guid.NewGuid(), CreatedUtc = now, Revision = 1 };
                 db.DeviceGroups.Add(group);
                 changes.Add(Describe(normalizedRules));
+                rulesChanged = true;
             }
             else
             {
@@ -190,6 +199,7 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
                 if (!SameRules(group.Rules, normalizedRules))
                 {
                     changes.Add("rules: " + Describe(normalizedRules));
+                    rulesChanged = true;
                 }
 
                 if (changes.Count == 0)
@@ -227,7 +237,12 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
             _write.Release();
         }
 
-        CallerContext.Raise(Changed, this, result.Group.Id);
+        if (rulesChanged)
+        {
+            CallerContext.Raise(Changed, this, result.Group.Id);
+        }
+
+        CallerContext.Raise(Updated, this, result.Group.Id);
         return result;
     }
 

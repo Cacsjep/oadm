@@ -155,8 +155,15 @@ internal sealed class FakeVapix : IVapixClientFactory
         return CreateError is { } error ? Task.FromException<IVapixClient>(error) : Task.FromResult<IVapixClient>(_client);
     }
 
+    /// <summary>A value of the test's own flow: the reading of a device must not carry the call that started it.</summary>
+    public static readonly AsyncLocal<string?> CallMarker = new();
+
+    /// <summary>The <see cref="CallMarker"/> each request saw.</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<string?> MarkersSeen { get; } = new();
+
     private async Task<HttpResponseMessage> AnswerAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        MarkersSeen.Enqueue(CallMarker.Value);
         Interlocked.Increment(ref Requests);
         Assert.Equal(IoMonitorPluginInfo.Path, request.RequestUri!.OriginalString);
         Assert.Contains("\"getPorts\"", await request.Content!.ReadAsStringAsync(ct), StringComparison.Ordinal); // read-only

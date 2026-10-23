@@ -169,8 +169,9 @@ on loopback with random ports. They never send DHCP traffic on a real interface.
 
 SDK 0.4.0. The DHCP server serves the whole network, so `save`, `saveStatic`, `deleteStatic`, `makeStatic` and `release`
 are for users with all devices (`RequiresAllDevices`; the page shows without changes for the others, `MayManage`). Users
-with a device group see the page with the leases of their devices only: by MAC address (an Axis serial number is its MAC
-address) or by address on the server's network (`Serving/DhcpGroupView`). Their pages get the state and the lease
+with a device group see the page with the leases of their devices only, by MAC address (an Axis serial number is its MAC
+address; `Serving/DhcpGroupView`). Never by address: the lease of another device at an address a group device had would
+show to the group. Their pages get the state and the lease
 changes of their devices through `PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page
 (`plugins/Shared/ViewerScopes.cs`, filtered in the background loop; a removed lease only by its MAC address). Tests:
 `CanaryTests` (the canary, filtered leases and live changes), `PageViewModelTests` (no changes for a group).

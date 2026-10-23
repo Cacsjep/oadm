@@ -232,10 +232,11 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
 
     /// <summary>
     /// <see cref="DeviceAccessRefusedException"/> in a group user's call for every scope key other than the caller's own
-    /// (<c>ctx.DeviceScopes</c>); methods that declare <see cref="ICorePlugin.SystemAccessReason"/> reach every scope, like
-    /// <c>ctx.System</c>.
+    /// (<c>ctx.DeviceScopes</c>). Methods that declare <see cref="ICorePlugin.SystemAccessReason"/> reach the yes / no
+    /// members of every scope (<paramref name="membership"/>: <c>Exists</c>, <c>Contains</c>, about devices they already
+    /// have from <c>ctx.System</c>), never another scope's device list or name.
     /// </summary>
-    public void CheckScope(string? scopeKey)
+    public void CheckScope(string? scopeKey, bool membership = false)
     {
         if (!InGroupCall)
         {
@@ -243,7 +244,7 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
         }
 
         var mark = CallerContext.PluginCall;
-        if (mark is { SystemAllowed: true } && string.Equals(mark.PluginId, PluginId, StringComparison.OrdinalIgnoreCase))
+        if (membership && mark is { SystemAllowed: true } && string.Equals(mark.PluginId, PluginId, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -282,14 +283,20 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
 
         public bool Exists(string scopeKey)
         {
-            guard.CheckScope(scopeKey);
+            guard.CheckScope(scopeKey, membership: true);
             return inner.Exists(scopeKey);
         }
 
         public bool Contains(string scopeKey, IDeviceInfo device)
         {
-            guard.CheckScope(scopeKey);
+            guard.CheckScope(scopeKey, membership: true);
             return inner.Contains(scopeKey, device);
+        }
+
+        public bool Contains(string scopeKey, Guid deviceId)
+        {
+            guard.CheckScope(scopeKey, membership: true);
+            return inner.Contains(scopeKey, deviceId);
         }
 
         // Checked when made and when read: a repository made in background work is refused in another group's call.
@@ -399,6 +406,12 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
         {
             guard.Check(Member, system);
             return inner.IsActive(taskId);
+        }
+
+        public Task<bool?> AnyActiveAsync(IReadOnlyCollection<Guid> taskIds, CancellationToken ct)
+        {
+            guard.Check(Member, system);
+            return inner.AnyActiveAsync(taskIds, ct);
         }
     }
 

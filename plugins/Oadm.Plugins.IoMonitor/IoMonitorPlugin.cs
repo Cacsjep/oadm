@@ -446,7 +446,17 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
         private string? _lastJson;
         private PortsEvent? _last;
 
-        public void Start() => _loop = Task.Run(LoopAsync, CancellationToken.None);
+        /// <summary>
+        /// Starts the reading detached: it is started inside the first page's call but serves every page of the scope, so it
+        /// never carries that call (the host's caller of the request); it reads through the call of one of its streams.
+        /// </summary>
+        public void Start()
+        {
+            using (ExecutionContext.SuppressFlow())
+            {
+                _loop = Task.Run(LoopAsync, CancellationToken.None);
+            }
+        }
 
         /// <summary>Adds a stream of <paramref name="owner"/>; it gets the last read at once (a second page of the same device).</summary>
         public void Add(string streamId, ICallContext owner)

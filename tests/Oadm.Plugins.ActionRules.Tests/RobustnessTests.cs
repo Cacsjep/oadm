@@ -20,11 +20,13 @@ public sealed class RobustnessTests : IAsyncLifetime
     private readonly FakeDevices _devices = new();
     private readonly RecordingRunner _runner = new();
     private readonly ActionRulesPlugin _plugin = new();
+    private FakeContext? _ctx;
 
     public async Task InitializeAsync()
     {
         _devices.Items.Add(_device);
-        await _plugin.StartAsync(new FakeContext(_devices, new FakeCameras(), _runner, new RecordingEvents(), _data), CancellationToken.None);
+        _ctx = new FakeContext(_devices, new FakeCameras(), _runner, new RecordingEvents(), _data);
+        await _plugin.StartAsync(_ctx, CancellationToken.None);
     }
 
     public async Task DisposeAsync()
@@ -215,11 +217,11 @@ public sealed class RobustnessTests : IAsyncLifetime
         var request = new RunRequest([new DeviceTargets(_device.Id, [new RuleRef(rules[0].Id, RuleView.VersionOf(rules[0]))])], new RulePatch { Name = "Renamed" });
         var started = ActionRulesJson.Deserialize<RunStarted>(await _plugin.InvokeAsync(ActionRulesMethods.Edit, ActionRulesJson.Serialize(request), CancellationToken.None));
         await _plugin.Undo.SaveDeviceAsync(started.RunId, new DeviceUndo(_device.Id, [new UndoRule(rules[0], rules[0])]), CancellationToken.None);
-        Assert.True(_plugin.IsRunning(started.RunId));
+        Assert.True(await _plugin.IsRunningAsync(new Oadm.Plugins.Shared.ContextCall(_ctx!), started.RunId, CancellationToken.None));
 
         Assert.All(started.TaskIds, id => Assert.True(_runner.Cancel(id))); // cancelled before start: no task reports
 
-        Assert.False(_plugin.IsRunning(started.RunId));
+        Assert.False(await _plugin.IsRunningAsync(new Oadm.Plugins.Shared.ContextCall(_ctx!), started.RunId, CancellationToken.None));
         await _plugin.InvokeAsync(ActionRulesMethods.Undo, ActionRulesJson.Serialize(new UndoRequest(started.RunId)), CancellationToken.None);
         Assert.Equal(2, _runner.Runs.Count);
     }

@@ -22,7 +22,7 @@ an independent security review the same day). A user may be limited to part of t
   Deleting a group sets its users to **no devices** and disables the objects it owned in the same transaction (fail
   closed) until an administrator gives them another; a test proves it.
 - **Group changes** (rules, a user's group): the user's streams that carry devices end and reconnect with the new view,
-  like a role change (`CallerStreams`).
+  like a role change (`CallerStreams`). A new name or description alone ends nothing (no streams, no jobs, no prune).
 
 ## Enforcement: explicit, fail closed
 
@@ -68,9 +68,13 @@ an independent security review the same day). A user may be limited to part of t
 - **Jobs, streams and downloads have an owner:** an SDK job registry keyed to the caller's user and session (report,
   scan, export and monitor ids); every id-taking method and download checks it; ids of another user answer NOT_FOUND.
   When the owner's devices change (another group, new rules of the group, another role) the owner's jobs end and are
-  forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. Tasks a call or a job
+  forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
+  of the group (tag, site, add, remove; the coalesced `HostDeviceScopes.Changed`) the finished jobs of its users are
+  forgotten (a Snapshot Report PDF, an event list read) and the running ones when they end. Tasks a call or a job
   starts through `call.Tasks` belong to the caller (`TaskEngine.ForView`: owner, queue check, `ITaskExecutionContext.Caller`).
-  `ctx.DeviceScopes` answers a group user's call (and its jobs) only for the caller's own scope key.
+  `ctx.DeviceScopes` answers a group user's call (and its jobs) only for the caller's own scope key; a method with a
+  `SystemAccessReason` also gets `Exists` and `Contains` of other keys (yes or no about devices it has from `ctx.System`),
+  never their device lists or names.
 - **Uploads have an owner:** an upload (`FileService.Upload`) belongs to the user and session that sent it
   (`UploadOwner`); `FileService.Delete`, a backup restore and the tasks of another user or session answer like an unknown
   id; tasks the system starts (no caller) read any upload. Uploads from before 4.2 and of the system belong to nobody.
@@ -100,7 +104,7 @@ an independent security review the same day). A user may be limited to part of t
   have no owner and run on all devices as before device groups. Send HTTP request, Send TCP message and Send email send
   to any address (no allowed-address list), as in 4.1.0.
 - **Server-wide services** (NTP, DHCP, PKI and EST settings, the VAPIX Commander command library): managing them stays with users who have all devices; users with a group may view the pages, rows filtered to
-  their group (by device, address or serial). The role and user editors say so.
+  their group (by device, address or serial; DHCP leases by MAC address only, never by address). The role and user editors say so.
 - **Server log:** hidden for users with a group (its text names devices). System report, backups, audit log, support
   report: as today (administrator or users with all devices).
 - **Sites page:** users with a group see only the sites of their group, with their group's counts.
@@ -138,6 +142,12 @@ an independent security review the same day). A user may be limited to part of t
   a group can fill them for everyone: 200 device triggers, 200 dashboards, 200 Live View views, 16 open event streams of
   the Metadata Monitor and 20 of the I/O Monitor. They are no per-group quotas; an administrator deletes or stops what
   fills them.
+- **Address takeover accepted** (security review 2026-10-23): a group user can still give a camera of the group the
+  address of a device outside it through raw requests of the VAPIX Commander or in the web interface (Network settings and
+  Assign IP address refuse it). The harm is small: over HTTPS the pinned certificate stops the polling of the other device,
+  over HTTP the camera gets only a digest response, never the password.
+- **Shared waiting entries accepted**: a waiting entry with a site of the group is shared by the group's users: each
+  sees it, removes it and uses Try now, and it is added as the user who queued it.
 - **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
 
 ## The editors
@@ -193,7 +203,8 @@ an independent security review the same day). A user may be limited to part of t
   (`AuthSession.DeviceAccess`, `AuthTokenStore.SetDeviceAccess`).
 - **Store**: `DeviceGroupStore` (in memory after `LoadAsync`; `SaveAsync(id?, name, description, rules,
   expectedRevision)`, `DeleteAsync`, `RevisionOf`, `GroupsUsingTag`, `GroupsUsingSite`, `TagIdsInUse`, events `Changed`
-  (group id) and `Deleted`). Delete: users to no devices and every `IDeviceGroupOwnedObjects` (core: `CoreOwnedObjects`
+  (group id; created or new rules), `Updated` (every save that changed anything, also name or description: Your role) and
+  `Deleted`). Delete: users to no devices and every `IDeviceGroupOwnedObjects` (core: `CoreOwnedObjects`
   for compliance checks: owner cleared, turned off) in one transaction, then
   `UserStore.NotifyDeviceAccessChanged`. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
   never "no devices" by choice; the overloads without it give all devices: first administrator, older clients),
@@ -279,7 +290,8 @@ an independent security review the same day). A user may be limited to part of t
 
 - **Runs**: `TaskGrpcService.Run` takes `view.GetAsync(ids)` and calls `TaskEngine.RunAsync(pluginId, ViewedDevices,
   payload, TaskCaller)`; `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: outside ids
-  refuse the run; cancel and the active check only for the user's own tasks when the user has a group). The raw-id
+  refuse the run; cancel and the active check only for the user's own tasks when the user has a group, another user's
+  active task answers null, "cannot tell"; `AnyActiveAsync` answers for the tasks of the view's devices). The raw-id
   `RunAsync` (`ITaskRunner`) is the system runner; a caller with a group in `CallerContext` is refused outside the view
   (backstop, never without `TaskEngine.Views`).
 - **Queue check**: each task keeps its `TaskCaller` in memory; leaving the queue it reads the owner's current view
@@ -363,8 +375,12 @@ an independent security review the same day). A user may be limited to part of t
 - **Sweep tables** (Action Rule Editor, Edge storage, Image Health Dashboard): `DeviceSweep.SnapshotAsync(caller)` answers
   only rows of devices the caller sees now and drops the others from the table (a tag or site change, before any prune);
   `ReadOneAsync` removes the row of a device no longer in the scope; no rows when the caller's devices cannot be listed.
-- **Action Rule Editor**: user calls never use the guarded `ctx.Tasks`; Undo declares `SystemAccessReason` for the
-  read-only "did the run's tasks end" check (`ctx.System.Tasks.IsActive`); ended runs are forgotten when a task ends. A
+  What the sweep publishes in the background (the state and its counts) comes from `ScopedSnapshot()`: rows of devices
+  no longer in the scope (`IDeviceScopes.Contains(key, deviceId)`, a few hash lookups) are dropped first.
+- **Action Rule Editor**: user calls never use the guarded `ctx.Tasks` and declare no `SystemAccessReason`; Undo asks the
+  caller's runner whether the run's tasks ended (`call.Tasks.AnyActiveAsync`: a group user's answer covers the tasks of
+  the group's devices, whichever user of the group started them). A task end counts the run down in O(1), whatever the
+  run's size; a run whose tasks were cancelled while queued is checked by Undo and forgotten after 6 hours. A
   task is bound to its run before it reads the device: the run of its user's scope, an undo task only for a run Undo
   marked.
 - **VAPIX Commander**: a rollout belongs to the user who started it; a task of another user naming its id is refused.
@@ -379,6 +395,8 @@ an independent security review the same day). A user may be limited to part of t
   devices.
 - **Edge Recording Export**: a group user's export stream checks the camera's membership every 5 s and ends when it left.
 - **Hardening scan**: a device that leaves a group user's devices during the scan gets no stored or published row.
+- **I/O Monitor**: the reading of a device starts detached from the first page's call (it carries no user) and reads
+  through the call of one of its pages.
 
 ## Stages
 

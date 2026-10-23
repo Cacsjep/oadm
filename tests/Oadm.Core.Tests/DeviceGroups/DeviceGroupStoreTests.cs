@@ -37,6 +37,26 @@ public sealed class DeviceGroupStoreTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task ANewNameOrDescriptionRaisesOnlyUpdatedNewRulesRaiseChanged()
+    {
+        var created = (await SaveGroupAsync("B", serials: ["ACCC8E000001"])).Group;
+        var changed = new List<Guid>();
+        var updated = new List<Guid>();
+        Groups.Changed += (_, id) => changed.Add(id);
+        Groups.Updated += (_, id) => updated.Add(id);
+        var rules = new DeviceGroupRules(false, [], [], ["ACCC8E000001"], []);
+
+        // Name and description only: the users' devices stay, so their streams and jobs go on.
+        var renamed = (await Groups.SaveAsync(created.Id, "Building B", "Second floor", rules, created.Revision, Ct)).Group;
+        Assert.Empty(changed);
+        Assert.Equal([created.Id], updated);
+
+        await Groups.SaveAsync(created.Id, "Building B", "Second floor", new DeviceGroupRules(false, [], [], ["ACCC8E000002"], []), renamed.Revision, Ct);
+        Assert.Equal([created.Id], changed);
+        Assert.Equal([created.Id, created.Id], updated);
+    }
+
+    [Fact]
     public async Task ASaveOnAnOlderRevisionANameInUseAndABadSerialAreRefused()
     {
         var group = (await SaveGroupAsync("North")).Group;

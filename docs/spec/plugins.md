@@ -50,7 +50,8 @@ returns null or throws `NotSupportedException`.
   `UpdateCredentialsAsync`, `CreateClientForAsync` (the device at another address, caller disposes),
   `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
   `DeviceIdentityException` and the record stays; see "Following moved devices" and the PKI tasks).
-- `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or running), `Settings` (namespaced per
+- `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or running; `AnyActiveAsync(ids)`, SDK 0.4.0: whether any of
+  them is, on `call.Tasks` of a group user for the tasks of the user's devices whoever started them), `Settings` (namespaced per
   plugin), `Records` (`IPluginRecords`, 4.1: the plugin's records in the table PluginRecords, named collections of JSON
   values by key, one row per record, `SetManyAsync` writes many in one transaction; for data that grows with the devices,
   where one settings value would be rewritten whole; `MemoryPluginRecords` for tests and hosts without a database; null
@@ -71,7 +72,8 @@ returns null or throws `NotSupportedException`.
   `SystemAccessReason(method)` (the few methods that may use `ctx.System` in a group user's call). `ICorePluginContext.System`
   (`ISystemAccess`: every device, for background work; default the context's own members) and `Jobs` (`IPluginJobs`:
   work owned by the user who started it, `Find` answers null for another user's id) and `DeviceScopes` (`IDeviceScopes`:
-  `Exists`, `Contains`, `Devices`, `NameOf` per scope key, `Changed`, `InAnyGroup`: objects a plugin keeps per group run only on its
+  `Exists`, `Contains` (a device, or a device id: from the host's group fields of each device, false when unknown),
+  `Devices`, `NameOf` per scope key, `Changed`, `InAnyGroup`: objects a plugin keeps per group run only on its
   devices, a deleted group's are off). `ITaskExecutionContext.Caller` (the
   user who started the task, with the user's view as it is when the task leaves the queue; null for tasks the system
   or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
@@ -91,7 +93,8 @@ returns null or throws `NotSupportedException`.
   true); then they call the plugin's call overload inside a `PluginCallMark` (`CallerContext.PluginCall`, cleared by
   `CallerContext.Suppress`). The call (`HostCallContext`) reads devices from the view, refuses VAPIX clients, task runs
   (whole batch) and event streams (`ViewedEventStreams`: they end when the device leaves the view) outside it with
-  `DevicesNotAvailableException`, and lets a group user cancel only tasks started through its own calls. Its `Tasks` is
+  `DevicesNotAvailableException`, and lets a group user cancel only tasks started through its own calls (`IsActive` of another user's task: null, "cannot
+tell"; `AnyActiveAsync` answers for every task of the user's devices, null when one runs on a device outside them). Its `Tasks` is
   `TaskEngine.ForView(view, TaskCaller.Of(caller))`, also in the user's jobs: the caller owns the tasks (the owner text is
   the caller's "user@machine", never what the plugin passes), each task checks the caller's view again when it leaves the
   queue and gets `ITaskExecutionContext.Caller`. The context's
@@ -101,7 +104,8 @@ returns null or throws `NotSupportedException`.
   with a `SystemAccessReason`. A `Task.Run` or timer started in the call keeps the mark and is refused too.
   `ctx.DeviceScopes` is wrapped the same way: in a group user's call (and its jobs) every member refuses a key other than
   the caller's own (`PluginCallMark.ScopeKey`; a repository from `Devices(key)` checks again when read); methods with a
-  `SystemAccessReason` reach every scope.
+  `SystemAccessReason` reach only `Exists` and `Contains` of every scope (yes or no about devices they have from
+  `ctx.System`), never another scope's `Devices` or `NameOf`.
   `CorePluginHost.InvokeAsync(pluginId, ...)` without a caller stays for in-process host work and tests (no user,
   background). Task plugin queries: `TaskPluginQueries.QueryAsync(caller, ...)` (the device through the view, the query
   context's `Devices` = the view, the 0.4.0 rule; `ITaskQueryContext.ManagedAddressesAsync(addresses)`: which candidates a
@@ -113,8 +117,10 @@ returns null or throws `NotSupportedException`.
   job's device scope; a job runs detached
   (`CallerContext.Suppress`) with the owner's mark, ends when its work ends, on `Cancel`, when its plugin stops and when
   the owner's devices or role change, the rules of the owner's group change (`CancelGroup` on `DeviceGroupStore.Changed`
-  and `Deleted`) or the session or the user's sessions end; for a change of devices, role or group the job is also
-  forgotten (a finished report of the old devices answers NOT_FOUND); at most 50 per user and plugin (finished
+  and `Deleted`; a new name or description raises only `Updated`) or the session or the user's sessions end; for a change
+  of devices, role or group the job is also forgotten (a finished report of the old devices answers NOT_FOUND). When
+  devices move into or out of the owner's group (`HostDeviceScopes.Changed`, the coalesced membership signal:
+  `ScopeDevicesChanged`) its finished jobs are forgotten at once and its running ones when they end; at most 50 per user and plugin (finished
   ones dropped first, else "Wait until your earlier work has finished."). **Events**: `PluginEventHub.WatchAsync(pluginId,
   PluginWatcher, ct)`; the old `Publish(topic, json)` = `PluginEventAudience.AllDevices`; `Device` / `DeviceRows` are
   checked against the watcher's view ids in the watcher's own loop (rows filtered in order; a payload that is not an array

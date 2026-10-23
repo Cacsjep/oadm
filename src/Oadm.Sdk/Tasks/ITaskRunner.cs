@@ -20,4 +20,29 @@ public interface ITaskRunner
     /// starts, so a plugin waiting for its tasks asks here instead of waiting for them to report.
     /// </summary>
     bool? IsActive(Guid taskId) => null;
+
+    /// <summary>
+    /// Whether any of the tasks is still queued or running: true when one is, false when none is, null when the host cannot
+    /// tell (SDK 0.4.0). On <see cref="Plugins.ICallContext.Tasks"/> of a user with a device group it answers for the tasks of
+    /// the devices in the user's view, whichever user started them (<see cref="IsActive"/> answers only the user's own);
+    /// a task on a device outside the view makes the answer null. The default asks <see cref="IsActive"/> per task.
+    /// </summary>
+    Task<bool?> AnyActiveAsync(IReadOnlyCollection<Guid> taskIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(taskIds);
+        var unknown = false;
+        foreach (var id in taskIds)
+        {
+            switch (IsActive(id))
+            {
+                case true:
+                    return Task.FromResult<bool?>(true);
+                case null:
+                    unknown = true;
+                    break;
+            }
+        }
+
+        return Task.FromResult<bool?>(unknown ? null : false);
+    }
 }

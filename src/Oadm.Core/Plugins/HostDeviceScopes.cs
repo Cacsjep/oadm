@@ -89,6 +89,17 @@ public sealed class HostDeviceScopes : IDeviceScopes, IDisposable
         return GroupOf(scopeKey) is { } id && _views.FilterOf(id).Contains(device);
     }
 
+    /// <summary>From the group-relevant fields kept per device: an unknown device (removed, not loaded yet) is in no scope.</summary>
+    public bool Contains(string scopeKey, Guid deviceId)
+    {
+        if (!_rows.TryGetValue(deviceId, out var row))
+        {
+            return false;
+        }
+
+        return IsAll(scopeKey) || (GroupOf(scopeKey) is { } id && _views.FilterOf(id).Contains(row));
+    }
+
     public IDeviceRepository Devices(string scopeKey) => new ScopeDevices(this, scopeKey);
 
     public bool InAnyGroup(IDeviceInfo device)

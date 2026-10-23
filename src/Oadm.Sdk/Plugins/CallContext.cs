@@ -118,6 +118,13 @@ public interface IDeviceScopes
     /// default and a host that cannot tell answer true.
     /// </summary>
     bool InAnyGroup(IDeviceInfo device) => true;
+
+    /// <summary>
+    /// True when the device with <paramref name="deviceId"/> is managed and in the devices of <paramref name="scopeKey"/> now
+    /// (a few hash lookups, no request; SDK 0.4.0): for state kept per scope whose rows hold only the device id, e.g. the
+    /// counts a sweep publishes. Fail closed: the default and a host that cannot tell answer false.
+    /// </summary>
+    bool Contains(string scopeKey, Guid deviceId) => false;
 }
 
 /// <summary>Who receives a plugin event (<see cref="IPluginEvents.Publish(string, string?, PluginEventAudience)"/>).</summary>
