@@ -213,7 +213,7 @@ Switches differ; the server assumes nothing a switch may leave out and is strict
 ## Certificates and revocation (PKI)
 
 Decision 2026-10-23: **PKI owns the list of issued certificates and the revocation list**; EST and the 802.1X server read
-it. One list, so a revoked certificate can neither authenticate nor renew. Built in stage 1 of this feature (PKI part).
+it. One list, so a revoked certificate can neither authenticate nor renew. Stage 1 (below).
 
 - **PKI page, new tab "Certificates":** every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X,
   Renew) or by EST: device, use (HTTPS, IEEE 802.1X, MQTT, RTSPS), issued by (Task, EST), valid from, valid until,
@@ -253,7 +253,7 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Built
 
 ## Sites
 
-Stage 3. A switch at a site sends its requests to the **site node**, which relays the datagrams to the server over its
+Stage 4. A switch at a site sends its requests to the **site node**, which relays the datagrams to the server over its
 outgoing connection (`ctx.Sites.OpenUdpRelayAsync(site, 1812)`, the relay NTP uses; no new SDK). The RADIUS, EAP and TLS
 logic runs only on the server; the node never sees a secret or a key.
 
@@ -296,7 +296,13 @@ and reason, never secrets or key material.
 
 ## Stages
 
-1. RADIUS and EAP-TLS core, fragmentation, the server certificate, switches (changed while running), Sessions and Log,
-   the TLS alert texts.
-2. VLAN rules (off by default), event rules, device groups filtering.
-3. Switches at sites through the site node.
+1. PKI: the list of issued certificates and the revocation list (Certificates tab, Revoke); EST refuses revoked
+   certificates.
+2. RADIUS and EAP-TLS core (own RADIUS codec, BouncyCastle TLS proof first), fragmentation, the server certificate,
+   switches (changed while running), Sessions and Log, the TLS alert texts, Advanced, the Revoked tab.
+3. VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab too: group users see the
+   certificates of their devices).
+4. Switches at sites through the site node.
+
+The switches, VLAN rules, settings, the issued certificates and the revocation list are part of the encrypted backup
+(plugin settings and records, `docs/spec/settings-backup.md`); a restore brings back the revocation list with the CA.
