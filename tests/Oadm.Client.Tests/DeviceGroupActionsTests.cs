@@ -130,6 +130,28 @@ public sealed class DeviceGroupActionsTests
     }
 
     [Fact]
+    public async Task A_server_before_device_groups_gives_the_check_form_no_owner_field()
+    {
+        await using var ui = new UiThread();
+        await ui.RunAsync(async () =>
+        {
+            var api = Substitute.For<IOadmApi>();
+            api.GetComplianceCatalogAsync(Arg.Any<CancellationToken>()).Returns(new ComplianceCatalog());
+            api.ListDeviceGroupsAsync(Arg.Any<CancellationToken>()).Returns<DeviceGroupList>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "Unknown service")));
+            var dialogs = Substitute.For<IDialogService>();
+            ComplianceCheckEditorViewModel? shown = null;
+            dialogs.ShowComplianceCheckAsync(Arg.Do<ComplianceCheckEditorViewModel>(e => shown = e)).Returns(false);
+            using var page = new ComplianceViewModel(api, dialogs, new DeviceStore(), ui, new InMemoryClientSettingsStore(), Admin());
+
+            await page.NewCheckCommand.ExecuteAsync(null);
+
+            Assert.Null(page.ErrorText);
+            Assert.NotNull(shown);
+            Assert.False(shown!.ShowOwner);
+        });
+    }
+
+    [Fact]
     public async Task The_add_buttons_are_disabled_with_the_refusal_as_tooltip()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");

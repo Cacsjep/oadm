@@ -162,7 +162,9 @@ an independent security review the same day). A user may be limited to part of t
 - **Group editor:** the shared device picker (`DevicePickerWindow`) extended: left **Sites** (with counts and "This
   server") and **Tags** (with counts); right the searchable, virtualized device list: devices covered by a site or tag
   checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
-  devices").
+  devices") that counts like the server (an excepted device is out, also when it is a single device; ticking it takes it
+  back). An except stays stored while no chosen site or tag covers the device. Owner fields of compliance checks are left
+  out for a server before device groups (UNIMPLEMENTED).
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary. For an
   administrator the field is locked and shows what the account stores (a group stays stored and applies once the role
   changes); every role change below Administrator sends the Devices choice the form shows.

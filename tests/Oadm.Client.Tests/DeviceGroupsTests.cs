@@ -110,9 +110,9 @@ public sealed class DeviceGroupsTests
         Assert.Equal(["ACCC8E000001"], choice.Serials);
         Assert.Equal(["ACCC8E000003"], choice.ExceptSerials);
 
-        // An except of a device no site or tag covers any more is not kept.
+        // An except of a device no site or tag covers now is kept (hidden): the device stays out when its site comes back.
         picker.Sites[1].IsChecked = false;
-        Assert.Empty(picker.GroupChoice.ExceptSerials);
+        Assert.Equal(["ACCC8E000003"], picker.GroupChoice.ExceptSerials);
         Assert.False(atB.CanInclude);
         Assert.Null(atB.Note);
         picker.Sites[1].IsChecked = true;
@@ -144,6 +144,26 @@ public sealed class DeviceGroupsTests
         Assert.True(choice.ThisServer);
         Assert.Equal(["ACCC8E000004", "B8A44F000099"], choice.Serials);
         Assert.Equal(["ACCC8E000002", "B8A44F000098"], choice.ExceptSerials);
+    }
+
+    [Fact]
+    public void An_excepted_single_device_is_not_counted_and_ticking_it_takes_it_back()
+    {
+        // As stored: the device is a single device and excepted (its site was removed from the rules later).
+        var initial = new DeviceGroupChoice(false, [], [], ["ACCC8E000001"], ["ACCC8E000001"]);
+        var picker = new DevicePickerViewModel(Devices(), initial, Options);
+        DevicePickItem single = picker.Visible.Single(i => i.Address == "10.0.0.1");
+
+        Assert.False(single.Chosen); // the server leaves it out: excepted wins
+        Assert.Equal(0, picker.CoveredCount);
+        Assert.Equal("0 of 6 devices", picker.Summary);
+
+        single.Chosen = true;
+        Assert.True(single.Chosen);
+        Assert.False(single.IsExcepted);
+        Assert.Equal("1 of 6 devices", picker.Summary);
+        Assert.Equal(["ACCC8E000001"], picker.GroupChoice.Serials);
+        Assert.Empty(picker.GroupChoice.ExceptSerials);
     }
 
     [Fact]

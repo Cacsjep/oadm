@@ -160,8 +160,9 @@ public sealed partial class DevicePickItem : ObservableObject
     public partial string? CoveredBy { get; internal set; }
 
     /// <summary>
-    /// Device group editor: the device is excepted from the group (never in it, even when a site or tag covers it). It
-    /// counts only while a site or tag covers the device (<see cref="IsLeftOut"/>).
+    /// Device group editor: the device is excepted from the group (never in it, even when a site, a tag or its own tick
+    /// covers it, like on the server). Shown while a site or tag covers the device (<see cref="IsLeftOut"/>); kept also when
+    /// none does now, so the device stays out when one covers it again.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Chosen), nameof(Note), nameof(CanExcept), nameof(CanInclude), nameof(IsLeftOut))]
@@ -201,14 +202,22 @@ public sealed partial class DevicePickItem : ObservableObject
         }
     }
 
-    /// <summary>The check box: chosen by itself or through a tag (a device of a chosen tag cannot be unchosen alone).</summary>
+    /// <summary>
+    /// The check box: chosen by itself or through a tag (a device of a chosen tag cannot be unchosen alone). In the device
+    /// group editor an excepted device is never chosen; ticking it by itself takes it back into the group.
+    /// </summary>
     public bool Chosen
     {
-        get => (IsChecked || CoveredBy is not null) && !IsLeftOut;
+        get => (IsChecked || CoveredBy is not null) && !IsExcepted;
         set
         {
             if (CoveredBy is null)
             {
+                if (value && IsExcepted)
+                {
+                    SetExcepted(false);
+                }
+
                 IsChecked = value;
             }
         }
@@ -400,14 +409,14 @@ public sealed partial class DevicePickerViewModel : ObservableObject
 
     /// <summary>
     /// The device group editor's result: "This server", the chosen sites, tags (definition ids), single devices and
-    /// excepted devices by serial number (only those a chosen site or tag covers, plus those of devices not listed).
+    /// excepted devices by serial number (also those no chosen site or tag covers now, and those of devices not listed).
     /// </summary>
     public DeviceGroupChoice GroupChoice => new(
         Sites.Any(s => s.Id is null && s.IsChecked),
         [.. Sites.Where(s => s.IsChecked && s.Id is not null).Select(s => s.Id!.Value)],
         [.. Tags.Where(t => t.IsChecked && t.Id is not null).Select(t => t.Id!)],
         [.. _all.Where(i => i.IsChecked).Select(i => SerialKey(i.Device.Serial)).Concat(_otherSerials).Distinct(StringComparer.Ordinal)],
-        [.. _all.Where(i => i.IsLeftOut).Select(i => SerialKey(i.Device.Serial)).Concat(_otherExcepts).Distinct(StringComparer.Ordinal)]);
+        [.. _all.Where(i => i.IsExcepted).Select(i => SerialKey(i.Device.Serial)).Concat(_otherExcepts).Distinct(StringComparer.Ordinal)]);
 
     /// <summary>How many devices the group has with the choice now ("412" of "412 of 4,812 devices").</summary>
     public int CoveredCount { get; private set; }
