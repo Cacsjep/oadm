@@ -150,6 +150,51 @@ an independent security review the same day). A user may be limited to part of t
   removed serial does not join a group when re-added by someone outside it.
 - Perf tests with 30,000 devices and 50,000 tasks: views, streams, task history paging.
 
+## Code (foundation)
+
+- **Model** (migration `DeviceGroups`): table `DeviceGroups` (`Oadm.Core.DeviceGroups.DeviceGroup`: Name unique
+  case-insensitive 1..64, Description 0..200, `ThisServer`, `SiteIds`, `TagIds`, `Serials`, `ExceptSerials` as JSON
+  columns, `Revision` from 1, at most 200 groups, 100 sites, 500 tags and 30,000 serials each); `Users.AllDevices` +
+  `Users.DeviceGroupId` (FK Restrict); `Devices.AddedByAllDevices` + `AddedByGroupId` (no FK: a deleted group leaves the
+  serial dormant); `WaitingDevices.QueuedByUserId`; `EventRules` and `ComplianceChecks` `OwnerAllDevices` +
+  `OwnerGroupId` (FK Restrict). The migration sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on
+  every existing row; new rows have no database default (C# default false: every writer chooses).
+- **Scope value**: `Oadm.Core.Auth.DeviceScope(AllDevices, GroupId)` for users and owners; `None` = no devices. The
+  caller: `AuthenticatedCaller.Devices` (`CallerDevices(Access, GroupRevision)`, default `None`), `HasAllDevices`
+  (Administrator always), `DeviceGroupId`, `SessionId` (opaque, for plugins). Sessions carry the access
+  (`AuthSession.DeviceAccess`, `AuthTokenStore.SetDeviceAccess`).
+- **Store**: `DeviceGroupStore` (in memory after `LoadAsync`; `SaveAsync(id?, name, description, rules,
+  expectedRevision)`, `DeleteAsync`, `RevisionOf`, `GroupsUsingTag`, `GroupsUsingSite`, `TagIdsInUse`, events `Changed`
+  (group id) and `Deleted`). Delete: users to no devices and every `IDeviceGroupOwnedObjects` (core: `CoreOwnedObjects`
+  for event rules and compliance checks: owner cleared, turned off) in one transaction, then
+  `UserStore.NotifyDeviceAccessChanged`. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
+  never "no devices" by choice; the overloads without it give all devices: first administrator, older clients),
+  `UpdateAsync(..., DeviceScope? access, ...)`, event `UserDeviceAccessChanged`; texts `DeviceGroupTexts`.
+- **Predicate**: `DeviceGroupFilter.Compile` (hash sets; tags by id resolved through `DeviceScopeCatalog` =
+  `DeviceTagStore.DefinitionNames` (updated before a write publishes its devices) + the sites that exist
+  (`ISiteStates.NameOf`); key `DeviceScopeCatalogKey`). The serial rule covers a device only when
+  `AddedByAllDevices` or `AddedByGroupId` is the group.
+- **Views**: `DeviceViewFactory.ForAsync(caller)` (throws without a caller), `ForScopeAsync(scope, user)`,
+  `ForUserAsync(userId)`, `System` (background work), `CountAsync(rules)`, `CountGroupsAsync`; `DeviceView.ListAsync`,
+  `AllAsync`, `GetAsync(ids)` / `GetOrAllAsync(ids)` (any unknown or outside id: `DevicesNotAvailableException`, NOT_FOUND
+  `DeviceMessages.NoLongerAvailable(n)`), `FindAsync`, `Contains`, `IdsAsync` (cached per group revision, catalog key and
+  `DeviceChangeFeed.Version`), `ScopeKey`. `ViewedDevices` (internal constructor, only `DeviceView` makes it). gRPC:
+  `views.ForAsync(ServerCallContext)` (`Oadm.Server.Auth.CallerViews`, the caller from the call's `UserState`,
+  `AuthInterceptor.CallerOf`); the interceptor maps `DevicesNotAvailableException` of any service to NOT_FOUND.
+- **Access rule**: `AccessRule.AllDevices` (`.ForAllDevices()`): tag rename and delete, task Delete all, event log Clear,
+  server log, compliance on / off, server settings Set and the credential list; refused "Only users with all devices can
+  do this." (`DeviceGroupTexts.AllDevicesOnly`, `AuthInterceptor.RequireAllDevices` for checks inside a call).
+- **Background boundary**: `CallerContext.Suppress`, `RunDetached`, `Detached`, `Raise`: task runs, discovery and login
+  work, the retry timer of the local network, and the events of the device and task feeds, tags, users, roles, sessions,
+  waiting list, sites, plugins, settings, compliance and event rules raise without the caller.
+- **Streams**: `CallerStreams` ends the non-session streams of a user whose access changed and of the users of a group
+  whose rules changed; a stream whose devices changed between check and registration ends with UNAVAILABLE "Your
+  devices changed. Connect again.".
+- **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/*`, `Persistence/DeviceGroupsMigrationTests`;
+  `tests/Oadm.Server.Tests/DeviceGroupServiceTests`, `DeviceGroups/ArchitectureTests` (allow-lists with the converting
+  package), `DeviceGroups/CanaryTests` (cases, not-converted methods and plugins per package, methods without devices,
+  Administrator and all-devices methods closed by the rule).
+
 ## Stages
 
 1. Device groups (model, storage, compiled predicate), the editors, the user's group, audit; `DeviceView`, the filtered
