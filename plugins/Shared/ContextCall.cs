@@ -45,7 +45,7 @@ internal static class OwnerScope
     public static string Of(string? stored) => string.IsNullOrWhiteSpace(stored) ? ICallContext.AllDevicesScopeKey : stored;
 
     /// <summary>The refusal of a save by a user without devices (no group, or the group was deleted).</summary>
-    public const string NoDevicesRefusal = "Your account has no devices.";
+    public const string NoDevicesRefusal = Oadm.Sdk.Devices.DeviceGroupMessages.NoDevicesRefusal;
 
     /// <summary>
     /// Whether <paramref name="caller"/> has no devices: not all devices and no group. A group's scope key is the group's id

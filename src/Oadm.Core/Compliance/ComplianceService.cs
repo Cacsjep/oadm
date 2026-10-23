@@ -68,13 +68,19 @@ public sealed class ComplianceService(
     /// only with <paramref name="mayChooseOwner"/> (administrators). Throws <see cref="ComplianceValidationException"/>
     /// with the first problem, <see cref="KeyNotFoundException"/> (a check, device group or tag that does not exist for the
     /// owner), <see cref="DevicesNotAvailableException"/> (chosen devices outside the owner's devices) and
-    /// <see cref="UnauthorizedAccessException"/> (another owner without the right).
+    /// <see cref="UnauthorizedAccessException"/> (another owner without the right). A caller without devices (no group, or
+    /// the group was deleted) saves nothing (<see cref="DeviceAccessRefusedException"/>, <see cref="DeviceGroupTexts.NoDevicesRefusal"/>).
     /// </summary>
     public async Task<(ComplianceCheck Check, bool Created)> SaveAsync(
         ComplianceCheck check, DeviceView caller, DeviceScope? owner, bool mayChooseOwner, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(check);
         ArgumentNullException.ThrowIfNull(caller);
+        if (!caller.HasAllDevices && caller.GroupId is null)
+        {
+            throw new DeviceAccessRefusedException(DeviceGroupTexts.NoDevicesRefusal);
+        }
+
         var existing = check.Id == Guid.Empty ? null : engine.GetCheck(check.Id);
         if (check.Id != Guid.Empty && (existing is null || !OwnerScopes.Sees(caller, existing.Owner)))
         {

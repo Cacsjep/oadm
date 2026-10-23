@@ -186,6 +186,9 @@ public static class DeviceGroupTexts
 
     public const string ChooseDevices = Oadm.Sdk.Devices.DeviceGroupMessages.ChooseDevices;
 
+    /// <summary>The refusal of a save by a user without devices (no group, or the group was deleted).</summary>
+    public const string NoDevicesRefusal = Oadm.Sdk.Devices.DeviceGroupMessages.NoDevicesRefusal;
+
     /// <summary>The caller's devices or role changed during the call (a stream, a job): the client connects again.</summary>
     public const string DevicesChanged = "Your devices changed. Connect again.";
     public const string UnknownGroup = "The device group does not exist (any more).";
