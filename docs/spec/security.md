@@ -82,7 +82,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `DeviceGroupId`; Administrator always all devices). The interceptor puts the caller with its devices
   (`AuthenticatedCaller.Devices`, the group's revision) into the call's `UserState` (`AuthInterceptor.CallerOf`); services
   get their devices from `DeviceViewFactory.ForAsync(context)`, never by id from the repository. `AccessRule.AllDevices`
-  marks methods only users with all devices may call (PERMISSION_DENIED "Only users with all devices can do this.").
+  marks methods only users with all devices may call (PERMISSION_DENIED "Only users with all devices can do this."),
+  among them every `EventService` method: event rules, the event log and Test are for users with all devices.
   `CallerContext` is a backstop only and never flows into background work (`CallerContext.Suppress`, `RunDetached`,
   `Raise`: task runs, event handlers, detached work, timers). A deleted group leaves its users with no devices (fail
   closed). Audit: "Created device group", "Changed device group" (what changed), "Deleted device group" (who has no devices

@@ -320,9 +320,6 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(r => r.CreatedUtc).HasConversion(UtcConverter);
             e.Property(r => r.UpdatedUtc).HasConversion(UtcConverter);
             e.Property(r => r.LastFiredUtc).HasConversion(NullableUtcConverter);
-            e.Ignore(r => r.Owner);
-            e.HasIndex(r => r.OwnerGroupId);
-            e.HasOne<DeviceGroup>().WithMany().HasForeignKey(r => r.OwnerGroupId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Events.EventRuleStateEntity>(e =>

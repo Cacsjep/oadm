@@ -28,7 +28,7 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `DeviceGroup` (table DeviceGroups, migration `DeviceGroups`): Id, Name (1..64, unique case-insensitive via
   NormalizedName), Description (0..200), ThisServer, SiteIds, TagIds (JSON arrays of Guids), Serials, ExceptSerials (JSON
   arrays of normalized serials), Revision (from 1, concurrency token), CreatedUtc, ChangedUtc; at most 200. Referenced
-  (delete restricted) by `Users.DeviceGroupId`, `EventRules.OwnerGroupId` and `ComplianceChecks.OwnerGroupId`;
+  (delete restricted) by `Users.DeviceGroupId` and `ComplianceChecks.OwnerGroupId`;
   `DeviceGroupStore.DeleteAsync` clears them in the same transaction. See `docs/spec/device-scope.md`.
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
 - `TagDefinition` (table TagDefinitions, migration `DeviceTags`): Id (Guid), Name (1..64, trimmed, no ";" or control
@@ -62,8 +62,9 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   At most 1000 entries per task; the 1000th says that later entries were dropped.
 - `ComplianceCheckEntity` / `ComplianceResultEntity` (tables ComplianceChecks, ComplianceResults, migration
   `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance". Compliance
-  checks and event rules (EventRules) have an owner, OwnerAllDevices + OwnerGroupId (migration `DeviceGroups`: all
-  devices for existing rows; no owner = off, `docs/spec/device-scope.md`).
+  checks have an owner, OwnerAllDevices + OwnerGroupId (migration `DeviceGroups`: all devices for existing rows; no owner
+  = off, `docs/spec/device-scope.md`). Event rules have none (migration `EventRulesWithoutOwner` drops the columns
+  `DeviceGroups` had added).
 - `Setting`: Key, ValueJson.
 - `PluginRecord` (table PluginRecords, migration `PluginRecords`): key (PluginId max 128, Collection max 64, Key max 255),
   ValueJson (valid JSON). A plugin's records (`IPluginRecords`, `DbPluginRecords`): one row per record, a plugin sees

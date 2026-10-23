@@ -77,8 +77,7 @@ returns null or throws `NotSupportedException`.
   or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
   `TaskEngine.ForView`). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
   User, Session; the old `Publish` reaches only watchers with all devices on 4.2). `IDeviceInfo.AddedByAllDevices`.
-  Actions: `IActionPlugin.Destinations(settings)` and `IActionContext.IsDestinationAllowed(host, port)`
-  (`ActionDestination.NotAllowedText`) for the address list of rules of device groups. Client SDK: `HasAllDevices` on
+  Actions get nothing new (event rules are for users with all devices). Client SDK: `HasAllDevices` on
   `ICorePluginClientContext`, `ITaskDialogContext`, `IToolbarContext` (default true). `SdkInfo.Version` 0.4.0,
   `SdkInfo.CallContextVersion`: users with a device group may call only packages whose `minSdkVersion` is at least
   0.4.0; older packages keep working for users with all devices. Test fakes: `Oadm.Sdk.Testing.FakeCallContext`

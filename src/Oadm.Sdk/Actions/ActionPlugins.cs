@@ -284,23 +284,6 @@ public interface IActionContext
 
     /// <summary>The license of the action's plugin package (plugin.json <c>license</c>); null on hosts without licenses.</summary>
     IPluginLicense? License => null;
-
-    /// <summary>
-    /// Whether the rule may send to <paramref name="host"/> and <paramref name="port"/> (SDK 0.4.0): false when the rule
-    /// belongs to a device group and the address is not on the administrator's list (Settings). Check it right before
-    /// sending, with the address after the placeholders were filled, and fail with
-    /// <see cref="ActionDestination.NotAllowedText"/>. Default true (older hosts have no device groups).
-    /// </summary>
-    bool IsDestinationAllowed(string host, int port) => true;
-}
-
-/// <summary>An address outside the devices an action sends to (<see cref="IActionPlugin.Destinations"/>).</summary>
-/// <param name="Host">The host name or IP address as written in the settings.</param>
-/// <param name="Port">The port; 0 when the settings do not say (the action's default).</param>
-public sealed record ActionDestination(string Host, int Port)
-{
-    /// <summary>The refusal of an address a rule of a device group may not send to.</summary>
-    public const string NotAllowedText = "Rules of a device group can send only to the addresses an administrator allowed in Settings.";
 }
 
 /// <summary>Services for <see cref="IActionPlugin.ListChoicesAsync"/> (read-only, while a rule is edited).</summary>
@@ -372,14 +355,6 @@ public interface IActionPlugin : IPlugin
     /// device only answers after it ended. Null: the default. The host never uses less than its default.
     /// </summary>
     TimeSpan? MaxRunTime(JsonElement settings) => null;
-
-    /// <summary>
-    /// The addresses outside the devices the action sends to with these settings (SDK 0.4.0), e.g. the host and port of a
-    /// webhook URL or a TCP message. The host refuses to save a rule of a device group whose addresses are not on the
-    /// administrator's list; when sending, check <see cref="IActionContext.IsDestinationAllowed"/> as well (placeholders can
-    /// change an address). Default: none.
-    /// </summary>
-    IReadOnlyList<ActionDestination> Destinations(JsonElement settings) => [];
 
     /// <summary>The choices of a <see cref="ActionFieldType.DynamicChoice"/> field (read-only). Default: none.</summary>
     Task<IReadOnlyList<ActionChoice>> ListChoicesAsync(IActionQueryContext ctx, string fieldKey, CancellationToken ct) =>

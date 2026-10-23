@@ -59,7 +59,7 @@ message SaveDeviceGroupRequest {
 
 message DeleteDeviceGroupReply {
   repeated string user_names = 1;       // users who have no devices now
-  repeated string disabled = 2;         // what the group owned and is off now ("3 event rules")
+  repeated string disabled = 2;         // what the group owned and is off now ("3 compliance checks")
 }
 
 message PreviewDeviceGroupRequest {

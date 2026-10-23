@@ -25,15 +25,16 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `total_devices`), `Get`, `Save(SaveDeviceGroupRequest {id empty = new, name, description, rules, revision})` (audited
   "Created device group" / "Changed device group"; INVALID_ARGUMENT, ALREADY_EXISTS name, NOT_FOUND, FAILED_PRECONDITION
   older revision "Another administrator changed this device group meanwhile. ...", RESOURCE_EXHAUSTED over 200),
-  `Delete` (reply `user_names` who have no devices now, `disabled` "3 event rules"; audited "Deleted device group"),
+  `Delete` (reply `user_names` who have no devices now, `disabled` "3 compliance checks"; audited "Deleted device group"),
   `Preview(rules, group_id)` (`device_count`, `total_devices`: the editor's live count). `DeviceGroupRules` {this_server,
   site_ids, tag_ids, serials, except_serials}. Shared messages: `DeviceOwner` {all_devices, group_id, group_name}
-  (`RuleSummary.owner = 11`, `SaveRuleRequest.owner = 2`, `ComplianceCheckSummary.owner = 19`; unset in a save = the
-  caller's devices for a new object, keep for a changed one; only administrators change it), `MyDevices`
+  (`ComplianceCheckSummary.owner = 19`; unset in a save = the caller's devices for a new object, keep for a changed one;
+  only administrators change it; event rules have no owner: `RuleSummary` 11 and `SaveRuleRequest` 2 are reserved),
+  `MyDevices`
   (`MyRole.devices = 4`: all devices or the group's name, summary without excepted devices, site and tag names, single
   device count, device_count of the own view). `DeviceTag.group_names = 6` and `Site.group_names = 20` (the groups that
-  use a tag or site, for users with all devices), `ServerSettings.action_destinations = 12` (`ActionDestinationList`:
-  where rules of device groups may send). Wave 1 packages fill these fields; the foundation fills the user fields,
+  use a tag or site, for users with all devices; `ServerSettings` 12 is reserved, an unreleased address list of event
+  rules). Wave 1 packages fill these fields; the foundation fills the user fields,
   `MyRole.devices` and the group service.
 - Device ids outside the caller's view answer like unknown ids: NOT_FOUND `DeviceMessages.NoLongerAvailable` ("3 devices
   are no longer available."), the whole request refused (`DevicesNotAvailableException`, mapped by `AuthInterceptor`).
@@ -172,9 +173,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, or a PRO plugin without an active license; reply:
   the whole list), see "Plugins on and off".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
-  `server_version = 21` in both replies for the About page; `action_destinations = 12`: in the replies only for users with
-  all devices, in a `Set` unset keeps the list, set replaces it, INVALID_ARGUMENT for an entry that is not "host" or
-  "host:port" or over 100 entries, nothing changed then),
+  `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
   entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND), `RevealCredential(id)` (reply `RevealedCredential { password = 1 }`:
@@ -194,14 +193,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   FAILED_PRECONDITION "The camera refused: <camera text>"). Every method only for devices of the caller's view (NOT_FOUND
   "1 device is no longer available." like an unknown device, the camera is never asked; the RTSP port methods refuse the
   whole selection); `Watch` ends with that NOT_FOUND when its device leaves the view. See "Live view".
-- `EventService` (`events.proto`, event rules, see "Event rules"). Device groups: every method works on the caller's view;
-  `RuleSummary.owner = 11` (all devices or the group, with its name); `SaveRuleRequest.owner = 2` (unset: a new rule belongs
-  to the caller's devices, a changed one keeps its owner; only administrators set another one, else PERMISSION_DENIED);
-  rules of another owner, devices outside the owner and events the owner does not have answer NOT_FOUND; an address outside
-  the allowed list INVALID_ARGUMENT "Rules of a device group can send only to the addresses an administrator allowed in
-  Settings."; a rule without an owner cannot be turned on (FAILED_PRECONDITION). `GetCatalog` lists for a group only its
-  sites' events, its checks and device triggers of its devices; `ListLog` / `WatchLog` only lines of the group's rules and
-  of its devices; `TestAction` takes only a device of the view.
+- `EventService` (`events.proto`, event rules, see "Event rules"). Device groups: every method only for users with all
+  devices (`AccessRule.AllDevices`, PERMISSION_DENIED for a user with a device group); rules have no owner.
 - `ServerLogService` (`logs.proto`, permission `logs.server`): `List` (the server's log files, a page newest first), see
   "Logs page".
 - `DeviceWebService` (`deviceweb.proto`, the Web View relay, see "Web View"): `Open(device_id)` (Operator; refuses
@@ -217,9 +210,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - `ComplianceService` (`compliance.proto`, see "Compliance"): `GetCatalog`, `ListChecks`, `WatchChecks`, `GetCheck`,
   `SaveCheck`, `DeleteCheck`, `SetCheckEnabled`, `ListChoices`, `CheckNow`, `WatchResults` (snapshot in batches of 5,000 with
   `snapshot_end`, then changes; `checking` while a result was asked for), `SetEnabled` (compliance on / off, off by default;
-  `ComplianceCheckList.enabled`). Device groups: `ComplianceCheckSummary.owner = 19` (like `RuleSummary.owner`); users of a
-  group see and change only their group's checks and their results (others NOT_FOUND); `CheckNow` and `ListChoices` take
-  only devices of the view, empty lists = the view.
+  `ComplianceCheckList.enabled`). Device groups: `ComplianceCheckSummary.owner = 19` (`DeviceOwner`: all devices or the
+  group with its name); users of a group see and change only their group's checks and their results (others NOT_FOUND);
+  `CheckNow` and `ListChoices` take only devices of the view, empty lists = the view.
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
   `device_count` in the caller's view and, for users with all devices, the `group_names` that use it; then names used on
   devices of the view without a definition, `defined = false`), `Watch` (the whole `TagList` on

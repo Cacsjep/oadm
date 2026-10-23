@@ -85,10 +85,6 @@ public sealed partial class SiteEventSource : IHostEventSource, IAsyncDisposable
     /// <summary>The event type id of a site.</summary>
     public static string OfflineTypeId(Guid siteId) => OfflinePrefix + siteId.ToString("N");
 
-    /// <summary>The site of a "Site offline: name" type, null for any other type (also for "Any site offline").</summary>
-    public static Guid? SiteOf(string typeId) =>
-        typeId is not null && typeId.StartsWith(OfflinePrefix, StringComparison.Ordinal) && Guid.TryParseExact(typeId[OfflinePrefix.Length..], "N", out var id) ? id : null;
-
     /// <summary>Reads the sites (before the event rules start, so the types are known).</summary>
     public async Task LoadAsync(CancellationToken ct) => await ReloadAsync(ct).ConfigureAwait(false);
 

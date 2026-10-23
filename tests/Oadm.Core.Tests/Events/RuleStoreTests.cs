@@ -42,7 +42,7 @@ public sealed class RuleStoreTests
         var camera = await rig.AddDeviceAsync("10.0.0.1");
         var original = await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, rig.WithoutDevice(new JsonObject { ["secret"] = "pw" })));
 
-        var copy = await rig.Rules.DuplicateAsync(original.Id, rig.AllView, CancellationToken.None);
+        var copy = await rig.Rules.DuplicateAsync(original.Id, CancellationToken.None);
 
         Assert.NotNull(copy);
         Assert.NotEqual(original.Id, copy.Value.Definition.Id);
@@ -50,8 +50,8 @@ public sealed class RuleStoreTests
         Assert.False(copy.Value.Definition.Enabled);
         Assert.Equal(["secret"], copy.Value.Definition.Actions[0].StoredSecretFields);
 
-        await rig.Rules.SetEnabledAsync(original.Id, false, rig.AllView, CancellationToken.None);
-        await rig.Rules.SetEnabledAsync(copy.Value.Definition.Id, true, rig.AllView, CancellationToken.None);
+        await rig.Rules.SetEnabledAsync(original.Id, false, CancellationToken.None);
+        await rig.Rules.SetEnabledAsync(copy.Value.Definition.Id, true, CancellationToken.None);
         rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
         await rig.SettleAsync();
         Assert.Equal("|pw", Assert.Single(rig.NoDevice.Runs).Text);
@@ -110,7 +110,7 @@ public sealed class RuleStoreTests
                 break;
         }
 
-        var ex = await Assert.ThrowsAsync<RuleValidationException>(() => rig.Rules.SaveAsync(rule, rig.AllView, null, true, CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<RuleValidationException>(() => rig.Rules.SaveAsync(rule, CancellationToken.None));
         Assert.Equal(expected, ex.Message);
     }
 
@@ -128,7 +128,7 @@ public sealed class RuleStoreTests
         });
         await rig.SaveAsync(rule);
 
-        var summary = Assert.Single(await rig.Rules.ListAsync(rig.AllView, CancellationToken.None));
+        var summary = Assert.Single(await rig.Rules.ListAsync(CancellationToken.None));
         Assert.Equal("Blur detected (all devices) · Mon-Fri 08:00-18:00", summary.ConditionsText);
         Assert.Equal("Record test.on-device on 10.0.0.70 (P3265-V) · Record test.no-device", summary.ActionsText);
         Assert.Equal("Off", summary.StateText);

@@ -2,7 +2,6 @@ syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
-import "Protos/device_groups.proto";
 import "google/protobuf/timestamp.proto";
 
 // Event rules: IF events (and schedules) THEN actions. Events and actions come from plugins; the server keeps the
@@ -147,9 +146,7 @@ message RuleSummary {
   string state_text = 8;         // "On for 2 devices", "Off", "Waiting for Image Health Dashboard"
   google.protobuf.Timestamp last_fired = 9;
   string problem = 10;           // "Not available: VAPIX Commander is turned off"
-  // The owner (docs/spec/device-scope.md, Shared objects): the rule runs only on devices of its owner; users see only
-  // rules of their own group. No owner (its group was deleted): the rule is off until an administrator gives it one.
-  DeviceOwner owner = 11;
+  reserved 11;                   // unreleased owner (rules are for users with all devices)
 }
 
 message RuleList { repeated RuleSummary rules = 1; }
@@ -161,9 +158,7 @@ message RuleDetail {
 
 message SaveRuleRequest {
   string definition_json = 1;
-  // Unset: a new rule belongs to the caller's devices (all devices or the caller's group), a changed rule keeps its owner.
-  // Only administrators set it (anyone else: PERMISSION_DENIED).
-  DeviceOwner owner = 2;
+  reserved 2;                    // unreleased owner (rules are for users with all devices)
 }
 
 message SetRuleEnabledRequest {

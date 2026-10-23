@@ -51,7 +51,7 @@ public sealed record ComplianceCheckState(
 /// in memory, writes changes in batches, streams them to the pages and publishes one stateful event per check ("on" while
 /// the check fails on a device). Devices the server must not contact (status not Ok) are not read.
 /// </summary>
-public sealed partial class ComplianceEngine : IHostEventSource, Events.IEventTypeOwners, IAsyncDisposable
+public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposable
 {
     /// <summary>The event source of the compliance checks in the event rules.</summary>
     public const string EventSourceId = "oadm.compliance";
@@ -530,20 +530,6 @@ public sealed partial class ComplianceEngine : IHostEventSource, Events.IEventTy
     private DeviceGroups.DeviceGroupFilter OwnerFilter(CheckRuntime runtime) =>
         _owners?.FilterOf(runtime.Check.Owner)
         ?? (runtime.Check.Owner.AllDevices ? DeviceGroups.DeviceGroupFilter.Everything : DeviceGroups.DeviceGroupFilter.Nothing);
-
-    /// <summary>The owner of a check's event type ("Compliance: name"), null for a type that is not a check's.</summary>
-    public Auth.DeviceScope? OwnerOfEventType(string typeId)
-    {
-        if (typeId is null || !typeId.StartsWith(EventTypePrefix, StringComparison.Ordinal) || !Guid.TryParseExact(typeId[EventTypePrefix.Length..], "N", out var id))
-        {
-            return null;
-        }
-
-        lock (_sync)
-        {
-            return _checks.TryGetValue(id, out var runtime) ? runtime.Check.Owner : Auth.DeviceScope.None;
-        }
-    }
 
     /// <summary>A group's rules or the tag and site catalog changed: the checks of groups follow their devices again.</summary>
     private void OnOwnersChanged(object? sender, EventArgs e)

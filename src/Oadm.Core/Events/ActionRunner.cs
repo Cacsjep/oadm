@@ -5,7 +5,6 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using Oadm.Core.DeviceGroups;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Actions;
 using Oadm.Sdk.Devices;
@@ -20,15 +19,7 @@ namespace Oadm.Core.Events;
 /// (the first subject turned on, the last one off, or a one-shot fire); otherwise only actions on the event's device
 /// and actions without devices.
 /// </summary>
-public sealed record RuleEdgeJob(RuleDefinition Rule, bool Stateful, ActionEdge Edge, Guid? Subject, bool Aggregate, ActionTrigger Trigger)
-{
-    /// <summary>
-    /// The rule's owner (docs/spec/device-scope.md, Shared objects): actions run only on its devices, and for a group only
-    /// to the addresses of <see cref="Oadm.Core.Settings.ActionDestinations"/>. <see cref="Auth.DeviceScope.None"/> (the
-    /// default) reaches no device.
-    /// </summary>
-    public Auth.DeviceScope Owner { get; init; } = Auth.DeviceScope.None;
-}
+public sealed record RuleEdgeJob(RuleDefinition Rule, bool Stateful, ActionEdge Edge, Guid? Subject, bool Aggregate, ActionTrigger Trigger);
 
 /// <summary>Receives the edges of the rule engine.</summary>
 public interface IActionDispatcher
@@ -62,7 +53,6 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private readonly IDeviceRepository _devices;
     private readonly IVapixClientFactory _vapix;
     private readonly IPluginSettingsProvider _settings;
-    private readonly RuleOwners? _owners;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ActionRunnerOptions _options;
@@ -81,8 +71,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         IVapixClientFactory vapix,
         IPluginSettingsProvider settings,
         ILoggerFactory? loggerFactory = null,
-        ActionRunnerOptions? options = null,
-        RuleOwners? owners = null)
+        ActionRunnerOptions? options = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -90,7 +79,6 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _vapix = vapix ?? throw new ArgumentNullException(nameof(vapix));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        _owners = owners;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<ActionRunner>();
         _options = options ?? new ActionRunnerOptions();
@@ -164,10 +152,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         await Task.WhenAll(tails).WaitAsync(ct).ConfigureAwait(false);
     }
 
-    /// <summary>The choices of a dynamic action setting (rule dialog); the plugin lists only devices of the caller's view.</summary>
-    public async Task<IReadOnlyList<ActionChoice>> ListChoicesAsync(string actionId, string fieldKey, DeviceView caller, CancellationToken ct)
+    /// <summary>The choices of a dynamic action setting (rule dialog).</summary>
+    public async Task<IReadOnlyList<ActionChoice>> ListChoicesAsync(string actionId, string fieldKey, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(caller);
         var action = _catalog.FindAction(actionId) ?? throw new KeyNotFoundException($"Unknown action '{actionId}'.");
         if (!action.Available)
         {
@@ -178,7 +165,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             _loggerFactory.CreateLogger("Oadm.Actions." + action.Id),
             action.Registered.Owner,
             _settings.GetSettings(SettingsId(action.Registered)),
-            DeviceViewRepository.For(caller, _devices));
+            _devices);
         return await action.Plugin.ListChoicesAsync(context, fieldKey, ct).ConfigureAwait(false);
     }
 
@@ -305,12 +292,6 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             }
 
             targets = await ResolveTargetsAsync(action.Targets, ct).ConfigureAwait(false);
-            var owner = OwnerFilter(job.Owner);
-            if (!owner.IsEverything)
-            {
-                // A rule of a group: "All devices", the tags and the chosen devices are the group's.
-                targets = [.. targets.Where(t => t.Device is null || owner.Contains(t.Device))];
-            }
         }
 
         if (targets.Count == 0)
@@ -388,12 +369,6 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 return;
             }
 
-            if (!OwnerFilter(job.Owner).Contains(device))
-            {
-                Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, OutsideOwner, device);
-                return;
-            }
-
             // Nothing is sent to a device with a changed certificate, rejected credentials, no password or an offline site.
             // An action of a package that does not work at sites never reaches a device there.
             var refused = DeviceMessages.Refusal(device)
@@ -410,11 +385,6 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         if (textDevice is null && job.Trigger.DeviceId is { } eventDevice)
         {
             textDevice = await _devices.FindAsync(eventDevice, ct).ConfigureAwait(false);
-        }
-
-        if (_owners is not null)
-        {
-            await _owners.Destinations.LoadAsync(ct).ConfigureAwait(false);
         }
 
         await _slots.WaitAsync(ct).ConfigureAwait(false);
@@ -451,13 +421,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 lines,
                 job,
                 textDevice,
-                Licenses?.LicenseOf(action.Registered.Origin.PackageId),
-                (host, port) => DestinationAllowed(job.Owner, host, port));
-            if (DestinationsRefused(plugin, settings, job.Owner) is { } refusedDestination)
-            {
-                throw new InvalidOperationException(refusedDestination);
-            }
-
+                Licenses?.LicenseOf(action.Registered.Origin.PackageId));
             var invocation = new ActionInvocation(job.Rule.Id, job.Rule.Name, job.Edge, settings, device, job.Trigger);
             await plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             Write(job, deviceId, plugin.DisplayName, EventLogResult.Ok, Joined(lines, EdgeText(job.Edge)), device);
@@ -489,14 +453,10 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     /// given device as the device of the event. Password fields left empty take the stored value of the rule's action.
     /// Nothing is written to the event log. Returns the result line.
     /// </summary>
-    /// <param name="eventDevice">The device of the event (none or one), from the caller's view.</param>
-    /// <param name="owner">The devices of the caller (or of the rule): a group's test sends only to the allowed addresses.</param>
     public async Task<(bool Ok, string Message)> TestAsync(
-        string actionId, JsonObject settings, string ruleName, Guid? ruleId, Guid? actionKey, string? eventTypeId, ViewedDevices eventDevice,
-        Auth.DeviceScope owner, CancellationToken ct)
+        string actionId, JsonObject settings, string ruleName, Guid? ruleId, Guid? actionKey, string? eventTypeId, Guid? deviceId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(eventDevice);
         var action = _catalog.FindAction(actionId);
         if (action is null || !action.Available)
         {
@@ -522,22 +482,13 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
 
         var type = _catalog.FindEventType(eventTypeId);
-        var device = eventDevice.Count > 0 ? eventDevice[0] : null;
-        if (_owners is not null)
-        {
-            await _owners.Destinations.LoadAsync(ct).ConfigureAwait(false);
-        }
+        var device = deviceId is { } id ? await _devices.FindAsync(id, ct).ConfigureAwait(false) : null;
         var data = (type?.Info.DataFields ?? []).ToDictionary(f => f.Name, f => f.Values is { Count: > 0 } values ? values[0] : "sample", StringComparer.Ordinal);
         var trigger = new ActionTrigger(
             type?.Id ?? string.Empty, type?.Info.DisplayName ?? "Test", device?.Id, device?.Address, device?.Model, true, DateTimeOffset.UtcNow, data);
         var definition = new RuleDefinition { Id = ruleId ?? Guid.Empty, Name = string.IsNullOrWhiteSpace(ruleName) ? "Test" : ruleName };
-        var job = new RuleEdgeJob(definition, true, ActionEdge.TurnedOn, device?.Id, false, trigger) { Owner = owner };
+        var job = new RuleEdgeJob(definition, true, ActionEdge.TurnedOn, device?.Id, false, trigger);
         using var document = JsonDocument.Parse(settings.ToJsonString());
-        if (DestinationsRefused(action.Plugin, document.RootElement, owner) is { } refusedDestination)
-        {
-            return (false, refusedDestination);
-        }
-
         var lines = new List<string>();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var limit = _options.ActionTimeout;
@@ -565,8 +516,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 lines,
                 job,
                 device,
-                Licenses?.LicenseOf(action.Registered.Origin.PackageId),
-                (host, port) => DestinationAllowed(owner, host, port));
+                Licenses?.LicenseOf(action.Registered.Origin.PackageId));
             var invocation = new ActionInvocation(definition.Id, definition.Name, ActionEdge.TurnedOn, document.RootElement.Clone(), null, trigger);
             await action.Plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             return (true, Joined(lines, "Sent"));
@@ -581,39 +531,6 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         {
             return (false, Joined(lines, ex.Message));
         }
-    }
-
-    /// <summary>The skip of a target that is not a device of the rule's group.</summary>
-    public const string OutsideOwner = "Not a device of the rule's device group";
-
-    private DeviceGroupFilter OwnerFilter(Auth.DeviceScope owner) =>
-        _owners?.Scopes.FilterOf(owner) ?? (owner.AllDevices ? DeviceGroupFilter.Everything : DeviceGroupFilter.Nothing);
-
-    /// <summary>Rules of users with all devices send anywhere; rules of groups only to the administrator's addresses.</summary>
-    private bool DestinationAllowed(Auth.DeviceScope owner, string host, int port) =>
-        owner.AllDevices || (_owners?.Destinations.Allows(host, port) ?? false);
-
-    /// <summary>The refusal when an address the action declares is not allowed for the owner, else null.</summary>
-    private string? DestinationsRefused(IActionPlugin plugin, JsonElement settings, Auth.DeviceScope owner)
-    {
-        if (owner.AllDevices)
-        {
-            return null;
-        }
-
-        IReadOnlyList<ActionDestination> destinations;
-        try
-        {
-            destinations = plugin.Destinations(settings);
-        }
-#pragma warning disable CA1031 // Plugin code is untrusted: an action that cannot say where it sends does not send for a group.
-        catch (Exception)
-#pragma warning restore CA1031
-        {
-            return ActionDestination.NotAllowedText;
-        }
-
-        return destinations.All(d => DestinationAllowed(owner, d.Host, d.Port)) ? null : ActionDestination.NotAllowedText;
     }
 
     private static string EdgeText(ActionEdge edge) => edge switch
@@ -670,12 +587,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         List<string> lines,
         RuleEdgeJob job,
         IDeviceInfo? device,
-        Sdk.Licensing.IPluginLicense? license,
-        Func<string, int, bool> destinationAllowed) : IActionContext
+        Sdk.Licensing.IPluginLicense? license) : IActionContext
     {
         public Sdk.Licensing.IPluginLicense? License { get; } = license;
-
-        public bool IsDestinationAllowed(string host, int port) => destinationAllowed(host, port);
 
         public IVapixClient? Vapix { get; } = vapix;
 
