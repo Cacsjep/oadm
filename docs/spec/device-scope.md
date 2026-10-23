@@ -274,7 +274,10 @@ an independent security review the same day). A user may be limited to part of t
 - **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
   CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
   (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
-  `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules).
+  `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules),
+  the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`): the sent tasks of a
+  device that left go out as Removed at once, the tasks of a device that entered as Added (its active tasks and the newest
+  up to the snapshot limit, one query per batch of devices).
   A task is in the view while its device is: tasks of removed devices only for users with all devices.
 - **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the
   sets and the view's ids are the same objects).
