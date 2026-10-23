@@ -72,6 +72,16 @@ public sealed class FakeDeviceScopes(FakeCoreContext core) : IDeviceScopes
     public IDeviceRepository Devices(string scopeKey) => new Scoped(this, scopeKey);
 
     /// <inheritdoc />
+    public bool InAnyGroup(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        lock (_groups)
+        {
+            return _groups.Values.Any(g => g.Devices.Contains(device.Id));
+        }
+    }
+
+    /// <inheritdoc />
     public string? NameOf(string scopeKey)
     {
         if (scopeKey == ICallContext.AllDevicesScopeKey)

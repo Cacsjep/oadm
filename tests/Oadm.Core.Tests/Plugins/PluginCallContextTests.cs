@@ -238,6 +238,8 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         Assert.Equal([rig.Inside.Id], (await scopes.Devices(key).ListAsync(Ct)).Select(d => d.Id));
         Assert.Null(await scopes.Devices(key).FindAsync(rig.Outside.Id, Ct));
         Assert.Equal(2, (await scopes.Devices(ICallContext.AllDevicesScopeKey).ListAsync(Ct)).Count);
+        Assert.True(scopes.InAnyGroup(rig.Inside));
+        Assert.False(scopes.InAnyGroup(rig.Outside));
 
         await Groups.DeleteAsync(rig.GroupId, Ct);
 
@@ -246,6 +248,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         Assert.Null(scopes.NameOf(key));
         Assert.False(scopes.Contains(key, rig.Inside));
         Assert.Empty(await scopes.Devices(key).ListAsync(Ct));
+        Assert.False(scopes.InAnyGroup(rig.Inside));
     }
 
     private async Task<Rig> RigAsync(string minSdk = "0.4.0")

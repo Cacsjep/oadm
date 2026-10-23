@@ -71,7 +71,7 @@ returns null or throws `NotSupportedException`.
   `SystemAccessReason(method)` (the few methods that may use `ctx.System` in a group user's call). `ICorePluginContext.System`
   (`ISystemAccess`: every device, for background work; default the context's own members) and `Jobs` (`IPluginJobs`:
   work owned by the user who started it, `Find` answers null for another user's id) and `DeviceScopes` (`IDeviceScopes`:
-  `Exists`, `Contains`, `Devices`, `NameOf` per scope key, `Changed`: objects a plugin keeps per group run only on its
+  `Exists`, `Contains`, `Devices`, `NameOf` per scope key, `Changed`, `InAnyGroup`: objects a plugin keeps per group run only on its
   devices, a deleted group's are off). `ITaskExecutionContext.Caller` (the
   user who started the task, with the user's view as it is when the task leaves the queue; null for tasks the system
   or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
