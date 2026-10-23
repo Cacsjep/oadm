@@ -433,7 +433,9 @@ an independent security review the same day). A user may be limited to part of t
   also on the group's own devices (`EventTypeInfo.OwnerScopeKey`, SDK 0.4.0, filled by Device triggers). Every push checks
   the group's devices now; a renewal naming a device that left ends the old watch. A group user's watches are bound to one
   job per session (kind `watch`): when the user's devices, role or session change the host ends it and the session's
-  watches go at once (no values for the old devices until the next renewal); the session's last unwatch ends it.
+  watches go at once (no values for the old devices until the next renewal); the session's last unwatch ends it. Two
+  watches of a session that start together share the running job of the same scope, and a watch still registering
+  counts as busy, so an unwatch meanwhile never ends its job.
 - **Saved objects** (`OwnerScope.LeftOwnerAsync`): a user with all devices who saves a group's view or dashboard whose
   devices left the group gets the save without them (`Dropped` in the answer, never stored); devices the save adds outside
   the group and every outside id of a group user stay NOT_FOUND. The page says so below its toolbar in plain secondary
