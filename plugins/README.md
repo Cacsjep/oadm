@@ -414,7 +414,7 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   - `ctx.Secrets` (`ISecretProtector`): encrypt secrets you store in `Settings`; null = do not store them.
   - `ctx.EventStreams`: device event streams, see below. `ctx.Tasks.Cancel(taskId)`; `ctx.Tasks.IsActive(taskId)` (queued
     or running; null when the host cannot tell): a task cancelled while queued never runs, so ask instead of waiting for it.
-    In a user's call ask `caller.Tasks`: `IsActive` answers a group user only for the user's own tasks,
+    In a user's call ask `caller.Tasks`: `IsActive` answers a group user only for the user's own tasks (another user's active task: null; ended: false),
     `AnyActiveAsync(ids)` for the tasks of the user's devices whoever started them (a run shared by a group).
   - `ctx.AutoAdd` (`IDeviceAutoAdd`, null when the host has none). `AddAsync(ipAddress, expectedSerial, source, ct)`
     adds an Axis device the plugin saw on the network, through the add page's pipeline (anonymous Axis check, factory

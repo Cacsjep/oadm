@@ -145,10 +145,20 @@ public sealed class CallContextContractTests
 
         Assert.True(anna.Tasks.Cancel(annas));
         Assert.False(anna.Tasks.IsActive(annas));
+        Assert.False(bob.Tasks.IsActive(annas)); // another user's ended task: not active, like the host
         Assert.False(await bob.Tasks.AnyActiveAsync([annas], CancellationToken.None));
         Assert.True(core.EndTask(system));
         Assert.False(core.EndTask(system));
-        Assert.Null(all.Tasks.IsActive(Guid.NewGuid()));
+        Assert.False(all.Tasks.IsActive(system));
+
+        // An unknown task is not active for every runner, like the host (TaskEngine.IsActive, IsActiveOwn).
+        var unknown = Guid.NewGuid();
+        Assert.False(all.Tasks.IsActive(unknown));
+        Assert.False(anna.Tasks.IsActive(unknown));
+        Assert.False(((Sdk.Tasks.ITaskRunner)core).IsActive(unknown));
+        Assert.False(core.System.Tasks.IsActive(unknown));
+        Assert.False(anna.Tasks.Cancel(unknown));
+        Assert.False(await anna.Tasks.AnyActiveAsync([unknown], CancellationToken.None));
 
         // The context's own runner is refused during a group user's call, every member.
         var plugin = new TasksProbe();
@@ -183,6 +193,43 @@ public sealed class CallContextContractTests
         Assert.True(all.HasAllDevices);
         Assert.Equal([outside.Id], (await all.Devices.ListAsync(CancellationToken.None)).Select(d => d.Id));
         Assert.Null(all.EventStreams);
+    }
+
+    [Fact]
+    public async Task AFakeCallOverATestsOwnRunnerFiltersTasksLikeTheHost()
+    {
+        var inside = new FakeDevice();
+        var outside = new FakeDevice();
+        var devices = new ListDevices([inside, outside]);
+        var runner = new ListRunner();
+        var anna = FakeCallContext.OverGroup([inside.Id], devices, tasks: runner, userName: "anna");
+        var bob = FakeCallContext.OverGroup([inside.Id], devices, tasks: runner, userName: "bob");
+        var all = FakeCallContext.Over(devices, tasks: runner);
+
+        var annas = Assert.Single(await anna.Tasks.RunAsync("p", [inside.Id], null, "anna", CancellationToken.None));
+        var admins = Assert.Single(await all.Tasks.RunAsync("p", [outside.Id], null, "admin", CancellationToken.None));
+        var foreign = runner.Start(); // started past the calls: the fake cannot place it on a device
+
+        // One by one only the own tasks; together the tasks of the group's devices; a task outside makes it unknown.
+        Assert.True(anna.Tasks.IsActive(annas));
+        Assert.Null(bob.Tasks.IsActive(annas));
+        Assert.Null(anna.Tasks.IsActive(admins));
+        Assert.True(all.Tasks.IsActive(annas));
+        Assert.False(bob.Tasks.Cancel(annas));
+        Assert.False(anna.Tasks.Cancel(admins));
+        Assert.True(runner.IsActive(annas));
+        Assert.True(await bob.Tasks.AnyActiveAsync([annas], CancellationToken.None));
+        Assert.Null(await anna.Tasks.AnyActiveAsync([admins], CancellationToken.None));
+        Assert.Null(await anna.Tasks.AnyActiveAsync([foreign], CancellationToken.None));
+        Assert.True(await all.Tasks.AnyActiveAsync([admins], CancellationToken.None));
+
+        // Ended and unknown tasks are not active for anyone.
+        Assert.True(anna.Tasks.Cancel(annas));
+        Assert.True(all.Tasks.Cancel(admins));
+        Assert.False(bob.Tasks.IsActive(annas));
+        Assert.False(anna.Tasks.IsActive(admins));
+        Assert.False(anna.Tasks.IsActive(Guid.NewGuid()));
+        Assert.False(await anna.Tasks.AnyActiveAsync([annas, admins, Guid.NewGuid()], CancellationToken.None));
     }
 
     [Fact]
@@ -239,6 +286,26 @@ public sealed class CallContextContractTests
         public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. Items]);
 
         public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.Find(d => d.Id == id));
+    }
+
+    /// <summary>A test's own runner: its tasks stay active until cancelled; unknown tasks are not active.</summary>
+    private sealed class ListRunner : Sdk.Tasks.ITaskRunner
+    {
+        private readonly HashSet<Guid> _active = [];
+
+        public Guid Start()
+        {
+            var id = Guid.NewGuid();
+            _active.Add(id);
+            return id;
+        }
+
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<Guid>>([.. deviceIds.Select(_ => Start())]);
+
+        public bool Cancel(Guid taskId) => _active.Remove(taskId);
+
+        public bool? IsActive(Guid taskId) => _active.Contains(taskId);
     }
 
     private sealed class CountingVapix : Sdk.Vapix.IVapixClientFactory

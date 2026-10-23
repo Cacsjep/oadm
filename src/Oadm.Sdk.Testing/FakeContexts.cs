@@ -187,7 +187,9 @@ public sealed record FakePublishedEvent(string Topic, string? PayloadJson, Plugi
 /// during the call of a user with a device group (<see cref="CallAsGroup"/>) the context's own <see cref="Devices"/>,
 /// <see cref="Vapix"/>, <see cref="Tasks"/> and <see cref="System"/> refuse with <see cref="DeviceAccessRefusedException"/>
 /// (also in work the plugin starts from the call and in that user's jobs), exactly like on the server. The tasks it starts
-/// stay active (<see cref="ITaskRunner.IsActive"/>) until they are cancelled or the test ends them with <see cref="EndTask"/>.
+/// stay active (<see cref="ITaskRunner.IsActive"/>) until they are cancelled or the test ends them with <see cref="EndTask"/>;
+/// like the host, an unknown or ended task is not active (false). Unlike the host, <see cref="ITaskRunner.Cancel"/> ends the
+/// task at once: on the server a cancelled task stays active until its run stops.
 /// </summary>
 public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVapixClientFactory, IPluginEvents, ITaskRunner
 {
@@ -353,14 +355,14 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         return Run(pluginId, deviceIds, payloadJson, owner);
     }
 
-    /// <summary>Cancels a task the plugin started: true when it was still active.</summary>
+    /// <summary>Cancels a task the plugin started: true when it was still active. It ends at once (the host's ends when its run stops).</summary>
     bool ITaskRunner.Cancel(Guid taskId)
     {
         Check("Tasks");
         return EndTask(taskId);
     }
 
-    /// <summary>True while a task the plugin started is active, false once it ended, null for an unknown task.</summary>
+    /// <summary>True while a task the plugin started is active; false once it ended and for an unknown task, like the host.</summary>
     bool? ITaskRunner.IsActive(Guid taskId)
     {
         Check("Tasks");
@@ -462,8 +464,8 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <summary>The device of a task the plugin started and the user whose call started it, or null for an unknown task.</summary>
     internal (Guid DeviceId, string? StartedBy)? TaskOf(Guid taskId) => _tasks.TryGetValue(taskId, out var task) ? (task.DeviceId, task.StartedBy) : null;
 
-    /// <summary>Whether a task is active without the call checks (null: unknown).</summary>
-    internal bool? TaskActive(Guid taskId) => _tasks.TryGetValue(taskId, out var task) ? Volatile.Read(ref task.Ended) == 0 : null;
+    /// <summary>Whether a task is active without the call checks; false for an unknown or ended task, like the host.</summary>
+    internal bool TaskActive(Guid taskId) => _tasks.TryGetValue(taskId, out var task) && Volatile.Read(ref task.Ended) == 0;
 
     private sealed class FakeTask(Guid deviceId, string? startedBy)
     {
@@ -518,6 +520,18 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         {
             core.Check("System.Tasks", system: true);
             return core.Run(pluginId, deviceIds, payloadJson, owner);
+        }
+
+        public bool Cancel(Guid taskId)
+        {
+            core.Check("System.Tasks", system: true);
+            return core.EndTask(taskId);
+        }
+
+        public bool? IsActive(Guid taskId)
+        {
+            core.Check("System.Tasks", system: true);
+            return core.TaskActive(taskId);
         }
     }
 
