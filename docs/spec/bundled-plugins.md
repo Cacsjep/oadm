@@ -42,6 +42,8 @@ plugin `README.md`.
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
   tile without a request; error texts from the shared `DeviceMessages`; report jobs live in server memory (30 minutes
   after last use), the PDF is read in 2 MB chunks.
+- Device groups (SDK 0.4.0): only cameras of the user's view ("All" = the view); reports are jobs of their user, another
+  user's report id answers like an unknown one.
 - Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (PDF parsed back with PDFsharp); hardware test through the in-process
   server writing the PDF to `OADM_SCREENSHOT_DIR`.
 

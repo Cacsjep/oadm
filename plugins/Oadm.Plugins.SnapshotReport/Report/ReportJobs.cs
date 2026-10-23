@@ -4,13 +4,17 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Plugins.SnapshotReport.Report;
 
 /// <summary>
 /// PDF reports built in the background: fresh snapshots at report size for the selected tiles (bounded by the
 /// <see cref="SnapshotService"/>), then the PDF. The page polls the status and reads the finished file in
 /// chunks (a report with many cameras is larger than one gRPC message). Reports are kept in memory and
-/// dropped 30 minutes after their last use.
+/// dropped 30 minutes after their last use. Device groups (SDK 0.4.0): a report of a user is a job of that user
+/// (<see cref="IPluginJobs"/>): it takes snapshots through the user's view, and its id answers only that user (another
+/// user's id like an unknown one).
 /// </summary>
 public sealed partial class ReportJobs : IDisposable
 {
@@ -45,29 +49,63 @@ public sealed partial class ReportJobs : IDisposable
         _logger = logger ?? NullLogger.Instance;
     }
 
-    /// <summary>Validates the request and starts the report; returns its first status.</summary>
+    /// <summary>The text for a report id the user does not have (also another user's).</summary>
+    public const string NotFound = "The report no longer exists; create it again.";
+
+    /// <summary>Validates the request and starts the report with the plugin's devices (in-process callers); returns its first status.</summary>
     public ReportJobStatus Start(ReportRequest request, string defaultVersion)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Items.Count == 0)
-        {
-            throw new ArgumentException("Select at least one snapshot for the report.", nameof(request));
-        }
-
-        if (request.Items.Count > MaxItems)
-        {
-            throw new ArgumentException($"A report holds at most {MaxItems} snapshots.", nameof(request));
-        }
-
+        Validate(request);
         DropExpired();
-        var job = new Job(Guid.NewGuid().ToString("N"), request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
+        var job = new Job(Guid.NewGuid().ToString("N"), request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), null);
         _jobs[job.Id] = job;
         job.Message = "Read video sources";
-        job.Worker = Task.Run(() => RunAsync(job, request, string.IsNullOrWhiteSpace(request.OadmVersion) ? defaultVersion : request.OadmVersion!));
+        var access = new SnapshotService.DeviceAccess(_snapshots.DefaultDevices, _snapshots.DefaultVapix, Strict: false);
+        job.Worker = Task.Run(() => RunAsync(job, access, request, VersionOf(request, defaultVersion)));
+        return job.ToStatus();
+    }
+
+    /// <summary>
+    /// Validates the request and starts the report as a job of <paramref name="caller"/> (<paramref name="jobs"/>): every item
+    /// must be a device of the user's view (a user with a device group: else <see cref="Sdk.Devices.DevicesNotAvailableException"/>,
+    /// nothing runs); the snapshots are taken through the user's view. Returns the first status.
+    /// </summary>
+    public async Task<ReportJobStatus> StartAsync(ICallContext caller, IPluginJobs jobs, ReportRequest request, string defaultVersion, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(jobs);
+        Validate(request);
+        await SnapshotService.RequireAsync(caller, [.. request.Items.Select(i => i.DeviceId).Distinct()], ct).ConfigureAwait(false);
+        DropExpired();
+        var version = VersionOf(request, defaultVersion);
+        var ready = new TaskCompletionSource<Job>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var owned = jobs.Start(caller, "report", async (owned, token) =>
+        {
+            var job = await ready.Task.ConfigureAwait(false);
+            using (token.Register(job.Cancel.Cancel))
+            {
+                await RunAsync(job, SnapshotService.DeviceAccess.Of(owned.Owner), request, version).ConfigureAwait(false);
+            }
+        });
+        var job = new Job(owned.Id, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
+        {
+            Message = "Read video sources",
+        };
+        _jobs[job.Id] = job;
+        ready.SetResult(job);
         return job.ToStatus();
     }
 
     public ReportJobStatus Status(string jobId) => Get(jobId).ToStatus();
+
+    /// <summary>The status of the user's report; another user's id answers like an unknown one.</summary>
+    public ReportJobStatus Status(ICallContext caller, IPluginJobs jobs, string jobId) => Owned(caller, jobs, jobId).ToStatus();
+
+    /// <summary>The next chunk of the user's finished report.</summary>
+    public ReportChunk Read(ICallContext caller, IPluginJobs jobs, string jobId, long offset) => Read(Owned(caller, jobs, jobId).Id, offset);
+
+    /// <summary>Cancels the user's report and forgets it; another user's id answers like an unknown one.</summary>
+    public void Delete(ICallContext caller, IPluginJobs jobs, string jobId) => Delete(Owned(caller, jobs, jobId).Id);
 
     /// <summary>The next chunk of a finished report.</summary>
     public ReportChunk Read(string jobId, long offset)
@@ -96,6 +134,7 @@ public sealed partial class ReportJobs : IDisposable
         {
             job.Cancel.Cancel();
             job.Cancel.Dispose();
+            job.Owned?.Cancel();
         }
     }
 
@@ -112,6 +151,7 @@ public sealed partial class ReportJobs : IDisposable
         _shutdown.Cancel();
         foreach (var job in _jobs.Values)
         {
+            job.Owned?.Cancel();
             job.Cancel.Dispose();
         }
 
@@ -125,13 +165,20 @@ public sealed partial class ReportJobs : IDisposable
     /// <see cref="SnapshotReportPluginInfo.Parallelism"/> workers at <see cref="SnapshotSize"/>.
     /// <paramref name="onTaken"/> gets the number of finished items and whether the last one succeeded.
     /// </summary>
-    public async Task<ReportEntry[]> CollectAsync(ReportRequest request, Action<int, bool>? onTaken, CancellationToken ct)
+    public Task<ReportEntry[]> CollectAsync(ReportRequest request, Action<int, bool>? onTaken, CancellationToken ct) =>
+        CollectAsync(new SnapshotService.DeviceAccess(_snapshots.DefaultDevices, _snapshots.DefaultVapix, Strict: false), request, onTaken, ct);
+
+    /// <summary><see cref="CollectAsync(ReportRequest, Action{int, bool}?, CancellationToken)"/> through the user's view.</summary>
+    public Task<ReportEntry[]> CollectAsync(ICallContext caller, ReportRequest request, Action<int, bool>? onTaken, CancellationToken ct) =>
+        CollectAsync(SnapshotService.DeviceAccess.Of(caller), request, onTaken, ct);
+
+    private async Task<ReportEntry[]> CollectAsync(SnapshotService.DeviceAccess access, ReportRequest request, Action<int, bool>? onTaken, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         var ids = request.Items.Select(i => i.DeviceId).ToHashSet();
 
         // Sources the page just read are reused (no second source request per device for the report).
-        var listed = await _snapshots.ListSourcesAsync(new ListSourcesRequest { DeviceIds = [.. ids] }, ct, refreshSources: false).ConfigureAwait(false);
+        var listed = await _snapshots.ListSourcesAsync(access, new ListSourcesRequest { DeviceIds = [.. ids] }, refreshSources: false, ct).ConfigureAwait(false);
         var tiles = new Dictionary<(Guid, int), SnapshotTile>();
         var byDevice = new Dictionary<Guid, SnapshotTile>();
         foreach (var t in listed.Tiles)
@@ -140,7 +187,7 @@ public sealed partial class ReportJobs : IDisposable
             byDevice.TryAdd(t.Device.DeviceId, t);
         }
 
-        var devices = (await _snapshots.GetVideoDevicesAsync(ids, ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
+        var devices = (await SnapshotService.GetVideoDevicesAsync(access, ids, ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
         var (maxWidth, maxHeight) = SnapshotSize(request);
         var entries = new ReportEntry[request.Items.Count];
         var done = 0;
@@ -150,21 +197,51 @@ public sealed partial class ReportJobs : IDisposable
             var tile = Resolve(item, tiles, byDevice);
             var snapshot = tile.Error is { } error && tile.Device.DeviceId == Guid.Empty
                 ? new CapturedSnapshot(null, 0, 0, null, error)
-                : await _snapshots.TakeAsync(devices.GetValueOrDefault(item.DeviceId), item.Camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
+                : await _snapshots.TakeAsync(access.Vapix, devices.GetValueOrDefault(item.DeviceId), item.Camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
             entries[index] = new ReportEntry(tile, snapshot);
             onTaken?.Invoke(Interlocked.Increment(ref done), snapshot.IsOk);
         }, ct).ConfigureAwait(false);
         return entries;
     }
 
-    private async Task RunAsync(Job job, ReportRequest request, string version)
+    private static void Validate(ReportRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Items.Count == 0)
+        {
+            throw new ArgumentException("Select at least one snapshot for the report.", nameof(request));
+        }
+
+        if (request.Items.Count > MaxItems)
+        {
+            throw new ArgumentException($"A report holds at most {MaxItems} snapshots.", nameof(request));
+        }
+    }
+
+    private static string VersionOf(ReportRequest request, string defaultVersion) =>
+        string.IsNullOrWhiteSpace(request.OadmVersion) ? defaultVersion : request.OadmVersion!;
+
+    /// <summary>The report of <paramref name="jobId"/> when it is the user's (<see cref="IPluginJobs.Find"/>), else <see cref="NotFound"/>.</summary>
+    private Job Owned(ICallContext caller, IPluginJobs jobs, string jobId)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(jobs);
+        if (string.IsNullOrEmpty(jobId) || jobs.Find(caller, jobId) is null)
+        {
+            throw new KeyNotFoundException(NotFound);
+        }
+
+        return Get(jobId);
+    }
+
+    private async Task RunAsync(Job job, SnapshotService.DeviceAccess access, ReportRequest request, string version)
     {
         var ct = job.Cancel.Token;
         try
         {
             var total = request.Items.Count;
             job.Message = string.Create(CultureInfo.InvariantCulture, $"Take snapshot 1 of {total}");
-            var entries = await CollectAsync(request, (finished, ok) =>
+            var entries = await CollectAsync(access, request, (finished, ok) =>
             {
                 job.Done = finished;
                 if (!ok)
@@ -263,7 +340,7 @@ public sealed partial class ReportJobs : IDisposable
         DropExpired();
         if (!_jobs.TryGetValue(jobId ?? string.Empty, out var job))
         {
-            throw new KeyNotFoundException("The report no longer exists; create it again.");
+            throw new KeyNotFoundException(NotFound);
         }
 
         job.LastUsed = _time.GetUtcNow();
@@ -288,9 +365,12 @@ public sealed partial class ReportJobs : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Snapshot report {JobId} failed")]
     private partial void LogReportFailed(Exception ex, string jobId);
 
-    private sealed class Job(string id, int total, DateTimeOffset created, CancellationTokenSource cancel)
+    private sealed class Job(string id, int total, DateTimeOffset created, CancellationTokenSource cancel, IPluginJob? owned)
     {
         public string Id { get; } = id;
+
+        /// <summary>The user's job of a report started through the call (null for in-process reports).</summary>
+        public IPluginJob? Owned { get; } = owned;
         public int Total { get; } = total;
         public CancellationTokenSource Cancel { get; } = cancel;
         public DateTimeOffset LastUsed { get; set; } = created;
