@@ -35,6 +35,12 @@ public sealed class ComplianceCheck
 
     public int Version { get; set; }
 
+    /// <summary>
+    /// The owner (docs/spec/device-scope.md, Shared objects): the check runs only on the owner's devices, users of a group
+    /// see only the checks of their group. <see cref="Auth.DeviceScope.None"/>: its group was deleted, the check is off.
+    /// </summary>
+    public Auth.DeviceScope Owner { get; set; } = Auth.DeviceScope.None;
+
     public DateTime CreatedUtc { get; set; }
 
     public DateTime ChangedUtc { get; set; }
@@ -52,6 +58,7 @@ public sealed class ComplianceCheck
         Enabled = Enabled,
         BuiltIn = BuiltIn,
         Version = Version,
+        Owner = Owner,
         CreatedUtc = CreatedUtc,
         ChangedUtc = ChangedUtc,
     };
@@ -118,6 +125,7 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
                     Enabled = true,
                     BuiltIn = true,
                     Version = 1,
+                    OwnerAllDevices = true, // the default checks belong to all devices
                     CreatedUtc = now,
                     ChangedUtc = now,
                 });
@@ -164,6 +172,14 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
         }
     }
 
+    /// <summary>One check as stored (the engine reads the checks of a deleted group again), or null.</summary>
+    public async Task<ComplianceCheck?> GetCheckAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var row = await db.ComplianceChecks.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct).ConfigureAwait(false);
+        return row is null ? null : ToModel(row);
+    }
+
     public async Task<IReadOnlyList<ComplianceCheck>> ListChecksAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
@@ -172,8 +188,9 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
     }
 
     /// <summary>
-    /// Creates (empty id) or replaces a check; returns the stored one. The version must be the stored one (0 = no check);
-    /// a default check keeps its name, type and severity. Throws <see cref="KeyNotFoundException"/> and
+    /// Creates (empty id) or replaces a check with its <see cref="ComplianceCheck.Owner"/>; returns the stored one. The
+    /// version must be the stored one (0 = no check); a default check keeps its name, type and severity. Throws
+    /// <see cref="KeyNotFoundException"/> and
     /// <see cref="ComplianceValidationException"/>.
     /// </summary>
     public async Task<ComplianceCheck> SaveCheckAsync(ComplianceCheck incoming, CancellationToken ct)
@@ -218,6 +235,8 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
             row.SettingsJson = incoming.Settings.ToJsonString();
             row.DevicesJson = JsonSerializer.Serialize(incoming.Devices, Json);
             row.IntervalMinutes = incoming.IntervalMinutes;
+            row.OwnerAllDevices = incoming.Owner.AllDevices;
+            row.OwnerGroupId = incoming.Owner.EffectiveGroupId;
             row.Version++;
             row.ChangedUtc = now;
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -368,6 +387,7 @@ public sealed class ComplianceStore(IDbContextFactory<OadmDbContext> dbFactory, 
         Enabled = row.Enabled,
         BuiltIn = row.BuiltIn,
         Version = row.Version,
+        Owner = row.Owner,
         CreatedUtc = row.CreatedUtc,
         ChangedUtc = row.ChangedUtc,
     };

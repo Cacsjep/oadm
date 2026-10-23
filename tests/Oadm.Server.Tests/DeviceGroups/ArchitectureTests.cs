@@ -130,7 +130,6 @@ public sealed partial class ArchitectureTests
         ["TaskEngine.RunAsync"] = "tasks",
         ["TaskPluginQueries.QueryAsync"] = "tasks",
         ["ActionRunner.TestAsync"] = "shared-core",
-        ["ComplianceService.ListChoicesAsync"] = "shared-core",
         ["EventLog.Write"] = "shared-core",
         ["CredentialStore.HasCredentialsAsync"] = "devices-core",
         ["CredentialStore.ListUserNamesAsync"] = "devices-core",
