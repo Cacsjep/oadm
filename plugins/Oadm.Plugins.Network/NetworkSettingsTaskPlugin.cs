@@ -86,19 +86,33 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
         RunQueryAsync(ctx, device, method, payloadJson, _probe, ct);
 
     /// <summary>
+    /// The user's query (SDK 0.4.0): "checkAddresses" names only devices of the user's view; an address of another managed
+    /// device is only "in use". Both queries read only the queried device.
+    /// </summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return RunQueryAsync(ctx, device, method, payloadJson, _probe, outsideView: !caller.HasAllDevices, ct);
+    }
+
+    /// <summary>
     /// "Set static IP 10.0.0.60", "Switch to DHCP", "Set DNS servers", "Set host name cam-1", "Change IPv6 settings"
     /// when only one section changes, else "Change network settings".
     /// </summary>
     public string GetTaskName(string? payloadJson) => NetworkTaskNames.ForNetworkSettings(payloadJson) ?? DisplayName;
 
     /// <summary>The queries of both network plugins ("getNetworkInfo", "checkAddresses").</summary>
-    internal static async Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, CancellationToken ct)
+    internal static Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, CancellationToken ct) =>
+        RunQueryAsync(ctx, device, method, payloadJson, probe, outsideView: false, ct);
+
+    /// <param name="outsideView">The caller has a device group (see <see cref="AddressCheck"/>).</param>
+    internal static async Task<string?> RunQueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, IAddressProbe? probe, bool outsideView, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         if (string.Equals(method, AddressCheck.QueryMethod, StringComparison.Ordinal))
         {
-            return await AddressCheck.QueryAsync(ctx, device, payloadJson, probe, ct).ConfigureAwait(false);
+            return await AddressCheck.QueryAsync(ctx, device, payloadJson, probe, outsideView, ct).ConfigureAwait(false);
         }
 
         if (!string.Equals(method, QueryGetNetworkInfo, StringComparison.Ordinal))

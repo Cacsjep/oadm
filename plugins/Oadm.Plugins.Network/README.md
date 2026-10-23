@@ -215,3 +215,7 @@ documentation has no per-method version history; each minimum is the earliest `a
 
 Recorded responses (MAC/serial anonymized): `tests/Oadm.Plugins.Network.Tests/Fixtures`. No write was ever sent to a
 real device; write paths are tested against fakes only.
+
+## Device groups
+
+SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device. `checkAddresses` of a user with a device group lists only the group's devices by name; a candidate address that another managed device on the route has comes back "In use" (`AddressStatus.UsedByDevice`, from `ITaskQueryContext.ManagedAddressesAsync`), without its name or id. Users with all devices: unchanged. Tests: `DeviceGroupTests` (`PluginCanary`, the address check of a group user and of a user with all devices).

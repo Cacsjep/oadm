@@ -332,7 +332,7 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
         foreach (var probe in response.Probed)
         {
             known[probe.Address] = known.TryGetValue(probe.Address, out var existing)
-                ? existing with { InUse = probe.InUse, OutsideSite = probe.OutsideSite }
+                ? existing with { InUse = probe.InUse, OutsideSite = probe.OutsideSite, UsedByDevice = probe.UsedByDevice }
                 : probe;
         }
     }

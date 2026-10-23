@@ -94,6 +94,13 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
         NetworkSettingsTaskPlugin.RunQueryAsync(ctx, device, method, payloadJson, _probe, ct);
 
+    /// <summary>The user's query (SDK 0.4.0), like <see cref="NetworkSettingsTaskPlugin"/>'s.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, ICallContext caller, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        return NetworkSettingsTaskPlugin.RunQueryAsync(ctx, device, method, payloadJson, _probe, outsideView: !caller.HasAllDevices, ct);
+    }
+
     /// <summary>"Assign IP 10.0.0.60" (one device), "Assign IP addresses" (several), "Assign IP via DHCP".</summary>
     public string GetTaskName(string? payloadJson) => NetworkTaskNames.ForAssignIp(payloadJson) ?? DisplayName;
 }

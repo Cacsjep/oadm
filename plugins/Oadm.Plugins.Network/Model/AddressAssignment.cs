@@ -69,10 +69,14 @@ public static class AddressAssigner
 /// <param name="InUse">Something answers at this address: a ping or a TCP connection on port 80 or 443.</param>
 /// <param name="AnswersPing">The address answered an ICMP echo (ping).</param>
 /// <param name="OutsideSite">The address is outside the networks the device's site reaches (devices at a site only).</param>
-public sealed record AddressStatus(string Address, Guid? DeviceId = null, string? Device = null, bool InUse = false, bool AnswersPing = false, bool OutsideSite = false)
+/// <param name="UsedByDevice">
+/// A managed device outside the user's device group has this address: <paramref name="InUse"/>, the device never named.
+/// </param>
+public sealed record AddressStatus(
+    string Address, Guid? DeviceId = null, string? Device = null, bool InUse = false, bool AnswersPing = false, bool OutsideSite = false, bool UsedByDevice = false)
 {
-    /// <summary>The row status of an address in use: "In use (answers ping)" or "In use (answers on port 80/443)".</summary>
-    public string InUseText => AnswersPing ? "In use (answers ping)" : "In use (answers on port 80/443)";
+    /// <summary>The row status of an address in use: "In use (answers ping)", "In use (answers on port 80/443)" or "In use".</summary>
+    public string InUseText => AnswersPing ? "In use (answers ping)" : UsedByDevice ? "In use" : "In use (answers on port 80/443)";
 }
 
 /// <summary>Request of the read-only query "checkAddresses".</summary>
