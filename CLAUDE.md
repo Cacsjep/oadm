@@ -98,7 +98,7 @@ tests/
   Oadm.Core.Tests/
   Oadm.Server.Tests/
   Oadm.Client.Tests/
-  Shared/              RecordingFirewall (linked into plugin tests; StepRun moved to src/Oadm.Sdk.Testing)
+  Shared/              RecordingFirewall, RecordingStreams, CallWatchers (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
                        Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new", the templates),
                        Oadm.Tools (the "oadm" command, NuGet Oadm.Tools; "manage license")
