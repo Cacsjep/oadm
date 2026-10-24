@@ -4,7 +4,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Agreed 2026-10-23; one-page redesign, trusted CAs from PKI and policies agreed 2026-10-24; built 2026-10-24: the protocol
 layer ("Code (protocol)") and the server part ("Code (server)"); the page is the client part. Since stage 3 of
 `docs/spec/pki.md` (2026-10-24) every rule of the server is a policy of PKI: 802.1X server (TLS, packet size,
-reauthentication), Allow CA, VLAN, Block and Revoke; the server keeps no rules of its own.
+reauthentication), Allow CA, VLAN, Block and Revoke; the server keeps no rules of its own. Since decision 2026-10-25 the
+kinds are 802.1X server (also its certificate: Issued by, days, key), 802.1X trusted CA (the former Allow CA), VLAN and
+Block (with "Also revoke their IEEE 802.1X certificates", the former Revoke); `docs/spec/pki.md` "Several CAs and the
+policy cleanup".
 
 A PRO part of the PKI package since OADM 4.5 (core plugin `oadm.radius`, `plugins/Oadm.Plugins.Pki/Radius`, its own
 source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the page's Server card
@@ -42,7 +45,7 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   2026-10-24, stage 3). Revocation is PKI's (its Certificates list).
   - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
   - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the link
-    "6 policies applied" (802.1X server, Allow CA, VLAN, Block and Revoke policies; left in the Save row, opens PKI's Policies tab),
+    "6 policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies; left in the Save row, opens PKI's Policies tab),
     the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "Port 1812
     is used by another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
     certificate's end.
@@ -180,10 +183,12 @@ certificate").
   numbers in both directions, `TlsContext.ExportKeyingMaterial` the MSK. `SslStream` offers neither the key export nor the
   alert numbers on all three systems. Stage 1 starts with a proof: a full EAP-TLS exchange with a BouncyCastle client in a
   unit test.
-- **Server certificate:** issued by the OADM CA (PKI) for the server, names = the listen addresses and the server's host
-  name, valid for the days of PKI's Server certificate policy "802.1X server" (365 by default, ECC only: the cipher suites
-  follow the key), renewed automatically 30 days (at most a third of its time) before it expires and at once for a new CA;
-  other days apply to the next one; the cameras trust it through the PKI task "Enable IEEE 802.1X".
+- **Server certificate:** issued by the CA of PKI's 802.1X server policy ("Issued by": the OADM CA by default, or an
+  imported CA with its key; decision 2026-10-25) for the server, names = the listen addresses and the server's host name,
+  valid for the policy's days (365 by default, ECC only: the cipher suites follow the key), renewed automatically 30 days
+  (at most a third of its time) before it expires and at once for another CA; other days apply to the next one; the
+  cameras trust it through the PKI task "Enable IEEE 802.1X" (its RADIUS server CA "OADM 802.1X server" installs the chain
+  of that CA). A CA that cannot issue leaves the server without a certificate (fail closed, the status says so).
 
 ## Libraries (research 2026-10-23)
 
@@ -310,7 +315,7 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 
 ## Who passes
 
-- The client certificate: issued directly by a CA of an **Allow CA** policy of PKI (decision 2026-10-24; a certificate of
+- The client certificate: issued directly by a CA of an **802.1X trusted CA** policy of PKI (decision 2026-10-24; a certificate of
   another CA under the same root never passes, also when that root is imported and allowed), or for the Axis device ID a
   chain to its roots; valid now, extended key usage client authentication (or none). Previous OADM CAs follow the OADM
   CA's policy (no policies of their own), so replacing the CA never locks the cameras out. A CA PKI no longer lists drops
@@ -320,9 +325,13 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   CA: the name, else a serial in the subject). At a site: a device of that site. For a CA without it, any valid
   certificate of that CA passes; one that names a managed device counts as that device (site, policies, VLAN), any other
   passes without a device and without a VLAN, and the Device column of Sessions and Log shows its subject.
-- No **Block** policy holds the device ("Blocked by Storage room", alert 49); no **Revoke** policy holds it ("Certificate
-  revoked by Stolen", alert 44; a certificate of an OADM CA is then revoked in PKI in the background). Block wins over
-  VLAN.
+- No **Block** policy holds the device ("Blocked by Storage room", alert 49); one with **Also revoke** says "Certificate
+  revoked by Stolen" (alert 44; a certificate of a CA OADM issues with is then revoked in PKI in the background). Block
+  wins over VLAN.
+- A CA OADM issues with (the OADM CA, a previous OADM CA, an imported CA with its key; decision 2026-10-25) keeps PKI's
+  lists: its certificates listed with another use are refused and those on the revocation list too
+  (`TrustedIssuer.KeepsLists`). An imported CA without its key: OADM's lists do not apply (its certificates come from
+  elsewhere).
 - A certificate of an OADM CA that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
   not an IEEE 802.1X certificate"; review round 2). One created, signed or imported on PKI's Certificates card is refused
   too (alert 42, "Certificate is not a device certificate"), whatever it names. One PKI does not list (from before the list)
@@ -367,7 +376,7 @@ their group names (none when it names none). The tags the policies use are prote
 (stage 3)"): a user who may tag devices but has a group could otherwise choose a device's VLAN or take it out of a Block
 policy. Until OADM 4.5 the 802.1X server protected them itself; its core plugin releases that set at its start. On a host
 without `ProtectedTags` the tag parts of VLAN policies match no device (fail closed), those of Block policies still match,
-Revoke policies never match by tag.
+Block policies with Also revoke never match by tag.
 
 ## Secrets and logs
 
@@ -504,14 +513,15 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   found each time (`RadiusHost.Policies`); `RulesNow()` builds the rules again before a handshake when the store's version
   moved or PKI started again (a new store) and puts the server policy's TLS, largest EAP packet and reauthentication into the
   processor's options; a change of the store also publishes the state ("6 policies apply"). `CaTrust.Build` takes PKI's
-  `Authorities` and the CAs of the Allow CA policies (`TrustedCaSettings`, rebuilt with the rules: the trusted set compares it
+  `Authorities` and the CAs of the 802.1X trusted CA policies (`TrustedCaSettings`, rebuilt with the rules: the trusted set compares it
   by reference): previous OADM CAs follow the OADM CA ("oadm-previous:<sha256>"), each issuing certificate's hash maps to its
   CA (`TrustedIssuer`: kind, only managed; the Axis device ID through `AxisDeviceId.Verify` with PKI's roots and
-  intermediates). `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block or Revoke
-  policy refuses (Revoke never by tag, VLAN tags only while the host protects them). The settings of OADM 4.1 and of
+  intermediates). `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block policy
+  refuses (one with Also revoke never by tag, VLAN tags only while the host protects them). The settings of OADM 4.1 and of
   development builds (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
-  `RadiusPolicies.ConvertAsync` when the core plugin starts (PKI notes it), and are left as they are.
-- **Revoke policies**: PKI revokes on save and every minute; a handshake that meets a certificate a Revoke policy holds queues
+  `RadiusPolicies.ConvertAsync` when the core plugin starts (PKI notes it), and are left as they are; their Revoke policies
+  become Block policies with Also revoke, the 802.1X server policy gets its certificate's defaults (OADM CA, 365 days, ECC).
+- **Block policies with Also revoke**: PKI revokes on save and every minute; a handshake that meets a certificate such a policy holds queues
   it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
   certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on ..."),
@@ -536,7 +546,8 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   manage (...)"), the switch's site (49 "The device belongs to another site"), the policies, the MAC
   warning and the VLAN (`PolicyPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial, the VLAN
   policy) goes with the session; Sessions and Log carry it as `VlanPolicy`.
-- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the OADM CA for the IPv4 listen addresses (with All
+- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the CA of the 802.1X server policy (`IssuerId`; the
+  OADM CA without one) for the IPv4 listen addresses (with All
   interfaces those of every card that is up, without self-assigned 169.254 addresses) and the host name, 365 days, kept in
   the setting `serverCertificate` (key encrypted with `radius:server-key`), made again with a new CA, a new name or 30 days
   before its end (checked at the start and every minute; a round asked for while one runs, e.g. a CA change, runs right

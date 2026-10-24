@@ -133,12 +133,14 @@ The package (one server and one client assembly, one `plugin.json`) also holds t
 (`oadm.est`, `Est/`) and **802.1X server** (`oadm.radius`, `Radius/`), whose pages are tabs of the PKI page
 (`ICorePluginPage.TabOf`, `docs/spec/pki.md` "One plugin" and "The PKI page"); only these two servers need OADM PRO, PKI itself never does (Plugins page: no PRO chip, the description says
 "802.1X and EST servers need OADM PRO.").
-One certificate authority for device certificates (generated on first start or imported), the server's trust in it, and
+The OADM CA for device certificates (generated on first start, replaced with New OADM CA) and any CA imported with its
+key (decision 2026-10-25: several CAs issue; an import always adds a CA), the server's trust in them, and
 the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
 Delete and Install certificates, Install CA certificates; one page (docs/spec/pki.md "The PKI page"): the certificate
-authorities, the policies (the issuing policies HTTPS certificate, IEEE 802.1X certificate and Server certificate:
-the values Enable HTTPS, Enable IEEE 802.1X, the EST profiles and the two servers issue with; 802.1X server, Allow CA, VLAN,
-Block, Revoke, Expiry warning; the 802.1X server reads its rules there) and the list of every certificate the OADM CA issued with the revocation list (Revoke; docs/spec/radius-server.md
+authorities, the policies (the issuing policies HTTPS certificate and IEEE 802.1X certificate: Issued by and the values
+Enable HTTPS, Enable IEEE 802.1X and the EST profiles issue with; 802.1X server (with its certificate), 802.1X trusted CA,
+VLAN, Block (Also revoke), EST server (its certificate), Enrollment, EST sign-in CA, Expiry warning; the 802.1X and EST
+servers read their rules there) and the list of every certificate OADM uses with the revocation list (Revoke; docs/spec/radius-server.md
 "Certificates and revocation"); the events "Certificate expires soon" and "Certificate expired" (group "Certificates").
 Details: plugin
 `README.md`; device API research:
@@ -508,9 +510,9 @@ Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugi
 source-available `Est/LICENSE`. The server is off by default: **Turn on** / **Turn off** on its tab (stored choice); it runs,
 and opens TCP 9454, only while it is on and OADM PRO is active. Spec: `docs/spec/est-server.md`; details: `Est/README.md`.
 
-- Rules that must hold: only cameras that sign in with a certificate of a CA a Sign-in CA policy of PKI names (the Axis device ID, or a valid certificate the OADM CA itself issued them, naming exactly one camera), that an Enrollment policy holds for the profile, and that
-  OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the OADM CA of PKI
-  signs (no CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
+- Rules that must hold: only cameras that sign in with a certificate of a CA an EST sign-in CA policy of PKI names (the Axis device ID, or a valid certificate an OADM CA itself issued them, naming exactly one camera; never an imported CA), that an Enrollment policy holds for the profile, and that
+  OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the CA of the
+  profile's issuing policy signs (no such CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
   requests are logged; a certificate on PKI's revocation list renews nothing (403 "Certificate revoked on ...");
   the plugin checks the license on every request, and changing or removing that check is not
   allowed by its license.
@@ -527,14 +529,14 @@ Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugi
 its own source-available `Radius/LICENSE`, UDP 1812 at sites. The server is off by default: **Turn on** / **Turn off** on its
 page (stored choice); it runs, and opens UDP 1812, only while it is on and OADM PRO is active. Spec:
 `docs/spec/radius-server.md`; details: `Radius/README.md`. The switches' RADIUS server on UDP 1812 (Listen on) and at
-every site with switches (the node's relay); EAP-TLS with the server certificate from the OADM CA; Sessions, Log, the
-event rules "Device authenticated" and "Authentication failed"; its rules (TLS, trusted CAs, VLAN, Block, Revoke) are PKI's
+every site with switches (the node's relay); EAP-TLS with the server certificate from the CA of its 802.1X server policy; Sessions, Log, the
+event rules "Device authenticated" and "Authentication failed"; its rules (its certificate, TLS, trusted CAs, VLAN, Block) are PKI's
 policies (docs/spec/pki.md "Policies").
 
-- Rules that must hold: only devices whose client certificate passes (issued directly by a CA of an Allow CA policy, a
+- Rules that must hold: only devices whose client certificate passes (issued directly by a CA of an 802.1X trusted CA policy, a
   root above it only anchoring the chain, or the Axis device ID roots; nothing without PKI and its policies; client
   authentication; exactly one managed device unless the policy allows any device; at a site a device of that site; not on
-  PKI's revocation list; no Block or Revoke policy holds it) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
+  PKI's revocation list; no Block policy holds it) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
   and requests of unknown senders are dropped, never answered; OADM PRO is checked on every request; shared secrets are
   stored only encrypted, never logged and never sent to a page; keys are never logged.
 - Roles and device groups: reading for everyone with the page; Turn on, Turn off, saves and Delete all Admin
