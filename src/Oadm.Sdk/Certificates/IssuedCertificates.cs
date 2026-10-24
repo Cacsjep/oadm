@@ -16,6 +16,12 @@ public enum RevocationReason
 
     /// <summary>The device was taken out of the system.</summary>
     DeviceRemoved = 3,
+
+    /// <summary>
+    /// Set by OADM itself (never a choice of the page): a newer certificate of the same camera and use was confirmed on the
+    /// camera, or an issued certificate never reached it (a failed install, a newer one issued first).
+    /// </summary>
+    Superseded = 4,
 }
 
 /// <summary>What the list of issued certificates says about one certificate (SDK 0.4.0).</summary>
@@ -30,7 +36,10 @@ public enum IssuedCertificateState
     /// <summary>Its validity ended.</summary>
     Expired = 2,
 
-    /// <summary>A newer certificate of the same device and use exists.</summary>
+    /// <summary>
+    /// A newer certificate of the same device and use exists. Kept for compatibility: PKI lists only each camera's current
+    /// certificates since OADM 4.5 and never answers this state.
+    /// </summary>
     Replaced = 3,
 
     /// <summary>On the revocation list: no longer accepted, also while it is still valid.</summary>
@@ -205,12 +214,13 @@ public sealed record CertificateRevocation(string SerialNumber, DateTime Revoked
     /// <summary>The end of the certificate's validity: the entry leaves the list after it.</summary>
     public DateTime NotAfterUtc { get; init; }
 
-    /// <summary>"Key compromised", "Device replaced", "Device removed", "Other".</summary>
+    /// <summary>"Key compromised", "Device replaced", "Device removed", "Replaced by a newer certificate", "Other".</summary>
     public static string ReasonText(RevocationReason reason) => reason switch
     {
         RevocationReason.KeyCompromised => "Key compromised",
         RevocationReason.DeviceReplaced => "Device replaced",
         RevocationReason.DeviceRemoved => "Device removed",
+        RevocationReason.Superseded => "Replaced by a newer certificate",
         _ => "Other",
     };
 
