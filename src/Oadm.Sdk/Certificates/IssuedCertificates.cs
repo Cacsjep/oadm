@@ -267,8 +267,14 @@ public sealed record IssuedCertificateInfo
     /// <summary>The name of the CA that issued it ("OADM Root CA SERVER01"); null = <see cref="Source"/>.</summary>
     public string? IssuedBy { get; init; }
 
-    /// <summary>What uses it: the device it is installed on, "802.1X server", "EST server"; null = nothing.</summary>
+    /// <summary>What uses it: the device it is installed on, "802.1X server", "EST server"; for a CA every policy and service; null = nothing.</summary>
     public string? UsedBy { get; init; }
+
+    /// <summary>
+    /// The short form of <see cref="UsedBy"/> as badges: a CA's groups ("802.1X", "EST", "Issuing"), a server certificate's
+    /// server; null: <see cref="UsedBy"/> is shown as text (a device).
+    /// </summary>
+    public IReadOnlyList<string>? UsedByBadges { get; init; }
 
     /// <summary>OADM holds its private key (created, imported with its key): it can be exported as PKCS#12.</summary>
     public bool HasKey { get; init; }

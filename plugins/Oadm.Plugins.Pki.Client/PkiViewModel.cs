@@ -87,6 +87,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)],
             TrustStates = TrustStatesOf,
             ExportOadmCa = ExportAsync,
+            CaActions = CaActionsOf,
         };
         InitTabs();
     }
@@ -108,7 +109,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public partial string? StatusDetail { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsStatusOk), nameof(IsStatusWarning), nameof(IsStatusError), nameof(IsStatusAccent), nameof(ShowCaStatus))]
+    [NotifyPropertyChangedFor(nameof(IsStatusOk), nameof(IsStatusWarning), nameof(IsStatusError), nameof(IsStatusAccent), nameof(ShowCaStatus), nameof(ShowCaNotice))]
     public partial string StatusKind { get; set; } = "accent";
 
     /// <summary>
@@ -116,6 +117,9 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// while it is fine (its row says it), without a CA (<see cref="NoCaText"/>) or while one is created (the progress row).
     /// </summary>
     public bool ShowCaStatus => HasCa && !IsGenerating && StatusKind is ServiceStatus.Warning or ServiceStatus.Error;
+
+    /// <summary>Something about the OADM CA stands above the list: it is being created, there is none, or <see cref="ShowCaStatus"/>.</summary>
+    public bool ShowCaNotice => IsGenerating || HasNoCa || ShowCaStatus;
 
     public bool IsStatusOk => StatusKind == ServiceStatus.Ok;
 
@@ -128,7 +132,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     // ---------------------------------------------------------------- certificate authority card
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasNoCa), nameof(ShowCaStatus))]
+    [NotifyPropertyChangedFor(nameof(HasNoCa), nameof(ShowCaStatus), nameof(ShowCaNotice))]
     [NotifyCanExecuteChangedFor(nameof(InstallTrustCommand), nameof(ExportCommand), nameof(BackupCommand))]
     public partial bool HasCa { get; set; }
 
@@ -163,7 +167,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public partial bool IsKeyUnreadable { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowCaStatus))]
+    [NotifyPropertyChangedFor(nameof(ShowCaStatus), nameof(ShowCaNotice))]
     [NotifyCanExecuteChangedFor(nameof(GenerateCommand), nameof(ImportCommand), nameof(InstallTrustCommand), nameof(BackupCommand))]
     public partial bool IsGenerating { get; set; }
 
@@ -547,6 +551,32 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
 
         await Certificates.LoadAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// The CA entries of a row's menu: the OADM CA's Install in trusted root store (its own permission) and Back up; Remove
+    /// (red) of a previous or imported CA.
+    /// </summary>
+    private (IReadOnlyList<IssuedCertificateAction> Everyday, IReadOnlyList<IssuedCertificateAction> Danger) CaActionsOf(IssuedCertificateRow row)
+    {
+        List<IssuedCertificateAction> everyday = [];
+        List<IssuedCertificateAction> danger = [];
+        if (row.IsOadmCa && MayTrustServer)
+        {
+            everyday.Add(new("Install in trusted root store", InstallTrustCommand));
+        }
+
+        if (row.IsOadmCa && MayManage)
+        {
+            everyday.Add(new("Back up", BackupCommand));
+        }
+
+        if (row.IsRemovableCa && MayManage)
+        {
+            danger.Add(new("Remove", RemoveCaCommand, row, IsDanger: true));
+        }
+
+        return (everyday, danger);
     }
 
     /// <summary>The line without a CA: what to do first.</summary>

@@ -133,20 +133,23 @@ public sealed class PkiTabsTests
                 ImportCa: importCa.Select(m => ((string?)m.Header, m.Command)).ToList());
             importFlyout.Hide();
 
-            // The row buttons of each kind of row (the grid shows the CAs first).
-            var rows = window.GetVisualDescendants().OfType<DataGridRow>().Where(r => r.IsEffectivelyVisible).ToList();
-            List<string> LinksOf(Func<IssuedCertificateRow, bool> which) => [.. rows.Where(r => r.DataContext is IssuedCertificateRow row && which(row))
-                .SelectMany(r => r.GetVisualDescendants().OfType<Button>()).Where(b => b.IsEffectivelyVisible && b.Classes.Contains("link")).Select(b => b.Content as string ?? string.Empty)];
+            // One ⋯ button per row (no link row); its menu is the row's menu, the same as its right-click menu.
+            var rows = window.GetVisualDescendants().OfType<DataGridRow>().Where(r => r.IsEffectivelyVisible && r.DataContext is IssuedCertificateRow).ToList();
+            var oneButton = rows.All(r => r.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible) == 1
+                && r.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible).Classes.Contains("iconOnly"));
+            static string Text(IssuedCertificateAction a) => a.IsDanger ? a.Text + " (red)" : a.Text;
+            List<string> MenuOf(Func<IssuedCertificateRow, bool> which) => [.. vm.Certificates.MenuOf(vm.Certificates.Rows.First(which)).Select(Text)];
             var links = (
-                Oadm: LinksOf(r => r.IsOadmCa),
-                Previous: LinksOf(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm),
-                Axis: LinksOf(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId).Distinct().ToList());
-            var enabled = rows.Where(r => r.DataContext is IssuedCertificateRow { IsOadmCa: true }).SelectMany(r => r.GetVisualDescendants().OfType<Button>())
-                .Where(b => b.IsEffectivelyVisible && b.Classes.Contains("link")).All(b => b.IsEffectivelyEnabled);
-            var red = rows.SelectMany(r => r.GetVisualDescendants().OfType<Button>()).Where(b => b.IsEffectivelyVisible && b.Content as string is "Remove" or "Revoke")
-                .All(b => b.Classes.Contains("danger"));
+                Oadm: MenuOf(r => r.IsOadmCa),
+                Previous: MenuOf(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm),
+                Axis: MenuOf(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId),
+                Device: MenuOf(r => r.Source.Kind == ListedCertificateKind.Device));
+            var export = vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.IsOadmCa))[1].Items!.Select(a => a.Text).ToList();
+            var items = IssuedCertificateList.MenuItems(vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm))).ToList();
+            var red = items.OfType<MenuItem>().Where(m => (string?)m.Header == "Remove").All(m => m.Classes.Contains("danger")) && items.OfType<Separator>().Count() == 1;
+            var enabled = vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.IsOadmCa)).Where(a => a.Command is not null).All(a => a.Command!.CanExecute(a.Parameter));
             window.Close();
-            return (tabs, menus, links, enabled, red, installed, vm.GenerateCommand, vm.ImportCommand, vm.ImportAuthorityCommand, vm.Certificates.CreateCommand);
+            return (tabs, menus, links, export, oneButton, enabled, red, installed, vm.GenerateCommand, vm.ImportCommand, vm.ImportAuthorityCommand, vm.Certificates.CreateCommand);
         }, CancellationToken.None);
 
         Assert.Equal([("Certificates", true), ("802.1X server", false), ("EST server", false)], checks.tabs);
@@ -155,9 +158,12 @@ public sealed class PkiTabsTests
         Assert.Same(checks.GenerateCommand, checks.menus.Create[1].Command);
         Assert.Equal(["Certificate", "CA"], checks.menus.Import);
         Assert.Equal([("Own CA with its key", (System.Windows.Input.ICommand)checks.ImportCommand), ("CA certificate only", checks.ImportAuthorityCommand)], checks.menus.ImportCa);
-        Assert.Equal(["View", "Export", "Install", "Back up"], checks.links.Oadm);
-        Assert.Equal(["View", "Export", "Remove"], checks.links.Previous);
+        Assert.True(checks.oneButton);
+        Assert.Equal(["View", "Export", "Install in trusted root store", "Back up"], checks.links.Oadm);
+        Assert.Equal(["PEM (.crt)", "DER (.cer)"], checks.export);
+        Assert.Equal(["View", "Export", "-", "Remove (red)"], checks.links.Previous);
         Assert.Equal(["View", "Export"], checks.links.Axis);
+        Assert.Equal(["View", "Export", "-", "Revoke (red)", "Revoke all of this device (red)"], checks.links.Device);
         Assert.True(checks.enabled);
         Assert.True(checks.red);
         Assert.Contains("Installed on this computer", checks.installed);

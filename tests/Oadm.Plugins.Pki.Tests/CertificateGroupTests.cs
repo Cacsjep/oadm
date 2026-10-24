@@ -104,6 +104,10 @@ public sealed class CertificateGroupTests
         Assert.Contains(rows, r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId && !r.IsRootCa); // the intermediates
         Assert.NotNull(rows.Single(r => r.Kind == ListedCertificateKind.Created).KeyText);
         Assert.All(rows.Where(r => r.Kind == ListedCertificateKind.Device), r => Assert.Null(r.KeyText));
+
+        // Used by in short: one badge per group of a CA, every use in the full text (the tooltip and View).
+        Assert.Equal(["Issuing"], oadm.UsedByBadges);
+        Assert.StartsWith("Issuing: HTTPS", oadm.UsedBy, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -116,7 +120,7 @@ public sealed class CertificateGroupTests
             Name = "OADM Root CA SERVER01", IssuedBy = "OADM Root CA SERVER01", Purpose = ListedCertificateUses.Ca, NotAfterUtc = now.AddDays(245.5) });
         Assert.Equal(["Root CA", "OADM CA"], root.Badges);
         Assert.Equal("RSA 4096", root.Detail);
-        Assert.Equal(("245 days", "Valid until 2027-06-27"), (root.StateText, root.StateTip));
+        Assert.Equal((false, (string?)null), (root.HasStateBadge, root.StateTip)); // a valid certificate: its date only
         Assert.True(root.IsOadmCa);
         Assert.False(root.IsRemovableCa);
 
@@ -124,7 +128,7 @@ public sealed class CertificateGroupTests
             IssuedBy = "Axis device ID", Purpose = ListedCertificateUses.Ca, NotAfterUtc = now.AddDays(1.2) });
         Assert.Equal(["Intermediate CA", "Axis device ID"], intermediate.Badges);
         Assert.Equal("ECDSA P-256 · issued by Axis device ID", intermediate.Detail);
-        Assert.Equal("1 day", intermediate.StateText);
+        Assert.False(intermediate.HasStateBadge);
 
         var imported = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.Imported, IsRootCa = true, Purpose = ListedCertificateUses.Ca });
         Assert.Equal(["Root CA", "Imported"], imported.Badges);
@@ -134,13 +138,18 @@ public sealed class CertificateGroupTests
             State = IssuedCertificateState.ExpiresSoon, NotAfterUtc = now.AddDays(12.5), Device = "10.0.0.48", DeviceManaged = true });
         Assert.Equal(["IEEE 802.1X"], device.Badges);
         Assert.Equal("Issued by OADM Root CA SERVER01", device.Detail);
-        Assert.Equal("Expires in 12 days", device.StateText);
+        Assert.Equal(("Expires in 12 days", true, true), (device.StateText, device.HasStateBadge, device.IsWarning));
 
         Assert.Equal(["Server"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Server, Purpose = ListedCertificateUses.Server }).Badges);
+        var used = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, UsedBy = "802.1X: OADM CA (only devices OADM manages); Issuing: HTTPS", UsedByBadges = ["802.1X", "Issuing"] });
+        Assert.Equal((null, "802.1X: OADM CA (only devices OADM manages)" + Environment.NewLine + "Issuing: HTTPS"), (used.UsedByText, used.UsedByTip));
+        Assert.Equal(("10.0.0.48", (string?)null), (Row(new IssuedCertificateInfo { UsedBy = "10.0.0.48" }).UsedByText, Row(new IssuedCertificateInfo()).UsedByTip));
+        Assert.Equal(["802.1X", "Issuing", "EST"], new[] { "802.1X: OADM CA (only devices OADM manages)", "Issuing: HTTPS", "EST server" }.Select(PkiService.UsedByGroup));
         Assert.Equal(["HTTPS", "Created"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Created, Purpose = DeviceCertificatePurposes.Https }).Badges);
         Assert.Equal(["IEEE 802.1X", "Signed"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.SignedRequest, Purpose = DeviceCertificatePurposes.Dot1x }).Badges);
         Assert.Equal(["Imported"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Imported, Purpose = ListedCertificateUses.Other }).Badges);
-        Assert.Equal("Expired", Row(new IssuedCertificateInfo { State = IssuedCertificateState.Expired, NotAfterUtc = now.AddDays(-1) }).StateText);
+        var expired = Row(new IssuedCertificateInfo { State = IssuedCertificateState.Expired, NotAfterUtc = now.AddDays(-1) });
+        Assert.Equal(("Expired", true, true), (expired.StateText, expired.HasStateBadge, expired.IsError));
     }
 
     [Fact]
@@ -204,6 +213,12 @@ public sealed class CertificateGroupTests
             Assert.EndsWith(".crt", Assert.Single(certificateDialogs.Files.Saved).FileName, StringComparison.Ordinal);
             Assert.False(axis.IsRemovableCa);
             Assert.False(vm.RemoveCaCommand.CanExecute(axis));
+
+            // Several chosen rows: the menu of any of them acts on all of them (red); a row outside the choice keeps its own.
+            var devices = vm.Certificates.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Device).Take(2).ToList();
+            vm.Certificates.SetSelection(devices);
+            Assert.Equal([("Revoke 2 certificates", true), ("Delete 2 certificates", true)], vm.Certificates.MenuOf(devices[1]).Select(a => (a.Text, a.IsDanger)));
+            Assert.Equal("View", vm.Certificates.MenuOf(oadm)[0].Text);
 
             // Back up of the OADM CA's row: the backup dialog.
             await vm.BackupCommand.ExecuteAsync(null);

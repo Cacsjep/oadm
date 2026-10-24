@@ -209,7 +209,12 @@ public sealed partial class PkiService
         foreach (var ca in issuers.AuthorityRows)
         {
             var usedBy = ca.Row.AuthorityId is { } authorityId && authorities.TryGetValue(authorityId, out var authority) ? AuthorityUsedBy(authority) : [];
-            all.Add(Extra(ca.Row with { State = StateOf(ca.Row.NotAfterUtc, revoked: null, now, days), UsedBy = usedBy.Count == 0 ? null : string.Join(", ", usedBy) }, ca.IssuerId));
+            all.Add(Extra(ca.Row with
+            {
+                State = StateOf(ca.Row.NotAfterUtc, revoked: null, now, days),
+                UsedBy = usedBy.Count == 0 ? null : string.Join("; ", usedBy),
+                UsedByBadges = usedBy.Count == 0 ? null : [.. usedBy.Select(UsedByGroup).Distinct(StringComparer.Ordinal)],
+            }, ca.IssuerId));
         }
 
         foreach (var server in _local.Servers)
@@ -226,6 +231,7 @@ public sealed partial class PkiService
                 IssuerId = issuer.Id,
                 KeyText = server.KeyText,
                 UsedBy = server.Server,
+                UsedByBadges = [server.Server],
                 NotBeforeUtc = server.NotBeforeUtc,
                 NotAfterUtc = server.NotAfterUtc,
                 IssuedUtc = server.NotBeforeUtc,
@@ -270,6 +276,22 @@ public sealed partial class PkiService
         static ExtraRow Extra(IssuedCertificateInfo row, string issuerId) => new(row with { IssuerId = issuerId }, issuerId, string.Join('\n',
             row.Name, ListedCertificateUses.Text(row.Purpose), row.IssuedBy, row.UsedBy, IssuedCertificateTexts(row.State), row.KeyText,
             row.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// The badge of one entry of a CA's Used by: its group ("802.1X: OADM CA (...)" -> "802.1X", "Issuing: HTTPS" -> "Issuing")
+    /// or the service's group ("802.1X server" -> "802.1X", "EST server" -> "EST").
+    /// </summary>
+    internal static string UsedByGroup(string entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        var colon = entry.IndexOf(':', StringComparison.Ordinal);
+        if (colon > 0)
+        {
+            return entry[..colon];
+        }
+
+        return entry.EndsWith(" server", StringComparison.Ordinal) ? entry[..^" server".Length] : entry;
     }
 
     private static IssuedCertificateState StateOf(DateTime notAfterUtc, CertificateRevocation? revoked, DateTime nowUtc, int warningDays) =>

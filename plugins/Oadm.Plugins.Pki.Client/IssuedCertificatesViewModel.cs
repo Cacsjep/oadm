@@ -119,6 +119,61 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
 
     protected override void OnGroupingChanged(IssuedCertificateGrouping grouping) => _ctx.SetLocalSetting(GroupBySetting, grouping.ToString());
 
+    /// <summary>
+    /// The page's actions of a CA row (the OADM CA's Install in trusted root store and Back up; Remove of a previous or
+    /// imported CA): everyday entries and red ones. Set by the page (the CA's commands are the page's).
+    /// </summary>
+    public Func<IssuedCertificateRow, (IReadOnlyList<IssuedCertificateAction> Everyday, IReadOnlyList<IssuedCertificateAction> Danger)>? CaActions { get; set; }
+
+    /// <summary>
+    /// A row's menu: View, Export (PEM, DER, with its key where OADM holds it), the CA's own actions, then a separator and the
+    /// red ones: Revoke, Revoke all of this device, Remove, Delete. Users who may not manage the CA get View only.
+    /// </summary>
+    protected override IReadOnlyList<IssuedCertificateAction> ActionsOf(IssuedCertificateRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        List<IssuedCertificateAction> everyday = [new("View", ViewRowCommand, row)];
+        List<IssuedCertificateAction> danger = [];
+        if (MayManage)
+        {
+            everyday.Add(new("Export", Items:
+            [
+                new("PEM (.crt)", ExportPemCommand, row),
+                new("DER (.cer)", ExportDerCommand, row),
+                .. row.HasKey ? [new IssuedCertificateAction("With its key (.p12)", ExportKeyCommand, row)] : Array.Empty<IssuedCertificateAction>(),
+            ]));
+            if (row.CanRevoke)
+            {
+                danger.Add(new("Revoke", RevokeRowCommand, row, IsDanger: true));
+            }
+
+            if (row.Source.Kind == ListedCertificateKind.Device)
+            {
+                danger.Add(new("Revoke all of this device", RevokeDeviceCommand, row, IsDanger: true));
+            }
+
+            if (row.CanDelete)
+            {
+                danger.Add(new("Delete", DeleteRowCommand, row, IsDanger: true));
+            }
+        }
+
+        if (CaActions?.Invoke(row) is { } ca)
+        {
+            everyday.AddRange(ca.Everyday);
+            danger.InsertRange(0, ca.Danger);
+        }
+
+        return danger.Count == 0 ? everyday : [.. everyday, IssuedCertificateAction.Separator, .. danger];
+    }
+
+    /// <summary>Several chosen rows: Revoke and Delete of all of them (red).</summary>
+    protected override IReadOnlyList<IssuedCertificateAction> SelectionActions() => !MayManage ? [] :
+    [
+        new($"Revoke {Selected.Count:N0} certificates", RevokeCommand, IsDanger: true),
+        new($"Delete {Selected.Count:N0} certificates", DeleteCommand, IsDanger: true),
+    ];
+
     /// <summary>The OADM CA's trust changed: its row shows it.</summary>
     public void RefreshTrust() => RefreshRows();
 

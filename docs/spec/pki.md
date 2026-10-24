@@ -53,7 +53,8 @@ permissions, one policy list in PKI's own code.
 Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fixed tabs (`ui:PageTab` without X):
 **Certificates** | **802.1X server** | **EST server**.
 
-- **Certificates** (PKI's own): the **Policies** card on top, full width; the **Certificates** card below it, full width:
+- **Certificates** (PKI's own): the **Policies** card on top, full width; the **Certificates** card below it, full width
+  and as high as the rest of the page (at least 480 px, the page scrolls below that; `PkiView.FitList`):
   every certificate OADM knows, the CAs among them, with all their actions (see "Certificates"). There is no Certificate
   authorities card any more.
 - **802.1X server** and **EST server**: the pages of the core plugins `oadm.radius` and `oadm.est`, unchanged in content
@@ -149,32 +150,42 @@ devices with two certificates each stay fast. The full management view of PKI (s
 
 - Includes the CAs, the device certificates the OADM CA issued (tasks and EST), OADM's server certificates and the
   certificates created, signed or imported here.
-- **Columns:** **Name** with a second line where it helps (the key and the issuer: "RSA 4096 · issued by OADM Root CA
-  SERVER01", a device certificate "Issued by OADM Root CA SERVER01", a root CA its key only); **Type** as badges (neutral
-  pills, `Border.badge.neutral`): Root CA or Intermediate CA plus OADM CA, Previous OADM CA, Axis device ID or Imported for
-  a CA; HTTPS, IEEE 802.1X, MQTT, RTSPS or Server; Created, Signed or Imported for the certificates made here; **Valid
-  until**; **Used by** (the device it is installed on, the 802.1X server, the EST server, for a CA the policies and services
-  that name it, "-"); **State** (`ui:StatusChip`, statuses are never badges: "Valid for 245 days", "Expires soon" with the
-  days left as tooltip, "Expired", "Revoked" with the revocation as tooltip, "Replaced"; the OADM CA row adds "Installed on
-  the server" and "Installed on this computer" once it is in that trusted root store, "Failed on ..." with the reason, and
-  the progress of an install); the row buttons.
+- **Columns** (decisions 2026-10-24, one line per row where it fits): **Name** with a second line (the key and the issuer:
+  "RSA 4096 · issued by OADM Root CA SERVER01", a device certificate "Issued by OADM Root CA SERVER01", a root CA its key
+  only); **Type** as badges (neutral pills, `Border.badge.neutral`): Root CA or Intermediate CA plus OADM CA, Previous OADM
+  CA, Axis device ID or Imported for a CA; HTTPS, IEEE 802.1X, MQTT, RTSPS or Server; Created, Signed or Imported for the
+  certificates made here; the OADM CA row adds below its badges where it is installed (`ui:StatusChip`: "Installed on the
+  server" / "Not installed on the server", the same for this computer, "Failed on ..." with the reason, the progress of an
+  install); **Valid until**: the date, and below it a status (`ui:StatusChip`, one line) only when the state needs
+  attention: "Expires in 12 days" (amber, the Expiry warning policy's days), "Expired" and "Revoked" (red, the revocation
+  as tooltip), "Replaced"; a valid certificate shows its date only (there is no State column; the state filter stays);
+  **Used by** in one line: badges, one per user (a CA: one per group, "802.1X", "EST", "Issuing", no policy names; a server
+  certificate "802.1X server" or "EST server"), a device certificate the device as text, "-" when nothing uses it; the full
+  list ("802.1X: OADM CA (only devices OADM manages)", "Issuing: HTTPS, IEEE 802.1X, ...", one per line) is the cell's
+  tooltip and a section "Used by" of View; one narrow fixed column with a ⋯ button (the row's actions menu).
 - **Group by** (a select in the toolbar, decision 2026-10-24): **Type** (default): Certificate authorities, Server
   certificates, Created, signed and imported, Device certificates; **Issuer**: one group per CA in the order of the CAs
   (OADM CA, previous OADM CAs, Axis device ID, imported CAs, Other CA); **None**. The server orders and counts the groups
   (`CertificatesRequest.GroupBy`, `CertificatesReply.Groups`), so a page of 500 cuts across groups and each header names the
   group's count over every page ("Device certificates · 60,000"). The grid's group headers are the shared `DataGrid.groups`
   style (collapsible). The choice is kept on this computer.
-- **Toolbar** (left of the filters): **Create** (menu: **Certificate**, **New OADM CA**), **Sign request**, **Import**
-  (menu: **Certificate**, **CA** with **Own CA with its key** (replaces the OADM CA) and **CA certificate only** (adds a
-  row)), then Group by, the filters and the search.
-- **Row buttons** (destructive ones red):
-  - OADM CA: **View**, **Export** (PEM, DER: the public certificate, as Export public certificate before), **Install**
-    (in the trusted root store of the server and this computer, `oadm.pki:trustServer`), **Back up** (the CA with its key).
-  - Previous OADM CA and imported CA: **View**, **Export** (PEM, DER), **Remove** (refused while a policy names it).
+- **Toolbar**: one row with the card's title, **Create** (menu: **Certificate**, **New OADM CA**), **Sign request**,
+  **Import** (menu: **Certificate**, **CA** with **Own CA with its key** (replaces the OADM CA) and **CA certificate
+  only** (adds a row)) left, and Group by, the state, use and issuer filters and the search right-aligned in the same row;
+  on a card too narrow for both the filters go below as a whole (`ToolbarRow`), never cut.
+- **Row actions** (decision 2026-10-24): one ⋯ button per row (`Button.toolbar.iconOnly`, `Icon.more`); its menu is the
+  same as the row's right-click menu (one source, `IssuedCertificateListViewModel.MenuOf`): the everyday actions, then a
+  separator and the red ones last (`MenuItem.danger`). A double click is View.
+  - OADM CA: **View**, **Export** (PEM, DER: the public certificate, as Export public certificate before), **Install in
+    trusted root store** (the server and this computer, `oadm.pki:trustServer`), **Back up** (the CA with its key).
+  - Previous OADM CA and imported CA: **View**, **Export** (PEM, DER), then **Remove** (red; refused while a policy names it).
   - Axis device ID: **View**, **Export** (PEM, DER).
-  - Every other row: **View**, **Export** (PEM, DER; **With its key** where OADM holds it), **Revoke**, **Delete**.
+  - Every other row: **View**, **Export** (PEM, DER; **With its key** where OADM holds it), then the red ones that apply:
+    **Revoke**, **Revoke all of this device** (device certificates), **Delete**.
+  - Several chosen rows: the menu of any of them offers **Revoke N certificates** and **Delete N certificates** (red).
+  - Users who may not manage the CA get View only.
 - No OADM CA, a CA being created, a key that cannot be read or a server that cannot keep a CA: the PKI status
-  (`ui:StatusChip` with its detail) stands in the card above the list; nothing when the OADM CA is fine (its row says it).
+  (`ui:StatusChip` with its detail) stands below the toolbar row, above the list; nothing when the OADM CA is fine (its row says it).
 - Actions:
   - **Create**: OADM makes the key and the certificate from an issuing policy (name, addresses, use); download as
     PKCS#12 with a password. The key is kept, encrypted with the master key like the CA key, and is part of the backup.

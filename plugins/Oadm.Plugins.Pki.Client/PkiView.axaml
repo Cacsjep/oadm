@@ -118,103 +118,52 @@
 
       <!-- ============================== Certificates ============================== -->
       <!-- The shared certificate list (Group by, filters, search, pages, View certificate) with the CAs as rows; the page
-           adds Create, Sign request and Import in the card header and the row buttons of each kind of row. -->
+           adds the title with Create, Sign request and Import in its toolbar row and the actions of each kind of row. -->
       <!-- As high as the rest of the page (PkiView.FitList), at least MinListHeight: the page scrolls below that. -->
       <Border x:Name="CertificatesCard" Classes="card" Height="680">
-        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
-          <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
-            <TextBlock Classes="cardTitle" Text="Certificates" VerticalAlignment="Center" Margin="0,0,12,0" />
-            <Button Classes="secondary" IsVisible="{Binding MayManage}">
-              <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Create" />
-              <Button.Flyout>
-                <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                  <MenuItem Header="Certificate" Command="{Binding Certificates.CreateCommand}" ToolTip.Tip="OADM makes the key and the certificate" />
-                  <MenuItem Header="New OADM CA" Command="{Binding GenerateCommand}" ToolTip.Tip="It replaces the OADM CA" />
-                </MenuFlyout>
-              </Button.Flyout>
-            </Button>
-            <Button Classes="secondary" Command="{Binding Certificates.SignRequestCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="A request of another system; its key stays there">
-              <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Sign request" />
-            </Button>
-            <Button Classes="secondary" IsVisible="{Binding MayManage}">
-              <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import" />
-              <Button.Flyout>
-                <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                  <MenuItem Header="Certificate" Command="{Binding Certificates.ImportCommand}" ToolTip.Tip="A certificate, or a .p12 file with its key" />
-                  <MenuItem Header="CA">
-                    <MenuItem Header="Own CA with its key" Command="{Binding ImportCommand}" ToolTip.Tip="It replaces the OADM CA (.pfx, .p12 or PEM files)" />
-                    <MenuItem Header="CA certificate only" Command="{Binding ImportAuthorityCommand}" ToolTip.Tip="A root or intermediate certificate for the policies" />
-                  </MenuItem>
-                </MenuFlyout>
-              </Button.Flyout>
-            </Button>
-          </WrapPanel>
-
-          <!-- The OADM CA when it needs attention (none, being created, a key that cannot be read, ends soon); its row says the rest. -->
-          <StackPanel Grid.Row="1" Spacing="8">
-            <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
-            <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
-            <ui:StatusChip Text="{Binding StatusText}" Detail="{Binding StatusDetail}" IsWarning="{Binding IsStatusWarning}" IsError="{Binding IsStatusError}"
-                           MaxLines="2" IsVisible="{Binding ShowCaStatus}" />
-          </StackPanel>
-
-          <ui:IssuedCertificateList Grid.Row="2" x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
-            <ui:IssuedCertificateList.RowActions>
-              <DataTemplate x:DataType="ui:IssuedCertificateRow">
-                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
-                  <Button Classes="link" Content="View"
-                          Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ViewRowCommand}" CommandParameter="{Binding}" />
-                  <Button Classes="link" Content="Export"
-                          IsVisible="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).MayManage}">
+          <!-- Each row's actions: its ⋯ button and its right-click menu, one menu (IssuedCertificatesViewModel.ActionsOf). -->
+          <!-- One row: the title and Create, Sign request, Import left; Group by, the filters and Search right (below as a whole
+               on a narrow card). The OADM CA when it needs attention below that row. -->
+          <ui:IssuedCertificateList x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
+            <ui:IssuedCertificateList.Toolbar>
+                <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8" x:DataType="vm:PkiViewModel" DataContext="{Binding $parent[vm:PkiView].DataContext}">
+                  <TextBlock Classes="cardTitle" Text="Certificates" VerticalAlignment="Center" Margin="0,0,12,0" />
+                  <Button Classes="secondary" IsVisible="{Binding MayManage}">
+                    <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Create" />
                     <Button.Flyout>
                       <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <MenuItem Header="PEM (.crt)" Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ExportPemCommand}" CommandParameter="{Binding}" />
-                        <MenuItem Header="DER (.cer)" Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ExportDerCommand}" CommandParameter="{Binding}" />
-                        <MenuItem Header="With its key (.p12)" IsVisible="{Binding HasKey}"
-                                  Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ExportKeyCommand}" CommandParameter="{Binding}" />
+                        <MenuItem Header="Certificate" Command="{Binding Certificates.CreateCommand}" ToolTip.Tip="OADM makes the key and the certificate" />
+                        <MenuItem Header="New OADM CA" Command="{Binding GenerateCommand}" ToolTip.Tip="It replaces the OADM CA" />
                       </MenuFlyout>
                     </Button.Flyout>
                   </Button>
-                  <!-- The OADM CA: into the trusted root stores (its own permission), its backup with the key. -->
-                  <Button Classes="link" Content="Install" ToolTip.Tip="Into the trusted root store of server and computer"
-                          Command="{Binding $parent[vm:PkiView].((vm:PkiViewModel)DataContext).InstallTrustCommand}">
-                    <Button.IsVisible>
-                      <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding Path="IsOadmCa" />
-                        <Binding Path="$parent[vm:PkiView].((vm:PkiViewModel)DataContext).MayTrustServer" />
-                      </MultiBinding>
-                    </Button.IsVisible>
+                  <Button Classes="secondary" Command="{Binding Certificates.SignRequestCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="A request of another system; its key stays there">
+                    <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Sign request" />
                   </Button>
-                  <StackPanel Orientation="Horizontal" Spacing="16"
-                              IsVisible="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).MayManage}">
-                    <Button Classes="link" Content="Back up" IsVisible="{Binding IsOadmCa}" ToolTip.Tip="The CA with its key in a password-protected file"
-                            Command="{Binding $parent[vm:PkiView].((vm:PkiViewModel)DataContext).BackupCommand}" />
-                    <Button Classes="link danger" Content="Remove" IsVisible="{Binding IsRemovableCa}"
-                            Command="{Binding $parent[vm:PkiView].((vm:PkiViewModel)DataContext).RemoveCaCommand}" CommandParameter="{Binding}" />
-                    <Button Classes="link danger" Content="Revoke" IsVisible="{Binding CanRevoke}"
-                            Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).RevokeRowCommand}" CommandParameter="{Binding}" />
-                    <Button Classes="link danger" Content="Delete" IsVisible="{Binding CanDelete}"
-                            Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).DeleteRowCommand}" CommandParameter="{Binding}" />
-                  </StackPanel>
+                  <Button Classes="secondary" IsVisible="{Binding MayManage}">
+                    <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import" />
+                    <Button.Flyout>
+                      <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                        <MenuItem Header="Certificate" Command="{Binding Certificates.ImportCommand}" ToolTip.Tip="A certificate, or a .p12 file with its key" />
+                        <MenuItem Header="CA">
+                          <MenuItem Header="Own CA with its key" Command="{Binding ImportCommand}" ToolTip.Tip="It replaces the OADM CA (.pfx, .p12 or PEM files)" />
+                          <MenuItem Header="CA certificate only" Command="{Binding ImportAuthorityCommand}" ToolTip.Tip="A root or intermediate certificate for the policies" />
+                        </MenuItem>
+                      </MenuFlyout>
+                    </Button.Flyout>
+                  </Button>
+                </WrapPanel>
+            </ui:IssuedCertificateList.Toolbar>
+            <ui:IssuedCertificateList.Banner>
+                <StackPanel Spacing="8" Margin="0,8,0,0" x:DataType="vm:PkiViewModel" DataContext="{Binding $parent[vm:PkiView].DataContext}"
+                          IsVisible="{Binding ShowCaNotice}">
+                  <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
+                  <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
+                  <ui:StatusChip Text="{Binding StatusText}" Detail="{Binding StatusDetail}" IsWarning="{Binding IsStatusWarning}" IsError="{Binding IsStatusError}"
+                                 MaxLines="2" IsVisible="{Binding ShowCaStatus}" />
                 </StackPanel>
-              </DataTemplate>
-            </ui:IssuedCertificateList.RowActions>
-            <ui:IssuedCertificateList.RowContextMenu>
-              <ContextMenu>
-                <MenuItem Header="View certificate" Command="{Binding ViewCertificateCommand}" />
-                <MenuItem Header="Export" IsVisible="{Binding MayManage}">
-                  <MenuItem Header="PEM (.crt)" Command="{Binding ExportPemCommand}" />
-                  <MenuItem Header="DER (.cer)" Command="{Binding ExportDerCommand}" />
-                  <MenuItem Header="With its key (.p12)" Command="{Binding ExportKeyCommand}" />
-                </MenuItem>
-                <Separator IsVisible="{Binding MayRevoke}" />
-                <MenuItem Header="Revoke" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}" />
-                <MenuItem Header="Revoke all of this device" Command="{Binding RevokeDeviceCommand}" IsVisible="{Binding MayRevoke}" />
-                <MenuItem Header="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}" />
-              </ContextMenu>
-            </ui:IssuedCertificateList.RowContextMenu>
+            </ui:IssuedCertificateList.Banner>
           </ui:IssuedCertificateList>
-        </Grid>
       </Border>
     </StackPanel>
   </ScrollViewer>

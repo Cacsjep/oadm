@@ -34,6 +34,20 @@ public sealed record IssuedCertificateStatus(string Text, string Kind, string? T
     public bool IsAccent => Kind == "accent";
 }
 
+/// <summary>
+/// One entry of a row's actions menu (SDK 0.4.0; the row's ⋯ button and its right-click menu, one source:
+/// <see cref="IssuedCertificateListViewModel.MenuOf"/>): its text, command and parameter, red for one that deletes, revokes or
+/// removes, or a submenu (<see cref="Items"/>). <see cref="Separator"/> is the line between the everyday and the red ones.
+/// </summary>
+public sealed record IssuedCertificateAction(string Text, System.Windows.Input.ICommand? Command = null, object? Parameter = null, bool IsDanger = false,
+    IReadOnlyList<IssuedCertificateAction>? Items = null)
+{
+    /// <summary>The line between groups of entries.</summary>
+    public static IssuedCertificateAction Separator { get; } = new("-");
+
+    public bool IsSeparator => ReferenceEquals(this, Separator);
+}
+
 /// <summary>One row of the list of issued certificates (texts for the grid; the server's row in <see cref="Source"/>).</summary>
 public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
 {
@@ -58,6 +72,15 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>The device it is installed on, "802.1X server", "EST server"; "-" when nothing uses it.</summary>
     public string UsedBy => string.IsNullOrEmpty(Source.UsedBy) ? "-" : Source.UsedBy;
 
+    /// <summary>The Used by column as badges (a CA's groups, a server certificate's server); empty: <see cref="UsedByText"/>.</summary>
+    public IReadOnlyList<string> UsedByBadges => Source.UsedByBadges ?? [];
+
+    /// <summary>The Used by column as text (the device, "-") when there are no badges; null with badges.</summary>
+    public string? UsedByText => UsedByBadges.Count > 0 ? null : UsedBy;
+
+    /// <summary>The Used by cell's tooltip: every use, one per line ("802.1X: OADM CA (...)", "Issuing: HTTPS, ..."); null for "-".</summary>
+    public string? UsedByTip => string.IsNullOrEmpty(Source.UsedBy) ? null : Source.UsedBy.Replace("; ", Environment.NewLine, StringComparison.Ordinal);
+
     /// <summary>Start of validity, "2026-10-24".</summary>
     public string ValidFrom => Source.NotBeforeUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
@@ -73,19 +96,20 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>The time the row was read (the days left of <see cref="StateText"/>); null: the state alone.</summary>
     public DateTime? NowUtc { get; init; }
 
-    /// <summary>The State column, one line: "245 days" while valid, "Expires in 12 days" when it ends soon, else <see cref="State"/>.</summary>
-    public string StateText => (Source.State, DaysLeft) switch
-    {
-        (IssuedCertificateState.Valid, { } days) => IssuedCertificateTexts.ValidFor(days),
-        (IssuedCertificateState.ExpiresSoon, { } days) => IssuedCertificateTexts.ExpiresIn(days),
-        _ => State,
-    };
+    /// <summary>
+    /// The badge below the date of Valid until, one line: "Expires in 12 days" when it ends within its Expiry warning days,
+    /// "Expired", "Revoked", "Replaced"; a valid certificate has none (<see cref="HasStateBadge"/>).
+    /// </summary>
+    public string StateText => Source.State == IssuedCertificateState.ExpiresSoon && DaysLeft is { } days ? IssuedCertificateTexts.ExpiresIn(days) : State;
+
+    /// <summary>The state needs attention: everything but a plain valid certificate.</summary>
+    public bool HasStateBadge => Source.State != IssuedCertificateState.Valid;
 
     /// <summary>Whole days until the end (0 on the last day); null without <see cref="NowUtc"/> or after the end.</summary>
     public int? DaysLeft => NowUtc is { } now && Source.NotAfterUtc > now ? (int)Math.Floor((Source.NotAfterUtc - now).TotalDays) : null;
 
-    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one, else "Valid until 2027-10-24".</summary>
-    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName : "Valid until " + ValidUntil;
+    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one; null otherwise.</summary>
+    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName : null;
 
     /// <summary>Statuses the page adds below the state (the OADM CA: where it is trusted); empty for most rows.</summary>
     public IReadOnlyList<IssuedCertificateStatus> MoreStates { get; init; } = [];
@@ -177,6 +201,9 @@ public static class IssuedCertificateTexts
     /// <summary>The answer when every chosen certificate was revoked or expired already.</summary>
     public const string NothingRevoked = "Nothing was revoked: these certificates are already revoked or expired.";
 
+    /// <summary>The tooltip of a row's ⋯ button.</summary>
+    public const string ActionsTip = "Actions";
+
     /// <summary>The empty list without filters.</summary>
     public const string NoCertificates = "No certificates yet. Enable HTTPS or IEEE 802.1X on devices, or set up Certificate enrollment.";
 
@@ -209,9 +236,6 @@ public static class IssuedCertificateTexts
 
     /// <summary>A device OADM no longer manages: "B8A44F631339 (removed)", or "Device (removed)" without its serial.</summary>
     public static string RemovedDevice(string? deviceSerial) => (string.IsNullOrEmpty(deviceSerial) ? "Device" : deviceSerial) + " (removed)";
-
-    /// <summary>A valid certificate's days left: "245 days", "1 day".</summary>
-    public static string ValidFor(int days) => days == 1 ? "1 day" : string.Create(CultureInfo.CurrentCulture, $"{days:N0} days");
 
     /// <summary>"Expires in 12 days", "Expires in 1 day", "Expires today".</summary>
     public static string ExpiresIn(int days) => days switch
@@ -427,7 +451,23 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     {
     }
 
-    /// <summary>Statuses the page adds below the state of a row (the OADM CA's trust); none by default.</summary>
+    /// <summary>
+    /// The actions menu of a row (its ⋯ button and its right-click menu): the row's own actions, or, when the row is one of
+    /// several chosen rows, what the page does with all of them (<see cref="SelectionActions"/>) when it offers something.
+    /// </summary>
+    public IReadOnlyList<IssuedCertificateAction> MenuOf(IssuedCertificateRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return _selected.Count > 1 && _selected.Contains(row) && SelectionActions() is { Count: > 0 } several ? several : ActionsOf(row);
+    }
+
+    /// <summary>The actions of one row: View by default; a page adds its own (everyday ones first, a separator, the red ones last).</summary>
+    protected virtual IReadOnlyList<IssuedCertificateAction> ActionsOf(IssuedCertificateRow row) => [new("View", ViewRowCommand, row)];
+
+    /// <summary>The actions for several chosen rows; none by default (the menu then shows the row's own).</summary>
+    protected virtual IReadOnlyList<IssuedCertificateAction> SelectionActions() => [];
+
+    /// <summary>Statuses the page adds below the type of a row (the OADM CA's trust); none by default.</summary>
     protected virtual IReadOnlyList<IssuedCertificateStatus> MoreStatesOf(IssuedCertificateInfo row) => [];
 
     /// <summary>Builds the rows of the shown page again (the page's <see cref="MoreStatesOf"/> changed); the selection stays.</summary>
@@ -804,7 +844,10 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
             // The revocation and "ending soon" as the list says, so the window and the row's state agree.
             var now = Time.GetUtcNow().UtcDateTime;
-            var details = new CertificateDetails(certificate, $"Certificate · {row.Name} · {row.Use}", now, reply.Revocation ?? row.Source.Revocation, WarningDaysFor(row, now));
+            var details = new CertificateDetails(certificate, $"Certificate · {row.Name} · {row.Use}", now, reply.Revocation ?? row.Source.Revocation, WarningDaysFor(row, now))
+            {
+                UsedBy = row.UsedByTip,
+            };
             if (Dialogs is { } dialogs)
             {
                 await dialogs.ShowCertificateAsync(details).ConfigureAwait(true);

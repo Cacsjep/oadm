@@ -1791,6 +1791,10 @@
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Margin" Value="0" />
   </Style>
+  <!-- An entry that deletes, revokes or removes: red, last in its menu after a separator -->
+  <Style Selector="MenuItem.danger /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
   <!-- The entry whose submenu is open stays highlighted, so the user sees where the submenu belongs -->
   <Style Selector="MenuItem:open /template/ Border#PART_LayoutRoot">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
