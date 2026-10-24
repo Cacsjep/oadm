@@ -457,7 +457,7 @@ public sealed class HardeningTests
     }
 
     [Fact]
-    public async Task AnAddressThatNeverBindsIsTriedAgainEvery30Seconds()
+    public async Task AnAddressThatNeverBindsIsTriedAgainByThe30SecondRetry()
     {
         // Once at the next 5 s check, then with the 30 s retry: a card that never takes the address does not reopen the
         // listener every 5 s.
@@ -479,6 +479,45 @@ public sealed class HardeningTests
 
         await Eventually.TrueAsync(() => listeners.Count == 3 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "the 30 s retry");
         Assert.Equal([IPAddress.Parse("10.0.0.17")], harness.Listener.BoundAddresses); // the IPv4 address serves meanwhile
+    }
+
+    [Fact]
+    public async Task AnAddressThatNeverBindsIsNoLongerTriedAfterThreeTriesUntilTheAddressesChange()
+    {
+        var v6 = IPAddress.Parse("fd00::17");
+        await using var harness = await PluginHarness.CreateAsync(h =>
+        {
+            h.AddDevice(Serial);
+            h.Interfaces.Cards.Add(new ServerNetworkInterface("eth1", "eth1", "eth1", [v6], IsUp: true, IsLoopback: false));
+            h.Ctx.FakeNetwork.RefuseAddress = a => a.Equals(v6);
+        });
+        var listeners = harness.Ctx.FakeNetwork.Listeners;
+
+        // The 5 s check, then the 30 s retries at 30 s and 60 s: three tries.
+        harness.Time.Advance(TimeSpan.FromSeconds(5));
+        await Eventually.TrueAsync(() => listeners.Count == 2 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "the 5 s check");
+        harness.Time.Advance(TimeSpan.FromSeconds(25));
+        await Eventually.TrueAsync(() => listeners.Count == 3 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "the 30 s retry");
+        harness.Time.Advance(TimeSpan.FromSeconds(30));
+        await Eventually.TrueAsync(() => listeners.Count == 4 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "the 60 s retry");
+
+        // Then no more: the 90 s and 120 s retries keep the listener (the next one would be the fifth).
+        var kept = harness.Service.Listener;
+        for (var i = 0; i < 12; i++)
+        {
+            harness.Time.Advance(TimeSpan.FromSeconds(5));
+        }
+
+        await Eventually.TrueAsync(() => harness.Service.ListenRetriesSkipped == 2, "the 90 s and 120 s retries skipped");
+        Assert.Equal(4, listeners.Count);
+        Assert.Same(kept, harness.Service.Listener);
+        Assert.Equal([IPAddress.Parse("10.0.0.17")], harness.Listener.BoundAddresses); // the IPv4 address still serves
+
+        // A new address: listened on at once (5 s check), and the missing one is tried again.
+        harness.Interfaces.Cards.Add(FixedInterfaces.Card("eth2", "10.0.5.1"));
+        harness.Time.Advance(TimeSpan.FromSeconds(5));
+        await Eventually.TrueAsync(() => listeners.Count == 5 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "the new address");
+        Assert.Contains(IPAddress.Parse("10.0.5.1"), harness.Ctx.FakeNetwork.LastUdpAddresses);
     }
 
     // ------------------------------------------------------------------ log

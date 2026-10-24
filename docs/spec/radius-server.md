@@ -480,7 +480,9 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   it is gone); a listener that could not open is tried again every 30 s. The host leaves out an address that is not ready
   yet (an IPv6 address still checked) while the others serve; the listener's `IRelay.BoundAddresses` (SDK 0.4.0; null from
   an older host = the requested ones) shows it missing: the next 5 s check listens again once, and while the same
-  addresses stay missing the 30 s retry does, so an address a card never takes does not reopen the listener every 5 s. One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
+  addresses stay missing the 30 s retry does, so an address a card never takes does not reopen the listener every 5 s.
+  After three tries for the same missing addresses (the 5 s check and two 30 s retries) the retries stop until the
+  addresses of the cards or the missing ones change (logged once). One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
   released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
 - **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
   addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th),

@@ -86,6 +86,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     private static readonly TimeSpan MaintainInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan ResolveInterval = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan ListenRetryInterval = TimeSpan.FromSeconds(30);
+    private const int MissingAddressTries = 3; // listens again for the same address that never binds this often, then stops
     private static readonly TimeSpan AddressCheckInterval = TimeSpan.FromSeconds(5); // a new address is listened on within 5 s
     private static readonly TimeSpan QuietPublish = TimeSpan.FromSeconds(5);
 
@@ -118,6 +119,9 @@ public sealed partial class RadiusService : IAsyncDisposable
     private IUdpRelay? _listener;
     private IReadOnlyList<IPAddress> _requestedAddresses = []; // what the listener was asked for (empty = every address)
     private HashSet<IPAddress>? _missingRetried; // the missing addresses the 5 s check already listened again for
+    private readonly Lock _missingGate = new();
+    private HashSet<IPAddress>? _missingTried; // under _missingGate: the missing addresses listened again for ...
+    private int _missingTries; // ... this often (MissingAddressTries, then no more until the addresses change)
     private IDeviceCertificateAuthority? _followed; // under _followGate
     private long _caVersion; // + 1 with every Changed of the followed CA (CaTrust.Version)
     private ITimer? _tickTimer;
@@ -167,6 +171,11 @@ public sealed partial class RadiusService : IAsyncDisposable
 
     /// <summary>The listener on this server's network (null while closed).</summary>
     public IUdpRelay? Listener => _listener;
+
+    /// <summary>Tests: the retries that kept the listener because its missing addresses were tried often enough.</summary>
+    internal int ListenRetriesSkipped => Volatile.Read(ref _listenRetriesSkipped);
+
+    private int _listenRetriesSkipped;
 
     /// <summary>The switches now.</summary>
     public SwitchTable Switches => _switches;
@@ -1782,6 +1791,45 @@ public sealed partial class RadiusService : IAsyncDisposable
     private bool ListensOn(IReadOnlyCollection<IPAddress> addresses) =>
         addresses.ToHashSet().SetEquals(_requestedAddresses) && MissingAddresses().Count == 0;
 
+    /// <summary>
+    /// The listener runs on <paramref name="addresses"/> (the set did not change) but leaves out the same addresses
+    /// <see cref="MissingAddressTries"/> times in a row: listening again would change nothing, so the retries stop until
+    /// the set of addresses or the missing ones change (a listener that failed to open is still tried every 30 s).
+    /// </summary>
+    private bool GaveUpOnMissing(IReadOnlyCollection<IPAddress> addresses)
+    {
+        var missing = _listener is not null && addresses.ToHashSet().SetEquals(_requestedAddresses) ? MissingAddresses() : [];
+        lock (_missingGate)
+        {
+            if (missing.Count == 0)
+            {
+                _missingTried = null;
+                _missingTries = 0;
+                return false;
+            }
+
+            if (_missingTried is { } tried && tried.SetEquals(missing))
+            {
+                if (_missingTries >= MissingAddressTries)
+                {
+                    Interlocked.Increment(ref _listenRetriesSkipped);
+                    return true;
+                }
+
+                if (++_missingTries == MissingAddressTries)
+                {
+                    LogMissingGivenUp(string.Join(", ", missing.Select(a => a.ToString())));
+                }
+
+                return false;
+            }
+
+            _missingTried = missing;
+            _missingTries = 1;
+            return false;
+        }
+    }
+
     private List<ServerNetworkInterface> UsableInterfaces() =>
         [.. _host.Interfaces.List().Where(n => n.IsUp && !n.IsLoopback && ListenAddresses(n).Count > 0)];
 
@@ -1865,7 +1913,8 @@ public sealed partial class RadiusService : IAsyncDisposable
         {
             try
             {
-                if (_listener is not null && ListensOn(AllListenAddresses()))
+                var addresses = AllListenAddresses();
+                if (_listener is not null && (ListensOn(addresses) || GaveUpOnMissing(addresses)))
                 {
                     return;
                 }
@@ -1901,7 +1950,8 @@ public sealed partial class RadiusService : IAsyncDisposable
                 return;
             }
 
-            var moved = _listener is not null && !ListensOn(ListenAddresses(nic));
+            var addresses = ListenAddresses(nic);
+            var moved = _listener is not null && !ListensOn(addresses) && !GaveUpOnMissing(addresses);
             if (_listener is not null && !moved)
             {
                 return;
@@ -2065,6 +2115,9 @@ public sealed partial class RadiusService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server not listening: {Reason}")]
     private partial void LogInterfaceMissing(string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: the addresses {Addresses} never became available; listening again only after the addresses change")]
+    private partial void LogMissingGivenUp(string addresses);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: listening on the chosen interface failed; tried again in 30 s")]
     private partial void LogListenFailed(Exception ex);
