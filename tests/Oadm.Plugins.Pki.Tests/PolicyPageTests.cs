@@ -35,38 +35,32 @@ public sealed class PolicyPageTests
     private static PluginPageContext Page(PkiHarness pki) => new(pki.Plugin, pki.Hub) { DeviceList = [Camera, Other] };
 
     [Fact]
-    public async Task The_card_lists_every_policy_in_age_order_and_the_filter_shows_one_group()
+    public async Task The_card_lists_every_policy_grouped_by_type_each_group_in_age_order()
     {
         await using var pki = await StartAsync();
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST", "Revoke"], card.Filters.Select(f => f.Label));
-        Assert.Equal(["All devices", "HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
+        Assert.Equal(["Issuing", "Certificates", "802.1X", "EST", "Revoke"], PoliciesViewModel.GroupLabels);
+        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "All devices", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
         Assert.Equal(
-            ["Expiry warning", "HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
+            ["HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "Expiry warning", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
             card.Rows.Select(r => r.Kind));
-        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[0].Summary);
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", card.Rows[1].Summary); // the defaults of a new server
-        Assert.Equal("The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends.", card.Rows[3].Summary);
-        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[4].Summary);
+        Assert.Equal(["Issuing", "Issuing", "Issuing", "Issuing", "Certificates", "802.1X", "802.1X", "802.1X", "802.1X", "802.1X"], card.Rows.Select(r => r.GroupLabel));
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", card.Rows[0].Summary); // the defaults of a new server
+        Assert.Equal("The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends.", card.Rows[2].Summary);
+        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[3].Summary);
+        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[4].Summary);
         Assert.Equal("The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide when cameras sign in again.", card.Rows[5].Summary);
         Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01.", card.Rows[6].Summary); // the CA's name in PKI
         Assert.Equal("The 802.1X server puts these devices in VLAN 30.", card.Rows[8].Summary);
-        Assert.Equal(["All devices", "-", "-", "-", "-", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
+        Assert.Equal(["-", "-", "-", "-", "All devices", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
+
+        // System policies (OADM needs them, no Delete): every Server certificate policy and the first of the other kinds that have one.
+        Assert.Equal(["System", "System", "System", "System", "System", "System", "User", "User", "User", "User"], card.Rows.Select(r => r.Origin));
+        Assert.All(card.Rows, r => Assert.Equal(!r.IsSystem, r.CanDelete));
         Assert.True(card.MayManage);
         Assert.True(card.AddCommand.CanExecute(null));
-
-        card.SelectFilterCommand.Execute(PolicyGroups.Dot1x);
-        Assert.Equal(["802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
-        Assert.True(card.Filters.Single(f => f.Group == PolicyGroups.Dot1x).IsSelected);
-        card.SelectFilterCommand.Execute(PolicyGroups.Revoke);
-        Assert.Empty(card.Rows);
-        Assert.Equal("No policies of this group.", card.EmptyText);
-        card.SelectFilterCommand.Execute(PolicyGroups.Certificates);
-        Assert.Equal(["All devices"], card.Rows.Select(r => r.Name));
-        card.SelectFilterCommand.Execute(PolicyGroups.Issuing);
-        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server"], card.Rows.Select(r => r.Name));
     }
 
     [Fact]
@@ -271,7 +265,7 @@ public sealed class PolicyHeadlessTests
     [Theory]
     [InlineData(1700)]
     [InlineData(1000)]
-    public async Task The_page_shows_the_policies_and_below_them_the_certificates_with_the_cas(int width)
+    public async Task The_page_shows_the_cas_and_the_certificates_and_the_policies_on_their_own_tab(int width)
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         await using var pki = await PolicyPageTests.StartAsync();
@@ -294,42 +288,69 @@ public sealed class PolicyHeadlessTests
             view.DataContext = vm;
             await vm.LoadAsync();
             await vm.Policies.LoadAsync(CancellationToken.None);
+            await vm.Authorities.LoadAsync();
             await vm.Certificates.LoadAsync();
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, $"pki-page-{width}.png");
-            var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+            List<string?> Texts() => [.. window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text)];
+            int Primaries() => window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
+            var certificates = (Texts: Texts(), Primaries: Primaries(), Policies: view.FindControl<Border>("PoliciesCard")!.IsEffectivelyVisible);
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Count(t => t.IsEffectivelyVisible);
-            var primaries = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
-            var segments = window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("segment")).Select(b => b.Content as string).ToList();
 
-            // The certificates' search box lies whole inside its list (the filters wrap on a narrow card).
-            var list = window.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
-            var search = list.GetVisualDescendants().OfType<SearchBox>().Single();
-            var searchRight = Avalonia.VisualExtensions.TranslatePoint(search, new Avalonia.Point(search.Bounds.Width, 0), list)!.Value.X;
-            var searchFits = searchRight <= list.Bounds.Width + 0.5;
+            // The search boxes lie whole inside their lists (the filters wrap on a narrow card); the CAs have no filters.
+            var searchFits = new[] { "AuthoritiesList", "CertificatesList" }.All(name =>
+            {
+                var list = view.FindControl<IssuedCertificateList>(name)!;
+                var search = list.GetVisualDescendants().OfType<SearchBox>().Single(s => s.IsEffectivelyVisible);
+                var searchRight = Avalonia.VisualExtensions.TranslatePoint(search, new Avalonia.Point(search.Bounds.Width, 0), list)!.Value.X;
+                return searchRight <= list.Bounds.Width + 0.5;
+            });
+            var caCombos = view.FindControl<IssuedCertificateList>("AuthoritiesList")!.GetVisualDescendants().OfType<ComboBox>().Count(c => c.IsEffectivelyVisible);
+
+            // The Policies tab: the table grouped by type, no filter.
+            vm.ShowTab(PkiViewModel.PoliciesTabId);
+            HeadlessPageTests.Pump();
+            HeadlessPageTests.Capture(window, outDir, $"pki-page-policies-{width}.png");
+            var segments = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("segment"));
+            var policies = (Texts: Texts(), Primaries: Primaries(), Segments: segments,
+                Lists: window.GetVisualDescendants().OfType<IssuedCertificateList>().Count(l => l.IsEffectivelyVisible),
+                Groups: window.GetVisualDescendants().OfType<DataGridRowGroupHeader>().Count(h => h.IsEffectivelyVisible));
             window.Close();
-            return (texts, tabs, primaries, segments, searchFits);
+            return (certificates, policies, tabs, searchFits, caCombos);
         }, CancellationToken.None);
 
         Assert.True(checks.searchFits);
-        Assert.Equal(3, checks.tabs); // Certificates, 802.1X server, EST server
-        foreach (var title in new[] { "Policies", "Certificates", "Add policy", "Create", "Sign request", "Import", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server", "Root CA", "OADM CA" })
+        Assert.Equal(0, checks.caCombos); // no Group by and no filters on the CAs
+        Assert.Equal(4, checks.tabs); // Certificates, Policies, 802.1X server, EST server
+
+        // Certificates: the CAs in their card, the certificates below; no policies.
+        foreach (var title in new[] { "Policies", "Certificate authorities", "Certificates", "New OADM CA", "Create", "Sign request", "Import", "OADM CA", "Previous OADM CA", "Root CA" })
         {
-            Assert.Contains(title, checks.texts);
+            Assert.Contains(title, checks.certificates.Texts);
         }
 
-        Assert.DoesNotContain("Certificate authorities", checks.texts); // no card of the CAs: they are rows ("Certificate authorities · 7" heads their group)
-        Assert.Contains(checks.texts, t => t?.StartsWith("Certificate authorities · ", StringComparison.Ordinal) == true);
-        Assert.DoesNotContain("Generate new CA", checks.texts); // Create, New OADM CA
+        Assert.False(checks.certificates.Policies);
+        Assert.DoesNotContain("Add policy", checks.certificates.Texts);
+        Assert.DoesNotContain(checks.certificates.Texts, t => t?.StartsWith("Certificate authorities · ", StringComparison.Ordinal) == true); // no group of the CAs any more
+        Assert.DoesNotContain("Generate new CA", checks.certificates.Texts);
+        Assert.DoesNotContain("Previous certificate authorities", checks.certificates.Texts); // previous CAs once: rows of the CA list
+        Assert.DoesNotContain("Used by", checks.certificates.Texts);
+        Assert.Equal(1, checks.certificates.Primaries); // Create
 
-        Assert.DoesNotContain("Previous certificate authorities", checks.texts); // previous CAs once: rows of the list
-        Assert.Contains("Previous OADM CA", checks.texts);
-        Assert.DoesNotContain("Warn before expiry (days)", checks.texts); // the Expiry warning policy
-        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST", "Revoke"], checks.segments);
-        Assert.Equal(0, checks.primaries); // no Save: the settings of device certificates and IEEE 802.1X are issuing policies
-        Assert.DoesNotContain("Device certificates", checks.texts);
-        Assert.DoesNotContain("EAPOL version", checks.texts);
-        Assert.All(checks.texts, t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
+        // Policies: the table grouped by what the policies do, no filter, no certificate list.
+        foreach (var title in new[] { "Policies", "Add policy", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server", "System", "User" })
+        {
+            Assert.Contains(title, checks.policies.Texts);
+        }
+
+        Assert.Equal(0, checks.policies.Segments);
+        Assert.Equal(0, checks.policies.Lists);
+        Assert.Equal(PoliciesViewModel.GroupLabels.Count, checks.policies.Groups); // Issuing, Certificates, 802.1X, EST, Revoke
+        Assert.Equal(1, checks.policies.Primaries); // Add policy
+        Assert.DoesNotContain("Warn before expiry (days)", checks.policies.Texts); // the Expiry warning policy
+        Assert.DoesNotContain("Device certificates", checks.policies.Texts);
+        Assert.DoesNotContain("EAPOL version", checks.policies.Texts);
+        Assert.All(checks.certificates.Texts.Concat(checks.policies.Texts), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }
 
     [Fact]

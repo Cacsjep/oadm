@@ -106,63 +106,75 @@ public sealed class PkiTabsTests
             view.DataContext = vm;
             await vm.LoadAsync();
             await vm.Policies.LoadAsync(CancellationToken.None);
+            await vm.Authorities.LoadAsync();
             await vm.Certificates.LoadAsync();
             await vm.InstallTrustCommand.ExecuteAsync(null); // the OADM CA's row says where it is trusted
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, $"pki-tab-certificates-{width}.png");
-            var installed = window.GetVisualDescendants().OfType<StatusChip>().Where(c => c.IsEffectivelyVisible).Select(c => c.Text).ToList();
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
 
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Where(t => t.IsEffectivelyVisible).Select(t => (t.Title, t.IsActive)).ToList();
-            Button Labeled(string text) => window.GetVisualDescendants().OfType<Button>()
-                .Single(b => b.IsEffectivelyVisible && b.GetVisualDescendants().OfType<IconLabel>().Any(l => l.Text == text));
-            // The menus get their commands once they open, as for the user.
-            var createButton = Labeled("Create");
-            var createFlyout = (MenuFlyout)createButton.Flyout!;
-            createFlyout.ShowAt(createButton);
+            var authoritiesList = view.FindControl<IssuedCertificateList>("AuthoritiesList")!;
+            var certificatesList = view.FindControl<IssuedCertificateList>("CertificatesList")!;
+            var splitter = view.FindControl<GridSplitter>("CertificatesSplitter")!.IsEffectivelyVisible;
+            static ToolbarButton Labeled(Control list, string text) => list.GetVisualDescendants().OfType<ToolbarButton>()
+                .Single(b => b.IsEffectivelyVisible && b.Text == text);
+
+            // The CA toolbar: New OADM CA and Import with its menu (the menus get their commands once they open, as for the user).
+            var newCa = Labeled(authoritiesList, "New OADM CA");
+            var importCaButton = Labeled(authoritiesList, "Import");
+            var importFlyout = (MenuFlyout)importCaButton.Flyout!;
+            importFlyout.ShowAt(importCaButton);
             HeadlessPageTests.Pump();
-            var create = createFlyout.Items.OfType<MenuItem>().ToList();
-            var createCommands = create.Select(m => ((string?)m.Header, m.Command)).ToList();
-            createFlyout.Hide();
-            var importButton = Labeled("Import");
-            var importFlyout = (MenuFlyout)importButton.Flyout!;
-            var import = importFlyout.Items.OfType<MenuItem>().ToList();
-            importFlyout.ShowAt(importButton);
-            HeadlessPageTests.Pump();
-            var caItem = import.Single(m => (string?)m.Header == "CA");
-            caItem.Open();
-            HeadlessPageTests.Pump();
-            var importCa = caItem.Items.OfType<MenuItem>().ToList();
-            var menus = (
-                Create: createCommands,
-                Import: import.Select(m => (string?)m.Header).ToList(),
-                ImportCa: importCa.Select(m => ((string?)m.Header, m.Command)).ToList());
+            var importCa = importFlyout.Items.OfType<MenuItem>().Select(m => ((string?)m.Header, m.Command)).ToList();
             importFlyout.Hide();
+
+            // The certificates' toolbar: Create (the tab's accent button), Sign request and Import, each without a menu.
+            var create = Labeled(certificatesList, "Create");
+            var sign = Labeled(certificatesList, "Sign request");
+            var import = Labeled(certificatesList, "Import");
+            var toolbar = (
+                NewCa: newCa.Command, ImportCa: importCa, NewCaPrimary: newCa.IsPrimary,
+                Create: create.Command, CreatePrimary: create.IsPrimary, Sign: sign.Command, Import: import.Command,
+                NoMenus: create.Flyout is null && sign.Flyout is null && import.Flyout is null);
 
             // One ⋯ button per row (no link row); its menu is the row's menu, the same as its right-click menu.
             var rows = window.GetVisualDescendants().OfType<DataGridRow>().Where(r => r.IsEffectivelyVisible && r.DataContext is IssuedCertificateRow).ToList();
-            var oneButton = rows.All(r => r.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible) == 1
+            var oneButton = rows.Count > 0 && rows.All(r => r.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible) == 1
                 && r.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible).Classes.Contains("iconOnly"));
             static string Text(IssuedCertificateAction a) => a.IsDanger ? a.Text + " (red)" : a.Text;
-            List<string> MenuOf(Func<IssuedCertificateRow, bool> which) => [.. vm.Certificates.MenuOf(vm.Certificates.Rows.First(which)).Select(Text)];
+            List<string> CaMenuOf(Func<IssuedCertificateRow, bool> which) => [.. vm.Authorities.MenuOf(vm.Authorities.Rows.First(which)).Select(Text)];
             var links = (
-                Oadm: MenuOf(r => r.IsOadmCa),
-                Previous: MenuOf(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm),
-                Axis: MenuOf(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId),
-                Device: MenuOf(r => r.Source.Kind == ListedCertificateKind.Device));
-            var export = vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.IsOadmCa))[1].Items!.Select(a => a.Text).ToList();
-            var items = IssuedCertificateList.MenuItems(vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm))).ToList();
+                Oadm: CaMenuOf(r => r.IsOadmCa),
+                Previous: CaMenuOf(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm),
+                Axis: CaMenuOf(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId),
+                Device: vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.Source.Kind == ListedCertificateKind.Device)).Select(Text).ToList());
+            var export = vm.Authorities.MenuOf(vm.Authorities.Rows.First(r => r.IsOadmCa))[1].Items!.Select(a => a.Text).ToList();
+            var items = IssuedCertificateList.MenuItems(vm.Authorities.MenuOf(vm.Authorities.Rows.First(r => r.AuthorityKind == CertificateAuthorityKind.PreviousOadm))).ToList();
             var red = items.OfType<MenuItem>().Where(m => (string?)m.Header == "Remove").All(m => m.Classes.Contains("danger")) && items.OfType<Separator>().Count() == 1;
-            var enabled = vm.Certificates.MenuOf(vm.Certificates.Rows.First(r => r.IsOadmCa)).Where(a => a.Command is not null).All(a => a.Command!.CanExecute(a.Parameter));
+            var enabled = vm.Authorities.MenuOf(vm.Authorities.Rows.First(r => r.IsOadmCa)).Where(a => a.Command is not null).All(a => a.Command!.CanExecute(a.Parameter));
+            var lists = (CaRowsOnly: vm.Authorities.Rows.All(r => r.Source.Kind == ListedCertificateKind.Authority),
+                NoCaRows: vm.Certificates.Rows.All(r => r.Source.Kind != ListedCertificateKind.Authority));
             window.Close();
-            return (tabs, menus, links, export, oneButton, enabled, red, installed, vm.GenerateCommand, vm.ImportCommand, vm.ImportAuthorityCommand, vm.Certificates.CreateCommand);
+            return (tabs, toolbar, links, export, oneButton, enabled, red, texts, splitter, lists,
+                Generate: vm.GenerateCommand, ImportOwn: vm.ImportCommand, ImportAuthority: vm.ImportAuthorityCommand, Create: vm.Certificates.CreateCommand,
+                Sign: vm.Certificates.SignRequestCommand, ImportCertificate: vm.Certificates.ImportCommand);
         }, CancellationToken.None);
 
-        Assert.Equal([("Certificates", true), ("802.1X server", false), ("EST server", false)], checks.tabs);
-        Assert.Equal(["Certificate", "New OADM CA"], checks.menus.Create.Select(m => m.Item1));
-        Assert.Same(checks.CreateCommand, checks.menus.Create[0].Command);
-        Assert.Same(checks.GenerateCommand, checks.menus.Create[1].Command);
-        Assert.Equal(["Certificate", "CA"], checks.menus.Import);
-        Assert.Equal([("Own CA with its key", (System.Windows.Input.ICommand)checks.ImportCommand), ("CA certificate only", checks.ImportAuthorityCommand)], checks.menus.ImportCa);
+        Assert.Equal([("Certificates", true), ("Policies", false), ("802.1X server", false), ("EST server", false)], checks.tabs);
+        Assert.Contains("Certificate authorities", checks.texts);
+        Assert.Contains("Certificates", checks.texts);
+        Assert.True(checks.splitter);
+        Assert.True(checks.lists.CaRowsOnly);
+        Assert.True(checks.lists.NoCaRows);
+        Assert.Same(checks.Generate, checks.toolbar.NewCa);
+        Assert.False(checks.toolbar.NewCaPrimary);
+        Assert.Equal([("Own CA with its key", (System.Windows.Input.ICommand)checks.ImportOwn), ("CA certificate only", checks.ImportAuthority)], checks.toolbar.ImportCa);
+        Assert.Same(checks.Create, checks.toolbar.Create);
+        Assert.True(checks.toolbar.CreatePrimary);
+        Assert.Same(checks.Sign, checks.toolbar.Sign);
+        Assert.Same(checks.ImportCertificate, checks.toolbar.Import);
+        Assert.True(checks.toolbar.NoMenus);
         Assert.True(checks.oneButton);
         Assert.Equal(["View", "Export", "Install in trusted root store", "Back up"], checks.links.Oadm);
         Assert.Equal(["PEM (.crt)", "DER (.cer)"], checks.export);
@@ -171,6 +183,6 @@ public sealed class PkiTabsTests
         Assert.Equal(["View", "Export", "-", "Revoke (red)", "Revoke all of this device (red)"], checks.links.Device);
         Assert.True(checks.enabled);
         Assert.True(checks.red);
-        Assert.Contains("Installed on this computer", checks.installed);
+        Assert.Contains("Trusted here", checks.texts); // the OADM CA's trust as a badge next to its type
     }
 }

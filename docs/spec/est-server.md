@@ -19,10 +19,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   off) and a new license starts it again with the kept choice. A 4.1 server whose plugin was on keeps it on (the choice is
   taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run
   ("The EST server is off. Turn it on on the EST server page. Nothing was changed.", or "OADM PRO is not active.").
-- **Page "EST server"** (rail, group Security, next to PKI):
-  - **General** left (Listen on, port, enrollments kept, Issued by, "3 policies apply" with **Edit policies**: who may
-    enroll and which CAs sign in are PKI's Enrollment and Sign-in CA policies, docs/spec/pki.md "Code (stage 6)"; below
-    it, in the warning style, why no camera can enroll), **Profiles** right; the status left of Save: "Running on port 9454", "OADM PRO is not
+- **Page "EST server"** (the tab EST server of the PKI page; two columns, decision 2026-10-25, docs/spec/pki.md):
+  - **General** above **Profiles** left (Listen on, port, enrollments kept, Issued by; below it, in the warning style, why
+    no camera can enroll), **Enrollments** right. The Save row of General: the link "3 policies applied" left (who may
+    enroll and which CAs sign in are PKI's Enrollment and Sign-in CA policies, docs/spec/pki.md "Code (stage 6)"; the
+    tooltip lists them, it opens the Policies tab), the status left of Save: "Running on port 9454", "OADM PRO is not
     active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
   - **Profiles** (at most 2 per camera, the camera's limit: a third add is refused, "No more profiles can be added",
     seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,

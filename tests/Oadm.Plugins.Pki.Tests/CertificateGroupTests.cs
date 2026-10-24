@@ -160,12 +160,18 @@ public sealed class CertificateGroupTests
         var trust = new FakeClientTrust();
         using var vm = new PkiViewModel(ctx, trust);
         await vm.LoadAsync();
+        await vm.Authorities.LoadAsync();
         await vm.Certificates.LoadAsync();
 
+        // The CAs are their own list without groups; the certificates group without them.
+        Assert.False(vm.Authorities.CanGroup);
+        Assert.False(vm.Authorities.IsGrouped);
+        Assert.All(vm.Authorities.Rows, r => Assert.Equal(ListedCertificateKind.Authority, r.Source.Kind));
         Assert.True(vm.Certificates.IsGrouped);
-        Assert.Equal(["Certificate authorities", "Created, signed and imported", "Device certificates"], vm.Certificates.GroupTitles.Select(t => t[..t.IndexOf(" · ", StringComparison.Ordinal)]));
+        Assert.Equal(["Created, signed and imported", "Device certificates"], vm.Certificates.GroupTitles.Select(t => t[..t.IndexOf(" · ", StringComparison.Ordinal)]));
         Assert.Equal("Device certificates · 5", vm.Certificates.Rows[^1].GroupTitle);
-        Assert.Equal(["Not installed on the server", "Not installed on this computer"], vm.Certificates.Rows.Single(r => r.IsOadmCa).MoreStates.Select(s => s.Text));
+        Assert.DoesNotContain(vm.Certificates.Rows, r => r.Source.Kind == ListedCertificateKind.Authority);
+        Assert.Empty(vm.Authorities.Rows.Single(r => r.IsOadmCa).MoreStates); // not installed: no trust badge
 
         vm.Certificates.GroupBy = vm.Certificates.GroupChoices.Single(c => c.Value == IssuedCertificateGrouping.Issuer);
         await Wait.UntilAsync(() => vm.Certificates.GroupTitles.Count > 0 && vm.Certificates.GroupTitles[0].StartsWith("OADM Root CA NEW · ", StringComparison.Ordinal));
@@ -181,9 +187,10 @@ public sealed class CertificateGroupTests
 
         // Install in trusted root store: the OADM CA's row says where it is trusted now.
         await vm.InstallTrustCommand.ExecuteAsync(null);
-        var states = vm.Certificates.Rows.Single(r => r.IsOadmCa).MoreStates;
-        Assert.Contains(states, s => s.Text == "Installed on this computer" && s.IsOk);
-        Assert.All(vm.Certificates.Rows.Where(r => !r.IsOadmCa), r => Assert.Empty(r.MoreStates));
+        var states = vm.Authorities.Rows.Single(r => r.IsOadmCa).MoreStates;
+        Assert.Contains(states, s => s.Text == "Trusted here" && s.IsOk);
+        Assert.All(vm.Authorities.Rows.Where(r => !r.IsOadmCa), r => Assert.Empty(r.MoreStates));
+        Assert.All(vm.Certificates.Rows, r => Assert.Empty(r.MoreStates));
     }
 
     [Fact]
@@ -197,19 +204,21 @@ public sealed class CertificateGroupTests
             var dialogs = new FakeDialogs();
             using var vm = new PkiViewModel(ctx, new FakeClientTrust(), new PkiClientSettingsStore(settingsFile)) { Dialogs = dialogs };
             var certificateDialogs = new FakeCertificateDialogs();
+            vm.Authorities.Dialogs = certificateDialogs;
             vm.Certificates.Dialogs = certificateDialogs;
             await vm.LoadAsync();
+            await vm.Authorities.LoadAsync();
             await vm.Certificates.LoadAsync();
-            var oadm = vm.Certificates.Rows.Single(r => r.IsOadmCa);
+            var oadm = vm.Authorities.Rows.Single(r => r.IsOadmCa);
 
             // Export of the OADM CA's row is Export public certificate (PEM or DER), saved with the page's file picker.
-            await vm.Certificates.ExportDerCommand.ExecuteAsync(oadm);
+            await vm.Authorities.ExportDerCommand.ExecuteAsync(oadm);
             Assert.Equal("OADM Root CA NEW.cer", Assert.Single(dialogs.FakeFiles.Saved).FileName);
             Assert.Empty(certificateDialogs.Files.Saved);
 
             // An Axis device ID row: its own certificate.
-            var axis = vm.Certificates.Rows.First(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId);
-            await vm.Certificates.ExportPemCommand.ExecuteAsync(axis);
+            var axis = vm.Authorities.Rows.First(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId);
+            await vm.Authorities.ExportPemCommand.ExecuteAsync(axis);
             Assert.EndsWith(".crt", Assert.Single(certificateDialogs.Files.Saved).FileName, StringComparison.Ordinal);
             Assert.False(axis.IsRemovableCa);
             Assert.False(vm.RemoveCaCommand.CanExecute(axis));
@@ -218,7 +227,7 @@ public sealed class CertificateGroupTests
             var devices = vm.Certificates.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Device).Take(2).ToList();
             vm.Certificates.SetSelection(devices);
             Assert.Equal([("Revoke 2 certificates", true), ("Delete 2 certificates", true)], vm.Certificates.MenuOf(devices[1]).Select(a => (a.Text, a.IsDanger)));
-            Assert.Equal("View", vm.Certificates.MenuOf(oadm)[0].Text);
+            Assert.Equal("View", vm.Authorities.MenuOf(oadm)[0].Text); // the CA list's own menu
 
             // Back up of the OADM CA's row: the backup dialog.
             await vm.BackupCommand.ExecuteAsync(null);

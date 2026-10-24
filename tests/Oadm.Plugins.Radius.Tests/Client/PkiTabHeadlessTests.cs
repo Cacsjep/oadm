@@ -58,7 +58,7 @@ public sealed class PkiTabHeadlessTests
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Where(t => t.IsEffectivelyVisible).Select(t => (t.Title, t.IsActive)).ToList();
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
 
-            // Edit policies: the Certificates tab.
+            // PKI's own page without a request: the Certificates tab.
             pkiCtx.RequestTab(PkiPluginInfo.PluginId);
             HeadlessPageTests.Pump();
             var radiusShown = radius.IsEffectivelyVisible && TopLevel.GetTopLevel(radius) is not null;
@@ -66,7 +66,7 @@ public sealed class PkiTabHeadlessTests
             return (tabs, texts, radiusShown, pkiVm.IsCertificatesTab);
         }, CancellationToken.None);
 
-        Assert.Equal([("Certificates", false), ("802.1X server", true), ("EST server", false)], checks.tabs);
+        Assert.Equal([("Certificates", false), ("Policies", false), ("802.1X server", true), ("EST server", false)], checks.tabs);
         foreach (var title in new[] { "PKI", "Server", "Switches", "Sessions" })
         {
             Assert.Contains(title, checks.texts);

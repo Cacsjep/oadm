@@ -589,10 +589,12 @@ public sealed class CertificateListTests
             Assert.DoesNotContain(tab.Rows, r => r.Name == "10.0.0.30");
             Assert.Empty(ctx.Messages);
 
-            // A CA cannot be deleted here; the row says so before the server does.
-            var caRow = tab.Rows.First(r => r.Source.Kind == ListedCertificateKind.Authority);
-            Assert.False(tab.DeleteRowCommand.CanExecute(caRow));
-            Assert.False(tab.ExportKeyCommand.CanExecute(caRow));
+            // The CAs are no rows of this list; in their own list a CA row cannot be deleted, the row says so before the server does.
+            Assert.DoesNotContain(tab.Rows, r => r.Source.Kind == ListedCertificateKind.Authority);
+            await page.Authorities.LoadAsync();
+            var caRow = page.Authorities.Rows.First(r => r.Source.Kind == ListedCertificateKind.Authority);
+            Assert.False(page.Authorities.DeleteRowCommand.CanExecute(caRow));
+            Assert.False(page.Authorities.ExportKeyCommand.CanExecute(caRow));
         }
         finally
         {

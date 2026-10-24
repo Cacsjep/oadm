@@ -103,6 +103,7 @@ public sealed class PageTests : IAsyncLifetime
         Assert.Equal("OADM Test CA", vm.IssuingCa);
         await vm.EditInPkiCommand.ExecuteAsync(null);
         Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
+        Assert.Equal(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PkiTabRequest.Take()); // the page opens on Policies; taken here, the request is process-wide
 
         // A save of the page keeps "Sign in with" of before the policies (read only by the conversion).
         var stored = _plugin.Service!.Store.Config.SignInWith;
@@ -520,7 +521,7 @@ public sealed class PageTests : IAsyncLifetime
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
-        Assert.Equal([("Certificates", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
+        Assert.Equal([("Certificates", false), ("Policies", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
         foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments" })
         {
             Assert.Contains(title, checks.texts);

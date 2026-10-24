@@ -70,7 +70,7 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     public string IssuedBy => Source.IssuedBy ?? Source.Source;
 
     /// <summary>The Issuer column: the CA that issued it; "Self-signed" for a root CA; "-" when unknown.</summary>
-    public string Issuer => Source.Kind == ListedCertificateKind.Authority && Source.IsRootCa ? "Self-signed"
+    public string Issuer => Source.Kind == ListedCertificateKind.Authority && Source.IsRootCa ? IssuedCertificateMessages.SelfSigned
         : string.IsNullOrEmpty(IssuedBy) ? "-" : IssuedBy;
 
     /// <summary>The Key column: "RSA 4096", "ECC P-256"; "-" when unknown.</summary>

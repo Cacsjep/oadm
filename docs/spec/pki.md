@@ -383,8 +383,8 @@ fits the spec; to be confirmed by the maintainer).
   it keeps its server (decision of stage 4). The 802.1X server's policy allows ECC only ("The 802.1X server uses an ECC key.";
   decision of stage 4: its cipher suites follow an ECDSA key). Rows: "OADM Root CA SERVER01, 365 days, ECC" (the CA's real
   name, as Allow CA rows), a server certificate adds the server.
-- **Deleting is refused** for the last policy of HTTPS or IEEE 802.1X certificate ("Enable HTTPS needs an HTTPS certificate
-  policy. Add another one first."), an issuing policy an EST profile names ("Used by the EST profile https."; the EST core
+- **Deleting is refused** for a system policy (the first of HTTPS or IEEE 802.1X certificate among them: "OADM needs this
+  policy. Change its values instead."; decision 2026-10-25), an issuing policy an EST profile names ("Used by the EST profile https."; the EST core
   plugin hands the store `ProfileUses`, read from its settings, also while the server is off), and every Server certificate
   policy ("The EST server gets its certificate from this policy. Change it instead.").
 - **Conversion** (owner `oadm.pki:issuing`, apart from stage 3's `oadm.pki`, so a server of stage 3 converts too;

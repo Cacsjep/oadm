@@ -386,8 +386,8 @@ public sealed partial class PolicyStore : IDisposable
     public PkiPolicy? ServerCertificateFor(string server) => PoliciesOf(PolicyKinds.ServerCertificate).FirstOrDefault(p => p.Server == server);
 
     /// <summary>
-    /// Why <paramref name="policy"/> cannot be deleted: a Server certificate policy (its server needs it), the last policy of a
-    /// device issuing kind (the task needs one), an issuing policy an EST profile names. Null when it can.
+    /// Why <paramref name="policy"/> cannot be deleted: a Server certificate policy (its server needs it), a system policy
+    /// (<see cref="IsSystem"/>), an issuing policy an EST profile names. Null when it can.
     /// </summary>
     private async Task<string?> DeleteRefusalAsync(PkiPolicy policy, IReadOnlyList<PkiPolicy> list, CancellationToken ct)
     {
@@ -415,7 +415,7 @@ public sealed partial class PolicyStore : IDisposable
             }
         }
 
-        return list.Count(p => p.Kind == policy.Kind) <= 1 ? PolicyTexts.LastIssuing(policy.Kind) : null;
+        return null; // the last of a device issuing kind is its system policy (refused above)
     }
 
     /// <summary>

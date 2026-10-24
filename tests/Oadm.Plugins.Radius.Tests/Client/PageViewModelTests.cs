@@ -54,6 +54,7 @@ public sealed class PageViewModelTests
 
         await vm.EditInPkiCommand.ExecuteAsync(null);
         Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
+        Assert.Equal(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PkiTabRequest.Take()); // the page opens on Policies; taken here, the request is process-wide
         Assert.Equal(["No policies applied", "1 policy applied", "1,200 policies applied"], new[] { 0, 1, 1200 }.Select(RadiusViewModel.PoliciesApplyText));
     }
 

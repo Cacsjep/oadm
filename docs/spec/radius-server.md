@@ -606,9 +606,10 @@ data, also for the screenshots; the four, two and one column layout and the rows
   certificate and Delete all are the log's, the pages (Previous, Next) page the log; one reset per change of either list. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
   over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
-- **Server**: Listen on, Port, Log entries kept, "6 policies apply" (`RadiusState.PoliciesApply`,
-  `RadiusViewModel.PoliciesApplyText`) with the link **Edit policies** (`ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`),
-  the status chip and Turn off directly left of **Save** (the one accent button of the page), the server certificate's end,
+- **Server**: Listen on, Port, Log entries kept; the Save row: the link "6 policies applied" left (`RadiusState.PoliciesApply`,
+  `RadiusViewModel.PoliciesApplyText`; the tooltip lists the policies, `RadiusState.PolicyLines`; it opens PKI's Policies
+  tab through `PkiTabRequest` and `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`), the status chip and Turn off
+  directly left of **Save** (the one accent button of the page), the server certificate's end,
   the sites that did not allow the port and a save error without a field below it.
 - **Switches**: as before; the switch dialog: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per
   site), Site (only with sites), Shared secret (8..128, **Generate** shows it once). A refusal goes below the field it

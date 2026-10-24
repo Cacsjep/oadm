@@ -624,11 +624,6 @@ public static class PolicyTexts
     /// <summary>"The EST server gets its certificate from this policy. Change it instead." (a Server certificate policy is never deleted).</summary>
     public static string ServerNeedsPolicy(string? server) => $"The {PolicyServers.Name(server)} gets its certificate from this policy. Change it instead.";
 
-    /// <summary>The refusal to delete the last policy of a device issuing kind (the task needs one).</summary>
-    public static string LastIssuing(string kind) => kind == PolicyKinds.Dot1xCertificate
-        ? "Enable IEEE 802.1X needs an IEEE 802.1X certificate policy. Add another one first."
-        : "Enable HTTPS needs an HTTPS certificate policy. Add another one first.";
-
     /// <summary>"Used by the EST profile https." / "Used by the EST profiles https and dot1x."</summary>
     public static string UsedByProfiles(IReadOnlyList<string> profiles)
     {

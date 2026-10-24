@@ -94,7 +94,7 @@
                       <DataTemplate x:DataType="vm:PolicyRowViewModel">
                         <!-- One ⋯ button with the row's actions, like the certificate tables: Edit, then Delete in red (not for
                              system policies). -->
-                        <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="Actions"
+                        <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}"
                                 Click="OnPolicyActions" IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.MayManage}">
                           <ui:OadmIcon Data="{StaticResource Icon.more}" />
                         </Button>

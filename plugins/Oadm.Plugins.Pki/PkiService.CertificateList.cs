@@ -368,7 +368,7 @@ public sealed partial class PkiService
             Kind = ListedCertificateKind.Server,
             Name = OadmServerName,
             Purpose = ListedCertificateUses.Server,
-            IssuedBy = "Self-signed",
+            IssuedBy = IssuedCertificateMessages.SelfSigned,
             KeyText = CaCertificates.KeyType(certificate),
             UsedBy = OadmServerName,
             UsedByBadges = [OadmServerName],

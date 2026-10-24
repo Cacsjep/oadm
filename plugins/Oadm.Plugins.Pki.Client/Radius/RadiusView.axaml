@@ -89,7 +89,7 @@
                       <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate x:DataType="vm:SwitchRowViewModel">
                           <!-- One ⋯ button with the row's actions (ui:RowActions): Edit, then Delete in red. -->
-                          <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="Actions" Click="OnSwitchActions"
+                          <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnSwitchActions"
                                   IsVisible="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Switches.MayManage}">
                             <ui:OadmIcon Data="{StaticResource Icon.more}" />
                           </Button>

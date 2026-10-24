@@ -160,11 +160,15 @@ public sealed class IssueDialogTests
         Assert.False(await server.SaveAsync());
         Assert.Equal(PolicyTexts.Dot1xServerNeedsEcc, server.ErrorOf(nameof(server.Key)));
 
-        // The last HTTPS policy a task needs is never deleted: the reason below the table.
-        card.SelectFilterCommand.Execute(PolicyGroups.Issuing);
-        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "HTTPS 2 years"], card.Rows.Select(r => r.Name));
+        // The issuing policies lead the table in age order; the system policy a task needs is never deleted (the reason
+        // below the table), the user's own one is.
+        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "HTTPS 2 years"], card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
+        Assert.Equal(card.Rows.Take(5).Select(r => r.Name), card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
         await card.DeleteRowCommand.ExecuteAsync(card.Rows.Single(r => r.Name == "IEEE 802.1X"));
-        Assert.Equal(PolicyTexts.LastIssuing(PolicyKinds.Dot1xCertificate), card.Error);
+        Assert.Equal(PolicyTexts.SystemPolicy, card.Error);
+        await card.DeleteRowCommand.ExecuteAsync(card.Rows.Single(r => r.Name == "HTTPS 2 years"));
+        Assert.Null(card.Error);
+        Assert.DoesNotContain(card.Rows, r => r.Name == "HTTPS 2 years");
     }
 
     [Fact]

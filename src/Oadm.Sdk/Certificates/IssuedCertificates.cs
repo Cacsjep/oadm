@@ -187,6 +187,9 @@ public static class IssuedCertificateMessages
 
     /// <summary>A certificate listed before OADM kept a copy of each one (4.1 and older), until a read of its device finds it.</summary>
     public const string NoCopy = "OADM keeps no copy of this certificate.";
+
+    /// <summary>The issuer of a root CA and of the OADM server's own certificate in the list.</summary>
+    public const string SelfSigned = "Self-signed";
 }
 
 /// <summary>One revoked certificate (SDK 0.4.0): kept while the certificate could still be valid.</summary>

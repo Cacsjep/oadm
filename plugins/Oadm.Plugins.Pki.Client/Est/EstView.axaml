@@ -95,7 +95,7 @@
                             VerticalAlignment="Top" IsEnabled="{Binding MayManage}" ToolTip.Tip="{Binding PolicySummary}" />
                   <Panel Grid.Column="6" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top" IsVisible="{Binding MayManage}">
                     <!-- One ⋯ button with the row's actions (ui:RowActions): Remove in red. -->
-                    <Button Classes="toolbar iconOnly" VerticalAlignment="Center" ToolTip.Tip="Actions" Click="OnProfileActions">
+                    <Button Classes="toolbar iconOnly" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnProfileActions">
                       <ui:OadmIcon Data="{StaticResource Icon.more}" />
                     </Button>
                   </Panel>

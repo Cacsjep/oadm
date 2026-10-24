@@ -102,7 +102,7 @@ public sealed class HeadlessPageTests
         Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, checks.noPro.Item1);
         Assert.False(checks.noPro.Item2);
 
-        Assert.Equal(4, checks.on.Item1); // Server, Switches, Sessions, Log
+        Assert.Equal(3, checks.on.Item1); // Server, Switches, Sessions (in progress, then the log)
         Assert.True(checks.on.Item2);
         Assert.True(checks.on.Item3);
     }
@@ -147,15 +147,18 @@ public sealed class HeadlessPageTests
         }
 
         Assert.Contains("Running on port 1812", checks.texts);
-        Assert.Contains("Wrong secret", checks.texts);
+        Assert.Contains("Last request", checks.texts);
+        Assert.DoesNotContain("Wrong secret", checks.texts); // no State column of the switches (decision 2026-10-25)
         Assert.DoesNotContain("Advanced", checks.labels);
         Assert.Contains("6 policies applied", checks.texts); // the link to the policies, left in the Save row
-        Assert.Contains("VLAN 20 by PTZ", checks.texts);
-        Assert.Contains("Authenticated with VLAN 20 by PTZ", checks.texts);
+        Assert.Contains("20", checks.texts); // the VLAN column shows the number, the policy that gave it in its tooltip
+        Assert.DoesNotContain("VLAN 20 by PTZ", checks.texts);
+        Assert.DoesNotContain("Authenticated with VLAN 20 by PTZ", checks.texts); // an ended session is a row of the log, not in progress
+        Assert.Contains("Authenticated", checks.texts); // its row of the log
         Assert.Contains("Add switch", checks.labels);
         Assert.Equal(1, checks.primaries); // one accent button: the Server card's Save
         Assert.Contains("Sending server certificate: fragment 2 of 4", checks.texts);
-        Assert.True(checks.italic);
+        Assert.False(checks.italic); // no Device column, so no guessed device in italics (decision 2026-10-25)
         Assert.Contains("Delete all", checks.labels);
         Assert.DoesNotContain("Revoked", checks.texts);
         Assert.Contains(checks.texts, t => t?.Contains("Certificate of a device OADM does not manage (ACCC8E123407)", StringComparison.Ordinal) == true);

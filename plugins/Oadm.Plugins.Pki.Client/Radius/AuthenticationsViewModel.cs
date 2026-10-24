@@ -67,7 +67,7 @@ public sealed partial class AuthenticationsViewModel : ObservableObject
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _log = log ?? throw new ArgumentNullException(nameof(log));
-        sessions.Rows.CollectionChanged += (_, _) => Rebuild();
+        // The sessions' changes end with CountText (a batch, a read, ended rows leaving): one rebuild each, not one per step.
         log.Rows.CollectionChanged += (_, _) => Rebuild();
         sessions.PropertyChanged += OnPartChanged;
         log.PropertyChanged += OnPartChanged;

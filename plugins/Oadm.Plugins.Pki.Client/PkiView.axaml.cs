@@ -48,6 +48,19 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
         RowActions.Show(button, actions);
     }
 
+    /// <summary>
+    /// The Certificate authorities card and its splitter only for users with all devices (the CAs are server-wide; a user
+    /// limited to a device group never gets CA rows): without them the certificates take the whole tab. Layout only.
+    /// </summary>
+    private void ShowAuthorities(bool shown)
+    {
+        var row = CertificatesPage.RowDefinitions[0];
+        row.MinHeight = shown ? 250 : 0;
+        row.Height = shown ? new GridLength(300) : new GridLength(0);
+        AuthoritiesCard.IsVisible = shown;
+        CertificatesSplitter.IsVisible = shown;
+    }
+
     /// <summary>The policy table grouped by what the policies do, the groups in their order (view only).</summary>
     private void GroupPolicies(PkiViewModel? vm)
     {
@@ -119,6 +132,14 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
             vm.Certificates.Dialogs = this;
             vm.Authorities.Dialogs = this;
             vm.Policies.Dialogs = this;
+            vm.Policies.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(PoliciesViewModel.IsShown))
+                {
+                    ShowAuthorities(vm.Policies.IsShown);
+                }
+            };
+            ShowAuthorities(vm.Policies.IsShown);
         }
 
         GroupPolicies(DataContext as PkiViewModel);
