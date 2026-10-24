@@ -147,6 +147,11 @@ public sealed partial class PolicyStore : IDisposable
             foreach (var policy in converted)
             {
                 var normal = PolicyRules.Normalize(policy);
+                if (MergedInto(list, normal))
+                {
+                    continue;
+                }
+
                 list.Add(normal with { Id = normal.Id == Guid.Empty || list.Any(p => p.Id == normal.Id) ? Guid.NewGuid() : normal.Id, Name = UniqueName(list, normal) });
             }
 
@@ -539,6 +544,36 @@ public sealed partial class PolicyStore : IDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// A converted policy the list already has in its own way (a conversion that runs after policies were made): an Allow CA
+    /// of the same CA merges into the one there (only devices OADM manages when either was: the stricter), a second 802.1X
+    /// server policy and a second "All devices" VLAN policy (the Default VLAN converted before) are not added. True when
+    /// <paramref name="policy"/> is not to be added.
+    /// </summary>
+    private static bool MergedInto(List<PkiPolicy> list, PkiPolicy policy)
+    {
+        switch (policy.Kind)
+        {
+            case PolicyKinds.AllowCa:
+                var index = list.FindIndex(p => p.Kind == PolicyKinds.AllowCa && string.Equals(p.CaId, policy.CaId, StringComparison.OrdinalIgnoreCase));
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                var onlyManaged = (list[index].OnlyManaged ?? true) || (policy.OnlyManaged ?? true);
+                list[index] = list[index] with { OnlyManaged = onlyManaged };
+                return true;
+            case PolicyKinds.Dot1xServer:
+                return list.Any(p => p.Kind == PolicyKinds.Dot1xServer);
+            case PolicyKinds.Vlan when policy.Devices?.AllDevices == true:
+                return list.Any(p => p.Kind == PolicyKinds.Vlan
+                    && (p.Devices?.AllDevices == true || string.Equals(p.Name.Trim(), PolicyLimits.AllDevicesName, StringComparison.OrdinalIgnoreCase)));
+            default:
+                return false;
+        }
     }
 
     /// <summary>A name not taken by another policy of the same kind: "All devices", "All devices (2)".</summary>

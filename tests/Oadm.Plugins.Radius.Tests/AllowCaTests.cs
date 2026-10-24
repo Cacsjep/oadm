@@ -43,6 +43,20 @@ public sealed class AllowCaTests
     }
 
     [Fact]
+    public void ACaChosenTwiceIsOnlyManagedWhenEitherChoiceIsWhateverTheOrder()
+    {
+        var oadm = new CertificateAuthorityInfo(CertificateAuthorityInfo.OadmId, "OADM CA", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(1), true);
+        var previous = new CertificateAuthorityInfo("oadm-previous:1", "OADM CA 2025", CertificateAuthorityKind.PreviousOadm, [], DateTime.UtcNow.AddYears(1), false);
+        TrustedCaSettings Of(params TrustedCaChoice[] cas) => new() { Cas = cas };
+
+        var loose = new TrustedCaChoice(CertificateAuthorityInfo.OadmId, OnlyManaged: false);
+        var strict = new TrustedCaChoice("OADM", OnlyManaged: true);
+        Assert.True(CaTrust.Chosen([oadm, previous], Of(loose, strict))[CertificateAuthorityInfo.OadmId]);
+        Assert.True(CaTrust.Chosen([oadm, previous], Of(strict, loose))["oadm-previous:1"]); // previous CAs follow the OADM CA
+        Assert.False(CaTrust.Chosen([oadm], Of(loose))[CertificateAuthorityInfo.OadmId]);
+    }
+
+    [Fact]
     public async Task ACaWithoutAPolicyRefusesItsCertificatesAtOnce()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));

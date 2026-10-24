@@ -133,12 +133,15 @@ public sealed class CaTrust
         return list;
     }
 
-    /// <summary>The checked CAs of <paramref name="selection"/> in <paramref name="authorities"/>: id -> only managed (previous OADM CAs follow the OADM CA).</summary>
+    /// <summary>
+    /// The checked CAs of <paramref name="selection"/> in <paramref name="authorities"/>: id -> only managed (previous OADM CAs
+    /// follow the OADM CA). A CA chosen twice (never saved so, but stored data may hold it) is only managed when any choice is.
+    /// </summary>
     public static Dictionary<string, bool> Chosen(IReadOnlyList<CertificateAuthorityInfo> authorities, TrustedCaSettings selection)
     {
         ArgumentNullException.ThrowIfNull(authorities);
         ArgumentNullException.ThrowIfNull(selection);
-        var choices = (selection.Cas ?? []).Where(c => c is not null).GroupBy(c => c.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().OnlyManaged, StringComparer.Ordinal);
+        var choices = (selection.Cas ?? []).Where(c => c is not null).GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Any(c => c.OnlyManaged), StringComparer.OrdinalIgnoreCase);
         var chosen = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var ca in authorities)
         {

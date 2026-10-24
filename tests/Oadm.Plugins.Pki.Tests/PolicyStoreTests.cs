@@ -236,6 +236,30 @@ public sealed class PolicyStoreTests
     }
 
     [Fact]
+    public async Task ALateConversionMergesIntoThePoliciesThereAndNeverAddsASecondOfTheSameCaServerOrAllDevicesVlan()
+    {
+        using var store = Store([]);
+        await SaveAsync(store, new PkiPolicy { Name = "OADM CA", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId, OnlyManaged = false });
+        await SaveAsync(store, new PkiPolicy { Name = "Axis device ID", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.AxisDeviceIdId, OnlyManaged = true });
+        await SaveAsync(store, Radius.Server.RadiusPolicies.DefaultServerPolicy() with { LargestEapPacket = 1200 });
+        await SaveAsync(store, Vlan("All devices", 99, PolicyDevices.Everything));
+
+        Assert.True(await store.ConvertOnceAsync("oadm.radius", _ => Task.FromResult<IReadOnlyList<PkiPolicy>>(
+        [
+            Radius.Server.RadiusPolicies.DefaultServerPolicy(),
+            new PkiPolicy { Name = "Trusted OADM", Kind = PolicyKinds.AllowCa, CaId = "OADM", OnlyManaged = true },
+            new PkiPolicy { Name = "Factory", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.AxisDeviceIdId, OnlyManaged = false },
+            Vlan("PTZ", 40, new PolicyDevices { Tags = ["PTZ"] }),
+            Vlan(PolicyLimits.AllDevicesName, 98, PolicyDevices.Everything),
+        ]), CancellationToken.None));
+
+        var cas = store.PoliciesOf(PolicyKinds.AllowCa);
+        Assert.Equal([("OADM CA", true), ("Axis device ID", true)], cas.Select(p => (p.Name, p.OnlyManaged!.Value))); // one per CA, the stricter
+        Assert.Equal(1200, Assert.Single(store.PoliciesOf(PolicyKinds.Dot1xServer)).LargestEapPacket);
+        Assert.Equal([("All devices", 99), ("PTZ", 40)], store.PoliciesOf(PolicyKinds.Vlan).Select(p => (p.Name, p.Vlan!.Value)));
+    }
+
+    [Fact]
     public async Task ANewServerStartsWithTheExpiryWarningAllDevicesOf30Days()
     {
         await using var pki = await PkiHarness.StartAsync();

@@ -243,7 +243,10 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
 - **Conversion** (once per owner, `PolicyStore.ConvertOnceAsync`, the owner noted in the stored list): PKI at its start
   (`PkiService.ConvertOwnSettings`: "All devices" with the stored warn days, `PolicyDevices.AllDevices`); the 802.1X server's
   core plugin at its start hands its settings over (`RadiusPolicies.ConvertAsync`; PKI starts first, the core plugins of a
-  package start in name order; without the store the next start converts). The old settings stay where they are (decision of
+  package start in name order; without the store the next start converts). A conversion that runs after policies exist
+  merges: an Allow CA of a CA already allowed changes the one there (only devices OADM manages when either was: the
+  stricter), a second 802.1X server policy or a second "All devices" VLAN policy is not added. The 802.1X server reads a CA
+  named twice anyway (`CaTrust.Chosen`) as only managed when either is. The old settings stay where they are (decision of
   stage 3: nothing is deleted; they are no longer read). A server without them gets the defaults of the kinds the same way.
 - **Expiry events** (`ExpiryEvents`, PKI is an `IEventSource`): the ids `oadm.device.certificate-expires-soon`,
   `oadm.device.certificate-expired` and their Any device twins (group "Certificates" for all four, decision of stage 3), the
