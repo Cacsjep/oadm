@@ -6,28 +6,19 @@
              x:Class="Oadm.Plugins.Radius.Client.RadiusView"
              x:DataType="vm:RadiusViewModel"
              ui:PageHeader.Subtitle="Switches ask OADM which cameras may use their ports.">
-  <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only. Fixed tabs: Server (General with
-       Advanced, Switches and VLANs side by side, two or one column on narrower pages (RadiusView.Arrange); one Save for
-       General and VLANs below the cards with the status left of it), Sessions, Log, Revoked. Users limited to a device
-       group see Sessions and Log only. -->
-  <Grid RowDefinitions="Auto,*">
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="2" Margin="0,0,0,8">
-      <ui:PageTab Title="Server" IsActive="{Binding IsServerTab}" ActivateCommand="{Binding ShowServerTabCommand}" IsVisible="{Binding HasAllDevices}" />
-      <ui:PageTab Title="Sessions" IsActive="{Binding IsSessionsTab}" ActivateCommand="{Binding ShowSessionsTabCommand}" />
-      <ui:PageTab Title="Log" IsActive="{Binding IsLogTab}" ActivateCommand="{Binding ShowLogTabCommand}" />
-      <ui:PageTab Title="Revoked" IsActive="{Binding IsRevokedTab}" ActivateCommand="{Binding ShowRevokedTabCommand}" IsVisible="{Binding HasAllDevices}" />
-    </StackPanel>
-
-    <!-- ============================== Server ============================== -->
-    <Panel Grid.Row="1" IsVisible="{Binding IsServerTab}">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="{DynamicResource Oadm.Gap}">
-          <!-- Three columns, each card as high as it needs; RadiusView.Arrange moves the cards for two or one column. -->
-          <Grid x:Name="ServerColumns" ColumnDefinitions="*,16,*,16,*" RowDefinitions="Auto,Auto,Auto">
-            <!-- ========== General ========== -->
-            <Border x:Name="GeneralCard" Grid.Column="0" Classes="card" VerticalAlignment="Top" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
-              <StackPanel Classes="form">
-                <ui:CardHeader Title="General" />
+  <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only. One page, no tabs: Server | Trusted
+       CAs | Switches | Policies side by side (two or one column on narrower pages, RadiusView.Arrange), then Sessions and
+       Log full width. Users limited to a device group see Sessions and Log only. Card headers: the title and its buttons
+       in one row. -->
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+      <Panel IsVisible="{Binding HasAllDevices}">
+        <Grid x:Name="CardColumns" ColumnDefinitions="*,16,*,16,1.65*,16,1.25*" RowDefinitions="Auto,Auto,Auto,Auto">
+          <!-- ========== Server ========== -->
+          <Border x:Name="ServerCard" Grid.Column="0" Classes="card" VerticalAlignment="Top">
+            <StackPanel Classes="form">
+              <TextBlock Classes="cardTitle" Text="Server" />
+              <StackPanel Classes="form" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
                 <ui:FormField Label="Listen on" InputWidth="290">
                   <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
                             ToolTip.Tip="The interface the switches reach this server on.">
@@ -44,309 +35,256 @@
                 <ui:FormField Label="Log entries kept">
                   <TextBox Text="{Binding LogKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
                 </ui:FormField>
+              </StackPanel>
+              <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding OpenAdvancedCommand}" ToolTip.Tip="TLS versions, cipher suites, packet size">
+                <ui:IconLabel Icon="{DynamicResource Icon.sliders}" Text="Advanced" />
+              </Button>
+              <!-- The status directly left of the Save it reports on. -->
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+                        ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+                <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Text="{Binding StatusText}" IsOk="{Binding StatusOk}"
+                               IsWarning="{Binding StatusWarning}" IsError="{Binding StatusError}" MaxLines="2" />
+              </DockPanel>
+              <TextBlock Classes="secondary" Text="{Binding CertificateText}" TextWrapping="Wrap" HorizontalAlignment="Right" TextAlignment="Right"
+                         IsVisible="{Binding CertificateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Classes="secondary" Text="{Binding SitesText}" TextWrapping="Wrap" HorizontalAlignment="Right" TextAlignment="Right" IsVisible="{Binding HasSiteProblems}" />
+              <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right" IsVisible="{Binding HasActionError}" />
+            </StackPanel>
+          </Border>
 
-                <ToggleButton Classes="sectionExpander" Content="Advanced" IsChecked="{Binding ShowAdvanced}" />
-                <StackPanel Classes="form" IsVisible="{Binding ShowAdvanced}">
-                  <ui:FormField Label="Minimum TLS version" Hint="{Binding TlsHint}">
-                    <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:SettingsViewModel.TlsVersions}" SelectedItem="{Binding MinimumTls}"
-                              IsEnabled="{Binding MayManage}" />
-                  </ui:FormField>
-                  <ui:FormField Label="Cipher suites" Error="{Binding CipherSuitesError}" InputWidth="380">
-                    <StackPanel Spacing="4">
-                      <!-- At most 13 suites: no virtualization needed. -->
-                      <ItemsControl ItemsSource="{Binding CipherSuites}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="vm:CipherSuiteViewModel">
-                            <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding IsListed}" IsEnabled="{Binding MayManage}">
-                              <StackPanel>
-                                <TextBlock Text="{Binding Name}" />
-                                <TextBlock Classes="secondary small" Text="{Binding KeyHint}" IsVisible="{Binding HasKeyHint}" />
-                              </StackPanel>
-                            </CheckBox>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                      <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ResetCipherSuitesCommand}" IsVisible="{Binding MayManage}"
-                              ToolTip.Tip="Check the secure set for the chosen version">
-                        <ui:IconLabel Icon="{DynamicResource Icon.undo}" Text="Reset to default" />
-                      </Button>
+          <!-- ========== Trusted CAs ========== -->
+          <Border x:Name="TrustedCasCard" Grid.Column="2" Classes="card" VerticalAlignment="Top" DataContext="{Binding TrustedCas}" x:DataType="vm:TrustedCasViewModel">
+            <StackPanel Classes="form">
+              <TextBlock Classes="cardTitle" Text="Trusted CAs" />
+              <!-- A handful of CAs: no virtualization needed. -->
+              <ItemsControl ItemsSource="{Binding Cas}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:TrustedCaViewModel">
+                    <StackPanel Margin="0,0,0,10" Spacing="2">
+                      <CheckBox IsChecked="{Binding IsTrusted}" IsEnabled="{Binding MayManage}">
+                        <StackPanel>
+                          <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                          <TextBlock Classes="secondary small" Text="{Binding Detail}" TextWrapping="Wrap" />
+                        </StackPanel>
+                      </CheckBox>
+                      <CheckBox Margin="28,0,0,0" Content="Only devices OADM manages" IsChecked="{Binding OnlyManaged}" IsVisible="{Binding IsTrusted}"
+                                IsEnabled="{Binding MayManage}" ToolTip.Tip="Off: any device with a valid certificate of this CA" />
                     </StackPanel>
-                  </ui:FormField>
-                  <ui:FormField Label="Largest fragment (bytes)" Info="The switch can ask for smaller fragments.">
-                    <TextBox Text="{Binding LargestFragment}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
-                  </ui:FormField>
-                </StackPanel>
-              </StackPanel>
-            </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Classes="secondary" Text="{Binding EmptyText}" TextWrapping="Wrap" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Classes="secondary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+                        ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+                <TextBlock Classes="secondary" Text="{x:Static vm:TrustedCasViewModel.ManageText}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
+              </DockPanel>
+            </StackPanel>
+          </Border>
 
-            <!-- ========== Switches ========== -->
-            <Border x:Name="SwitchesCard" Grid.Column="2" Classes="card" VerticalAlignment="Top" DataContext="{Binding Switches}" x:DataType="vm:SwitchesViewModel">
-              <Grid RowDefinitions="Auto,Auto,*">
-                <ui:CardHeader Grid.Row="0" Title="Switches" />
-                <WrapPanel Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,8" IsVisible="{Binding MayManage}">
-                  <Button Classes="secondary" Command="{Binding AddCommand}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
-                    <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add switch" />
-                  </Button>
-                  <Button Classes="secondary" Command="{Binding EditCommand}">
-                    <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Edit" />
-                  </Button>
-                  <Button Classes="danger" Command="{Binding DeleteCommand}">
-                    <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Delete" />
-                  </Button>
-                </WrapPanel>
-                <Panel Grid.Row="2" VerticalAlignment="Top">
-                  <DataGrid x:Name="SwitchesGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" IsReadOnly="True" CanUserSortColumns="True"
-                            CanUserReorderColumns="False" SelectionMode="Single" MinHeight="180" MaxHeight="420">
-                    <DataGrid.Columns>
-                      <DataGridTextColumn Header="Name" Width="*" MinWidth="90" Binding="{Binding Name}" x:DataType="vm:SwitchRowViewModel" />
-                      <DataGridTextColumn Header="Address" Width="100" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
-                      <DataGridTextColumn Header="Site" Width="95" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
-                      <DataGridTemplateColumn Header="State" Width="138" SortMemberPath="State" x:DataType="vm:SwitchRowViewModel">
-                        <DataGridTemplateColumn.CellTemplate>
-                          <DataTemplate x:DataType="vm:SwitchRowViewModel">
-                            <ui:StatusChip Margin="10,0" Text="{Binding State}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" />
-                          </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                      </DataGridTemplateColumn>
-                      <DataGridTextColumn Header="Last request" Width="112" Binding="{Binding LastRequest}" SortMemberPath="LastRequestSortKey" x:DataType="vm:SwitchRowViewModel" />
-                    </DataGrid.Columns>
-                  </DataGrid>
-                  <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-                </Panel>
-              </Grid>
-            </Border>
-
-            <!-- ========== VLANs (collapsed while off); users limited to a group: no VLAN rules (the server sends none) ========== -->
-            <Border x:Name="VlansCard" Grid.Column="4" Classes="card" VerticalAlignment="Top" IsVisible="{Binding SeesVlans}">
-              <StackPanel Classes="form">
-                <ui:CardHeader Title="VLANs" />
-                <StackPanel Classes="form" DataContext="{Binding Vlans}" x:DataType="vm:VlansViewModel">
-                  <CheckBox Content="Assign VLANs" IsChecked="{Binding Enabled}" IsEnabled="{Binding MayManage}" />
-                  <StackPanel Classes="form" IsVisible="{Binding Enabled}" Grid.IsSharedSizeScope="True">
-                    <TextBlock Classes="secondary" Text="The first rule that matches the device gives its VLAN, at its next authentication." TextWrapping="Wrap" />
-                    <Grid IsVisible="{Binding HasRules}">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="88" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" MinWidth="120" />
-                        <ColumnDefinition Width="8" /><ColumnDefinition Width="72" /><ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="VlanActions" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Grid.Column="0" Classes="secondary" Text="Match" />
-                      <TextBlock Grid.Column="2" Classes="secondary" Text="Site or tag" />
-                      <TextBlock Grid.Column="4" Classes="secondary" Text="VLAN ID" />
-                    </Grid>
-                    <!-- Rules are few (one per site or tag): no virtualization needed. Inputs stay at the top so an error below
-                         one moves nothing else. -->
-                    <ItemsControl ItemsSource="{Binding Rules}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:VlanRuleViewModel">
-                          <Grid Margin="0,0,0,6">
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="88" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" MinWidth="120" />
-                            <ColumnDefinition Width="8" /><ColumnDefinition Width="72" /><ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" SharedSizeGroup="VlanActions" />
-                          </Grid.ColumnDefinitions>
-                            <ComboBox Grid.Column="0" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                      IsEnabled="{Binding MayManage}" />
-                            <ComboBox Grid.Column="2" ItemsSource="{Binding References}" SelectedItem="{Binding Reference}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                      IsEnabled="{Binding MayManage}" />
-                            <TextBox Grid.Column="4" Text="{Binding Vlan}" VerticalAlignment="Top" PlaceholderText="1 to 4094" IsReadOnly="{Binding !MayManage}" />
-                            <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top"
-                                        IsVisible="{Binding MayManage}">
-                              <ui:ToolbarButton IsIconOnly="True" IconKey="chevronUp" Text="Move up" VerticalAlignment="Center"
-                                                Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}" />
-                              <ui:ToolbarButton IsIconOnly="True" IconKey="chevronDown" Text="Move down" VerticalAlignment="Center"
-                                                Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}" />
-                              <Button Classes="link danger" Content="Remove" VerticalAlignment="Center" Margin="8,0,0,0"
-                                      Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).RemoveRuleCommand}" CommandParameter="{Binding}" />
-                            </StackPanel>
-                          </Grid>
+          <!-- ========== Switches ========== -->
+          <Border x:Name="SwitchesCard" Grid.Column="4" Classes="card" VerticalAlignment="Top" DataContext="{Binding Switches}" x:DataType="vm:SwitchesViewModel">
+            <StackPanel Spacing="12">
+              <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
+                <TextBlock Classes="cardTitle" Text="Switches" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Classes="secondary" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
+                  <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add switch" />
+                </Button>
+                <Button Classes="secondary" Command="{Binding EditCommand}" IsVisible="{Binding MayManage}">
+                  <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Edit" />
+                </Button>
+                <Button Classes="danger" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}">
+                  <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Delete" />
+                </Button>
+              </WrapPanel>
+              <Panel>
+                <DataGrid x:Name="SwitchesGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" IsReadOnly="True" CanUserSortColumns="True"
+                          CanUserReorderColumns="False" SelectionMode="Single" Height="240">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name" Width="*" MinWidth="90" Binding="{Binding Name}" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTextColumn Header="Address" Width="100" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTextColumn Header="Site" Width="95" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTemplateColumn Header="State" Width="138" SortMemberPath="State" x:DataType="vm:SwitchRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:SwitchRowViewModel">
+                          <ui:StatusChip Margin="10,0" Text="{Binding State}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" />
                         </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddRuleCommand}" IsVisible="{Binding MayManage}">
-                      <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add rule" />
-                    </Button>
-                    <ui:FormField Label="Default VLAN" Hint="For devices no rule matches. Empty: no VLAN.">
-                      <TextBox Text="{Binding DefaultVlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="Optional" IsReadOnly="{Binding !MayManage}" />
-                    </ui:FormField>
-                  </StackPanel>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Last request" Width="112" Binding="{Binding LastRequest}" SortMemberPath="LastRequestSortKey" x:DataType="vm:SwitchRowViewModel" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,40,16,0" />
+              </Panel>
+            </StackPanel>
+          </Border>
+
+          <!-- ========== Policies (in order; users limited to a group read none) ========== -->
+          <Border x:Name="PoliciesCard" Grid.Column="6" Classes="card" VerticalAlignment="Top" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel">
+            <StackPanel Spacing="12">
+              <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
+                <TextBlock Classes="cardTitle" Text="Policies" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Classes="secondary" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
+                  <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add policy" />
+                </Button>
+                <Button Classes="secondary" Command="{Binding EditCommand}" IsVisible="{Binding MayManage}">
+                  <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Edit" />
+                </Button>
+                <Button Classes="danger" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}">
+                  <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Delete" />
+                </Button>
+                <ui:ToolbarButton IsIconOnly="True" IconKey="chevronUp" Text="Move up" Command="{Binding MoveUpCommand}" IsVisible="{Binding MayManage}" />
+                <ui:ToolbarButton IsIconOnly="True" IconKey="chevronDown" Text="Move down" Command="{Binding MoveDownCommand}" IsVisible="{Binding MayManage}" />
+              </WrapPanel>
+              <Panel>
+                <DataGrid x:Name="PoliciesGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Classes="wrapRows" IsReadOnly="True"
+                          CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single" Height="240">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name" Width="*" MinWidth="90" Binding="{Binding Name}" x:DataType="vm:PolicyRowViewModel" />
+                    <DataGridTemplateColumn Header="Policy" Width="130" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <ui:StatusChip Margin="10,0" Text="{Binding Kind}" IsError="{Binding IsBlock}" />
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Devices" Width="1.5*" MinWidth="120" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <TextBlock Text="{Binding Devices}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding Devices}" />
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,40,16,0" />
+              </Panel>
+              <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+              <ui:FormField Label="Default VLAN" Hint="For devices no VLAN policy matches." IsVisible="{Binding HasVlanPolicies}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBox Text="{Binding DefaultVlan}" Width="120" VerticalAlignment="Top" PlaceholderText="None" IsReadOnly="{Binding !MayManage}" />
+                  <Button Classes="secondary" Content="Save" VerticalAlignment="Top" Command="{Binding SaveDefaultVlanCommand}" IsVisible="{Binding MayManage}" />
                 </StackPanel>
-              </StackPanel>
-            </Border>
-          </Grid>
-
-          <!-- ========== The one Save for General and VLANs, below the cards ========== -->
-          <StackPanel Classes="form">
-            <DockPanel HorizontalAlignment="Right">
-              <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
-                      ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
-              <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,12,0" VerticalAlignment="Center">
-                <TextBlock Classes="secondary" Text="{Binding CertificateText}" VerticalAlignment="Center"
-                           IsVisible="{Binding CertificateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <ui:StatusChip VerticalAlignment="Center" Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsWarning="{Binding StatusWarning}" IsError="{Binding StatusError}" />
-              </StackPanel>
-            </DockPanel>
-            <TextBlock Classes="secondary" Text="{Binding SitesText}" TextWrapping="Wrap" HorizontalAlignment="Right" TextAlignment="Right"
-                       IsVisible="{Binding HasSiteProblems}" />
-            <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right" IsVisible="{Binding HasActionError}" />
-          </StackPanel>
-        </StackPanel>
-      </ScrollViewer>
-      <ui:LoadingOverlay Text="Reading the 802.1X server" IsVisible="{Binding IsLoading}" />
-    </Panel>
-
-    <!-- ============================== Sessions ============================== -->
-    <Border Grid.Row="1" Classes="card" IsVisible="{Binding IsSessionsTab}">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" DataContext="{Binding Sessions}" x:DataType="vm:SessionsViewModel">
-        <TextBlock Grid.Row="0" Classes="secondary" Text="{Binding CountText}" Margin="0,0,0,8" />
-        <ui:ProgressRow Grid.Row="1" Margin="0,0,0,8" Text="Reading the sessions" IsVisible="{Binding IsReloading}" />
-        <Panel Grid.Row="2">
-          <DataGrid x:Name="SessionsGrid" ItemsSource="{Binding Rows}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
-                    SelectionMode="Single" MinHeight="200">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Started" Width="140" Binding="{Binding Started}" SortMemberPath="StartedSortKey" x:DataType="vm:SessionRowViewModel" />
-              <DataGridTextColumn Header="Switch" Width="100" Binding="{Binding Switch}" x:DataType="vm:SessionRowViewModel" />
-              <DataGridTextColumn Header="Port" Width="140" Binding="{Binding Port}" x:DataType="vm:SessionRowViewModel" />
-              <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Mac}" x:DataType="vm:SessionRowViewModel" />
-              <DataGridTextColumn Header="EAP identity" Width="130" Binding="{Binding Identity}" x:DataType="vm:SessionRowViewModel" />
-              <DataGridTemplateColumn Header="Device" Width="100" SortMemberPath="Device" x:DataType="vm:SessionRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:SessionRowViewModel">
-                    <TextBlock Text="{Binding Device}" Classes.guess="{Binding IsGuess}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Header="IP address" Width="100" Binding="{Binding IpAddress}" x:DataType="vm:SessionRowViewModel" />
-              <DataGridTemplateColumn Header="State" Width="*" MinWidth="220" SortMemberPath="State" x:DataType="vm:SessionRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:SessionRowViewModel">
-                    <ui:StatusChip Text="{Binding State}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsAccent="{Binding IsRunning}" ToolTip.Tip="{Binding State}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Width="80" Binding="{Binding Duration}" SortMemberPath="DurationValue" CellStyleClasses="number" x:DataType="vm:SessionRowViewModel">
-                <DataGridTextColumn.Header>
-                  <TextBlock Classes="numberHeader" Text="Duration" />
-                </DataGridTextColumn.Header>
-              </DataGridTextColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-          <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-          <ui:LoadingOverlay Text="Reading the sessions" IsVisible="{Binding IsLoading}" />
-        </Panel>
-        <TextBlock Grid.Row="3" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" Margin="0,8,0,0" />
-      </Grid>
-    </Border>
-
-    <!-- ============================== Log ============================== -->
-    <Border Grid.Row="1" Classes="card" IsVisible="{Binding IsLogTab}">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" DataContext="{Binding Log}" x:DataType="vm:LogViewModel">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-            <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
-              <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
-            </Button>
-            <Button Classes="toolbar" Command="{Binding AddSwitchCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="For rows from a switch that is not added"
-                    ToolTip.ShowOnDisabled="True">
-              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add switch" Spacing="8" />
-            </Button>
-            <Button Classes="toolbar danger" Command="{Binding DeleteAllCommand}" IsVisible="{Binding MayManage}">
-              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
-            </Button>
-          </StackPanel>
-          <ui:SearchBox Grid.Column="2" Text="{Binding Search}" Placeholder="Search every column" Width="260" />
+              </ui:FormField>
+            </StackPanel>
+          </Border>
         </Grid>
-        <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="Reading the log" IsVisible="{Binding IsReloading}" />
-        <Panel Grid.Row="2" Margin="0,8,0,0">
-          <DataGrid x:Name="LogGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="False"
-                    CanUserReorderColumns="False" SelectionMode="Single" MinHeight="200">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Time" Width="140" Binding="{Binding Time}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="Switch" Width="150" Binding="{Binding Switch}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="Port" Width="130" Binding="{Binding Port}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Mac}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="EAP identity" Width="130" Binding="{Binding Identity}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="Device" Width="100" Binding="{Binding Device}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="IP address" Width="100" Binding="{Binding IpAddress}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTemplateColumn Header="Result" Width="*" MinWidth="220" x:DataType="vm:LogRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:LogRowViewModel">
-                    <ui:StatusChip Text="{Binding Result}" Detail="{Binding Reason}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
-                                   ToolTip.Tip="{Binding Reason}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Width="64" Binding="{Binding Vlan}" CellStyleClasses="number" x:DataType="vm:LogRowViewModel">
-                <DataGridTextColumn.Header>
-                  <TextBlock Classes="numberHeader" Text="VLAN" />
-                </DataGridTextColumn.Header>
-              </DataGridTextColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-          <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-          <ui:LoadingOverlay Text="Reading the log" IsVisible="{Binding IsLoading}" />
-        </Panel>
-        <!-- A whole-table error directly below the table; the pages at the right. -->
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
-          <TextBlock Grid.Column="0" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" VerticalAlignment="Center" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-            <TextBlock Classes="secondary" Text="{Binding PageText}" VerticalAlignment="Center" />
-            <Button Classes="toolbar" Command="{Binding PreviousPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Previous 500">
-              <ui:IconLabel Icon="{StaticResource Icon.chevronLeft}" Text="Previous" Spacing="4" />
-            </Button>
-            <Button Classes="toolbar" Command="{Binding NextPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Next 500">
-              <ui:IconLabel Icon="{StaticResource Icon.chevronRight}" Text="Next" Spacing="4" />
-            </Button>
-          </StackPanel>
-        </Grid>
-      </Grid>
-    </Border>
+        <ui:LoadingOverlay Text="Reading the 802.1X server" IsVisible="{Binding IsLoading}" />
+      </Panel>
 
-    <!-- ============================== Revoked ============================== -->
-    <Border Grid.Row="1" Classes="card" IsVisible="{Binding IsRevokedTab}">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" DataContext="{Binding Revoked}" x:DataType="vm:RevokedViewModel">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
-            <Button Classes="toolbar danger" Command="{Binding RevokeCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="Choose certificates of the OADM CA to revoke">
-              <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Revoke" Spacing="8" />
-            </Button>
+      <!-- ============================== Sessions ============================== -->
+      <Border Classes="card">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto" DataContext="{Binding Sessions}" x:DataType="vm:SessionsViewModel">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+            <TextBlock Classes="cardTitle" Text="Sessions" VerticalAlignment="Center" />
             <TextBlock Classes="secondary" Text="{Binding CountText}" VerticalAlignment="Center" />
           </StackPanel>
-          <ui:SearchBox Grid.Column="2" Text="{Binding Search}" Placeholder="Search device, serial number" Width="260" />
+          <ui:ProgressRow Grid.Row="1" Margin="0,0,0,8" Text="Reading the sessions" IsVisible="{Binding IsReloading}" />
+          <Panel Grid.Row="2">
+            <DataGrid x:Name="SessionsGrid" ItemsSource="{Binding Rows}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                      SelectionMode="Single" Height="300">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Started" Width="140" Binding="{Binding Started}" SortMemberPath="StartedSortKey" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTextColumn Header="Switch" Width="100" Binding="{Binding Switch}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTextColumn Header="Port" Width="140" Binding="{Binding Port}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Mac}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTextColumn Header="EAP identity" Width="130" Binding="{Binding Identity}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTemplateColumn Header="Device" Width="100" SortMemberPath="Device" x:DataType="vm:SessionRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:SessionRowViewModel">
+                      <TextBlock Text="{Binding Device}" Classes.guess="{Binding IsGuess}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="IP address" Width="100" Binding="{Binding IpAddress}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTemplateColumn Header="State" Width="*" MinWidth="220" SortMemberPath="State" x:DataType="vm:SessionRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:SessionRowViewModel">
+                      <ui:StatusChip Text="{Binding State}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsAccent="{Binding IsRunning}" ToolTip.Tip="{Binding State}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Width="80" Binding="{Binding Duration}" SortMemberPath="DurationValue" CellStyleClasses="number" x:DataType="vm:SessionRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Duration" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+            <ui:LoadingOverlay Text="Reading the sessions" IsVisible="{Binding IsLoading}" />
+          </Panel>
+          <TextBlock Grid.Row="3" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" Margin="0,8,0,0" />
         </Grid>
-        <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="{Binding ProgressText}" IsVisible="{Binding ShowsProgress}" />
-        <Panel Grid.Row="2" Margin="0,8,0,0">
-          <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single" MinHeight="200">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:RevokedRowViewModel" />
-              <DataGridTextColumn Header="Serial number" Width="2*" Binding="{Binding SerialNumber}" x:DataType="vm:RevokedRowViewModel" />
-              <DataGridTextColumn Header="Revoked" Width="110" Binding="{Binding Revoked}" SortMemberPath="RevokedSortKey" x:DataType="vm:RevokedRowViewModel" />
-              <DataGridTextColumn Header="Reason" Width="150" Binding="{Binding Reason}" x:DataType="vm:RevokedRowViewModel" />
-              <DataGridTextColumn Header="Revoked by" Width="130" Binding="{Binding RevokedBy}" x:DataType="vm:RevokedRowViewModel" />
-              <DataGridTextColumn Header="Valid until" Width="110" Binding="{Binding ValidUntil}" x:DataType="vm:RevokedRowViewModel" />
-            </DataGrid.Columns>
-          </DataGrid>
-          <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-          <ui:LoadingOverlay Text="{x:Static vm:RevokedViewModel.ReadingText}" IsVisible="{Binding IsLoading}" />
-        </Panel>
-        <!-- A whole-table error directly below the table; the pages at the right (like the log). -->
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
-          <TextBlock Grid.Column="0" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" VerticalAlignment="Center" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-            <TextBlock Classes="secondary" Text="{Binding PageText}" VerticalAlignment="Center" />
-            <Button Classes="toolbar" Command="{Binding PreviousPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Previous 500">
-              <ui:IconLabel Icon="{StaticResource Icon.chevronLeft}" Text="Previous" Spacing="4" />
-            </Button>
-            <Button Classes="toolbar" Command="{Binding NextPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Next 500">
-              <ui:IconLabel Icon="{StaticResource Icon.chevronRight}" Text="Next" Spacing="4" />
-            </Button>
-          </StackPanel>
+      </Border>
+
+      <!-- ============================== Log ============================== -->
+      <Border Classes="card">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto" DataContext="{Binding Log}" x:DataType="vm:LogViewModel">
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="cardTitle" Text="Log" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
+                <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
+              </Button>
+              <Button Classes="toolbar danger" Command="{Binding DeleteAllCommand}" IsVisible="{Binding MayManage}">
+                <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
+              </Button>
+            </StackPanel>
+            <ui:SearchBox Grid.Column="2" Text="{Binding Search}" Placeholder="Search every column" Width="260" />
+          </Grid>
+          <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="Reading the log" IsVisible="{Binding IsReloading}" />
+          <Panel Grid.Row="2" Margin="0,8,0,0">
+            <DataGrid x:Name="LogGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="False"
+                      CanUserReorderColumns="False" SelectionMode="Single" Height="420">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Time" Width="140" Binding="{Binding Time}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="Switch" Width="150" Binding="{Binding Switch}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="Port" Width="130" Binding="{Binding Port}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Mac}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="EAP identity" Width="130" Binding="{Binding Identity}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="Device" Width="100" Binding="{Binding Device}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="IP address" Width="100" Binding="{Binding IpAddress}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTemplateColumn Header="Result" Width="*" MinWidth="220" x:DataType="vm:LogRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:LogRowViewModel">
+                      <ui:StatusChip Text="{Binding Result}" Detail="{Binding Reason}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
+                                     ToolTip.Tip="{Binding Reason}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Width="64" Binding="{Binding Vlan}" CellStyleClasses="number" x:DataType="vm:LogRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="VLAN" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+            <ui:LoadingOverlay Text="Reading the log" IsVisible="{Binding IsLoading}" />
+          </Panel>
+          <!-- A whole-table error directly below the table; the pages at the right. -->
+          <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+            <TextBlock Grid.Column="0" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="secondary" Text="{Binding PageText}" VerticalAlignment="Center" />
+              <Button Classes="toolbar" Command="{Binding PreviousPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Previous 500">
+                <ui:IconLabel Icon="{StaticResource Icon.chevronLeft}" Text="Previous" Spacing="4" />
+              </Button>
+              <Button Classes="toolbar" Command="{Binding NextPageCommand}" IsVisible="{Binding HasPages}" ToolTip.Tip="Next 500">
+                <ui:IconLabel Icon="{StaticResource Icon.chevronRight}" Text="Next" Spacing="4" />
+              </Button>
+            </StackPanel>
+          </Grid>
         </Grid>
-      </Grid>
-    </Border>
-  </Grid>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

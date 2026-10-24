@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Radius.Client"
+        x:Class="Oadm.Plugins.Radius.Client.AdvancedWindow"
+        x:DataType="vm:AdvancedViewModel"
+        Title="Advanced"
+        Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A single form: no card, the form in the dialog body between title bar and footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Advanced" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="Minimum TLS version" Hint="{Binding TlsHint}">
+          <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:AdvancedViewModel.TlsVersions}" SelectedItem="{Binding MinimumTls}"
+                    IsEnabled="{Binding MayManage}" />
+        </ui:FormField>
+        <ui:FormField Label="Cipher suites" Error="{Binding CipherSuitesError}">
+          <StackPanel Spacing="4">
+            <!-- At most 13 suites: no virtualization needed. -->
+            <ItemsControl ItemsSource="{Binding CipherSuites}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CipherSuiteViewModel">
+                  <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding IsListed}"
+                            IsEnabled="{Binding $parent[Window].((vm:AdvancedViewModel)DataContext).MayManage}">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                      <TextBlock Classes="secondary small" Text="{Binding KeyHint}" IsVisible="{Binding HasKeyHint}" />
+                    </StackPanel>
+                  </CheckBox>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ResetCipherSuitesCommand}" IsVisible="{Binding MayManage}"
+                    ToolTip.Tip="Check the secure set for the chosen version">
+              <ui:IconLabel Icon="{DynamicResource Icon.undo}" Text="Reset to default" />
+            </Button>
+          </StackPanel>
+        </ui:FormField>
+        <ui:FormField Label="Largest EAP packet" Hint="Bytes. The switch can ask for smaller packets.">
+          <TextBox Text="{Binding LargestPacket}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

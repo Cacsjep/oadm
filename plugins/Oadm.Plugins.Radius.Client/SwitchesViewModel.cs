@@ -184,23 +184,6 @@ public sealed partial class SwitchesViewModel : ObservableObject
         return new SwitchDialogViewModel(_ctx, existing, _sites(), others, state, address, siteId);
     }
 
-    /// <summary>
-    /// Add switch of a log row from a sender that is no switch: the switches are read first (the dialog checks names and
-    /// addresses against them), then the dialog opens with the sender's address and site filled in.
-    /// </summary>
-    public async Task<bool> AddSenderAsync(string address, Guid? siteId)
-    {
-        ArgumentNullException.ThrowIfNull(address);
-        await ReloadAsync().ConfigureAwait(true);
-        if (!CanAdd() || Dialogs is not { } dialogs || !await dialogs.ShowSwitchAsync(NewDialog(null, address, siteId)).ConfigureAwait(true))
-        {
-            return false;
-        }
-
-        await ReloadAsync().ConfigureAwait(true);
-        return true;
-    }
-
     private async Task ReloadAsync()
     {
         try

@@ -8,21 +8,12 @@ using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Radius.Client;
 
-/// <summary>The tabs of the page.</summary>
-public enum RadiusTab
-{
-    Server,
-    Sessions,
-    Log,
-    Revoked,
-}
-
 /// <summary>
-/// The 802.1X server page (docs/spec/radius-server.md "What the user sees"). Fixed tabs: Server (General with Advanced,
-/// Switches, VLANs; one Save for General and VLANs with the status left of it), Sessions (live), Log, Revoked. Nothing of a
-/// tab is read before it opens. Users limited to a device group see only Sessions and Log (with their devices' rows; the
-/// server filters); users with all devices whose role may manage the plugin change the settings, the switches, the log and
-/// the revocation list. <see cref="Activate"/> reads and watches the live events while the page is shown.
+/// The 802.1X server page (docs/spec/radius-server.md "What the user sees"), one page without tabs: Server (with Save and
+/// the Advanced dialog), Trusted CAs, Switches and Policies, then Sessions (live) and Log. Users limited to a device group
+/// see only Sessions and Log (with their devices' rows; the server filters); users with all devices whose role may manage
+/// the plugin change the settings, the trusted CAs, the switches, the policies and the log. <see cref="Activate"/> reads
+/// everything and watches the live events while the page is shown.
 /// </summary>
 public sealed partial class RadiusViewModel : ObservableObject, IDisposable
 {
@@ -39,12 +30,11 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _time = time ?? TimeProvider.System;
         Settings = new SettingsViewModel(() => MayManage);
+        TrustedCas = new TrustedCasViewModel(ctx, () => MayManage);
         Switches = new SwitchesViewModel(ctx, () => MayManage, () => _state, () => _sites);
-        Vlans = new VlansViewModel(() => MayManage);
+        Policies = new PoliciesViewModel(ctx, () => MayManage, () => _ctx.Has(PermissionKeys.Of(PkiPluginId, PermissionKeys.Manage)));
         Sessions = new SessionsViewModel(ctx, _time);
-        Log = new LogViewModel(ctx, () => MayManage, _time, (address, siteId) => Switches.AddSenderAsync(address, siteId));
-        Revoked = new RevokedViewModel(ctx, () => MayManage, _time);
-        Tab = HasAllDevices ? RadiusTab.Server : RadiusTab.Sessions;
+        Log = new LogViewModel(ctx, () => MayManage, _time);
         Settings.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(SettingsViewModel.IsFormValid) or nameof(SettingsViewModel.FormError))
@@ -52,47 +42,37 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
                 NotifySave();
             }
         };
-        Vlans.ValidityChanged += (_, _) => NotifySave();
         _ctx.PermissionsChanged += (_, _) => NotifyRole();
     }
 
+    /// <summary>The plugin id of PKI, whose "Manage the certificate authority" a revoke policy needs too.</summary>
+    public const string PkiPluginId = "oadm.pki";
+
     public SettingsViewModel Settings { get; }
+
+    public TrustedCasViewModel TrustedCas { get; }
 
     public SwitchesViewModel Switches { get; }
 
-    public VlansViewModel Vlans { get; }
+    public PoliciesViewModel Policies { get; }
 
     public SessionsViewModel Sessions { get; }
 
     public LogViewModel Log { get; }
 
-    public RevokedViewModel Revoked { get; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsServerTab), nameof(IsSessionsTab), nameof(IsLogTab), nameof(IsRevokedTab))]
-    public partial RadiusTab Tab { get; set; }
-
-    public bool IsServerTab => Tab == RadiusTab.Server;
-
-    public bool IsSessionsTab => Tab == RadiusTab.Sessions;
-
-    public bool IsLogTab => Tab == RadiusTab.Log;
-
-    public bool IsRevokedTab => Tab == RadiusTab.Revoked;
-
-    /// <summary>The user reaches every device: Server and Revoked show (server-wide), else only Sessions and Log.</summary>
-    public bool HasAllDevices => _ctx.HasAllDevices;
+    /// <summary>The Advanced dialog (the page view).</summary>
+    public IAdvancedDialog? AdvancedDialog { get; set; }
 
     /// <summary>
-    /// The VLAN rules are read and shown: users with all devices only (fail closed: the server also answers a group user
-    /// with empty VLAN settings).
+    /// The server-wide cards (Server, Trusted CAs, Switches, Policies) are read and shown: users with all devices only (fail
+    /// closed: the server also answers a group user with empty settings).
     /// </summary>
-    public bool SeesVlans => _ctx.HasAllDevices && (_state?.HasAllDevices ?? true);
+    public bool HasAllDevices => _ctx.HasAllDevices && (_state?.HasAllDevices ?? true);
 
     /// <summary>Users with all devices whose role may manage the plugin (the server refuses others anyway).</summary>
     public bool MayManage => _ctx.HasAllDevices && (_state?.HasAllDevices ?? true) && _ctx.Has(PermissionKeys.Of(RadiusPluginInfo.PluginId, PermissionKeys.Manage));
 
-    /// <summary>The first read of the Server tab (the overlay).</summary>
+    /// <summary>The first read of the cards (the overlay).</summary>
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
@@ -134,7 +114,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     public bool HasActionError => !string.IsNullOrEmpty(ActionError);
 
     /// <summary>Why Save is off, for its tooltip.</summary>
-    public string? SaveTip => Settings.FormError ?? Vlans.Error;
+    public string? SaveTip => Settings.FormError;
 
     public void Activate()
     {
@@ -146,7 +126,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         _active = new CancellationTokenSource();
         var ct = _active.Token;
         _ = _ctx.RunAsync(OnEvent, null, ct);
-        _ = OpenTabAsync(Tab, ct);
+        _ = LoadAllAsync(ct);
 
         // Every second on the UI thread: the durations of the open sessions, ended ones leave after 10 s.
         var ui = SynchronizationContext.Current;
@@ -177,39 +157,20 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         Deactivate();
     }
 
-    [RelayCommand]
-    private Task ShowServerTabAsync() => ShowTabAsync(RadiusTab.Server);
-
-    [RelayCommand]
-    private Task ShowSessionsTabAsync() => ShowTabAsync(RadiusTab.Sessions);
-
-    [RelayCommand]
-    private Task ShowLogTabAsync() => ShowTabAsync(RadiusTab.Log);
-
-    [RelayCommand]
-    private Task ShowRevokedTabAsync() => ShowTabAsync(RadiusTab.Revoked);
-
-    internal Task ShowTabAsync(RadiusTab tab)
+    /// <summary>Everything of the page: the cards (users with all devices), then the sessions and the log.</summary>
+    internal async Task LoadAllAsync(CancellationToken ct)
     {
-        if (!HasAllDevices && tab is RadiusTab.Server or RadiusTab.Revoked)
+        if (HasAllDevices)
         {
-            return Task.CompletedTask;
+            await LoadServerAsync(ct).ConfigureAwait(true);
         }
 
-        Tab = tab;
-        return OpenTabAsync(tab, _active?.Token ?? CancellationToken.None);
+        await Task.WhenAll(
+            Sessions.NeedsLoad ? Sessions.LoadAsync(ct) : Task.CompletedTask,
+            Log.NeedsLoad ? Log.LoadAsync(ct) : Task.CompletedTask).ConfigureAwait(true);
     }
 
-    /// <summary>Reads a tab when it opens (the Server tab every time, the lists the first time; events keep them).</summary>
-    internal Task OpenTabAsync(RadiusTab tab, CancellationToken ct) => tab switch
-    {
-        RadiusTab.Server => LoadServerAsync(ct),
-        RadiusTab.Sessions => Sessions.NeedsLoad ? Sessions.LoadAsync(ct) : Task.CompletedTask,
-        RadiusTab.Log => Log.NeedsLoad ? Log.LoadAsync(ct) : Task.CompletedTask,
-        _ => Revoked.LoadAsync(ct),
-    };
-
-    /// <summary>The state, the switches and the VLANs (the overlay over the cards).</summary>
+    /// <summary>The state, the trusted CAs, the switches and the policies (the overlay over the cards).</summary>
     internal async Task LoadServerAsync(CancellationToken ct)
     {
         var version = ++_loadVersion;
@@ -218,26 +179,21 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         {
             var state = RadiusJson.Deserialize<RadiusState>(await _ctx.InvokeAsync(RadiusMethods.GetState, null, ct).ConfigureAwait(true));
             ApplyState(state, form: true);
+            if (!HasAllDevices)
+            {
+                ClearServerWide(); // a user limited to a group: nothing server-wide (the server sends none either)
+                return;
+            }
+
             await Switches.LoadAsync(ct).ConfigureAwait(true);
             _sites = await ReadSitesAsync(ct).ConfigureAwait(true);
-            if (!SeesVlans)
+            await TrustedCas.LoadAsync(ct).ConfigureAwait(true);
+            Policies.SetSites(_sites);
+            await Policies.LoadAsync(ct).ConfigureAwait(true);
+            if (!HasAllDevices)
             {
-                Vlans.Clear(); // a user limited to a group: no VLAN rules and no tag choices (the server sends none either)
-                return;
+                ClearServerWide(); // the role changed during the read
             }
-
-            var vlans = RadiusJson.Deserialize<VlanSettings>(await _ctx.InvokeAsync(RadiusMethods.GetVlans, null, ct).ConfigureAwait(true));
-            if (!SeesVlans)
-            {
-                Vlans.Clear(); // the role changed during the read
-                return;
-            }
-
-            // The server's tag choices, the tags of the saved rules and of the devices this client knows.
-            Vlans.SetChoices(_sites, (vlans.TagChoices ?? []).Select(t => t.Name)
-                .Concat(_ctx.Devices.SelectMany(d => d.Tags))
-                .Concat((vlans.Rules ?? []).Where(r => r.Kind == VlanRuleKinds.Tag).Select(r => r.RefId)));
-            Vlans.Apply(vlans with { Rules = vlans.Rules ?? [] });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -258,29 +214,20 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanSave() => MayManage && !IsSaving && Settings.IsFormValid && Vlans.IsValid;
+    private bool CanSave() => MayManage && !IsSaving && Settings.IsFormValid;
 
-    /// <summary>
-    /// Save: General with Advanced and VLANs (the switches apply at once in their dialog). Both are checked with the server's
-    /// own rules (<see cref="RadiusRules"/>) before the first call, so a refusal of the second leaves nothing half saved.
-    /// </summary>
+    /// <summary>Save of the Server card (Listen on, Port, Log entries kept), checked with the server's own rules first.</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
         Settings.ShowAllErrors();
-        if (Vlans.Enabled)
-        {
-            Vlans.ShowAllErrors(); // collapsed while off: nothing to show there
-        }
-
-        if (!Settings.IsFormValid || !Vlans.IsValid)
+        if (!Settings.IsFormValid)
         {
             return;
         }
 
         ActionError = null;
-        var vlans = Vlans.ToSettings();
-        var settings = Settings.ToSettings(vlans.Enabled, vlans.DefaultVlan);
+        var settings = Settings.ToSettings();
         if (_state is { } known && RadiusRules.Validate(settings, known.CipherSuitesListed) is { } settingsError)
         {
             if (!Settings.ShowServerError(settingsError.Message))
@@ -291,23 +238,11 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (RadiusRules.Validate(vlans) is { } vlanError)
-        {
-            if (!(vlans.Enabled && Vlans.ShowError(vlanError)))
-            {
-                ActionError = vlanError.Message;
-            }
-
-            return;
-        }
-
         IsSaving = true;
         try
         {
             var state = RadiusJson.Deserialize<RadiusState>(await _ctx.InvokeAsync(RadiusMethods.SaveSettings, RadiusJson.Serialize(settings), CancellationToken.None).ConfigureAwait(true));
-            ApplyState(state, form: true); // saved, whatever the VLANs answer
-            await _ctx.InvokeAsync(RadiusMethods.SaveVlans, RadiusJson.Serialize(vlans), CancellationToken.None).ConfigureAwait(true);
-            Vlans.Apply(vlans);
+            ApplyState(state, form: true);
         }
 #pragma warning disable CA1031 // Shown below the field it belongs to, else below the Save row.
         catch (Exception ex)
@@ -323,6 +258,39 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         {
             IsSaving = false;
         }
+    }
+
+    private bool CanOpenAdvanced() => _state is { CipherSuitesListed.Count: > 0 } && HasAllDevices;
+
+    /// <summary>Advanced: the TLS settings and the largest EAP packet in their own dialog (saved there; the Server form stays).</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenAdvanced))]
+    private async Task OpenAdvancedAsync()
+    {
+        if (_state is not { } state || AdvancedDialog is not { } dialog)
+        {
+            return;
+        }
+
+        var advanced = NewAdvanced(state);
+        if (await dialog.ShowAdvancedAsync(advanced).ConfigureAwait(true) && advanced.Saved is { } saved)
+        {
+            ApplyState(saved, form: false);
+            Settings.ApplySaved(saved.Settings);
+        }
+    }
+
+    /// <summary>The Advanced dialog of the saved settings (read only without the manage permission).</summary>
+    public AdvancedViewModel NewAdvanced(RadiusState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return new AdvancedViewModel(_ctx, state.Settings, state.CipherSuitesListed) { MayManage = MayManage };
+    }
+
+    private void ClearServerWide()
+    {
+        TrustedCas.Clear();
+        Policies.Clear();
+        Switches.Apply([]);
     }
 
     private void ApplyState(RadiusState state, bool form)
@@ -354,21 +322,15 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MayManage));
         OnPropertyChanged(nameof(HasAllDevices));
         Settings.NotifyRole();
+        TrustedCas.NotifyRole();
         Switches.NotifyRole();
-        Vlans.NotifyRole();
+        Policies.NotifyRole();
         Log.NotifyRole();
-        Revoked.NotifyRole();
         NotifySave();
-        if (!SeesVlans && (Vlans.Rules.Count > 0 || Vlans.TagChoices.Count > 0 || Vlans.Enabled))
+        OpenAdvancedCommand.NotifyCanExecuteChanged();
+        if (!HasAllDevices && (Policies.Rows.Count > 0 || TrustedCas.Cas.Count > 0 || Switches.Rows.Count > 0))
         {
-            Vlans.Clear(); // nothing read with all devices stays for a user limited to a group
-        }
-
-        OnPropertyChanged(nameof(SeesVlans));
-        if (!HasAllDevices && Tab is RadiusTab.Server or RadiusTab.Revoked)
-        {
-            Tab = RadiusTab.Sessions;
-            _ = OpenTabAsync(Tab, _active?.Token ?? CancellationToken.None);
+            ClearServerWide(); // nothing read with all devices stays for a user limited to a group
         }
     }
 
@@ -396,13 +358,6 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
                 break;
             case RadiusTopics.LogCleared:
                 Log.Cleared();
-                break;
-            case RadiusTopics.Revoked:
-                if (Revoked.IsLoaded)
-                {
-                    _ = Revoked.LoadAsync();
-                }
-
                 break;
         }
     }

@@ -15,7 +15,7 @@ namespace Oadm.Plugins.Radius.Tests.Client;
 
 /// <summary>
 /// The page's server in the tests and for the screenshots: answers every plugin method of the contract from demo data
-/// (switches, VLAN rules, sessions in every state, log rows with a warning and refusals, revoked and issued certificates)
+/// (switches, trusted CAs, policies, sessions in every state, log rows with a warning and refusals)
 /// and records what the page sent.
 /// </summary>
 internal sealed class FakeRadiusBackend
@@ -36,8 +36,7 @@ internal sealed class FakeRadiusBackend
                 ListenOn = "eth0",
                 ListenOnName = "Ethernet",
                 CipherSuites = [.. Suites.Where(s => !s.Legacy).Select(s => s.Id)],
-                VlansEnabled = true,
-                DefaultVlan = 99,
+                LargestFragment = RadiusLimits.DefaultFragment,
             },
             CipherSuitesListed = Suites,
             ServerCertificate = new ServerCertificateInfo(now.AddDays(364), ["10.0.0.17", "oadm-server"]),
@@ -54,15 +53,25 @@ internal sealed class FakeRadiusBackend
             new SwitchRow { Id = Guid.NewGuid(), Name = "Parking", SiteName = "This server", Address = "switch-parking.example.com", State = SwitchStates.NoRequests, RadiusServerAddress = "10.0.0.17" },
             new SwitchRow { Id = Guid.NewGuid(), Name = "Gate house", Address = "192.168.1.2", SiteId = BuildingB, SiteName = "Building B", State = SwitchStates.SiteOffline, LastRequestUtc = now.AddHours(-2), RadiusServerAddress = "192.168.1.5" },
         ];
-        Vlans = new VlanSettings
+        Policies = new PolicySettings
         {
-            Enabled = true,
-            Rules =
+            Policies =
             [
-                new VlanRule(VlanRuleKinds.Site, BuildingB.ToString(), "Building B", 30),
-                new VlanRule(VlanRuleKinds.Tag, "PTZ", "PTZ", 20),
+                new RadiusPolicy { Id = Guid.NewGuid(), Name = "Building B cameras", Kind = PolicyKinds.Vlan, Vlan = 30, Devices = new PolicyDevices { SiteIds = [BuildingB] } },
+                new RadiusPolicy { Id = Guid.NewGuid(), Name = "PTZ", Kind = PolicyKinds.Vlan, Vlan = 20, Devices = new PolicyDevices { Tags = ["PTZ"], ExceptSerials = ["ACCC8E123499"] } },
+                new RadiusPolicy { Id = Guid.NewGuid(), Name = "Storage room", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Serials = ["ACCC8E123406", "ACCC8E123407"] } },
             ],
             DefaultVlan = 99,
+            TagChoices = [new TagChoice("PTZ", "PTZ"), new TagChoice("Lobby", "Lobby")],
+        };
+        TrustedCas = new TrustedCaList
+        {
+            Cas =
+            [
+                new TrustedCaRow { Id = CertificateAuthorityInfo.OadmId, Name = "OADM CA", Kind = CertificateAuthorityKind.Oadm, NotAfterUtc = now.AddYears(10), Trusted = true, PreviousCount = 1 },
+                new TrustedCaRow { Id = CertificateAuthorityInfo.AxisDeviceIdId, Name = "Axis device ID", Kind = CertificateAuthorityKind.AxisDeviceId, NotAfterUtc = now.AddYears(20), Trusted = true },
+                new TrustedCaRow { Id = "imported:AB12", Name = "Contoso Root", Kind = CertificateAuthorityKind.Imported, NotAfterUtc = now.AddYears(5), Trusted = false },
+            ],
         };
         Sessions =
         [
@@ -80,29 +89,6 @@ internal sealed class FakeRadiusBackend
             LogEntry(now.AddMinutes(-2), "AC:CC:8E:12:34:07", LogResults.Failed, "Certificate of a device OADM does not manage (ACCC8E123407)", null, null, null),
             LogEntry(now.AddMinutes(-5), "AC:CC:8E:12:34:08", LogResults.Failed, "Client certificate expired on 2026-09-30", null, null, "10.0.0.48"),
             LogEntry(now.AddMinutes(-9), "AC:CC:8E:12:34:09", LogResults.Failed, "Certificate revoked on 2026-10-20 (Key compromised)", null, null, "10.0.0.49"),
-        ];
-        Revoked =
-        [
-            new RevokedRow { SerialNumber = "7DFD0549A1", RevokedUtc = now.AddDays(-4), Reason = "Key compromised", UserName = "admin", DeviceId = Guid.NewGuid(), DeviceName = "10.0.0.49", NotAfterUtc = now.AddDays(300) },
-            new RevokedRow { SerialNumber = "1A2B3C4D5E", RevokedUtc = now.AddDays(-12), Reason = "Device replaced", UserName = "installer", DeviceId = Guid.NewGuid(), NotAfterUtc = now.AddDays(200) },
-        ];
-        Issued =
-        [
-            .. Enumerable.Range(0, 12).Select(i => new IssuedCertificateInfo
-            {
-                SerialNumber = (0x5A0000 + i).ToString("X", CultureInfo.InvariantCulture) + "01",
-                DeviceId = Guid.NewGuid(),
-                DeviceSerial = "ACCC8E1234" + i.ToString("X2", CultureInfo.InvariantCulture),
-                Device = "10.0.0." + (40 + i).ToString(CultureInfo.InvariantCulture),
-                DeviceManaged = true,
-                Purpose = DeviceCertificatePurposes.Dot1x,
-                Source = i % 3 == 0 ? IssuedCertificateSources.Est : IssuedCertificateSources.Task,
-                NotBeforeUtc = now.AddDays(-30 - i),
-                NotAfterUtc = now.AddDays(i == 2 ? 12 : 335 - i),
-                IssuedUtc = now.AddDays(-30 - i),
-                State = i == 2 ? IssuedCertificateState.ExpiresSoon : i == 5 ? IssuedCertificateState.Revoked : IssuedCertificateState.Valid,
-                Revocation = i == 5 ? new CertificateRevocation("5A000501", now.AddDays(-1), RevocationReason.KeyCompromised, "admin") : null,
-            }),
         ];
     }
 
@@ -129,17 +115,18 @@ internal sealed class FakeRadiusBackend
 
     public List<SwitchRow> Switches { get; }
 
-    public VlanSettings Vlans { get; set; }
+    public PolicySettings Policies { get; set; }
+
+    public TrustedCaList TrustedCas { get; set; }
+
+    /// <summary>The answer of countRevocations.</summary>
+    public int RevocationCount { get; set; } = 7;
 
     public List<SessionRow> Sessions { get; }
 
     public List<SiteRef> Sites { get; } = [new SiteRef(BuildingB, "Building B")];
 
     public List<LogRow> Log { get; set; }
-
-    public List<RevokedRow> Revoked { get; }
-
-    public List<IssuedCertificateInfo> Issued { get; }
 
     /// <summary>Every call: method and payload.</summary>
     public List<(string Method, string? Payload)> Calls { get; } = [];
@@ -211,30 +198,45 @@ internal sealed class FakeRadiusBackend
             RadiusMethods.SaveSwitch => SaveSwitch(RadiusJson.Deserialize<SaveSwitchRequest>(payload)),
             RadiusMethods.GenerateSecret => new GeneratedSecret("k7Qw9zR2mX4pL8vN3bT6yH1cF5jD0sAe"),
             RadiusMethods.DeleteSwitch => DeleteSwitch(RadiusJson.Deserialize<SwitchRef>(payload)),
-            RadiusMethods.GetVlans => Vlans,
-            RadiusMethods.SaveVlans => Vlans = RadiusJson.Deserialize<VlanSettings>(payload),
+            RadiusMethods.GetPolicies => Policies,
+            RadiusMethods.SavePolicies => SavePolicies(RadiusJson.Deserialize<PolicySettings>(payload)),
+            RadiusMethods.CountRevocations => new RevocationCount(RevocationCount),
+            RadiusMethods.GetTrustedCas => TrustedCas,
+            RadiusMethods.SaveTrustedCas => SaveTrustedCas(RadiusJson.Deserialize<TrustedCaSettings>(payload)),
             RadiusMethods.ListSessions => new SessionList(Sessions),
             RadiusMethods.ListLog => ListLog(RadiusJson.Deserialize<LogQuery>(payload)),
             RadiusMethods.DeleteLog => DeleteLog(),
             RadiusMethods.GetLogCertificate => new LogCertificate(Convert.ToBase64String(CameraCertificate)),
-            RadiusMethods.ListRevoked => ListRevoked(payload is null ? new RevokedQuery(null, 0, RevokedViewModel.PageSize) : RadiusJson.Deserialize<RevokedQuery>(payload)),
-            RadiusMethods.Revoke => Revoke(RadiusJson.Deserialize<RevokeRequest>(payload)),
             RadiusPageMethods.ListSites => new SiteList(Sites),
-            RadiusPageMethods.ListCertificates => ListCertificates(RadiusJson.Deserialize<CertificateListQuery>(payload)),
-            RadiusPageMethods.GetIssuedCertificate => new LogCertificate(Convert.ToBase64String(CameraCertificate)),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
         return answer is null ? null : RadiusJson.Serialize(answer);
     }
 
-    /// <summary>The server part with pages: newest first, the search over device, serial, reason and user.</summary>
-    private RevokedPage ListRevoked(RevokedQuery query)
+    /// <summary>The server part: new policies get an id; the tag choices stay.</summary>
+    private PolicySettings SavePolicies(PolicySettings request)
     {
-        var matching = Revoked
-            .Where(r => string.IsNullOrEmpty(query.Search) || new RevokedRowViewModel(r).Matches(query.Search))
-            .OrderByDescending(r => r.RevokedUtc)
-            .ToList();
-        return new RevokedPage([.. matching.Skip(query.Offset).Take(Math.Clamp(query.Limit, 1, 500))]) { Total = matching.Count };
+        if (RadiusRules.Validate(request) is { } error)
+        {
+            throw new ArgumentException(error.Message);
+        }
+
+        Policies = request with
+        {
+            Policies = [.. request.Policies.Select(p => p.Id == Guid.Empty ? p with { Id = Guid.NewGuid() } : p)],
+            TagChoices = Policies.TagChoices,
+        };
+        return Policies;
+    }
+
+    private TrustedCaList SaveTrustedCas(TrustedCaSettings request)
+    {
+        var chosen = request.Cas.ToDictionary(c => c.Id);
+        TrustedCas = new TrustedCaList
+        {
+            Cas = [.. TrustedCas.Cas.Select(c => c with { Trusted = chosen.ContainsKey(c.Id), OnlyManaged = chosen.TryGetValue(c.Id, out var choice) ? choice.OnlyManaged : c.OnlyManaged })],
+        };
+        return TrustedCas;
     }
 
     public void Publish(string topic, object payload) => Events.Writer.TryWrite(new PluginEvent(topic, RadiusJson.Serialize(payload)));
@@ -338,30 +340,6 @@ internal sealed class FakeRadiusBackend
         return null;
     }
 
-    private RevokeReply Revoke(RevokeRequest request)
-    {
-        var revoked = 0;
-        foreach (var serial in request.Serials)
-        {
-            if (Revoked.Any(r => r.SerialNumber == serial))
-            {
-                continue;
-            }
-
-            Revoked.Add(new RevokedRow { SerialNumber = serial, RevokedUtc = DateTime.UtcNow, Reason = request.Reason, UserName = "admin", DeviceName = "10.0.0.40", NotAfterUtc = DateTime.UtcNow.AddDays(100) });
-            revoked++;
-        }
-
-        return new RevokeReply(revoked, request.Serials.Count - revoked, 0);
-    }
-
-    private CertificateListPage ListCertificates(CertificateListQuery query)
-    {
-        var rows = Issued.Where(r => (query.Purpose is null || r.Purpose == query.Purpose) && (query.State is null || r.State == query.State)
-            && (query.Search is null || r.Device.Contains(query.Search, StringComparison.OrdinalIgnoreCase))).ToList();
-        return new CertificateListPage { Total = rows.Count, Offset = query.Offset, Rows = [.. rows.Skip(query.Offset).Take(query.Limit)] };
-    }
-
     private static byte[] MakeCertificate()
     {
         var now = DateTimeOffset.UtcNow;
@@ -413,7 +391,11 @@ internal sealed class FakePageContext(FakeRadiusBackend backend) : ICorePluginCl
         remove { }
     }
 
-    public bool Has(string permission) => Manage || !permission.EndsWith(":" + PermissionKeys.Manage, StringComparison.Ordinal);
+    /// <summary>The manage permissions of the role (null: every one while <see cref="Manage"/>).</summary>
+    public IReadOnlyCollection<string>? Permissions { get; set; }
+
+    public bool Has(string permission) => !permission.EndsWith(":" + PermissionKeys.Manage, StringComparison.Ordinal)
+        || (Permissions is { } granted ? granted.Contains(permission) : Manage);
 
     public void RaisePermissionsChanged() => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
