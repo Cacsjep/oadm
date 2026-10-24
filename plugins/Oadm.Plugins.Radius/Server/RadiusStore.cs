@@ -56,7 +56,7 @@ public sealed class RadiusStore(IPluginSettings settings)
 
     public async Task<VlanSettings?> VlansAsync(CancellationToken ct) => Read<VlanSettings>(await settings.GetAsync(VlansKey, ct).ConfigureAwait(false));
 
-    public Task SaveVlansAsync(VlanSettings vlans, CancellationToken ct) => settings.SetAsync(VlansKey, RadiusJson.Serialize(vlans), ct);
+    public Task SaveVlansAsync(VlanSettings vlans, CancellationToken ct) => settings.SetAsync(VlansKey, RadiusJson.Serialize(vlans with { TagChoices = [] }), ct);
 
     public async Task<StoredServerCertificate?> ServerCertificateAsync(CancellationToken ct) =>
         Read<StoredServerCertificate>(await settings.GetAsync(ServerCertificateKey, ct).ConfigureAwait(false));

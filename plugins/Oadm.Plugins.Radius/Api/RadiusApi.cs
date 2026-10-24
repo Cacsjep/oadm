@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Network;
 
 namespace Oadm.Plugins.Radius.Api;
@@ -55,7 +56,84 @@ public static class RadiusMethods
 
     /// <summary><see cref="RevokeRequest"/> -> <see cref="RevokeReply"/>, through PKI. Users with all devices.</summary>
     public const string Revoke = "revoke";
+
+    /// <summary>() -> <see cref="SiteList"/>: the bound sites (the Site of a switch, VLAN rules by site); a group user: the group's sites.</summary>
+    public const string ListSites = "listSites";
+
+    /// <summary>
+    /// <see cref="CertificateListQuery"/> -> <see cref="CertificateListPage"/>: one page of PKI's list of issued certificates
+    /// (the Revoke picker); a group user: the certificates of the group's devices. An empty page without a CA.
+    /// </summary>
+    public const string ListCertificates = "listCertificates";
+
+    /// <summary>
+    /// <see cref="SerialRequest"/> -> <see cref="LogCertificate"/>: one issued certificate (DER, base64; empty when OADM kept
+    /// none). A certificate of a device outside a group user's devices answers like an unknown one.
+    /// </summary>
+    public const string GetIssuedCertificate = "getIssuedCertificate";
 }
+
+/// <summary>The page's names of the methods beyond the first contract (the same values as <see cref="RadiusMethods"/>).</summary>
+public static class RadiusPageMethods
+{
+    public const string ListSites = RadiusMethods.ListSites;
+    public const string ListCertificates = RadiusMethods.ListCertificates;
+    public const string GetIssuedCertificate = RadiusMethods.GetIssuedCertificate;
+}
+
+/// <summary>Limits of the page.</summary>
+public static class RadiusPageLimits
+{
+    /// <summary>The most open sessions (the session table's limit).</summary>
+    public const int MaxSessions = 10_000;
+
+    /// <summary>Ended sessions leave the Sessions tab after this (also without the server's removal).</summary>
+    public static readonly TimeSpan EndedSessionShown = TimeSpan.FromSeconds(10);
+}
+
+/// <summary>The states of <see cref="SessionRow.State"/> the page colors (camelCase names of the protocol's states).</summary>
+public static class SessionStates
+{
+    public const string Authenticated = "authenticated";
+    public const string Failed = "failed";
+    public const string TimedOut = "timedOut";
+    public const string Abandoned = "abandoned";
+}
+
+/// <summary>The answer of <see cref="RadiusMethods.ListSites"/>.</summary>
+public sealed record SiteList(IReadOnlyList<SiteRef> Sites);
+
+/// <summary>The request of <see cref="RadiusMethods.ListCertificates"/> (PKI's filters, search and one page).</summary>
+public sealed record CertificateListQuery
+{
+    public IssuedCertificateState? State { get; init; }
+
+    public string? Purpose { get; init; }
+
+    public string? Source { get; init; }
+
+    public string? Search { get; init; }
+
+    public int Offset { get; init; }
+
+    public int Limit { get; init; } = IssuedCertificateQuery.MaxLimit;
+}
+
+/// <summary>The answer of <see cref="RadiusMethods.ListCertificates"/>.</summary>
+public sealed record CertificateListPage
+{
+    public IReadOnlyList<IssuedCertificateInfo> Rows { get; init; } = [];
+
+    public int Total { get; init; }
+
+    public int Offset { get; init; }
+}
+
+/// <summary>The request of <see cref="RadiusMethods.GetIssuedCertificate"/>.</summary>
+public sealed record SerialRequest(string SerialNumber);
+
+/// <summary>A tag of the VLAN rules' choice: its id (the tag name: tags are known by name to plugins) and its name.</summary>
+public sealed record TagChoice(string Id, string Name);
 
 /// <summary>The live event topics (<c>WatchEventsAsync</c>).</summary>
 public static class RadiusTopics
@@ -284,6 +362,12 @@ public sealed record VlanSettings
 
     /// <summary>Null = no VLAN for devices no rule matches.</summary>
     public int? DefaultVlan { get; init; }
+
+    /// <summary>
+    /// Answers only (ignored on save, never stored): the tags a rule can name, those of the managed devices and of the rules,
+    /// by name. A user limited to a group gets the tags of the rules only.
+    /// </summary>
+    public IReadOnlyList<TagChoice> TagChoices { get; init; } = [];
 }
 
 /// <summary>Fragment n of m of a session.</summary>
@@ -593,9 +677,16 @@ public static class RadiusRules
         }
 
         var text = address.Trim();
-        if (IPAddress.TryParse(text, out _))
+        if (text.Contains(':', StringComparison.Ordinal))
         {
-            return true;
+            return IPAddress.TryParse(text, out var v6) && v6.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6;
+        }
+
+        if (text.All(c => char.IsAsciiDigit(c) || c == '.'))
+        {
+            // Only a full dotted quad: .NET also reads "10" or "10.0.0" as IPv4 shorthand, which no switch is configured with.
+            var parts = text.Split('.');
+            return parts.Length == 4 && parts.All(p => p.Length is >= 1 and <= 3 && int.Parse(p, CultureInfo.InvariantCulture) <= 255);
         }
 
         var name = text.TrimEnd('.');

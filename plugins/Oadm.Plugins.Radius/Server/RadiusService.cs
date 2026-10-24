@@ -795,7 +795,21 @@ public sealed partial class RadiusService : IAsyncDisposable
         return GetState(hasAllDevices: true);
     }
 
-    public VlanSettings GetVlans() => _vlanSettings;
+    /// <summary>The VLAN rules with the tag choices (a user limited to a group: only the tags the rules name).</summary>
+    public VlanSettings GetVlans(bool hasAllDevices)
+    {
+        var vlans = _vlanSettings;
+        var tags = vlans.Rules.Where(r => r.Kind == VlanRuleKinds.Tag).Select(r => r.RefId);
+        if (hasAllDevices)
+        {
+            tags = tags.Concat(_index.Tags());
+        }
+
+        return vlans with
+        {
+            TagChoices = [.. tags.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Select(t => new TagChoice(t, t))],
+        };
+    }
 
     /// <summary>Save of the VLAN rules; applies to the next authentication of each device.</summary>
     public async Task<VlanSettings> SaveVlansAsync(VlanSettings request, CancellationToken ct)
@@ -830,7 +844,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             named.Add(rule with { RefName = name });
         }
 
-        vlans = vlans with { Rules = named };
+        vlans = vlans with { Rules = named, TagChoices = [] };
         await _saveGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -845,7 +859,7 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         LogVlansSaved(vlans.Enabled, named.Count);
         PublishState();
-        return vlans;
+        return GetVlans(hasAllDevices: true);
     }
 
     // ------------------------------------------------------------------ switches
@@ -1163,6 +1177,59 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         var der = await _log.CertificateAsync(id, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(RadiusTexts.LogEntryGone);
         return new LogCertificate(Convert.ToBase64String(der));
+    }
+
+    /// <summary>The bound sites; for a group user (<paramref name="view"/>) the sites with devices of the group.</summary>
+    internal SiteList ListSites(ViewedSet? view) =>
+        new([.. (_host.Sites?.List ?? []).Where(s => view is null || view.CoversSite(s.Id))
+            .OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(s => new SiteRef(s.Id, s.Name))]);
+
+    /// <summary>One page of PKI's list of issued certificates; <paramref name="deviceIds"/>: only these devices (a group user).</summary>
+    internal async Task<CertificateListPage> ListCertificatesAsync(CertificateListQuery query, IReadOnlySet<Guid>? deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var offset = Math.Max(0, query.Offset);
+        if (_host.Authority() is not { } ca)
+        {
+            return new CertificateListPage { Offset = offset };
+        }
+
+        var page = await ca.ListIssuedAsync(new IssuedCertificateQuery
+        {
+            State = query.State,
+            Purpose = string.IsNullOrWhiteSpace(query.Purpose) ? null : query.Purpose,
+            Source = string.IsNullOrWhiteSpace(query.Source) ? null : query.Source,
+            Search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
+            DeviceIds = deviceIds,
+            Offset = offset,
+            Limit = Math.Clamp(query.Limit, 1, IssuedCertificateQuery.MaxLimit),
+        }, ct).ConfigureAwait(false);
+        return new CertificateListPage { Rows = page.Rows, Total = page.Total, Offset = offset };
+    }
+
+    /// <summary>
+    /// An issued certificate (DER; empty when OADM kept no copy). For a group user (<paramref name="deviceIds"/>) only one of
+    /// the group's devices; any other answers like an unknown one.
+    /// </summary>
+    internal async Task<LogCertificate> IssuedCertificateAsync(string serialNumber, IReadOnlySet<Guid>? deviceIds, CancellationToken ct)
+    {
+        var serial = CertificateSerials.Normalize(serialNumber);
+        if (serial.Length == 0 || _host.Authority() is not { } ca)
+        {
+            throw new KeyNotFoundException(RadiusTexts.CertificateGone);
+        }
+
+        if (deviceIds is not null)
+        {
+            var page = await ca.ListIssuedAsync(new IssuedCertificateQuery { Search = serial, DeviceIds = deviceIds, Limit = IssuedCertificateQuery.MaxLimit }, ct).ConfigureAwait(false);
+            if (!page.Rows.Any(r => CertificateSerials.Normalize(r.SerialNumber) == serial))
+            {
+                throw new KeyNotFoundException(RadiusTexts.CertificateGone);
+            }
+        }
+
+        var der = await ca.GetIssuedCertificateAsync(serial, ct).ConfigureAwait(false);
+        return new LogCertificate(der is null ? string.Empty : Convert.ToBase64String(der));
     }
 
     public void DeleteLog(string userName)
@@ -1759,6 +1826,7 @@ public static class RadiusTexts
     public const string RevokeCount = "Choose 1 to 5,000 certificates.";
     public const string ChooseReason = "Choose a reason.";
     public const string NotRunning = "The 802.1X server is not running.";
+    public const string CertificateGone = "This certificate is not in the list.";
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");
 

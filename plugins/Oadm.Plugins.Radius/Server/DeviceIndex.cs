@@ -49,6 +49,10 @@ public sealed class DeviceIndex(IDeviceRepository devices, TimeProvider time) : 
         return null;
     }
 
+    /// <summary>The tags of the managed devices (by name, each once).</summary>
+    public IReadOnlyList<string> Tags() =>
+        [.. _snapshot.ById.Values.SelectMany(d => d.Tags).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase)];
+
     /// <summary>The managed device with this id, or null (no read on a miss).</summary>
     public IDeviceInfo? ById(Guid id) => _snapshot.ById.GetValueOrDefault(id);
 

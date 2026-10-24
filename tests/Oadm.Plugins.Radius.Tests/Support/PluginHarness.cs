@@ -168,6 +168,28 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
 
     public IReadOnlyList<CertificateRevocation> Revocations => [.. _revoked.Values];
 
+    /// <summary>PKI's list of issued certificates: the rows and their DER.</summary>
+    public List<(IssuedCertificateInfo Info, byte[] Der)> Issued { get; } = [];
+
+    public List<IssuedCertificateQuery> IssuedQueries { get; } = [];
+
+    /// <summary>Lists <paramref name="certificate"/> as issued for <paramref name="deviceId"/>.</summary>
+    public void List(TestCertificate certificate, Guid deviceId) =>
+        Issued.Add((new IssuedCertificateInfo { SerialNumber = SerialOf(certificate), DeviceId = deviceId, Purpose = DeviceCertificatePurposes.Dot1x }, certificate.Leaf));
+
+    public Task<IssuedCertificatePage> ListIssuedAsync(IssuedCertificateQuery query, CancellationToken ct)
+    {
+        IssuedQueries.Add(query);
+        var rows = Issued.Select(i => i.Info)
+            .Where(i => query.DeviceIds is null || query.DeviceIds.Contains(i.DeviceId))
+            .Where(i => query.Search is null || i.SerialNumber.Contains(CertificateSerials.Normalize(query.Search), StringComparison.Ordinal))
+            .ToList();
+        return Task.FromResult(new IssuedCertificatePage([.. rows.Skip(query.Offset).Take(query.Limit)], rows.Count));
+    }
+
+    public Task<byte[]?> GetIssuedCertificateAsync(string serialNumber, CancellationToken ct) =>
+        Task.FromResult<byte[]?>(Issued.FirstOrDefault(i => i.Info.SerialNumber == CertificateSerials.Normalize(serialNumber)).Der);
+
     public List<(IReadOnlyCollection<string> Serials, RevocationReason Reason, string User)> RevokeCalls { get; } = [];
 
     public Task<RevokeResult> RevokeAsync(IReadOnlyCollection<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct)

@@ -43,6 +43,9 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public CorePluginGroup Group => CorePluginGroup.Security;
 
+    /// <summary>The page is the client part (<c>Oadm.Plugins.Radius.Client</c>).</summary>
+    public bool HasPage => true;
+
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [];
 
     /// <summary>The running server (null while stopped).</summary>
@@ -108,6 +111,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     /// <summary>Reading is for everyone with the page; every change is Admin (permission "Change the 802.1X server"), audited.</summary>
     public UserRole RequiredRole(string method) => method is RadiusMethods.GetState or RadiusMethods.ListSwitches or RadiusMethods.GetVlans
         or RadiusMethods.ListSessions or RadiusMethods.ListLog or RadiusMethods.GetLogCertificate or RadiusMethods.ListRevoked
+        or RadiusMethods.ListSites or RadiusMethods.ListCertificates or RadiusMethods.GetIssuedCertificate
         ? UserRole.Operator
         : UserRole.Admin;
 
@@ -154,7 +158,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
                 await service.DeleteSwitchAsync(RadiusJson.Deserialize<SwitchRef>(payloadJson).Id, ct).ConfigureAwait(false);
                 return null;
             case RadiusMethods.GetVlans:
-                return RadiusJson.Serialize(service.GetVlans());
+                return RadiusJson.Serialize(service.GetVlans(caller.HasAllDevices));
             case RadiusMethods.SaveVlans:
                 return RadiusJson.Serialize(await service.SaveVlansAsync(RadiusJson.Deserialize<VlanSettings>(payloadJson), ct).ConfigureAwait(false));
             case RadiusMethods.ListSessions:
@@ -172,10 +176,22 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
                 return RadiusJson.Serialize(service.ListRevoked(await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false)));
             case RadiusMethods.Revoke:
                 return RadiusJson.Serialize(await service.RevokeAsync(RadiusJson.Deserialize<RevokeRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false));
+            case RadiusMethods.ListSites:
+                return RadiusJson.Serialize(service.ListSites(await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false)));
+            case RadiusMethods.ListCertificates:
+                var certificates = string.IsNullOrWhiteSpace(payloadJson) ? new CertificateListQuery() : RadiusJson.Deserialize<CertificateListQuery>(payloadJson);
+                return RadiusJson.Serialize(await service.ListCertificatesAsync(certificates, await DeviceIdsOfAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false));
+            case RadiusMethods.GetIssuedCertificate:
+                var serial = RadiusJson.Deserialize<SerialRequest>(payloadJson);
+                return RadiusJson.Serialize(await service.IssuedCertificateAsync(serial.SerialNumber ?? string.Empty, await DeviceIdsOfAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
     }
+
+    /// <summary>Null for a user with all devices, else the ids of the caller's devices (PKI's list filters by them).</summary>
+    private static async Task<IReadOnlySet<Guid>?> DeviceIdsOfAsync(ICallContext caller, CancellationToken ct) =>
+        caller.HasAllDevices ? null : (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
 
     /// <summary>In-process callers without a user (the host, tests): the view of a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
