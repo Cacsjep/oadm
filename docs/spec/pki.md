@@ -145,6 +145,7 @@ devices with two certificates each stay fast.
     a password. Device certificates have no key in OADM (the camera made it). Every export with a key is audited.
   - **View** (`ui:CertificateWindow`), **Revoke** (as today), **Delete** (only certificates nothing uses; revoked or
     expired ones, or created ones no longer needed).
+  - Create and Sign request never name an Axis camera (`axis-<12 hex>`, any domain): only device certificates do.
 
 ## Converting existing settings
 
@@ -369,10 +370,19 @@ fits the spec; to be confirmed by the maintainer).
 - **Create** (`createCertificate`): use HTTPS or IEEE 802.1X, an issuing policy of that kind (its days and key: ECC P-256 or
   RSA 2048), name (1 to 64 characters), addresses (host names and IP addresses, at most 20; at least one for HTTPS); the
   dialog then downloads the .p12 with the password (at least 8 characters, like the CA backup). Server certificate policies
-  are no choice (decision of stage 5).
+  are no choice (decision of stage 5). A name or address like an Axis camera's (`axis-<12 hex>`, any domain, any case:
+  `CertificateRules.IsCameraName`, the guard of the device flows) is refused below its field ("This name belongs to an Axis
+  camera."): EST and the 802.1X server take a camera's serial from such a name.
 - **Sign request** (`signRequest`): PKCS#10 PEM or DER up to 1 MB, its signature checked, SHA-1 / MD5 refused, RSA 2048+ or
   EC P-256 / P-384 / P-521, and the key kind of the chosen policy (decision of stage 5: an RSA request with an ECC policy is
-  refused). Names: the request's CN and its host names and IP addresses (plain host names only); an HTTPS policy needs one.
+  refused). Names: the request's CN and its host names and IP addresses (plain host names only, never a camera's
+  `axis-<12 hex>` name); an HTTPS policy needs one. Nothing else of the request's subject is copied (the certificate's
+  subject is its CN only), so no serial number attribute reaches the certificate.
+- **Never a device's certificate**: a certificate of the Certificates list (created, signed or imported) is never a camera's,
+  whatever it names. `PkiCertificateAuthority.PurposeOf` answers `NotDevicePurpose` for its serial (checked before the issued
+  registry, a hash lookup in `LocalCertificates.HasSerial`); EST then finds no camera in it (401 "The camera's certificate is
+  not a valid Axis device ID or an EST certificate.") and the 802.1X server refuses it (alert 42, "Certificate is not a
+  device certificate"). Fail closed: also when such a certificate was found on a device and listed in the registry.
 - **Import** (`importCertificate`): one PEM or DER certificate, or a PKCS#12 file with exactly one certificate with its key
   (RSA or ECC; the chain in it is not kept). Refused (decision of stage 5): CA certificates ("Use Import CA"), expired ones,
   a PEM with a private key, several certificates in one PEM, one already listed. Use from the extended key usage: server ->

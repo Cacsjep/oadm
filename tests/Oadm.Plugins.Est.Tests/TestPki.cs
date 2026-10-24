@@ -165,6 +165,12 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
 
     public bool IsRevoked(string serialNumber) => Revoked.ContainsKey(CertificateSerials.Normalize(serialNumber));
 
+    /// <summary>Serials PKI lists as created, signed or imported on its page (no device's certificate).</summary>
+    public HashSet<string> NotDevice { get; } = new(StringComparer.Ordinal);
+
+    public string? PurposeOf(string serialNumber) =>
+        NotDevice.Contains(CertificateSerials.Normalize(serialNumber)) ? Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose : null;
+
     public CertificateRevocation? FindRevocation(string serialNumber) => Revoked.GetValueOrDefault(CertificateSerials.Normalize(serialNumber));
 
     public void Dispose() => _ca.Dispose();

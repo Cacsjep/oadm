@@ -248,6 +248,11 @@ public sealed partial class PkiService
                     return (der, null, $"The request asks for \"{name}\", which is no host name.");
                 }
 
+                if (CertificateRules.IsCameraName(name))
+                {
+                    return (der, null, $"The request asks for \"{name}\", which belongs to an Axis camera.");
+                }
+
                 if (!dns.Contains(name, StringComparer.OrdinalIgnoreCase))
                 {
                     dns.Add(name);

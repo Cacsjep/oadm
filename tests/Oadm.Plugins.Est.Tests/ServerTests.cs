@@ -274,6 +274,31 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_certificate_of_the_pki_pages_list_never_renews_and_never_enrolls_whatever_it_names()
+    {
+        // A certificate of the OADM CA with the camera's axis-<serial>.local name, but one PKI lists as created or signed on
+        // its page (not a device's certificate): it signs in as no camera (fail closed), and nothing is signed.
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+        var enrolled = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(200, enrolled.Status);
+        using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(enrolled.Body))[0]);
+        Assert.Contains("axis-" + Serial.ToLowerInvariant() + ".local", issued.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single().EnumerateDnsNames());
+        using var identity = TestPki.Usable(issued.CopyWithPrivateKey(key));
+        _ca.NotDevice.Add(CertificateSerials.Normalize(issued.SerialNumber));
+        var (csr2, key2) = TestPki.Request();
+        using var __ = key2;
+
+        foreach (var operation in new[] { "simplereenroll", "simpleenroll" })
+        {
+            var refused = await SendAsync("POST", "/.well-known/est/https/" + operation, identity, Body(csr2));
+            Assert.Equal((401, EstRefusals.NotDeviceId), (refused.Status, refused.Body.Trim()));
+        }
+
+        Assert.Single(DeviceRequests()); // only the first enrollment
+    }
+
+    [Fact]
     public async Task Only_managed_cameras_with_a_device_id_get_certificates()
     {
         var (csr, key) = TestPki.Request();

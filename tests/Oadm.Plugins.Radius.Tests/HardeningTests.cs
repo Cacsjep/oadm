@@ -102,6 +102,25 @@ public sealed class HardeningTests
     }
 
     [Fact]
+    public async Task ACertificateCreatedOrSignedOnThePkiPageNeverPassesWhateverItNames()
+    {
+        // A certificate of the Certificates list (created, signed or imported) is never a device's, also when it carries a
+        // camera's axis-<serial>.local name and client authentication: PKI marks it, the check refuses it (fail closed).
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        var crafted = harness.Ca.Camera(Serial);
+        harness.Ca.Issued.Add((new IssuedCertificateInfo
+        {
+            SerialNumber = TestAuthority.SerialOf(crafted), Purpose = Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose,
+        }, crafted.Leaf));
+
+        var camera = Camera(harness.Ca.CaCertificate, crafted);
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(camera)).Final);
+        Assert.StartsWith(CertificateRefusals.NotDevice, (await LastLogRowAsync(harness)).Reason, StringComparison.Ordinal);
+        Assert.Equal((short)42, camera.AlertReceived);
+    }
+
+    [Fact]
     public async Task AHandshakeNeverReadsTheCasAgainAndAChangedCaIsTrustedAtOnce()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));

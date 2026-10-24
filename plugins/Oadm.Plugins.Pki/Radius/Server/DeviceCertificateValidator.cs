@@ -294,6 +294,9 @@ public static class CertificateRefusals
     /// <summary>A certificate PKI lists with another use (MQTT, HTTPS, RTSPS); TLS alert 42 (bad certificate).</summary>
     public const string NotDot1x = "Certificate is not an IEEE 802.1X certificate";
 
+    /// <summary>A certificate created, signed or imported on the PKI page (not a device's); TLS alert 42 (bad certificate).</summary>
+    public const string NotDevice = "Certificate is not a device certificate";
+
     /// <summary>"Client certificate not issued by a trusted CA (TLS alert 48, unknown CA)".</summary>
     public static string NotTrusted => TlsAlertTexts.Describe(48, TlsAlertDirection.SentByOadm);
 
@@ -422,10 +425,12 @@ public sealed partial class DeviceCertificateValidator(
         if (issuer is { IsOadm: true })
         {
             // PKI lists every certificate the OADM CA issued with its use: one made for MQTT (also client authentication,
-            // also axis-<serial>.local) is no network access certificate. Unlisted ones (from before the list) pass as before.
+            // also axis-<serial>.local) is no network access certificate, one created or signed on the PKI page no device's
+            // certificate. Unlisted ones (from before the list) pass as before.
             if (ca.PurposeOf(certificateSerial) is { } purpose && !string.Equals(purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
             {
-                return ClientCertificateVerdict.Refuse(CertificateRefusals.NotDot1x, 42, none);
+                return ClientCertificateVerdict.Refuse(
+                    purpose == Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose ? CertificateRefusals.NotDevice : CertificateRefusals.NotDot1x, 42, none);
             }
 
             serial = LocalSerial(leaf);

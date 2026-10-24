@@ -49,7 +49,15 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
     public void NoteServerCertificate(byte[] leaf, byte[] caCertificate) =>
         service.NoteServerCertificate(Certificates.ServerCertificateSources.Dot1x, leaf, Convert.ToHexString(SHA256.HashData(caCertificate)));
 
-    public string? PurposeOf(string serialNumber) => service.Issued.Find(serialNumber)?.Purpose;
+    /// <summary>
+    /// What <see cref="PurposeOf"/> answers for a certificate created, signed or imported on the PKI page: no device
+    /// certificate, whatever it names. EST and the 802.1X server refuse it (fail closed).
+    /// </summary>
+    public const string NotDevicePurpose = "not-device";
+
+    /// <summary>The use of a listed device certificate; <see cref="NotDevicePurpose"/> for one of the Certificates list made here (first).</summary>
+    public string? PurposeOf(string serialNumber) =>
+        service.Local.HasSerial(serialNumber) ? NotDevicePurpose : service.Issued.Find(serialNumber)?.Purpose;
 
     public CertificateRevocation? FindRevocation(string serialNumber) => service.Issued.FindRevocation(serialNumber);
 

@@ -159,8 +159,20 @@ public static class CertificateRules
         _ => null,
     };
 
-    /// <summary>The name of Create: 1 to 64 characters.</summary>
-    public static string? Name(string? name) => PkiValidation.CommonName(name);
+    /// <summary>A name of Create or Sign request that looks like a camera's (<c>axis-&lt;12 hex&gt;</c>, any domain).</summary>
+    public const string CameraName = "This name belongs to an Axis camera.";
+
+    /// <summary>"\"axis-accc8e000001.local\" belongs to an Axis camera." (an address of Create or a name of a request).</summary>
+    public static string CameraNameOf(string name) => $"\"{name}\" belongs to an Axis camera.";
+
+    /// <summary>
+    /// An Axis camera's name (<c>axis-&lt;12 hex&gt;</c>, any domain, any case): EST and the 802.1X server take a camera's
+    /// serial from it, so Create and Sign request never put one into a certificate (only device certificates name cameras).
+    /// </summary>
+    public static bool IsCameraName(string? name) => !string.IsNullOrWhiteSpace(name) && CertificateNames.NamesOtherCamera(name, string.Empty);
+
+    /// <summary>The name of Create: 1 to 64 characters, never a camera's name.</summary>
+    public static string? Name(string? name) => PkiValidation.CommonName(name) ?? (IsCameraName(name) ? CameraName : null);
 
     /// <summary>The addresses of Create: host names and IP addresses; at least one for HTTPS.</summary>
     public static string? Addresses(string? text, string? use) => ParseAddresses(text, use).Error;
@@ -182,6 +194,11 @@ public static class CertificateRules
             }
             else if (CertificateNames.IsPlainHostName(name) && !name.All(c => char.IsAsciiDigit(c) || c == '.'))
             {
+                if (IsCameraName(name))
+                {
+                    return ([], [], CameraNameOf(part));
+                }
+
                 if (!dns.Contains(name.TrimEnd('.'), StringComparer.OrdinalIgnoreCase))
                 {
                     dns.Add(name.TrimEnd('.'));

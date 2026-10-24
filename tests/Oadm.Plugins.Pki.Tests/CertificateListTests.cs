@@ -174,6 +174,66 @@ public sealed class CertificateListTests
     }
 
     [Fact]
+    public async Task Create_and_sign_request_never_name_a_camera_and_what_they_make_is_never_a_devices_certificate()
+    {
+        // EST and the 802.1X server take a camera's serial from an axis-<serial> name of an OADM CA certificate: Create and
+        // Sign request refuse such names (any domain, any case), below their fields.
+        await using var pki = await PkiHarness.StartAsync();
+        var https = pki.Policies.FirstOf(PolicyKinds.HttpsCertificate)!;
+        Assert.Equal(CertificateRules.CameraName, (await CreateAsync(pki, name: "AXIS-ACCC8E000001.local")).Errors![CertificateFields.Name]);
+        Assert.Equal(CertificateRules.CameraName, (await CreateAsync(pki, DeviceCertificatePurposes.Dot1x, "axis-accc8e000001", addresses: "")).Errors![CertificateFields.Name]);
+        Assert.Equal("\"axis-ACCC8E000001.example.com\" belongs to an Axis camera.",
+            (await CreateAsync(pki, addresses: "nvr.example.com axis-ACCC8E000001.example.com")).Errors![CertificateFields.Addresses]);
+        Assert.Null(CertificateRules.Name("axis-lobby.example.com")); // only the camera pattern
+
+        using var ec = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        Task<CertificateActionReply> SignAsync(byte[] csr) =>
+            pki.InvokeAsync<CertificateActionReply>(CertificateMethods.Sign, new SignCertificateRequest(https.Id, Convert.ToBase64String(csr), "request.csr"));
+        Assert.Equal("The request asks for \"axis-accc8e000001.local\", which belongs to an Axis camera.",
+            (await SignAsync(Csr(ec, "CN=nvr.example.com", null, "nvr.example.com", "axis-accc8e000001.local"))).Errors![CertificateFields.File]);
+        Assert.Equal("The name of the request: " + CertificateRules.CameraName,
+            (await SignAsync(Csr(ec, "CN=Axis-ACCC8E000001.local", null, "nvr.example.com"))).Errors![CertificateFields.File]);
+        Assert.Empty(pki.Service.Local.List);
+
+        // Whatever a row of the list names (here one forced into the store with a camera's name and even listed as a device
+        // certificate), PKI says it is no device's certificate: EST and the 802.1X server refuse it.
+        IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
+        var created = await CreateAsync(pki, DeviceCertificatePurposes.Dot1x, "door-controller", addresses: "");
+        var createdSerial = pki.Service.Local.Find(created.Id![LocalCertificates.RowPrefix.Length..])!.Serial;
+        Assert.Equal(PkiCertificateAuthority.NotDevicePurpose, authority.PurposeOf(createdSerial.ToLowerInvariant()));
+
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var csrPem = new CertificateRequest("CN=x", key, HashAlgorithmName.SHA256).CreateSigningRequestPem();
+        using var crafted = DeviceCertificateIssuer.Sign(pki.Service.Ca!, csrPem, new CertificateNames("axis-accc8e000001.local", [], ["axis-accc8e000001.local"]),
+            CertificatePurpose.Dot1x, pki.Service.Time.GetUtcNow(), TimeSpan.FromDays(30));
+        var forced = await pki.Service.Local.AddAsync(new StoredLocalCertificate
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Kind = ListedCertificateKind.Created,
+            Name = "axis-accc8e000001.local",
+            Purpose = DeviceCertificatePurposes.Dot1x,
+            Der = Convert.ToBase64String(crafted.RawData),
+            AddedUtc = pki.Service.Time.GetUtcNow().UtcDateTime,
+        }, null, CancellationToken.None);
+        Assert.Null(forced.Error);
+        await pki.Service.Issued.AddAsync(new IssuedCertificate
+        {
+            SerialNumber = crafted.SerialNumber,
+            DeviceId = Guid.NewGuid(),
+            DeviceSerial = "ACCC8E000001",
+            Purpose = DeviceCertificatePurposes.Dot1x,
+            NotBeforeUtc = crafted.NotBefore.ToUniversalTime(),
+            NotAfterUtc = crafted.NotAfter.ToUniversalTime(),
+            IssuedUtc = pki.Service.Time.GetUtcNow().UtcDateTime,
+        }, crafted.RawData, CancellationToken.None);
+        Assert.Equal(PkiCertificateAuthority.NotDevicePurpose, authority.PurposeOf(crafted.SerialNumber));
+
+        // A device certificate stays one.
+        var device = await RevocationTests.SignAsync(authority, Guid.NewGuid(), use: DeviceCertificateUse.Client);
+        Assert.Equal(DeviceCertificatePurposes.Dot1x, authority.PurposeOf(device.SerialNumber));
+    }
+
+    [Fact]
     public async Task Import_takes_a_certificate_or_a_pkcs12_file_with_its_key_and_refuses_what_does_not_belong()
     {
         await using var pki = await PkiHarness.StartAsync();

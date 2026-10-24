@@ -279,7 +279,9 @@ the CA service.
   encrypted with the master key, purpose `pki:certificate:<id>`) and the registry in one list; `PkiService.CertificateActions`
   holds `createCertificate`, `signRequest`, `importCertificate`, `deleteCertificates` and the download `downloadCertificate`
   (`CertificateMethods`). Client: `CertificateDialogViewModels` with `CreateCertificateWindow`, `SignRequestWindow`,
-  `ImportCertificateWindow`, `ExportKeyWindow`; row buttons in `PkiView.axaml`.
+  `ImportCertificateWindow`, `ExportKeyWindow`; row buttons in `PkiView.axaml`. Create and Sign request refuse a camera's
+  `axis-<12 hex>` name (`CertificateRules.IsCameraName`); `PkiCertificateAuthority.PurposeOf` answers `NotDevicePurpose` for
+  every local certificate, so EST and the 802.1X server never take one for a camera's.
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
   View certificate describes a certificate the fake CA signs; Revoke changes the rows.
 

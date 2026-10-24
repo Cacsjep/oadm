@@ -323,7 +323,9 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   revoked by Stolen", alert 44; a certificate of an OADM CA is then revoked in PKI in the background). Block wins over
   VLAN.
 - A certificate of an OADM CA that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
-  not an IEEE 802.1X certificate"; review round 2). One PKI does not list (from before the list) passes as before.
+  not an IEEE 802.1X certificate"; review round 2). One created, signed or imported on PKI's Certificates card is refused
+  too (alert 42, "Certificate is not a device certificate"), whatever it names. One PKI does not list (from before the list)
+  passes as before.
 - PKI runs with a CA: without it nothing passes, an Axis device ID neither (alert 80, "The PKI has no certificate
   authority"): without PKI there is no revocation list.
 - Not revoked (PKI's revocation list, above; checked for certificates of the OADM CAs); removing a device from OADM
@@ -522,7 +524,9 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   (`PkiService.PreviousChains`, cached per list) and raises `Changed` when a previous CA is removed. A certificate of the
   OADM CA that PKI lists with another use than dot1x (`IDeviceCertificateAuthority.PurposeOf`, SDK 0.4.0, a lookup in
   memory) refuses with alert 42 "Certificate is not an IEEE 802.1X certificate" (42 like the other refusals of what a
-  certificate is made for; unlisted ones pass as before); giving the one serial of its
+  certificate is made for; unlisted ones pass as before), and one PKI marks as not a device's
+  (`PkiCertificateAuthority.NotDevicePurpose`: created, signed or imported on the Certificates card) with "Certificate is
+  not a device certificate"; giving the one serial of its
   `axis-<serial>.local` names (none or two: "Client certificate names no
   device"), else the Axis device ID roots (`plugins/Shared/DeviceId/AxisDeviceId`, shared with EST) giving the subject's
   serial, else alert 48; then the revocation list (44, `FindRevocation(...).Describe()`), the managed device by serial

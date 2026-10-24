@@ -89,7 +89,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   profile (no probing), listed in Enrollments with the policy that refused it.
 - **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate the OADM CA
   itself issued (chain element 1 is the OADM CA, never another CA below a root above an imported OADM CA) whose DNS
-  names hold exactly one `axis-<serial>.local` serial, a managed device; with a record of it, the record's device must
+  names hold exactly one `axis-<serial>.local` serial, a managed device, and that PKI does not mark as not a device's
+  (`PurposeOf` = `PkiCertificateAuthority.NotDevicePurpose`: created, signed or imported on PKI's Certificates card; 401
+  like no identity); with a record of it, the record's device must
   be that device (a record of a device OADM no longer manages is forgotten: a camera removed and added again). A record
   is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps. A
   certificate on PKI's revocation list (`IDeviceCertificateAuthority.IsRevoked`, one lookup) is refused, for

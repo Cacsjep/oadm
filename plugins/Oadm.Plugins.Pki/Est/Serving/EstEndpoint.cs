@@ -254,7 +254,10 @@ public sealed partial class EstEndpoint(
         var issuers = legacy
             ? chosen.Contains(CertificateAuthorityInfo.OadmId) ? [ca.Chain] : []
             : authorities.Where(a => a.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm && chosen.Contains(a.Id)).Select(a => a.Certificates).ToList();
-        return issuers.Any(chain => IssuedByCa(client, chain, now)) ? SerialFromAxisName(client) : null;
+        // A certificate created, signed or imported on the PKI page is never a camera's, whatever it names (fail closed).
+        return issuers.Any(chain => IssuedByCa(client, chain, now)) && ca.PurposeOf(client.SerialNumber) != Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose
+            ? SerialFromAxisName(client)
+            : null;
     }
 
     /// <summary>The one camera serial of the certificate's <c>axis-&lt;serial&gt;.local</c> names; null for none or several.</summary>

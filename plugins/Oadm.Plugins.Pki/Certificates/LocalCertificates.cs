@@ -99,6 +99,7 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
     private readonly Lock _serversGate = new();
     private readonly Dictionary<string, ServerCertificate> _servers = new(StringComparer.Ordinal);
     private volatile List<LocalCertificate> _list = [];
+    private volatile HashSet<string> _serials = new(StringComparer.Ordinal);
     private volatile IReadOnlyList<ServerCertificate> _serverList = [];
 
     /// <summary>Raised after a row was added or deleted (and after a server certificate changed).</summary>
@@ -129,7 +130,20 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
             }
         }
 
-        _list = [.. list.OrderByDescending(l => l.Stored.AddedUtc).ThenBy(l => l.Stored.Id, StringComparer.Ordinal)];
+        SetList([.. list.OrderByDescending(l => l.Stored.AddedUtc).ThenBy(l => l.Stored.Id, StringComparer.Ordinal)]);
+    }
+
+    /// <summary>
+    /// A certificate created, signed or imported here has this serial number (any notation): never a device's certificate,
+    /// so EST and the 802.1X server refuse it (fail closed). A hash lookup in memory.
+    /// </summary>
+    public bool HasSerial(string serialNumber) =>
+        !string.IsNullOrWhiteSpace(serialNumber) && _serials.Contains(CertificateSerials.Normalize(serialNumber));
+
+    private void SetList(List<LocalCertificate> list)
+    {
+        _serials = new HashSet<string>(list.Select(l => l.Serial), StringComparer.Ordinal);
+        _list = list;
     }
 
     public LocalCertificate? Find(string id) => _list.FirstOrDefault(l => string.Equals(l.Stored.Id, id, StringComparison.Ordinal));
@@ -175,7 +189,7 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
             }
 
             await records.SetManyAsync(Collection, [new(stored.Id, PkiJson.Serialize(stored))], ct).ConfigureAwait(false);
-            _list = [read, .. _list];
+            SetList([read, .. _list]);
             Changed?.Invoke(this, EventArgs.Empty);
             return (read, null);
         }
@@ -203,7 +217,7 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
 
             await records.SetManyAsync(Collection, [.. _list.Where(l => gone.Contains(l.Stored.Id)).Select(l => new KeyValuePair<string, string?>(l.Stored.Id, null))], ct)
                 .ConfigureAwait(false);
-            _list = kept;
+            SetList(kept);
         }
         finally
         {
