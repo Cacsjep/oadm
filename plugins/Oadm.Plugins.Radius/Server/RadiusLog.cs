@@ -204,22 +204,31 @@ public sealed partial class RadiusLog : IAsyncDisposable
         return new LogPage(total, rows);
     }
 
-    /// <summary>The serial numbers of the client certificates in the kept rows (one pass).</summary>
-    public IReadOnlySet<string> CertificateSerials()
+    /// <summary>
+    /// The fingerprints of the client certificates in the kept rows whose serial number is one of <paramref name="serials"/>
+    /// (several certificates can have the same serial), by serial. One pass.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlySet<string>> CertificatesOf(IReadOnlySet<string> serials)
     {
+        ArgumentNullException.ThrowIfNull(serials);
+        var found = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         lock (_gate)
         {
-            var serials = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in _entries)
             {
-                if (entry.Row.CertificateSerial is { Length: > 0 } serial)
+                if (entry.Fingerprint is { } fingerprint && entry.Row.CertificateSerial is { Length: > 0 } serial && serials.Contains(serial))
                 {
-                    serials.Add(serial);
+                    if (!found.TryGetValue(serial, out var fingerprints))
+                    {
+                        found[serial] = fingerprints = new HashSet<string>(StringComparer.Ordinal);
+                    }
+
+                    fingerprints.Add(fingerprint);
                 }
             }
-
-            return serials;
         }
+
+        return found.ToDictionary(f => f.Key, f => (IReadOnlySet<string>)f.Value, StringComparer.Ordinal);
     }
 
     /// <summary>The row of <paramref name="id"/>, null when it is no longer kept.</summary>
@@ -244,6 +253,25 @@ public sealed partial class RadiusLog : IAsyncDisposable
             }
 
             fingerprint = node.Value.Fingerprint;
+            _certificateChanges.TryGetValue(fingerprint, out pending);
+        }
+
+        var json = pending ?? await _records.GetAsync(CertificatesCollection, fingerprint, ct).ConfigureAwait(false);
+        return RadiusStore.Read<StoredCertificate>(json) is { } stored ? Convert.FromBase64String(stored.Der) : null;
+    }
+
+    /// <summary>The client certificate (DER) with <paramref name="fingerprint"/> (<see cref="CertificatesOf"/>); null when no kept row has it.</summary>
+    public async Task<byte[]?> CertificateByFingerprintAsync(string fingerprint, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(fingerprint);
+        string? pending;
+        lock (_gate)
+        {
+            if (!_certificateUses.ContainsKey(fingerprint))
+            {
+                return null;
+            }
+
             _certificateChanges.TryGetValue(fingerprint, out pending);
         }
 

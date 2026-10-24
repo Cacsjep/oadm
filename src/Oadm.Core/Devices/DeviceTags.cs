@@ -54,14 +54,27 @@ public sealed record SetDeviceTagsResult(int DevicesChanged, IReadOnlyList<TagDe
 public sealed record TagDeleteResult(string Name, int DevicesChanged, IReadOnlyList<(Sdk.Devices.IDeviceInfo? Before, Sdk.Devices.IDeviceInfo? After)> Changes);
 
 /// <summary>
+/// A user with a device group tried to add or remove a tag only users with all devices may add or remove on devices: a tag
+/// a device group uses (<see cref="TagInUseByGroupException"/>) or one a plugin protects (<see cref="ProtectedTagException"/>,
+/// docs/spec/tags.md). Nothing was changed.
+/// </summary>
+public abstract class TagNeedsAllDevicesException(string name, string message) : InvalidOperationException(message)
+{
+    public string Name { get; } = name;
+}
+
+/// <summary>
 /// A user with a device group tried to add or remove a tag a device group uses: that would move devices between groups
 /// (docs/spec/device-scope.md, Decisions: Tags). Nothing was changed.
 /// </summary>
 public sealed class TagInUseByGroupException(string name)
-    : InvalidOperationException($"A device group uses the tag {name}. Only users with all devices can add or remove it. Nothing was changed.")
-{
-    public string Name { get; } = name;
-}
+    : TagNeedsAllDevicesException(name, $"A device group uses the tag {name}. Only users with all devices can add or remove it. Nothing was changed.");
+
+/// <summary>
+/// A user with a device group tried to add or remove a tag a plugin protects (<see cref="ProtectedTagRegistry"/>, e.g. a tag
+/// of the 802.1X server's VLAN rules); the message is the plugin's refusal. Nothing was changed.
+/// </summary>
+public sealed class ProtectedTagException(string name, string message) : TagNeedsAllDevicesException(name, message);
 
 /// <summary>A tag name that cannot be used; the message says why (shown below the name field).</summary>
 public sealed class TagNameException(string message) : ArgumentException(message);

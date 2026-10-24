@@ -20,12 +20,14 @@ namespace Oadm.Plugins.Radius.Server;
 /// </summary>
 public sealed class CaTrust
 {
-    private CaTrust(string key, X509Certificate2Collection anchors, X509Certificate2Collection intermediates, IReadOnlySet<string> issuers)
+    private CaTrust(string key, X509Certificate2Collection anchors, X509Certificate2Collection intermediates, IReadOnlySet<string> issuers, IDeviceCertificateAuthority? authority = null, long version = 0)
     {
         Key = key;
         Anchors = anchors;
         Intermediates = intermediates;
         Issuers = issuers;
+        Authority = authority;
+        Version = version;
     }
 
     /// <summary>No CA: nothing chains.</summary>
@@ -43,6 +45,15 @@ public sealed class CaTrust
 
     public bool IsEmpty => Anchors.Count == 0;
 
+    /// <summary>The CA offer the set was built from (null: none). A new offer (PKI restarted) is a new set.</summary>
+    public IDeviceCertificateAuthority? Authority { get; }
+
+    /// <summary>
+    /// The 802.1X server's count of the CA's <see cref="IDeviceCertificateAuthority.Changed"/> events when the set was built: a
+    /// handshake compares the offer and this number (no hashing per handshake); the minute round compares <see cref="Key"/>.
+    /// </summary>
+    public long Version { get; }
+
     /// <summary>The key of the CA's chains now (cheap: hashes of the DER).</summary>
     public static string KeyOf(IDeviceCertificateAuthority? authority)
     {
@@ -57,11 +68,16 @@ public sealed class CaTrust
     }
 
     /// <summary>The set of <paramref name="authority"/> now (none without a CA).</summary>
-    public static CaTrust Build(IDeviceCertificateAuthority? authority)
+    public static CaTrust Build(IDeviceCertificateAuthority? authority, long version = 0)
     {
-        if (authority is null || authority.Chain.Count == 0)
+        if (authority is null)
         {
             return None;
+        }
+
+        if (authority.Chain.Count == 0)
+        {
+            return new CaTrust(KeyOf(authority), [], [], new HashSet<string>(), authority, version); // a CA without a certificate: nothing chains
         }
 
         var anchors = new X509Certificate2Collection();
@@ -105,7 +121,7 @@ public sealed class CaTrust
             }
         }
 
-        return new CaTrust(KeyOf(authority), anchors, intermediates, issuers);
+        return new CaTrust(KeyOf(authority), anchors, intermediates, issuers, authority, version);
     }
 
     private static bool IsSelfSigned(X509Certificate2 certificate) =>
@@ -128,6 +144,9 @@ public static class CertificateRefusals
     public const string Revoked = "Certificate revoked";
     public const string NoCa = "The PKI has no certificate authority";
 
+    /// <summary>A certificate PKI lists with another use (MQTT, HTTPS, RTSPS); TLS alert 42 (bad certificate).</summary>
+    public const string NotDot1x = "Certificate is not an IEEE 802.1X certificate";
+
     /// <summary>"Client certificate not issued by a trusted CA (TLS alert 48, unknown CA)".</summary>
     public static string NotTrusted => TlsAlertTexts.Describe(48, TlsAlertDirection.SentByOadm);
 
@@ -145,10 +164,11 @@ public static class CertificateRefusals
 }
 
 /// <summary>
-/// Who passes (docs/spec/radius-server.md "Who passes"), called inside the TLS handshake with in-memory lookups only: the
-/// leaf is valid now, made for client authentication (or without extended key usage), chains to the OADM CA (or a previous
-/// OADM CA, or a root above them) or to the Axis device ID roots, names exactly one device by its <c>axis-&lt;serial&gt;.local</c>
-/// name (OADM CA) or its device ID serial, OADM manages that device, at a site it is a device of the switch's site, and the
+/// Who passes (docs/spec/radius-server.md "Who passes"), called inside the TLS handshake with in-memory lookups only: PKI's
+/// CA is there (else nothing passes), the leaf is valid now, made for client authentication (or without extended key usage),
+/// chains to the OADM CA (or a previous OADM CA, or a root above them) and is not listed by PKI with another use than IEEE
+/// 802.1X, or chains to the Axis device ID roots, names exactly one device by its <c>axis-&lt;serial&gt;.local</c> name (OADM
+/// CA) or its device ID serial, OADM manages that device, at a site it is a device of the switch's site, and the
 /// certificate is not on PKI's revocation list. The MAC address only adds a warning; the VLAN comes from the rules.
 /// </summary>
 public sealed partial class DeviceCertificateValidator(
@@ -207,6 +227,13 @@ public sealed partial class DeviceCertificateValidator(
     {
         var now = time.GetUtcNow();
         var certificateSerial = CertificateSerials.Normalize(leaf.SerialNumber);
+        var ca = authority();
+        if (ca is null)
+        {
+            // Without PKI there is no revocation list: no certificate passes, Axis device ID ones neither (fail closed).
+            return ClientCertificateVerdict.Refuse(CertificateRefusals.NoCa, 80, new CheckedCertificate(null, null, certificateSerial));
+        }
+
         var notAfter = leaf.NotAfter.ToUniversalTime();
         var notBefore = leaf.NotBefore.ToUniversalTime();
         if (now.UtcDateTime > notAfter)
@@ -227,17 +254,23 @@ public sealed partial class DeviceCertificateValidator(
 
         string? serial;
         var trusted = trust();
-        var ca = authority();
         var oadmCa = ChainsTo(trusted, leaf, presented, now);
-        if (oadmCa && (ca is null || CaTrust.KeyOf(ca) != trusted.Key))
+        if (oadmCa && !ReferenceEquals(trusted.Authority, ca))
         {
-            // The trusted set is from a CA that is gone or changed (PKI stopped, replaced its CA): without the CA's current
-            // revocation list nothing of it passes (fail closed).
+            // The trusted set is from a CA offer that is gone (PKI restarted in the meantime): without that CA's current
+            // revocation list nothing of it passes (fail closed). A changed CA of the same offer rebuilds the set first.
             return ClientCertificateVerdict.Refuse(CertificateRefusals.NoCa, 80, new CheckedCertificate(null, null, certificateSerial));
         }
 
         if (oadmCa)
         {
+            // PKI lists every certificate the OADM CA issued with its use: one made for MQTT (also client authentication,
+            // also axis-<serial>.local) is no network access certificate. Unlisted ones (from before the list) pass as before.
+            if (ca.PurposeOf(certificateSerial) is { } purpose && !string.Equals(purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
+            {
+                return ClientCertificateVerdict.Refuse(CertificateRefusals.NotDot1x, 42, new CheckedCertificate(null, null, certificateSerial));
+            }
+
             var names = leaf.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault()?.EnumerateDnsNames() ?? [];
             var serials = names.Select(AxisLocalSerial).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             serial = serials.Count == 1 ? serials[0] : null;
@@ -256,7 +289,7 @@ public sealed partial class DeviceCertificateValidator(
         }
 
         var device = devices.BySerial(serial);
-        if (ca?.IsRevoked(certificateSerial) == true)
+        if (ca.IsRevoked(certificateSerial))
         {
             var text = ca.FindRevocation(certificateSerial)?.Describe() ?? CertificateRefusals.Revoked;
             return ClientCertificateVerdict.Refuse(text, 44, new CheckedCertificate(device?.Id, serial, certificateSerial));

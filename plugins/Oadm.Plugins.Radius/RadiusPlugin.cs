@@ -89,6 +89,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             Records = ctx.Records ?? throw new InvalidOperationException("The 802.1X server needs OADM 4.1 or later."),
             Publisher = ctx.EventPublisher,
             Scopes = ctx.DeviceScopes,
+            ProtectedTags = ctx.ProtectedTags,
             Secrets = ctx.Secrets,
             Logger = ctx.Logger,
         };

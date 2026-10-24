@@ -45,7 +45,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     Changes apply to the running server at once (decision above). At most 500 switches.
   - **VLANs** (card, below; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
     a **site** or a **tag** → **VLAN ID** (1..4094); **Default VLAN** (optional; empty = no VLAN for devices no rule
-    matches). Applies to the next authentication of each device.
+    matches). Applies to the next authentication of each device. The tags of the rules are protected: only users with all
+    devices add them to devices or remove them ("The tag Floor 3 sets a VLAN. Only users with all devices can add or remove
+    it. Nothing was changed.", docs/spec/tags.md "Protected tags").
   - **Sessions** (tab): the authentications in progress, live: started, switch, port, MAC address, EAP identity, device,
     **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
   - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, IP address, result (status chip
@@ -188,7 +190,7 @@ Nothing is written from scratch that a maintained library or the SDK already doe
 | RADIUS packets | **own codec** (decision 2026-10-23), from RFC 2865 / 2869 / 3579 / 5080 / 8044 | the whole stack under our control for the session state, the log and the strict parsing rules; packets keep every attribute in order with its raw bytes (Proxy-State, fixtures, View details), malformed packets are a result value, never an exception. `Flexinets.Radius.Core` (MIT) was looked at and not taken |
 | EAP and EAP-TLS framing | own code (RFC 3748, 5216, 9190) | no .NET library exists; the format is a few header bytes, the logic is the session state |
 | MS-MPPE key encryption | own code (RFC 2548 2.4.2) with the RFC's construction and test vectors | a few lines; not in the RADIUS library |
-| Certificate checks | .NET `X509Chain` and the existing PKI / EST checks (OADM CA, trusted roots, Axis device ID roots, `axis-<serial>.local`) | already tested in EST |
+| Certificate checks | .NET `X509Chain` with custom root trust, offline: the OADM CAs (current and previous, issuer of the leaf itself) and the Axis device ID roots of EST (`plugins/Shared/DeviceId`), the `axis-<serial>.local` rule of PKI; never the trusted roots of the server | the chain rules of EST, one set built per CA change |
 | MAC address parsing | own code | small, vendor formats listed below |
 
 No RADIUS server with EAP-TLS exists for .NET (FreeRADIUS is C, ToughRADIUS Go; neither fits a self-contained
@@ -289,7 +291,7 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   returns another instance), `ListIssuedAsync(IssuedCertificateQuery)` (filters, search, `DeviceIds`, paging; rows
   `IssuedCertificateInfo` with `IssuedCertificateState` and the revocation), `GetIssuedCertificateAsync(serial)` (DER),
   `RevokeAsync(serials, RevocationReason, userName)` (`RevokeResult`); `DeviceCertificateRequest.Purpose`
-  (`DeviceCertificatePurposes`: https, dot1x, mqtt, rtsps); `IssuedCertificateSources` (Task, EST); `CertificateSerials.Normalize`
+  (`DeviceCertificatePurposes`: https, dot1x, mqtt, rtsps); `IssuedCertificateSources` (Task, EST); `PurposeOf(serial)` (the use of a listed certificate, a lookup in memory, review round 2); `CertificateSerials.Normalize`
   (any notation: upper hex, no separators, no leading zeros; .NET keeps a leading zero byte, BouncyCastle drops it);
   `CertificateDescriber` / `CertificateDescription` for the shared certificate window.
 - **802.1X page, tab "Revoked":** the revoked certificates (from PKI's list) and **Revoke**, which opens the PKI
@@ -303,6 +305,12 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   none), and it names **exactly one managed device**: the DNS name `axis-<serial>.local` the
   OADM CA puts into every device certificate, or the serial of the factory **Axis device ID** (checked against the Axis
   device ID roots EST ships). At a site: a device of that site.
+- A certificate of the OADM CA that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
+  not an IEEE 802.1X certificate"; review round 2): an MQTT client certificate has client authentication and the
+  `axis-<serial>.local` name too, but the 802.1X page cannot revoke it. One PKI does not list (from before the list)
+  passes as before.
+- PKI runs with a CA: without it nothing passes, an Axis device ID neither (alert 80, "The PKI has no certificate
+  authority"): without PKI there is no revocation list.
 - Not revoked (PKI's revocation list, above); removing a device from OADM refuses it at its next authentication.
 - The EAP identity (sent before TLS, unprotected) is shown and logged, never trusted.
 
@@ -334,8 +342,14 @@ logic runs only on the server; the node never sees a secret or a key.
 
 A server-wide service: General, Switches and VLANs are changed only by users with all devices. Users with a group see the
 page with the Sessions and Log rows of their devices; rows without a managed device only users with all devices. They get
-no server-wide data (settings, the server's interfaces and certificate, sites, senders that are no switch) and only the
-switches of the routes their group names (none when it names none).
+no server-wide data (settings, the server's interfaces and certificate, sites, senders that are no switch, the VLAN
+settings: `getVlans` answers empty settings, no rules, no default and no tag choices) and only the switches of the routes
+their group names (none when it names none). The tags of the VLAN rules are protected (review round 2): a user who may tag
+devices but has a group could otherwise choose a device's VLAN. The plugin hands the rules' tag names to the host
+(`ctx.ProtectedTags.Protect`, SDK 0.4.0) at its start and with every save (the old and the new names while the save runs);
+`DeviceTagStore` refuses them for a group user in the tagging transaction. On a host without `ProtectedTags` the tag rules
+match no device (fail closed; site rules and the default VLAN apply). A stopped 802.1X server protects no tags (it assigns
+no VLAN either).
 
 ## Secrets and logs
 
@@ -442,8 +456,10 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   each time, OADM PRO through `ctx.Pro` on every datagram (none answered without it). Listener `ctx.Network.ListenUdpAsync(port,
   "802.1X server", addresses)` (SDK 0.4.0: the addresses of the Listen on interface; with All interfaces the addresses of
   every card that is up, each on its own socket, so the answer leaves from the address the switch sent to, as switches
-  check (RFC 2865 3, RFC 5080 2.2.1); no card with an address: every address), tried again every 30 s when the interface
-  is gone or its addresses changed (All interfaces: when a card or an address came or went); one relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
+  check (RFC 2865 3, RFC 5080 2.2.1), plus the loopback addresses (a test on the server itself); no card with an address:
+  every address). Every 5 s a cheap check of the addresses (the list of the interfaces; the host passes on no address change
+  event of the OS) listens on a new set at once (a card or an address came or went; one interface: its addresses moved or
+  it is gone); a listener that could not open is tried again every 30 s. One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
   released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
 - **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
   addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th),
@@ -459,13 +475,19 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   (`ForSite(siteId).ResolveAsync`) when saved (none: "The server cannot find this host name.") and every 10 minutes;
   `radiusServerAddress` = the Listen on interface's IPv4, else `LocalAddressTowardsAsync` (at a site the node's).
   `generateSecret`: 24 letters and digits (no look-alikes), nothing stored.
-- **Certificate check** (`DeviceCertificateValidator`, in memory): dates (alert 45, "Client certificate expired on ..."),
+- **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
+  certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on ..."),
   extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
   (the CA's `Chain` and `PreviousChains`, SDK 0.4.0: self-signed ones are the anchors) whose direct issuer is one of the
   OADM CAs themselves (`CaTrust.Issuers`: the first certificate of each chain, by SHA-256 hash; another CA under the same
-  root never passes); the set is rebuilt at once in the handshake when PKI's CA is gone or changed (fail closed: without
-  PKI's CA, and so without its revocation list, nothing of it passes; a stale set refuses with alert 80 "The PKI has no
-  certificate authority"), else when the CA changes and checked every minute; giving the one serial of its
+  root never passes); a handshake compares only the CA offer and a counter of its `Changed` events with those the set was
+  built from (`CaTrust.Authority`, `CaTrust.Version`; review round 2: no hashing per handshake) and builds the set again at
+  once for a new offer (PKI restarted) or after `Changed`; the minute round also compares the hashes of the chains
+  (`CaTrust.Key`). A set of an offer that is gone refuses with alert 80. PKI reads its previous CAs from PEM once per change
+  (`PkiService.PreviousChains`, cached per list) and raises `Changed` when a previous CA is removed. A certificate of the
+  OADM CA that PKI lists with another use than dot1x (`IDeviceCertificateAuthority.PurposeOf`, SDK 0.4.0, a lookup in
+  memory) refuses with alert 42 "Certificate is not an IEEE 802.1X certificate" (42 like the other refusals of what a
+  certificate is made for; unlisted ones pass as before); giving the one serial of its
   `axis-<serial>.local` names (none or two: "Client certificate names no
   device"), else the Axis device ID roots (`plugins/Shared/DeviceId/AxisDeviceId`, shared with EST) giving the subject's
   serial, else alert 48; then the revocation list (44, `FindRevocation(...).Describe()`), the managed device by serial
@@ -494,14 +516,16 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 - **Page methods** (`RadiusMethods`, roles in `RequiredRole`, `RequiresAllDevices` for every save, `generateSecret`,
   `deleteSwitch`, `deleteLog` and `revoke`): `revoke` also needs PKI's "Manage the certificate authority"
   (`oadm.pki:manage`, checked with the call: "Your role does not allow: PKI: Manage the certificate authority.") and takes
-  only IEEE 802.1X certificates (PKI's use dot1x, or a client certificate of this server's log that PKI's list does not
-  hold; anything else refuses the whole request "Only IEEE 802.1X certificates can be revoked here.", nothing revoked;
-  more than 50 serials are checked in one pass over PKI's 802.1X certificates); `listRevoked` takes `RevokedQuery`
+  only IEEE 802.1X certificates (PKI's use dot1x, or a serial PKI's list does not hold whose client certificates in this
+  server's log were all issued by an OADM CA, current or previous (the logged DER chained like a handshake, within its own
+  validity); an Axis device ID serial never: revoking it would lock the camera out of 802.1X and of EST Set up for good;
+  anything else refuses the whole request "Only IEEE 802.1X certificates can be revoked here.", nothing revoked; one pass:
+  `PurposeOf` per serial and one pass over the log, no search of PKI's list per serial); `listRevoked` takes `RevokedQuery`
   (`offset`, `limit` 1..500, `search` over device, serial, reason and user) and answers one page (`RevokedPage`: `rows`, `total`); rows of sessions, the log,
   `getLogCertificate`, `listRevoked`,
   `listCertificates` (PKI's `ListIssuedAsync` with the caller's `DeviceIds`) and `getIssuedCertificate` follow the caller's
   devices (`ViewedSet`); a row or certificate of another device answers like an unknown one; `listSites` the group's sites;
-  `getVlans` gives tag choices of the devices only to users with all devices; `getState` gives a group user the status only
+  `getVlans` answers a group user empty VLAN settings (no rules, no default, no tag choices); `getState` gives a group user the status only
   (no settings, interfaces, server certificate, sites or unknown senders) and `listSwitches` the switches of the routes
   the group names (`CoversRoute`: its sites, This server only when the group has it). `state` goes to users with all
   devices and to each group that read the page (`ViewerScopes`, the status only), `switches` to users with all devices
@@ -512,7 +536,11 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   previous CA, secrets, input rules, host names, Advanced, Listen on, the log), `HardeningTests` (review round 1: a sibling
   CA under the enterprise root, PKI gone, revoke permission and uses, the revoked pages, a group user's state and switches,
   requests without EAP, the device list after a miss, a CA change during maintenance, stable server certificate names, one
-  socket per address, the log search in local time, Delete all during a failed write, orphan certificates), `PluginTests`
+  socket per address, the log search in local time, Delete all during a failed write, orphan certificates; review round 2:
+  nothing passes without PKI, a listed MQTT certificate refused, no CA reads per handshake and a changed CA trusted at
+  once, an Axis device ID serial from the log never revoked, the revoke check without a search per serial, empty VLAN
+  settings for a group user, the VLAN tags protected and tag rules without protection, loopback and a new address within
+  5 s), `PluginTests`
   (manifest, the canary over every
   method, rows of a group user), `PluginPerfTests` (Category=Perf: 30,000 authentications through the plugin, the log at
   50,000 kept). Support: `Support/PluginHarness.cs` (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).

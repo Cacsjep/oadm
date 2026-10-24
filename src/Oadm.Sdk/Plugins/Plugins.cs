@@ -495,6 +495,12 @@ public interface ICorePluginContext
     /// hosts (no groups: every object belongs to all devices).
     /// </summary>
     IDeviceScopes? DeviceScopes => null;
+
+    /// <summary>
+    /// Tag names only users with all devices may add to or remove from devices (<see cref="IProtectedTags"/>, SDK
+    /// 0.4.0). Null on older hosts: a plugin that acts on devices by tag then treats no tag as safe (fail closed).
+    /// </summary>
+    IProtectedTags? ProtectedTags => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

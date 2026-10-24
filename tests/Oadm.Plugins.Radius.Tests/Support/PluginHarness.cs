@@ -79,6 +79,7 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
     private readonly X509Certificate2 _ca;
     private readonly TestAuthority? _parent;
     private readonly Dictionary<string, CertificateRevocation> _revoked = new(StringComparer.Ordinal);
+    private int _previousReads;
 
     public TestAuthority(string name = "OADM test CA")
     {
@@ -107,7 +108,17 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
 
     public List<IReadOnlyList<byte[]>> Previous { get; } = [];
 
-    public IReadOnlyList<IReadOnlyList<byte[]>> PreviousChains => Previous;
+    public IReadOnlyList<IReadOnlyList<byte[]>> PreviousChains
+    {
+        get
+        {
+            Interlocked.Increment(ref _previousReads);
+            return Previous;
+        }
+    }
+
+    /// <summary>How often <see cref="PreviousChains"/> was read (the trusted set is built once per CA change, never per handshake).</summary>
+    public int PreviousReads => Volatile.Read(ref _previousReads);
 
     public int SignCount { get; private set; }
 
@@ -188,6 +199,9 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
     public bool IsRevoked(string serialNumber) => _revoked.ContainsKey(CertificateSerials.Normalize(serialNumber));
 
     public CertificateRevocation? FindRevocation(string serialNumber) => _revoked.GetValueOrDefault(CertificateSerials.Normalize(serialNumber));
+
+    public string? PurposeOf(string serialNumber) =>
+        Issued.Where(i => CertificateSerials.Normalize(i.Info.SerialNumber) == CertificateSerials.Normalize(serialNumber)).Select(i => i.Info.Purpose).FirstOrDefault();
 
     public IReadOnlyList<CertificateRevocation> Revocations => [.. _revoked.Values];
 

@@ -104,6 +104,13 @@ public interface IDeviceCertificateAuthority
     CertificateRevocation? FindRevocation(string serialNumber) => null;
 
     /// <summary>
+    /// The use (<see cref="DeviceCertificatePurposes"/>) of the certificate with <paramref name="serialNumber"/> when the list
+    /// of issued certificates holds it (any notation), null when it does not. A lookup in memory: ask it for every
+    /// authentication (the 802.1X server refuses a listed certificate of another use). Default (a CA without a list): null.
+    /// </summary>
+    string? PurposeOf(string serialNumber) => null;
+
+    /// <summary>
     /// The previous OADM CAs (replaced, kept while their device certificates may still be valid), newest first: each one as
     /// DER, the CA certificate first, then the certificates above it. A server that checks device certificates (the 802.1X
     /// server) trusts them next to <see cref="Chain"/>. They change when a CA is replaced or a previous one removed: read

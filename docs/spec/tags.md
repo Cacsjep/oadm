@@ -25,6 +25,16 @@ with the labels in the grid, the search, the export and the import; plugins read
   `DeviceGroupMembership` (`CaptureAsync` before the write, so a deleted tag still resolves for the devices that left;
   `ChangesAsync` with the devices before and after; `WriteAsync`). The waiting list tags an added device through the queuing
   user's view, so the guard applies to file imports too.
+- **Protected tags** (decision 2026-10-24, 802.1X review round 2): a core plugin whose settings act on devices by tag
+  protects those tag names (`ctx.ProtectedTags.Protect(names, refusal)`, SDK 0.4.0, docs/spec/plugins.md; today the tags of
+  the 802.1X server's VLAN rules). Only users with all devices add them to or remove them from devices; for a view of a
+  group `SetDeviceTagsAsync` refuses an added or removed protected name (by name, case-insensitive, with or without a
+  definition) in the same transaction as the group guard (`ProtectedTagException`, PERMISSION_DENIED with the plugin's
+  text: "The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed."; a plugin
+  text that fails or is empty: "Only users with all devices can add or remove the tag Floor 3. Nothing was changed.").
+  Both refusals are `TagNeedsAllDevicesException` (the waiting list logs them like the group one). Rename and delete need
+  all devices anyway. `ProtectedTagRegistry` (server, `Oadm.Core.Devices`) holds one set per plugin and forgets it when
+  the plugin stops.
 - **Client store**: `Tags/TagStore` (fed by `TagService.Watch` in `ServerConnection`, owned by `DeviceStore.Tags`) keeps
   one shared `TagInfo` per name (case-insensitive); device rows hold `TagChips` of those shared objects, so a recolor
   updates every chip and group header without touching 5,000 rows. `DeviceRowViewModel.Tags` / `TagsText`

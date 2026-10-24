@@ -57,6 +57,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly Func<Sites.PluginNetworkScope>? _networks;
     private readonly PluginServiceRegistry? _services;
     private readonly HostDeviceScopes? _deviceScopes;
+    private readonly Devices.ProtectedTagRegistry? _protectedTags;
     private readonly DeviceGroups.DeviceViewWatcher? _viewWatcher;
     private readonly CallTaskOwners _taskOwners = new();
     private readonly ILoggerFactory _loggerFactory;
@@ -85,7 +86,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         PluginServiceRegistry? services = null,
         PluginJobRegistry? jobs = null,
         HostDeviceScopes? deviceScopes = null,
-        DeviceGroups.DeviceViewWatcher? viewWatcher = null)
+        DeviceGroups.DeviceViewWatcher? viewWatcher = null,
+        Devices.ProtectedTagRegistry? protectedTags = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -109,6 +111,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _services = services;
         _deviceScopes = deviceScopes;
         _viewWatcher = viewWatcher;
+        _protectedTags = protectedTags;
         Jobs = jobs ?? new PluginJobRegistry();
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -191,6 +194,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     System = new HostSystemAccess(guard, _devices, entry.CallVapix, _tasks, entry.CallEventStreams),
                     Jobs = Jobs.For(registered.Id),
                     DeviceScopes = guard.DeviceScopes(_deviceScopes), // only the caller's own scope in a group user's call
+                    ProtectedTags = _protectedTags?.For(registered.Id),
                 };
                 try
                 {
@@ -207,6 +211,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     DisposePro(entry);
                     await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     _services?.RemoveOwner(registered.Id);
+                    _protectedTags?.RemoveOwner(registered.Id);
                     throw;
                 }
 #pragma warning disable CA1031 // One faulty core plugin must not stop the others or the host.
@@ -219,6 +224,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     DisposePro(entry);
                     await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     _services?.RemoveOwner(registered.Id);
+                    _protectedTags?.RemoveOwner(registered.Id);
                     LogStartFailed(ex, registered.Id);
                 }
             }
@@ -285,6 +291,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         entry.State = CorePluginState.Stopping;
         _services?.RemoveOwner(id); // nobody reaches a stopping plugin's services
+        _protectedTags?.RemoveOwner(id); // a stopping plugin protects no tags
         Jobs.CancelPlugin(id); // a stopping plugin's jobs end
         try
         {
@@ -668,6 +675,8 @@ internal sealed class CorePluginContext(
     public IPluginJobs? Jobs { get; init; }
 
     public IDeviceScopes? DeviceScopes { get; init; }
+
+    public IProtectedTags? ProtectedTags { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

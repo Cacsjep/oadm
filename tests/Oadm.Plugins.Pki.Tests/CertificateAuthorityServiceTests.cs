@@ -39,6 +39,47 @@ public sealed class CertificateAuthorityServiceTests
     }
 
     [Fact]
+    public async Task Tells_the_use_of_a_listed_certificate_in_any_notation()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var authority = new PkiCertificateAuthority(pki.Service);
+        using var key = RSA.Create(2048);
+        var csr = new CertificateRequest("CN=x", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).CreateSigningRequest();
+
+        var mqtt = await authority.SignAsync(
+            new DeviceCertificateRequest(csr, "axis-b8a44f631339", [], ["axis-b8a44f631339.local"], DeviceCertificateUse.Client)
+            {
+                DeviceId = Guid.NewGuid(),
+                Purpose = DeviceCertificatePurposes.Mqtt,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(DeviceCertificatePurposes.Mqtt, authority.PurposeOf(mqtt.SerialNumber));
+        Assert.Equal(DeviceCertificatePurposes.Mqtt, authority.PurposeOf(mqtt.SerialNumber.ToLowerInvariant()));
+        Assert.Null(authority.PurposeOf("7DFD05"));
+    }
+
+    [Fact]
+    public async Task Reads_the_previous_cas_once_per_change_and_a_removal_raises_changed()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var authority = new PkiCertificateAuthority(pki.Service);
+        var oldId = pki.Service.Ca!.Id;
+        await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
+        var changed = 0;
+        authority.Changed += (_, _) => Interlocked.Increment(ref changed);
+
+        var first = authority.PreviousChains;
+        Assert.Same(first, authority.PreviousChains); // no PEM read per call (the 802.1X server asks for its checks)
+        Assert.Single(first);
+
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.RemovePrevious, new RemovePreviousRequest(oldId))).Ok);
+
+        Assert.Equal(1, Volatile.Read(ref changed)); // the 802.1X server stops trusting it at once
+        Assert.Empty(authority.PreviousChains);
+    }
+
+    [Fact]
     public async Task Refuses_sha1_requests_and_weak_keys()
     {
         await using var pki = await PkiHarness.StartAsync();
