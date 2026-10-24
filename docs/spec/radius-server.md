@@ -1,8 +1,10 @@
 # 802.1X server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-23; one-page redesign, trusted CAs from PKI and policies agreed 2026-10-24 (planned, `feature/pki-center`); built 2026-10-24: the protocol layer ("Code (protocol)") and the server part ("Code (server)"); the
-page is the client part.
+Agreed 2026-10-23; one-page redesign, trusted CAs from PKI and policies agreed 2026-10-24; built 2026-10-24: the protocol
+layer ("Code (protocol)") and the server part ("Code (server)"); the page is the client part. Since stage 3 of
+`docs/spec/pki.md` (2026-10-24) every rule of the server is a policy of PKI: 802.1X server (TLS, packet size,
+reauthentication), Allow CA, VLAN, Block and Revoke; the server keeps no rules of its own.
 
 A PRO part of the PKI package since OADM 4.5 (core plugin `oadm.radius`, `plugins/Oadm.Plugins.Pki/Radius`, its own
 source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the page's Server card
@@ -21,7 +23,8 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   one; a root above an OADM CA imported as an intermediate anchors the chain, but a certificate of another CA under that
   root never passes) **and** name a device OADM manages. A genuine certificate of a device OADM does not manage is refused.
   The PKI trusted root store is not used (decision 2026-10-24, review round 1: safer than the first wording).
-- **Result:** Access-Accept or Access-Reject; **VLAN assignment** per rule, **off by default**.
+- **Result:** Access-Accept or Access-Reject; a **VLAN** only from a VLAN policy of PKI (none: the switch port keeps its
+  own; there is no default VLAN).
 - **Switches change while the server runs:** adding, editing or removing a switch applies at once to the running
   server, without a restart and without dropping the sessions of the other switches. A removed switch's open sessions end
   (its next request is dropped as from an unknown switch).
@@ -33,39 +36,23 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   only the Server card and reads nothing else. When the license ends, the server stops answering (switches fall back to
   their own rule); a 4.1 server whose plugin was on keeps it on.
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
-  their ports." **One page, no tabs** (decision 2026-10-24): a row of four cards, each as high as it needs —
-  **Server** | **Trusted CAs** | **Switches** | **Policies** — then **Sessions** and **Log** full width below. Narrower pages
-  fall back to two columns, then one (like the Permissions page). Revocation is PKI's (its Certificates tab); the page has
-  no Revoked tab.
-  - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch] [Edit]
-    [Delete]", "Policies [Add policy] [Edit] [Delete]").
-  - **Server** (card): the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate
-    authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available"), the server
-    certificate's end, **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000),
-    **Advanced** (a button: opens the dialog below) and **Save**.
-  - **Advanced** (dialog, single operation, `Border.dialogBody`): **Minimum TLS version** (TLS 1.0, 1.1, **1.2**
-    (default), 1.3; the hint for 1.0 and 1.1 as before), **Cipher suites** (as before, incl. the hint for suites the server
-    certificate cannot use), **Largest EAP packet** (bytes, 500..1,400, **default 1,020**: RFC 3748 3.1 guarantees an EAP
-    MTU of 1,020 octets; FreeRADIUS uses about the same; the switch's `Framed-MTU` can only lower it).
-  - **Trusted CAs** (card): the CAs of PKI (`docs/spec/pki.md`) as check boxes — OADM CA (with its previous ones), Axis
-    device ID, imported CAs — each with **Only devices OADM manages** (on by default). Default: OADM CA and Axis device
-    ID, both only managed. A CA PKI no longer lists drops out at once. "Manage in PKI" link.
-  - **Switches** (card): as before (name, address, state, last request; the dialog with the shared secret and Generate).
-  - **Policies** (card, replaces VLANs): a list of policies in order; each has a name, a kind and its devices chosen
-    with the shared device selector (sites, tags, single devices, the group editor's `DevicePickerWindow` mode):
-    - **VLAN policy:** the devices get VLAN X (1..4094). First matching VLAN policy wins; a **Default VLAN** setting on
-      the card for devices no VLAN policy matches (empty = none). VLANs stay off until the first VLAN policy exists.
-    - **Block policy:** the devices are refused even with a valid certificate ("Blocked by policy Building C"), nothing
-      is revoked; deleting the policy lets them in again.
-    - **Revoke policy:** saving it revokes the current IEEE 802.1X certificates of its devices in PKI (permanent, audited,
-      needs PKI's "Manage the certificate authority"; the confirmation names how many), and every new IEEE 802.1X
-      certificate of those devices too while the policy exists. Removing it revokes nothing back; the devices need new
-      certificates. Revoke policies choose devices and sites only: a tag could revoke certificates of every device that
-      gets it later, without undo (decision 2026-10-24; a save with tags is refused, the tags of an older stored one match
-      nothing).
-    - Tags used by a policy's selection are protected as VLAN tags were (`docs/spec/tags.md` "Protected tags").
-  - **Sessions** (full width, live): as before.
-  - **Log** (full width): as before, without **Add switch** (decision 2026-10-24).
+  their ports." **One page, no tabs**: **Server** | **Switches** side by side from 1,000 px of page width (stacked below),
+  then **Sessions** and **Log** full width with a splitter between them (like the tasks pane of the main window). The rules
+  are PKI's policies (`docs/spec/pki.md` "Policies"); the page has no Trusted CAs, Policies or Advanced (decision
+  2026-10-24, stage 3). Revocation is PKI's (its Certificates list).
+  - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
+  - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the line
+    "6 policies apply" (802.1X server, Allow CA, VLAN, Block and Revoke policies) with **Edit in PKI** (opens the PKI page),
+    the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "Port 1812
+    is used by another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
+    certificate's end.
+  - **Switches** (card): name (flexes), address, site, state, last request, each column as wide as its longest text ("No
+    requests yet", "Wrong secret", "Last request" never cut off); Edit and Delete as row icon buttons; the dialog with the
+    shared secret and Generate.
+  - **Sessions** (full width, live) and **Log** (full width, without **Add switch**, decision 2026-10-24): every column as
+    wide as its content (the full "2026-10-24 07:21:58", the port, MAC address, EAP identity, device, IP address, the VLAN
+    with its policy "VLAN 30 by Building B"), the state or result flexes, Duration right-aligned; on a narrow page the grids
+    scroll sideways instead of cutting columns.
 - **Event rules:** "Device authenticated" (device, switch, port, VLAN), "Authentication failed" (device or unknown,
   switch, port, reason).
 - **PKI task "IEEE 802.1X"** (exists): its dialog names this server ("Uses the OADM 802.1X server" when it is on) and the
@@ -100,7 +87,7 @@ shown in plain words, as deep as the protocol allows:
 7. **Checking client certificate**: chain, dates, use, the managed device.
 8. **Waiting for client finished**.
 9. **Sending result**.
-10. **Authenticated** (with VLAN 20).
+10. **Authenticated** ("Authenticated with VLAN 20 by Building B": the VLAN and the VLAN policy that gave it).
 11. **Failed** with the reason, e.g. "The device does not trust the server certificate (TLS alert 48, unknown CA)",
     "Certificate of a device OADM does not manage (ACCC8E123456)", "Client certificate expired on 2026-09-30".
 12. **Timed out** (no answer within 30 s of the last message, 60 s in all) or **Abandoned** (the switch started a new
@@ -171,20 +158,24 @@ certificate").
   the last request gets it again even after the busy cache dropped it (no "Session not found" Reject for a camera that
   passed).
 - **EAP-TLS** (RFC 5216, TLS 1.2; RFC 9190, TLS 1.3 with the one-byte commitment message, no resumption, no tickets).
-  TLS 1.2 and 1.3 by default; TLS 1.0 and 1.1 only when Advanced lowers the minimum (RFC 8996 deprecates them; SSL never).
+  TLS 1.2 and 1.3 by default; TLS 1.0 and 1.1 only when the 802.1X server policy lowers the minimum (RFC 8996 deprecates
+  them; SSL never).
 - **Fragmentation** (RFC 5216 2.1.5), both directions: the first fragment carries the L flag and the total length, M on
-  every fragment but the last, each fragment acknowledged by an empty EAP-TLS message. Fragment size = **Largest
-  fragment** (Advanced), at most the smallest `Framed-MTU` the switch sent in the session minus the EAP and RADIUS
+  every fragment but the last, each fragment acknowledged by an empty EAP-TLS message. Fragment size = **Largest EAP
+  packet** (the 802.1X server policy), at most the smallest `Framed-MTU` the switch sent in the session minus the EAP and RADIUS
   overhead (many switches send it in the first request only, RFC 3579 2.4). Incoming total at most 64 KB (refused above, "Message
   too large"), at most 60 round trips per session.
 - **Keys:** the MSK from the TLS key material (TLS 1.2: PRF "client EAP encryption"; TLS 1.3: exporter
   "EXPORTER_EAP_TLS_Key_Material"), sent as MS-MPPE-Recv-Key / MS-MPPE-Send-Key (RFC 2548) in the Access-Accept, encrypted
   with the shared secret.
 - **VLAN** (RFC 3580): Tunnel-Type = VLAN (13), Tunnel-Medium-Type = 802 (6), Tunnel-Private-Group-ID = the VLAN ID.
+- **Reauthentication** (the 802.1X server policy: "Switch decides", or every N minutes, 10 to 1,440): every Access-Accept
+  carries Session-Timeout = N × 60 seconds and Termination-Action = RADIUS-Request (1), so the switch authenticates the port
+  again then instead of ending the session (RFC 3580 3.17, 3.19). "Switch decides" sends neither.
 - **TLS library** (see Libraries): BouncyCastle TLS in its **non-blocking mode**: one `TlsServerProtocol` per
   session without a stream; the bytes of each incoming EAP-TLS message go in with `OfferInput`, the bytes to send come
   out with `ReadOutput` and are cut into fragments; the handshake lives in memory only, no socket. `TlsServer` overrides
-  give the minimum version and the cipher suites of Advanced, `NotifyAlertReceived` / `NotifyAlertRaised` the alert
+  give the minimum version and the cipher suites of the 802.1X server policy, `NotifyAlertReceived` / `NotifyAlertRaised` the alert
   numbers in both directions, `TlsContext.ExportKeyingMaterial` the MSK. `SslStream` offers neither the key export nor the
   alert numbers on all three systems. Stage 1 starts with a proof: a full EAP-TLS exchange with a BouncyCastle client in a
   unit test.
@@ -316,19 +307,19 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 
 ## Who passes
 
-- The client certificate: issued directly by a CA checked under **Trusted CAs** (decision 2026-10-24; a certificate of
-  another CA under the same root never passes, also when that root is imported and checked), or for the Axis device ID a
+- The client certificate: issued directly by a CA of an **Allow CA** policy of PKI (decision 2026-10-24; a certificate of
+  another CA under the same root never passes, also when that root is imported and allowed), or for the Axis device ID a
   chain to its roots; valid now, extended key usage client authentication (or none). Previous OADM CAs follow the OADM
-  CA's check box (no rows of their own), so replacing the CA never locks the cameras out. A CA PKI no longer lists drops
-  out at once (fail closed).
+  CA's policy (no policies of their own), so replacing the CA never locks the cameras out. A CA PKI no longer lists drops
+  out at once (fail closed); without PKI's policies nothing passes.
 - For a CA with **Only devices OADM manages** (the default) it must name **exactly one managed device**: the DNS name
   `axis-<serial>.local` the OADM CA puts into every device certificate, or the serial of an **Axis device ID** (an imported
   CA: the name, else a serial in the subject). At a site: a device of that site. For a CA without it, any valid
   certificate of that CA passes; one that names a managed device counts as that device (site, policies, VLAN), any other
-  passes without a device, gets the default VLAN, and the Device column of Sessions and Log shows its subject.
-- No **block policy** holds the device ("Blocked by policy Building C", alert 49); no **revoke policy** holds it
-  ("Certificate revoked by policy Building C", alert 44; a certificate of an OADM CA is then revoked in PKI in the
-  background).
+  passes without a device and without a VLAN, and the Device column of Sessions and Log shows its subject.
+- No **Block** policy holds the device ("Blocked by Storage room", alert 49); no **Revoke** policy holds it ("Certificate
+  revoked by Stolen", alert 44; a certificate of an OADM CA is then revoked in PKI in the background). Block wins over
+  VLAN.
 - A certificate of an OADM CA that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
   not an IEEE 802.1X certificate"; review round 2). One PKI does not list (from before the list) passes as before.
 - PKI runs with a CA: without it nothing passes, an Axis device ID neither (alert 80, "The PKI has no certificate
@@ -352,7 +343,7 @@ logic runs only on the server; the node never sees a secret or a key.
 
 - **Switch rows get a Site** ("This server" or a site). A request is matched by site + the switch address as the node
   saw it, so the same private address at two sites is two switches. The switch is configured with the **node's address**
-  as its RADIUS server; the switch dialog shows it ("RADIUS server for this switch: 10.1.0.5, port 1812").
+  as its RADIUS server (the switch dialog no longer names it, decision 2026-10-24).
 - **The relay opens** for a site when its first switch is added and closes with its last; the node app asks to allow
   UDP 1812 like NTP's port; the page shows sites whose node has not allowed it yet (like EST).
 - **Who passes at a site:** the device the certificate names must be a device of that site (as "Who passes" says).
@@ -363,24 +354,15 @@ logic runs only on the server; the node never sees a secret or a key.
 
 ## Device groups
 
-A server-wide service: the settings, Trusted CAs, Switches and Policies are changed only by users with all devices. Users
-with a group see the page with the Sessions and Log rows of their devices; rows without a managed device only users with
-all devices. They get no server-wide data (settings, the server's interfaces and certificate, sites, senders that are no
-switch; `getTrustedCas` answers an empty list, `getPolicies` empty settings without tag choices) and only the switches of
-the routes their group names (none when it names none). The tags of the policies are protected (review round 2): a user
-who may tag devices but has a group could otherwise choose a device's VLAN or take it out of a block policy. The plugin
-hands the policies' tag names to the host (`ctx.ProtectedTags.Protect`, SDK 0.4.0) at its start and with every save (the
-old and the new names while the save runs); `DeviceTagStore` refuses them for a group user in the tagging transaction. On
-a host without `ProtectedTags` the tag parts of VLAN policies match no device (fail closed; sites, devices and the
-default VLAN apply), those of block policies still match (revoke policies never match by tag). The host keeps the protected names while the plugin
-is installed (round 3): a stopped or turned-off 802.1X server still protects the tags of its stored policies; the names
-are forgotten only when the plugin is removed (docs/spec/tags.md "Protected tags"). While the 802.1X server runs, a rename
-or delete of such a tag is refused for every user (`Protect(names, RadiusTexts.VlanTag, RadiusTexts.VlanTagChange)`: "The
-tag Floor 3 is used by an 802.1X policy. ..."): the policies keep tags by name. While it is stopped, off or faulted nobody
-can edit the policies, so the rename or delete is allowed (decision 2026-10-24, final review): the policy's old name then
-matches no device, and a tag made again under that name is protected again. A change of case only is no rename. A save of
-the policies waits for group users' tag writes in flight (`Protect` returns after them). Users with all devices, also an
-Operator with all devices and "Tag devices", add and remove the policies' tags.
+A server-wide service: the settings and Switches are changed only by users with all devices; the policies are PKI's
+(server-wide too, `docs/spec/pki.md`). Users with a group see the page with the Sessions and Log rows of their devices;
+rows without a managed device only users with all devices. They get no server-wide data (settings, the server's
+interfaces and certificate, sites, senders that are no switch, how many policies apply) and only the switches of the routes
+their group names (none when it names none). The tags the policies use are protected by PKI (`docs/spec/pki.md` "Code
+(stage 3)"): a user who may tag devices but has a group could otherwise choose a device's VLAN or take it out of a Block
+policy. Until OADM 4.5 the 802.1X server protected them itself; its core plugin releases that set at its start. On a host
+without `ProtectedTags` the tag parts of VLAN policies match no device (fail closed), those of Block policies still match,
+Revoke policies never match by tag.
 
 ## Secrets and logs
 
@@ -398,7 +380,7 @@ and reason, never secrets or key material.
 - Full EAP-TLS conversations with a BouncyCastle TLS client as the camera through an in-memory switch: TLS 1.2 and 1.3,
   fragment sizes 500..1400 and small `Framed-MTU`, every state of the table, every refusal (unknown CA, expired, an
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
-- Switches added, changed and removed while sessions run (the decision); Advanced: minimum version 1.3 refuses a 1.2
+- Switches added, changed and removed while sessions run (the decision); the 802.1X server policy: minimum version 1.3 refuses a 1.2
   client with the alert text, an unchecked cipher suite is not offered.
 - Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
 - Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with an OADM CA certificate on a real switch.
@@ -424,8 +406,9 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   the processor never looks at NAS-Identifier or NAS-IP-Address for that. `EndSessions(key)` ends a removed switch's
   sessions (Abandoned, "The switch was removed") and forgets its cached answers.
 - **Settings**: `RadiusProtocolOptions` (record, replaced as a whole through `Options` while running): `Tls`
-  (`TlsSettings`: `MinimumVersion`, `CipherSuites` of `TlsCipherSuites`, `Validate()` for the page, `DefaultFor(min)` for
-  Reset to default), `LargestFragment` (500..1400), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
+  (`TlsSettings`: `MinimumVersion`, `CipherSuites` of `TlsCipherSuites`, `Validate()` for the policy, `DefaultFor(min)` for
+  Reset to default), `LargestFragment` (500..1400), `Reauthentication` (null: none; else Session-Timeout and
+  Termination-Action RADIUS-Request in every Access-Accept, `ReauthenticationAttributes`), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
   `FromCertificate(x509, issuers)`, read when a handshake starts, so a renewal applies at once), the timeouts (30 s / 60 s),
   `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000.
 - **TLS versions, suites, signatures**: only the versions with a checked suite the server key can use are offered
@@ -512,25 +495,19 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   (`ForSite(siteId).ResolveAsync`) when saved (none: "The server cannot find this host name.") and every 10 minutes;
   `radiusServerAddress` = the Listen on interface's IPv4, else `LocalAddressTowardsAsync` (at a site the node's).
   `generateSecret`: 24 letters and digits (no look-alikes), nothing stored.
-- **Trusted CAs** (setting `trustedCas`, `TrustedCaSettings`; not stored = "oadm" and "axis-device-id", both only managed):
-  `CaTrust.Build` takes PKI's `Authorities` (an offer without the list, an older PKI: the OADM CA from `Chain`, previous
-  ones from `PreviousChains` as "oadm-previous:<sha256>", the plugin's Axis device ID), keeps the checked ones (previous
-  OADM CAs follow "oadm") and maps each issuing certificate's hash to its CA (`TrustedIssuer`: kind, only managed; the
-  Axis device ID through `AxisDeviceId.Verify` with PKI's roots and intermediates). `getTrustedCas` (rows without the
-  previous OADM CAs, `PreviousCount` on the OADM CA), `saveTrustedCas` (ids PKI does not list: field "cas", "This
-  certificate authority is not in the PKI."); `SetUsedBy("oadm.radius", "802.1X server", ids)` whenever the ids or the
-  offer changed (start, save, CA change, the minute round).
-- **Policies** (setting `policies`, `PolicySettings`; OADM 4.1's `vlans` move in at the first start, only when Assign VLANs
-  was on: one VLAN policy per rule, names made unique with " (2)"; no usable rule but a default VLAN: one VLAN policy
-  "All devices" (this server and every site) with that VLAN, so every device stays on it; then `vlans` is deleted): `getPolicies`,
-  `savePolicies` (the whole ordered list, `RadiusRules.Validate(PolicySettings)`, new ids, serials upper case, sites must
-  exist; a revoke policy that is new or whose kind or devices changed needs `oadm.pki:manage`, else nothing is stored;
-  `SavedBy` = that user), `countRevocations` (`PolicyDevices` -> `{count}`). `PolicyPlan` (immutable, hash sets of sites,
-  tags, serials and excepts): the first VLAN policy wins, the default VLAN only while a VLAN policy exists, any block or
-  revoke policy refuses. Revoke: after a save and every minute the dot1x certificates of the policy's devices that are
-  neither expired nor revoked (`ListIssuedAsync` with `DeviceIds` and purpose dot1x, paged) are revoked (`RevokeAsync`,
-  reason Other, user `SavedBy`, at most 5,000 per call); a handshake that meets one queues it (deduplicated, at most
-  10,000 waiting) for a background `RevokeAsync`.
+- **PKI's policies** (`RadiusPolicies`, `RadiusRuleSet`, `PolicyPlan`; `docs/spec/pki.md` "Code (stage 3)"): the store is
+  found each time (`RadiusHost.Policies`); `RulesNow()` builds the rules again before a handshake when the store's version
+  moved or PKI started again (a new store) and puts the server policy's TLS, largest EAP packet and reauthentication into the
+  processor's options; a change of the store also publishes the state ("6 policies apply"). `CaTrust.Build` takes PKI's
+  `Authorities` and the CAs of the Allow CA policies (`TrustedCaSettings`, rebuilt with the rules: the trusted set compares it
+  by reference): previous OADM CAs follow the OADM CA ("oadm-previous:<sha256>"), each issuing certificate's hash maps to its
+  CA (`TrustedIssuer`: kind, only managed; the Axis device ID through `AxisDeviceId.Verify` with PKI's roots and
+  intermediates). `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block or Revoke
+  policy refuses (Revoke never by tag, VLAN tags only while the host protects them). The settings of OADM 4.1 and of
+  development builds (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
+  `RadiusPolicies.ConvertAsync` when the core plugin starts (PKI notes it), and are left as they are.
+- **Revoke policies**: PKI revokes on save and every minute; a handshake that meets a certificate a Revoke policy holds queues
+  it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
   certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on ..."),
   extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
@@ -550,7 +527,8 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   (`DeviceIndex`: the full device list read every 10 s and after a miss, at most every 2 s: a miss right after a read waits
   for the rest of the 2 s, never for the next round; 49 "Certificate of a device OADM does not
   manage (...)"), the switch's site (49 "The device belongs to another site"), the policies, the MAC
-  warning and the VLAN (`PolicyPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial) goes with the session.
+  warning and the VLAN (`PolicyPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial, the VLAN
+  policy) goes with the session; Sessions and Log carry it as `VlanPolicy`.
 - **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the OADM CA for the IPv4 listen addresses (with All
   interfaces those of every card that is up, without self-assigned 169.254 addresses) and the host name, 365 days, kept in
   the setting `serverCertificate` (key encrypted with `radius:server-key`), made again with a new CA, a new name or 30 days
@@ -577,13 +555,11 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   rows back). Event rules: `oadm.radius.authenticated` (device, switch, port, VLAN) and `oadm.radius.failed` (the device
   the certificate named or none; switch, port, reason) for Failed and Timed out, never for Abandoned or a MAC warning.
 - **Page methods** (`RadiusMethods`, roles in `RequiredRole`, `RequiresAllDevices` for every save, `generateSecret`,
-  `deleteSwitch`, `saveTrustedCas`, `savePolicies`, `countRevocations` and `deleteLog`; Admin methods audited except
-  `generateSecret` and `countRevocations`; a new or changed revoke policy also needs PKI's "Manage the certificate
-  authority", `oadm.pki:manage`: "Your role does not allow: PKI: Manage the certificate authority."). The methods
-  `listRevoked`, `revoke`, `listCertificates` and `getIssuedCertificate` are gone (decision 2026-10-24: revocation is
-  PKI's). Rows of sessions, the log and `getLogCertificate` follow the caller's devices (`ViewedSet`); a row of another
-  device answers like an unknown one; `listSites` the group's sites; `getPolicies` and `getTrustedCas` answer a group user
-  empty settings; `getState` gives a group user the status only
+  `deleteSwitch` and `deleteLog`; Admin methods audited except `generateSecret`). The methods `listRevoked`, `revoke`,
+  `listCertificates`, `getIssuedCertificate` (decision 2026-10-24: revocation is PKI's) and `getTrustedCas`,
+  `saveTrustedCas`, `getPolicies`, `savePolicies`, `countRevocations` (stage 3: the rules are PKI's policies) are gone.
+  Rows of sessions, the log and `getLogCertificate` follow the caller's devices (`ViewedSet`); a row of another
+  device answers like an unknown one; `listSites` the group's sites; `getState` gives a group user the status only
   (no settings, interfaces, server certificate, sites or unknown senders) and `listSwitches` the switches of the routes
   the group names (`CoversRoute`: its sites, This server only when the group has it). `state` goes to users with all
   devices and to each group that read the page (`ViewerScopes`, the status only), `switches` to users with all devices
@@ -591,17 +567,17 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 - **Tests**: `tests/Oadm.Plugins.Radius.Tests` `ServerTests` (end to end through the in-memory listener and relays with a
   BouncyCastle camera: accept TLS 1.2 and 1.3 and the device ID, every refusal, removed device, MAC warning, sites,
   switches added and removed while sessions run, wrong secret, no PRO, no CA, server certificate kept and renewed,
-  previous CA, secrets, input rules, host names, Advanced, Listen on, the log), `HardeningTests` (review round 1: a sibling
+  previous CA, secrets, input rules, host names, the server policy's minimum version, Listen on, the log), `HardeningTests` (review round 1: a sibling
   CA under the enterprise root, PKI gone, a group user's state and switches,
   requests without EAP, the device list after a miss, a CA change during maintenance, stable server certificate names, one
   socket per address, the log search in local time, Delete all during a failed write, orphan certificates; review round 2:
   nothing passes without PKI, a listed MQTT certificate refused, no CA reads per handshake and a changed CA trusted at
-  once, empty policies and trusted CAs for a group user, the policies' tags protected and VLAN tags without protection, loopback and a new address within
-  5 s), `DroppedRequestTests` (rows of a sender that is no switch and of a wrong secret, one per minute with the count,
-  never for group users, the cap of followed senders), `TrustedCaTests` (the default selection and Used by, a CA left out
-  or removed by PKI, an imported CA for any device with its subject in the log, an imported enterprise root and a sibling
-  CA), `PolicyTests` (VLAN order and default, block, revoke on save with PKI's permission and of a new certificate, input
-  rules, the VLAN rules of OADM 4.1 moved in), `PluginTests`
+  once, loopback and a new address within 5 s), `DroppedRequestTests` (rows of a sender that is no switch and of a wrong secret, one per minute with the count,
+  never for group users, the cap of followed senders), `AllowCaTests` (the defaults, a CA without a policy or removed by
+  PKI, an imported CA for any device with its subject in the log, an imported enterprise root and a sibling CA, a policy
+  deleted while a handshake rebuilds the set), `PolicyTests` (VLAN with the policy in the log, the older VLAN and Block over
+  VLAN, Block, Revoke of a new certificate, nothing without PKI's policies, reauthentication attributes, the defaults, tags
+  only with protection), `ConversionTests` (fixtures of every stored format, once, nothing dropped), `PluginTests`
   (manifest, the canary over every
   method, rows of a group user), `PluginPerfTests` (Category=Perf: 30,000 authentications through the plugin, the log at
   50,000 kept). Support: `Support/PluginHarness.cs` (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).
@@ -615,37 +591,23 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 data, also for the screenshots; the four, two and one column layout and the rows of dropped requests in
 `ServerLayoutTests`). One page since 2026-10-24.
 
-- **One page, no tabs** (`RadiusView`): Server | Trusted CAs | Switches | Policies (`RadiusView.Arrange` in
-  `MeasureOverride`, before the cards are measured: four columns from 1,640 px (a Full HD screen) with Switches 1.6 and Policies 1.35 parts,
-  two from 1,000 px (Server and Trusted CAs | Switches and Policies), else one; a DataGrid measured once too narrow keeps
-  its fixed columns shrunk), then Sessions and Log full width (grids of fixed height inside the page's scroll viewer, so
-  they stay virtualized). `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites`,
-  `getTrustedCas`, `getPolicies` with the overlay over the cards, then `listSessions` and `listLog`); the events keep it.
+- **One page, no tabs** (`RadiusView`): Server | Switches (`RadiusView.Arrange` in `MeasureOverride`, before the cards are
+  measured: two columns from 1,000 px of page width with Switches 1.7 parts, else one), then Sessions and Log in pixel rows
+  (380 and 520 px) with a `GridSplitter.paneSplitter` between them, inside the page's scroll viewer, so the grids stay
+  virtualized. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
+  over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
-- **Server**: Listen on, Port, Log entries kept, **Advanced** (secondary), the status chip directly left of **Save** (the
-  one accent button of the page), the server certificate's end, the sites that did not allow the port and a save error
-  without a field below it. Save sends the form with the saved Advanced settings (`SettingsViewModel.ToSettings`).
-- **Advanced** (`AdvancedWindow`, `AdvancedViewModel`, single operation): Minimum TLS version, cipher suites (old CBC suites
-  listed and checked only below TLS 1.2; "Not usable with the server certificate." below an unusable suite, never the
-  checked one; Reset to default), Largest EAP packet (500..1,400). Its Save sends the saved Server settings with these;
-  the Server card keeps unsaved edits.
-- **Trusted CAs** (`TrustedCasViewModel`): a check box per CA of `getTrustedCas` ("With its previous CA", "Imported",
-  "Factory certificates of Axis devices", valid until) with **Only devices OADM manages** below a checked one; a secondary
-  **Save** (on while changed, tooltip "No CA is checked: no device passes." when none is), errors below the list; "Add or
-  remove CAs on the PKI page." (the client SDK has no page navigation).
+- **Server**: Listen on, Port, Log entries kept, "6 policies apply" (`RadiusState.PoliciesApply`,
+  `RadiusViewModel.PoliciesApplyText`) with the link **Edit in PKI** (`ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`),
+  the status chip and Turn off directly left of **Save** (the one accent button of the page), the server certificate's end,
+  the sites that did not allow the port and a save error without a field below it.
 - **Switches**: as before; the switch dialog: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per
-  site), Site (only with sites), Shared secret (16..128, **Generate** shows it once), "RADIUS server for this switch:
-  <address>, port <port>". A refusal goes below the field it names, else into a message.
-- **Policies** (`PoliciesViewModel`): the policies in order (Name, Policy chip "VLAN 30" / "Block" / "Revoke certificates",
-  Devices "Site Building B, Tag PTZ, 3 devices, except 1"); **Add policy**, Edit (also a double click), **Delete** (red,
-  confirmed; a revoke policy says revoked certificates stay revoked), Move up, Move down: each sends the whole list
-  (`savePolicies`). **Default VLAN** (secondary Save) only while a VLAN policy exists.
-- **Policy editor** (`PolicyFormView.CreateWindow`, `PolicyEditorViewModel`): the shared `DevicePickerWindow` in its group
-  mode (sites with "This server", tags by name: the server's `tagChoices`, the devices' and the policies' tags, single
-  devices, Except) with Name (unique), Policy (VLAN, Block, Revoke certificates: the last only with PKI's "Manage the
-  certificate authority") and VLAN ID on top; Save off with the reason as tooltip. A revoke policy that is new or whose
-  devices changed asks first with `countRevocations` ("Saving revokes 7 IEEE 802.1X certificates ... This cannot be
-  undone.", red Revoke, owned by the editor).
+  site), Site (only with sites), Shared secret (8..128, **Generate** shows it once). A refusal goes below the field it
+  names, else into a message. Columns: Name flexes, the others fixed at the width of their longest text (`MinWidth` =
+  `Width`, never squeezed).
+- **Sessions and Log columns**: fixed widths for their content (time, switch, port, MAC, EAP identity, device, IP, the VLAN
+  "VLAN 30 by Building B" with a tooltip, Duration right-aligned), the state or result flexes; the grids scroll sideways on
+  narrow pages.
 - **Reads and events**: a list read while the page was away is stale (`MarkStale` on `Activate`) and read again (the
   progress row, the rows stay). Events during a read wait and apply after it: session batches in order, log rows once each.
 - **Sessions**: rows by id, a `sessions` batch updates rows in place and adds new ones on top in one step; an ended row
@@ -655,7 +617,7 @@ data, also for the screenshots; the four, two and one column layout and the rows
   drops that read. No Add switch (decision 2026-10-24).
 - **Device groups**: a user with a group (the client's `HasAllDevices` or the state's `hasAllDevices` false, fail closed)
   sees only Sessions and Log; nothing server-wide is read, and what was read before a role change leaves at once. Users
-  without "manage" see no Save, Add, Edit, Delete, Move or Delete all, and the inputs are read only.
+  without "manage" see no Save, Add, Edit, Delete or Delete all, and the inputs are read only.
 - **Contract**: `plugins/Oadm.Plugins.Pki/Radius/Api/RadiusApi.cs` (methods, topics, DTOs and `RadiusRules`, whose texts and
   checks the page uses for its errors below the fields); the client project references the server project like EST.
   `listSites` -> every site of the server (without it the page takes the sites of the devices and switches it knows).
@@ -670,6 +632,9 @@ data, also for the screenshots; the four, two and one column layout and the rows
 4. **Built 2026-10-24 (server part):** Switches at sites through the site node.
 5. **Built 2026-10-24:** one page without tabs, Trusted CAs from PKI, policies (VLAN, block, revoke) instead of the VLAN
    rules and the Revoked tab, Advanced as a dialog, Largest EAP packet 1,020 by default.
+6. **Built 2026-10-24 (stage 3 of `docs/spec/pki.md`):** the rules are PKI's policies (802.1X server with reauthentication,
+   Allow CA, VLAN, Block, Revoke), converted once from the stored settings; the page: Server | Switches, Sessions and Log
+   with a splitter, "N policies apply" with Edit in PKI, the shared secret from 8 characters.
 
-The switches, trusted CAs, policies, settings, the issued certificates and the revocation list are part of the encrypted backup
+The switches, settings, PKI's policies, the issued certificates and the revocation list are part of the encrypted backup
 (plugin settings and records, `docs/spec/settings-backup.md`); a restore brings back the revocation list with the CA.

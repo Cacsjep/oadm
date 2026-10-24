@@ -186,6 +186,87 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 - The conversion is tested on a copy of real data (a backup of a 4.1 server and of the development server) before the
   merge, not only on test data.
 
+## Code (stage 3)
+
+Built 2026-10-24. The rules of this stage that the sections above leave open are marked "decision of stage 3" (the most
+conservative choice that fits the spec; to be confirmed by the maintainer).
+
+- **Store** (`plugins/Oadm.Plugins.Pki/Policies/`): `PolicyModels.cs` (the contract shared with the page: `PolicyKinds`,
+  `PolicyGroups`, `PkiPolicy` with the fields of every kind, `PolicyDevices`, `PolicyList`, `PolicyMethods`, `PolicyTexts`),
+  `PolicyRules` (the checks of one policy, the same on the page and in the store; `PolicyMatcher`: hash sets of sites, tags
+  and serials, O(1) per device), `PolicyStore` (PKI's setting `policies`: the list in age order and the converted owners;
+  an immutable snapshot with a version, `Changed` after the write). PKI offers the store in process
+  (`IPluginServices.Offer<PolicyStore>`); the 802.1X server finds it each time. No SDK contract.
+- **Checks on save**: the policy on its own (name, the kind's fields, devices; Revoke without tags), then against the
+  others: a name taken by another policy of the same kind (decision of stage 3: names are unique per kind, so "All devices"
+  can be an Expiry warning and a VLAN policy), one 802.1X server policy, an Allow CA naming a CA PKI does not list or the same
+  CA twice, sites that no longer exist, at most 200 policies, and a device of now that the policy shares with another of its
+  kind and did not share before the save ("10.0.0.48 is in Building B and PTZ.", "... and 3 other devices are in ..."; an
+  overlap stored before, e.g. by the conversion, never blocks an edit of something else). One pass over the devices per other
+  policy of the kind, only over the devices the policy holds. A policy keeps its kind (decision of stage 3: the editor offers
+  the kind for a new policy only).
+- **Later overlaps** (a tag or site change): `PolicyStore.Rows` gives both rows the warning with the one that applies: the
+  older VLAN policy, the longer Expiry warning. Block and VLAN may hold the same device (different kinds, no warning): Block
+  refuses first. Overlaps of Block or Revoke policies change nothing.
+- **Expiry warning**: the days of a device are the longest of the Expiry warning policies that hold it; a device no such
+  policy holds keeps 30 days (decision of stage 3: a site added after "All devices" never loses its warnings). A check that
+  covers no single device (a new Compliance check) gets the longest days of the policies, else 30.
+- **Tags**: the tags of every policy except Revoke are protected under PKI (`ctx.ProtectedTags`, "The tag Floor 3 is used by
+  a PKI policy. ..."); the 802.1X server releases the tags it protected until OADM 4.5. Without the host's protection the tag
+  parts of VLAN policies match no device (fail closed), those of Block and Expiry warning still do.
+- **Page methods** (`PolicyMethods`, PKI's `InvokeAsync`): `getPolicies` (rows with summary and warning, the CA choices, the
+  cipher suites, the sites, the tags of the devices and policies, `mayManage`; a user limited to a device group gets an
+  empty list), `savePolicy` (one policy, `PolicySaveReply` with the field error or the list), `deletePolicy`,
+  `countRevocations`. Saving and deleting: Admin with "Manage the certificate authority" and all devices, audited by the
+  host; the count only reads (not audited). Event `policies` after every change.
+- **Revoke** (PKI's own, never needs OADM PRO): a save of a revoke policy revokes the IEEE 802.1X certificates of its
+  devices (never by tag) that are neither ended nor revoked, by the user who saved it, reason Other; a round every minute
+  revokes new ones (EST, tasks). The 802.1X server still refuses a device a revoke policy holds and revokes the certificate
+  it met.
+- **The 802.1X server** builds `RadiusRuleSet` from the store (`RadiusPolicies`): the trusted CAs of the Allow CA policies,
+  `PolicyPlan` (VLAN, Block, Revoke) and the server policy's TLS, largest EAP packet and reauthentication. A handshake
+  rebuilds it first when the store's version moved or PKI started again (a new store), so a change applies to the next
+  handshake and never half; without the store nothing passes ("The PKI has no certificate authority", alert 80).
+  Reauthentication every N minutes (decision of stage 3: 10 to 1,440 minutes) sends Session-Timeout and Termination-Action
+  RADIUS-Request in every Access-Accept (RFC 3580 3.17, 3.19). Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN
+  30 by Building B"); refusals name Block and Revoke policies ("Blocked by Storage room", "Certificate revoked by Stolen").
+- **Conversion** (once per owner, `PolicyStore.ConvertOnceAsync`, the owner noted in the stored list): PKI at its start
+  (`PkiService.ConvertOwnSettings`: "All devices" with the stored warn days, this server and every site); the 802.1X server's
+  core plugin at its start hands its settings over (`RadiusPolicies.ConvertAsync`; PKI starts first, the core plugins of a
+  package start in name order; without the store the next start converts). The old settings stay where they are (decision of
+  stage 3: nothing is deleted; they are no longer read). A server without them gets the defaults of the kinds the same way.
+- **Expiry events** (`ExpiryEvents`, PKI is an `IEventSource`): the ids `oadm.device.certificate-expires-soon`,
+  `oadm.device.certificate-expired` and their Any device twins (group "Certificates" for all four, decision of stage 3), the
+  full report at the start, a round every minute and after a change of the policies. The host lost them from its built-in
+  events (`BuiltInEvents` keeps the ids as constants); stored rules find them under PKI.
+- **The grid's chip and Compliance** (SDK 0.4.0 `ITrustAnchors.SetExpiryWarning(daysFor, defaultDays)`, only PKI's count):
+  PKI hands the host its days when the Expiry warning policies changed; the host sends every device row again
+  (`ExpiryWarningPublisher`, one batch) with `Device.cert_warning_days`, and the Compliance catalog gives a new certificate
+  check the default days. The PKI page's own list: each device's days (`CertificatesReply.WarningDays` is null).
+- **PKI page** (`PkiView`, `PoliciesViewModel`, `PolicyEditorViewModel`, `PolicyFormView`): the top row side by side from
+  1,280 px of page width, else stacked (`PkiView.Arrange`). Certificate authorities: the OADM CA's state and trust chips,
+  the list (previous CAs as rows with Export and Remove, imported CAs with Remove, View for all), Generate new CA and Import
+  CA in the header (Import CA a menu: "Own CA with its key" replaces the OADM CA, "CA certificate only" adds a row; decision
+  of stage 3: one button, two entries), Install in trusted root store, Export public certificate and Back up below the list.
+  Policies: the filter as a segmented switch (All, Certificates, 802.1X, Revoke), rows with Edit and Delete icon buttons,
+  the warning as an amber chip in the summary. The editor is the shared `DevicePickerWindow` with the form on top; for kinds
+  without devices the device part hides (`DevicePickerWindow.IsPickerVisible`). The Device certificates card keeps only the
+  validity; users limited to a device group still see the page with the Certificates of their devices (decision of stage 3:
+  the Certificates list of stage 1 stays; the Policies card is hidden for them).
+- **802.1X page**: Server (with "6 policies apply" and Edit in PKI: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
+  and Switches side by side from 1,000 px of page width, Sessions and Log below with a `paneSplitter` between them (pixel
+  rows inside the page's scroll viewer); every column but the state or result is as wide as its longest text (`MinWidth` =
+  `Width`, the grid scrolls sideways on narrow pages). The switch dialog no longer names the RADIUS server's address; the
+  shared secret needs 8 characters or more.
+- **EST page**: its own cards (`EstPage.HasOwnCards`): General and Profiles (side by side while they fit) with Save, then
+  Enrollments with Not renewed.
+- **Tests**: `Oadm.Plugins.Pki.Tests` `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (+ headless at 1,700 and
+  1,000 px), `PolicyPerfTests` (Category=Perf: 30,000 devices); `Oadm.Plugins.Radius.Tests` `PolicyTests`, `AllowCaTests`,
+  `ConversionTests` (fixtures of every stored format in `Fixtures/Conversion`); `Oadm.Core.Tests` `ExpiryWarningTests` and
+  the rule engine's stored rule; `Oadm.Server.Tests` the Compliance default and the device rows' days.
+- **Not built yet**: the conversion on a copy of real data (a backup of a 4.1 server and of the development server, see
+  "Rules for the move"): no such backup was at hand.
+
 ## Not planned
 
 - A limit of devices per switch port (decision 2026-10-24): OADM sees no logoff without RADIUS accounting; set the limit
@@ -199,8 +280,9 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 2. Built (2026-10-24, branch `feature/pki-policies`): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
    on per server, PRO for the two servers only, taking over the 4.1 data and choices, the site relay), without changing what
    they do.
-3. The page with CAs, Policies and Certificates (today's list); 802.1X server, Allow CA, VLAN, Block, Revoke and Expiry
-   warning policies (the expiry events move to PKI) with the conversion; the 802.1X and EST page changes above.
+3. Built (2026-10-24, branch `feature/pki-policies`): The page with CAs, Policies and Certificates (today's list); 802.1X
+   server, Allow CA, VLAN, Block, Revoke and Expiry warning policies (the expiry events move to PKI) with the conversion; the
+   802.1X and EST page changes above. See "Code (stage 3)".
 4. Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the task dialogs pick a policy; EST profiles point to
    one.
 5. The Certificates list: server paging, Create, Sign request, Import, Export, Delete.

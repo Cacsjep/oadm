@@ -71,8 +71,9 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
 - Client part (in `Oadm.Plugins.Pki.Client.dll`, `Est/`, namespace `Oadm.Plugins.Est.Client`): while the server does not run
   only General with its status and Turn on (`Servers/ServerSwitchView`); else General (listen on, port, enrollments kept) and Profiles (name, use, days,
-  key, on; at most one per use), Save with the status and Turn off left of it; Enrollments (live, search, Delete all); Not renewed (only while there are
-  any; a revoked certificate is never flagged). No Revoke and no list of every certificate here: both are PKI's (tab
+  key, on; at most one per use) in one card (side by side when wide, `WrapPanel`), Save with the status and Turn off left
+  of it; Enrollments in its own card (live, search, Delete all; `EstPage.HasOwnCards`); Not renewed (only while there
+  are any; a revoked certificate is never flagged). No Revoke and no list of every certificate here: both are PKI's (card
   Certificates, docs/spec/radius-server.md "Certificates and revocation").
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device
   ID hierarchy and a fake CA, the page with screenshots; `DeviceGroupTests`: the `PluginCanary`, the filtered lists and

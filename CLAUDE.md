@@ -188,14 +188,15 @@ must never break.
 - **[Device groups](docs/spec/device-scope.md)** (OADM 4.5): a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
-- **[PKI, the certificate control center](docs/spec/pki.md)** (stages 1 and 2 built, the rest planned): one package with
+- **[PKI, the certificate control center](docs/spec/pki.md)** (stages 1 to 3 built, the rest planned): one package with
   the EST and 802.1X servers (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); PKI holds every
   CA (OADM, previous, Axis device ID, imported) and certificate; services such as EST and 802.1X only select from it;
   certificates start 5 minutes early and the install dialogs ask when the camera's clock is behind.
 - **[802.1X server](docs/spec/radius-server.md)** (OADM 4.5, a PRO part of PKI: core plugin `oadm.radius`, off by default,
   Turn on on its page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
-  manages with a certificate of the OADM CA pass, fragmentation both ways, a deep session state and plain TLS alert texts,
-  switches changed while it runs, VLANs per rule off by default.
+  manages with a certificate of a CA of an Allow CA policy pass, fragmentation both ways, a deep session state and plain
+  TLS alert texts, switches changed while it runs; its rules (TLS, trusted CAs, VLAN, Block, Revoke) are PKI's policies
+  (docs/spec/pki.md), never settings of its own.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

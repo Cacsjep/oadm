@@ -11,7 +11,7 @@ import switchShot from '../../../assets/screens/radius-switch-dialog.png';
 
 With IEEE 802.1X a switch opens a port only for a device that proves who it is. The 802.1X server makes OADM the
 **RADIUS server** of your switches: when a camera plugs in, the switch asks OADM, and OADM checks the camera's certificate.
-Only cameras that OADM manages, with a certificate of the OADM CA, get onto the network.
+Only cameras that OADM manages, with a certificate of a CA you allow on the PKI page, get onto the network.
 
 It completes the certificates of OADM: the [PKI](../pki/) page gives the cameras their certificate, the
 [EST server](../est-server/) renews it, and the 802.1X server checks it at the port.
@@ -22,7 +22,7 @@ trial is active ([Activate OADM PRO](../../activate/)). When the license ends, O
 settings say for that case. Everything else in OADM works the same with or without a license.
 </Aside>
 
-<Image src={shot} alt="The 802.1X server page with General, the switches and the VLANs" class="screen" />
+<Image src={shot} alt="The 802.1X server page with the server, the switches, the sessions and the log" class="screen" />
 
 ## What you need
 
@@ -48,21 +48,18 @@ settings say for that case. Everything else in OADM works the same with or witho
 
 ## The page
 
-The page has four tabs: **Server**, **Sessions**, **Log** and **Revoked**.
+The page has the cards **Server** and **Switches**, then **Sessions** and **Log**. Drag the line between Sessions and Log
+to give one of them more room.
 
-### General
+### Server
 
 - **Listen on**: the network interface the switches reach the server on, or **All interfaces** (default).
 - **Port**: the UDP port the switches send to (default 1812).
 - **Log entries kept**: how many entries the log keeps, 1,000 to 50,000 (default 5,000).
 
-**Advanced** is closed at first: the defaults fit almost every network.
-
-- **Minimum TLS version**: TLS 1.2 (default) or TLS 1.3. TLS 1.0 and 1.1 are there for old devices only; they are no
-  longer considered secure.
-- **Cipher suites**: the secure set is checked. With TLS 1.0 or 1.1 the list also shows the older suites those versions
-  need. At least one suite must stay checked. **Reset to default** checks the secure set again.
-- **Largest fragment (bytes)**: 500 to 1,400 (default 1000). A switch can ask for smaller pieces.
+The card also says how many policies apply. The rules of the server (TLS version, cipher suites, largest EAP packet,
+how often cameras sign in again, which CAs pass, VLANs, blocked and revoked devices) are policies on the
+[PKI](../pki/) page: **Edit in PKI** opens it.
 
 ### Switches
 
@@ -78,63 +75,51 @@ Every switch that asks OADM: name, address, site, state and its last request.
 <Image src={switchShot} alt="The Add switch dialog with a generated shared secret" class="screen" />
 
 - **Add switch** opens the dialog: **Name**, **Address** (IP address or host name), **Site** (when you have sites) and the
-  **Shared secret**, 16 characters or more. **Generate** fills in a random secret and shows it once: copy it into the
+  **Shared secret**, 8 characters or more. **Generate** fills in a random secret and shows it once: copy it into the
   switch now. The dialog also names the address and port the switch must send to.
 - **Edit** changes a switch. Leave the secret empty to keep the current one.
 - **Delete** (red, with a confirmation) removes a switch. OADM no longer answers it.
 
 Changes to the switches apply at once, also while cameras sign in on other switches. A server takes up to 500 switches.
 
-### VLANs
-
-Off by default. With **Assign VLANs** on, OADM tells the switch which VLAN to put the camera in:
-
-- Rules in order: a **site** or a **tag** gives a **VLAN ID** (1 to 4094). The first rule that matches the camera counts.
-  Move rules up and down with the arrows.
-- **Default VLAN** (optional): for cameras no rule matches. Empty: no VLAN.
-
-A change applies at the next sign-in of each camera. **Save** stores General, Advanced and VLANs together.
-
 ### Sessions
 
-<Image src={sessionsShot} alt="The Sessions tab with cameras signing in" class="screen" />
+<Image src={sessionsShot} alt="The Sessions card with cameras signing in" class="screen" />
 
 The cameras signing in right now: started, switch, port, MAC address, EAP identity, device, IP address, state and how
 long it takes. The state says how far the camera got, for example **Sending server certificate: fragment 2 of 4** or
 **Checking client certificate**. Before the certificate is checked, the device is a guess from the MAC address and shows
-in italics; only the certificate decides. Finished sign-ins leave the tab after 10 seconds and stay in the log.
+in italics; only the certificate decides. Finished sign-ins leave the list after 10 seconds and stay in the log.
 
 ### Log
 
 Every sign-in: time, switch, port, MAC address, EAP identity, device, IP address, the result (**Authenticated** or
-**Failed** with the reason) and the VLAN. A camera that passed with something odd shows amber, for example when its MAC
-address does not match its certificate (a copied certificate shows this way).
+**Failed** with the reason) and the VLAN with the policy that gave it. A camera that passed with something odd shows
+amber, for example when its MAC address does not match its certificate (a copied certificate shows this way).
 
 - **Search** finds text in every column.
 - **View certificate** shows the certificate the camera sent (also a double click on a row).
 - **Delete all** (red, with a confirmation) empties the log for every client.
 
-### Revoked
-
-The certificates taken out of use, from the list of the [PKI](../pki/) page: device, serial number, date, reason and who
-revoked them. **Revoke** opens the list of certificates of the OADM CA: choose the certificates, click **Revoke** and pick
-the reason. A revoked certificate no longer gets a camera onto the network and is no longer renewed. This cannot be
-undone; the camera gets a new certificate with **Enable IEEE 802.1X** or Certificate enrollment.
+To revoke certificates, use **Revoke** in the Certificates card of the [PKI](../pki/) page, or a Revoke policy there.
 
 ## Who gets onto the network
 
 OADM lets a camera in only when its certificate:
 
-- comes from the OADM CA (or a CA in the trusted root store of the PKI page), is valid now and is meant for network access,
+- comes from a CA of an **Allow CA** policy on the PKI page (at the start the OADM CA and the Axis device ID), is valid
+  now and is meant for network access,
 - names a device OADM manages (its `axis-<serial>.local` name or its Axis device ID), at a site a device of that site,
-- is not revoked.
+  unless the policy lets in any device with a valid certificate,
+- is not revoked, and no **Block** or **Revoke** policy holds the device.
 
 A genuine Axis camera that OADM does not manage stays out. The name the camera sends before its certificate (the EAP
-identity) is shown, never trusted.
+identity) is shown, never trusted. A **VLAN** policy tells the switch which VLAN to put the camera in; a change applies at
+the next sign-in of each camera.
 
 ## Users with a device group
 
-Users limited to a [device group](../../admin/device-groups/) see the Sessions and Log tabs with the rows of their devices. Only users
+Users limited to a [device group](../../admin/device-groups/) see the Sessions and Log rows of their devices. Only users
 with all devices change the settings, the switches and the log.
 
 ## Troubleshooting
@@ -150,4 +135,5 @@ with all devices change the settings, the switches and the log.
 | **Certificate of a device OADM does not manage** | Add the camera to OADM, or check that it is the right camera. |
 | **Client certificate expired** | Renew the certificate (Renew certificates of the PKI page, or Certificate enrollment). |
 | **Certificate revoked** | Give the camera a new certificate with Enable IEEE 802.1X or Certificate enrollment. |
+| **Blocked by** a policy | Remove the camera from the Block policy on the PKI page. |
 | **Timed out** | The camera or the switch stopped answering. Check the cable, the switch port and its 802.1X settings. |

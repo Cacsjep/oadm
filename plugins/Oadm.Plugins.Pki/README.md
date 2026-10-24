@@ -48,7 +48,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
   (update-ca-certificates or update-ca-trust)", "<tool> failed: <first line>", "The installation was cancelled.".
   Tests use fakes only; nothing ever touches a real trust store.
 - Settings (`config`, `PkiValidation` shared by server and page): `deviceCertValidityDays` 365 (1..3650, shortened to the
-  CA's end when issuing, logged), `expiryWarningDays` 30 (1..365), `dot1x.eapolVersion` 1|2, `dot1x.identity`
+  CA's end when issuing, logged), `expiryWarningDays` 30 (1..365; since OADM 4.5 only read once: it becomes the Expiry
+  warning policy "All devices"), `dot1x.eapolVersion` 1|2, `dot1x.identity`
   mac|hostName|custom, `dot1x.customIdentity` (1..64 printable, placeholders `{serial}` `{hostName}` only),
   `dot1x.radiusCa` oadm|imported + `radiusCaPem` (`importRadiusCa` checks a PEM/DER CA certificate, Save stores it).
 - Page methods (`PkiMethods`, camelCase, errors as `{errors: {Field: message}}` or `{error}`): `getState` (status, ca,
@@ -56,14 +57,17 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
   `saveSettings`, `importRadiusCa`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
   after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
-- Page: two fixed tabs (`ui:PageTab`) **Certificate authority** (the cards below) and **Certificates** (below).
-- Tab Certificate authority (`HasOwnCards`, subtitle "Issues device certificates for HTTPS and IEEE 802.1X.", header chip "CA valid until
-  <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
-  cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
-  chips for the server and this computer, the source (Generated / Imported) as a "Source" row, buttons Install in trusted
-  root store, Export public certificate (PEM / DER menu), Back up, a separator, then Generate new CA, Import CA), Device certificates (the two fields; no issued-devices summary line), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
-  with Import... / View, one Save for both cards at the end of the IEEE 802.1X card, inputs 460 px wide), Previous certificate authorities (only when there are any: Name, Valid
-  until, Replaced, Export / Remove links, Remove red and confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
+- Page (since stage 3 of `docs/spec/pki.md`, one page without tabs, `HasOwnCards`, subtitle "Issues device certificates
+  for HTTPS and IEEE 802.1X."): Certificate authorities | Policies side by side from 1,280 px of page width (stacked
+  below), then Certificates (below), then Device certificates (the validity) and IEEE 802.1X (EAPOL version, EAP identity
+  + custom field, RADIUS server CA with Import / View, one Save for both cards at the end of the IEEE 802.1X card, inputs
+  460 px wide). Certificate authorities: Generate new CA and Import CA (a menu: "Own CA with its key" replaces the OADM CA,
+  "CA certificate only" adds a row) in the header; the OADM CA's chips (status "CA valid until <date>" ok / "CA expires in
+  N days" warning (within the longest Expiry warning) / "CA expired", "CA key cannot be read" error; the trusted root store
+  of the server and of this computer); the list (Name, Kind, Valid until, Used by: the Allow CA policies "802.1X: OADM CA,
+  managed only" and the services; View for every row, Export for a previous CA, Remove red for imported and previous
+  CAs, confirmed); Install in trusted root store, Export public certificate (PEM / DER menu) and Back up below it.
+  Policies: see "Policies". Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
   FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
   confirmation popups owned by the dialog. Last export folder per client in
   `LocalApplicationData/Oadm/plugins/oadm.pki/client.json`. Fake mode (`FakeOadmApi.Pki.cs`): in-memory CA + one previous
@@ -92,9 +96,28 @@ the only writers of the list of issued certificates (see "Issued certificates an
   one certificate; errors under the file `AuthorityFile`: not a certificate, larger than 1 MB, contains a private key, not
   a CA, expired, already in the list) and `removeAuthority` (imported only; refused while used: "Used by the 802.1X
   server. Remove it there first."). Both Admin ("manage", all devices, audited).
-- Page: card **Certificate authorities** after the CA card (Name, Kind, Valid until, Used by; View in `ui:CertificateWindow`,
-  Remove red for imported CAs; **Import CA** opens `ImportAuthorityWindow`). The Previous certificate authorities card stays.
-  Tests: `AuthorityTests`.
+- Page: the card **Certificate authorities** (see "Page" above; **Import CA** > "CA certificate only" opens
+  `ImportAuthorityWindow`). `removeAuthority` is also refused while a policy names the CA ("Used by the policy Contoso.
+  Change or delete the policy first."). Tests: `AuthorityTests`, `PolicyStoreTests`.
+
+## Policies (docs/spec/pki.md "Policies", "Code (stage 3)")
+
+- `Policies/`: `PolicyModels` (contract), `PolicyRules`, `PolicyMatcher`, `PolicyStore` (setting `policies`, part of the
+  backup), `ExpiryEvents`; `PkiService.Policies.cs` (the methods, PKI's own conversion, Revoke on save and every minute,
+  the expiry days handed to the host). Kinds of stage 3: 802.1X server (one only), Allow CA, VLAN, Block, Revoke, Expiry
+  warning. The 802.1X server inside PKI reads the store in process (`IPluginServices`); `Radius/Server/RadiusPolicies.cs`
+  converts its settings once.
+- Page: card **Policies** (`PoliciesViewModel`): the filter (All, Certificates, 802.1X, Revoke) as a segmented switch, rows
+  (Name, Kind, Summary with the warning of a later overlap, Devices, Edit and Delete icon buttons), **Add policy**; the
+  editor (`PolicyEditorViewModel`, `PolicyFormView` on the shared `DevicePickerWindow`; the device part only for kinds with
+  devices): Name, Kind (a new policy only) with VLAN ID or Days on its row, Allow CA's CA and "Only devices OADM manages",
+  the 802.1X server's Minimum TLS version, Cipher suites (Reset to default), Largest EAP packet, Reauthentication. A Revoke
+  policy asks first with `countRevocations`.
+- Events "Certificate expires soon", "Certificate expired" and their Any device twins (`ExpiryEvents`, group
+  "Certificates", the ids of OADM 4.1's built-in events).
+- Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (+ headless `pki-page-1700.png`, `pki-page-1000.png`,
+  `pki-policy-vlan.png`, `pki-policy-allow-ca.png`, `pki-policy-server.png`, `pki-policy-expiry.png`,
+  `pki-policy-revoke-question.png`), Perf `PolicyPerfTests` (30,000 devices).
 
 ## PKI Security tasks (part 2, contributed by `oadm.pki`)
 
@@ -182,8 +205,8 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   name; Skipped "Already installed" when the device has the fingerprint under any alias; alias "OADM CA <8 hex>" like
   the enable flows, "-2" when another certificate holds that alias), Verify CA certificates (every fingerprint listed,
   else Warning). Name "Install CA certificate <name>" / "Install N CA certificates".
-- Not done: the device grid's "Trusted (OADM CA)" / "Issued by a previous CA" texts and `expiryWarningDays` in the
-  Certificate expires column (OADM certificates already rate **Trusted** through the trust anchors). Task names do not
+- Not done: the device grid's "Trusted (OADM CA)" / "Issued by a previous CA" texts (OADM certificates already rate
+  **Trusted** through the trust anchors). The Certificate expires column follows the Expiry warning policies since stage 3. Task names do not
   distinguish Enable from Update or one renewed purpose (the name is fixed per run, before the device is read).
 - Tests (`tests/Oadm.Plugins.Pki.Tests`): parsers and request bodies against the recorded answers of the development camera (linked from
   `tests/Oadm.Plugins.Pki.Tests/Fixtures`), every task against `FakeCamera` (stateful REST cert v1 with real keys and CSRs, SOAP web
@@ -236,11 +259,11 @@ the CA service.
   (`ui:IssuedCertificateList` with `IssuedCertificateListViewModel`, also the 802.1X server's certificate choice; PKI reads
   through `PkiCertificateSource`): filters (state, use, issued by), search (300 ms after the last key), Previous / Next,
   `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one step and kept over a new
-  page, View certificate (`ui:CertificateWindow`, a double click too; its "ends soon" uses `CertificatesReply.WarningDays`,
-  the same days as the list); the page adds Revoke and Revoke all of
+  page, View certificate (`ui:CertificateWindow`, a double click too; its "ends soon" follows the row's state: each device
+  has the days of its Expiry warning policy, `CertificatesReply.WarningDays` is null); the page adds Revoke and Revoke all of
   this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
   "manage"; while either runs (Revoke all of this device reads the device first, up to 20 s) the list's progress row says
-  "Revoking the certificates" and both are off (`WorkText`; a write runs to its end, no Cancel). The tab reads only when shown; an event while the other tab is shown marks it to read when opened.
+  "Revoking the certificates" and both are off (`WorkText`; a write runs to its end, no Cancel). The card reads with the page; every `certificates` event reads the shown page again.
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
   View certificate describes a certificate the fake CA signs; Revoke changes the rows.
 

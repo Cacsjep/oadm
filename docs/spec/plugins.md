@@ -56,7 +56,9 @@ returns null or throws `NotSupportedException`.
   values by key, one row per record, `SetManyAsync` writes many in one transaction; for data that grows with the devices,
   where one settings value would be rewritten whole; `MemoryPluginRecords` for tests and hosts without a database; null
   on older hosts), `Logger`, `PluginDirectory` (never `Assembly.Location`), `Secrets` (AES-256-GCM with the master key),
-  `Events` (live events to the plugin's page), `TrustAnchors` (CAs the server trusts when rating device certificates),
+  `Events` (live events to the plugin's page), `TrustAnchors` (CAs the server trusts when rating device certificates;
+  SDK 0.4.0 `SetExpiryWarning(daysFor, defaultDays)`: the days of "expires soon" per device for the device grid and a new
+  Compliance check, only PKI's count, docs/spec/pki.md "Code (stage 3)"),
   `EventStreams` (a device's RTSP event stream with the stored credentials; the RTSP port per device), `Firewall` (UDP
   rules, Windows service only; `FirewallRuleKeeper`), `DataDirectory` (`<datafolder>/plugin-data/<id>`: working files, never a
   shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `EventSubscriptions` (every event the server

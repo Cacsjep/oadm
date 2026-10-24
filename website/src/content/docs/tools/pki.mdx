@@ -11,41 +11,79 @@ The PKI page runs one certificate authority (CA) on the OADM server. OADM uses i
 IEEE 802.1X on your devices. Devices with a certificate from this CA show **Trusted** in the device list without any
 change to the operating system.
 
-<Image src={shot} alt="The PKI page with the certificate authority, device certificate and IEEE 802.1X settings" class="screen" />
+<Image src={shot} alt="The PKI page with the certificate authorities, the policies and the certificates" class="screen" />
 
-## The certificate authority
+The page has the cards **Certificate authorities** and **Policies** (side by side on a wide window), **Certificates**,
+**Device certificates** and **IEEE 802.1X**.
 
-On the first start OADM creates a CA named "OADM Root CA" plus the server's name, valid for 10 years. The header shows
-how long it is valid and warns when it expires soon.
+## Certificate authorities
 
-The **Certificate authority** card shows the name, validity, key, fingerprint and source (Generated or Imported), and
-whether the CA is in the trusted root store of the server and of this computer.
+On the first start OADM creates a CA named "OADM Root CA" plus the server's name, valid for 10 years. Its chips show
+how long it is valid, warn when it expires soon and show whether it is in the trusted root store of the server and of
+this computer.
 
-- **Install in trusted root store** adds the CA to the operating system of the server or of this computer, so browsers
-  and other programs trust your devices.
+The list shows every CA OADM knows: the OADM CA, previous OADM CAs, the Axis device ID roots and the CAs you imported.
+**Used by** names the policies that use a CA. **View** shows a CA's certificate.
+
+- **Install in trusted root store** adds the OADM CA to the operating system of the server or of this computer, so
+  browsers and other programs trust your devices.
 - **Export public certificate** saves the CA certificate as PEM or DER.
 - **Back up** saves the CA with its key as a password-protected file (at least 8 characters).
 - **Generate new CA** creates a new CA (1 to 30 years).
-- **Import CA** uses your own CA: a PKCS#12 file with its password, or a PEM certificate with its key.
+- **Import CA** > **Own CA with its key** uses your own CA: a PKCS#12 file with its password, or a PEM certificate with
+  its key. **Import CA** > **CA certificate only** adds another CA, for example to let its devices onto the network.
+- **Remove** (red, with a confirmation) removes an imported or previous CA. A CA that a policy uses cannot be removed.
 
 ### Replace the CA
 
 <Steps>
 
-1. Click **Generate new CA** or **Import CA**.
+1. Click **Generate new CA** or **Import CA** > **Own CA with its key**.
 2. Fill in the dialog. Errors show below the fields.
 3. Confirm. OADM tells you how many devices have certificates from the current CA. They keep working until they are
    renewed.
 
 </Steps>
 
-The old CA moves to **Previous certificate authorities**. Devices with its certificates stay trusted. You can export or
-remove a previous CA there.
+The old CA stays in the list as a previous CA. Devices with its certificates stay trusted. You can export or remove it
+there.
+
+## Policies
+
+The policies are the rules for certificates and for the [802.1X server](../radius-server/). Filter them with **All**,
+**Certificates**, **802.1X** and **Revoke**. **Add policy** adds one; Edit and Delete sit at the end of each row.
+
+| Kind | What it does | Devices |
+|---|---|---|
+| **802.1X server** | Minimum TLS version, cipher suites, largest EAP packet and how often cameras sign in again (the switch decides, or every N minutes). One only. | no |
+| **Allow CA** | Lets devices with a certificate of this CA onto the network: only devices OADM manages (default) or any device. | no |
+| **VLAN** | Puts the devices in a VLAN (1 to 4094). | yes |
+| **Block** | Keeps the devices off the network. | yes |
+| **Revoke** | Revokes the certificates of the devices, also every new one while the policy exists. | devices and sites |
+| **Expiry warning** | How many days before the end a certificate shows as expiring soon. | yes |
+
+At the start OADM has the policies "802.1X server", "OADM CA" and "Axis device ID" (Allow CA, only devices OADM
+manages) and "All devices" (Expiry warning, 30 days).
+
+- A device can be in only one policy of each kind: saving names the device that is in two. Each CA is in one Allow CA
+  policy at most.
+- When a later tag or site change puts a device in two policies, both rows show a warning and the safer one applies:
+  Block over VLAN, the older of two VLAN policies, the longer of two expiry warnings.
+- A device without a VLAN policy gets no VLAN from OADM: the switch port keeps its own.
+- A change applies at once. The days of the expiry warning are also used by the device list's **Certificate expires**
+  column, the events **Certificate expires soon** and **Certificate expired** ([Event rules](../event-rules/)) and new
+  checks on the [Compliance](../../devices/compliance/) page.
+- **Revoke** asks first and says how many certificates it revokes. This cannot be undone.
+
+## Certificates
+
+Every certificate the OADM CA issued: device, use, valid until and state. **Search** finds text in every column.
+**View certificate** shows it (also a double click). **Revoke** takes the chosen certificates out of use: they no longer
+get a camera onto the network and are no longer renewed.
 
 ## Settings
 
-- **Device certificates**: how many days a device certificate is valid (default 365) and how many days before expiry
-  OADM warns (default 30).
+- **Device certificates**: how many days a device certificate is valid (default 365).
 - **IEEE 802.1X**: the EAPOL version, the EAP identity (MAC address, host name or a custom text) and the CA of your
   RADIUS server (the OADM CA or one you import).
 

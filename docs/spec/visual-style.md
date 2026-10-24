@@ -152,7 +152,8 @@ counts, the devices a chosen site or tag covers checked and locked with "Site Bu
 single devices tickable, a row link **Except** / **Include** (an excepted device shows "Excepted from Site Building B"),
 the live count "412 of 4,812 devices", search also over the site name, result `DeviceGroupChoice` (serials of devices
 not listed are kept); the window's constructor takes a form shown on top of the card, `AcceptButton` and `Accept` (the
-window closes only when it returns true), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
+window closes only when it returns true), `IsPickerVisible` false shows the form alone (the window as high as the form: a
+PKI policy kind without devices), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
 list; 30,000 devices tested) and
 `PageDeviceChoice` (the device choice of every page that reads many devices: the purple "Selected devices" button text,
 All devices / tags / chosen devices resolved now, the Devices page selection to start with, the last choice kept on this

@@ -135,8 +135,11 @@ plugin"); only these two servers need OADM PRO, PKI itself never does (Plugins p
 "802.1X and EST servers need OADM PRO.").
 One certificate authority for device certificates (generated on first start or imported), the server's trust in it, and
 the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
-Delete and Install certificates, Install CA certificates; the list of every certificate the OADM CA issued and the
-revocation list (tab **Certificates**, Revoke; docs/spec/radius-server.md "Certificates and revocation"). Details: plugin
+Delete and Install certificates, Install CA certificates; one page (docs/spec/pki.md "The PKI page"): the certificate
+authorities, the policies (802.1X server, Allow CA, VLAN, Block, Revoke, Expiry warning; the 802.1X server reads its rules
+there) and the list of every certificate the OADM CA issued with the revocation list (Revoke; docs/spec/radius-server.md
+"Certificates and revocation"); the events "Certificate expires soon" and "Certificate expired" (group "Certificates").
+Details: plugin
 `README.md`; device API research:
 `tests/Oadm.Plugins.Pki.Tests/Fixtures/`.
 
@@ -519,16 +522,18 @@ Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugi
 its own source-available `Radius/LICENSE`, UDP 1812 at sites. The server is off by default: **Turn on** / **Turn off** on its
 page (stored choice); it runs, and opens UDP 1812, only while it is on and OADM PRO is active. Spec:
 `docs/spec/radius-server.md`; details: `Radius/README.md`. The switches' RADIUS server on UDP 1812 (Listen on) and at
-every site with switches (the node's relay); EAP-TLS with the server certificate from the OADM CA; Sessions, Log, VLAN
-rules, the event rules "Device authenticated" and "Authentication failed".
+every site with switches (the node's relay); EAP-TLS with the server certificate from the OADM CA; Sessions, Log, the
+event rules "Device authenticated" and "Authentication failed"; its rules (TLS, trusted CAs, VLAN, Block, Revoke) are PKI's
+policies (docs/spec/pki.md "Policies").
 
-- Rules that must hold: only devices whose client certificate passes (issued by the OADM CA or a previous OADM CA
-  itself, a root above them only anchoring the chain, or the Axis device ID roots; nothing of the OADM CA without PKI; client authentication; exactly one managed device; at a site a device of that site;
-  not on PKI's revocation list) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
+- Rules that must hold: only devices whose client certificate passes (issued directly by a CA of an Allow CA policy, a
+  root above it only anchoring the chain, or the Axis device ID roots; nothing without PKI and its policies; client
+  authentication; exactly one managed device unless the policy allows any device; at a site a device of that site; not on
+  PKI's revocation list; no Block or Revoke policy holds it) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
   and requests of unknown senders are dropped, never answered; OADM PRO is checked on every request; shared secrets are
   stored only encrypted, never logged and never sent to a page; keys are never logged.
-- Roles and device groups: reading for everyone with the page; Turn on, Turn off, saves, Delete all and Revoke Admin
-  (permission "Change the 802.1X server", `oadm.radius:manage` as in 4.1), audited, and only for users with all devices; Revoke also needs PKI's "Manage the certificate
-  authority" and takes only IEEE 802.1X certificates; a user with a group sees the Sessions, Log and Revoked rows of the
+- Roles and device groups: reading for everyone with the page; Turn on, Turn off, saves and Delete all Admin
+  (permission "Change the 802.1X server", `oadm.radius:manage` as in 4.1), audited, and only for users with all devices;
+  the policies need PKI's "Manage the certificate authority"; a user with a group sees the Sessions and Log rows of the
   group's devices (rows without a managed device never), no server-wide settings and only the switches of the group's
   routes.
