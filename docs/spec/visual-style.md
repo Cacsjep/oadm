@@ -93,7 +93,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   (`CanResize="False"`: a resizable border-only window shows a white resize strip on top on Windows), like a dialog on a
   web page. The main window and plugin windows keep the custom title bar.
 - Text fields, number fields and select fields: text vertically centered (measured; select
-  fields need the Inter correction, text boxes do not). A focused field has the accent border (select and number
+  fields and text boxes alike, no Inter correction: `Padding` 10,0,8,0, the placeholder of a select at the height of a chosen item). A focused field has the accent border (select and number
   fields too, also after a click). The mouse wheel over a closed select field or a number field scrolls the page and never
   changes the value (`Infrastructure/WheelScroll`, attached in `App`, so plugin views too; test `WheelScrollTests`).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
