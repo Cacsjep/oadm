@@ -460,7 +460,7 @@ public sealed partial class RadiusLog : IAsyncDisposable
     private static string Searchable(LogRow row) => string.Join('\u001f',
         row.TimeUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), row.SwitchName, row.Port, row.Mac, row.Identity, row.DeviceName,
         row.IpAddress, row.Result == LogResults.Authenticated ? "Authenticated" : "Failed", row.Reason, row.Warning,
-        row.Vlan?.ToString(CultureInfo.InvariantCulture), row.CertificateSerial);
+        row.Vlan?.ToString(CultureInfo.InvariantCulture), row.VlanPolicy, row.CertificateSerial);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: saving the log failed; tried again in a few seconds")]
     private partial void LogFlushFailed(Exception ex);

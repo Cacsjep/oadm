@@ -1,141 +1,81 @@
-using Oadm.Plugins.Radius.Api;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Radius.Server;
 
 /// <summary>
-/// The policies compiled for the certificate check (docs/spec/radius-server.md "Policies"): in order, the first VLAN policy
-/// whose devices hold the device gives its VLAN, else the default VLAN (only while a VLAN policy exists), else none; any
-/// block policy that holds it refuses it, any revoke policy refuses it and revokes its certificate. Immutable; a save
-/// replaces it, so it applies to the next authentication of each device. The tag parts of VLAN policies apply only while
-/// the host protects the tags (<see cref="IProtectedTags"/>); without it they match no device (fail closed: a group user
-/// could tag a device into a VLAN). Block policies keep their tag parts (fail closed the other way). Revoke policies never
-/// match by tag, also stored ones from before the rule: a tag could revoke the certificates of every device that gets it
-/// later, without undo.
+/// PKI's VLAN, Block and Revoke policies compiled for the certificate check (docs/spec/pki.md "Policies"): of the VLAN
+/// policies that hold a device the oldest gives its VLAN, none gives no VLAN (the switch port keeps its own; there is no
+/// default VLAN); any Block or Revoke policy that holds it refuses it (Block over VLAN), a Revoke policy also revokes its
+/// certificate. Immutable; a change of the policies builds a new one before the next handshake. The tag parts of VLAN
+/// policies apply only while the host protects the tags (<see cref="IProtectedTags"/>); without it they match no device
+/// (fail closed: a group user could tag a device into a VLAN). Block policies keep their tag parts (fail closed the other
+/// way). Revoke policies never match by tag: a tag could revoke the certificates of every device that gets it later.
 /// </summary>
 public sealed class PolicyPlan
 {
-    private readonly IReadOnlyList<Compiled> _policies;
+    private readonly (PkiPolicy Policy, PolicyMatcher Matcher)[] _vlans;
+    private readonly (PkiPolicy Policy, PolicyMatcher Matcher)[] _refusals;
 
-    public PolicyPlan(PolicySettings settings, bool tagsProtected = true)
+    /// <param name="policies">PKI's policies in age order (oldest first); other kinds are skipped.</param>
+    /// <param name="tagsProtected">The host protects the policies' tags.</param>
+    public PolicyPlan(IEnumerable<PkiPolicy> policies, bool tagsProtected = true)
     {
-        ArgumentNullException.ThrowIfNull(settings);
-        _policies = [.. (settings.Policies ?? []).Select(p => new Compiled(p, UsesTags(p, tagsProtected)))];
-        VlansEnabled = _policies.Any(p => p.Policy.Kind == PolicyKinds.Vlan);
-        DefaultVlan = VlansEnabled ? settings.DefaultVlan : null;
-        RevokePolicies = [.. _policies.Where(p => p.Policy.Kind == PolicyKinds.Revoke).Select(p => p.Policy)];
+        ArgumentNullException.ThrowIfNull(policies);
+        var list = policies.Where(p => p is not null).ToList();
+        _vlans = [.. list.Where(p => p.Kind == PolicyKinds.Vlan && p.Vlan is >= 1 and <= 4094).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
+        _refusals = [.. list.Where(p => p.Kind is PolicyKinds.Block or PolicyKinds.Revoke).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
+        RevokePolicies = [.. list.Where(p => p.Kind == PolicyKinds.Revoke)];
+    }
+
+    private PolicyPlan()
+        : this([])
+    {
+        IsUnavailable = true;
     }
 
     /// <summary>No policies: no VLAN, nobody blocked.</summary>
-    public static PolicyPlan Off { get; } = new(new PolicySettings());
+    public static PolicyPlan Off { get; } = new([]);
 
-    /// <summary>A VLAN policy exists (VLANs stay off until then).</summary>
-    public bool VlansEnabled { get; }
+    /// <summary>PKI's policies cannot be read (PKI stopped): every device is refused (fail closed).</summary>
+    public static PolicyPlan Unavailable { get; } = new();
 
-    /// <summary>The VLAN of devices no VLAN policy holds (null while no VLAN policy exists).</summary>
-    public int? DefaultVlan { get; }
+    /// <summary>The plan of no store: the certificate check refuses every device.</summary>
+    public bool IsUnavailable { get; }
 
-    public IReadOnlyList<RadiusPolicy> RevokePolicies { get; }
+    public IReadOnlyList<PkiPolicy> RevokePolicies { get; }
 
-    /// <summary>The tag names of the policies (the tags the host protects), case-insensitive, distinct.</summary>
-    public static IReadOnlyList<string> TagsOf(PolicySettings settings)
+    /// <summary>The VLAN of <paramref name="device"/> and the policy that gives it; (null, null) for none or a device OADM does not manage.</summary>
+    public (int? Vlan, string? Policy) VlanFor(IDeviceInfo? device)
     {
-        ArgumentNullException.ThrowIfNull(settings);
-        return [.. (settings.Policies ?? []).SelectMany(p => p.Devices?.Tags ?? []).Where(t => !string.IsNullOrWhiteSpace(t))
-            .Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)];
-    }
-
-    /// <summary>The VLAN of <paramref name="device"/> (null: none); a device OADM does not manage gets the default VLAN.</summary>
-    public int? VlanFor(IDeviceInfo? device)
-    {
-        if (!VlansEnabled)
+        if (device is null)
         {
-            return null;
+            return (null, null);
         }
 
-        if (device is not null)
+        foreach (var (policy, matcher) in _vlans)
         {
-            foreach (var compiled in _policies)
+            if (matcher.Holds(device))
             {
-                if (compiled.Policy.Kind == PolicyKinds.Vlan && compiled.Holds(device))
-                {
-                    return compiled.Policy.Vlan;
-                }
+                return (policy.Vlan, policy.Name);
             }
         }
 
-        return DefaultVlan;
+        return (null, null);
     }
 
-    /// <summary>The first block or revoke policy that holds <paramref name="device"/>, null when none does.</summary>
-    public RadiusPolicy? RefusalFor(IDeviceInfo device)
+    /// <summary>The oldest Block or Revoke policy that holds <paramref name="device"/>, null when none does.</summary>
+    public PkiPolicy? RefusalFor(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        foreach (var compiled in _policies)
+        foreach (var (policy, matcher) in _refusals)
         {
-            if (compiled.Policy.Kind is PolicyKinds.Block or PolicyKinds.Revoke && compiled.Holds(device))
+            if (matcher.Holds(device))
             {
-                return compiled.Policy;
+                return policy;
             }
         }
 
         return null;
-    }
-
-    /// <summary><paramref name="policy"/>'s devices hold <paramref name="device"/> (used for revoke policies: never by tag).</summary>
-    public static bool Holds(RadiusPolicy policy, IDeviceInfo device) => new Compiled(policy, UsesTags(policy, tagsProtected: true)).Holds(device);
-
-    /// <summary>A revoke policy never matches by tag; a VLAN policy only while the host protects the tags.</summary>
-    private static bool UsesTags(RadiusPolicy policy, bool tagsProtected) =>
-        policy.Kind != PolicyKinds.Revoke && (tagsProtected || policy.Kind != PolicyKinds.Vlan);
-
-    private sealed class Compiled
-    {
-        private readonly bool _thisServer;
-        private readonly HashSet<Guid> _sites;
-        private readonly HashSet<string> _tags;
-        private readonly HashSet<string> _serials;
-        private readonly HashSet<string> _except;
-
-        public Compiled(RadiusPolicy policy, bool useTags)
-        {
-            Policy = policy;
-            var devices = policy.Devices ?? new PolicyDevices();
-            _thisServer = devices.ThisServer;
-            _sites = [.. devices.SiteIds ?? []];
-            _tags = useTags ? new HashSet<string>((devices.Tags ?? []).Select(t => t.Trim()), StringComparer.OrdinalIgnoreCase) : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            _serials = new HashSet<string>((devices.Serials ?? []).Select(s => s.Trim()), StringComparer.OrdinalIgnoreCase);
-            _except = new HashSet<string>((devices.ExceptSerials ?? []).Select(s => s.Trim()), StringComparer.OrdinalIgnoreCase);
-        }
-
-        public RadiusPolicy Policy { get; }
-
-        public bool Holds(IDeviceInfo device)
-        {
-            if (_except.Contains(device.Serial))
-            {
-                return false;
-            }
-
-            if (_serials.Contains(device.Serial) || (device.SiteId is { } site ? _sites.Contains(site) : _thisServer))
-            {
-                return true;
-            }
-
-            if (_tags.Count == 0)
-            {
-                return false;
-            }
-
-            foreach (var tag in device.Tags)
-            {
-                if (_tags.Contains(tag))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 }

@@ -18,7 +18,7 @@ public static class RadiusMethods
     /// <summary>() -> <see cref="RadiusState"/>.</summary>
     public const string GetState = "getState";
 
-    /// <summary><see cref="RadiusSettings"/> -> <see cref="RadiusState"/>. Users with all devices. The VLAN fields are ignored (saveVlans).</summary>
+    /// <summary><see cref="RadiusSettings"/> -> <see cref="RadiusState"/>. Users with all devices.</summary>
     public const string SaveSettings = "saveSettings";
 
     /// <summary>() -> <see cref="SwitchList"/>.</summary>
@@ -45,28 +45,8 @@ public static class RadiusMethods
     /// <summary><see cref="LogEntryRef"/> -> <see cref="LogCertificate"/>: the client certificate of a log row.</summary>
     public const string GetLogCertificate = "getLogCertificate";
 
-    /// <summary>() -> <see cref="SiteList"/>: the bound sites (the Site of a switch, VLAN rules by site); a group user: the group's sites.</summary>
+    /// <summary>() -> <see cref="SiteList"/>: the bound sites (the Site of a switch); a group user: the group's sites.</summary>
     public const string ListSites = "listSites";
-
-
-    /// <summary>() -> <see cref="TrustedCaList"/>: PKI's CAs with this server's choice. A group user: an empty list.</summary>
-    public const string GetTrustedCas = "getTrustedCas";
-
-    /// <summary><see cref="TrustedCaSettings"/> -> <see cref="TrustedCaList"/>. Users with all devices.</summary>
-    public const string SaveTrustedCas = "saveTrustedCas";
-
-    /// <summary>() -> <see cref="PolicySettings"/>. A group user: empty settings.</summary>
-    public const string GetPolicies = "getPolicies";
-
-    /// <summary>
-    /// <see cref="PolicySettings"/> -> <see cref="PolicySettings"/>: the whole ordered list. Users with all devices; a new or
-    /// changed revoke policy also needs PKI's "Manage the certificate authority". Revoke policies revoke the current IEEE
-    /// 802.1X certificates of their devices with the save.
-    /// </summary>
-    public const string SavePolicies = "savePolicies";
-
-    /// <summary><see cref="PolicyDevices"/> -> <see cref="RevocationCount"/>: the IEEE 802.1X certificates a revoke policy would revoke now. Users with all devices.</summary>
-    public const string CountRevocations = "countRevocations";
 }
 
 /// <summary>The page's names of the methods beyond the first contract (the same values as <see cref="RadiusMethods"/>).</summary>
@@ -97,9 +77,6 @@ public static class SessionStates
 /// <summary>The answer of <see cref="RadiusMethods.ListSites"/>.</summary>
 public sealed record SiteList(IReadOnlyList<SiteRef> Sites);
 
-/// <summary>A tag of the VLAN rules' choice: its id (the tag name: tags are known by name to plugins) and its name.</summary>
-public sealed record TagChoice(string Id, string Name);
-
 /// <summary>The live event topics (<c>WatchEventsAsync</c>).</summary>
 public static class RadiusTopics
 {
@@ -129,25 +106,13 @@ public static class RadiusLimits
     public const int DefaultLogKept = 5_000;
     public const int MinLogKept = 1_000;
     public const int MaxLogKept = 50_000;
-    public const int MinFragment = 500;
-    public const int MaxFragment = 1_400;
-    public const int DefaultFragment = 1_020; // RFC 3748 3.1: the EAP MTU every link guarantees
-    public const int MinVlan = 1;
-    public const int MaxVlan = 4094;
     public const int MaxSwitches = 500;
-    public const int MaxPolicies = 100;
-    public const int MinSecretLength = 16;
+
+    /// <summary>The shortest shared secret (8 characters, decision 2026-10-24: switches of some vendors take no longer ones; Generate makes 24).</summary>
+    public const int MinSecretLength = 8;
     public const int MaxSecretLength = 128;
     public const int MaxNameLength = 64;
     public const int MaxLogPage = 500;
-
-    /// <summary>The minimum TLS versions of the select, oldest first.</summary>
-    public static IReadOnlyList<string> TlsVersions { get; } = ["1.0", "1.1", "1.2", "1.3"];
-
-    public const string DefaultMinimumTls = "1.2";
-
-    /// <summary>The site id of "This server" in a VLAN rule of kind site.</summary>
-    public static readonly string ThisServerSiteId = Guid.Empty.ToString();
 }
 
 /// <summary>Switch states of <see cref="SwitchRow.State"/>.</summary>
@@ -166,122 +131,7 @@ public static class LogResults
     public const string Failed = "failed";
 }
 
-/// <summary>Kinds of <see cref="VlanRule.Kind"/>.</summary>
-public static class VlanRuleKinds
-{
-    public const string Site = "site";
-    public const string Tag = "tag";
-}
-
-/// <summary>Kinds of <see cref="RadiusPolicy.Kind"/>.</summary>
-public static class PolicyKinds
-{
-    /// <summary>The devices get <see cref="RadiusPolicy.Vlan"/>; the first matching VLAN policy wins.</summary>
-    public const string Vlan = "vlan";
-
-    /// <summary>The devices are refused ("Blocked by policy Building C"); nothing is revoked.</summary>
-    public const string Block = "block";
-
-    /// <summary>The IEEE 802.1X certificates of the devices are revoked in PKI (on save and new ones while it exists).</summary>
-    public const string Revoke = "revoke";
-}
-
-/// <summary>
-/// The devices of a policy, chosen like a device group (the shared device picker's group mode): every device without a site
-/// (<see cref="ThisServer"/>), the devices of <see cref="SiteIds"/>, the devices with one of <see cref="Tags"/> (by name),
-/// single devices by serial, minus <see cref="ExceptSerials"/>.
-/// </summary>
-public sealed record PolicyDevices
-{
-    public bool ThisServer { get; init; }
-
-    public IReadOnlyList<Guid> SiteIds { get; init; } = [];
-
-    public IReadOnlyList<string> Tags { get; init; } = [];
-
-    /// <summary>Serial numbers (12 hex digits, upper case).</summary>
-    public IReadOnlyList<string> Serials { get; init; } = [];
-
-    public IReadOnlyList<string> ExceptSerials { get; init; } = [];
-
-    /// <summary>No site, tag or device is chosen.</summary>
-    [JsonIgnore]
-    public bool IsEmpty => !ThisServer && (SiteIds?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && (Serials?.Count ?? 0) == 0;
-}
-
-/// <summary>One policy of the Policies card, in order.</summary>
-public sealed record RadiusPolicy
-{
-    /// <summary>Empty for a new policy (the server gives it an id).</summary>
-    public Guid Id { get; init; }
-
-    public string Name { get; init; } = string.Empty;
-
-    /// <summary>One of <see cref="PolicyKinds"/>.</summary>
-    public string Kind { get; init; } = PolicyKinds.Vlan;
-
-    /// <summary>The VLAN of a VLAN policy (1..4094); null for the other kinds.</summary>
-    public int? Vlan { get; init; }
-
-    public PolicyDevices Devices { get; init; } = new();
-
-    /// <summary>Set by the server: who saved a revoke policy (the user of its later revocations).</summary>
-    public string? SavedBy { get; init; }
-}
-
-/// <summary>The policies (<see cref="RadiusMethods.GetPolicies"/>, <see cref="RadiusMethods.SavePolicies"/>).</summary>
-public sealed record PolicySettings
-{
-    public IReadOnlyList<RadiusPolicy> Policies { get; init; } = [];
-
-    /// <summary>The VLAN of devices no VLAN policy matches; null = none. Applies only while a VLAN policy exists.</summary>
-    public int? DefaultVlan { get; init; }
-
-    /// <summary>Answers only (ignored on save): the tags a policy can name (those of the managed devices and of the policies).</summary>
-    public IReadOnlyList<TagChoice> TagChoices { get; init; } = [];
-}
-
-/// <summary>The answer of <see cref="RadiusMethods.CountRevocations"/>.</summary>
-public sealed record RevocationCount(int Count);
-
-/// <summary>One CA of the Trusted CAs card: PKI's CA and this server's choice. Previous OADM CAs follow the OADM CA (no rows).</summary>
-public sealed record TrustedCaRow
-{
-    /// <summary>PKI's id (<see cref="CertificateAuthorityInfo.Id"/>).</summary>
-    public string Id { get; init; } = string.Empty;
-
-    public string Name { get; init; } = string.Empty;
-
-    public CertificateAuthorityKind Kind { get; init; }
-
-    public DateTime NotAfterUtc { get; init; }
-
-    /// <summary>Checked: certificates it issued may pass.</summary>
-    public bool Trusted { get; init; }
-
-    /// <summary>"Only devices OADM manages" (default on).</summary>
-    public bool OnlyManaged { get; init; } = true;
-
-    /// <summary>The OADM CA: how many previous OADM CAs it covers.</summary>
-    public int PreviousCount { get; init; }
-}
-
-/// <summary>The answer of <see cref="RadiusMethods.GetTrustedCas"/>.</summary>
-public sealed record TrustedCaList
-{
-    public IReadOnlyList<TrustedCaRow> Cas { get; init; } = [];
-}
-
-/// <summary>A checked CA of <see cref="TrustedCaSettings"/>.</summary>
-public sealed record TrustedCaChoice(string Id, bool OnlyManaged = true);
-
-/// <summary>The checked CAs (<see cref="RadiusMethods.SaveTrustedCas"/>); a CA left out is not trusted.</summary>
-public sealed record TrustedCaSettings
-{
-    public IReadOnlyList<TrustedCaChoice> Cas { get; init; } = [];
-}
-
-/// <summary>The settings of the Server card and Advanced.</summary>
+/// <summary>The settings of the Server card (the TLS settings are the 802.1X server policy of PKI).</summary>
 public sealed record RadiusSettings
 {
     /// <summary>The interface id of "Listen on" (<see cref="InterfaceOptions.AllId"/> = every address).</summary>
@@ -294,29 +144,6 @@ public sealed record RadiusSettings
 
     /// <summary>Log entries kept (1,000..50,000).</summary>
     public int LogKept { get; init; } = RadiusLimits.DefaultLogKept;
-
-    /// <summary>"1.0", "1.1", "1.2" (default) or "1.3".</summary>
-    public string MinimumTls { get; init; } = RadiusLimits.DefaultMinimumTls;
-
-    /// <summary>The checked cipher suites (IANA ids); the server fills the secure default set.</summary>
-    public IReadOnlyList<int> CipherSuites { get; init; } = [];
-
-    /// <summary>Bytes of TLS data per EAP message (500..1400).</summary>
-    public int LargestFragment { get; init; } = RadiusLimits.DefaultFragment;
-}
-
-/// <summary>One cipher suite of Advanced.</summary>
-/// <param name="Id">IANA id.</param>
-/// <param name="Name">IANA name.</param>
-/// <param name="Legacy">An old AES-CBC SHA-1 suite: listed only for a minimum of TLS 1.0 or 1.1.</param>
-/// <param name="Tls13">A TLS 1.3 suite (the others are for TLS 1.2 and older).</param>
-public sealed record CipherSuiteOption(int Id, string Name, bool Legacy, bool Tls13)
-{
-    /// <summary>
-    /// The server's certificate can use it (its key is ECDSA: the ECDHE_RSA suites are listed but never negotiated). At least
-    /// one checked suite must be usable.
-    /// </summary>
-    public bool Usable { get; init; } = true;
 }
 
 /// <summary>The server's own certificate (issued by the OADM CA).</summary>
@@ -345,8 +172,8 @@ public sealed record RadiusState
 
     public RadiusSettings Settings { get; init; } = new();
 
-    /// <summary>Every cipher suite the server can offer, in the page's order.</summary>
-    public IReadOnlyList<CipherSuiteOption> CipherSuitesListed { get; init; } = [];
+    /// <summary>The policies of PKI the server applies (802.1X server, Allow CA, VLAN, Block, Revoke): "6 policies apply".</summary>
+    public int PoliciesApply { get; init; }
 
     /// <summary>"Listen on": All interfaces first, then the server's interfaces.</summary>
     public IReadOnlyList<InterfaceOption> Interfaces { get; init; } = [];
@@ -356,7 +183,7 @@ public sealed record RadiusState
 
     public IReadOnlyList<SiteRef> SitesNotAllowed { get; init; } = [];
 
-    /// <summary>The caller has all devices (General, Switches and VLANs can be changed).</summary>
+    /// <summary>The caller has all devices (the Server card and Switches can be changed).</summary>
     public bool HasAllDevices { get; init; }
 
     public UnknownRequests UnknownRequests { get; init; } = new(0, null, null, null);
@@ -416,28 +243,6 @@ public sealed record SwitchRef(Guid Id);
 
 public sealed record GeneratedSecret(string Secret);
 
-/// <summary>One VLAN rule: a site or a tag gets a VLAN; rules in order, the first match wins.</summary>
-/// <param name="Kind">"site" or "tag".</param>
-/// <param name="RefId">The site id (<see cref="RadiusLimits.ThisServerSiteId"/> = This server) or the tag name.</param>
-/// <param name="RefName">The site or tag name as shown (set by the server).</param>
-public sealed record VlanRule(string Kind, string RefId, string? RefName, int Vlan);
-
-public sealed record VlanSettings
-{
-    public bool Enabled { get; init; }
-
-    public IReadOnlyList<VlanRule> Rules { get; init; } = [];
-
-    /// <summary>Null = no VLAN for devices no rule matches.</summary>
-    public int? DefaultVlan { get; init; }
-
-    /// <summary>
-    /// Answers only (ignored on save, never stored): the tags a rule can name, those of the managed devices and of the rules,
-    /// by name. A user limited to a group gets the tags of the rules only.
-    /// </summary>
-    public IReadOnlyList<TagChoice> TagChoices { get; init; } = [];
-}
-
 /// <summary>Fragment n of m of a session.</summary>
 public sealed record FragmentInfo(int N, int M);
 
@@ -483,6 +288,9 @@ public sealed record SessionRow
     public long DurationMs { get; init; }
 
     public int? Vlan { get; init; }
+
+    /// <summary>The VLAN policy that gave <see cref="Vlan"/> ("VLAN 30 by Building B"); null for none.</summary>
+    public string? VlanPolicy { get; init; }
 
     /// <summary>"TLS 1.2", "TLS 1.3"; null before it is known.</summary>
     public string? TlsVersion { get; init; }
@@ -541,6 +349,9 @@ public sealed record LogRow
 
     public int? Vlan { get; init; }
 
+    /// <summary>The VLAN policy that gave <see cref="Vlan"/> ("VLAN 30 by Building B"); null for none.</summary>
+    public string? VlanPolicy { get; init; }
+
     /// <summary>The serial number of the client certificate, when the device sent one.</summary>
     public string? CertificateSerial { get; init; }
 
@@ -594,135 +405,28 @@ public static class RadiusRules
 {
     public const string PortRange = "Use 1 to 65535.";
     public const string LogKeptRange = "Keep from 1,000 to 50,000 entries.";
-    public const string FragmentRange = "Use 500 to 1,400 bytes.";
-    public const string ChooseTls = "Choose a TLS version.";
-    public const string CheckCipherSuite = "Check at least one cipher suite for the chosen TLS versions.";
     public const string EnterName = "Enter a name.";
     public const string NameTooLong = "Use at most 64 characters.";
     public const string NameTaken = "Another switch has this name.";
     public const string EnterAddress = "Enter an IP address or a host name.";
     public const string AddressTaken = "Another switch has this address.";
     public const string EnterSecret = "Enter a shared secret.";
-    public const string SecretTooShort = "Use 16 characters or more.";
+    public const string SecretTooShort = "Use 8 characters or more.";
     public const string SecretTooLong = "Use at most 128 characters.";
     public const string SecretCharacters = "Use letters, digits and punctuation, no spaces.";
-    public const string VlanRange = "Use 1 to 4094.";
     public const string TooManySwitches = "At most 500 switches.";
-    public const string PolicyNameTaken = "Another policy has this name.";
-    public const string ChoosePolicyKind = "Choose a kind.";
-    public const string ChoosePolicyDevices = "Choose sites, tags or devices.";
-    public const string TooManyPolicies = "Use at most 100 policies.";
-    public const string RevokeNoTags = "Revoke policies choose devices and sites, not tags.";
-    public const string PolicyListedTwice = "A policy is in the list twice. Reload the page and change it again.";
 
-    /// <summary>The first error of the policies (field "policies[2].vlan", "defaultVlan"); null when they are fine.</summary>
-    public static RadiusFieldError? Validate(PolicySettings policies)
-    {
-        ArgumentNullException.ThrowIfNull(policies);
-        var list = policies.Policies ?? [];
-        if (list.Count > RadiusLimits.MaxPolicies)
-        {
-            return new("policies", TooManyPolicies);
-        }
-
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var ids = new HashSet<Guid>();
-        for (var i = 0; i < list.Count; i++)
-        {
-            if (Validate(list[i]) is { } error)
-            {
-                return error with { Field = string.Create(CultureInfo.InvariantCulture, $"policies[{i}].{error.Field}") };
-            }
-
-            if (list[i].Id != Guid.Empty && !ids.Add(list[i].Id))
-            {
-                return new("policies", PolicyListedTwice); // an empty id is a new policy
-            }
-
-            if (!names.Add(list[i].Name.Trim()))
-            {
-                return new(string.Create(CultureInfo.InvariantCulture, $"policies[{i}].name"), PolicyNameTaken);
-            }
-        }
-
-        return policies.DefaultVlan is < RadiusLimits.MinVlan or > RadiusLimits.MaxVlan ? new("defaultVlan", VlanRange) : null;
-    }
-
-    /// <summary>The first error of one policy (field name, kind, vlan or devices); null when it is fine.</summary>
-    public static RadiusFieldError? Validate(RadiusPolicy policy)
-    {
-        ArgumentNullException.ThrowIfNull(policy);
-        var name = policy.Name?.Trim() ?? string.Empty;
-        if (name.Length == 0)
-        {
-            return new("name", EnterName);
-        }
-
-        if (name.Length > RadiusLimits.MaxNameLength)
-        {
-            return new("name", NameTooLong);
-        }
-
-        if (policy.Kind is not (PolicyKinds.Vlan or PolicyKinds.Block or PolicyKinds.Revoke))
-        {
-            return new("kind", ChoosePolicyKind);
-        }
-
-        if (policy.Kind == PolicyKinds.Vlan && policy.Vlan is not (>= RadiusLimits.MinVlan and <= RadiusLimits.MaxVlan))
-        {
-            return new("vlan", VlanRange);
-        }
-
-        if (policy.Devices is null || policy.Devices.IsEmpty)
-        {
-            return new("devices", ChoosePolicyDevices);
-        }
-
-        // A tag could revoke the certificates of every device that gets it later, without undo.
-        return policy.Kind == PolicyKinds.Revoke && (policy.Devices.Tags?.Any(t => !string.IsNullOrWhiteSpace(t)) ?? false) ? new("devices", RevokeNoTags) : null;
-    }
-
-    /// <summary>The first error of the settings; null when they are fine. <paramref name="listed"/>: the state's cipher suites.</summary>
-    public static RadiusFieldError? Validate(RadiusSettings settings, IReadOnlyList<CipherSuiteOption> listed)
+    /// <summary>The first error of the settings; null when they are fine.</summary>
+    public static RadiusFieldError? Validate(RadiusSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(listed);
         if (settings.Port is < 1 or > 65535)
         {
             return new("port", PortRange);
         }
 
-        if (settings.LogKept is < RadiusLimits.MinLogKept or > RadiusLimits.MaxLogKept)
-        {
-            return new("logKept", LogKeptRange);
-        }
-
-        if (settings.LargestFragment is < RadiusLimits.MinFragment or > RadiusLimits.MaxFragment)
-        {
-            return new("largestFragment", FragmentRange);
-        }
-
-        if (MinimumIndex(settings.MinimumTls) is not { } minimum)
-        {
-            return new("minimumTls", ChooseTls);
-        }
-
-        var known = listed.ToDictionary(s => s.Id);
-        var usable = (settings.CipherSuites ?? []).Any(id => known.TryGetValue(id, out var suite) && suite.Usable && Usable(suite, minimum));
-        return usable && (settings.CipherSuites ?? []).All(known.ContainsKey) ? null : new("cipherSuites", CheckCipherSuite);
+        return settings.LogKept is < RadiusLimits.MinLogKept or > RadiusLimits.MaxLogKept ? new("logKept", LogKeptRange) : null;
     }
-
-    /// <summary>The suites the page lists for a minimum version ("1.0".."1.3"): the old CBC suites only below TLS 1.2.</summary>
-    public static IReadOnlyList<CipherSuiteOption> Listed(IReadOnlyList<CipherSuiteOption> all, string? minimumTls)
-    {
-        ArgumentNullException.ThrowIfNull(all);
-        var minimum = MinimumIndex(minimumTls) ?? 2;
-        return [.. all.Where(s => !s.Legacy || minimum < 2)];
-    }
-
-    /// <summary>"Reset to default": every listed suite for the minimum (the old ones checked when the minimum is lowered).</summary>
-    public static IReadOnlyList<int> DefaultSuites(IReadOnlyList<CipherSuiteOption> all, string? minimumTls) =>
-        [.. Listed(all, minimumTls).Select(s => s.Id)];
 
     /// <summary>
     /// The first error of a switch; null when it is fine. <paramref name="others"/>: the other switches (name, site, address),
@@ -825,16 +529,6 @@ public static class RadiusRules
         ArgumentNullException.ThrowIfNull(address);
         return address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
     }
-
-    /// <summary>0 for "1.0" .. 3 for "1.3"; null for anything else.</summary>
-    public static int? MinimumIndex(string? minimumTls)
-    {
-        var index = minimumTls is null ? -1 : RadiusLimits.TlsVersions.ToList().IndexOf(minimumTls);
-        return index < 0 ? null : index;
-    }
-
-    private static bool Usable(CipherSuiteOption suite, int minimum) =>
-        suite.Tls13 || (suite.Legacy ? minimum < 2 : minimum <= 2);
 }
 
 /// <summary>JSON of the page calls, the events and the stored settings: camelCase, enums as camelCase strings.</summary>

@@ -527,8 +527,13 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     /// <paramref name="onlyListedDevices"/> (a user limited to a group), else every certificate (a device that is gone:
     /// empty device). One pass over the list.
     /// </summary>
-    public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, int warningDays)
+    public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, int warningDays) =>
+        Query(query, devices, onlyListedDevices, _ => warningDays);
+
+    /// <summary>The page with the warning days of each device (its Expiry warning policy).</summary>
+    public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, Func<Guid, int> warningDays)
     {
+        ArgumentNullException.ThrowIfNull(warningDays);
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(devices);
         var now = Now;
@@ -559,7 +564,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     continue;
                 }
 
-                var state = StateLocked(key, entry, now, warningDays);
+                var state = StateLocked(key, entry, now, warningDays(entry.DeviceId));
                 if (query.State is { } wanted && wanted != state)
                 {
                     continue;

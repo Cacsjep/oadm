@@ -125,6 +125,28 @@ public static class MppeKeys
     }
 }
 
+/// <summary>
+/// Reauthentication in an Access-Accept (RFC 3580 3.17, 3.19): Session-Timeout = the seconds until the switch authenticates the
+/// port again (it loads the reAuthPeriod of 802.1X with it), Termination-Action = RADIUS-Request (1): reauthenticate instead of
+/// ending the session (Default, 0).
+/// </summary>
+public static class ReauthenticationAttributes
+{
+    /// <summary>Termination-Action RADIUS-Request (RFC 2865 5.29, RFC 3580 3.19).</summary>
+    public const uint RadiusRequest = 1;
+
+    /// <summary>Session-Timeout and Termination-Action for <paramref name="after"/> (at least 1 s; 32-bit seconds, RFC 2865 5.27).</summary>
+    public static IReadOnlyList<RadiusAttribute> Attributes(TimeSpan after)
+    {
+        var seconds = (uint)Math.Clamp(after.TotalSeconds, 1, uint.MaxValue);
+        var timeout = new byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(timeout, seconds);
+        var action = new byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(action, RadiusRequest);
+        return [new RadiusAttribute(RadiusAttributeType.SessionTimeout, timeout), new RadiusAttribute(RadiusAttributeType.TerminationAction, action)];
+    }
+}
+
 /// <summary>VLAN assignment in an Access-Accept (RFC 3580 3.31, RFC 2868 3.1): one tunnel, tag 0 in every attribute.</summary>
 public static class VlanAttributes
 {

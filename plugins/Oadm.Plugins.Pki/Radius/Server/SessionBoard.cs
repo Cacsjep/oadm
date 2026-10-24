@@ -122,10 +122,13 @@ public sealed class SessionBoard(TimeProvider time)
             DeviceGuess = guess,
             IpAddress = DeviceIndex.IpAddressOf(device),
             State = StateName(snapshot.State),
-            StateText = snapshot.Text,
+            StateText = snapshot.State == EapSessionState.Authenticated && snapshot.VlanId is { } vlan && (snapshot.Tag as CheckedCertificate)?.VlanPolicy is { } policy
+                ? "Authenticated with " + Pki.Policies.PolicyTexts.VlanBy(vlan, policy)
+                : snapshot.Text,
             Fragment = snapshot.FragmentCount > 1 ? new FragmentInfo(snapshot.Fragment, snapshot.FragmentCount) : null,
             DurationMs = Math.Max(0, (long)(end - snapshot.Started).TotalMilliseconds),
             Vlan = snapshot.VlanId,
+            VlanPolicy = snapshot.VlanId is null ? null : (snapshot.Tag as CheckedCertificate)?.VlanPolicy,
             TlsVersion = snapshot.TlsVersion is { } version ? VersionText(version) : null,
         };
     }

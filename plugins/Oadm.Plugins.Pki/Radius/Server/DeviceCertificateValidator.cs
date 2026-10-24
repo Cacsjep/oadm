@@ -4,7 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
 
 using Oadm.Plugins.DeviceIds;
-using Oadm.Plugins.Radius.Api;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Protocol.Tls;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
@@ -22,7 +22,7 @@ public sealed record TrustedIssuer(string Id, CertificateAuthorityKind Kind, boo
 }
 
 /// <summary>
-/// The CAs a client certificate may chain to (docs/spec/radius-server.md "Who passes"): the CAs checked under Trusted CAs
+/// The CAs a client certificate may chain to (docs/spec/radius-server.md "Who passes"): the CAs of PKI's Allow CA policies
 /// (PKI's <see cref="IDeviceCertificateAuthority.Authorities"/>; previous OADM CAs follow the OADM CA), as one immutable set.
 /// Self-signed certificates are the trust anchors (a CA list without one anchors at its last certificate), the rest
 /// intermediates. A certificate must be issued directly by a checked CA (<see cref="Issuers"/>): an OADM CA imported as an
@@ -82,8 +82,8 @@ public sealed class CaTrust
     public long Version { get; }
 
     /// <summary>
-    /// The Trusted CAs selection the set was built from (null: none): a handshake rebuilds when the 802.1X server's current
-    /// selection is another one, so a set built from an older selection during a save never stays.
+    /// The Allow CA selection the set was built from (null: none): a handshake rebuilds when the 802.1X server's current
+    /// selection is another one, so a set built from an older selection during a change never stays.
     /// </summary>
     public TrustedCaSettings? Selection { get; }
 
@@ -267,6 +267,9 @@ public sealed class CaTrust
 /// <param name="CertificateSerial">The client certificate's serial number (<see cref="CertificateSerials.Normalize"/>).</param>
 public sealed record CheckedCertificate(Guid? DeviceId, string? DeviceSerial, string? CertificateSerial)
 {
+    /// <summary>The VLAN policy that gave the device its VLAN ("VLAN 30 by Building B" in Sessions and Log); null for none.</summary>
+    public string? VlanPolicy { get; init; }
+
     /// <summary>
     /// The certificate's subject when it passed without a managed device (a CA without "Only devices OADM manages"): the
     /// Device column of the session and the log shows it.
@@ -293,11 +296,11 @@ public static class CertificateRefusals
     /// <summary>"Certificate of a device OADM does not manage (ACCC8E123456)".</summary>
     public static string NotManaged(string serial) => $"Certificate of a device OADM does not manage ({serial})";
 
-    /// <summary>"Blocked by policy Building C" (TLS alert 49).</summary>
-    public static string Blocked(string policy) => $"Blocked by policy {policy}";
+    /// <summary>"Blocked by Storage room" (TLS alert 49): the Block policy that holds the device.</summary>
+    public static string Blocked(string policy) => $"Blocked by {policy}";
 
-    /// <summary>"Certificate revoked by policy Building C" (TLS alert 44).</summary>
-    public static string RevokedByPolicy(string policy) => $"Certificate revoked by policy {policy}";
+    /// <summary>"Certificate revoked by Storage room" (TLS alert 44): the Revoke policy that holds the device.</summary>
+    public static string RevokedByPolicy(string policy) => $"Certificate revoked by {policy}";
 
     /// <summary>"Client certificate expired on 2026-09-30".</summary>
     public static string Expired(DateTime notAfterUtc) => "Client certificate expired on " + notAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -311,8 +314,8 @@ public static class CertificateRefusals
 
 /// <summary>
 /// Who passes (docs/spec/radius-server.md "Who passes"), called inside the TLS handshake with in-memory lookups only: PKI's
-/// CA is there (else nothing passes), the leaf is valid now, made for client authentication (or without extended key usage),
-/// issued directly by a CA checked under Trusted CAs (or chains to the Axis device ID when it is checked), and for an OADM CA
+/// CA and policies are there (else nothing passes), the leaf is valid now, made for client authentication (or without extended
+/// key usage), issued directly by a CA of an Allow CA policy (or chains to the Axis device ID when one allows it), and for an OADM CA
 /// not listed by PKI with another use than IEEE 802.1X and not revoked. With "Only devices OADM manages" (the default) it
 /// names exactly one managed device (<c>axis-&lt;serial&gt;.local</c> or the device ID serial), at a site a device of the
 /// switch's site; without it any certificate of that CA passes (the log shows its subject). No block or revoke policy holds
@@ -325,7 +328,7 @@ public sealed partial class DeviceCertificateValidator(
     Func<SwitchTable> switches,
     Func<PolicyPlan> policies,
     TimeProvider time,
-    Action<string, RadiusPolicy>? revokeByPolicy = null) : IClientCertificateValidator
+    Action<string, PkiPolicy>? revokeByPolicy = null) : IClientCertificateValidator
 {
     private const string ClientAuthOid = "1.3.6.1.5.5.7.3.2";
     private const string AnyUsageOid = "2.5.29.37.0";
@@ -376,7 +379,7 @@ public sealed partial class DeviceCertificateValidator(
         var certificateSerial = CertificateSerials.Normalize(leaf.SerialNumber);
         var none = new CheckedCertificate(null, null, certificateSerial);
         var ca = authority();
-        if (ca is null)
+        if (ca is null || policies().IsUnavailable)
         {
             // Without PKI there is no revocation list: no certificate passes, Axis device ID ones neither (fail closed).
             return ClientCertificateVerdict.Refuse(CertificateRefusals.NoCa, 80, none);
@@ -456,8 +459,9 @@ public sealed partial class DeviceCertificateValidator(
                     : ClientCertificateVerdict.Refuse(CertificateRefusals.NotManaged(serial), 49, new CheckedCertificate(null, serial, certificateSerial));
             }
 
-            // A CA without "Only devices OADM manages": any valid certificate of it passes; the log shows its subject.
-            return ClientCertificateVerdict.Accept(plan.VlanFor(null), null, new CheckedCertificate(null, serial, certificateSerial) { Subject = leaf.Subject });
+            // A CA without "Only devices OADM manages": any valid certificate of it passes (no VLAN: no policy holds a device
+            // OADM does not manage); the log shows its subject.
+            return ClientCertificateVerdict.Accept(null, null, new CheckedCertificate(null, serial, certificateSerial) { Subject = leaf.Subject });
         }
 
         var tag = new CheckedCertificate(device.Id, serial, certificateSerial);
@@ -488,7 +492,8 @@ public sealed partial class DeviceCertificateValidator(
             warning = CertificateRefusals.MacMismatch(check.Mac.Normalized!, device.Serial.ToUpperInvariant());
         }
 
-        return ClientCertificateVerdict.Accept(plan.VlanFor(device), warning, tag);
+        var (vlan, vlanPolicy) = plan.VlanFor(device);
+        return ClientCertificateVerdict.Accept(vlan, warning, tag with { VlanPolicy = vlanPolicy });
     }
 
     /// <summary>The one serial of the <c>axis-&lt;serial&gt;.local</c> names; null for none or two.</summary>

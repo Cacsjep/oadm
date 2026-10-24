@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Plugins.DeviceIds;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Sessions;
 using Oadm.Plugins.Radius.Protocol.Tls;
@@ -42,8 +43,11 @@ public sealed record RadiusHost(
 
     public IEventPublisher? Publisher { get; init; }
 
-    /// <summary>The tags of the VLAN rules, protected by the host; null on older hosts (tag rules then match no device).</summary>
-    public IProtectedTags? ProtectedTags { get; init; }
+    /// <summary>
+    /// PKI's policies (in process: PKI owns them, docs/spec/pki.md "Policies"), asked for each time; null while PKI does not
+    /// run (nothing passes then).
+    /// </summary>
+    public Func<PolicyStore?> Policies { get; init; } = () => null;
 
     /// <summary>The device groups (state events per group); null on older hosts.</summary>
     public IDeviceScopes? Scopes { get; init; }
@@ -115,13 +119,12 @@ public sealed partial class RadiusService : IAsyncDisposable
     private volatile SwitchTable _switches = SwitchTable.Empty;
     private List<StoredSwitch> _stored = [];
     private volatile CaTrust _trust = CaTrust.None;
-    private volatile PolicyPlan _policies = PolicyPlan.Off;
-    private PolicySettings _policySettings = new();
-    private volatile TrustedCaSettings _trustedCas = CaTrust.DefaultSelection;
+    private volatile RadiusRuleSet _rules = RadiusRuleSet.None;
+    private readonly Lock _rulesGate = new();
+    private PolicyStore? _followedStore; // under _followGate
     private readonly AxisDeviceId _deviceIds;
     private readonly ConcurrentDictionary<string, string> _policyRevokes = new(StringComparer.Ordinal); // serial -> user, revoked in the background
     private int _policyRevoking; // 1 = the background revocation runs
-    private string? _usedByKey; // the ids PKI was last told ("Used by"), with the offer
     private RadiusSettings _config = new();
     private IUdpRelay? _listener;
     private IReadOnlyList<IPAddress> _requestedAddresses = []; // what the listener was asked for (empty = every address)
@@ -160,7 +163,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         _index = new DeviceIndex(host.Devices, host.Time);
         _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Time, host.Logger);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
-        var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => _policies, host.Time, QueuePolicyRevoke);
+        var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => RulesNow().Plan, host.Time, QueuePolicyRevoke);
         _processor = new RadiusProcessor(new RadiusProtocolOptions(), validator, host.Time);
         _processor.SessionChanged += _board.Enqueue;
         _index.Missed += (_, _) => Track(Task.Run(() => RefreshIndexAsync(onlyAfterMiss: true)));
@@ -225,26 +228,12 @@ public sealed partial class RadiusService : IAsyncDisposable
     private async Task LoadAsync(CancellationToken ct)
     {
         var config = await _store.ConfigAsync(ct).ConfigureAwait(false) ?? new RadiusSettings();
-        if (config.CipherSuites.Count == 0 || TlsSettingsOf(config).Validate(ServerIdentityKeeper.KeyKind) is not null)
-        {
-            config = config with { CipherSuites = [.. TlsCipherSuites.DefaultFor(VersionOf(config.MinimumTls) ?? TlsVersion.Tls12).Order()] };
-        }
-
-        if (RadiusRules.MinimumIndex(config.MinimumTls) is null)
-        {
-            config = config with { MinimumTls = RadiusLimits.DefaultMinimumTls };
-        }
-
         config = config with
         {
             LogKept = Math.Clamp(config.LogKept, RadiusLimits.MinLogKept, RadiusLimits.MaxLogKept),
-            LargestFragment = Math.Clamp(config.LargestFragment, RadiusLimits.MinFragment, RadiusLimits.MaxFragment),
             Port = config.Port is >= 1 and <= 65535 ? config.Port : RadiusLimits.DefaultPort,
         };
         _config = config;
-        _trustedCas = await _store.TrustedCasAsync(ct).ConfigureAwait(false) ?? CaTrust.DefaultSelection;
-        _policySettings = await LoadPoliciesAsync(ct).ConfigureAwait(false);
-        _policies = PlanOf(_policySettings);
         _stored = [.. await _store.SwitchesAsync(ct).ConfigureAwait(false)];
         var entries = new List<SwitchEntry>();
         foreach (var stored in _stored)
@@ -260,7 +249,7 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         _switches = new SwitchTable(entries);
         await _log.LoadAsync(config.LogKept, ct).ConfigureAwait(false);
-        _processor.Options = OptionsOf(config, null);
+        _processor.Options = OptionsOf(RulesNow(), null);
     }
 
     public async ValueTask DisposeAsync()
@@ -277,6 +266,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
 
         Unfollow();
+        FollowStore(null);
         foreach (var timer in new[] { _tickTimer, _maintainTimer, _indexTimer, _listenRetry, _addressCheck })
         {
             if (timer is not null)
@@ -558,6 +548,7 @@ public sealed partial class RadiusService : IAsyncDisposable
                 Reason = authenticated ? null : snapshot.Reason ?? snapshot.Text,
                 Warning = snapshot.Warning,
                 Vlan = snapshot.VlanId,
+                VlanPolicy = snapshot.VlanId is null ? null : tag?.VlanPolicy,
                 CertificateSerial = tag?.CertificateSerial ?? SerialOf(leaf),
             }, leaf);
             rows.Add(row);
@@ -767,7 +758,6 @@ public sealed partial class RadiusService : IAsyncDisposable
             unknown = new UnknownRequests(Interlocked.Read(ref _unknownCount), _lastUnknown?.Address, _lastUnknown?.Site, _lastUnknown?.At);
         }
 
-        var policies = _policySettings;
         if (!hasAllDevices)
         {
             // A user limited to a group sees Sessions and Log only: the status, never the server-wide settings, the
@@ -787,7 +777,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             StatusText = text,
             StatusKind = kind,
             Settings = config,
-            CipherSuitesListed = CipherSuites,
+            PoliciesApply = RadiusPolicies.CountApplying(_host.Policies()),
             Interfaces = ListInterfaces(),
             ServerCertificate = _identity.Info,
             SitesNotAllowed = notAllowed,
@@ -796,26 +786,14 @@ public sealed partial class RadiusService : IAsyncDisposable
         };
     }
 
-    /// <summary>Every cipher suite the server can offer, for Advanced.</summary>
-    public static IReadOnlyList<CipherSuiteOption> CipherSuites { get; } =
-        [.. TlsCipherSuites.All.Select(s => new CipherSuiteOption(s.Id, s.Name, s.Group == CipherSuiteGroup.LegacyCbc, s.Group == CipherSuiteGroup.Tls13)
-        {
-            Usable = s.Key is null || s.Key == ServerIdentityKeeper.KeyKind,
-        })];
-
-    /// <summary>Save of General and Advanced (the VLAN fields are ignored). Throws <see cref="ArgumentException"/> with the field's message.</summary>
+    /// <summary>Save of the Server card. Throws <see cref="ArgumentException"/> with the field's message.</summary>
     public async Task<RadiusState> SaveSettingsAsync(RadiusSettings request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var settings = request with { CipherSuites = [.. (request.CipherSuites ?? []).Distinct()], ListenOn = string.IsNullOrWhiteSpace(request.ListenOn) ? InterfaceOptions.AllId : request.ListenOn.Trim() };
-        if (RadiusRules.Validate(settings, CipherSuites) is { } error)
+        var settings = request with { ListenOn = string.IsNullOrWhiteSpace(request.ListenOn) ? InterfaceOptions.AllId : request.ListenOn.Trim() };
+        if (RadiusRules.Validate(settings) is { } error)
         {
             throw RadiusErrors.Field(error.Field, error.Message);
-        }
-
-        if (TlsSettingsOf(settings).Validate(ServerIdentityKeeper.KeyKind) is { } tlsError)
-        {
-            throw RadiusErrors.Field("cipherSuites", tlsError);
         }
 
         await _saveGate.WaitAsync(ct).ConfigureAwait(false);
@@ -841,7 +819,6 @@ public sealed partial class RadiusService : IAsyncDisposable
 
             await _store.SaveConfigAsync(settings, ct).ConfigureAwait(false);
             _config = settings;
-            _processor.Options = OptionsOf(settings, _identity.Identity);
             _log.SetKept(settings.LogKept);
             var portChanged = settings.Port != old.Port;
             if (portChanged || !string.Equals(settings.ListenOn, old.ListenOn, StringComparison.Ordinal))
@@ -865,7 +842,7 @@ public sealed partial class RadiusService : IAsyncDisposable
                 await SyncSitesAsync(ct).ConfigureAwait(false);
             }
 
-            LogSettingsSaved(settings.Port, settings.MinimumTls, settings.CipherSuites.Count);
+            LogSettingsSaved(settings.Port, settings.LogKept);
         }
         finally
         {
@@ -877,362 +854,73 @@ public sealed partial class RadiusService : IAsyncDisposable
         return GetState(hasAllDevices: true);
     }
 
-    // ------------------------------------------------------------------ trusted CAs
-
-    /// <summary>PKI's CAs with this server's choice (previous OADM CAs follow the OADM CA: no rows). A group user: none.</summary>
-    public TrustedCaList GetTrustedCas(bool hasAllDevices)
-    {
-        if (!hasAllDevices)
-        {
-            return new TrustedCaList();
-        }
-
-        var authorities = CaTrust.AuthoritiesOf(_host.Authority(), _deviceIds);
-        var choices = (_trustedCas.Cas ?? []).GroupBy(c => c.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        var previous = authorities.Count(a => a.Kind == CertificateAuthorityKind.PreviousOadm);
-        return new TrustedCaList
-        {
-            Cas = [.. authorities.Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm).Select(a => new TrustedCaRow
-            {
-                Id = a.Id,
-                Name = a.Name,
-                Kind = a.Kind,
-                NotAfterUtc = a.NotAfterUtc,
-                Trusted = choices.ContainsKey(a.Id),
-                OnlyManaged = !choices.TryGetValue(a.Id, out var choice) || choice.OnlyManaged,
-                PreviousCount = a.Kind == CertificateAuthorityKind.Oadm ? previous : 0,
-            })],
-        };
-    }
-
-    /// <summary>Save of the Trusted CAs: ids PKI does not list are refused; applies to the next handshake at once.</summary>
-    public async Task<TrustedCaList> SaveTrustedCasAsync(TrustedCaSettings request, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var listed = CaTrust.AuthoritiesOf(_host.Authority(), _deviceIds).Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm)
-            .Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-        var choices = (request.Cas ?? []).Where(c => c is not null && !string.IsNullOrWhiteSpace(c.Id))
-            .Select(c => c with { Id = c.Id.Trim() }).DistinctBy(c => c.Id, StringComparer.Ordinal).ToList();
-        if (choices.Any(c => !listed.Contains(c.Id)))
-        {
-            throw RadiusErrors.Field("cas", RadiusTexts.UnknownCa);
-        }
-
-        var settings = new TrustedCaSettings { Cas = choices };
-        await _saveGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            await _store.SaveTrustedCasAsync(settings, ct).ConfigureAwait(false);
-            _trustedCas = settings;
-            var ca = _host.Authority();
-            Follow();
-            var trust = CaTrust.Build(ca, settings, _deviceIds, Volatile.Read(ref _caVersion));
-            _trust = trust;
-            TellUsedBy(trust);
-        }
-        finally
-        {
-            _saveGate.Release();
-        }
-
-        var anyDevice = choices.Count(c => !c.OnlyManaged);
-        LogTrustedCasSaved(choices.Count, anyDevice);
-        return GetTrustedCas(hasAllDevices: true);
-    }
-
-    // ------------------------------------------------------------------ policies
+    // ------------------------------------------------------------------ PKI's policies
 
     /// <summary>
-    /// The stored policies; the first start after the VLAN rules moves them into VLAN policies (only when Assign VLANs was on:
-    /// rules that were off would switch VLANs on) and deletes the old setting.
+    /// The rules of PKI's policies for a handshake (docs/spec/pki.md "Policies"): built again at once when the store's version
+    /// moved or PKI started again (a new store), so a change applies to the next handshake and never half (fail closed). The
+    /// server policy's TLS settings, packet size and reauthentication go into the protocol options with it.
     /// </summary>
-    private async Task<PolicySettings> LoadPoliciesAsync(CancellationToken ct)
+    private RadiusRuleSet RulesNow()
     {
-        if (await _store.PoliciesAsync(ct).ConfigureAwait(false) is { } stored)
+        var store = _host.Policies();
+        var rules = _rules;
+        if (rules.IsCurrent(store))
         {
-            foreach (var tagged in (stored.Policies ?? []).Where(p => p.Kind == PolicyKinds.Revoke && (p.Devices?.Tags?.Count ?? 0) > 0))
+            return rules;
+        }
+
+        lock (_rulesGate)
+        {
+            rules = _rules;
+            if (!rules.IsCurrent(store))
             {
-                LogRevokeTagsIgnored(tagged.Name); // stored before revoke policies refused tags: they match by device and site only
+                FollowStore(store);
+                rules = RadiusRuleSet.Of(store);
+                _rules = rules;
+                _processor.Options = OptionsOf(rules, _identity.Identity);
             }
 
-            return WithUniqueIds(stored);
+            return rules;
         }
+    }
 
-        if (await _store.VlansAsync(ct).ConfigureAwait(false) is not { } vlans)
+    /// <summary>Follows the store's changes (a change rebuilds the rules at once and tells the page "N policies apply").</summary>
+    private void FollowStore(PolicyStore? store)
+    {
+        lock (_followGate)
         {
-            return new PolicySettings();
-        }
-
-        var policies = new List<RadiusPolicy>();
-        if (vlans.Enabled)
-        {
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var rule in vlans.Rules ?? [])
+            if (ReferenceEquals(store, _followedStore) || _stopping)
             {
-                var baseName = (rule.RefName ?? rule.RefId ?? string.Empty).Trim();
-                baseName = baseName.Length == 0 ? "VLAN " + rule.Vlan.ToString(CultureInfo.InvariantCulture) : baseName;
-                baseName = baseName.Length > RadiusLimits.MaxNameLength - 5 ? baseName[..(RadiusLimits.MaxNameLength - 5)] : baseName;
-                var name = baseName;
-                for (var n = 2; !names.Add(name); n++)
-                {
-                    name = string.Create(CultureInfo.InvariantCulture, $"{baseName} ({n})");
-                }
-
-                PolicyDevices devices;
-                if (rule.Kind == VlanRuleKinds.Site && Guid.TryParse(rule.RefId, out var site))
-                {
-                    devices = site == Guid.Empty ? new PolicyDevices { ThisServer = true } : new PolicyDevices { SiteIds = [site] };
-                }
-                else if (rule.Kind == VlanRuleKinds.Tag && !string.IsNullOrWhiteSpace(rule.RefId))
-                {
-                    devices = new PolicyDevices { Tags = [rule.RefId.Trim()] };
-                }
-                else
-                {
-                    continue;
-                }
-
-                policies.Add(new RadiusPolicy { Id = Guid.NewGuid(), Name = name, Kind = PolicyKinds.Vlan, Vlan = rule.Vlan, Devices = devices });
+                return;
             }
 
-            if (policies.Count == 0 && vlans.DefaultVlan is { } everyone)
+            if (_followedStore is { } old)
             {
-                // Only the default VLAN: OADM 4.1 put every device on it, the policies only while a VLAN policy exists. One
-                // VLAN policy for this server and every site keeps it (devices of later sites get the default VLAN).
-                var sites = (_host.Sites?.List ?? []).Select(s => s.Id).ToList();
-                policies.Add(new RadiusPolicy
-                {
-                    Id = Guid.NewGuid(), Name = RadiusTexts.AllDevicesPolicy, Kind = PolicyKinds.Vlan, Vlan = everyone,
-                    Devices = new PolicyDevices { ThisServer = true, SiteIds = sites },
-                });
-            }
-        }
-
-        var migrated = new PolicySettings { Policies = policies, DefaultVlan = vlans.Enabled ? vlans.DefaultVlan : null };
-        await _store.SavePoliciesAsync(migrated, ct).ConfigureAwait(false);
-        await _store.DeleteVlansAsync(ct).ConfigureAwait(false);
-        LogPoliciesMigrated(policies.Count);
-        return migrated;
-    }
-
-    /// <summary>
-    /// Stored policies with an id twice (or none) get new ids for the later ones, so the page can save them again (a save
-    /// refuses an id twice).
-    /// </summary>
-    internal static PolicySettings WithUniqueIds(PolicySettings stored)
-    {
-        var list = stored.Policies ?? [];
-        var seen = new HashSet<Guid>();
-        if (list.All(p => p.Id != Guid.Empty && seen.Add(p.Id)))
-        {
-            return stored;
-        }
-
-        seen.Clear();
-        return stored with { Policies = [.. list.Select(p => p.Id != Guid.Empty && seen.Add(p.Id) ? p : p with { Id = Guid.NewGuid() })] };
-    }
-
-    /// <summary>The policies with the tag choices of the managed devices and the policies. A group user: empty settings.</summary>
-    public PolicySettings GetPolicies(bool hasAllDevices)
-    {
-        if (!hasAllDevices)
-        {
-            return new PolicySettings();
-        }
-
-        var policies = _policySettings;
-        var tags = PolicyPlan.TagsOf(policies).Concat(_index.Tags());
-        return policies with
-        {
-            TagChoices = [.. tags.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Select(t => new TagChoice(t, t))],
-        };
-    }
-
-    /// <summary>
-    /// The plan of <paramref name="policies"/> with their tags protected by the host (only users with all devices add or
-    /// remove them on devices); without the host's protection the tag parts of VLAN policies match nothing.
-    /// </summary>
-    private PolicyPlan PlanOf(PolicySettings policies)
-    {
-        if (_host.ProtectedTags is not { } protectedTags)
-        {
-            return new PolicyPlan(policies, tagsProtected: false);
-        }
-
-        protectedTags.Protect(PolicyPlan.TagsOf(policies), RadiusTexts.VlanTag, RadiusTexts.VlanTagChange);
-        return new PolicyPlan(policies);
-    }
-
-    /// <summary>
-    /// Save of the whole ordered list; applies to the next authentication of each device. A revoke policy that is new or
-    /// whose devices changed needs <paramref name="mayRevoke"/> (PKI's "Manage the certificate authority"); after the save
-    /// the current IEEE 802.1X certificates of every revoke policy's devices are revoked in PKI.
-    /// </summary>
-    public async Task<PolicySettings> SavePoliciesAsync(PolicySettings request, string userName, bool mayRevoke, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var policies = (request.Policies ?? []).Select(Normalize).ToList();
-        var settings = new PolicySettings { Policies = policies, DefaultVlan = request.DefaultVlan };
-        if (RadiusRules.Validate(settings) is { } error)
-        {
-            throw RadiusErrors.Field(error.Field, error.Message);
-        }
-
-        await _saveGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var old = _policySettings;
-            var oldById = old.Policies.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First()); // stored duplicates never lock the page
-            var knownSites = (_host.Sites?.List ?? []).Select(s => s.Id).Concat(old.Policies.SelectMany(p => p.Devices.SiteIds)).ToHashSet();
-            for (var i = 0; i < policies.Count; i++)
-            {
-                var policy = policies[i];
-                if (policy.Devices.SiteIds.Any(id => !knownSites.Contains(id)))
-                {
-                    throw RadiusErrors.Field(string.Create(CultureInfo.InvariantCulture, $"policies[{i}].devices"), RadiusTexts.SiteGone);
-                }
-
-                var before = policy.Id == Guid.Empty ? null : oldById.GetValueOrDefault(policy.Id);
-                if (policy.Kind == PolicyKinds.Revoke)
-                {
-                    var changed = before is null || before.Kind != PolicyKinds.Revoke || !SameDevices(before.Devices, policy.Devices);
-                    if (changed && !mayRevoke)
-                    {
-                        // The revocation list is PKI's: a revoke policy needs the permission to manage the CA (fail closed).
-                        throw new DeviceAccessRefusedException(RadiusTexts.NeedsCaPermission);
-                    }
-
-                    policy = policy with { SavedBy = changed ? userName : before!.SavedBy ?? userName };
-                }
-                else
-                {
-                    policy = policy with { SavedBy = null };
-                }
-
-                policies[i] = policy with { Id = before is null ? Guid.NewGuid() : policy.Id };
+                old.Changed -= OnPoliciesChanged;
             }
 
-            settings = settings with { Policies = policies };
-
-            // The tags of the old and the new policies stay protected while the save runs (a failed save keeps the old plan).
-            _host.ProtectedTags?.Protect([.. PolicyPlan.TagsOf(old), .. PolicyPlan.TagsOf(settings)], RadiusTexts.VlanTag, RadiusTexts.VlanTagChange);
-            try
+            _followedStore = store;
+            if (store is not null)
             {
-                await _store.SavePoliciesAsync(settings, ct).ConfigureAwait(false);
-                _policySettings = settings;
-            }
-            finally
-            {
-                _policies = PlanOf(_policySettings);
-            }
-        }
-        finally
-        {
-            _saveGate.Release();
-        }
-
-        LogPoliciesSaved(policies.Count, userName);
-        await RevokeByPoliciesAsync(_policies, null, ct).ConfigureAwait(false);
-        PublishState();
-        return GetPolicies(hasAllDevices: true);
-    }
-
-    /// <summary>How many IEEE 802.1X certificates a revoke policy with <paramref name="devices"/> would revoke now.</summary>
-    public async Task<RevocationCount> CountRevocationsAsync(PolicyDevices devices, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(devices);
-        var policy = Normalize(new RadiusPolicy { Name = "count", Kind = PolicyKinds.Revoke, Devices = devices });
-        return new RevocationCount(_host.Authority() is { } ca ? (await SerialsToRevokeAsync(ca, policy, ct).ConfigureAwait(false)).Count : 0);
-    }
-
-    private static RadiusPolicy Normalize(RadiusPolicy policy)
-    {
-        var devices = policy.Devices ?? new PolicyDevices();
-        var sites = (devices.SiteIds ?? []).Distinct().ToList();
-        return policy with
-        {
-            Name = policy.Name?.Trim() ?? string.Empty,
-            Kind = policy.Kind?.Trim() ?? string.Empty,
-            Vlan = policy.Kind?.Trim() == PolicyKinds.Vlan ? policy.Vlan : null,
-            Devices = new PolicyDevices
-            {
-                ThisServer = devices.ThisServer || sites.Contains(Guid.Empty),
-                SiteIds = [.. sites.Where(id => id != Guid.Empty)],
-                Tags = [.. (devices.Tags ?? []).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)],
-                Serials = [.. SerialsOf(devices.Serials)],
-                ExceptSerials = [.. SerialsOf(devices.ExceptSerials)],
-            },
-        };
-    }
-
-    private static IEnumerable<string> SerialsOf(IReadOnlyList<string>? serials) =>
-        (serials ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal);
-
-    private static bool SameDevices(PolicyDevices a, PolicyDevices b) =>
-        a.ThisServer == b.ThisServer && a.SiteIds.ToHashSet().SetEquals(b.SiteIds)
-        && a.Tags.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b.Tags)
-        && a.Serials.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b.Serials)
-        && a.ExceptSerials.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b.ExceptSerials);
-
-    /// <summary>The IEEE 802.1X certificates of <paramref name="policy"/>'s devices that are still valid and not revoked (PKI's list, paged).</summary>
-    private async Task<List<string>> SerialsToRevokeAsync(IDeviceCertificateAuthority ca, RadiusPolicy policy, CancellationToken ct)
-    {
-        var ids = _index.All.Where(d => PolicyPlan.Holds(policy, d)).Select(d => d.Id).ToHashSet();
-        var serials = new List<string>();
-        if (ids.Count == 0)
-        {
-            return serials;
-        }
-
-        for (var offset = 0; ; offset += IssuedCertificateQuery.MaxLimit)
-        {
-            var page = await ca.ListIssuedAsync(new IssuedCertificateQuery
-            {
-                Purpose = DeviceCertificatePurposes.Dot1x,
-                DeviceIds = ids,
-                Offset = offset,
-                Limit = IssuedCertificateQuery.MaxLimit,
-            }, ct).ConfigureAwait(false);
-            serials.AddRange(page.Rows.Where(r => r.State is not (IssuedCertificateState.Expired or IssuedCertificateState.Revoked) && r.Revocation is null)
-                .Select(r => CertificateSerials.Normalize(r.SerialNumber)));
-            if (page.Rows.Count < IssuedCertificateQuery.MaxLimit || offset + page.Rows.Count >= page.Total)
-            {
-                return serials;
+                store.Changed += OnPoliciesChanged;
             }
         }
     }
 
-    /// <summary>
-    /// Revokes the current IEEE 802.1X certificates of the revoke policies' devices in PKI (after a save and every minute:
-    /// new certificates of those devices too), by the user who saved each policy, at most 5,000 per call.
-    /// </summary>
-    private async Task RevokeByPoliciesAsync(PolicyPlan plan, string? userName, CancellationToken ct)
+    private void OnPoliciesChanged(object? sender, EventArgs e)
     {
-        if (plan.RevokePolicies.Count == 0 || _host.Authority() is not { } ca)
+        if (_stopping)
         {
             return;
         }
 
-        try
-        {
-            foreach (var policy in plan.RevokePolicies)
-            {
-                var serials = (await SerialsToRevokeAsync(ca, policy, ct).ConfigureAwait(false)).Where(s => !ca.IsRevoked(s)).Distinct(StringComparer.Ordinal).ToList();
-                foreach (var batch in serials.Chunk(5000))
-                {
-                    var result = await ca.RevokeAsync(batch, RevocationReason.Other, userName ?? policy.SavedBy ?? RadiusTexts.ServiceName, ct).ConfigureAwait(false);
-                    LogPolicyRevoked(result.Revoked, policy.Name);
-                }
-            }
-        }
-        catch (NotSupportedException ex)
-        {
-            LogMaintainFailed(ex); // a CA without a revocation list: the policy still refuses the devices
-        }
+        RulesNow();
+        PublishState();
     }
 
     /// <summary>A handshake met a certificate a revoke policy holds: revoked in the background (deduplicated, at most 10,000 waiting).</summary>
-    private void QueuePolicyRevoke(string serial, RadiusPolicy policy)
+    private void QueuePolicyRevoke(string serial, PkiPolicy policy)
     {
         if (_policyRevokes.Count >= 10_000 || !_policyRevokes.TryAdd(serial, policy.SavedBy ?? RadiusTexts.ServiceName))
         {
@@ -1681,15 +1369,12 @@ public sealed partial class RadiusService : IAsyncDisposable
             Follow();
             var ca = _host.Authority();
             var trust = _trust;
-            if (!ReferenceEquals(ca, trust.Authority) || CaTrust.KeyOf(ca, _trustedCas, _deviceIds) != trust.Key)
+            var selection = RulesNow().Selection;
+            if (!ReferenceEquals(ca, trust.Authority) || CaTrust.KeyOf(ca, selection, _deviceIds) != trust.Key)
             {
                 // Once a minute the hashes too: CAs that changed without a Changed event (a CA PKI no longer lists drops out).
-                trust = CaTrust.Build(ca, _trustedCas, _deviceIds, Volatile.Read(ref _caVersion));
-                _trust = trust;
+                _trust = CaTrust.Build(ca, selection, _deviceIds, Volatile.Read(ref _caVersion));
             }
-
-            TellUsedBy(trust);
-            await RevokeByPoliciesAsync(_policies, null, ct).ConfigureAwait(false);
 
             try
             {
@@ -1698,7 +1383,7 @@ public sealed partial class RadiusService : IAsyncDisposable
                 if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false)
                     || !ReferenceEquals(_processor.Options.ServerIdentity, _identity.Identity))
                 {
-                    _processor.Options = OptionsOf(_config, _identity.Identity);
+                    _processor.Options = OptionsOf(RulesNow(), _identity.Identity);
                     PublishState();
                 }
             }
@@ -1752,7 +1437,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     {
         var trust = _trust;
         var ca = _host.Authority();
-        var selection = _trustedCas;
+        var selection = RulesNow().Selection;
         if (ReferenceEquals(ca, trust.Authority) && trust.Version == Volatile.Read(ref _caVersion) && (ca is null || ReferenceEquals(trust.Selection, selection)))
         {
             return trust; // the same offer and selection, no Changed since the build: a few reads, no hashing per handshake
@@ -1761,7 +1446,6 @@ public sealed partial class RadiusService : IAsyncDisposable
         Follow(); // a new offer: its Changed events count from now on
         trust = CaTrust.Build(ca, selection, _deviceIds, Volatile.Read(ref _caVersion));
         _trust = trust;
-        TellUsedBy(trust);
         return trust;
     }
 
@@ -1816,33 +1500,6 @@ public sealed partial class RadiusService : IAsyncDisposable
         Track(Task.Run(() => MaintainAsync(_cts.Token)));
     }
 
-    /// <summary>Tells PKI which of its CAs this server uses ("Used by"), when that changed.</summary>
-    private void TellUsedBy(CaTrust trust)
-    {
-        if (trust.Authority is not { } ca)
-        {
-            return;
-        }
-
-        var key = RuntimeHelpers.GetHashCode(ca).ToString(CultureInfo.InvariantCulture) + ":" + string.Join(',', trust.UsedIds);
-        if (Interlocked.Exchange(ref _usedByKey, key) == key)
-        {
-            return;
-        }
-
-        try
-        {
-            ca.SetUsedBy(RadiusTexts.PluginId, RadiusTexts.ServiceName, trust.UsedIds);
-        }
-#pragma warning disable CA1031 // PKI's list of users is a display; the check never depends on it.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            _usedByKey = null;
-            LogMaintainFailed(ex);
-        }
-    }
-
     private async Task RefreshIndexAsync(bool onlyAfterMiss)
     {
         try
@@ -1861,23 +1518,13 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
     }
 
-    private static RadiusProtocolOptions OptionsOf(RadiusSettings config, TlsServerIdentity? identity) => new()
+    /// <summary>The protocol options of the 802.1X server policy (TLS, largest EAP packet, reauthentication) with the server certificate.</summary>
+    private static RadiusProtocolOptions OptionsOf(RadiusRuleSet rules, TlsServerIdentity? identity) => new()
     {
-        Tls = TlsSettingsOf(config),
-        LargestFragment = config.LargestFragment,
+        Tls = rules.Tls,
+        LargestFragment = rules.LargestEapPacket,
+        Reauthentication = rules.Reauthentication,
         ServerIdentity = identity,
-    };
-
-    private static TlsSettings TlsSettingsOf(RadiusSettings config) =>
-        new(VersionOf(config.MinimumTls) ?? (TlsVersion)0, config.CipherSuites.ToHashSet());
-
-    private static TlsVersion? VersionOf(string? text) => RadiusRules.MinimumIndex(text) switch
-    {
-        0 => TlsVersion.Tls10,
-        1 => TlsVersion.Tls11,
-        2 => TlsVersion.Tls12,
-        3 => TlsVersion.Tls13,
-        _ => null,
     };
 
     // ------------------------------------------------------------------ listening
@@ -2340,23 +1987,8 @@ public sealed partial class RadiusService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: switch {SwitchName} ({Address}, {Site}) {Change}")]
     private partial void LogSwitchSaved(string change, string switchName, string address, string site);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server settings saved: port {Port}, minimum TLS {MinimumTls}, {Suites} cipher suites")]
-    private partial void LogSettingsSaved(int port, string minimumTls, int suites);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} policies saved by {User}")]
-    private partial void LogPoliciesSaved(int count, string user);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: the revoke policy {Name} chooses tags; it revokes by its devices and sites only")]
-    private partial void LogRevokeTagsIgnored(string name);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} VLAN rules moved into VLAN policies")]
-    private partial void LogPoliciesMigrated(int count);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} trusted CAs saved, {AnyDevice} of them for any device")]
-    private partial void LogTrustedCasSaved(int count, int anyDevice);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} certificates revoked by policy {Policy}")]
-    private partial void LogPolicyRevoked(int count, string policy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server settings saved: port {Port}, {LogKept} log entries kept")]
+    private partial void LogSettingsSaved(int port, int logKept);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: the log was deleted by {User}")]
     private partial void LogLogCleared(string user);
@@ -2444,28 +2076,14 @@ public static class RadiusTexts
     public const string CertificateGone = Oadm.Sdk.Certificates.IssuedCertificateMessages.NotListed;
     public const string OnlyDot1x = "Only IEEE 802.1X certificates can be revoked here.";
 
-    /// <summary>The plugin id of PKI, whose permission "Manage the certificate authority" Revoke needs too.</summary>
+    /// <summary>The plugin id of PKI (its policies and its page).</summary>
     public const string PkiPluginId = "oadm.pki";
 
-    /// <summary>Revoke without PKI's permission (the host's wording of a missing permission).</summary>
-    public const string NeedsCaPermission = "Your role does not allow: PKI: Manage the certificate authority.";
-
-    /// <summary>The plugin id ("Used by" in PKI).</summary>
+    /// <summary>The plugin id.</summary>
     public const string PluginId = "oadm.radius";
 
-    /// <summary>The name PKI shows under "Used by".</summary>
+    /// <summary>The name of the server (logs, the user of a revocation without one).</summary>
     public const string ServiceName = "802.1X server";
-
-    public const string UnknownCa = "This certificate authority is not in the PKI.";
-
-    /// <summary>The name of the VLAN policy the default VLAN of OADM 4.1 moves into when no VLAN rule moved.</summary>
-    public const string AllDevicesPolicy = "All devices";
-
-    /// <summary>"The tag Floor 3 is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed."</summary>
-    public static string VlanTag(string tag) => $"The tag {tag} is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed.";
-
-    /// <summary>A rename or delete of a tag a policy names while the 802.1X server runs (every user).</summary>
-    public static string VlanTagChange(string tag) => $"The tag {tag} is used by an 802.1X policy. Change the policy first. Nothing was changed.";
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");
 

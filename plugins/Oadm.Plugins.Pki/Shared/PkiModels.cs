@@ -131,8 +131,11 @@ public sealed record CertificatesReply
     /// <summary>The first row's position (the request's, or the last page's when fewer match now).</summary>
     public int Offset { get; init; }
 
-    /// <summary>The days before the end that count as "Expires soon".</summary>
-    public int WarningDays { get; init; } = 30;
+    /// <summary>
+    /// The days before the end that count as "Expires soon"; null since each device follows its Expiry warning policy (the
+    /// certificate window then follows the row's state).
+    /// </summary>
+    public int? WarningDays { get; init; }
 }
 
 /// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>.</summary>

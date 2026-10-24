@@ -398,7 +398,7 @@ public sealed class RadiusProcessor
         return Respond(request, client, first, firstSnapshot, created.State);
     }
 
-    private static RadiusResult Respond(AccessRequest request, RadiusClient client, EapStep step, EapSessionSnapshot snapshot, byte[] state)
+    private RadiusResult Respond(AccessRequest request, RadiusClient client, EapStep step, EapSessionSnapshot snapshot, byte[] state)
     {
         switch (step.Kind)
         {
@@ -425,6 +425,11 @@ public sealed class RadiusProcessor
                 if (snapshot.VlanId is { } vlan)
                 {
                     attributes.AddRange(VlanAttributes.Attributes(vlan));
+                }
+
+                if (_options.Reauthentication is { } after)
+                {
+                    attributes.AddRange(ReauthenticationAttributes.Attributes(after)); // the 802.1X server policy (RFC 3580 3.17)
                 }
 
                 return Answer(request, client, RadiusCode.AccessAccept, attributes, snapshot, null);

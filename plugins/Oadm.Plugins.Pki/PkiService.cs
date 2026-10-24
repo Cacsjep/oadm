@@ -84,8 +84,11 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <param name="scopes">The device groups (null: none known, fail closed).</param>
     /// <param name="records">The plugin records of the issued certificates and the revocation list; null = in memory only (a host without records).</param>
     /// <param name="systemDevices">Every managed device (background work and other plugins' list queries); null = none.</param>
+    /// <param name="sites">The bound sites (the policies' device choice); null = none.</param>
+    /// <param name="protectedTags">The host's protection of the policies' tags; null = the tag parts of VLAN policies match no device.</param>
     public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger,
-        IDeviceScopes? scopes = null, IPluginRecords? records = null, Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? systemDevices = null)
+        IDeviceScopes? scopes = null, IPluginRecords? records = null, Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? systemDevices = null,
+        Oadm.Sdk.Sites.ISites? sites = null, IProtectedTags? protectedTags = null)
     {
         Viewers = new ViewerScopes(scopes);
         _scopes = scopes;
@@ -105,6 +108,8 @@ public sealed partial class PkiService : IAsyncDisposable
         _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
         _issued.UnknownNotAfter = LatestCaEnd;
         _issued.Changed += OnIssuedChanged;
+        _sites = sites;
+        Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger);
     }
 
     /// <summary>The server offers no secret protection: no CA can be kept.</summary>
@@ -152,6 +157,7 @@ public sealed partial class PkiService : IAsyncDisposable
     {
         await _issued.LoadAsync(ct).ConfigureAwait(false); // the revocation list counts from the first request on
         _config = await _store.LoadConfigAsync(ct).ConfigureAwait(false);
+        await StartPoliciesAsync(ct).ConfigureAwait(false);
         _previous = await PrunePreviousAsync(await _store.LoadPreviousAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
         await LoadImportedAsync(ct).ConfigureAwait(false);
         if (_secrets is null)
@@ -192,6 +198,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _issued.Changed -= OnIssuedChanged;
+        await StopPoliciesAsync().ConfigureAwait(false);
         await _issued.DisposeAsync().ConfigureAwait(false);
         _stopping.Dispose();
         _gate.Dispose();
@@ -204,7 +211,7 @@ public sealed partial class PkiService : IAsyncDisposable
     /// The state for a user limited to a device group: the CA and the settings as they are, the counts of issued
     /// certificates only for the devices of <paramref name="view"/> (null: every device).
     /// </summary>
-    internal async Task<PkiState> GetStateAsync(ViewedSet? view, CancellationToken ct)
+    internal async Task<PkiState> GetStateAsync(ViewedSet? view, CancellationToken ct, IReadOnlyList<IDeviceInfo>? devices = null)
     {
         var ca = _ca;
         var stored = _stored;
@@ -217,7 +224,8 @@ public sealed partial class PkiService : IAsyncDisposable
             issued = [.. issued.Where(entry => view.Contains(entry.DeviceId))];
         }
 
-        var counts = IssuedCounts.From(issued, ca?.Id, now, config.ExpiryWarningDays, _issued.IsRevoked);
+        // The warning days of each device (its Expiry warning policy): the caller's devices in a group user's call.
+        var counts = IssuedCounts.From(issued, ca?.Id, now, WarningDaysFor(devices ?? await SystemDevicesAsync(ct).ConfigureAwait(false)), _issued.IsRevoked);
 
         bool? installed = null;
         var trustError = _serverTrustError;
@@ -237,7 +245,7 @@ public sealed partial class PkiService : IAsyncDisposable
 
         return new PkiState
         {
-            Status = StatusOf(Unavailable, _generating, _generationError, ca, now, config.ExpiryWarningDays),
+            Status = StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
             Ca = ca?.Describe(stored?.Source ?? CaSource.Generated),
             KeyUnreadable = ca is { HasKey: false },
             IsGenerating = _generating,
@@ -889,7 +897,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
-        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, _config.ExpiryWarningDays, _issued.IsRevoked).WithCurrentCa;
+        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, Policies.DefaultExpiryDays, _issued.IsRevoked).WithCurrentCa;
     }
 
     private async Task PublishAsync()

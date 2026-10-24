@@ -38,6 +38,13 @@ public sealed record RadiusProtocolOptions
         init => field = value is >= MinFragment and <= MaxFragment ? value : throw new ArgumentOutOfRangeException(nameof(value), value, "500..1400 bytes.");
     } = DefaultFragment;
 
+    /// <summary>
+    /// Reauthentication (the 802.1X server policy): every Access-Accept carries Session-Timeout with this many seconds and
+    /// Termination-Action RADIUS-Request, so the switch authenticates the port again then (RFC 3580 3.17, 3.19); null: none
+    /// are sent and the switch decides.
+    /// </summary>
+    public TimeSpan? Reauthentication { get; init; }
+
     /// <summary>The server certificate; null refuses every handshake ("The 802.1X server has no certificate").</summary>
     public TlsServerIdentity? ServerIdentity { get; init; }
 

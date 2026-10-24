@@ -1,3 +1,4 @@
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Server;
@@ -13,8 +14,10 @@ namespace Oadm.Plugins.Radius;
 /// server and authenticates the cameras on the switch ports with EAP-TLS. The protocol layer is in <c>Protocol/</c> (no
 /// sockets, no host), the server part in <c>Server/</c> (<see cref="RadiusService"/>), the page contract in <c>Api/</c>.
 /// A PRO part of PKI (docs/spec/pki.md "One plugin"): the core plugin always runs, the server only while it is turned on and
-/// OADM PRO is active (<see cref="ServerSwitch{TService}"/>); the server checks the license again on every request.
-/// Events: "Device authenticated", "Authentication failed".
+/// OADM PRO is active (<see cref="ServerSwitch{TService}"/>); the server checks the license again on every request. Its
+/// rules are PKI's policies (<see cref="PolicyStore"/>, in process): the settings of OADM 4.1 and of development builds become
+/// policies once, at the first start (<see cref="RadiusPolicies.ConvertAsync"/>). Events: "Device authenticated",
+/// "Authentication failed".
 /// </summary>
 public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 {
@@ -82,8 +85,13 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
+
+        // The tags of the 802.1X policies were protected under this plugin until OADM 4.5; PKI protects its policies' tags now.
+        ctx.ProtectedTags?.Protect(Array.Empty<string>(), PolicyTexts.TagRefusal, PolicyTexts.TagChangeRefusal);
+        await ConvertAsync(ctx, ct).ConfigureAwait(false);
         var server = new ServerSwitch<RadiusService>(DisplayName, ctx.Settings, ctx.Pro, async token =>
         {
+            await ConvertAsync(ctx, token).ConfigureAwait(false); // PKI was not there at the start: converted with the first server start
             var host = new RadiusHost(
                 ctx.Settings,
                 ctx.Devices,
@@ -96,7 +104,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
                 Records = ctx.Records ?? throw new InvalidOperationException("The 802.1X server needs OADM 4.1 or later."),
                 Publisher = ctx.EventPublisher,
                 Scopes = ctx.DeviceScopes,
-                ProtectedTags = ctx.ProtectedTags,
+                Policies = () => ctx.Services?.Find<PolicyStore>(),
                 Secrets = ctx.Secrets,
                 Logger = ctx.Logger,
             };
@@ -120,29 +128,45 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
     /// <summary>
-    /// Reading is for everyone with the page; every change is Admin (permission "Change the 802.1X server"), audited. A new
-    /// or changed revoke policy needs PKI's "Manage the certificate authority" too (checked with the call).
+    /// Hands the 802.1X server's settings from before the policies to PKI's store, which makes policies of them once
+    /// (docs/spec/pki.md "Converting existing settings"). PKI starts first (the core plugins of a package start in name order);
+    /// without its store nothing happens now and the next start converts.
     /// </summary>
-    public UserRole RequiredRole(string method) => method is ServerSwitchMethods.Get or RadiusMethods.GetState or RadiusMethods.ListSwitches or RadiusMethods.GetPolicies
-        or RadiusMethods.ListSessions or RadiusMethods.ListLog or RadiusMethods.GetLogCertificate or RadiusMethods.ListSites or RadiusMethods.GetTrustedCas
+    internal static async Task ConvertAsync(ICorePluginContext ctx, CancellationToken ct)
+    {
+        if (ctx.Services?.Find<PolicyStore>() is not { } store || store.Converted.Contains(PluginId, StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        var authorities = ctx.Services.Find<IDeviceCertificateAuthority>()?.Authorities ?? [];
+        await store.ConvertOnceAsync(PluginId, token => RadiusPolicies.ConvertAsync(ctx.Settings, authorities, ctx.Sites?.List ?? [], token), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reading is for everyone with the page; every change is Admin (permission "Change the 802.1X server"), audited. The
+    /// policies are PKI's ("Manage the certificate authority").
+    /// </summary>
+    public UserRole RequiredRole(string method) => method is ServerSwitchMethods.Get or RadiusMethods.GetState or RadiusMethods.ListSwitches
+        or RadiusMethods.ListSessions or RadiusMethods.ListLog or RadiusMethods.GetLogCertificate or RadiusMethods.ListSites
         ? UserRole.Operator
         : UserRole.Admin;
 
-    /// <summary>Generate only makes a random text and the count only reads: not audited.</summary>
-    public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin && method is not (RadiusMethods.GenerateSecret or RadiusMethods.CountRevocations);
+    /// <summary>Generate only makes a random text: not audited.</summary>
+    public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin && method is not RadiusMethods.GenerateSecret;
 
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(PermissionKeys.Manage, "Change the 802.1X server", "Turn the server on and off, change the settings, the switches, the trusted CAs and the policies, and delete the log.") { OperatorDefault = false },
+        new(PermissionKeys.Manage, "Change the 802.1X server", "Turn the server on and off, change the settings and the switches, and delete the log.") { OperatorDefault = false },
     ];
 
     /// <summary>
-    /// The 802.1X server is server-wide (docs/spec/device-scope.md "Server-wide services"): Turn on, Turn off, the settings, Switches, Trusted
-    /// CAs, Policies and Delete all are for users with all devices; users limited to a group read the page with the Sessions
-    /// and Log rows of their devices.
+    /// The 802.1X server is server-wide (docs/spec/device-scope.md "Server-wide services"): Turn on, Turn off, the settings,
+    /// Switches and Delete all are for users with all devices; users limited to a group read the page with the Sessions and
+    /// Log rows of their devices.
     /// </summary>
     public bool RequiresAllDevices(string method) => ServerSwitchMethods.IsChange(method) || method is RadiusMethods.SaveSettings or RadiusMethods.SaveSwitch or RadiusMethods.GenerateSecret
-        or RadiusMethods.DeleteSwitch or RadiusMethods.SaveTrustedCas or RadiusMethods.SavePolicies or RadiusMethods.CountRevocations or RadiusMethods.DeleteLog;
+        or RadiusMethods.DeleteSwitch or RadiusMethods.DeleteLog;
 
     /// <summary>The page backend with the user's call: rows of devices are filtered to the caller's devices.</summary>
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
@@ -182,17 +206,6 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             case RadiusMethods.DeleteSwitch:
                 await service.DeleteSwitchAsync(RadiusJson.Deserialize<SwitchRef>(payloadJson).Id, ct).ConfigureAwait(false);
                 return null;
-            case RadiusMethods.GetTrustedCas:
-                return RadiusJson.Serialize(service.GetTrustedCas(caller.HasAllDevices));
-            case RadiusMethods.SaveTrustedCas:
-                return RadiusJson.Serialize(await service.SaveTrustedCasAsync(RadiusJson.Deserialize<TrustedCaSettings>(payloadJson), ct).ConfigureAwait(false));
-            case RadiusMethods.GetPolicies:
-                return RadiusJson.Serialize(service.GetPolicies(caller.HasAllDevices));
-            case RadiusMethods.SavePolicies:
-                var mayRevoke = caller.Has(PermissionKeys.Of(RadiusTexts.PkiPluginId, PermissionKeys.Manage));
-                return RadiusJson.Serialize(await service.SavePoliciesAsync(RadiusJson.Deserialize<PolicySettings>(payloadJson), caller.UserName, mayRevoke, ct).ConfigureAwait(false));
-            case RadiusMethods.CountRevocations:
-                return RadiusJson.Serialize(await service.CountRevocationsAsync(RadiusJson.Deserialize<PolicyDevices>(payloadJson), ct).ConfigureAwait(false));
             case RadiusMethods.ListSessions:
                 return RadiusJson.Serialize(new SessionList(service.ListSessions(await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false))));
             case RadiusMethods.ListLog:

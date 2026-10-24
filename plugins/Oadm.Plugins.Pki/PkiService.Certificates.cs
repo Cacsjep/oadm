@@ -129,7 +129,7 @@ public sealed partial class PkiService
             Offset = Math.Max(0, request.Offset),
             Limit = limit,
         };
-        var warningDays = _config.ExpiryWarningDays;
+        var warningDays = WarningDaysFor([.. byId.Values]);
         var page = _issued.Query(query, byId, onlyListed, warningDays);
         if (page.Rows.Count == 0 && page.Total > 0 && query.Offset > 0)
         {
@@ -138,7 +138,8 @@ public sealed partial class PkiService
             page = _issued.Query(query, byId, onlyListed, warningDays);
         }
 
-        return new CertificatesReply { Rows = page.Rows, Total = page.Total, Offset = query.Offset, WarningDays = warningDays };
+        // The days follow each device's Expiry warning policy: no one number for the page (the window follows the row's state).
+        return new CertificatesReply { Rows = page.Rows, Total = page.Total, Offset = query.Offset };
     }
 
     /// <summary>In-process callers: one page over every device.</summary>
@@ -150,7 +151,7 @@ public sealed partial class PkiService
     {
         ArgumentNullException.ThrowIfNull(query);
         var devices = await SystemDevicesAsync(ct).ConfigureAwait(false);
-        return _issued.Query(query, devices.ToDictionary(d => d.Id), onlyListedDevices: false, _config.ExpiryWarningDays);
+        return _issued.Query(query, devices.ToDictionary(d => d.Id), onlyListedDevices: false, WarningDaysFor(devices));
     }
 
     /// <summary>
@@ -264,7 +265,8 @@ public sealed partial class PkiService
     private static RevokeReply Reply(RevokeResult result) =>
         new() { Revoked = result.Revoked, AlreadyRevoked = result.AlreadyRevoked, NotFound = result.NotFound };
 
-    private async Task<IReadOnlyList<IDeviceInfo>> SystemDevicesAsync(CancellationToken ct)
+    /// <summary>Every managed device; none for a host (or test) without a device list.</summary>
+    internal async Task<IReadOnlyList<IDeviceInfo>> SystemDevicesAsync(CancellationToken ct)
     {
         if (_systemDevices is null)
         {

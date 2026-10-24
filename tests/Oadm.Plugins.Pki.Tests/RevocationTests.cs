@@ -138,7 +138,7 @@ public sealed class RevocationTests
         }));
 
         var first = await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest());
-        Assert.Equal((1200, 500, 0, 30), (first.Total, first.Rows.Count, first.Offset, first.WarningDays));
+        Assert.Equal((1200, 500, 0, (int?)null), (first.Total, first.Rows.Count, first.Offset, first.WarningDays)); // each device follows its Expiry warning policy
         Assert.Equal("C00000", first.Rows[0].SerialNumber); // newest first
         var last = await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { Offset = 1000 });
         Assert.Equal(200, last.Rows.Count);

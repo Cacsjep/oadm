@@ -28,6 +28,7 @@ public static class RadiusAttributeType
     public const byte Class = 25;
     public const byte VendorSpecific = 26;
     public const byte SessionTimeout = 27;
+    public const byte TerminationAction = 29;
     public const byte CalledStationId = 30;
     public const byte CallingStationId = 31;
     public const byte NasIdentifier = 32;

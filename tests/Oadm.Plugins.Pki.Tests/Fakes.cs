@@ -10,6 +10,7 @@ using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.TrustStore;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Testing;
@@ -111,6 +112,24 @@ internal sealed class TestCoreContext(IPluginSettings settings, ISecretProtector
     /// <summary>The managed devices (none by default: the context then has no device list).</summary>
     public IReadOnlyList<IDeviceInfo>? DeviceList { get; init; }
 
+    /// <summary>The sites of the host (the policies' device choice).</summary>
+    public FakeSites FakeSites { get; init; } = new();
+
+    public Sdk.Sites.ISites? Sites => FakeSites;
+
+    /// <summary>The protection of the policies' tags.</summary>
+    public FakeProtectedTags FakeProtectedTags { get; init; } = new();
+
+    public IProtectedTags? ProtectedTags => FakeProtectedTags;
+
+    /// <summary>The event rules' publisher (the certificate expiry events); null: a host without event rules.</summary>
+    public IEventPublisher? EventPublisher { get; init; }
+
+    /// <summary>The plugin services (PKI offers its CA and its policies there).</summary>
+    public FakePluginServices FakeServices { get; } = new();
+
+    public IPluginServices? Services => FakeServices;
+
     public IDeviceRepository Devices => DeviceList is { } list ? new ListRepository(list) : throw new NotSupportedException();
 
     private sealed class ListRepository(IReadOnlyList<IDeviceInfo> list) : IDeviceRepository
@@ -198,7 +217,9 @@ internal sealed class PkiHarness : IAsyncDisposable
         TimeProvider? time = null,
         bool waitForDefault = true,
         MemoryPluginRecords? records = null,
-        IReadOnlyList<IDeviceInfo>? devices = null)
+        IReadOnlyList<IDeviceInfo>? devices = null,
+        IEventPublisher? publisher = null,
+        FakeSites? sites = null)
     {
         settings ??= new InMemoryPluginSettingsProvider();
         var protector = noSecrets ? null : secrets ?? TestSecrets.Create();
@@ -206,14 +227,20 @@ internal sealed class PkiHarness : IAsyncDisposable
         var anchors = new TrustAnchorRegistry();
         var trust = new FakeTrustStore();
         var plugin = new PkiPlugin(Options(trust, time));
-        var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId)) { PluginRecords = records ?? new MemoryPluginRecords(), DeviceList = devices };
+        var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId))
+        {
+            PluginRecords = records ?? new MemoryPluginRecords(),
+            DeviceList = devices,
+            EventPublisher = publisher,
+            FakeSites = sites ?? new FakeSites(),
+        };
         await plugin.StartAsync(core, CancellationToken.None);
         if (waitForDefault)
         {
             await plugin.Service!.Background;
         }
 
-        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes) { Records = core.PluginRecords };
+        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes) { Records = core.PluginRecords, Core = core };
     }
 
     public async Task<T> InvokeAsync<T>(string method, object? payload = null) =>
@@ -223,6 +250,12 @@ internal sealed class PkiHarness : IAsyncDisposable
 
     /// <summary>The plugin records of the started plugin (issued certificates, revocation list).</summary>
     public MemoryPluginRecords Records { get; init; } = new();
+
+    /// <summary>The plugin's context (sites, protected tags, services).</summary>
+    public TestCoreContext Core { get; init; } = null!;
+
+    /// <summary>PKI's policies.</summary>
+    public Policies.PolicyStore Policies => Service.Policies;
 
     /// <summary>Adds issued certificates as the tasks and the CA service do.</summary>
     public async Task SetIssuedAsync(IEnumerable<IssuedCertificate> issued)
@@ -301,6 +334,16 @@ internal sealed class PluginPageContext(PkiPlugin plugin, PluginEventHub hub) : 
 
     /// <summary>False: the user is limited to a device group.</summary>
     public bool HasAllDevices { get; set; } = true;
+
+    /// <summary>False: the role lacks the plugin's "manage" permissions.</summary>
+    public bool Manage { get; set; } = true;
+
+    public bool Has(string permission) => Manage || !permission.EndsWith(":" + PermissionKeys.Manage, StringComparison.Ordinal);
+
+    /// <summary>The devices this client knows (the policy editor's device picker).</summary>
+    public IReadOnlyList<IDeviceInfo> DeviceList { get; set; } = [];
+
+    public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
