@@ -135,9 +135,11 @@ public sealed class IssueDialogTests
         https.ValidDays = "730";
         https.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
         Assert.True(await https.SaveAsync());
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", card.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", card.OtherIssuing.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
 
-        var dot1x = card.NewEditor(card.Rows.Single(r => r.Name == "IEEE 802.1X").Source);
+        // The system IEEE 802.1X policy is edited in place on its card.
+        var dot1x = card.Dot1x!;
+        Assert.True(dot1x.IsInPlace);
         dot1x.Identity = PolicyEditorViewModel.IdentityChoices.Single(c => c.Value == Dot1xIdentity.Custom);
         dot1x.CustomIdentity = "cam-{mac}";
         Assert.Equal("Unknown placeholder {mac}. Use {serial} or {hostName}.", dot1x.ErrorOf(nameof(dot1x.CustomIdentity)));
@@ -151,28 +153,29 @@ public sealed class IssueDialogTests
         Assert.Null(dot1x.ErrorOf(nameof(dot1x.RadiusCa)));
         Assert.StartsWith("Corp RADIUS CA, valid until ", dot1x.RadiusCaText, StringComparison.Ordinal);
         dot1x.Eapol = PolicyEditorViewModel.EapolChoices[1];
+        Assert.Equal(PolicyEditorViewModel.NotSavedText, dot1x.SaveStatus);
         Assert.True(await dot1x.SaveAsync());
+        Assert.Equal((PolicyEditorViewModel.SavedText, 2), (card.Dot1x!.SaveStatus, card.Dot1x.Eapol.Value)); // the saved policy's form
         var saved = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
         Assert.Equal((2, "cam-{serial}", RadiusCaSource.Imported), (saved.EapolVersion!.Value, saved.CustomIdentity, saved.RadiusCa));
         Assert.NotNull(saved.RadiusCaPem);
 
         // The 802.1X server policy holds its certificate (Issued by, valid days, key): ECC only.
-        var server = card.NewEditor(card.Rows.Single(r => r.Source.Kind == PolicyKinds.Dot1xServer).Source);
+        var server = card.Dot1xServer!;
         Assert.True(server.IsIssuing);
         Assert.Equal(("365", PolicyKeys.Ecc, CertificateAuthorityInfo.OadmId), (server.ValidDays, server.Key.Value, server.IssuingCa!.Value));
         server.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
         Assert.False(await server.SaveAsync());
         Assert.Equal(PolicyTexts.Dot1xServerNeedsEcc, server.ErrorOf(nameof(server.Key)));
 
-        // The issuing policies lead the table in age order; the system policy a task needs is never deleted (the reason
-        // below the table), the user's own one is.
-        Assert.Equal(["HTTPS", "IEEE 802.1X", "HTTPS 2 years"], card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
-        Assert.Equal(card.Rows.Take(3).Select(r => r.Name), card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
-        await card.DeleteRowCommand.ExecuteAsync(card.Rows.Single(r => r.Name == "IEEE 802.1X"));
-        Assert.Equal(PolicyTexts.SystemPolicy, card.Error);
-        await card.DeleteRowCommand.ExecuteAsync(card.Rows.Single(r => r.Name == "HTTPS 2 years"));
+        // Other issuing holds the user's own issuing policies only (the system ones are in place); the system policy a task
+        // needs is never deleted (the server refuses it), the user's own one is.
+        Assert.Equal(["HTTPS 2 years"], card.OtherIssuing.Rows.Select(r => r.Name));
+        var refused = await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.DeletePolicy, new PolicyRef(card.Dot1x!.PolicyId));
+        Assert.Equal(PolicyTexts.SystemPolicy, refused.Error!.Message);
+        await card.OtherIssuing.DeleteRowCommand.ExecuteAsync(card.OtherIssuing.Rows.Single(r => r.Name == "HTTPS 2 years"));
         Assert.Null(card.Error);
-        Assert.DoesNotContain(card.Rows, r => r.Name == "HTTPS 2 years");
+        Assert.Empty(card.OtherIssuing.Rows);
     }
 
     [Fact]
@@ -207,7 +210,7 @@ public sealed class IssueDialogTests
             await card.LoadAsync(CancellationToken.None);
             foreach (var (row, name) in new[] { ("HTTPS 2 years", "pki-policy-https.png"), ("IEEE 802.1X", "pki-policy-dot1x-certificate.png"), ("EST server", "pki-policy-est-server.png"), ("802.1X server", "pki-policy-dot1x-server.png") })
             {
-                var editor = card.NewEditor(card.Rows.Single(r => r.Name == row && PolicyKinds.IsIssuing(r.Source.Kind)).Source);
+                var editor = card.NewEditor(card.List.Rows.Single(r => r.Policy.Name == row && PolicyKinds.IsIssuing(r.Policy.Kind)).Policy);
                 var window = PolicyFormView.CreateWindow(editor);
                 Oadm.Client.App.ApplyCrispText(window);
                 window.Show();
