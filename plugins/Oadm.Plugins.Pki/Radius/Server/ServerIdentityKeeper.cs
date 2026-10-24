@@ -19,8 +19,15 @@ namespace Oadm.Plugins.Radius.Server;
 /// </summary>
 public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDeviceCertificateAuthority?> authority, ISecretProtector? secrets, TimeProvider time, ILogger logger) : IDisposable
 {
-    public static readonly TimeSpan Validity = TimeSpan.FromDays(365);
-    public static readonly TimeSpan RenewBefore = TimeSpan.FromDays(30);
+    /// <summary>Without PKI's policy: 365 days (as before the policies).</summary>
+    public static readonly TimeSpan Validity = TimeSpan.FromDays(Oadm.Plugins.Pki.Policies.PolicyLimits.DefaultValidDays);
+    public static readonly TimeSpan RenewBefore = Oadm.Plugins.Pki.Policies.PolicyLimits.ServerRenewBefore;
+
+    /// <summary>
+    /// PKI's Server certificate policy of the 802.1X server: its valid days for the next certificate (a change of the days
+    /// alone makes no new one; a new CA does). Null: 365 days. The key stays ECDSA P-256 (the policy allows ECC only).
+    /// </summary>
+    public Func<Oadm.Plugins.Pki.Policies.PkiPolicy?> Policy { get; init; } = () => null;
 
     /// <summary>The key of every server certificate made here (ECDSA P-256): the cipher suites that can be negotiated follow it.</summary>
     public const ServerKeyKind KeyKind = ServerKeyKind.Ecdsa;
@@ -64,7 +71,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             // CA or the end near makes a new one, so the certificate does not change with every link.
             if (_current is { } current && current.CaCertificate.AsSpan().SequenceEqual(ca.Chain[0])
                 && wanted.All(n => current.Names.Contains(n, StringComparer.OrdinalIgnoreCase))
-                && current.NotAfterUtc - time.GetUtcNow().UtcDateTime > RenewBefore)
+                && current.NotAfterUtc - time.GetUtcNow().UtcDateTime > Oadm.Plugins.Pki.Policies.PolicyLimits.RenewBefore(current.Lifetime))
             {
                 return false;
             }
@@ -93,14 +100,16 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
         var dns = names.Where(n => !System.Net.IPAddress.TryParse(n, out _)).ToList();
         var commonName = dns.FirstOrDefault() ?? ips.FirstOrDefault() ?? "OADM 802.1X server";
         var csr = new CertificateRequest("CN=" + commonName, key, HashAlgorithmName.SHA256).CreateSigningRequest();
-        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, ips, dns, DeviceCertificateUse.Server) { Validity = Validity }, ct)
+        var validity = Policy() is { ValidDays: > 0 and var days } ? TimeSpan.FromDays(days) : Validity;
+        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, ips, dns, DeviceCertificateUse.Server) { Validity = validity }, ct)
             .ConfigureAwait(false);
         var pkcs8 = key.ExportPkcs8PrivateKey();
         try
         {
             List<byte[]> chain = [issued.Certificate, .. issued.Chain];
             var identity = TlsServerIdentity.Create(chain, pkcs8);
-            var current = new Current(identity, issued.NotAfterUtc, names, issued.Chain.Count > 0 ? issued.Chain[0] : []);
+            using var leaf = X509CertificateLoader.LoadCertificate(issued.Certificate);
+            var current = new Current(identity, issued.NotAfterUtc, names, issued.Chain.Count > 0 ? issued.Chain[0] : [], leaf.NotAfter.ToUniversalTime() - leaf.NotBefore.ToUniversalTime());
             var stored = secrets is null ? null : new StoredServerCertificate
             {
                 Chain = [.. chain.Select(Convert.ToBase64String)],
@@ -129,7 +138,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             var chain = stored.Chain.Select(Convert.FromBase64String).ToList();
             pkcs8 = Convert.FromBase64String(secrets.Unprotect(stored.KeyProtected, KeyPurpose));
             using var leaf = X509CertificateLoader.LoadCertificate(chain[0]);
-            return new Current(TlsServerIdentity.Create(chain, pkcs8), leaf.NotAfter.ToUniversalTime(), [.. stored.Names], chain[1]);
+            return new Current(TlsServerIdentity.Create(chain, pkcs8), leaf.NotAfter.ToUniversalTime(), [.. stored.Names], chain[1], leaf.NotAfter.ToUniversalTime() - leaf.NotBefore.ToUniversalTime());
         }
 #pragma warning disable CA1031 // A damaged or foreign value (another master key after a restore) only means a new certificate.
         catch (Exception)
@@ -151,5 +160,5 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: new server certificate from the OADM CA, valid until {NotAfter:yyyy-MM-dd} ({Names})")]
     private partial void LogIssued(DateTime notAfter, string names);
 
-    private sealed record Current(TlsServerIdentity Identity, DateTime NotAfterUtc, IReadOnlyList<string> Names, byte[] CaCertificate);
+    private sealed record Current(TlsServerIdentity Identity, DateTime NotAfterUtc, IReadOnlyList<string> Names, byte[] CaCertificate, TimeSpan Lifetime);
 }

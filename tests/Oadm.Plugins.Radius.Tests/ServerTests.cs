@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Eap;
@@ -336,6 +337,31 @@ public sealed class ServerTests
         harness.Time.Advance(ServerIdentityKeeper.Validity - TimeSpan.FromDays(29));
         await harness.StartAsync();
         Assert.Equal(2, harness.Ca.SignCount);
+    }
+
+    [Fact]
+    public async Task TheServerCertificateTakesTheDaysOfItsPolicyWithTheNextCertificate()
+    {
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        Assert.Equal(1, harness.Ca.SignCount);
+        await harness.Policies.ConvertOnceAsync(Oadm.Plugins.Pki.PkiService.IssuingOwner, _ => Task.FromResult(Oadm.Plugins.Pki.PkiService.ConvertIssuing(new Oadm.Plugins.Pki.PkiConfig(), usedBefore: false)), CancellationToken.None);
+        var policy = harness.Policies.ServerCertificateFor(PolicyServers.Dot1x)!;
+        await harness.SavePolicyAsync(policy with { ValidDays = 100 });
+
+        // Other days alone make no new certificate.
+        await harness.Service.MaintainAsync(CancellationToken.None);
+        Assert.Equal(1, harness.Ca.SignCount);
+
+        // A new CA does: with the policy's days.
+        var newCa = new TestAuthority("OADM new CA");
+        harness.Ctx.FakeServices.Withdraw<Oadm.Sdk.Certificates.IDeviceCertificateAuthority>();
+        harness.Ctx.FakeServices.Offer<Oadm.Sdk.Certificates.IDeviceCertificateAuthority>(newCa);
+        await harness.Service.MaintainAsync(CancellationToken.None);
+        Assert.Equal(1, newCa.SignCount);
+        var made = (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).ServerCertificate!;
+        Assert.InRange((made.NotAfterUtc - DateTime.UtcNow).TotalDays, 99, 101);
+        newCa.Dispose();
     }
 
     [Fact]
