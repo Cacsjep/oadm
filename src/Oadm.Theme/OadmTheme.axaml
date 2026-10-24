@@ -588,7 +588,7 @@
     <Setter Property="Background" Value="{StaticResource Oadm.Tag.ChipBackgroundBrush}" />
     <Setter Property="Padding" Value="8,2" />
   </Style>
-  <!-- tinted: a status in a row's badges (the OADM CA's "Trusted by server") -->
+  <!-- tinted: a status in a row's badges (the OADM CA's "OS root store: server") -->
   <Style Selector="Border.badge.system TextBlock, DataGridCell Border.badge.system TextBlock, Border.badge.tinted TextBlock, DataGridCell Border.badge.tinted TextBlock">
     <Setter Property="Margin" Value="0" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.Tag.VioletBrush}" />

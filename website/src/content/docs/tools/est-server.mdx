@@ -61,7 +61,7 @@ they have until these expire. Everything else in OADM works the same with or wit
 - **Enrollments kept**: how many enrollments the list keeps, 100 to 5,000 (default 500).
 - **Issued by**: the OADM CA that signs the certificates.
 - **3 policies applied**, the link next to **Save**: which cameras may enroll and which CAs they sign in with are
-  policies on the [PKI](../pki/) page (Enrollment and Sign-in CA). Point at it to see them; it opens them. A warning
+  policies on the [PKI](../pki/) page (EST server, Enrollment and EST sign-in CA). Point at it to see them; it opens them. A warning
   says when no camera can enroll.
 
 ### Profiles
@@ -188,9 +188,10 @@ issued it directly for this camera, and remembers it. Any other new certificate 
 
 The EST server only answers cameras that:
 
-- sign in with a certificate of a CA a **Sign-in CA** policy names: by default their **Axis device ID** (checked
+- sign in with a certificate of a CA an **EST sign-in CA** policy names: by default their **Axis device ID** (checked
   against the Axis device ID certificate authorities) for new certificates, and a certificate the OADM CA gave them
-  for renewals,
+  for renewals. To renew, a camera may also sign in with its current certificate from OADM, whichever CA of the PKI page
+  issued it (also a CA you imported with its key),
 - are **managed by OADM**: the serial number in the device ID must be a device in the device list, and
 - are in an **Enrollment** policy that allows the profile (by default "All devices", every profile). A camera no
   Enrollment policy holds is refused; a profile its policy does not allow is answered like a profile that does not
@@ -223,7 +224,7 @@ For example, send an email when a certificate is not renewed: a certificate of 1
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
 | Refused: **No enrollment policy for this device.** | Add the camera to an Enrollment policy on the PKI page. |
 | Refused: **The enrollment policy ... does not allow the profile ...** | Allow the profile in that policy on the PKI page, or turn the profile off for the camera. |
-| **Cameras cannot sign in: there is no Sign-in CA policy.** | Add a Sign-in CA policy on the PKI page ("Axis device ID" for new certificates, "OADM CA" for renewals). |
+| **Cameras cannot sign in: there is no EST sign-in CA policy.** | Add an EST sign-in CA policy on the PKI page ("Axis device ID" for new certificates, "OADM CA" for renewals). |
 | **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server (at a site: to the site node) on TCP 9454 (or the port you chose). |
 | **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |
 | At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |

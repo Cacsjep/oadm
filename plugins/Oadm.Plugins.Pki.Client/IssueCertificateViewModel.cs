@@ -21,6 +21,8 @@ public sealed partial class IssueCertificateViewModel : PkiDialogViewModel
     private readonly ITaskDialogContext _ctx;
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private IReadOnlyDictionary<Guid, string> _radiusLines = new Dictionary<Guid, string>();
+    private IReadOnlyDictionary<Guid, string> _caNames = new Dictionary<Guid, string>();
+    private string _caName = PolicyStore.IssuingCaName;
 
     public IssueCertificateViewModel(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, string kind)
     {
@@ -85,7 +87,7 @@ public sealed partial class IssueCertificateViewModel : PkiDialogViewModel
 
     /// <summary>The RADIUS server CA choices: the OADM CA, and the policy's imported CA when it has one.</summary>
     [ObservableProperty]
-    public partial IReadOnlyList<Choice<string>> RadiusChoices { get; set; } = [new(RadiusCaSource.Oadm, "This OADM CA")];
+    public partial IReadOnlyList<Choice<string>> RadiusChoices { get; set; } = [new(RadiusCaSource.Oadm, PolicyEditorViewModel.OadmRadiusServer)];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RadiusCaLine))]
@@ -137,7 +139,9 @@ public sealed partial class IssueCertificateViewModel : PkiDialogViewModel
     {
         ArgumentNullException.ThrowIfNull(list);
         _radiusLines = list.RadiusCaSummaries ?? new Dictionary<Guid, string>();
-        CaName = list.CaName ?? PolicyStore.IssuingCaName;
+        _caName = list.CaName ?? PolicyStore.IssuingCaName;
+        _caNames = list.CaNames ?? new Dictionary<Guid, string>();
+        CaName = _caName;
         Policies = [.. list.Policies.Where(p => p.Kind == Kind).Select(p => new Choice<PkiPolicy>(p, p.Name))];
         Policy = Policies.Count > 0 ? Policies[0] : null;
         if (list.Error is { } error)
@@ -157,14 +161,15 @@ public sealed partial class IssueCertificateViewModel : PkiDialogViewModel
             return;
         }
 
+        CaName = _caNames.GetValueOrDefault(policy.Id) ?? _caName;
         ValidDays = (policy.ValidDays ?? PolicyLimits.DefaultValidDays).ToString(CultureInfo.InvariantCulture);
         Key = PolicyEditorViewModel.KeyChoices.FirstOrDefault(k => k.Value == policy.Key) ?? PolicyEditorViewModel.KeyChoices[0];
         Eapol = PolicyEditorViewModel.EapolChoices.FirstOrDefault(e => e.Value == (policy.EapolVersion ?? 1)) ?? PolicyEditorViewModel.EapolChoices[0];
         Identity = PolicyEditorViewModel.IdentityChoices.FirstOrDefault(i => i.Value == policy.Identity) ?? PolicyEditorViewModel.IdentityChoices[0];
         CustomIdentity = policy.CustomIdentity ?? string.Empty;
         RadiusChoices = policy.RadiusCa == RadiusCaSource.Imported || _radiusLines.ContainsKey(policy.Id) // never a silent switch away from the policy's CA
-            ? [new(RadiusCaSource.Oadm, "This OADM CA"), new(RadiusCaSource.Imported, "Imported CA")]
-            : [new(RadiusCaSource.Oadm, "This OADM CA")];
+            ? [new(RadiusCaSource.Oadm, PolicyEditorViewModel.OadmRadiusServer), new(RadiusCaSource.Imported, "Imported CA")]
+            : [new(RadiusCaSource.Oadm, PolicyEditorViewModel.OadmRadiusServer)];
         RadiusCa = RadiusChoices.FirstOrDefault(r => r.Value == policy.RadiusCa) ?? RadiusChoices[0];
 
         Validation.Reset();

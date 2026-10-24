@@ -35,10 +35,11 @@ public sealed class EstPolicyPageTests
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST", "Revoke"], card.Filters.Select(f => f.Label));
+        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST"], card.Filters.Select(f => f.Label));
         card.SelectFilterCommand.Execute(PolicyGroups.Est);
-        Assert.Equal([("All devices", "Enrollment", "These cameras may get certificates from the EST server for every profile.", "All devices"), ("Axis device ID", "Sign-in CA", "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "-"),
-            ("OADM CA", "Sign-in CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", "-")], card.Rows.Select(r => (r.Name, r.Kind, r.Summary, r.Devices)));
+        Assert.Equal([("EST server", "EST server", "The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", "-"),
+            ("All devices", "Enrollment", "These cameras may get certificates from the EST server for every profile.", "All devices"), ("Axis device ID", "EST sign-in CA", "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "-"),
+            ("OADM CA", "EST sign-in CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", "-")], card.Rows.Select(r => (r.Name, r.Kind, r.Summary, r.Devices)));
         Assert.Equal(["https", "dot1x"], card.List.EstProfiles);
         Assert.Equal(["Axis device ID", "OADM Root CA SERVER01"], card.List.SignInCas.Select(c => c.Name));
     }

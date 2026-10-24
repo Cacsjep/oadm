@@ -306,6 +306,12 @@ public sealed record IssuedCertificateInfo
 
     /// <summary>A CA row: a root CA (it issued itself); false for an intermediate CA and every other row.</summary>
     public bool IsRootCa { get; init; }
+
+    /// <summary>A CA row: PKI holds the CA's key, so its policies can pick it as the CA that issues; false for every other row.</summary>
+    public bool CanIssue { get; init; }
+
+    /// <summary>A CA row: the names of the policies that use the CA (issuing, trusted, sign-in), in the policies' order; null for none.</summary>
+    public IReadOnlyList<string>? UsedIn { get; init; }
 }
 
 /// <summary>How the list of certificates is grouped (SDK 0.4.0): by type (the default), by the CA that issued them, or not.</summary>

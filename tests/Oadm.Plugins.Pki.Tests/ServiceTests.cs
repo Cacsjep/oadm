@@ -148,33 +148,35 @@ public sealed class ServiceTests
     }
 
     [Fact]
-    public async Task Import_replaces_the_ca_with_field_errors_first_and_keeps_the_intermediate_chain()
+    public async Task Import_with_its_key_adds_a_ca_with_field_errors_first_and_keeps_the_intermediate_chain()
     {
         await using var pki = await PkiHarness.StartAsync();
-        var bad = await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String([1, 2, 3]), "x.pfx", "pw", null, null, true));
+        var oadm = pki.Service.Ca!.Id;
+        var bad = await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String([1, 2, 3]), "x.pfx", "pw", null, null));
         Assert.Equal(CaImporter.WrongPassword, bad.Errors![PkiFields.Password]);
-        Assert.Equal("The file cannot be read.", (await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest("not base64!", null, null, null, null, true))).Errors![PkiFields.File]);
+        Assert.Equal("The file cannot be read.", (await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest("not base64!", null, null, null, null))).Errors![PkiFields.File]);
 
         using var root = TestCa.Root();
         using var intermediate = TestCa.Intermediate(root);
         using var rootPublic = X509CertificateLoader.LoadCertificate(root.RawData);
         var pfx = TestCa.Pfx("secret", intermediate, rootPublic);
-        var ask = await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null, Confirmed: false));
-        Assert.True(ask.NeedsConfirmation); // checked first, then the replace confirmation
-        Assert.Equal(0, ask.DevicesWithCurrentCa);
-        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null, Confirmed: true));
+        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null));
 
+        // Decision 2026-10-25: the CA is added to the list; the OADM CA stays as it was (nothing asked, nothing replaced).
         Assert.True(reply.Ok);
         var state = reply.State!;
-        Assert.Equal(CaSource.Imported, state.Ca!.Source);
-        Assert.True(state.Ca.IsIntermediate);
-        Assert.Equal(["Acme Root CA"], state.Ca.ChainSubjects);
-        Assert.Single(state.PreviousCas);
+        Assert.Equal((oadm, CaSource.Generated), (state.Ca!.Id, state.Ca.Source));
+        Assert.Empty(state.PreviousCas);
+        var imported = Assert.Single(pki.Service.Authorities(), a => a.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported);
+        Assert.True(imported.Issues);
+        Assert.Equal([intermediate.RawData, root.RawData], imported.Certificates); // the chain kept at import
 
-        // Anchors: the intermediate, its root and the previous CA.
+        // Anchors: the OADM CA, the intermediate and its root; renewals pin the CAs that issue (not their chains).
         Assert.Equal(3, pki.Anchors.Current.Certificates.Count);
+        Assert.Equal(2, pki.Anchors.Current.RenewalIssuers.Count);
         using var leaf = TestCa.Leaf(intermediate);
         Assert.Equal(CertificateTrust.Trusted, CertificateTrustEvaluator.EvaluateChain(leaf, trustAnchors: pki.Anchors.Current.Certificates));
+        Assert.Equal("This CA is already in the list.", (await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null))).Errors![PkiFields.File]);
     }
 
     [Fact]
@@ -221,12 +223,13 @@ public sealed class ServiceTests
         var bytes = Convert.FromBase64String(backup.DataBase64!);
         Assert.Throws<System.Security.Cryptography.CryptographicException>(() => X509CertificateLoader.LoadPkcs12(bytes, "wrong"));
 
+        // On another server the backup is a CA with its key: it is added to the list and can issue (decision 2026-10-25:
+        // an import never replaces that server's own OADM CA).
         await using var other = await PkiHarness.StartAsync();
-        var restored = await other.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(backup.DataBase64, backup.FileName, "correct horse", null, null, true));
+        var restored = await other.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(backup.DataBase64, backup.FileName, "correct horse", null, null));
         Assert.True(restored.Ok);
-        Assert.Equal(id, restored.State!.Ca!.Id);
-        Assert.Equal(CaSource.Imported, restored.State.Ca.Source);
-        Assert.True(other.Service.Ca!.HasKey);
+        Assert.NotEqual(id, restored.State!.Ca!.Id);
+        Assert.NotNull(other.Service.IssuingCa(PkiService.ImportedAuthorityId(id)));
     }
 
     [Fact]

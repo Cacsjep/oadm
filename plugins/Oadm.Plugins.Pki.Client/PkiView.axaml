@@ -135,8 +135,8 @@
                   <ui:ToolbarButton Text="Import" IconKey="upload" IsVisible="{Binding MayManage}">
                     <ui:ToolbarButton.Flyout>
                       <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <MenuItem Header="Own CA with its key" Command="{Binding ImportCommand}" ToolTip.Tip="It replaces the OADM CA (.pfx, .p12 or PEM files)" />
-                        <MenuItem Header="CA certificate only" Command="{Binding ImportAuthorityCommand}" ToolTip.Tip="A root or intermediate certificate for the policies" />
+                        <MenuItem Header="CA certificate" Command="{Binding ImportAuthorityCommand}" ToolTip.Tip="A root or intermediate certificate for the policies" />
+                        <MenuItem Header="CA with its key" Command="{Binding ImportCommand}" ToolTip.Tip="It can then issue certificates (.pfx, .p12 or PEM files)" />
                       </MenuFlyout>
                     </ui:ToolbarButton.Flyout>
                   </ui:ToolbarButton>

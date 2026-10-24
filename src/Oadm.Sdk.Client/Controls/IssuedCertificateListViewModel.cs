@@ -98,6 +98,17 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>The Used by cell's tooltip: every use, one per line ("802.1X: OADM CA (...)", "Issuing: HTTPS, ..."); null for "-".</summary>
     public string? UsedByTip => string.IsNullOrEmpty(Source.UsedBy) ? null : Source.UsedBy.Replace("; ", Environment.NewLine, StringComparison.Ordinal);
 
+    /// <summary>
+    /// The Used in column of a CA list (<see cref="IssuedCertificateListViewModel.ShowsUsedIn"/>): the names of the policies
+    /// that use the CA, at most <see cref="IssuedCertificateTexts.UsedInShown"/> as badges, then "+N"; empty for none.
+    /// </summary>
+    public IReadOnlyList<string> UsedIn => _usedIn ??= IssuedCertificateTexts.UsedInBadges(Source.UsedIn ?? []);
+
+    private IReadOnlyList<string>? _usedIn;
+
+    /// <summary>The Used in cell's tooltip: every policy, one per line; null for none.</summary>
+    public string? UsedInTip => Source.UsedIn is { Count: > 0 } names ? string.Join(Environment.NewLine, names) : null;
+
     /// <summary>Start of validity, "2026-10-24".</summary>
     public string ValidFrom => Source.NotBeforeUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
@@ -265,6 +276,21 @@ public static class IssuedCertificateTexts
     /// <summary>"Device certificates · 60,000": a group header.</summary>
     public static string GroupHeader(string title, int count) => string.Create(CultureInfo.CurrentCulture, $"{title} · {count:N0}");
 
+    /// <summary>The badge of an imported CA with its key: its policies can pick it as the CA that issues.</summary>
+    public const string CanIssue = "Can issue";
+
+    /// <summary>The policy names a Used in cell shows as badges before "+N" (one: the column stays narrow, the tooltip lists all).</summary>
+    public const int UsedInShown = 1;
+
+    /// <summary>The badges of a Used in cell: the first <see cref="UsedInShown"/> names, then "+N" for the rest.</summary>
+    public static IReadOnlyList<string> UsedInBadges(IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        return names.Count <= UsedInShown
+            ? names
+            : [.. names.Take(UsedInShown), string.Create(CultureInfo.CurrentCulture, $"+{names.Count - UsedInShown:N0}")];
+    }
+
     /// <summary>"OADM CA", "Previous OADM CA", "Axis device ID", "Imported".</summary>
     public static string AuthorityKindText(CertificateAuthorityKind kind) => kind switch
     {
@@ -281,7 +307,12 @@ public static class IssuedCertificateTexts
         var use = row.Purpose is ListedCertificateUses.Other or ListedCertificateUses.Ca ? null : ListedCertificateUses.Text(row.Purpose);
         return row.Kind switch
         {
-            ListedCertificateKind.Authority => [row.IsRootCa ? "Root CA" : "Intermediate CA", .. row.AuthorityKind is { } kind ? [AuthorityKindText(kind)] : Array.Empty<string>()],
+            ListedCertificateKind.Authority =>
+            [
+                row.IsRootCa ? "Root CA" : "Intermediate CA",
+                .. row.AuthorityKind is { } kind ? [AuthorityKindText(kind)] : Array.Empty<string>(),
+                .. row.AuthorityKind == CertificateAuthorityKind.Imported && row.CanIssue ? [CanIssue] : Array.Empty<string>(),
+            ],
             ListedCertificateKind.Server => [ListedCertificateUses.Text(ListedCertificateUses.Server)],
             ListedCertificateKind.Created => [.. Use(use), "Created"],
             ListedCertificateKind.SignedRequest => [.. Use(use), "Signed"],
@@ -441,6 +472,12 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
     /// <summary>The filters show (default); false for a short list such as the PKI page's CAs (the search always shows).</summary>
     public bool ShowsFilters { get; init; } = true;
+
+    /// <summary>
+    /// A CA list (the PKI page's): the Used in column shows (the policies that use each CA) and the Type column is wider (the
+    /// OADM CA's badges); false by default.
+    /// </summary>
+    public bool ShowsUsedIn { get; init; }
 
     /// <summary>The chosen grouping; a change reads the first page again.</summary>
     [ObservableProperty]

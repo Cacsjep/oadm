@@ -125,7 +125,9 @@ fingerprint, uses, names, what uses it (`UsedBy`, when the page says), all selec
 `IssuedCertificateList` + `IssuedCertificateListViewModel` (the PKI Certificates card: every certificate OADM knows, the CAs
 among them; columns name or device with the key and issuer below, type as neutral badges (the page's statuses below them,
 `MoreStatesOf`), valid until with a status only when it needs attention, used by as badges or the device (the full list as
-tooltip and in View), one narrow column with the row's ⋯ actions button (`MenuOf`: the same menu as the right click,
+tooltip and in View), for a CA list (`ShowsUsedIn`) **Used in**: the first policy name as a badge and "+N", every name as
+tooltip, and a wider Type column (3.2 stars instead of 1.2: the OADM CA's four badges fit at 1,700 px, no sideways scroll at
+1,000 px), one narrow column with the row's ⋯ actions button (`MenuOf`: the same menu as the right click,
 everyday entries, a separator, the red ones last); one toolbar row (`ToolbarRow`): the page's `Toolbar` left, Group by
 (`CanGroup`, groups counted on the server, `DataGrid.groups` headers), the filters state, use, issued by (the CAs the server
 lists, else Task and EST) and the search right, below as a whole on a narrow card (the search waits 300 ms for the typing to

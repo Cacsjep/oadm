@@ -96,17 +96,18 @@ its MAC address does not match its certificate (a copied certificate shows this 
 - **View certificate** shows the certificate the camera sent (also a double click on a row).
 - **Delete all** (red, with a confirmation) empties the log for every client.
 
-To revoke certificates, use **Revoke** in the Certificates card of the [PKI](../pki/) page, or a Revoke policy there.
+To revoke certificates, use **Revoke** in the Certificates card of the [PKI](../pki/) page, or a Block policy with
+**Also revoke their IEEE 802.1X certificates** there.
 
 ## Who gets onto the network
 
 OADM lets a camera in only when its certificate:
 
-- comes from a CA of an **Allow CA** policy on the PKI page (at the start the OADM CA and the Axis device ID), is valid
+- comes from a CA of an **802.1X trusted CA** policy on the PKI page (at the start the OADM CA and the Axis device ID), is valid
   now and is meant for network access,
 - names a device OADM manages (its `axis-<serial>.local` name or its Axis device ID), at a site a device of that site,
   unless the policy lets in any device with a valid certificate,
-- is not revoked, and no **Block** or **Revoke** policy holds the device.
+- is not revoked, and no **Block** policy holds the device.
 
 A genuine Axis camera that OADM does not manage stays out. The name the camera sends before its certificate (the EAP
 identity) is shown, never trusted. A **VLAN** policy tells the switch which VLAN to put the camera in; a change applies at
@@ -126,7 +127,7 @@ with all devices change the settings, the switches and the log.
 | Status **Port 1812 is used by another program** | Stop the other RADIUS server, or choose another port and change it on the switches. |
 | Switch shows **Wrong secret** | Enter the same shared secret on the switch and in OADM. |
 | Switch shows **No requests yet** | Check the switch's RADIUS server address and port, and that it reaches the OADM server. |
-| **The device does not trust the server certificate** | Run **Enable IEEE 802.1X** of the PKI page on the camera, so it trusts the OADM CA. |
+| **The device does not trust the server certificate** | Run **Enable IEEE 802.1X** of the PKI page on the camera, so it trusts the CA of the 802.1X server policy. |
 | **Certificate of a device OADM does not manage** | Add the camera to OADM, or check that it is the right camera. |
 | **Client certificate expired** | Renew the certificate (Renew certificates of the PKI page, or Certificate enrollment). |
 | **Certificate revoked** | Give the camera a new certificate with Enable IEEE 802.1X or Certificate enrollment. |

@@ -99,7 +99,8 @@ public sealed partial class EstEndpoint(
             return new EstResult(Unavailable(EstRefusals.NotPro), operation, profile.Name);
         }
 
-        if (authority() is not { IsReady: true } ca)
+        // The CA of the profile's issuing policy (decision 2026-10-25: any CA with its key); its chain is what cacerts answers.
+        if (authority() is not { } ca || Oadm.Plugins.Pki.Ca.IssuerChains.Of(ca, IssuingOf(profile)?.CaId) is not { Count: > 0 } issuerChain)
         {
             return new EstResult(Unavailable(EstRefusals.NoCa), operation, profile.Name);
         }
@@ -107,7 +108,7 @@ public sealed partial class EstEndpoint(
         if (operation == "cacerts")
         {
             return request.Method == "GET"
-                ? new EstResult(Certificates(EstMessages.CaCertsContentType, ca.Chain), operation, profile.Name)
+                ? new EstResult(Certificates(EstMessages.CaCertsContentType, issuerChain), operation, profile.Name)
                 : new EstResult(HttpResponse.Text(405, "Use GET."), operation, profile.Name);
         }
 
@@ -136,7 +137,7 @@ public sealed partial class EstEndpoint(
         }
 
         var rules = Rules();
-        var serial = SerialOf(client, identity.Presented, ca, rules.SignInCas(kind));
+        var serial = await SerialOfAsync(client, identity.Presented, ca, rules.SignInCas(kind), kind, ct).ConfigureAwait(false);
         if (serial is null)
         {
             return Refuse(401, EstRefusals.NotDeviceId);
@@ -206,6 +207,7 @@ public sealed partial class EstEndpoint(
                     Validity = TimeSpan.FromDays(issuing.ValidDays),
                     Source = IssuedCertificateSources.Est,
                     Purpose = profile.Purpose,
+                    IssuerId = issuing.CaId,
                 },
                 ct).ConfigureAwait(false);
         }
@@ -237,10 +239,14 @@ public sealed partial class EstEndpoint(
     }
 
     /// <summary>
-    /// The camera's serial: from its Axis device ID, or from a certificate of an OADM CA it signs in with; only through the
-    /// CAs of the Sign-in CA policies for this request (<paramref name="chosen"/>) that PKI still holds (fail closed).
+    /// The camera's serial, in this order: its Axis device ID (an EST sign-in CA policy names it for this request); for a
+    /// renewal its current certificate when OADM issued exactly that one (decision 2026-10-25: PKI's store gives the camera,
+    /// whatever CA of PKI issued it, also an imported one; <see cref="Oadm.Plugins.Pki.Ca.ICurrentCertificates"/>); else a
+    /// certificate of an OADM CA the EST sign-in CA policies for this request (<paramref name="chosen"/>) name, PKI still
+    /// holds (fail closed), by its axis name. All lookups O(1).
     /// </summary>
-    private string? SerialOf(X509Certificate2 client, IReadOnlyList<X509Certificate2> presented, IDeviceCertificateAuthority ca, IReadOnlySet<string> chosen)
+    private async Task<string?> SerialOfAsync(X509Certificate2 client, IReadOnlyList<X509Certificate2> presented, IDeviceCertificateAuthority ca, IReadOnlySet<string> chosen,
+        EnrollmentKind kind, CancellationToken ct)
     {
         var now = _time.GetUtcNow();
         var authorities = ca.Authorities;
@@ -249,6 +255,14 @@ public sealed partial class EstEndpoint(
             && deviceIds.Verify(client, presented, now) is { } serial)
         {
             return serial;
+        }
+
+        // A renewal with the camera's current certificate (valid now): the store entry names the camera, not the certificate.
+        if (kind == EnrollmentKind.Renewal && ca is Oadm.Plugins.Pki.Ca.ICurrentCertificates current
+            && client.NotBefore.ToUniversalTime() <= now.UtcDateTime && now.UtcDateTime <= client.NotAfter.ToUniversalTime()
+            && await current.CurrentCameraAsync(client.RawData, ct).ConfigureAwait(false) is { } camera)
+        {
+            return camera;
         }
 
         var issuers = legacy

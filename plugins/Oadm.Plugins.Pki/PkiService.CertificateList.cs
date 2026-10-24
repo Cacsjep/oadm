@@ -90,7 +90,7 @@ public sealed partial class PkiService
             Rows = page.Rows,
             Total = page.Total,
             Offset = query.Offset,
-            Issuers = onlyListed ? [.. issuers.Choices.Where(c => c.Id == CertificateAuthorityInfo.OadmId || c.Id.StartsWith(PreviousPrefix, StringComparison.Ordinal))] : issuers.Choices,
+            Issuers = onlyListed ? [.. issuers.Choices.Where(c => issuers.IssuesDevices(c.Id) && c.Id != OtherIssuerId)] : issuers.Choices,
             Groups = page.Groups,
         };
     }
@@ -108,8 +108,8 @@ public sealed partial class PkiService
             var filter = DeviceFilter(query.IssuedBy, index);
             foreach (var choice in index.Choices)
             {
-                // Only an OADM CA (the current or a previous one) or a CA PKI no longer lists issued device certificates.
-                var issuesDevices = deviceRowsWanted && (choice.Id == CertificateAuthorityInfo.OadmId || choice.Id == OtherIssuerId || choice.Id.StartsWith(PreviousPrefix, StringComparison.Ordinal));
+                // Only an OADM CA (the current or a previous one), an imported CA with its key or a CA PKI no longer lists issued device certificates.
+                var issuesDevices = deviceRowsWanted && index.IssuesDevices(choice.Id);
                 var id = choice.Id;
                 parts.Add((id, choice.Name, [.. extras.Where(e => e.IssuerId == id)], entry => index.Of(entry.CaId).Id == id && (filter is null || filter(entry)), issuesDevices));
             }
@@ -211,12 +211,15 @@ public sealed partial class PkiService
         var authorities = issuers.Source.ToDictionary(a => a.Id, StringComparer.Ordinal);
         foreach (var ca in issuers.AuthorityRows)
         {
-            var usedBy = ca.Row.AuthorityId is { } authorityId && authorities.TryGetValue(authorityId, out var authority) ? AuthorityUsedBy(authority) : [];
+            var known = ca.Row.AuthorityId is { } authorityId && authorities.TryGetValue(authorityId, out var found) ? found : null;
+            var usedBy = known is null ? [] : AuthorityUsedBy(known);
+            var usedIn = known is null ? [] : UsedIn(known);
             all.Add(Extra(ca.Row with
             {
                 State = StateOf(ca.Row.NotAfterUtc, revoked: null, now, days),
                 UsedBy = usedBy.Count == 0 ? null : string.Join("; ", usedBy),
                 UsedByBadges = usedBy.Count == 0 ? null : [.. usedBy.Select(UsedByGroup).Distinct(StringComparer.Ordinal)],
+                UsedIn = usedIn.Count == 0 ? null : usedIn,
             }, ca.IssuerId));
         }
 
@@ -396,6 +399,11 @@ public sealed partial class PkiService
         /// <summary>"Issued by" choices: every CA of the list once, then "Other CA".</summary>
         public List<CertificateIssuerChoice> Choices { get; } = [];
 
+        private readonly HashSet<string> _issuing = new(StringComparer.OrdinalIgnoreCase) { OtherIssuerId };
+
+        /// <summary>The CA can have issued device certificates: an OADM CA, an imported CA with its key, "Other CA" (one PKI no longer lists).</summary>
+        public bool IssuesDevices(string id) => _issuing.Contains(id);
+
         public List<AuthorityListRow> AuthorityRows { get; } = [];
 
         /// <summary>The CA of a certificate's issuer fingerprint; "other" when PKI does not list it.</summary>
@@ -428,6 +436,10 @@ public sealed partial class PkiService
                 }
 
                 index.Choices.Add(new CertificateIssuerChoice(authority.Id, authority.Name));
+                if (authority.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm || (authority.Kind == CertificateAuthorityKind.Imported && authority.Issues))
+                {
+                    index._issuing.Add(authority.Id);
+                }
             }
 
             index.Choices.Add(new CertificateIssuerChoice(OtherIssuerId, OtherIssuerName));
@@ -451,10 +463,12 @@ public sealed partial class PkiService
                         AuthorityKind = authority.Kind,
                         AuthorityId = authority.Id,
                         IsRootCa = self,
+                        CanIssue = authority.Issues,
                         KeyText = CaCertificates.KeyType(certificate),
                         Name = CaCertificates.CommonName(certificate),
                         Purpose = ListedCertificateUses.Ca,
-                        IssuedBy = issuer.Id == OtherIssuerId ? LocalCertificate.IssuerCommonName(certificate) : issuer.Name,
+                        // An issuer that is only a certificate of the CA's own chain (an imported intermediate's root) is named by itself.
+                        IssuedBy = issuer.Id == OtherIssuerId || (!self && issuer.Id == authority.Id) ? LocalCertificate.IssuerCommonName(certificate) : issuer.Name,
                         NotBeforeUtc = certificate.NotBefore.ToUniversalTime(),
                         NotAfterUtc = certificate.NotAfter.ToUniversalTime(),
                         IssuedUtc = certificate.NotBefore.ToUniversalTime(),

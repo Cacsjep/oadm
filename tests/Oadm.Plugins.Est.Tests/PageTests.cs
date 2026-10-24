@@ -96,8 +96,8 @@ public sealed class PageTests : IAsyncLifetime
         using var vm = new EstViewModel(_ctx);
         await vm.LoadAsync(CancellationToken.None);
 
-        // The EST policies the conversion made at the start: Enrollment "All devices", Sign-in CA "Axis device ID" and "OADM CA".
-        Assert.Equal("3 policies applied", vm.PoliciesText);
+        // The EST policies the conversions made at the start: EST server, Enrollment "All devices", EST sign-in CA "Axis device ID" and "OADM CA".
+        Assert.Equal("4 policies applied", vm.PoliciesText);
         Assert.True(vm.ShowsPolicies);
         Assert.Null(vm.PolicyProblem);
         Assert.Equal("OADM Test CA", vm.IssuingCa);
@@ -118,7 +118,8 @@ public sealed class PageTests : IAsyncLifetime
         }
 
         await vm.LoadAsync(CancellationToken.None);
-        Assert.Equal("1 policy applied", vm.PoliciesText);
+        Assert.Equal("2 policies applied", vm.PoliciesText); // the Enrollment and the EST server policy
+        Assert.Equal("1 policy applied", EstViewModel.PoliciesApplyText(1));
         Assert.Equal(EstTexts.NoSignInPolicy, vm.PolicyProblem);
         Assert.Equal("2 policies applied", EstViewModel.PoliciesApplyText(2));
         Assert.Equal("No policies applied", EstViewModel.PoliciesApplyText(0));

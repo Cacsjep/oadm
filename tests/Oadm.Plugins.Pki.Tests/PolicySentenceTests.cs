@@ -25,17 +25,18 @@ public sealed class PolicySentenceTests
             Of(new PkiPolicy { Kind = PolicyKinds.Dot1xCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Ecc, Identity = Dot1xIdentity.Mac }));
         Assert.EndsWith("Cameras sign in as camera-lobby.",
             Of(new PkiPolicy { Kind = PolicyKinds.Dot1xCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Rsa, Identity = Dot1xIdentity.Custom, CustomIdentity = "camera-lobby" }), StringComparison.Ordinal);
-        Assert.Equal("The 802.1X server uses a certificate from OADM Root CA acs, valid 365 days, with an ECC key, renewed 30 days before it ends.",
-            Of(new PkiPolicy { Kind = PolicyKinds.ServerCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Ecc, Server = PolicyServers.Dot1x }));
-        Assert.Equal("The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and asks cameras to sign in again every 60 minutes.",
-            Of(new PkiPolicy { Kind = PolicyKinds.Dot1xServer, MinimumTls = "1.2", LargestEapPacket = 1020, ReauthMinutes = 60 }));
+        Assert.Equal("The EST server uses a certificate from OADM Root CA acs, valid 90 days, with an ECC key, renewed 30 days before it ends.",
+            Of(new PkiPolicy { Kind = PolicyKinds.EstServer, CaId = "oadm", ValidDays = 90, Key = PolicyKeys.Ecc }));
+        Assert.Equal(
+            "The 802.1X server uses a certificate from Contoso Root, valid 365 days, with an ECC key, renewed 30 days before it ends. It accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and asks cameras to sign in again every 60 minutes.",
+            Of(new PkiPolicy { Kind = PolicyKinds.Dot1xServer, CaId = "imported:contoso", ValidDays = 365, Key = PolicyKeys.Ecc, MinimumTls = "1.2", LargestEapPacket = 1020, ReauthMinutes = 60 }));
         Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA acs.",
             Of(new PkiPolicy { Kind = PolicyKinds.AllowCa, CaId = "oadm", OnlyManaged = true }));
         Assert.Equal("The 802.1X server lets in any device with a valid certificate from Contoso Root.",
             Of(new PkiPolicy { Kind = PolicyKinds.AllowCa, CaId = "imported:contoso", OnlyManaged = false }));
         Assert.Equal("The 802.1X server puts these devices in VLAN 30.", Of(new PkiPolicy { Kind = PolicyKinds.Vlan, Vlan = 30 }));
         Assert.Equal("The 802.1X server refuses these devices.", Of(new PkiPolicy { Kind = PolicyKinds.Block }));
-        Assert.Equal("Certificates of these devices are revoked, new ones too.", Of(new PkiPolicy { Kind = PolicyKinds.Revoke }));
+        Assert.Equal("The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too.", Of(new PkiPolicy { Kind = PolicyKinds.Block, AlsoRevoke = true }));
         Assert.Equal("These cameras may get certificates from the EST server for every profile.",
             Of(new PkiPolicy { Kind = PolicyKinds.Enrollment, ProfileScope = PolicyProfiles.All }));
         Assert.Equal("These cameras may get certificates from the EST server for the profiles https and dot1x.",

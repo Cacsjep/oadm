@@ -349,7 +349,8 @@ is always on.
   time and never keep the result. Offered today: `Oadm.Sdk.Certificates.IDeviceCertificateAuthority` by PKI (the OADM
   CA: `IsReady`, `Chain`, `Changed`, `SignAsync`; OADM's names, never the request's; SHA-1/MD5 requests and weak keys
   refused with `CertificateRequestRefusedException`; device certificates go into PKI's issued registry with their
-  `Source`). SDK 0.4.0 adds default members for the list of issued certificates and the revocation list (PKI implements
+  `Source`; SDK 0.4.0 `DeviceCertificateRequest.IssuerId` names the CA of PKI's list that signs, an imported CA with its
+  key or the OADM CA for null, docs/spec/pki.md "Several CAs and the policy cleanup"). SDK 0.4.0 adds default members for the list of issued certificates and the revocation list (PKI implements
   them; docs/spec/radius-server.md "Certificates and revocation"): `IsRevoked(serial)` (a hash lookup, any notation of
   the serial, `CertificateSerials.Normalize`), `FindRevocation`, `Revocations`, event `RevocationChanged` (it belongs to the
   offer: subscribe again when `Find` returns another instance), `ListIssuedAsync(IssuedCertificateQuery)`,

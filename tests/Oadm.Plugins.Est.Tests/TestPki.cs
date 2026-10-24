@@ -69,8 +69,14 @@ internal static class TestPki
 }
 
 /// <summary>The OADM CA as the PKI plugin offers it, for tests: signs with OADM's names, records every request.</summary>
-internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, IDisposable
+internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, Oadm.Plugins.Pki.Ca.ICurrentCertificates, IDisposable
 {
+    /// <summary>The cameras' current certificates as PKI's store holds them: DER (hex) -> camera serial.</summary>
+    public Dictionary<string, string> Current { get; } = new(StringComparer.Ordinal);
+
+    public Task<string?> CurrentCameraAsync(byte[] certificateDer, CancellationToken ct) =>
+        Task.FromResult(Current.GetValueOrDefault(Convert.ToHexString(certificateDer)));
+
     private readonly X509Certificate2 _ca = TestPki.Root("OADM Test CA");
 
     /// <summary>What EST told the store: ("delivered" | "not delivered" | "signed in", serial), in order.</summary>

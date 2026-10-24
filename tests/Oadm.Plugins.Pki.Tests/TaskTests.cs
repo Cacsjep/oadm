@@ -379,8 +379,13 @@ public sealed class Dot1xTaskTests
         await using var h = await TaskHarness.StartAsync();
         using var root = TestCa.Root("Acme Root CA");
         using var intermediate = TestCa.Intermediate(root, "Acme Issuing CA");
-        var import = await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(TestCa.Pfx("pw", intermediate)), "acme.pfx", "pw", null, null, true));
+        var import = await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(TestCa.Pfx("pw", intermediate)), "acme.pfx", "pw", null, null));
         Assert.True(import.Ok, import.Error);
+
+        // The IEEE 802.1X certificate policy issues with it ("Issued by", decision 2026-10-25).
+        var dot1x = h.Pki.Policies.FirstOf(Policies.PolicyKinds.Dot1xCertificate)!;
+        var saved = await h.Pki.Policies.SaveAsync(dot1x with { CaId = PkiService.ImportedAuthorityId(Ca.CaCertificates.Fingerprint(intermediate)) }, "admin", PkiService.CipherSuites, CancellationToken.None);
+        Assert.Null(saved.Error);
 
         var ex = await h.RunAsync(PkiTaskIds.Dot1xEnable);
 

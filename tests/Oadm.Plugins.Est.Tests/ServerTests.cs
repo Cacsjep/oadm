@@ -125,6 +125,48 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_profile_whose_policy_names_an_imported_ca_signs_with_it_and_cacerts_answers_its_chain()
+    {
+        // Decision 2026-10-25: any CA with its key issues; the profile's issuing policy names it as "Issued by".
+        using var imported = TestPki.Root("Contoso Issuing CA");
+        using var importedRoot = TestPki.Root("Contoso Root");
+        const string Id = "imported:CONTOSO";
+        _ca.ListDefaults();
+        _ca.AuthorityList.Add(new CertificateAuthorityInfo(Id, "Contoso Issuing CA", CertificateAuthorityKind.Imported, [imported.RawData, importedRoot.RawData], imported.NotAfter.ToUniversalTime(), true));
+        _policies = await TestPolicies.EstStoreAsync(authorities: () => [.. _ca.AuthorityList]);
+        var https = _policies.FirstOf(Oadm.Plugins.Pki.Policies.PolicyKinds.HttpsCertificate)!;
+        await TestPolicies.AddAsync(_policies, https with { CaId = Id });
+
+        var cacerts = await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null);
+        Assert.Equal(200, cacerts.Status);
+        Assert.Equal([imported.RawData, importedRoot.RawData], EstMessages.ReadCertsOnly(Convert.FromBase64String(cacerts.Body)));
+
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+        Assert.Equal(Id, _ca.Requests[^1].IssuerId);
+
+        // The EST server's own certificate follows the EST server policy, not the profile: the OADM CA by default.
+        Assert.Contains(_ca.Requests, r => r.DeviceId is null && r.IssuerId == Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId);
+
+        // A CA that can no longer issue (its key gone): nothing is answered for the profile.
+        _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = false };
+        Assert.Equal(503, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null)).Status);
+
+        // The EST server policy names the imported CA (with its key again): its next server certificate comes from that CA.
+        _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = true };
+        var estServer = await TestPolicies.AddAsync(_policies, _policies.EstServerPolicy! with { CaId = Id });
+        using (var certificates = new ServerCertificates(() => _ca) { Policy = () => estServer })
+        {
+            Assert.NotNull(await certificates.GetAsync(Guid.Empty, ["10.0.0.17"], "oadm-server", CancellationToken.None));
+        }
+
+        Assert.Equal(Id, _ca.Requests[^1].IssuerId);
+        Assert.Null(_ca.Requests[^1].DeviceId);
+
+    }
+
+    [Fact]
     public async Task A_profile_without_a_usable_policy_is_refused_on_save_and_issues_nothing()
     {
         _policies = await TestPolicies.EstStoreAsync();
@@ -157,7 +199,7 @@ public sealed class ServerTests : IAsyncLifetime
     public async Task The_server_certificate_follows_the_policy_est_server()
     {
         _policies = await TestPolicies.EstStoreAsync();
-        var policy = _policies.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est)!;
+        var policy = _policies.EstServerPolicy!;
         X509Certificate2? server = null;
         Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
         Assert.NotNull(server!.GetECDsaPublicKey());
@@ -168,7 +210,7 @@ public sealed class ServerTests : IAsyncLifetime
         await TestPolicies.AddAsync(_policies, policy with { ValidDays = 30 });
         Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null)).Status);
         Assert.Equal(made, _ca.Requests.Count);
-        await TestPolicies.AddAsync(_policies, _policies.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est)! with { Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa });
+        await TestPolicies.AddAsync(_policies, _policies.EstServerPolicy! with { Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa });
         Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
         Assert.Equal(2048, server!.GetRSAPublicKey()!.KeySize);
         Assert.Equal(TimeSpan.FromDays(30), _ca.Requests[^1].Validity);
@@ -204,7 +246,7 @@ public sealed class ServerTests : IAsyncLifetime
         var state = _service.GetState();
 
         Assert.Equal(name, state.IssuingCa);
-        Assert.Equal(3, state.PoliciesApply); // "All devices", "Axis device ID", "OADM CA"
+        Assert.Equal(4, state.PoliciesApply); // "EST server", "All devices", "Axis device ID", "OADM CA"
         Assert.Null(state.PolicyProblem);
     }
 
@@ -503,6 +545,31 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_renewal_with_the_current_certificate_oadm_issued_signs_in_whatever_ca_issued_it()
+    {
+        // Decision 2026-10-25: an imported CA (no EST sign-in CA policy names it) issued the camera's certificate in OADM.
+        _policies = await TestPolicies.EstStoreAsync();
+        using var importedCa = TestPki.Root("Contoso Issuing CA");
+        using var issuedByOadm = TestPki.DeviceId(importedCa, "ACCC8E999999"); // the name says another camera: the store decides
+        using var issuedElsewhere = TestPki.DeviceId(importedCa, Serial); // same CA, never issued by OADM
+        _ca.Current[Convert.ToHexString(issuedByOadm.RawData)] = Serial;
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+
+        var renewed = await SendAsync("POST", "/.well-known/est/https/simplereenroll", issuedByOadm, Body(csr));
+        Assert.Equal(200, renewed.Status);
+        Assert.Equal(_devices.List[0].Id, _ca.Requests[^1].DeviceId);
+
+        // Only for renewals; a certificate the store does not hold as current never signs in.
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", issuedByOadm, Body(csr))).Status);
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", issuedElsewhere, Body(csr))).Status);
+
+        // No longer current (a newer one replaced it): refused.
+        _ca.Current.Clear();
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", issuedByOadm, Body(csr))).Status);
+    }
+
+    [Fact]
     public async Task Sign_in_ca_policies_let_cameras_in_only_through_their_cas_for_new_certificates_or_renewals()
     {
         _ca.ListDefaults();
@@ -546,7 +613,7 @@ public sealed class ServerTests : IAsyncLifetime
         {
             Name = "Again", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa, CaId = CertificateAuthorityInfo.OadmId, SignInFor = "new",
         }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
-        Assert.Equal(("caId", "Another Sign-in CA policy has this CA."), (twice.Error?.Field, twice.Error?.Message));
+        Assert.Equal(("caId", "Another EST sign-in CA policy has this CA."), (twice.Error?.Field, twice.Error?.Message));
         var imported = await _policies.SaveAsync(new Oadm.Plugins.Pki.Policies.PkiPolicy
         {
             Name = "Contoso", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa, CaId = "imported:AA", SignInFor = "new",
@@ -562,7 +629,7 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(401, await StatusAsync(_deviceId, "simpleenroll"));
         Assert.Equal(401, await StatusAsync(own));
         Assert.Equal(EstTexts.NoSignInPolicy, _service.GetState().PolicyProblem);
-        Assert.Equal(1, _service.GetState().PoliciesApply);
+        Assert.Equal(2, _service.GetState().PoliciesApply); // the Enrollment and the EST server policy
     }
 
     [Fact]
@@ -626,7 +693,7 @@ public sealed class ServerTests : IAsyncLifetime
         store.ProfileNames = token => EstPolicies.ProfileNamesAsync(_settings, token);
         var bad = await store.SaveAsync(entrance with { Profiles = ["web"] }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
         Assert.Equal(("profiles", "The EST server has no profile web."), (bad.Error?.Field, bad.Error?.Message));
-        Assert.Equal(4, _service.GetState().PoliciesApply);
+        Assert.Equal(5, _service.GetState().PoliciesApply);
     }
 
     [Fact]

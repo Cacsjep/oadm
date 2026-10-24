@@ -146,7 +146,7 @@ public sealed partial class ImportCaViewModel : PkiDialogViewModel
     private byte[]? _file;
     private byte[]? _keyFile;
 
-    /// <param name="submit">The page: imports (confirmed false), asks the replace confirmation, imports again; true = done.</param>
+    /// <param name="submit">The page: adds the CA to the list (decision 2026-10-25: it never replaces the OADM CA); true = done.</param>
     public ImportCaViewModel(Func<ImportCaViewModel, ImportRequest, Task<bool>> submit)
     {
         _submit = submit ?? throw new ArgumentNullException(nameof(submit));
@@ -159,7 +159,7 @@ public sealed partial class ImportCaViewModel : PkiDialogViewModel
         Validation.Reset();
     }
 
-    public static string Title => "Import CA";
+    public static string Title => "Import CA with its key";
 
     /// <summary>Name of the chosen file (the property the file errors belong to).</summary>
     [ObservableProperty]
@@ -248,8 +248,7 @@ public sealed partial class ImportCaViewModel : PkiDialogViewModel
             File,
             string.IsNullOrEmpty(Password) ? null : Password,
             NeedsKeyFile && _keyFile is not null ? Convert.ToBase64String(_keyFile) : null,
-            string.IsNullOrEmpty(KeyPassword) ? null : KeyPassword,
-            Confirmed: false);
+            string.IsNullOrEmpty(KeyPassword) ? null : KeyPassword);
         try
         {
             if (await _submit(this, request).ConfigureAwait(true))
@@ -371,9 +370,9 @@ public sealed partial class ImportAuthorityViewModel : PkiDialogViewModel
         Validation.Reset();
     }
 
-    public static string Title => "Import CA";
+    public static string Title => "Import CA certificate";
 
-    public static string Intro => "A root or intermediate CA certificate, without its key. Services can then trust it.";
+    public static string Intro => "A root or intermediate CA certificate, without its key. Policies can then trust it.";
 
     /// <summary>Name of the chosen file (the property the file errors belong to).</summary>
     [ObservableProperty]

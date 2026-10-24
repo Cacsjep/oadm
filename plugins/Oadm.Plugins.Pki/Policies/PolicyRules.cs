@@ -55,9 +55,9 @@ public static class PolicyRules
                 return new(PolicyFields.Days, PolicyTexts.DaysRange);
             case PolicyKinds.AllowCa when string.IsNullOrWhiteSpace(policy.CaId):
                 return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
-            case PolicyKinds.Dot1xServer when ValidateServer(policy, suites) is { } server:
+            case PolicyKinds.Dot1xServer when (ValidateIssuing(policy) ?? ValidateServer(policy, suites)) is { } server:
                 return server;
-            case PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate or PolicyKinds.ServerCertificate when ValidateIssuing(policy) is { } issuing:
+            case PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate or PolicyKinds.EstServer when ValidateIssuing(policy) is { } issuing:
                 return issuing;
             case PolicyKinds.SignInCa when string.IsNullOrWhiteSpace(policy.CaId):
                 return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
@@ -76,12 +76,12 @@ public static class PolicyRules
                 return new(PolicyFields.Devices, PolicyTexts.ChooseDevices);
             }
 
-            if (policy.Devices.AllDevices && !PolicyKinds.AllowsAllDevices(policy.Kind))
+            if (policy.Devices.AllDevices && Revokes(policy))
             {
                 return new(PolicyFields.Devices, PolicyTexts.RevokeNoAll);
             }
 
-            if (PolicyKinds.NoTags(policy.Kind) && (policy.Devices.Tags?.Any(t => !string.IsNullOrWhiteSpace(t)) ?? false))
+            if (Revokes(policy) && (policy.Devices.Tags?.Any(t => !string.IsNullOrWhiteSpace(t)) ?? false))
             {
                 return new(PolicyFields.Devices, PolicyTexts.RevokeNoTags);
             }
@@ -120,16 +120,33 @@ public static class PolicyRules
     }
 
     /// <summary>
-    /// The fields of an issuing policy: the OADM CA (the only CA that issues), the valid days, the key; IEEE 802.1X: EAPOL
-    /// version, EAP identity and the RADIUS server CA (the rules of the former IEEE 802.1X card); Server certificate: the
-    /// server (the 802.1X server only with an ECC key: its cipher suites follow it).
+    /// A Block policy that also revokes the IEEE 802.1X certificates of its devices (the Revoke of before 2026-10-25): its
+    /// devices are chosen by device and site only, never by tag or "All devices" (a tag could revoke every device that gets it later).
+    /// </summary>
+    public static bool Revokes(PkiPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        return policy.Kind == PolicyKinds.Block && policy.AlsoRevoke == true;
+    }
+
+    /// <summary>
+    /// The fields of an issuing policy: a CA named ("Issued by"; whether it can issue, the store checks against PKI's CAs),
+    /// the valid days, the key; IEEE 802.1X: EAPOL version, EAP identity and the RADIUS server CA (the rules of the former
+    /// IEEE 802.1X card); the 802.1X server only with an ECC key (its cipher suites follow it).
     /// </summary>
     public static PolicyFieldError? ValidateIssuing(PkiPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        if (!string.Equals(policy.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(policy.CaId))
         {
-            return new(PolicyFields.Ca, string.IsNullOrWhiteSpace(policy.CaId) ? PolicyTexts.ChooseCa : PolicyTexts.OnlyOadmIssues);
+            return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
+        }
+
+        // Only a CA that can hold a key issues: never the Axis device ID or a previous OADM CA.
+        if (string.Equals(policy.CaId, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase)
+            || policy.CaId.StartsWith("oadm-previous:", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(PolicyFields.Ca, PolicyTexts.CannotIssue);
         }
 
         if (policy.ValidDays is not (>= PolicyLimits.MinValidDays and <= PolicyLimits.MaxValidDays))
@@ -142,14 +159,9 @@ public static class PolicyRules
             return new(PolicyFields.Key, PolicyTexts.ChooseKey);
         }
 
-        if (policy.Kind == PolicyKinds.ServerCertificate)
+        if (policy.Kind == PolicyKinds.Dot1xServer)
         {
-            if (!PolicyServers.IsKnown(policy.Server))
-            {
-                return new(PolicyFields.Server, PolicyTexts.ChooseServer);
-            }
-
-            return policy.Server == PolicyServers.Dot1x && policy.Key != PolicyKeys.Ecc ? new(PolicyFields.Key, PolicyTexts.Dot1xServerNeedsEcc) : null;
+            return policy.Key != PolicyKeys.Ecc ? new(PolicyFields.Key, PolicyTexts.Dot1xServerNeedsEcc) : null;
         }
 
         if (policy.Kind != PolicyKinds.Dot1xCertificate)
@@ -257,21 +269,24 @@ public static class PolicyRules
             Kind = kind,
             Devices = devices,
             Vlan = kind == PolicyKinds.Vlan ? policy.Vlan : null,
-            CaId = kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() : null,
+            CaId = kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() ?? ServerDefault(kind, CertificateAuthorityInfo.OadmId) : null,
             OnlyManaged = kind == PolicyKinds.AllowCa ? policy.OnlyManaged ?? true : null,
             MinimumTls = kind == PolicyKinds.Dot1xServer ? policy.MinimumTls?.Trim() : null,
             CipherSuites = kind == PolicyKinds.Dot1xServer ? [.. (policy.CipherSuites ?? []).Distinct().Order()] : null,
             LargestEapPacket = kind == PolicyKinds.Dot1xServer ? policy.LargestEapPacket : null,
             ReauthMinutes = kind == PolicyKinds.Dot1xServer ? policy.ReauthMinutes : null,
             Days = kind == PolicyKinds.ExpiryWarning ? policy.Days : null,
-            ValidDays = PolicyKinds.IsIssuing(kind) ? policy.ValidDays : null,
-            Key = PolicyKinds.IsIssuing(kind) ? policy.Key?.Trim().ToLowerInvariant() : null,
+            ValidDays = PolicyKinds.IsIssuing(kind)
+                ? policy.ValidDays ?? (kind == PolicyKinds.EstServer ? PolicyLimits.DefaultEstServerDays : kind == PolicyKinds.Dot1xServer ? PolicyLimits.DefaultValidDays : null)
+                : null,
+            Key = PolicyKinds.IsIssuing(kind) ? policy.Key?.Trim().ToLowerInvariant() ?? ServerDefault(kind, PolicyKeys.Ecc) : null,
             EapolVersion = dot1x ? policy.EapolVersion : null,
             Identity = dot1x ? policy.Identity?.Trim() : null,
             CustomIdentity = dot1x ? policy.Identity?.Trim() == Dot1xIdentity.Custom ? policy.CustomIdentity?.Trim() ?? string.Empty : string.Empty : null,
             RadiusCa = dot1x ? policy.RadiusCa?.Trim() : null,
             RadiusCaPem = dot1x && policy.RadiusCa?.Trim() == RadiusCaSource.Imported ? policy.RadiusCaPem : null,
-            Server = kind == PolicyKinds.ServerCertificate ? policy.Server?.Trim() : null,
+            AlsoRevoke = kind == PolicyKinds.Block ? policy.AlsoRevoke ?? false : null,
+            Server = null, // only Server certificate policies of before 2026-10-25 had it (the conversion reads the stored ones)
             ProfileScope = scope,
             Profiles = enrollment && scope == PolicyProfiles.Chosen
                 ? [.. (policy.Profiles ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)]
@@ -279,6 +294,9 @@ public static class PolicyRules
             SignInFor = kind == PolicyKinds.SignInCa ? policy.SignInFor?.Trim() : null,
             SavedBy = policy.SavedBy,
         };
+
+        // A server policy without its certificate's values (stored before 2026-10-25): the kind's defaults, as the servers made them.
+        static string? ServerDefault(string kind, string value) => kind is PolicyKinds.Dot1xServer or PolicyKinds.EstServer ? value : null;
 
         static IEnumerable<string> Serials(IReadOnlyList<string>? serials) =>
             (serials ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal);
@@ -310,11 +328,14 @@ public sealed class PolicyMatcher
         _except = new HashSet<string>((devices.ExceptSerials ?? []).Select(s => s.Trim()), StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>The matcher of <paramref name="policy"/>: Revoke never by tag; VLAN and Enrollment by tag only while the host protects the tags.</summary>
+    /// <summary>
+    /// The matcher of <paramref name="policy"/>: a Block that also revokes never by tag; VLAN and Enrollment by tag only while
+    /// the host protects the tags.
+    /// </summary>
     public static PolicyMatcher Of(PkiPolicy policy, bool tagsProtected = true)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        return new PolicyMatcher(policy.Devices, !PolicyKinds.NoTags(policy.Kind) && (tagsProtected || !PolicyKinds.GrantsByTag(policy.Kind)));
+        return new PolicyMatcher(policy.Devices, !PolicyRules.Revokes(policy) && (tagsProtected || !PolicyKinds.GrantsByTag(policy.Kind)));
     }
 
     /// <summary>"All devices": holds every device, also one OADM does not manage.</summary>

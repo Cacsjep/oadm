@@ -15,10 +15,14 @@ namespace Oadm.Plugins.Radius.Server;
 /// <param name="Id">PKI's id.</param>
 /// <param name="Kind">Its kind.</param>
 /// <param name="OnlyManaged">"Only devices OADM manages".</param>
-public sealed record TrustedIssuer(string Id, CertificateAuthorityKind Kind, bool OnlyManaged)
+/// <param name="Issues">An imported CA with its key: OADM issues certificates with it (decision 2026-10-25).</param>
+public sealed record TrustedIssuer(string Id, CertificateAuthorityKind Kind, bool OnlyManaged, bool Issues = false)
 {
-    /// <summary>The current or a previous OADM CA: PKI's list of issued certificates and its revocation list apply.</summary>
+    /// <summary>The current or a previous OADM CA: a camera's serial only from the axis name OADM put in.</summary>
     public bool IsOadm => Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm;
+
+    /// <summary>A CA OADM issues with (an OADM CA, an imported CA with its key): PKI's list of issued certificates and its revocation list apply.</summary>
+    public bool KeepsLists => IsOadm || Issues;
 }
 
 /// <summary>
@@ -166,7 +170,7 @@ public sealed class CaTrust
         var authorities = AuthoritiesOf(authority, fallbackDeviceIds);
         var chosen = Chosen(authorities, selection);
         return string.Join('|', authorities.Where(a => chosen.ContainsKey(a.Id)).Select(a =>
-            a.Id + (chosen[a.Id] ? "+" : "-") + string.Join(',', a.Certificates.Select(d => Convert.ToHexString(SHA256.HashData(d))[..16]))));
+            a.Id + (chosen[a.Id] ? "+" : "-") + (a.Issues ? "*" : string.Empty) + string.Join(',', a.Certificates.Select(d => Convert.ToHexString(SHA256.HashData(d))[..16]))));
     }
 
     /// <summary>The set of <paramref name="authority"/>'s CAs that <paramref name="selection"/> checks (none without a CA).</summary>
@@ -196,7 +200,7 @@ public sealed class CaTrust
                 continue;
             }
 
-            var issuer = new TrustedIssuer(ca.Id, ca.Kind, onlyManaged);
+            var issuer = new TrustedIssuer(ca.Id, ca.Kind, onlyManaged, ca.Kind == CertificateAuthorityKind.Imported && ca.Issues);
             var loaded = Load(ca.Certificates);
             if (ca.Kind == CertificateAuthorityKind.AxisDeviceId)
             {
@@ -422,17 +426,17 @@ public sealed partial class DeviceCertificateValidator(
             return ClientCertificateVerdict.Refuse(CertificateRefusals.NoCa, 80, none);
         }
 
+        // PKI lists every certificate a CA of PKI issued with its use (the OADM CA, an imported CA with its key): one made for
+        // MQTT (also client authentication, also axis-<serial>.local) is no network access certificate, one created or signed
+        // on the PKI page no device's certificate. Unlisted ones (from before the list, or issued elsewhere) pass as before.
+        if (issuer is { KeepsLists: true } && ca.PurposeOf(certificateSerial) is { } purpose && !string.Equals(purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
+        {
+            return ClientCertificateVerdict.Refuse(
+                purpose == Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose ? CertificateRefusals.NotDevice : CertificateRefusals.NotDot1x, 42, none);
+        }
+
         if (issuer is { IsOadm: true })
         {
-            // PKI lists every certificate the OADM CA issued with its use: one made for MQTT (also client authentication,
-            // also axis-<serial>.local) is no network access certificate, one created or signed on the PKI page no device's
-            // certificate. Unlisted ones (from before the list) pass as before.
-            if (ca.PurposeOf(certificateSerial) is { } purpose && !string.Equals(purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
-            {
-                return ClientCertificateVerdict.Refuse(
-                    purpose == Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose ? CertificateRefusals.NotDevice : CertificateRefusals.NotDot1x, 42, none);
-            }
-
             serial = LocalSerial(leaf);
             if (serial is null && issuer.OnlyManaged)
             {
@@ -454,7 +458,7 @@ public sealed partial class DeviceCertificateValidator(
         }
 
         var device = serial is null ? null : devices.BySerial(serial);
-        if (issuer!.IsOadm && ca.IsRevoked(certificateSerial))
+        if (issuer!.KeepsLists && ca.IsRevoked(certificateSerial))
         {
             var text = ca.FindRevocation(certificateSerial)?.Describe() ?? CertificateRefusals.Revoked;
             return ClientCertificateVerdict.Refuse(text, 44, new CheckedCertificate(device?.Id, serial, certificateSerial));
@@ -491,12 +495,12 @@ public sealed partial class DeviceCertificateValidator(
 
         if (plan.RefusalFor(device) is { } refusal)
         {
-            if (refusal.Kind == PolicyKinds.Block)
+            if (!PolicyRules.Revokes(refusal))
             {
                 return ClientCertificateVerdict.Refuse(CertificateRefusals.Blocked(refusal.Name), 49, tag);
             }
 
-            if (issuer.IsOadm)
+            if (issuer.KeepsLists)
             {
                 revokeByPolicy?.Invoke(certificateSerial, refusal); // a new certificate of the policy's devices: revoked too
             }

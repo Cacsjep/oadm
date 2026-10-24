@@ -19,6 +19,8 @@ public sealed class IssuingPolicyTests
     private static PkiPolicy Https(string name, int? days = 365, string? key = PolicyKeys.Ecc, string? ca = CertificateAuthorityInfo.OadmId) =>
         new() { Name = name, Kind = PolicyKinds.HttpsCertificate, CaId = ca, ValidDays = days, Key = key };
 
+    private static PkiPolicy TestServerPolicy() => Radius.Server.RadiusPolicies.DefaultServerPolicy();
+
     private static async Task<PolicyFieldError?> RefusedAsync(PolicyStore store, PkiPolicy policy) => (await store.SaveAsync(policy, "admin", Suites, CancellationToken.None)).Error;
 
     [Fact]
@@ -31,9 +33,11 @@ public sealed class IssuingPolicyTests
         Assert.Equal(("HTTPS", CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (https.Name, https.CaId, https.ValidDays!.Value, https.Key));
         var dot1x = Assert.Single(store.PoliciesOf(PolicyKinds.Dot1xCertificate));
         Assert.Equal(("IEEE 802.1X", 365, PolicyKeys.Ecc, 1, Dot1xIdentity.Mac, RadiusCaSource.Oadm), (dot1x.Name, dot1x.ValidDays!.Value, dot1x.Key, dot1x.EapolVersion!.Value, dot1x.Identity, dot1x.RadiusCa));
-        Assert.Equal(
-            [("802.1X server", PolicyServers.Dot1x, 365, PolicyKeys.Ecc), ("EST server", PolicyServers.Est, 90, PolicyKeys.Ecc)],
-            store.PoliciesOf(PolicyKinds.ServerCertificate).Select(p => (p.Name, p.Server!, p.ValidDays!.Value, p.Key!)));
+        // The EST server's certificate has its own policy (decision 2026-10-25); the 802.1X server's is part of its 802.1X
+        // server policy (made by the 802.1X server's conversion, not started here).
+        var est = Assert.Single(store.PoliciesOf(PolicyKinds.EstServer));
+        Assert.Equal(("EST server", CertificateAuthorityInfo.OadmId, 90, PolicyKeys.Ecc), (est.Name, est.CaId, est.ValidDays!.Value, est.Key!));
+        Assert.DoesNotContain(store.All, p => p.Kind == PolicyKinds.LegacyServerCertificate);
         Assert.All(store.All.Where(p => PolicyKinds.IsIssuing(p.Kind)), p => Assert.Null(PolicyRules.Validate(p, Suites)));
         Assert.Contains(PkiService.IssuingOwner, store.Converted);
         Assert.Equal(365, pki.Service.DefaultValidDays);
@@ -46,7 +50,8 @@ public sealed class IssuingPolicyTests
         var store = pki.Policies;
 
         Assert.Equal(new PolicyFieldError(PolicyFields.Ca, PolicyTexts.ChooseCa), await RefusedAsync(store, Https("No CA", ca: null)));
-        Assert.Equal(new PolicyFieldError(PolicyFields.Ca, PolicyTexts.OnlyOadmIssues), await RefusedAsync(store, Https("Factory", ca: CertificateAuthorityInfo.AxisDeviceIdId)));
+        Assert.Equal(new PolicyFieldError(PolicyFields.Ca, PolicyTexts.CannotIssue), await RefusedAsync(store, Https("Factory", ca: CertificateAuthorityInfo.AxisDeviceIdId)));
+        Assert.Equal(new PolicyFieldError(PolicyFields.Ca, PolicyTexts.CannotIssue), await RefusedAsync(store, Https("Gone", ca: "imported:AB12")));
         Assert.Equal(new PolicyFieldError(PolicyFields.ValidDays, PolicyTexts.ValidDaysRange), await RefusedAsync(store, Https("Zero", days: 0)));
         Assert.Equal(new PolicyFieldError(PolicyFields.ValidDays, PolicyTexts.ValidDaysRange), await RefusedAsync(store, Https("Long", days: 3651)));
         Assert.Equal(new PolicyFieldError(PolicyFields.Key, PolicyTexts.ChooseKey), await RefusedAsync(store, Https("Dsa", key: "dsa")));
@@ -69,15 +74,14 @@ public sealed class IssuingPolicyTests
         var mac = (await store.SaveAsync(custom with { Identity = Dot1xIdentity.Mac }, "admin", Suites, CancellationToken.None)).Saved!;
         Assert.Equal(string.Empty, mac.CustomIdentity); // only the fields that count are kept
 
-        // Server certificates: one per server, the 802.1X server with ECC (its cipher suites follow the key).
-        var server = store.ServerCertificateFor(PolicyServers.Dot1x)!;
+        // The server policies: one each, the 802.1X server with ECC (its cipher suites follow the key).
+        var server = (await store.SaveAsync(TestServerPolicy(), "admin", Suites, CancellationToken.None)).Saved!;
+        Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key));
         Assert.Equal(new PolicyFieldError(PolicyFields.Key, PolicyTexts.Dot1xServerNeedsEcc), await RefusedAsync(store, server with { Key = PolicyKeys.Rsa }));
-        Assert.Equal(new PolicyFieldError(PolicyFields.Server, PolicyTexts.ServerTaken(PolicyServers.Dot1x)),
-            await RefusedAsync(store, server with { Id = Guid.Empty, Name = "Second" }));
-        Assert.Equal("Another Server certificate policy is for the 802.1X server.", PolicyTexts.ServerTaken(PolicyServers.Dot1x));
-        Assert.Equal(new PolicyFieldError(PolicyFields.Server, PolicyTexts.ChooseServer), await RefusedAsync(store, server with { Id = Guid.Empty, Name = "None", Server = null }));
-        Assert.Equal(new PolicyFieldError(PolicyFields.Server, PolicyTexts.ServerKept), await RefusedAsync(store, store.ServerCertificateFor(PolicyServers.Est)! with { Server = PolicyServers.Dot1x }));
-        Assert.Null(await RefusedAsync(store, store.ServerCertificateFor(PolicyServers.Est)! with { Key = PolicyKeys.Rsa, ValidDays = 30 }));
+        Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.OneOnly(PolicyKinds.Dot1xServer)), await RefusedAsync(store, server with { Id = Guid.Empty, Name = "Second" }));
+        var est = store.EstServerPolicy!;
+        Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.OneOnly(PolicyKinds.EstServer)), await RefusedAsync(store, est with { Id = Guid.Empty, Name = "Second" }));
+        Assert.Null(await RefusedAsync(store, est with { Key = PolicyKeys.Rsa, ValidDays = 30 }));
     }
 
     [Fact]
@@ -91,12 +95,7 @@ public sealed class IssuingPolicyTests
         // The first policy of each issuing kind is a system policy: it stays (the tasks always have one).
         Assert.Equal(PolicyTexts.SystemPolicy, (await store.DeleteAsync(https.Id, "admin", CancellationToken.None)).Error?.Message);
         Assert.Equal("OADM needs this policy. Change its values instead.", (await store.DeleteAsync(dot1x.Id, "admin", CancellationToken.None)).Error?.Message);
-        foreach (var server in store.PoliciesOf(PolicyKinds.ServerCertificate))
-        {
-            Assert.Equal(PolicyTexts.ServerNeedsPolicy(server.Server), (await store.DeleteAsync(server.Id, "admin", CancellationToken.None)).Error?.Message);
-        }
-
-        Assert.Equal("The EST server gets its certificate from this policy. Change it instead.", PolicyTexts.ServerNeedsPolicy(PolicyServers.Est));
+        Assert.Equal(PolicyTexts.SystemPolicy, (await store.DeleteAsync(store.EstServerPolicy!.Id, "admin", CancellationToken.None)).Error?.Message);
 
         // A second HTTPS policy is the user's: it can go, unless an EST profile names it.
         var twoYears = (await store.SaveAsync(Https("HTTPS 2 years", 730), "admin", Suites, CancellationToken.None)).Saved!;
@@ -124,7 +123,7 @@ public sealed class IssuingPolicyTests
             var dot1x = Assert.Single(pki.Policies.PoliciesOf(PolicyKinds.Dot1xCertificate));
             Assert.Equal(("IEEE 802.1X", 730, PolicyKeys.Rsa, 2, Dot1xIdentity.Mac, RadiusCaSource.Oadm),
                 (dot1x.Name, dot1x.ValidDays!.Value, dot1x.Key, dot1x.EapolVersion!.Value, dot1x.Identity, dot1x.RadiusCa));
-            Assert.Equal(2, pki.Policies.PoliciesOf(PolicyKinds.ServerCertificate).Count);
+            Assert.Single(pki.Policies.PoliciesOf(PolicyKinds.EstServer));
             Assert.Equal(730, pki.Service.Config.DeviceCertValidityDays); // the old settings stay (no longer read)
             Assert.Null((await pki.Policies.SaveAsync(https with { ValidDays = 100 }, "admin", Suites, CancellationToken.None)).Error);
         }
@@ -132,7 +131,7 @@ public sealed class IssuingPolicyTests
         await using var again = await PkiHarness.StartAsync(settings);
         Assert.Equal(100, Assert.Single(again.Policies.PoliciesOf(PolicyKinds.HttpsCertificate)).ValidDays); // converted once: the change stays
         Assert.Single(again.Policies.PoliciesOf(PolicyKinds.Dot1xCertificate));
-        Assert.Equal(2, again.Policies.PoliciesOf(PolicyKinds.ServerCertificate).Count);
+        Assert.Single(again.Policies.PoliciesOf(PolicyKinds.EstServer));
         Assert.Equal(Fixture("pki-config-4.1.json"), await own.GetAsync(PkiStore.ConfigKey, CancellationToken.None));
     }
 
@@ -162,13 +161,15 @@ public sealed class IssuingPolicyTests
         await using (var pki = await PkiHarness.StartAsync(settings))
         {
             Assert.Equal(
-                ["All devices", "802.1X server", "OADM CA", "HTTPS", "IEEE 802.1X", "802.1X server", "EST server"],
+                ["All devices", "802.1X server", "OADM CA", "HTTPS", "IEEE 802.1X", "EST server"],
                 pki.Policies.All.Select(p => p.Name));
             Assert.Equal(45, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Days); // nothing of stage 3 converted again
-            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner], pki.Policies.Converted);
+            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.KindsOwner], pki.Policies.Converted);
+            var server = pki.Policies.ServerPolicy!; // its certificate's defaults (stage 3 had none)
+            Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key));
         }
 
         await using var again = await PkiHarness.StartAsync(settings);
-        Assert.Equal(7, again.Policies.All.Count); // idempotent
+        Assert.Equal(6, again.Policies.All.Count); // idempotent
     }
 }

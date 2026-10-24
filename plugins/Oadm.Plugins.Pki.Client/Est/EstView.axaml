@@ -57,7 +57,7 @@
                     ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
             <!-- Turn off (for users who may change the server) between the status of the server and Save. -->
             <srv:ServerSwitchView DockPanel.Dock="Right" DataContext="{Binding Server}" VerticalAlignment="Center" Margin="0,0,12,0" />
-            <!-- Who may enroll and which CAs sign in are PKI's policies (Enrollment, Sign-in CA): "3 policies applied" opens them
+            <!-- Who may enroll and which CAs sign in are PKI's policies (Enrollment, EST sign-in CA): "3 policies applied" opens them
                  (decision 2026-10-25), left in the Save row. Not for users limited to a device group (the policies are server-wide). -->
             <Button x:Name="PoliciesLink" DockPanel.Dock="Left" Classes="link" Content="{Binding PoliciesText}" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center"
                     IsVisible="{Binding ShowsPolicies}" Margin="0,0,16,0" />

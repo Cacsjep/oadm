@@ -46,7 +46,8 @@ public sealed partial class PkiService
             return new CertificateActionReply { Errors = errors };
         }
 
-        if (_ca is not { HasKey: true } ca)
+        // The CA of the issuing policy (decision 2026-10-25: any CA with its key).
+        if (IssuingCa(policy!.CaId) is not { } ca)
         {
             return new CertificateActionReply { Error = CertificateRules.NoCa };
         }
@@ -65,7 +66,7 @@ public sealed partial class PkiService
         X509Certificate2 signed;
         try
         {
-            signed = DeviceCertificateIssuer.Sign(ca, csr.CreateSigningRequestPem(), new CertificateNames(name, ips, dns), use!, Now, DeviceCertificateValidity(policy.ValidDays));
+            signed = DeviceCertificateIssuer.Sign(ca, csr.CreateSigningRequestPem(), new CertificateNames(name, ips, dns), use!, Now, DeviceCertificateValidity(policy.ValidDays, ca));
         }
         catch (CertificateRequestRejectedException ex)
         {
@@ -130,7 +131,8 @@ public sealed partial class PkiService
             return new CertificateActionReply { Errors = new Dictionary<string, string>(StringComparer.Ordinal) { [CertificateFields.File] = problem } };
         }
 
-        if (_ca is not { HasKey: true } ca)
+        // The CA of the issuing policy (decision 2026-10-25: any CA with its key).
+        if (IssuingCa(policy!.CaId) is not { } ca)
         {
             return new CertificateActionReply { Error = CertificateRules.NoCa };
         }
@@ -140,7 +142,7 @@ public sealed partial class PkiService
         try
         {
             var pem = new string(PemEncoding.Write("CERTIFICATE REQUEST", read.Der));
-            signed = DeviceCertificateIssuer.Sign(ca, pem, read.Names!, use, Now, DeviceCertificateValidity(policy.ValidDays));
+            signed = DeviceCertificateIssuer.Sign(ca, pem, read.Names!, use, Now, DeviceCertificateValidity(policy.ValidDays, ca));
         }
         catch (CertificateRequestRejectedException ex)
         {

@@ -52,7 +52,7 @@ public static class PkiMethods
     /// <summary><see cref="GenerateRequest"/> -> <see cref="PkiReply"/>.</summary>
     public const string Generate = "generate";
 
-    /// <summary><see cref="ImportRequest"/> -> <see cref="PkiReply"/>.</summary>
+    /// <summary><see cref="ImportRequest"/> -> <see cref="PkiReply"/>: a CA with its key into the list of CAs (it never replaces the OADM CA).</summary>
     public const string Import = "import";
 
     /// <summary>() -> <see cref="PreviewReplaceReply"/>.</summary>
@@ -272,13 +272,25 @@ public sealed record StoredPreviousCa
     public DateTime ReplacedUtc { get; init; }
 }
 
-/// <summary>Plugin setting <c>importedCas</c>: CA certificates an administrator imported (public, no key), oldest first.</summary>
+/// <summary>
+/// Plugin setting <c>importedCas</c>: CAs an administrator imported, oldest first: the certificate only, or with its key
+/// (decision 2026-10-25: every import adds a CA; one with its key can issue).
+/// </summary>
 public sealed record StoredImportedCa
 {
     /// <summary>SHA-256 of the certificate (upper hex); the authority id is <c>imported:&lt;Id&gt;</c>.</summary>
     public string Id { get; init; } = string.Empty;
 
     public string CertificatePem { get; init; } = string.Empty;
+
+    /// <summary>Issuers above an imported intermediate CA (kept at import, nearest first); empty for a root or the certificate only.</summary>
+    public IReadOnlyList<string> ChainPem { get; init; } = [];
+
+    /// <summary>
+    /// <c>Secrets.Protect(PKCS#8 PEM, "pki:ca:&lt;id&gt;")</c>, encrypted with the master key exactly like the OADM CA's key; null
+    /// for a CA imported without its key. Never logged, never exported on its own.
+    /// </summary>
+    public string? KeyProtected { get; init; }
 
     public DateTime ImportedUtc { get; init; }
 }
@@ -489,8 +501,7 @@ public sealed record GenerateRequest(string? CommonName, string? Organization, i
 /// <param name="Password">PKCS#12 password or the password of an encrypted key in the PEM file.</param>
 /// <param name="KeyFileBase64">Separate PEM private key for a PEM certificate.</param>
 /// <param name="KeyPassword">Password of an encrypted separate key.</param>
-/// <param name="Confirmed">The user confirmed replacing the current CA.</param>
-public sealed record ImportRequest(string? FileBase64, string? FileName, string? Password, string? KeyFileBase64, string? KeyPassword, bool Confirmed);
+public sealed record ImportRequest(string? FileBase64, string? FileName, string? Password, string? KeyFileBase64, string? KeyPassword);
 
 /// <param name="Format">"pem" (.crt) or "der" (.cer).</param>
 public sealed record ExportRequest(string? Format);

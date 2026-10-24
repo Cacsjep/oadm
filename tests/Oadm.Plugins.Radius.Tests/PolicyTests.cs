@@ -109,7 +109,7 @@ public sealed class PolicyTests
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        await harness.SavePolicyAsync(new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = new PolicyDevices { Serials = [Serial] } });
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Serials = [Serial] } });
         var fresh = harness.Ca.Camera(Serial);
 
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, fresh))).Final);
@@ -184,7 +184,7 @@ public sealed class PolicyTests
         var tagged = new FakeDevice { Serial = Other, Tags = ["Lost"] };
         var vlan = Vlan("Lost VLAN", 20, new PolicyDevices { Tags = ["Lost"] });
         var block = new PkiPolicy { Name = "Lost", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Lost"] } };
-        var revoke = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = new PolicyDevices { Tags = ["Lost"], Serials = [Serial] } };
+        var revoke = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Tags = ["Lost"], Serials = [Serial] } };
 
         Assert.Equal((20, "Lost VLAN"), new PolicyPlan([vlan]).VlanFor(tagged));
         Assert.Equal((null, null), new PolicyPlan([vlan], tagsProtected: false).VlanFor(tagged)); // fail closed: a group user could tag a device into a VLAN

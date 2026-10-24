@@ -9,7 +9,7 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// <summary>
 /// The issuing policy of a run of Enable HTTPS or Enable IEEE 802.1X (docs/spec/pki.md "Issuing policies have no devices"):
 /// the policy the dialog chose (the first of the kind without one) with the values the dialog sent for this run. Checked
-/// before the first write like a saved policy; the CA is always the policy's (only the OADM CA issues).
+/// before the first write like a saved policy; the CA is always the policy's ("Issued by"; the dialog does not change it).
 /// </summary>
 public static class IssuingChoice
 {
@@ -54,7 +54,7 @@ public static class IssuingChoice
 
     /// <summary>"HTTPS: OADM CA, 365 days, ECC" (the Check compatibility step).</summary>
     public static string Describe(PkiPolicy policy, string? caName) =>
-        policy.Name + ": " + PolicyStore.IssuingSummary(policy, caName is null ? new Dictionary<string, string>() : new Dictionary<string, string> { [CertificateAuthorityInfo.OadmId] = caName });
+        policy.Name + ": " + PolicyStore.IssuingSummary(policy, caName is null ? new Dictionary<string, string>() : new Dictionary<string, string> { [policy.CaId ?? CertificateAuthorityInfo.OadmId] = caName });
 
     /// <summary>
     /// The device can make the policy's key: its default keystore lists the key type. A device that does not say gets RSA 2048
@@ -95,10 +95,13 @@ public static class IssuingChoice
             }
         }
 
+        // "Issued by" of each policy by name (decision 2026-10-25: any CA with its key issues).
+        var names = service.Authorities().GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
         return new IssuingPolicyList
         {
             Policies = policies,
             CaName = service.Ca is { } ca ? Ca.CaCertificates.CommonName(ca.Certificate) : null,
+            CaNames = policies.ToDictionary(p => p.Id, p => names.GetValueOrDefault(p.CaId ?? CertificateAuthorityInfo.OadmId) ?? PolicyTexts.RemovedCa),
             RadiusCaSummaries = summaries,
         };
     }

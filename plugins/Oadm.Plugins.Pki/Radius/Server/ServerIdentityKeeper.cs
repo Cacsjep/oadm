@@ -24,8 +24,8 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
     public static readonly TimeSpan RenewBefore = Oadm.Plugins.Pki.Policies.PolicyLimits.ServerRenewBefore;
 
     /// <summary>
-    /// PKI's Server certificate policy of the 802.1X server: its valid days for the next certificate (a change of the days
-    /// alone makes no new one; a new CA does). Null: 365 days. The key stays ECDSA P-256 (the policy allows ECC only).
+    /// PKI's 802.1X server policy: its CA ("Issued by") and valid days for the next certificate (a change of the days alone
+    /// makes no new one; another CA does). Null: 365 days from the OADM CA. The key stays ECDSA P-256 (the policy allows ECC only).
     /// </summary>
     public Func<Oadm.Plugins.Pki.Policies.PkiPolicy?> Policy { get; init; } = () => null;
 
@@ -63,7 +63,9 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
                 }
             }
 
-            if (authority() is not { IsReady: true } ca || ca.Chain.Count == 0)
+            // The CA of the 802.1X server policy (decision 2026-10-25: any CA with its key); none: the OADM CA.
+            var caId = Policy()?.CaId;
+            if (authority() is not { } ca || Oadm.Plugins.Pki.Ca.IssuerChains.Of(ca, caId) is not { Count: > 0 } issuerChain)
             {
                 var had = _current is not null;
                 _current = null; // no CA: no handshake (the status says so); the stored one waits for the CA to come back
@@ -73,14 +75,14 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             var wanted = names.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
             // Names that only went away (a card or cable down, an address gone) keep the certificate: only a new name, a new
             // CA or the end near makes a new one, so the certificate does not change with every link.
-            if (_current is { } current && current.CaCertificate.AsSpan().SequenceEqual(ca.Chain[0])
+            if (_current is { } current && current.CaCertificate.AsSpan().SequenceEqual(issuerChain[0])
                 && wanted.All(n => current.Names.Contains(n, StringComparer.OrdinalIgnoreCase))
                 && current.NotAfterUtc - time.GetUtcNow().UtcDateTime > Oadm.Plugins.Pki.Policies.PolicyLimits.RenewBefore(current.Lifetime))
             {
                 return false;
             }
 
-            var made = await MakeAsync(ca, wanted, ct).ConfigureAwait(false);
+            var made = await MakeAsync(ca, caId, wanted, ct).ConfigureAwait(false);
             _current = made.Current;
             await store.SaveServerCertificateAsync(made.Stored, ct).ConfigureAwait(false);
             if (logger.IsEnabled(LogLevel.Information))
@@ -97,7 +99,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
         }
     }
 
-    private async Task<(Current Current, StoredServerCertificate? Stored)> MakeAsync(IDeviceCertificateAuthority ca, IReadOnlyList<string> names, CancellationToken ct)
+    private async Task<(Current Current, StoredServerCertificate? Stored)> MakeAsync(IDeviceCertificateAuthority ca, string? caId, IReadOnlyList<string> names, CancellationToken ct)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var ips = names.Where(n => System.Net.IPAddress.TryParse(n, out _)).ToList();
@@ -106,7 +108,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
         var csr = new CertificateRequest("CN=" + commonName, key, HashAlgorithmName.SHA256).CreateSigningRequest();
         var validity = Policy() is { ValidDays: > 0 and var days } ? TimeSpan.FromDays(days) : Validity;
         var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, ips, dns, DeviceCertificateUse.Server)
-            { Validity = validity, Source = Oadm.Plugins.Pki.Certificates.ServerCertificateSources.Dot1x }, ct)
+            { Validity = validity, Source = Oadm.Plugins.Pki.Certificates.ServerCertificateSources.Dot1x, IssuerId = caId }, ct)
             .ConfigureAwait(false);
         var pkcs8 = key.ExportPkcs8PrivateKey();
         try

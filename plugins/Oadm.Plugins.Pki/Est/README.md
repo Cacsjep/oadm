@@ -12,9 +12,10 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   - `Serving/EstService`: listens on TCP 9454 (setting `config.port`, 1025..65535) on the server's network through
     `ICorePluginContext.Network.ListenTcpAsync`; TLS 1.2+ (`SslStream`, client certificate requested, checked per request);
     at most 64 connections, 20 requests and 30 s idle per connection.
-  - `Serving/ServerCertificates`: the server's TLS certificate from the OADM CA (key made in memory with the days and key
-    of PKI's Server certificate policy "EST server", 90 days ECC P-256 by default; made again 30 days, at most a third,
-    before its end, when the addresses, the CA or the policy's key change);
+  - `Serving/ServerCertificates`: the server's TLS certificate from the CA of PKI's EST server policy ("Issued by", the
+    OADM CA by default; key made in memory with the policy's days and key, 90 days ECC P-256 by default; made again 30
+    days, at most a third, before its end, when the addresses, the CA or the policy's key change); `cacerts` and the
+    answers carry the chain of the CA of the profile's issuing policy (`Ca/IssuerChains`, `DeviceCertificateRequest.IssuerId`);
   - `Serving/EstPolicies`: a profile's issuing policy (`EstProfile.PolicyId`; HTTPS certificate for HTTPS and RTSPS, IEEE
     802.1X certificate for IEEE 802.1X and MQTT): its valid days for enrollments and renewals, its key for Set up; none
     readable: 503 "The issuing policy of this profile cannot be read."; the once-only conversion of the profiles of 4.1
@@ -30,7 +31,7 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   - `AxisDeviceId` (`plugins/Shared/DeviceId`, linked, shared with the 802.1X server): the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
   - PKI's EST policies (docs/spec/pki.md "Code (stage 6)"; `Serving/EstRules`, built from PKI's `PolicyStore` again when
-    its version moves): Sign-in CA policies name the CAs a camera may sign in with (`SignInCas(kind)`: for new
+    its version moves): EST sign-in CA policies name the CAs a camera may sign in with (`SignInCas(kind)`: for new
     certificates also renews, for renewals only `simplereenroll`; only those PKI still lists count; no store, an unreadable
     one or none: nothing signs in); Enrollment policies hold the devices and their profiles (`Check(device, profile)`: none
     holds it 403 "No enrollment policy for this device.", a profile not allowed the 404 of an unknown profile, listed with

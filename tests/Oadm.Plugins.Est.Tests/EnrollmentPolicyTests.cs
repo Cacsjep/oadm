@@ -67,7 +67,7 @@ public sealed class EnrollmentPolicyTests
         // The rows of the card.
         var rows = store.Rows(_devices);
         Assert.Equal(["Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "Cameras with a certificate from OADM Root CA TEST may sign in to renew it."], rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa).Select(r => r.Summary));
-        Assert.All(rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa), r => Assert.Equal((PolicyGroups.Est, "Sign-in CA"), (r.Group, r.KindName)));
+        Assert.All(rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa), r => Assert.Equal((PolicyGroups.Est, "EST sign-in CA"), (r.Group, r.KindName)));
     }
 
     [Fact]
@@ -178,7 +178,7 @@ public sealed class EnrollmentPolicyTests
     {
         var store = await StoreAsync();
         var rules = EstRules.Of(store);
-        Assert.Equal(3, rules.Count);
+        Assert.Equal(4, rules.Count); // with the EST server policy (its certificate, decision 2026-10-25)
         Assert.Null(rules.Problem);
         Assert.True(rules.Check(_devices[0], "https").Allowed);
 

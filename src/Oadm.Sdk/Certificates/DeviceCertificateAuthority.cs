@@ -40,6 +40,12 @@ public sealed record DeviceCertificateRequest(
     /// 802.1X, MQTT, RTSPS); null = from <see cref="Use"/> (HTTPS for a server, IEEE 802.1X for a client certificate).
     /// </summary>
     public string? Purpose { get; init; }
+
+    /// <summary>
+    /// The CA of PKI's list that signs (SDK 0.4.0, a <see cref="CertificateAuthorityInfo.Id"/>: the OADM CA or an imported CA
+    /// with its key, the CA of the caller's policy); null = the OADM CA. A CA that cannot issue is refused.
+    /// </summary>
+    public string? IssuerId { get; init; }
 }
 
 /// <summary>A signed certificate.</summary>
@@ -174,20 +180,20 @@ public enum CertificateAuthorityKind
     /// <summary>The Axis device ID roots of the factory certificates (id "axis-device-id"; several certificates).</summary>
     AxisDeviceId,
 
-    /// <summary>A CA an administrator imported, without key (id "imported:&lt;sha256&gt;").</summary>
+    /// <summary>A CA an administrator imported, its certificate only or with its key (id "imported:&lt;sha256&gt;").</summary>
     Imported,
 }
 
 /// <summary>
 /// One CA of PKI's list: a stable id, the name shown, its kind, its certificates (DER; the Axis device ID has its roots and
-/// intermediates), the end of the latest of them, and whether it issues certificates now.
+/// intermediates; an imported intermediate its chain), the end of the latest of them, and whether it can issue certificates.
 /// </summary>
 /// <param name="Id">Stable id ("oadm", "oadm-previous:&lt;sha256&gt;", "axis-device-id", "imported:&lt;sha256&gt;").</param>
 /// <param name="Name">The name shown ("OADM CA", "Axis device ID").</param>
 /// <param name="Kind">The kind of CA.</param>
 /// <param name="Certificates">The CA's certificates as DER, the CA certificate first.</param>
 /// <param name="NotAfterUtc">The end of the latest of them (UTC).</param>
-/// <param name="Issues">True for the CA that issues certificates now.</param>
+/// <param name="Issues">True for a CA that can issue certificates now: the OADM CA, an imported CA with its key.</param>
 public sealed record CertificateAuthorityInfo(
     string Id,
     string Name,

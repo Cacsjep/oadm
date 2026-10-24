@@ -68,26 +68,33 @@ public static class CertificateDeployment
     /// <summary>Wait between tries while the web server restarts.</summary>
     public static readonly TimeSpan SwitchRetryDelay = TimeSpan.FromSeconds(3);
 
-    /// <summary>The running service and its CA with key; throws with the user text otherwise.</summary>
-    public static (PkiService Service, CaMaterial Ca) RequireCa(PkiService? service)
+    /// <summary>The running service; throws with the user text otherwise.</summary>
+    public static PkiService RequireService(PkiService? service) =>
+        service ?? throw new InvalidOperationException("The PKI plugin is not running. Nothing was changed.");
+
+    /// <summary>The running service and the OADM CA with its key; throws with the user text otherwise.</summary>
+    public static (PkiService Service, CaMaterial Ca) RequireCa(PkiService? service) => (RequireService(service), RequireCa(RequireService(service), null));
+
+    /// <summary>
+    /// The CA with its key that issues for <paramref name="policy"/> ("Issued by", decision 2026-10-25: the OADM CA or an
+    /// imported CA with its key; no policy: the OADM CA), valid now; throws with the user text otherwise (before any write).
+    /// </summary>
+    public static CaMaterial RequireCa(PkiService service, Policies.PkiPolicy? policy)
     {
-        if (service is null)
-        {
-            throw new InvalidOperationException("The PKI plugin is not running. Nothing was changed.");
-        }
-
-        var ca = service.Ca;
-        if (ca is null || !ca.HasKey)
-        {
-            throw new InvalidOperationException("The PKI has no usable certificate authority (see the PKI page). Nothing was changed.");
-        }
-
+        ArgumentNullException.ThrowIfNull(service);
+        var oadm = policy?.CaId is null || string.Equals(policy.CaId, Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase);
+        var ca = service.IssuingCa(policy?.CaId)
+            ?? throw new InvalidOperationException(oadm
+                ? "The PKI has no usable certificate authority (see the PKI page). Nothing was changed."
+                : $"The CA of the policy {policy!.Name} cannot issue certificates. Choose another CA in the policy on the PKI page. Nothing was changed.");
         if (service.Time.GetUtcNow().UtcDateTime > ca.Certificate.NotAfter.ToUniversalTime())
         {
-            throw new InvalidOperationException("The certificate authority has expired. Generate or import a new CA on the PKI page. Nothing was changed.");
+            throw new InvalidOperationException(oadm
+                ? "The certificate authority has expired. Generate or import a new CA on the PKI page. Nothing was changed."
+                : $"The CA of the policy {policy!.Name} has expired. Choose another CA in the policy on the PKI page. Nothing was changed.");
         }
 
-        return (service, ca);
+        return ca;
     }
 
     /// <summary>"OADM HTTPS 20261007-120000".</summary>
@@ -234,7 +241,7 @@ public static class CertificateDeployment
 
             using var signed = await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.Sign), step =>
             {
-                var certificate = DeviceCertificateIssuer.Sign(ca, csr, names, purpose, service.Time.GetUtcNow(), service.DeviceCertificateValidity(policy.ValidDays));
+                var certificate = DeviceCertificateIssuer.Sign(ca, csr, names, purpose, service.Time.GetUtcNow(), service.DeviceCertificateValidity(policy.ValidDays, ca));
                 step.Complete($"{names.CommonName}, valid until {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd}");
                 return Task.FromResult(certificate);
             }).ConfigureAwait(false);
@@ -461,11 +468,12 @@ public static class CertificateDeployment
         return service is not null && IssuedByKnownCa(certificate.Pem, service);
     }
 
-    /// <summary>The certificate's issuer is the active or a previous OADM CA (name and key identifier).</summary>
+    /// <summary>The certificate's issuer is a CA OADM issues with: the OADM CA or an imported CA with its key (name).</summary>
     public static bool IssuedByKnownCa(string pem, PkiService service)
     {
         ArgumentNullException.ThrowIfNull(service);
-        if (service.Ca is not { } ca)
+        var cas = service.IssuingCas();
+        if (cas.Count == 0)
         {
             return false;
         }
@@ -473,7 +481,7 @@ public static class CertificateDeployment
         try
         {
             using var certificate = X509Certificate2.CreateFromPem(pem);
-            return certificate.IssuerName.RawData.AsSpan().SequenceEqual(ca.Certificate.SubjectName.RawData);
+            return cas.Any(ca => certificate.IssuerName.RawData.AsSpan().SequenceEqual(ca.Certificate.SubjectName.RawData));
         }
         catch (CryptographicException)
         {
@@ -542,10 +550,14 @@ public static class CertificateDeployment
         };
     }
 
-    /// <summary>The CA certificates the device uses to check the RADIUS server: the imported one of the policy, or the OADM CA chain.</summary>
-    public static IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy, CaMaterial ca)
+    /// <summary>
+    /// The CA certificates the device uses to check the RADIUS server: the imported one of the policy, or (OADM's 802.1X
+    /// server) the chain of the CA of the 802.1X server policy (decision 2026-10-25), the OADM CA without one.
+    /// </summary>
+    public static IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy, PkiService service)
     {
         ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(service);
         if (string.Equals(policy.RadiusCa, RadiusCaSource.Imported, StringComparison.Ordinal))
         {
             if (!Policies.PolicyRules.IsCertificatePem(policy.RadiusCaPem))
@@ -557,6 +569,9 @@ public static class CertificateDeployment
             return [(CaAlias(RadiusCaAliasPrefix, fingerprint), policy.RadiusCaPem!, fingerprint)];
         }
 
+        var server = service.Policies.ServerPolicy;
+        var ca = service.IssuingCa(server?.CaId)
+            ?? throw new InvalidOperationException("The CA of the 802.1X server policy cannot issue certificates, so cameras cannot check the 802.1X server. Choose another CA in that policy. Nothing was changed.");
         return CaChain(ca);
     }
 }

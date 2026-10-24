@@ -37,6 +37,8 @@ public sealed class IssuedCertificateList : UserControl
 
     private readonly ContentControl _toolbar = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl _banner = new();
+    private readonly DataGridTemplateColumn _usedIn;
+    private readonly DataGridTemplateColumn _type;
     private IssuedCertificateListViewModel? _vm;
     private bool _restoring;
 
@@ -65,7 +67,7 @@ public sealed class IssuedCertificateList : UserControl
                 return name;
             }, supportsRecycling: true),
         });
-        Table.Columns.Add(new DataGridTemplateColumn
+        _type = new DataGridTemplateColumn
         {
             Header = "Type",
             Width = new DataGridLength(1.2, DataGridLengthUnitType.Star),
@@ -101,7 +103,8 @@ public sealed class IssuedCertificateList : UserControl
                     Children = { Badges(nameof(IssuedCertificateRow.Badges), wrap: false), more },
                 };
             }, supportsRecycling: true),
-        });
+        };
+        Table.Columns.Add(_type);
         Table.Columns.Add(TextColumn("Issuer", nameof(IssuedCertificateRow.Issuer), new DataGridLength(1, DataGridLengthUnitType.Star), 130));
         Table.Columns.Add(TextColumn("Key", nameof(IssuedCertificateRow.KeyType), new DataGridLength(110), 110));
         Table.Columns.Add(new DataGridTemplateColumn
@@ -123,7 +126,23 @@ public sealed class IssuedCertificateList : UserControl
                 return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true, Children = { date, chip } };
             }, supportsRecycling: true),
         });
-        // No Used by column (decision 2026-10-25).
+        // No Used by column (decision 2026-10-25). Used in: only for a CA list (IssuedCertificateListViewModel.ShowsUsedIn), the
+        // names of the policies that use the CA as neutral badges in one line, "+N" for the rest, every name as tooltip.
+        _usedIn = new DataGridTemplateColumn
+        {
+            Header = "Used in",
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            MinWidth = 110,
+            IsVisible = false,
+            CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
+            {
+                var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true, Background = Brushes.Transparent };
+                panel.Children.Add(Badges(nameof(IssuedCertificateRow.UsedIn), wrap: false));
+                panel.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.UsedInTip)));
+                return panel;
+            }, supportsRecycling: true),
+        };
+        Table.Columns.Add(_usedIn);
         Table.Columns.Add(new DataGridTemplateColumn
         {
             // One fixed narrow column: the ⋯ button opens the row's actions (IssuedCertificateListViewModel.MenuOf).
@@ -282,6 +301,11 @@ public sealed class IssuedCertificateList : UserControl
         }
 
         _vm = DataContext as IssuedCertificateListViewModel;
+        _usedIn.IsVisible = _vm?.ShowsUsedIn == true;
+
+        // A CA list (the one with Used in): the OADM CA's row carries four badges (its kind and where it is a trusted
+        // root), so its Type column takes more of the width; the certificate list keeps its look.
+        _type.Width = new DataGridLength(_vm?.ShowsUsedIn == true ? 3.2 : 1.2, DataGridLengthUnitType.Star);
         if (_vm is not null)
         {
             _vm.SelectionRestored += OnSelectionRestored;

@@ -90,7 +90,7 @@ public sealed class IssueDialogTests
         Assert.Equal(PkiTaskIds.Dot1xWarning, vm.Warning);
         Assert.Equal(("IEEE 802.1X", Dot1xIdentity.Custom, "cam-{serial}", RadiusCaSource.Imported), (vm.Policy!.Label, vm.Identity.Value, vm.CustomIdentity, vm.RadiusCa.Value));
         Assert.StartsWith("Corp RADIUS CA, valid until ", vm.RadiusCaLine, StringComparison.Ordinal);
-        Assert.Equal(["This OADM CA", "Imported CA"], vm.RadiusChoices.Select(c => c.Label));
+        Assert.Equal(["OADM 802.1X server", "Imported CA"], vm.RadiusChoices.Select(c => c.Label));
 
         vm.CustomIdentity = "cam-{mac}";
         Assert.Equal("Unknown placeholder {mac}. Use {serial} or {hostName}.", vm.ErrorOf(nameof(vm.CustomIdentity)));
@@ -122,7 +122,8 @@ public sealed class IssueDialogTests
         await using var pki = await PolicyPageTests.StartAsync();
         var card = new PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub));
         await card.LoadAsync(CancellationToken.None);
-        Assert.DoesNotContain(card.NewEditor(null).KindChoices, k => k.Value == PolicyKinds.ServerCertificate); // both servers have theirs
+        // One 802.1X server and one EST server policy, both there: Add policy offers neither.
+        Assert.DoesNotContain(card.NewEditor(null).KindChoices, k => k.Value is PolicyKinds.Dot1xServer or PolicyKinds.EstServer or PolicyKinds.LegacyServerCertificate);
 
         var https = card.NewEditor(null);
         https.Kind = https.KindChoices.Single(k => k.Value == PolicyKinds.HttpsCertificate);
@@ -155,15 +156,18 @@ public sealed class IssueDialogTests
         Assert.Equal((2, "cam-{serial}", RadiusCaSource.Imported), (saved.EapolVersion!.Value, saved.CustomIdentity, saved.RadiusCa));
         Assert.NotNull(saved.RadiusCaPem);
 
-        var server = card.NewEditor(card.Rows.Single(r => r.Name == "802.1X server" && r.Source.Kind == PolicyKinds.ServerCertificate).Source);
+        // The 802.1X server policy holds its certificate (Issued by, valid days, key): ECC only.
+        var server = card.NewEditor(card.Rows.Single(r => r.Source.Kind == PolicyKinds.Dot1xServer).Source);
+        Assert.True(server.IsIssuing);
+        Assert.Equal(("365", PolicyKeys.Ecc, CertificateAuthorityInfo.OadmId), (server.ValidDays, server.Key.Value, server.IssuingCa!.Value));
         server.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
         Assert.False(await server.SaveAsync());
         Assert.Equal(PolicyTexts.Dot1xServerNeedsEcc, server.ErrorOf(nameof(server.Key)));
 
         // The issuing policies lead the table in age order; the system policy a task needs is never deleted (the reason
         // below the table), the user's own one is.
-        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "HTTPS 2 years"], card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
-        Assert.Equal(card.Rows.Take(5).Select(r => r.Name), card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
+        Assert.Equal(["HTTPS", "IEEE 802.1X", "HTTPS 2 years"], card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
+        Assert.Equal(card.Rows.Take(3).Select(r => r.Name), card.Rows.Where(r => r.Group == PolicyGroups.Issuing).Select(r => r.Name));
         await card.DeleteRowCommand.ExecuteAsync(card.Rows.Single(r => r.Name == "IEEE 802.1X"));
         Assert.Equal(PolicyTexts.SystemPolicy, card.Error);
         await card.DeleteRowCommand.ExecuteAsync(card.Rows.Single(r => r.Name == "HTTPS 2 years"));
@@ -201,7 +205,7 @@ public sealed class IssueDialogTests
 
             var card = new PoliciesViewModel(page);
             await card.LoadAsync(CancellationToken.None);
-            foreach (var (row, name) in new[] { ("HTTPS 2 years", "pki-policy-https.png"), ("IEEE 802.1X", "pki-policy-dot1x-certificate.png"), ("EST server", "pki-policy-server-certificate.png") })
+            foreach (var (row, name) in new[] { ("HTTPS 2 years", "pki-policy-https.png"), ("IEEE 802.1X", "pki-policy-dot1x-certificate.png"), ("EST server", "pki-policy-est-server.png"), ("802.1X server", "pki-policy-dot1x-server.png") })
             {
                 var editor = card.NewEditor(card.Rows.Single(r => r.Name == row && PolicyKinds.IsIssuing(r.Source.Kind)).Source);
                 var window = PolicyFormView.CreateWindow(editor);
@@ -230,7 +234,10 @@ public sealed class IssueDialogTests
         Assert.Contains("Valid (days)", checks["HTTPS 2 years"]);
         Assert.DoesNotContain("Sites", checks["HTTPS 2 years"]); // no devices
         Assert.Contains("RADIUS server CA", checks["IEEE 802.1X"]);
-        Assert.Contains("For", checks["EST server"]);
+        Assert.Contains("Issued by", checks["EST server"]);
+        Assert.DoesNotContain("For", checks["EST server"]); // the kind is the server
+        Assert.Contains("Issued by", checks["802.1X server"]);
+        Assert.Contains("Minimum TLS version", checks["802.1X server"]);
         Assert.All(checks.Values.SelectMany(t => t), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }
 

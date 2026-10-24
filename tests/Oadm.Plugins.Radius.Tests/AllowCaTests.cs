@@ -131,6 +131,29 @@ public sealed class AllowCaTests
     }
 
     [Fact]
+    public async Task AnImportedCaThatIssuesKeepsPkisRevocationListLikeTheOadmCa()
+    {
+        // Decision 2026-10-25: an imported CA with its key issues certificates in OADM; a certificate OADM revoked never
+        // passes, as for the OADM CA. Without its key the CA's certificates come from elsewhere: OADM's list does not apply.
+        using var company = new TestAuthority("Contoso Issuing CA");
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        var issuing = company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Issuing CA") with { Issues = true };
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM CA"), harness.DeviceIds.Info, issuing];
+        harness.Ca.RaiseChanged();
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Contoso", Kind = PolicyKinds.AllowCa, CaId = "imported:contoso", OnlyManaged = true });
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        var camera = company.Camera(Serial);
+        harness.Ca.Revoke(TestAuthority.SerialOf(camera));
+
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, camera))).Final);
+        Assert.Contains("revoked", (await LastLogRowAsync(harness)).Reason, StringComparison.OrdinalIgnoreCase);
+
+        harness.Ca.AuthorityList = [.. harness.Ca.AuthorityList.Select(a => a.Id == issuing.Id ? a with { Issues = false } : a)];
+        harness.Ca.RaiseChanged();
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, camera))).Final);
+    }
+
+    [Fact]
     public async Task AnImportedEnterpriseRootNeverLetsASiblingCaIn()
     {
         // The OADM CA sits under an enterprise root that is also imported and allowed: only certificates the root issued

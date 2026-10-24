@@ -51,15 +51,16 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
         await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
-            var (service, ca) = CertificateDeployment.RequireCa(Service);
+            var service = CertificateDeployment.RequireService(Service);
+            var policy = IssuingChoice.Resolve(service, Policies.PolicyKinds.Dot1xCertificate, payloadJson);
+            var ca = CertificateDeployment.RequireCa(service, policy);
             if (!CertificateDeployment.ChainComplete(ca))
             {
                 throw new InvalidOperationException(
                     $"The CA chain is incomplete: the root above {Ca.CaCertificates.CommonName(ca.Chain.Count > 0 ? ca.Chain[^1] : ca.Certificate)} is missing. Import the CA with its full chain. Nothing was changed.");
             }
 
-            var policy = IssuingChoice.Resolve(service, Policies.PolicyKinds.Dot1xCertificate, payloadJson);
-            var radius = CertificateDeployment.RadiusCas(policy, ca);
+            var radius = CertificateDeployment.RadiusCas(policy, service);
             var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
             apis.Require(PkiCompatibility.NetworkSettings, "1.0");
