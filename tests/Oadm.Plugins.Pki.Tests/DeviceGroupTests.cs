@@ -106,7 +106,8 @@ public sealed class DeviceGroupTests
         Assert.Equal(1, await CountAsync(admin, "10.0.0.49"));
         Assert.Equal(0, await CountAsync(group, "ACCC8E"));
         var all = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(plugin, admin, PkiMethods.GetCertificates, "{}"));
-        Assert.Equal(3, all.Total);
+        Assert.Equal(3, all.Rows.Count(r => r.Kind == Oadm.Sdk.Certificates.ListedCertificateKind.Device)); // and the CAs, which a group user never sees
+        Assert.All(seen.Rows, r => Assert.Equal(Oadm.Sdk.Certificates.ListedCertificateKind.Device, r.Kind));
         Assert.False(all.Rows.Single(r => r.SerialNumber == Oadm.Sdk.Certificates.CertificateSerials.Normalize(gone.SerialNumber)).DeviceManaged);
 
         // A certificate of another device answers like an unknown one.
