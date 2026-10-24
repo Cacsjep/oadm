@@ -9,7 +9,24 @@
        (docs/spec/pki.md "The PKI page"): Certificate authorities | Policies side by side on wide pages (stacked on narrow
        ones, PkiView.Arrange), Certificates full width below. The settings of device certificates and IEEE 802.1X are the
        issuing policies. -->
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+  <Grid RowDefinitions="Auto,*">
+  <!-- The fixed tabs (docs/spec/pki.md "The PKI page"): Certificates, then the server pages the host hands over (only those
+       the role may show); no row without a server tab. -->
+  <ItemsControl Grid.Row="0" ItemsSource="{Binding Tabs}" IsVisible="{Binding HasTabs}" Margin="0,0,0,8">
+    <ItemsControl.ItemsPanel>
+      <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate>
+    </ItemsControl.ItemsPanel>
+    <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="vm:PkiTabViewModel">
+        <ui:PageTab Title="{Binding Title}" IsActive="{Binding IsActive}" ActivateCommand="{Binding ActivateCommand}" />
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+
+  <!-- A server tab: its page's own view (only the shown tab's view is in the window). -->
+  <ContentControl Grid.Row="1" Content="{Binding ActiveTabView}" IsVisible="{Binding !IsCertificatesTab}" />
+
+  <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsCertificatesTab}">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
       <Grid x:Name="TopCards" ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto">
 
@@ -259,4 +276,5 @@
       </Border>
     </StackPanel>
   </ScrollViewer>
+  </Grid>
 </UserControl>
