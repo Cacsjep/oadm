@@ -47,6 +47,9 @@ public sealed class LogRowViewModel(LogRow source)
 
     public string Vlan => Source.Vlan?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
 
+    /// <summary>"VLAN 30 by Building B" (the policy that gave the VLAN); empty without a VLAN.</summary>
+    public string VlanText => Source.Vlan is { } vlan ? Oadm.Plugins.Pki.Policies.PolicyTexts.VlanBy(vlan, Source.VlanPolicy) : string.Empty;
+
     /// <summary>The device sent a certificate: View certificate shows it.</summary>
     public bool HasCertificate => Source.HasCertificate;
 
@@ -65,7 +68,7 @@ public sealed class LogRowViewModel(LogRow source)
         || IpAddress.Contains(search, StringComparison.OrdinalIgnoreCase)
         || Result.Contains(search, StringComparison.OrdinalIgnoreCase)
         || Reason.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || Vlan.Contains(search, StringComparison.OrdinalIgnoreCase);
+        || VlanText.Contains(search, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>What the log asks of its view: the shared certificate window.</summary>

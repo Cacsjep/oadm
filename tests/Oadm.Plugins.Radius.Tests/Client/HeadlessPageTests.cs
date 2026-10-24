@@ -102,7 +102,7 @@ public sealed class HeadlessPageTests
         Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, checks.noPro.Item1);
         Assert.False(checks.noPro.Item2);
 
-        Assert.Equal(6, checks.on.Item1); // Server, Trusted CAs, Switches, Policies, Sessions, Log
+        Assert.Equal(4, checks.on.Item1); // Server, Switches, Sessions, Log
         Assert.True(checks.on.Item2);
         Assert.True(checks.on.Item3);
     }
@@ -136,22 +136,23 @@ public sealed class HeadlessPageTests
         Assert.Contains("802.1X server", checks.texts);
         Assert.Contains(RadiusPluginInfo.Subtitle, checks.texts);
         Assert.Equal(0, checks.tabs); // one page, no tabs
-        foreach (var title in new[] { "Server", "Trusted CAs", "Switches", "Policies", "Sessions", "Log" })
+        foreach (var title in new[] { "Server", "Switches", "Sessions", "Log" })
         {
             Assert.Contains(title, checks.texts);
         }
 
+        foreach (var gone in new[] { "Trusted CAs", "Policies", "Default VLAN" })
+        {
+            Assert.DoesNotContain(gone, checks.texts); // the rules are PKI's policies
+        }
+
         Assert.Contains("Running on port 1812", checks.texts);
         Assert.Contains("Wrong secret", checks.texts);
-        Assert.Contains("Advanced", checks.labels);
-        Assert.Contains("OADM CA", checks.texts);
-        Assert.Contains("Contoso Root", checks.texts);
-        Assert.Equal(2, checks.checkBoxes.Count(c => c == "Only devices OADM manages")); // only below the checked CAs
-        Assert.Contains(TrustedCasViewModel.ManageText, checks.texts);
-        Assert.Contains("Building B cameras", checks.texts);
-        Assert.Contains("VLAN 30", checks.texts);
-        Assert.Contains("Default VLAN", checks.texts);
-        Assert.Contains("Add policy", checks.labels);
+        Assert.DoesNotContain("Advanced", checks.labels);
+        Assert.Contains("6 policies apply", checks.texts);
+        Assert.Contains("Edit in PKI", checks.texts);
+        Assert.Contains("VLAN 20 by PTZ", checks.texts);
+        Assert.Contains("Authenticated with VLAN 20 by PTZ", checks.texts);
         Assert.Contains("Add switch", checks.labels);
         Assert.Equal(1, checks.primaries); // one accent button: the Server card's Save
         Assert.Contains("Sending server certificate: fragment 2 of 4", checks.texts);
@@ -185,100 +186,9 @@ public sealed class HeadlessPageTests
 
         Assert.Contains("Sessions", checks.texts);
         Assert.Contains("Log", checks.texts);
-        Assert.DoesNotContain("Policies", checks.texts);
-        Assert.DoesNotContain("Trusted CAs", checks.texts);
         Assert.DoesNotContain("Switches", checks.texts);
+        Assert.DoesNotContain("Edit in PKI", checks.texts);
         Assert.False(checks.deleteAll);
-    }
-
-    [Fact]
-    public async Task The_advanced_dialog_renders_with_the_old_suites_and_an_error_below_the_packet_size()
-    {
-        var server = new FakeRadiusBackend();
-        var ctx = new FakePageContext(server);
-        var checks = await HeadlessEntry.Session.Dispatch(async () =>
-        {
-            using var page = new RadiusViewModel(ctx);
-            await page.LoadServerAsync(CancellationToken.None);
-            var dialog = page.NewAdvanced(server.State);
-            var window = new AdvancedWindow();
-            window.Attach(dialog, _ => { });
-            Oadm.Client.App.ApplyCrispText(window);
-            window.Show();
-            Pump();
-            Capture(window, "radius-advanced.png");
-            var first = Texts(window);
-            dialog.MinimumTls = AdvancedViewModel.TlsVersions[1];
-            dialog.LargestPacket = "1500";
-            Pump();
-            Capture(window, "radius-advanced-errors.png");
-            var errors = Texts(window);
-            window.Close();
-            return (first, errors);
-        }, CancellationToken.None);
-
-        Assert.Contains("Largest EAP packet", checks.first);
-        Assert.DoesNotContain("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", checks.first);
-        Assert.Contains(AdvancedViewModel.OldTlsHint, checks.errors);
-        Assert.Contains("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", checks.errors);
-        Assert.Contains(RadiusRules.FragmentRange, checks.errors);
-    }
-
-    [Fact]
-    public async Task The_policy_editor_renders_the_group_picker_with_the_form_and_the_revoke_question()
-    {
-        var server = new FakeRadiusBackend();
-        var ctx = new FakePageContext(server);
-        var checks = await HeadlessEntry.Session.Dispatch(async () =>
-        {
-            using var page = new RadiusViewModel(ctx);
-            await page.LoadServerAsync(CancellationToken.None);
-            var editor = page.Policies.NewEditor(page.Policies.Rows[1].Source);
-            var window = PolicyFormView.CreateWindow(editor);
-            Oadm.Client.App.ApplyCrispText(window);
-            window.Show();
-            Pump();
-            Capture(window, "radius-policy-edit.png");
-            var edit = Texts(window);
-            editor.Name = "Storage room";
-            editor.Vlan = "0";
-            Pump();
-            Capture(window, "radius-policy-errors.png");
-            var errors = Texts(window);
-            var saveEnabled = window.AcceptButton.IsEffectivelyEnabled;
-            window.Close();
-
-            var add = page.Policies.NewEditor(null);
-            var addWindow = PolicyFormView.CreateWindow(add);
-            Oadm.Client.App.ApplyCrispText(addWindow);
-            addWindow.Show();
-            add.Name = "Stolen";
-            add.Kind = add.KindChoices[2];
-            Pump();
-            Capture(addWindow, "radius-policy-revoke.png");
-            var revoke = Texts(addWindow);
-            addWindow.Close();
-
-            var question = new MessageWindow { Heading = "Add policy", Message = "Saving revokes 7 IEEE 802.1X certificates of these devices in PKI, and every new one while the policy exists. This cannot be undone.", ConfirmText = "Revoke", CancelText = "Cancel", IsDanger = true };
-            Oadm.Client.App.ApplyCrispText(question);
-            question.Show();
-            Pump();
-            Capture(question, "radius-policy-revoke-question.png");
-            var red = question.ConfirmButton.Classes.Contains("danger");
-            question.Close();
-            return (edit, errors, saveEnabled, revoke, red);
-        }, CancellationToken.None);
-
-        Assert.Contains("Edit PTZ", checks.edit);
-        Assert.Contains("Sites", checks.edit);
-        Assert.Contains("PTZ", checks.edit);
-        Assert.Contains("VLAN ID", checks.edit);
-        Assert.Contains(RadiusRules.PolicyNameTaken, checks.errors);
-        Assert.Contains(RadiusRules.VlanRange, checks.errors);
-        Assert.False(checks.saveEnabled);
-        Assert.Contains(PolicyEditorViewModel.RevokeHint, checks.revoke);
-        Assert.DoesNotContain("VLAN ID", checks.revoke);
-        Assert.True(checks.red);
     }
 
     [Fact]
@@ -327,11 +237,11 @@ public sealed class HeadlessPageTests
 
         Assert.Contains("Another switch has this name.", checks.errors);
         Assert.Contains("Enter an IP address or a host name.", checks.errors);
-        Assert.Contains("Use 16 characters or more.", checks.errors);
+        Assert.Contains("Use 8 characters or more.", checks.errors);
         Assert.True(checks.revealed);
         Assert.True(checks.saveEnabled);
         Assert.Contains("Leave empty to keep the current secret.", checks.editTexts);
-        Assert.Contains("RADIUS server for this switch: 192.168.1.5, port 1812", checks.editTexts);
+        Assert.DoesNotContain(checks.editTexts, t => t?.StartsWith("RADIUS server for this switch", StringComparison.Ordinal) == true);
         Assert.Contains("Site", checks.editTexts);
     }
 

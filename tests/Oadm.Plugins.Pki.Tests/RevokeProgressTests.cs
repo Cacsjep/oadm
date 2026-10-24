@@ -123,7 +123,7 @@ public sealed class RevokeProgressHeadlessTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync();
-            await vm.ShowCertificatesTabCommand.ExecuteAsync(null);
+            await vm.Certificates.LoadAsync();
             vm.Certificates.Dialogs = new FakeCertificateDialogs(); // no real window
             vm.Certificates.SetSelection(vm.Certificates.Rows.Take(1));
             var gate = RevokeProgressTests.Hold(ctx, pki, PkiMethods.RevokeDevice);

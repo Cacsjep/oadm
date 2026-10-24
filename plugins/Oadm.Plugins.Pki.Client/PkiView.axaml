@@ -5,158 +5,223 @@
              x:Class="Oadm.Plugins.Pki.Client.PkiView"
              x:DataType="vm:PkiViewModel"
              ui:PageHeader.Subtitle="Issues device certificates for HTTPS and IEEE 802.1X.">
-  <!-- The description lives in the host page header (ui:PageHeader); the CA status sits next to its validity. -->
-
-  <!-- Own cards (ICorePluginPage.HasOwnCards). Shared controls and theme classes only. Two fixed tabs: the certificate
-       authority (its cards) and Certificates (every certificate the OADM CA issued). -->
-  <Grid RowDefinitions="Auto,*">
-  <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="2" Margin="0,0,0,8">
-    <ui:PageTab Title="Certificate authority" IsActive="{Binding IsCaTab}" ActivateCommand="{Binding ShowCaTabCommand}" />
-    <ui:PageTab Title="Certificates" IsActive="{Binding IsCertificatesTab}" ActivateCommand="{Binding ShowCertificatesTabCommand}" />
-  </StackPanel>
-
-  <!-- ============================== Certificates ============================== -->
-  <!-- The shared list of issued certificates (filters, search, pages, View certificate); the page adds Revoke. -->
-  <Border Grid.Row="1" Classes="card" IsVisible="{Binding IsCertificatesTab}">
-    <ui:IssuedCertificateList x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
-      <ui:IssuedCertificateList.Toolbar>
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
-            <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
-          </Button>
-          <Button Classes="toolbar danger" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}">
-            <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Revoke" Spacing="8" />
-          </Button>
-        </StackPanel>
-      </ui:IssuedCertificateList.Toolbar>
-      <ui:IssuedCertificateList.RowContextMenu>
-        <ContextMenu>
-          <MenuItem Header="View certificate" Command="{Binding ViewCertificateCommand}" />
-          <Separator IsVisible="{Binding MayRevoke}" />
-          <MenuItem Header="Revoke" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}" />
-          <MenuItem Header="Revoke all of this device" Command="{Binding RevokeDeviceCommand}" IsVisible="{Binding MayRevoke}" />
-        </ContextMenu>
-      </ui:IssuedCertificateList.RowContextMenu>
-    </ui:IssuedCertificateList>
-  </Border>
-
-  <!-- ============================== Certificate authority ============================== -->
-  <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsCaTab}">
+  <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only. One page, no tabs
+       (docs/spec/pki.md "The PKI page"): Certificate authorities | Policies side by side on wide pages (stacked on narrow
+       ones, PkiView.Arrange), Certificates full width below, then the settings of device certificates and IEEE 802.1X. -->
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+      <Grid x:Name="TopCards" ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto">
 
-      <!-- ============================== Certificate authority ============================== -->
-      <Border Classes="card">
-        <StackPanel Classes="form">
-          <ui:CardHeader Title="Certificate authority" />
+        <!-- ============================== Certificate authorities ============================== -->
+        <Border x:Name="AuthoritiesCard" Grid.Column="0" Classes="card" VerticalAlignment="Stretch">
+          <StackPanel Spacing="12">
+            <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
+              <TextBlock Classes="cardTitle" Text="Certificate authorities" VerticalAlignment="Center" Margin="0,0,12,0" />
+              <Button Classes="secondary" Command="{Binding GenerateCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="Create a new certificate authority">
+                <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Generate new CA" />
+              </Button>
+              <Button Classes="secondary" IsVisible="{Binding MayManage}">
+                <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import CA" />
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="Own CA with its key" Command="{Binding ImportCommand}"
+                              ToolTip.Tip="It replaces the OADM CA (.pfx, .p12 or PEM files)" />
+                    <MenuItem Header="CA certificate only" Command="{Binding ImportAuthorityCommand}"
+                              ToolTip.Tip="A root or intermediate certificate for the policies" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+            </WrapPanel>
 
-          <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
-          <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
+            <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
+            <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
 
-          <StackPanel Classes="form" IsVisible="{Binding HasCa}">
-            <ui:FormField Label="Name" Classes="wide">
-              <TextBlock Text="{Binding CaName}" TextTrimming="CharacterEllipsis" />
-            </ui:FormField>
-            <ui:FormField Label="Valid" Classes="wide">
-              <StackPanel Orientation="Horizontal" Spacing="16">
-                <TextBlock Text="{Binding ValidText}" VerticalAlignment="Center" />
-                <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
-                               IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
-                               ToolTip.Tip="{Binding StatusDetail}" VerticalAlignment="Center" />
-              </StackPanel>
-            </ui:FormField>
-            <ui:FormField Label="Source" Classes="wide">
-              <TextBlock Text="{Binding CaSourceText}" />
-            </ui:FormField>
-            <ui:FormField Label="Key" Classes="wide">
-              <TextBlock Text="{Binding KeyText}" />
-            </ui:FormField>
-            <ui:FormField Label="Fingerprint" Classes="wide" Hint="SHA-256">
-              <SelectableTextBlock Text="{Binding Fingerprint}" TextWrapping="Wrap" />
-            </ui:FormField>
-            <ui:FormField Label="Chain" Classes="wide" IsVisible="{Binding HasChain}">
-              <TextBlock Text="{Binding ChainText}" TextWrapping="Wrap" />
-            </ui:FormField>
-            <ui:FormField Label="Trusted root store" Classes="wide">
-              <StackPanel Orientation="Horizontal" Spacing="24">
-                <ui:StatusChip Text="{Binding ServerTrustText}" IsOk="{Binding IsServerTrustOk}" IsError="{Binding IsServerTrustError}"
-                               IsAccent="{Binding IsServerTrustAccent}" ToolTip.Tip="{Binding ServerTrustTip}" />
-                <ui:StatusChip Text="{Binding ClientTrustText}" IsOk="{Binding IsClientTrustOk}" IsError="{Binding IsClientTrustError}"
-                               IsAccent="{Binding IsClientTrustAccent}" ToolTip.Tip="{Binding ClientTrustTip}" />
-              </StackPanel>
-            </ui:FormField>
+            <!-- The OADM CA: its validity and where it is trusted. -->
+            <WrapPanel Orientation="Horizontal" ItemSpacing="12" LineSpacing="8" IsVisible="{Binding HasCa}">
+              <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                             IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}" ToolTip.Tip="{Binding StatusDetail}" />
+              <ui:StatusChip Text="{Binding ServerTrustText}" IsOk="{Binding IsServerTrustOk}" IsError="{Binding IsServerTrustError}"
+                             IsAccent="{Binding IsServerTrustAccent}" ToolTip.Tip="{Binding ServerTrustTip}" />
+              <ui:StatusChip Text="{Binding ClientTrustText}" IsOk="{Binding IsClientTrustOk}" IsError="{Binding IsClientTrustError}"
+                             IsAccent="{Binding IsClientTrustAccent}" ToolTip.Tip="{Binding ClientTrustTip}" />
+            </WrapPanel>
+
+            <DataGrid x:Name="AuthoritiesGrid" ItemsSource="{Binding Authorities}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                      SelectionMode="Single" MaxHeight="300" Classes="wrapRows">
+              <DataGrid.Columns>
+                <DataGridTemplateColumn Header="Name" Width="*" MinWidth="140" x:DataType="vm:AuthorityRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:AuthorityRowViewModel">
+                      <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Tooltip}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Kind" Width="Auto" MinWidth="120" Binding="{Binding KindText}" x:DataType="vm:AuthorityRowViewModel" />
+                <DataGridTextColumn Header="Valid until" Width="Auto" MinWidth="100" Binding="{Binding ValidUntil}" x:DataType="vm:AuthorityRowViewModel" />
+                <DataGridTemplateColumn Header="Used by" Width="*" MinWidth="120" x:DataType="vm:AuthorityRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:AuthorityRowViewModel">
+                      <TextBlock Text="{Binding UsedBy}" ToolTip.Tip="{Binding UsedBy}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Width="Auto" MinWidth="160" x:DataType="vm:AuthorityRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:AuthorityRowViewModel">
+                      <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                        <Button Classes="link" Content="View"
+                                Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ViewAuthorityCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="link" Content="Export" IsVisible="{Binding IsExportable}" ToolTip.Tip="Save this CA certificate (PEM, public only)"
+                                Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ExportAuthorityCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="link danger" Content="Remove" IsVisible="{Binding IsRemovable}"
+                                Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).RemoveAuthorityCommand}" CommandParameter="{Binding}" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- The actions of the OADM CA. -->
+            <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+              <Button Classes="secondary" Command="{Binding InstallTrustCommand}" IsVisible="{Binding MayTrustServer}"
+                      ToolTip.Tip="Install the CA certificate as trusted root on the server and on this computer (asks for administrator rights)">
+                <ui:IconLabel Icon="{DynamicResource Icon.check}" Text="Install in trusted root store" />
+              </Button>
+              <Button Classes="secondary" IsEnabled="{Binding HasCa}" IsVisible="{Binding MayManage}"
+                      ToolTip.Tip="Save the CA certificate without its key">
+                <ui:IconLabel Icon="{DynamicResource Icon.export}" Text="Export public certificate" />
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="PEM (.crt)" Command="{Binding ExportCommand}" CommandParameter="pem" />
+                    <MenuItem Header="DER (.cer)" Command="{Binding ExportCommand}" CommandParameter="der" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="secondary" Command="{Binding BackupCommand}" IsVisible="{Binding MayManage}"
+                      ToolTip.Tip="Save the CA with its private key in a password-protected file">
+                <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Back up" />
+              </Button>
+            </WrapPanel>
           </StackPanel>
+        </Border>
 
-          <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" Margin="{DynamicResource Oadm.GapTop}">
-            <Button Classes="secondary" Command="{Binding InstallTrustCommand}" IsVisible="{Binding MayTrustServer}"
-                    ToolTip.Tip="Install the CA certificate as trusted root on the server and on this computer (asks for administrator rights)">
-              <ui:IconLabel Icon="{DynamicResource Icon.check}" Text="Install in trusted root store" />
-            </Button>
-            <Button Classes="secondary" IsEnabled="{Binding HasCa}" IsVisible="{Binding MayManage}"
-                    ToolTip.Tip="Save the CA certificate without its key">
-              <ui:IconLabel Icon="{DynamicResource Icon.export}" Text="Export public certificate" />
-              <Button.Flyout>
-                <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                  <MenuItem Header="PEM (.crt)" Command="{Binding ExportCommand}" CommandParameter="pem" />
-                  <MenuItem Header="DER (.cer)" Command="{Binding ExportCommand}" CommandParameter="der" />
-                </MenuFlyout>
-              </Button.Flyout>
-            </Button>
-            <Button Classes="secondary" Command="{Binding BackupCommand}" IsVisible="{Binding MayManage}"
-                    ToolTip.Tip="Save the CA with its private key in a password-protected file">
-              <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Back up" />
-            </Button>
-            <!-- Everyday actions above, the two that replace the CA after the separator -->
-            <Border Classes="vseparator" IsVisible="{Binding MayManage}" />
-            <Button Classes="secondary" Command="{Binding GenerateCommand}" IsVisible="{Binding MayManage}"
-                    ToolTip.Tip="Create a new certificate authority">
-              <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Generate new CA" />
-            </Button>
-            <Button Classes="secondary" Command="{Binding ImportCommand}" IsVisible="{Binding MayManage}"
-                    ToolTip.Tip="Use your own CA (root or intermediate) from a .pfx / .p12 file or PEM files">
-              <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import CA" />
-            </Button>
-          </WrapPanel>
-        </StackPanel>
-      </Border>
+        <!-- ============================== Policies ============================== -->
+        <Border x:Name="PoliciesCard" Grid.Column="2" Classes="card" VerticalAlignment="Stretch" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel"
+                IsVisible="{Binding IsShown}">
+          <Panel>
+            <StackPanel Spacing="12">
+              <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
+                <TextBlock Classes="cardTitle" Text="Policies" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Classes="secondary" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
+                  <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add policy" />
+                </Button>
+              </WrapPanel>
+              <!-- The filter: one segment per group with kinds. -->
+              <Border Classes="segmented" HorizontalAlignment="Left">
+                <ItemsControl ItemsSource="{Binding Filters}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="2" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PolicyFilterViewModel">
+                      <Button Classes="segment" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
+                              Command="{Binding $parent[ItemsControl].((vm:PoliciesViewModel)DataContext).SelectFilterCommand}" CommandParameter="{Binding Group}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Border>
+              <ui:ProgressRow Text="Reading the policies" IsVisible="{Binding IsReloading}" />
+              <Panel>
+                <DataGrid x:Name="PoliciesGrid" ItemsSource="{Binding Rows}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                          SelectionMode="Single" MaxHeight="360">
+                  <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Name" Width="*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Name}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Kind" Width="Auto" MinWidth="100" Binding="{Binding Kind}" x:DataType="vm:PolicyRowViewModel" />
+                    <DataGridTemplateColumn Header="Summary" Width="1.6*" MinWidth="140" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <StackPanel Margin="10,4" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Summary}" ToolTip.Tip="{Binding Summary}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                            <!-- An overlap a tag or site change made later: the warning in the row. -->
+                            <ui:StatusChip Text="{Binding Warning}" IsWarning="True" MaxLines="2" ToolTip.Tip="{Binding Warning}" HorizontalAlignment="Left"
+                                           IsVisible="{Binding HasWarning}" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Devices" Width="1.2*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <TextBlock Text="{Binding Devices}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding Devices}" />
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Width="76" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <!-- Row actions like the Permissions page: icon buttons in fixed places, Delete in red -->
+                          <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0"
+                                      IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.MayManage}">
+                            <Button Classes="toolbar iconOnly" ToolTip.Tip="Edit policy"
+                                    Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.EditRowCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.edit}" />
+                            </Button>
+                            <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
+                                    Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.DeleteRowCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                            </Button>
+                          </StackPanel>
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,40,16,0" />
+              </Panel>
+              <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+            </StackPanel>
+            <ui:LoadingOverlay Text="Reading the policies" IsVisible="{Binding IsLoading}" />
+          </Panel>
+        </Border>
+      </Grid>
 
-      <!-- ============================== Certificate authorities ============================== -->
-      <Border Classes="card">
-        <StackPanel Classes="form">
-          <ui:CardHeader Title="Certificate authorities" Description="The CAs services can trust or sign with." />
-          <DataGrid ItemsSource="{Binding Authorities}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
-                    SelectionMode="Single" MaxHeight="320">
-            <DataGrid.Columns>
-              <DataGridTemplateColumn Header="Name" Width="*" x:DataType="vm:AuthorityRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:AuthorityRowViewModel">
-                    <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Tooltip}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Header="Kind" Width="160" Binding="{Binding KindText}" x:DataType="vm:AuthorityRowViewModel" />
-              <DataGridTextColumn Header="Valid until" Width="130" Binding="{Binding ValidUntil}" x:DataType="vm:AuthorityRowViewModel" />
-              <DataGridTextColumn Header="Used by" Width="*" Binding="{Binding UsedBy}" x:DataType="vm:AuthorityRowViewModel" />
-              <DataGridTemplateColumn Width="170" x:DataType="vm:AuthorityRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:AuthorityRowViewModel">
-                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
-                      <Button Classes="link" Content="View"
-                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ViewAuthorityCommand}" CommandParameter="{Binding}" />
-                      <Button Classes="link danger" Content="Remove" IsVisible="{Binding IsRemovable}"
-                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).RemoveAuthorityCommand}" CommandParameter="{Binding}" />
-                    </StackPanel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-          <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" IsVisible="{Binding MayManage}">
-            <Button Classes="secondary" Command="{Binding ImportAuthorityCommand}"
-                    ToolTip.Tip="Add a CA certificate without its key">
-              <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import CA" />
-            </Button>
-          </WrapPanel>
-        </StackPanel>
+      <!-- ============================== Certificates ============================== -->
+      <!-- The shared list of issued certificates (filters, search, pages, View certificate); the page adds Revoke. -->
+      <Border Classes="card" Height="620">
+        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+          <TextBlock Grid.Row="0" Classes="cardTitle" Text="Certificates" />
+          <ui:IssuedCertificateList Grid.Row="1" x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
+            <ui:IssuedCertificateList.Toolbar>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
+                  <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
+                </Button>
+                <Button Classes="toolbar danger" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}">
+                  <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Revoke" Spacing="8" />
+                </Button>
+              </StackPanel>
+            </ui:IssuedCertificateList.Toolbar>
+            <ui:IssuedCertificateList.RowContextMenu>
+              <ContextMenu>
+                <MenuItem Header="View certificate" Command="{Binding ViewCertificateCommand}" />
+                <Separator IsVisible="{Binding MayRevoke}" />
+                <MenuItem Header="Revoke" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}" />
+                <MenuItem Header="Revoke all of this device" Command="{Binding RevokeDeviceCommand}" IsVisible="{Binding MayRevoke}" />
+              </ContextMenu>
+            </ui:IssuedCertificateList.RowContextMenu>
+          </ui:IssuedCertificateList>
+        </Grid>
       </Border>
 
       <!-- ============================== Device certificates ============================== -->
@@ -165,9 +230,6 @@
           <ui:CardHeader Title="Device certificates" />
           <ui:FormField Label="Certificate validity (days)" InputWidth="460">
             <TextBox Text="{Binding DeviceCertValidityDays}" />
-          </ui:FormField>
-          <ui:FormField Label="Warn before expiry (days)" InputWidth="460">
-            <TextBox Text="{Binding ExpiryWarningDays}" />
           </ui:FormField>
           <!-- Saved with the IEEE 802.1X settings: one Save at the end of the last settings card -->
         </StackPanel>
@@ -224,44 +286,6 @@
           </ui:FormField>
         </StackPanel>
       </Border>
-
-      <!-- ============================== Previous certificate authorities ============================== -->
-      <Border Classes="card" IsVisible="{Binding HasPreviousCas}">
-        <StackPanel Classes="form">
-          <ui:CardHeader Title="Previous certificate authorities"
-                         Description="Still trusted by the server, so devices with their certificates keep working until they are renewed." />
-          <DataGrid ItemsSource="{Binding PreviousCas}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
-                    SelectionMode="Single" MaxHeight="320">
-            <DataGrid.Columns>
-              <DataGridTemplateColumn Header="Name" Width="*" x:DataType="vm:PreviousCaRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:PreviousCaRowViewModel">
-                    <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Tooltip}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Header="Valid until" Width="130" Binding="{Binding ValidUntil}" x:DataType="vm:PreviousCaRowViewModel" />
-              <DataGridTextColumn Header="Replaced" Width="130" Binding="{Binding Replaced}" x:DataType="vm:PreviousCaRowViewModel" />
-              <DataGridTemplateColumn Width="170" x:DataType="vm:PreviousCaRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="vm:PreviousCaRowViewModel">
-                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0"
-                                IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).MayManage}">
-                      <Button Classes="link" Content="Export"
-                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ExportPreviousCommand}" CommandParameter="{Binding}"
-                              ToolTip.Tip="Save this CA certificate (PEM, public only)" />
-                      <Button Classes="link danger" Content="Remove"
-                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).RemovePreviousCommand}" CommandParameter="{Binding}"
-                              ToolTip.Tip="The server no longer trusts certificates of this CA" />
-                    </StackPanel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-        </StackPanel>
-      </Border>
     </StackPanel>
   </ScrollViewer>
-  </Grid>
 </UserControl>

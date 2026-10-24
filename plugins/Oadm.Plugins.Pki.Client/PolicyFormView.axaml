@@ -1,19 +1,71 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
-             xmlns:vm="using:Oadm.Plugins.Radius.Client"
-             x:Class="Oadm.Plugins.Radius.Client.PolicyFormView"
+             xmlns:vm="using:Oadm.Plugins.Pki.Client"
+             x:Class="Oadm.Plugins.Pki.Client.PolicyFormView"
              x:DataType="vm:PolicyEditorViewModel">
-  <!-- Name, policy and VLAN ID of the policy editor, on top of the shared device picker's card. -->
+  <!-- The policy editor's form, on top of the shared device picker's card (hidden for kinds without devices): name, kind
+       (VLAN ID and the days on its row) and the kind's own fields. -->
   <StackPanel Classes="form">
-    <ui:FormField Label="Name">
-      <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" PlaceholderText="e.g. Building C" />
+    <ui:FormField Label="Name" InputWidth="360">
+      <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" PlaceholderText="{Binding NamePlaceholder}" />
     </ui:FormField>
-    <ui:FormField Label="Policy" Hint="{Binding KindHint}">
-      <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" />
+    <ui:FormField Label="Kind" Hint="{Binding KindHint}">
+      <StackPanel Orientation="Horizontal" Spacing="24">
+        <ComboBox Width="220" VerticalAlignment="Top" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" IsEnabled="{Binding IsNew}" />
+        <ui:FormField Label="VLAN ID" LabelWidth="70" IsVisible="{Binding IsVlan}">
+          <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
+        </ui:FormField>
+        <ui:FormField Label="Days" LabelWidth="50" IsVisible="{Binding IsExpiry}">
+          <TextBox Text="{Binding Days}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 365" />
+        </ui:FormField>
+      </StackPanel>
     </ui:FormField>
-    <ui:FormField Label="VLAN ID" IsVisible="{Binding IsVlan}">
-      <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
+
+    <!-- Allow CA -->
+    <ui:FormField Label="CA" InputWidth="360" IsVisible="{Binding IsAllowCa}">
+      <StackPanel Spacing="8">
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding CaChoices}" SelectedItem="{Binding Ca}" />
+        <CheckBox Content="{x:Static vm:PolicyEditorViewModel.OnlyManagedText}" IsChecked="{Binding OnlyManaged}"
+                  ToolTip.Tip="Off: any device with a valid certificate of this CA" />
+      </StackPanel>
+    </ui:FormField>
+
+    <!-- 802.1X server -->
+    <ui:FormField Label="Minimum TLS version" Hint="{Binding TlsHint}" IsVisible="{Binding IsServer}">
+      <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.TlsVersions}" SelectedItem="{Binding MinimumTls}" />
+    </ui:FormField>
+    <ui:FormField Label="Cipher suites" Error="{Binding CipherSuitesError}" InputWidth="440" IsVisible="{Binding IsServer}">
+      <StackPanel Spacing="4">
+        <!-- At most 13 suites: no virtualization needed. -->
+        <ItemsControl ItemsSource="{Binding CipherSuites}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:CipherSuiteViewModel">
+              <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding IsListed}">
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                  <TextBlock Classes="secondary small" Text="{Binding KeyHint}" IsVisible="{Binding HasKeyHint}" />
+                </StackPanel>
+              </CheckBox>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ResetCipherSuitesCommand}"
+                ToolTip.Tip="Check the secure set for the chosen version">
+          <ui:IconLabel Icon="{DynamicResource Icon.undo}" Text="Reset to default" />
+        </Button>
+      </StackPanel>
+    </ui:FormField>
+    <ui:FormField Label="Largest EAP packet" Hint="Bytes. The switch can ask for smaller packets." IsVisible="{Binding IsServer}">
+      <TextBox Text="{Binding LargestPacket}" Width="120" HorizontalAlignment="Left" />
+    </ui:FormField>
+    <ui:FormField Label="Reauthentication" IsVisible="{Binding IsServer}">
+      <StackPanel Orientation="Horizontal" Spacing="24">
+        <ComboBox Width="180" VerticalAlignment="Top" ItemsSource="{x:Static vm:PolicyEditorViewModel.ReauthChoices}" SelectedItem="{Binding Reauth}" />
+        <ui:FormField Label="Minutes" LabelWidth="70" IsVisible="{Binding IsReauthEvery}">
+          <TextBox Text="{Binding ReauthMinutes}" Width="120" HorizontalAlignment="Left" PlaceholderText="10 to 1,440" />
+        </ui:FormField>
+      </StackPanel>
     </ui:FormField>
   </StackPanel>
 </UserControl>

@@ -66,11 +66,10 @@ public sealed class CertificatesTabTests
         };
         using var page = new PkiViewModel(ctx, new FakeClientTrust());
         var tab = page.Certificates;
-        Assert.DoesNotContain(PkiMethods.GetCertificates, calls); // nothing read before the tab is opened
+        Assert.DoesNotContain(PkiMethods.GetCertificates, calls); // nothing read before the page is shown
 
-        await page.ShowCertificatesTabCommand.ExecuteAsync(null);
+        await page.Certificates.LoadAsync();
 
-        Assert.True(page.IsCertificatesTab);
         Assert.Equal(2, tab.Total);
         Assert.Equal("1-2 of 2", tab.PageText);
         Assert.False(tab.HasPages);
@@ -196,7 +195,7 @@ public sealed class CertificatesTabTests
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         using var page = new PkiViewModel(ctx, new FakeClientTrust());
         var tab = page.Certificates;
-        await page.ShowCertificatesTabCommand.ExecuteAsync(null);
+        await page.Certificates.LoadAsync();
         Assert.Equal((500, "1-500 of 1,100", true), (tab.Rows.Count, tab.PageText, tab.HasPages));
         Assert.False(tab.PreviousPageCommand.CanExecute(null));
         Assert.Contains(tab.Rows, r => r.IsWarning); // within the 30 warning days
@@ -213,12 +212,9 @@ public sealed class CertificatesTabTests
         await page.HandleEventAsync(new Oadm.Sdk.Plugins.PluginEvent(PkiMethods.CertificatesTopic, "{}"));
         Assert.Equal("501-1,000 of 1,101", tab.PageText);
 
-        // The other tab only notes it; opening the tab again reads.
-        page.ShowCaTabCommand.Execute(null);
+        // One page without tabs: every change reads the shown page again.
         await pki.SetIssuedAsync([new IssuedCertificate { SerialNumber = "E00002", DeviceId = Guid.NewGuid(), IssuedUtc = now, NotAfterUtc = now.AddDays(300) }]);
         await page.HandleEventAsync(new Oadm.Sdk.Plugins.PluginEvent(PkiMethods.CertificatesTopic, "{}"));
-        Assert.Equal("501-1,000 of 1,101", tab.PageText);
-        await page.ShowCertificatesTabCommand.ExecuteAsync(null);
         Assert.Equal("501-1,000 of 1,102", tab.PageText);
     }
 }
@@ -257,8 +253,13 @@ public sealed class CertificatesTabHeadlessTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync();
-            await vm.ShowCertificatesTabCommand.ExecuteAsync(null);
+            await vm.Certificates.LoadAsync();
             vm.Certificates.SetSelection(vm.Certificates.Rows.Take(2));
+            HeadlessPageTests.Pump();
+            var list = view.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
+            list.BringIntoView(); // the card below the CAs and the policies
+            HeadlessPageTests.Pump();
+            list.GetVisualDescendants().OfType<DataGrid>().First().ScrollIntoView(vm.Certificates.Rows.First(r => r.State == "Revoked"), null);
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, "pki-certificates.png");
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();

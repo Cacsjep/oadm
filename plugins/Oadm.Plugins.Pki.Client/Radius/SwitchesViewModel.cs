@@ -273,7 +273,6 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
     public partial string Address { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RadiusServerHint))]
     public partial Choice<Guid?> Site { get; set; }
 
     [ObservableProperty]
@@ -290,32 +289,7 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
     /// <summary>"Leave empty to keep the current secret" on Edit; "Copy it now ..." after Generate.</summary>
     public string SecretHint => ShowSecret ? "Copy it now into the switch: OADM does not show it again."
         : IsEditing ? "Leave empty to keep the current secret."
-        : "16 characters or more, the same on the switch.";
-
-    /// <summary>"RADIUS server for this switch: 10.0.0.17, port 1812".</summary>
-    public string RadiusServerHint
-    {
-        get
-        {
-            var port = (_state?.Settings.Port ?? RadiusLimits.DefaultPort).ToString(CultureInfo.InvariantCulture);
-            string address;
-            if (_existing is { RadiusServerAddress: { Length: > 0 } known } existing && existing.SiteId == Site.Value)
-            {
-                address = known;
-            }
-            else if (Site.Value is not null)
-            {
-                address = "the address of the site's OADM Site Node";
-            }
-            else
-            {
-                var listen = _state?.Interfaces.FirstOrDefault(i => i.Id == _state.Settings.ListenOn);
-                address = listen is { Addresses.Count: > 0 } && !Sdk.Network.InterfaceOptions.IsAll(listen.Id) ? listen.Addresses[0] : "an address of this server";
-            }
-
-            return $"RADIUS server for this switch: {address}, port {port}";
-        }
-    }
+        : "8 characters or more, the same on the switch.";
 
     /// <summary>The dialog closes (true = saved).</summary>
     public event EventHandler<bool>? CloseRequested;

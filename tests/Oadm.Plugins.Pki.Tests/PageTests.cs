@@ -149,7 +149,8 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         await Wait.UntilAsync(() => vm.ClientTrustText == "Not installed on this computer");
         Assert.Equal("365", vm.DeviceCertValidityDays);
         Assert.Equal("MAC address", vm.Identity.Label);
-        Assert.False(vm.HasPreviousCas);
+        Assert.Empty(vm.PreviousCas);
+        Assert.DoesNotContain(vm.Authorities, a => a.IsPrevious);
         Assert.False(vm.HasChain);
         Assert.False(vm.HasErrors);
         vm.Deactivate();
@@ -356,24 +357,26 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public async Task Previous_cas_are_exported_and_removed_after_confirmation()
+    public async Task Previous_cas_are_rows_of_the_list_exported_and_removed_after_confirmation()
     {
         await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
         using var vm = CreateViewModel();
         await vm.LoadAsync();
-        var row = Assert.Single(vm.PreviousCas);
-        Assert.Equal("OADM Root CA SERVER01", row.Name);
+        Assert.Equal("OADM Root CA SERVER01", Assert.Single(vm.PreviousCas).Name);
+        var row = Assert.Single(vm.Authorities, a => a.IsPrevious); // once: a row of the list of CAs
+        Assert.Equal(("OADM Root CA SERVER01", true, true), (row.Name, row.IsExportable, row.IsRemovable));
+        Assert.False(vm.Authorities.Single(a => a.Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm).IsRemovable);
 
-        await vm.ExportPreviousCommand.ExecuteAsync(row);
+        await vm.ExportAuthorityCommand.ExecuteAsync(row);
         Assert.Equal("OADM Root CA SERVER01.crt", Assert.Single(_dialogs.FakeFiles.Saved).FileName);
 
         _ctx.ConfirmAnswer = false;
-        await vm.RemovePreviousCommand.ExecuteAsync(row);
+        await vm.RemoveAuthorityCommand.ExecuteAsync(row);
         Assert.Single(vm.PreviousCas);
         _ctx.ConfirmAnswer = true;
-        await vm.RemovePreviousCommand.ExecuteAsync(row);
+        await vm.RemoveAuthorityCommand.ExecuteAsync(row);
         Assert.Empty(vm.PreviousCas);
-        Assert.False(vm.HasPreviousCas);
+        Assert.DoesNotContain(vm.Authorities, a => a.IsPrevious);
         Assert.Equal(2, _ctx.Confirmations.Count);
     }
 
@@ -523,7 +526,7 @@ public sealed class HeadlessPageTests
                 var backupError = backupVm.ErrorOf(nameof(BackupViewModel.ConfirmPassword));
                 backup.Close();
 
-                return (firstSummary, vm2.HasChain, vm2.ChainText, vm2.HasPreviousCas, keyPasswordError, backupError);
+                return (firstSummary, vm2.HasChain, vm2.ChainText, HasPreviousCas: vm2.PreviousCas.Count > 0, keyPasswordError, backupError);
             }, CancellationToken.None);
 
             Assert.False(checks.firstSummary);
@@ -539,6 +542,14 @@ public sealed class HeadlessPageTests
             GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
             File.Delete(settingsFile);
         }
+    }
+
+    internal static Window Host(Control view, int width, int height)
+    {
+        var window = Host(view);
+        window.Width = width;
+        window.Height = height;
+        return window;
     }
 
     internal static Window Host(Control view)

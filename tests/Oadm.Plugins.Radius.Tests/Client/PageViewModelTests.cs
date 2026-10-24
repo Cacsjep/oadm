@@ -20,21 +20,13 @@ public sealed class PageViewModelTests
         _ctx = new FakePageContext(_server);
     }
 
-    private sealed class FakeDialogs : ISwitchDialogs, ILogDialogs, IAdvancedDialog, IPolicyDialogs
+    private sealed class FakeDialogs : ISwitchDialogs, ILogDialogs
     {
         public Func<SwitchDialogViewModel, Task<bool>>? Switch { get; set; }
-
-        public Func<AdvancedViewModel, Task<bool>>? Advanced { get; set; }
-
-        public Func<PolicyEditorViewModel, Task<bool>>? Policy { get; set; }
 
         public List<CertificateDetails> Certificates { get; } = [];
 
         public Task<bool> ShowSwitchAsync(SwitchDialogViewModel dialog) => Switch?.Invoke(dialog) ?? Task.FromResult(false);
-
-        public Task<bool> ShowAdvancedAsync(AdvancedViewModel dialog) => Advanced?.Invoke(dialog) ?? Task.FromResult(false);
-
-        public Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor) => Policy?.Invoke(editor) ?? Task.FromResult(false);
 
         public Task ShowCertificateAsync(CertificateDetails certificate)
         {
@@ -44,7 +36,7 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public async Task The_cards_read_the_state_the_trusted_cas_the_switches_and_the_policies()
+    public async Task The_cards_read_the_state_and_the_switches_and_name_the_policies_that_apply()
     {
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
@@ -56,18 +48,13 @@ public sealed class PageViewModelTests
         Assert.Equal(["Core switch", "Floor 2", "Gate house", "Parking"], vm.Switches.Rows.Select(r => r.Name));
         Assert.Equal(("Wrong secret", true), (vm.Switches.Rows[1].State, vm.Switches.Rows[1].IsError));
         Assert.Equal("Building B", vm.Switches.Rows[2].Site);
-        Assert.Equal(["OADM CA", "Axis device ID", "Contoso Root"], vm.TrustedCas.Cas.Select(c => c.Name));
-        Assert.Equal([true, true, false], vm.TrustedCas.Cas.Select(c => c.IsTrusted));
-        Assert.StartsWith("With its previous CA, valid until ", vm.TrustedCas.Cas[0].Detail, StringComparison.Ordinal);
-        Assert.Equal(["Building B cameras", "PTZ", "Storage room"], vm.Policies.Rows.Select(r => r.Name));
-        Assert.Equal(["VLAN 30", "VLAN 20", "Block"], vm.Policies.Rows.Select(r => r.Kind));
-        Assert.Equal(["Site Building B", "Tag PTZ, except 1", "2 devices"], vm.Policies.Rows.Select(r => r.Devices));
-        Assert.True(vm.Policies.HasVlanPolicies);
-        Assert.Equal("99", vm.Policies.DefaultVlan);
+        Assert.Equal("6 policies apply", vm.PoliciesText); // the rules are PKI's policies
         Assert.Null(vm.Settings.ErrorOf(nameof(SettingsViewModel.Port))); // an untouched form shows no error
         Assert.True(vm.SaveCommand.CanExecute(null));
-        Assert.False(vm.TrustedCas.SaveCommand.CanExecute(null)); // nothing changed
-        Assert.False(vm.Policies.SaveDefaultVlanCommand.CanExecute(null));
+
+        await vm.EditInPkiCommand.ExecuteAsync(null);
+        Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
+        Assert.Equal(["No policies apply", "1 policy applies", "1,200 policies apply"], new[] { 0, 1, 1200 }.Select(RadiusViewModel.PoliciesApplyText));
     }
 
     [Fact]
@@ -76,8 +63,7 @@ public sealed class PageViewModelTests
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadAllAsync(CancellationToken.None);
         Assert.Equal(1, _server.CountOf(RadiusMethods.GetState));
-        Assert.Equal(1, _server.CountOf(RadiusMethods.GetTrustedCas));
-        Assert.Equal(1, _server.CountOf(RadiusMethods.GetPolicies));
+        Assert.Equal(1, _server.CountOf(RadiusMethods.ListSwitches));
         Assert.Equal(1, _server.CountOf(RadiusMethods.ListSessions));
         Assert.Equal(1, _server.CountOf(RadiusMethods.ListLog));
         Assert.Equal(6, vm.Sessions.Rows.Count);
@@ -99,64 +85,6 @@ public sealed class PageViewModelTests
         Assert.Equal("Keep from 1,000 to 50,000 entries.", vm.Settings.ErrorOf(nameof(SettingsViewModel.LogKept)));
         vm.Settings.LogKept = "50,000";
         Assert.True(vm.SaveCommand.CanExecute(null));
-        vm.Policies.DefaultVlan = "4095";
-        Assert.Equal(RadiusRules.VlanRange, vm.Policies.ErrorOf(nameof(PoliciesViewModel.DefaultVlan)));
-        Assert.False(vm.Policies.SaveDefaultVlanCommand.CanExecute(null));
-        Assert.True(vm.SaveCommand.CanExecute(null)); // another card's error never blocks Save
-    }
-
-    [Fact]
-    public async Task Advanced_lists_the_old_suites_only_below_TLS_1_2_with_the_hint_and_keeps_one_suite_checked()
-    {
-        var dialogs = new FakeDialogs();
-        using var vm = new RadiusViewModel(_ctx) { AdvancedDialog = dialogs };
-        await vm.LoadServerAsync(CancellationToken.None);
-        vm.Settings.Port = "1900"; // an unsaved edit of the card stays
-        AdvancedViewModel? opened = null;
-        dialogs.Advanced = async advanced =>
-        {
-            opened = advanced;
-            Assert.Null(advanced.TlsHint);
-            Assert.Equal("1,020", advanced.LargestPacket);
-            Assert.Equal(9, advanced.CipherSuites.Count(s => s.IsListed));
-            Assert.All(advanced.CipherSuites.Where(s => s.IsLegacy), s => Assert.False(s.IsListed));
-
-            advanced.MinimumTls = AdvancedViewModel.TlsVersions[1]; // TLS 1.1
-            Assert.Equal(AdvancedViewModel.OldTlsHint, advanced.TlsHint);
-            Assert.All(advanced.CipherSuites.Where(s => s.IsLegacy), s => Assert.True(s.IsListed && s.IsChecked)); // checked when lowered
-
-            advanced.MinimumTls = AdvancedViewModel.TlsVersions[3]; // TLS 1.3
-            Assert.All(advanced.CipherSuites.Where(s => s.IsLegacy), s => Assert.False(s.IsListed));
-            foreach (var suite in advanced.CipherSuites)
-            {
-                suite.IsChecked = false;
-            }
-
-            Assert.Equal(RadiusRules.CheckCipherSuite, advanced.CipherSuitesError);
-            Assert.False(advanced.SaveCommand.CanExecute(null));
-            advanced.ResetCipherSuitesCommand.Execute(null);
-            Assert.Null(advanced.CipherSuitesError);
-            advanced.LargestPacket = "1500";
-            Assert.Equal(RadiusRules.FragmentRange, advanced.ErrorOf(nameof(AdvancedViewModel.LargestPacket)));
-            Assert.False(advanced.SaveCommand.CanExecute(null));
-            advanced.LargestPacket = "1,200";
-            var closed = false;
-            advanced.CloseRequested += (_, saved) => closed = saved;
-            await advanced.SaveCommand.ExecuteAsync(null);
-            return closed;
-        };
-
-        await vm.OpenAdvancedCommand.ExecuteAsync(null);
-
-        Assert.NotNull(opened);
-        var sent = _server.LastPayload<RadiusSettings>(RadiusMethods.SaveSettings);
-        Assert.Equal(("1.3", 1200, 1812), (sent.MinimumTls, sent.LargestFragment, sent.Port)); // General as saved
-        Assert.Equal(9, sent.CipherSuites.Count); // only the listed suites
-        Assert.Equal("1900", vm.Settings.Port);
-
-        await vm.SaveCommand.ExecuteAsync(null); // the card's Save keeps the saved Advanced settings
-        sent = _server.LastPayload<RadiusSettings>(RadiusMethods.SaveSettings);
-        Assert.Equal(("1.3", 1200, 1900), (sent.MinimumTls, sent.LargestFragment, sent.Port));
     }
 
     [Fact]
@@ -174,182 +102,6 @@ public sealed class PageViewModelTests
         vm.Settings.Port = "1814"; // the server error of the port stays until the field is edited
         await vm.SaveCommand.ExecuteAsync(null);
         Assert.Equal("OADM PRO is not active.", vm.ActionError);
-    }
-
-    [Fact]
-    public async Task Trusted_cas_save_the_checked_ones_with_only_managed()
-    {
-        using var vm = new RadiusViewModel(_ctx);
-        await vm.LoadServerAsync(CancellationToken.None);
-        var contoso = vm.TrustedCas.Cas[2];
-        contoso.IsTrusted = true;
-        contoso.OnlyManaged = false;
-        Assert.True(vm.TrustedCas.SaveCommand.CanExecute(null));
-        vm.TrustedCas.Cas[1].IsTrusted = false;
-
-        await vm.TrustedCas.SaveCommand.ExecuteAsync(null);
-
-        var sent = _server.LastPayload<TrustedCaSettings>(RadiusMethods.SaveTrustedCas);
-        Assert.Equal([new TrustedCaChoice("oadm", true), new TrustedCaChoice("imported:AB12", false)], sent.Cas);
-        Assert.False(vm.TrustedCas.IsChanged);
-        Assert.Equal([true, false, true], vm.TrustedCas.Cas.Select(c => c.IsTrusted));
-
-        foreach (var ca in vm.TrustedCas.Cas)
-        {
-            ca.IsTrusted = false;
-        }
-
-        Assert.Equal("No CA is checked: no device passes.", vm.TrustedCas.SaveTip);
-        _server.Failures[RadiusMethods.SaveTrustedCas] = new InvalidOperationException("Your role does not allow this.");
-        await vm.TrustedCas.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("Your role does not allow this.", vm.TrustedCas.Error);
-    }
-
-    [Fact]
-    public async Task Add_policy_chooses_devices_with_the_group_picker_and_saves_the_whole_list()
-    {
-        var dialogs = new FakeDialogs();
-        using var vm = new RadiusViewModel(_ctx);
-        vm.Policies.Dialogs = dialogs;
-        await vm.LoadServerAsync(CancellationToken.None);
-        dialogs.Policy = async editor =>
-        {
-            Assert.Equal("Add policy", editor.Title);
-            Assert.True(editor.Picker.IsGroup);
-            Assert.Equal(["This server", "Building B"], editor.Picker.Sites.Select(s => s.Name));
-            Assert.Contains(editor.Picker.Tags, t => t.Name == "Lobby"); // the server's tag choices
-            Assert.False(editor.CanSave);
-            editor.Name = "ptz";
-            Assert.Equal(RadiusRules.PolicyNameTaken, editor.ErrorOf(nameof(PolicyEditorViewModel.Name)));
-            editor.Name = "Lobby";
-            editor.Vlan = "5000";
-            Assert.Equal(RadiusRules.VlanRange, editor.ErrorOf(nameof(PolicyEditorViewModel.Vlan)));
-            editor.Vlan = "40";
-            Assert.Equal(RadiusRules.ChoosePolicyDevices, editor.SaveBlockedReason);
-            editor.Picker.Tags.Single(t => t.Name == "Lobby").IsChecked = true;
-            Assert.True(editor.CanSave);
-            return await editor.SaveAsync();
-        };
-
-        await vm.Policies.AddCommand.ExecuteAsync(null);
-
-        var sent = _server.LastPayload<PolicySettings>(RadiusMethods.SavePolicies);
-        Assert.Equal(["Building B cameras", "PTZ", "Storage room", "Lobby"], sent.Policies.Select(p => p.Name));
-        Assert.Equal((PolicyKinds.Vlan, (int?)40, "Lobby"), (sent.Policies[3].Kind, sent.Policies[3].Vlan, sent.Policies[3].Devices.Tags.Single()));
-        Assert.Equal(99, sent.DefaultVlan);
-        Assert.Equal(4, vm.Policies.Rows.Count);
-        Assert.Equal("Lobby", vm.Policies.Selected?.Name);
-        Assert.Equal(0, _server.CountOf(RadiusMethods.CountRevocations));
-    }
-
-    [Fact]
-    public async Task A_revoke_policy_with_a_tag_says_so_below_the_device_choice_and_sends_nothing()
-    {
-        var dialogs = new FakeDialogs();
-        using var vm = new RadiusViewModel(_ctx);
-        vm.Policies.Dialogs = dialogs;
-        await vm.LoadServerAsync(CancellationToken.None);
-        dialogs.Policy = async editor =>
-        {
-            editor.Name = "Lost";
-            editor.Picker.Tags.Single(t => t.Name == "Lobby").IsChecked = true;
-            editor.Kind = editor.KindChoices[2];
-            Assert.Equal(RadiusRules.RevokeNoTags, editor.Picker.ErrorText);
-            editor.Kind = editor.KindChoices[1];
-            Assert.Null(editor.Picker.ErrorText); // Block keeps tags
-            editor.Kind = editor.KindChoices[2];
-            Assert.False(await editor.SaveAsync());
-            Assert.Equal(RadiusRules.RevokeNoTags, editor.Picker.ErrorText);
-            return false;
-        };
-
-        await vm.Policies.AddCommand.ExecuteAsync(null);
-
-        Assert.Equal(0, _server.CountOf(RadiusMethods.SavePolicies));
-    }
-
-    [Fact]
-    public async Task A_revoke_policy_asks_with_the_count_and_a_block_policy_does_not()
-    {
-        var dialogs = new FakeDialogs();
-        using var vm = new RadiusViewModel(_ctx);
-        vm.Policies.Dialogs = dialogs;
-        await vm.LoadServerAsync(CancellationToken.None);
-        var asked = new List<string>();
-        var answer = false;
-        dialogs.Policy = async editor =>
-        {
-            Assert.Equal(["VLAN", "Block", "Revoke certificates"], editor.KindChoices.Select(k => k.Label));
-            editor.Name = "Stolen";
-            editor.Kind = editor.KindChoices[2];
-            Assert.False(editor.IsVlan);
-            Assert.Equal(PolicyEditorViewModel.RevokeHint, editor.KindHint);
-            editor.Picker.Visible[0].IsChecked = true;
-            editor.ConfirmRevoke = (_, message) =>
-            {
-                asked.Add(message);
-                return Task.FromResult(answer);
-            };
-            return await editor.SaveAsync();
-        };
-
-        await vm.Policies.AddCommand.ExecuteAsync(null); // No at the question: nothing saved
-        Assert.Equal("Saving revokes 7 IEEE 802.1X certificates of these devices in PKI, and every new one while the policy exists. This cannot be undone.", Assert.Single(asked));
-        Assert.Equal(0, _server.CountOf(RadiusMethods.SavePolicies));
-
-        answer = true;
-        await vm.Policies.AddCommand.ExecuteAsync(null);
-        Assert.Equal(PolicyKinds.Revoke, _server.LastPayload<PolicySettings>(RadiusMethods.SavePolicies).Policies[^1].Kind);
-        Assert.Equal("Revoke certificates", vm.Policies.Rows[^1].Kind);
-
-        // Editing the revoke policy without changing its devices revokes nothing new: no question.
-        asked.Clear();
-        vm.Policies.Selected = vm.Policies.Rows[^1];
-        dialogs.Policy = editor =>
-        {
-            editor.Name = "Stolen cameras";
-            return editor.SaveAsync();
-        };
-        await vm.Policies.EditCommand.ExecuteAsync(null);
-        Assert.Empty(asked);
-        Assert.Equal("Stolen cameras", vm.Policies.Rows[^1].Name);
-    }
-
-    [Fact]
-    public async Task Without_PKI_permission_the_editor_offers_no_revoke_policy()
-    {
-        _ctx.Permissions = [PermissionKeys.Of(RadiusPluginInfo.PluginId, PermissionKeys.Manage)];
-        using var vm = new RadiusViewModel(_ctx);
-        await vm.LoadServerAsync(CancellationToken.None);
-        Assert.Equal(["VLAN", "Block"], vm.Policies.NewEditor(null).KindChoices.Select(k => k.Label));
-    }
-
-    [Fact]
-    public async Task Policies_move_and_delete_with_one_save_each_and_the_default_vlan_saves_alone()
-    {
-        using var vm = new RadiusViewModel(_ctx);
-        await vm.LoadServerAsync(CancellationToken.None);
-        var policies = vm.Policies;
-        policies.Selected = policies.Rows[0];
-        Assert.False(policies.MoveUpCommand.CanExecute(null));
-        await policies.MoveDownCommand.ExecuteAsync(null);
-        Assert.Equal(["PTZ", "Building B cameras", "Storage room"], _server.LastPayload<PolicySettings>(RadiusMethods.SavePolicies).Policies.Select(p => p.Name));
-        Assert.Equal("Building B cameras", policies.Selected?.Name);
-
-        policies.DefaultVlan = string.Empty;
-        await policies.SaveDefaultVlanCommand.ExecuteAsync(null);
-        Assert.Null(_server.LastPayload<PolicySettings>(RadiusMethods.SavePolicies).DefaultVlan);
-
-        policies.Selected = policies.Rows[2];
-        await policies.DeleteCommand.ExecuteAsync(null);
-        Assert.StartsWith("Delete the policy Storage room?", _ctx.Confirms[^1], StringComparison.Ordinal);
-        Assert.Equal(2, policies.Rows.Count);
-        policies.Selected = policies.Rows[0];
-        await policies.DeleteCommand.ExecuteAsync(null);
-        policies.Selected = policies.Rows[0];
-        await policies.DeleteCommand.ExecuteAsync(null);
-        Assert.False(policies.HasVlanPolicies); // the Default VLAN hides without a VLAN policy
-        Assert.Equal("No policies yet. Add one to give devices a VLAN or to block them.", policies.EmptyText);
     }
 
     [Fact]
@@ -375,16 +127,14 @@ public sealed class PageViewModelTests
             Assert.Equal("Enter an IP address or a host name.", dialog.ErrorOf(nameof(SwitchDialogViewModel.Address)));
             dialog.Address = "10.0.3.2";
             dialog.Secret = "short";
-            Assert.Equal("Use 16 characters or more.", dialog.ErrorOf(nameof(SwitchDialogViewModel.Secret)));
+            Assert.Equal("Use 8 characters or more.", dialog.ErrorOf(nameof(SwitchDialogViewModel.Secret)));
+            dialog.Secret = "eight-ch";
+            Assert.Null(dialog.ErrorOf(nameof(SwitchDialogViewModel.Secret))); // 8 characters are enough
             Assert.False(dialog.ShowSecret);
             await dialog.GenerateCommand.ExecuteAsync(null);
             Assert.Equal(32, dialog.Secret.Length);
             Assert.True(dialog.ShowSecret); // shown once to copy
             Assert.StartsWith("Copy it now", dialog.SecretHint, StringComparison.Ordinal);
-            Assert.Equal("RADIUS server for this switch: 10.0.0.17, port 1812", dialog.RadiusServerHint);
-            dialog.Site = dialog.SiteChoices[1];
-            Assert.Equal("RADIUS server for this switch: the address of the site's OADM Site Node, port 1812", dialog.RadiusServerHint);
-            dialog.Site = dialog.SiteChoices[0];
             Assert.True(dialog.SaveCommand.CanExecute(null));
             var closed = false;
             dialog.CloseRequested += (_, saved) => closed = saved;
@@ -401,7 +151,7 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public async Task Edit_keeps_the_secret_when_empty_and_shows_where_the_switch_sends_its_requests()
+    public async Task Edit_keeps_the_secret_when_empty()
     {
         var dialogs = new FakeDialogs();
         using var vm = new RadiusViewModel(_ctx);
@@ -413,7 +163,6 @@ public sealed class PageViewModelTests
             Assert.Equal(("Edit switch", "Gate house", "192.168.1.2", string.Empty), (dialog.Title, dialog.Name, dialog.Address, dialog.Secret));
             Assert.Equal("Leave empty to keep the current secret.", dialog.SecretHint);
             Assert.Equal("Building B", dialog.Site.Label);
-            Assert.Equal("RADIUS server for this switch: 192.168.1.5, port 1812", dialog.RadiusServerHint);
             Assert.True(dialog.SaveCommand.CanExecute(null));
             dialog.Name = "Gate";
             await dialog.SaveCommand.ExecuteAsync(null);
@@ -570,14 +319,13 @@ public sealed class PageViewModelTests
         Assert.False(vm.MayManage);
         await vm.LoadAllAsync(CancellationToken.None);
         Assert.Equal(0, _server.CountOf(RadiusMethods.GetState));
-        Assert.Equal(0, _server.CountOf(RadiusMethods.GetPolicies));
-        Assert.Equal(0, _server.CountOf(RadiusMethods.GetTrustedCas));
+        Assert.Equal(0, _server.CountOf(RadiusMethods.ListSwitches));
         Assert.Equal(1, _server.CountOf(RadiusMethods.ListLog));
         Assert.False(vm.Log.MayManage);
         Assert.False(vm.Log.DeleteAllCommand.CanExecute(null));
         Assert.False(vm.Switches.AddCommand.CanExecute(null));
-        Assert.False(vm.Policies.AddCommand.CanExecute(null));
         Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.Equal(string.Empty, vm.PoliciesText);
     }
 
     [Fact]
@@ -589,10 +337,6 @@ public sealed class PageViewModelTests
         Assert.False(vm.MayManage);
         Assert.False(vm.SaveCommand.CanExecute(null));
         Assert.False(vm.Switches.AddCommand.CanExecute(null));
-        Assert.False(vm.Policies.AddCommand.CanExecute(null));
-        Assert.False(vm.Policies.EditCommand.CanExecute(null));
-        vm.TrustedCas.Cas[2].IsTrusted = true;
-        Assert.False(vm.TrustedCas.SaveCommand.CanExecute(null));
         Assert.Equal("No switches yet.", new SwitchesViewModel(_ctx, () => false, () => null, () => []).EmptyText);
 
         _ctx.Manage = true;
@@ -604,9 +348,7 @@ public sealed class PageViewModelTests
         _ctx.RaisePermissionsChanged();
         Assert.False(vm.MayManage);
         Assert.False(vm.HasAllDevices);
-        Assert.Empty(vm.Policies.Rows); // nothing read with all devices stays
-        Assert.Empty(vm.TrustedCas.Cas);
-        Assert.Empty(vm.Switches.Rows);
+        Assert.Empty(vm.Switches.Rows); // nothing read with all devices stays
     }
 
     [Fact]
@@ -648,7 +390,6 @@ public sealed class PageViewModelTests
         await vm.LoadServerAsync(CancellationToken.None);
         var dialog = vm.Switches.NewDialog(null);
         Assert.Equal(["This server", "Building B"], dialog.SiteChoices.Select(c => c.Label));
-        Assert.Equal(["This server", "Building B"], vm.Policies.NewEditor(null).Picker.Sites.Select(c => c.Name));
     }
 
     [Fact]
@@ -656,10 +397,17 @@ public sealed class PageViewModelTests
     {
         var json = RadiusJson.Serialize(new SwitchRow { State = SwitchStates.WrongSecret });
         Assert.Contains("\"state\":\"wrongSecret\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"minimumTls\":\"1.2\"", RadiusJson.Serialize(new RadiusSettings()), StringComparison.Ordinal);
+        Assert.DoesNotContain("minimumTls", RadiusJson.Serialize(new RadiusSettings()), StringComparison.Ordinal); // the 802.1X server policy has it
+        Assert.Contains("\"policiesApply\":6", RadiusJson.Serialize(new RadiusState { PoliciesApply = 6 }), StringComparison.Ordinal);
         Assert.Equal("Wrong secret", new SwitchRowViewModel(RadiusJson.Deserialize<SwitchRow>(json)).State);
-        Assert.Contains("\"kind\":\"block\"", RadiusJson.Serialize(new RadiusPolicy { Kind = PolicyKinds.Block }), StringComparison.Ordinal);
-        Assert.Contains("\"kind\":\"axisDeviceId\"", RadiusJson.Serialize(new TrustedCaRow { Kind = CertificateAuthorityKind.AxisDeviceId }), StringComparison.Ordinal);
-        Assert.Equal(["TLS 1.0", "TLS 1.1", "TLS 1.2", "TLS 1.3"], AdvancedViewModel.TlsVersions.Select(v => v.Label));
+    }
+
+    [Fact]
+    public void The_log_names_the_vlan_policy()
+    {
+        var row = new LogRowViewModel(FakeRadiusBackend.LogEntry(DateTime.UtcNow, "AC:CC:8E:12:34:05", LogResults.Authenticated, null, null, 30, "10.0.0.45") with { VlanPolicy = "Building B" });
+        Assert.Equal("VLAN 30 by Building B", row.VlanText);
+        Assert.True(row.Matches("by building b"));
+        Assert.Equal(string.Empty, new LogRowViewModel(FakeRadiusBackend.LogEntry(DateTime.UtcNow, "AC:CC:8E:12:34:07", LogResults.Failed, "Blocked by Storage room", null, null, null)).VlanText);
     }
 }

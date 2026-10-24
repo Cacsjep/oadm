@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -11,9 +13,9 @@ namespace Oadm.Plugins.Radius.Client;
 
 /// <summary>
 /// The 802.1X server page (docs/spec/radius-server.md "What the user sees"), one page without tabs: Server (with Save and
-/// the Advanced dialog), Trusted CAs, Switches and Policies, then Sessions (live) and Log. Users limited to a device group
-/// see only Sessions and Log (with their devices' rows; the server filters); users with all devices whose role may manage
-/// the plugin change the settings, the trusted CAs, the switches, the policies and the log. <see cref="Activate"/> reads
+/// "N policies apply" with Edit in PKI: the rules are PKI's policies) and Switches, then Sessions (live) and Log. Users
+/// limited to a device group see only Sessions and Log (with their devices' rows; the server filters); users with all
+/// devices whose role may manage the plugin change the settings, the switches and the log. <see cref="Activate"/> reads
 /// everything and watches the live events while the page is shown.
 /// </summary>
 public sealed partial class RadiusViewModel : ObservableObject, IDisposable
@@ -31,9 +33,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _time = time ?? TimeProvider.System;
         Settings = new SettingsViewModel(() => MayManage);
-        TrustedCas = new TrustedCasViewModel(ctx, () => MayManage);
         Switches = new SwitchesViewModel(ctx, () => MayManage, () => _state, () => _sites);
-        Policies = new PoliciesViewModel(ctx, () => MayManage, () => _ctx.Has(PermissionKeys.Of(PkiPluginId, PermissionKeys.Manage)));
         Sessions = new SessionsViewModel(ctx, _time);
         Log = new LogViewModel(ctx, () => MayManage, _time);
         Server = new ServerSwitchViewModel(ctx, RadiusPluginInfo.PluginId, RadiusPluginInfo.DisplayName,
@@ -49,16 +49,12 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         _ctx.PermissionsChanged += (_, _) => NotifyRole();
     }
 
-    /// <summary>The plugin id of PKI, whose "Manage the certificate authority" a revoke policy needs too.</summary>
+    /// <summary>The plugin id of PKI, whose page holds the policies.</summary>
     public const string PkiPluginId = "oadm.pki";
 
     public SettingsViewModel Settings { get; }
 
-    public TrustedCasViewModel TrustedCas { get; }
-
     public SwitchesViewModel Switches { get; }
-
-    public PoliciesViewModel Policies { get; }
 
     public SessionsViewModel Sessions { get; }
 
@@ -67,12 +63,9 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     /// <summary>Turn on / Turn off of the server (PKI): the cards show only while it runs.</summary>
     public ServerSwitchViewModel Server { get; }
 
-    /// <summary>The Advanced dialog (the page view).</summary>
-    public IAdvancedDialog? AdvancedDialog { get; set; }
-
     /// <summary>
-    /// The server-wide cards (Server, Trusted CAs, Switches, Policies) are read and shown: users with all devices only (fail
-    /// closed: the server also answers a group user with empty settings).
+    /// The server-wide cards (Server, Switches) are read and shown: users with all devices only (fail closed: the server
+    /// also answers a group user with empty settings).
     /// </summary>
     public bool HasAllDevices => _ctx.HasAllDevices && (_state?.HasAllDevices ?? true);
 
@@ -122,6 +115,22 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
 
     /// <summary>Why Save is off, for its tooltip.</summary>
     public string? SaveTip => Settings.FormError;
+
+    /// <summary>"6 policies apply": PKI's policies the server applies (802.1X server, Allow CA, VLAN, Block, Revoke).</summary>
+    [ObservableProperty]
+    public partial string PoliciesText { get; set; } = string.Empty;
+
+    /// <summary>"1 policy applies", "6 policies apply", "No policies apply".</summary>
+    public static string PoliciesApplyText(int count) => count switch
+    {
+        0 => "No policies apply",
+        1 => "1 policy applies",
+        _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies apply"),
+    };
+
+    /// <summary>Edit in PKI: the policies are on the PKI page.</summary>
+    [RelayCommand]
+    private Task EditInPkiAsync() => _ctx.OpenAsync("plugin:" + PkiPluginId);
 
     public void Activate()
     {
@@ -228,7 +237,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
             Log.NeedsLoad ? Log.LoadAsync(ct) : Task.CompletedTask).ConfigureAwait(true);
     }
 
-    /// <summary>The state, the trusted CAs, the switches and the policies (the overlay over the cards).</summary>
+    /// <summary>The state and the switches (the overlay over the cards).</summary>
     internal async Task LoadServerAsync(CancellationToken ct)
     {
         var version = ++_loadVersion;
@@ -245,9 +254,6 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
 
             await Switches.LoadAsync(ct).ConfigureAwait(true);
             _sites = await ReadSitesAsync(ct).ConfigureAwait(true);
-            await TrustedCas.LoadAsync(ct).ConfigureAwait(true);
-            Policies.SetSites(_sites);
-            await Policies.LoadAsync(ct).ConfigureAwait(true);
             if (!HasAllDevices)
             {
                 ClearServerWide(); // the role changed during the read
@@ -286,7 +292,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
 
         ActionError = null;
         var settings = Settings.ToSettings();
-        if (_state is { } known && RadiusRules.Validate(settings, known.CipherSuitesListed) is { } settingsError)
+        if (RadiusRules.Validate(settings) is { } settingsError)
         {
             if (!Settings.ShowServerError(settingsError.Message))
             {
@@ -318,38 +324,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanOpenAdvanced() => _state is { CipherSuitesListed.Count: > 0 } && HasAllDevices;
-
-    /// <summary>Advanced: the TLS settings and the largest EAP packet in their own dialog (saved there; the Server form stays).</summary>
-    [RelayCommand(CanExecute = nameof(CanOpenAdvanced))]
-    private async Task OpenAdvancedAsync()
-    {
-        if (_state is not { } state || AdvancedDialog is not { } dialog)
-        {
-            return;
-        }
-
-        var advanced = NewAdvanced(state);
-        if (await dialog.ShowAdvancedAsync(advanced).ConfigureAwait(true) && advanced.Saved is { } saved)
-        {
-            ApplyState(saved, form: false);
-            Settings.ApplySaved(saved.Settings);
-        }
-    }
-
-    /// <summary>The Advanced dialog of the saved settings (read only without the manage permission).</summary>
-    public AdvancedViewModel NewAdvanced(RadiusState state)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        return new AdvancedViewModel(_ctx, state.Settings, state.CipherSuitesListed) { MayManage = MayManage };
-    }
-
-    private void ClearServerWide()
-    {
-        TrustedCas.Clear();
-        Policies.Clear();
-        Switches.Apply([]);
-    }
+    private void ClearServerWide() => Switches.Apply([]);
 
     private void ApplyState(RadiusState state, bool form)
     {
@@ -361,6 +336,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
             ? "Server certificate valid until " + certificate.NotAfterUtc.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
             : string.Empty;
         Log.Kept = state.Settings.LogKept;
+        PoliciesText = state.HasAllDevices ? PoliciesApplyText(state.PoliciesApply) : string.Empty;
         if (form)
         {
             Settings.Apply(state);
@@ -380,13 +356,10 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MayManage));
         OnPropertyChanged(nameof(HasAllDevices));
         Settings.NotifyRole();
-        TrustedCas.NotifyRole();
         Switches.NotifyRole();
-        Policies.NotifyRole();
         Log.NotifyRole();
         NotifySave();
-        OpenAdvancedCommand.NotifyCanExecuteChanged();
-        if (!HasAllDevices && (Policies.Rows.Count > 0 || TrustedCas.Cas.Count > 0 || Switches.Rows.Count > 0))
+        if (!HasAllDevices && Switches.Rows.Count > 0)
         {
             ClearServerWide(); // nothing read with all devices stays for a user limited to a group
         }

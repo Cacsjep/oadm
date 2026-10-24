@@ -33,9 +33,6 @@
             </Button>
           </Grid>
         </ui:FormField>
-        <ui:FormField Classes="wide">
-          <TextBlock Classes="secondary" Text="{Binding RadiusServerHint}" TextWrapping="Wrap" />
-        </ui:FormField>
       </StackPanel>
     </Border>
 

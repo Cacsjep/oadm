@@ -7,17 +7,17 @@ using Oadm.Plugins.Radius.Client;
 namespace Oadm.Plugins.Radius.Tests.Client;
 
 /// <summary>
-/// The cards in four, two and one column by the page width, Save in the Server card, and the log rows of dropped requests
-/// (headless, screenshots with OADM_SCREENSHOT_DIR; checks are content and rules).
+/// The cards Server and Switches side by side or in one column by the page width, Save in the Server card, the splitter
+/// between Sessions and Log, and the log rows of dropped requests (headless, screenshots with OADM_SCREENSHOT_DIR; checks
+/// are content and rules).
 /// </summary>
 [Collection(HeadlessSessions.Name)]
 public sealed class ServerLayoutTests
 {
     [Theory]
-    [InlineData(1700, 4)]
-    [InlineData(1300, 2)]
-    [InlineData(900, 1)]
-    public async Task The_cards_use_four_two_or_one_column_by_width_and_save_sits_in_the_server_card(int width, int columns)
+    [InlineData(1700, 2)]
+    [InlineData(1000, 1)]
+    public async Task The_cards_use_two_or_one_column_by_width_and_save_sits_in_the_server_card(int width, int columns)
     {
         var ctx = new FakePageContext(new FakeRadiusBackend());
         var checks = await HeadlessEntry.Session.Dispatch(async () =>
@@ -27,10 +27,9 @@ public sealed class ServerLayoutTests
             var window = HeadlessPageTests.Host(view, width, 1500);
             window.Show();
             view.DataContext = vm;
-            await vm.Server.LoadAsync(CancellationToken.None); // the server runs: the cards show
-            await vm.LoadServerAsync(CancellationToken.None);
+            await vm.LoadAllAsync(CancellationToken.None); // the server runs: the cards, the sessions and the log
             HeadlessPageTests.Pump();
-            HeadlessPageTests.Capture(window, $"radius-page-{columns}-columns.png");
+            HeadlessPageTests.Capture(window, $"radius-page-{width}.png");
             var cards = window.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("card") && b.IsEffectivelyVisible).ToList();
             var save = window.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Save" && b.Classes.Contains("primary"));
             var saveInCard = save.GetVisualAncestors().OfType<Border>().Any(b => b.Name == "ServerCard");
@@ -38,16 +37,19 @@ public sealed class ServerLayoutTests
             var count = view.CardColumnCount;
             // Every column of the switches is at its width: never squeezed by a pass at a width the card does not fit.
             var switches = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "SwitchesGrid");
-            var squeezed = switches.Columns.Skip(1).Any(c => c.ActualWidth < c.Width.Value);
+            var squeezed = switches.Columns.Skip(1).Any(c => c.ActualWidth < c.MinWidth);
+            var splitter = window.GetVisualDescendants().OfType<GridSplitter>().Any(s => s.Name == "SessionsSplitter" && s.IsEffectivelyVisible);
             window.Close();
-            return (count, cards.Count, saveInCard, status, squeezed);
+            return (count, cards.Count, saveInCard, status, squeezed, splitter);
         }, CancellationToken.None);
 
         Assert.Equal(columns, checks.count);
-        Assert.Equal(6, checks.Item2); // Server, Trusted CAs, Switches, Policies, Sessions, Log
+        Assert.Equal(4, checks.Item2); // Server, Switches, Sessions, Log
         Assert.True(checks.saveInCard);
         Assert.True(checks.status);
         Assert.False(checks.squeezed);
+        Assert.True(checks.splitter); // Sessions and Log share the height
+
     }
 
     [Fact]
