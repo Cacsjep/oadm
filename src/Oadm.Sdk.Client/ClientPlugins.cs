@@ -83,7 +83,24 @@ public interface ICorePluginPage
     /// page, exactly like on the Devices page. Default false.
     /// </summary>
     bool ShowTasksPane => false;
+
+    /// <summary>
+    /// The id of the core plugin whose page shows this page as a tab (SDK 0.4.0), e.g. the 802.1X server inside PKI; null
+    /// (the default): a rail entry of its own. The host creates the view as for a rail page (with this plugin's own context)
+    /// and hands it to that page (<see cref="ICorePluginClientContext.Tabs"/>); <c>OpenAsync("plugin:" + PluginId)</c> opens
+    /// that page on this tab. While that page is not listed for the user, this page is a rail entry as before.
+    /// </summary>
+    string? TabOf => null;
 }
+
+/// <summary>
+/// The page of another core plugin shown as a tab of this page (SDK 0.4.0, <see cref="ICorePluginPage.TabOf"/>): its
+/// plugin id, its title and its view. The page puts <see cref="View"/> into its tab content; one parent at a time.
+/// </summary>
+/// <param name="PluginId">The tab's core plugin ("oadm.radius").</param>
+/// <param name="Title">The tab's title (the page's <see cref="ICorePluginPage.Title"/>).</param>
+/// <param name="View">The tab's content.</param>
+public sealed record CorePluginTab(string PluginId, string Title, Control View);
 
 /// <summary>
 /// What a core plugin page can see and do. Members are called and raise their events on the UI thread.
@@ -141,6 +158,29 @@ public interface ICorePluginClientContext
     /// ("plugin:" + its id) while that plugin is on.
     /// </summary>
     Task OpenAsync(string hostPage) => Task.CompletedTask;
+
+    /// <summary>
+    /// The pages of other core plugins shown as tabs of this page (SDK 0.4.0, <see cref="ICorePluginPage.TabOf"/>), in the
+    /// server's order, only those the user's role may show; see <see cref="TabsChanged"/>. Default (older hosts): none.
+    /// </summary>
+    IReadOnlyList<CorePluginTab> Tabs => [];
+
+    /// <summary>Raised on the UI thread after <see cref="Tabs"/> changed (a role change, a plugin turned on or off).</summary>
+    event EventHandler? TabsChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
+    /// The host asks the page to show a tab (SDK 0.4.0): the plugin id of one of <see cref="Tabs"/>, or this page's own id
+    /// for its own first tab (<c>OpenAsync("plugin:" + id)</c> of that page). Default (older hosts): never raised.
+    /// </summary>
+    event EventHandler<string>? OpenTabRequested
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>Whether the plugin package <paramref name="packageId"/> is turned on (Plugins page); null when the host cannot tell.</summary>
     bool? IsPluginOn(string packageId) => null;

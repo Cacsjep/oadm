@@ -446,6 +446,13 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   attached and stop it when it is detached (the windows close on logout, with the main window and when the plugin is
   turned off), and keep server-side state per caller: a stream or job the page starts gets its own id (a "start" method
   returns it, events carry it, the page ignores events of other ids), like the Metadata Monitor and the I/O Monitor.
+- **Pages shown as tabs** (SDK 0.4.0): a page with `TabOf => "<host plugin id>"` gets no rail entry; the host creates its
+  view with its own context and hands it to the host page, whose context lists it in `Tabs` (`CorePluginTab` {PluginId,
+  Title, View}, only pages the role may show) with `TabsChanged`. The host page shows the tabs (`ui:PageTab`, fixed) and
+  puts the chosen tab's `View` into its content (one parent at a time). `OpenAsync("plugin:" + tab id)` opens the host
+  page and raises `OpenTabRequested(tab id)` on its context, `OpenAsync("plugin:" + host id)` raises it with the host's
+  own id. While the host page is not listed for the user, the tab page is a rail page. PKI with the 802.1X and EST
+  servers is the example.
 - **Rail group**: `CorePluginGroup Group` (default `Extensions`) puts the page under a group header in the rail, in
   this order: Servers, Automation, Security, Monitoring, Reporting, Maintenance, Integrations, Utilities, Extensions.
 - **Without a page**: `HasPage => false` lists the plugin with `CorePluginInfo.no_page` and the client adds no rail
