@@ -198,27 +198,60 @@
       </Grid>
 
       <!-- ============================== Certificates ============================== -->
-      <!-- The shared list of issued certificates (filters, search, pages, View certificate); the page adds Revoke. -->
+      <!-- The shared certificate list (filters, search, pages, View certificate); the page adds Create, Sign request and
+           Import in the card header and Export, Revoke and Delete as row buttons and in the row menu. -->
       <Border Classes="card" Height="620">
         <Grid RowDefinitions="Auto,*" RowSpacing="12">
-          <TextBlock Grid.Row="0" Classes="cardTitle" Text="Certificates" />
+          <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
+            <TextBlock Classes="cardTitle" Text="Certificates" VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button Classes="secondary" Command="{Binding CreateCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="OADM makes the key and the certificate">
+              <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Create" />
+            </Button>
+            <Button Classes="secondary" Command="{Binding SignRequestCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="A request of another system; its key stays there">
+              <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Sign request" />
+            </Button>
+            <Button Classes="secondary" Command="{Binding ImportCommand}" IsVisible="{Binding MayManage}">
+              <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import" />
+            </Button>
+          </WrapPanel>
           <ui:IssuedCertificateList Grid.Row="1" x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
-            <ui:IssuedCertificateList.Toolbar>
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
-                  <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
-                </Button>
-                <Button Classes="toolbar danger" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}">
-                  <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Revoke" Spacing="8" />
-                </Button>
-              </StackPanel>
-            </ui:IssuedCertificateList.Toolbar>
+            <ui:IssuedCertificateList.RowActions>
+              <DataTemplate x:DataType="ui:IssuedCertificateRow">
+                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                  <Button Classes="link" Content="View"
+                          Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ViewRowCommand}" CommandParameter="{Binding}" />
+                  <StackPanel Orientation="Horizontal" Spacing="16"
+                              IsVisible="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).MayManage}">
+                    <Button Classes="link" Content="Export">
+                      <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                          <MenuItem Header="PEM (.crt)" Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ExportPemCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="DER (.cer)" Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ExportDerCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="With its key (.p12)" IsVisible="{Binding HasKey}"
+                                    Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).ExportKeyCommand}" CommandParameter="{Binding}" />
+                        </MenuFlyout>
+                      </Button.Flyout>
+                    </Button>
+                    <Button Classes="link danger" Content="Revoke" IsVisible="{Binding CanRevoke}"
+                            Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).RevokeRowCommand}" CommandParameter="{Binding}" />
+                    <Button Classes="link danger" Content="Delete" IsVisible="{Binding CanDelete}"
+                            Command="{Binding $parent[ui:IssuedCertificateList].((vm:IssuedCertificatesViewModel)DataContext).DeleteRowCommand}" CommandParameter="{Binding}" />
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ui:IssuedCertificateList.RowActions>
             <ui:IssuedCertificateList.RowContextMenu>
               <ContextMenu>
                 <MenuItem Header="View certificate" Command="{Binding ViewCertificateCommand}" />
+                <MenuItem Header="Export" IsVisible="{Binding MayManage}">
+                  <MenuItem Header="PEM (.crt)" Command="{Binding ExportPemCommand}" />
+                  <MenuItem Header="DER (.cer)" Command="{Binding ExportDerCommand}" />
+                  <MenuItem Header="With its key (.p12)" Command="{Binding ExportKeyCommand}" />
+                </MenuItem>
                 <Separator IsVisible="{Binding MayRevoke}" />
                 <MenuItem Header="Revoke" Command="{Binding RevokeCommand}" IsVisible="{Binding MayRevoke}" />
                 <MenuItem Header="Revoke all of this device" Command="{Binding RevokeDeviceCommand}" IsVisible="{Binding MayRevoke}" />
+                <MenuItem Header="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}" />
               </ContextMenu>
             </ui:IssuedCertificateList.RowContextMenu>
           </ui:IssuedCertificateList>

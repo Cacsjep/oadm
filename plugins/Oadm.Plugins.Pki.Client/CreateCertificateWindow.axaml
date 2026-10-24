@@ -1,0 +1,53 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.CreateCertificateWindow"
+        x:DataType="vm:CreateCertificateViewModel"
+        Title="{x:Static vm:CreateCertificateViewModel.Title}"
+        Width="640" MinWidth="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- One operation: title bar, the form in the dialog body (no card), footer. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:CreateCertificateViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="Use">
+          <ComboBox Width="160" HorizontalAlignment="Left" ItemsSource="{x:Static vm:CreateCertificateViewModel.UseChoices}" SelectedItem="{Binding Use}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:Choice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FormField>
+        <ui:FormField Label="Policy" InputWidth="380">
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" />
+        </ui:FormField>
+        <ui:FormField Label="Name" InputWidth="380">
+          <TextBox Text="{Binding Name}" PlaceholderText="e.g. nvr.example.com" />
+        </ui:FormField>
+        <ui:FormField Label="Addresses" InputWidth="380" Hint="Host names and IP addresses, separated by commas.">
+          <TextBox Text="{Binding Addresses}" PlaceholderText="e.g. nvr.example.com, 10.0.0.20" />
+        </ui:FormField>
+        <ui:FormField Label="File password" Hint="At least 8 characters.">
+          <ui:PasswordBox Text="{Binding Password}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm password">
+          <ui:PasswordBox Text="{Binding ConfirmPassword}" />
+        </ui:FormField>
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:CreateCertificateViewModel.Warning}" />
+        <ui:ProgressRow Text="Creating the certificate" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Create" Command="{Binding CreateCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

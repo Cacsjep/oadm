@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.ExportKeyWindow"
+        x:DataType="vm:ExportKeyViewModel"
+        Title="{x:Static vm:ExportKeyViewModel.Title}"
+        Width="640" MinWidth="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- One operation: title bar, the password twice in the dialog body, footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Heading}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="File password" Hint="At least 8 characters.">
+          <ui:PasswordBox Text="{Binding Password}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm password">
+          <ui:PasswordBox Text="{Binding ConfirmPassword}" />
+        </ui:FormField>
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:CreateCertificateViewModel.Warning}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Export" Command="{Binding ExportCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>
