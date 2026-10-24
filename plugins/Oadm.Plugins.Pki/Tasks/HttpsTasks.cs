@@ -9,7 +9,7 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// <summary>
 /// "Enable HTTPS": a new key on the device, a certificate from the OADM CA, the web server switched to it (an
 /// HTTP-only policy becomes HTTP and HTTPS), OADM follows the new certificate (scheme https, new pin), the previous OADM
-/// certificate is removed. Steps: Check compatibility, Read web server settings, Read network settings, Install CA
+/// certificate is removed. Steps: Check compatibility, Check device clock, Read web server settings, Read network settings, Install CA
 /// certificate, Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
 /// to the new certificate, Verify HTTPS, Remove previous OADM certificate.
 /// </summary>
@@ -33,10 +33,11 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         ctx.PlanSteps(
-            PkiSteps.CheckCompatibility, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork, PkiSteps.InstallCa, PkiSteps.CreateKey, PkiSteps.GetCsr,
-            PkiSteps.Sign, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps, PkiSteps.RemovePrevious);
+            PkiSteps.CheckCompatibility, PkiSteps.CheckClock, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork, PkiSteps.InstallCa, PkiSteps.CreateKey,
+            PkiSteps.GetCsr, PkiSteps.Sign, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps, PkiSteps.RemovePrevious);
 
         var (service, ca, apis) = await CheckCertificateTaskAsync(ctx, device, ct).ConfigureAwait(false);
+        await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, CameraClock.Confirmed(payloadJson), ct).ConfigureAwait(false);
         var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
         var network = await ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
         if (webServer.CertificateAlias?.StartsWith(CertificateDeployment.HttpsAliasPrefix, StringComparison.Ordinal) == true)

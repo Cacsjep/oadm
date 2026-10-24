@@ -446,17 +446,16 @@ public static class CertificateDeployment
         await ctx.StepAsync(PkiSteps.CheckClock, async step =>
         {
             var deviceNow = await DeviceClock.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException("The device clock cannot be read. Nothing was changed.");
+                ?? throw new InvalidOperationException(CameraClock.Unreadable);
             var behind = time.GetUtcNow() - deviceNow;
             if (CameraClock.NeedsQuestion(behind))
             {
-                var late = $"The device's time is {CameraClock.Describe(behind)} behind. The certificate becomes valid on the device only in {CameraClock.Describe(CameraClock.ValidIn(behind))}.";
                 if (!confirmed)
                 {
-                    throw new InvalidOperationException(late + " Set the device to use NTP. Nothing was changed.");
+                    throw new InvalidOperationException(CameraClock.Refusal(behind));
                 }
 
-                ctx.Log(TaskLogLevel.Warning, late + " The user chose to continue.");
+                ctx.Log(TaskLogLevel.Warning, CameraClock.Late(behind) + " The user chose to continue.");
                 step.Complete($"{CameraClock.Describe(behind)} behind, valid on the device in {CameraClock.Describe(CameraClock.ValidIn(behind))}");
                 return;
             }

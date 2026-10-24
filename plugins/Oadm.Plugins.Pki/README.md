@@ -114,7 +114,7 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
   existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
   nothing uses (alias prefix + registry serial or the CA as issuer), never others.
-- **Enable HTTPS** (`oadm.pki.https-enable`, dialog = the clock check only, name "Enable HTTPS"): Check compatibility, Read web server
+- **Enable HTTPS** (`oadm.pki.https-enable`, dialog = the clock check only, name "Enable HTTPS"): Check compatibility, Check device clock, Read web server
   settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
   installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
   to the new certificate (policy kept; HTTP only becomes HTTP and HTTPS), Verify HTTPS (`ctx.UpdateDeviceTlsAsync("https",

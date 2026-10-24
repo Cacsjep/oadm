@@ -144,6 +144,21 @@ public sealed class ClockTests
     }
 
     [Fact]
+    public async Task Enable_https_refuses_a_camera_behind_unless_the_user_continued()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        h.Camera.ClockOffset = -Span(12, 30);
+
+        var ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
+        Assert.EndsWith(" Set the device to use NTP. Nothing was changed.", ex!.Message, StringComparison.Ordinal);
+        Assert.Contains("Check device clock: Failed", h.Lines);
+        Assert.Empty(h.Camera.Writes);
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, CameraClock.Payload(confirmed: true)));
+        Assert.Contains(h.Context.LogEntries, e => e.Level == TaskLogLevel.Warning && e.Message.Contains("The user chose to continue.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task The_dialogs_read_the_clock_through_a_read_only_query()
     {
         await using var h = await TaskHarness.StartAsync();

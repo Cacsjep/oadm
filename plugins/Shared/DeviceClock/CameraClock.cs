@@ -97,6 +97,16 @@ internal static class CameraClock
     /// <summary>The camera is still more than <see cref="Tolerance"/> behind the certificate's start: ask first.</summary>
     public static bool NeedsQuestion(TimeSpan behind) => ValidIn(behind) > Tolerance;
 
+    /// <summary>The task's text for a device <paramref name="behind"/> (PKI tasks and EST Set up).</summary>
+    public static string Late(TimeSpan behind) =>
+        $"The device's time is {Describe(behind)} behind. The certificate becomes valid on the device only in {Describe(ValidIn(behind))}.";
+
+    /// <summary>The task's refusal when the user did not answer the dialog's question with Yes.</summary>
+    public static string Refusal(TimeSpan behind) => Late(behind) + " Set the device to use NTP. Nothing was changed.";
+
+    /// <summary>The task's refusal when the device clock cannot be read.</summary>
+    public const string Unreadable = "The device clock cannot be read. Nothing was changed.";
+
     /// <summary>"9 min 12 s", "45 s", "2 h 3 min".</summary>
     public static string Describe(TimeSpan span)
     {

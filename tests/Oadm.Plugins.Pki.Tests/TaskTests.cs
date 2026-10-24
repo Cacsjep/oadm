@@ -176,7 +176,7 @@ public sealed class HttpsTaskTests
 
         Assert.Equal(
         [
-            "Check compatibility: Done", "Read web server settings: Done", "Read network settings: Done", "Install CA certificate: Done",
+            "Check compatibility: Done", "Check device clock: Done", "Read web server settings: Done", "Read network settings: Done", "Install CA certificate: Done",
             "Create key on the device: Done", "Get certificate request: Done", "Sign certificate: Done", "Install certificate: Done",
             "Switch web server to the new certificate: Done", "Verify HTTPS: Done", "Remove previous OADM certificate: Skipped", "Completed: Done",
         ], h.Lines);
