@@ -652,10 +652,25 @@ public static class PolicyTexts
     }
 
     /// <summary>"802.1X: OADM CA (only devices OADM manages)" (the Used by column of the CA list; its entries are joined with commas).</summary>
-    public static string UsedBy(PkiPolicy policy)
+    public static string UsedBy(PkiPolicy policy) => UsedBy([policy])!;
+
+    /// <summary>
+    /// "802.1X: OADM CA (only devices OADM manages), Lab CA": the Allow CA policies of one CA behind one prefix (the Used by
+    /// column of the CA list); null for none.
+    /// </summary>
+    public static string? UsedBy(IReadOnlyCollection<PkiPolicy> policies)
     {
-        ArgumentNullException.ThrowIfNull(policy);
-        return "802.1X: " + policy.Name + (policy.OnlyManaged ?? true ? " (" + AllowCaScope(true) + ")" : string.Empty);
+        ArgumentNullException.ThrowIfNull(policies);
+        return policies.Count == 0
+            ? null
+            : "802.1X: " + string.Join(", ", policies.Select(p => p.Name + (p.OnlyManaged ?? true ? " (" + AllowCaScope(true) + ")" : string.Empty)));
+    }
+
+    /// <summary>"Issuing: HTTPS, IEEE 802.1X, 802.1X server": the issuing policies of one CA behind one prefix; null for none.</summary>
+    public static string? Issuing(IReadOnlyCollection<string> policyNames)
+    {
+        ArgumentNullException.ThrowIfNull(policyNames);
+        return policyNames.Count == 0 ? null : "Issuing: " + string.Join(", ", policyNames);
     }
 
     /// <summary>"VLAN 30 by Building B" (Sessions and Log of the 802.1X server).</summary>

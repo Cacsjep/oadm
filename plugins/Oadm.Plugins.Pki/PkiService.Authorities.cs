@@ -289,18 +289,19 @@ public sealed partial class PkiService
             Kind = a.Kind,
             NotAfterUtc = a.NotAfterUtc,
             Fingerprint = a.Certificates.Count > 0 ? CaCertificates.ColonFingerprint(Convert.ToHexString(SHA256.HashData(a.Certificates[0]))) : string.Empty,
-            UsedBy = [.. Policies.UsingCa(a.Id, a.Kind).Select(PolicyTexts.UsedBy), .. IssuingPoliciesOf(a), .. UsedBy(a.Id)],
+            // One prefix per group ("802.1X: ...", "Issuing: HTTPS, IEEE 802.1X"), then the services: fits the column in two lines.
+            UsedBy = [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)],
             CertificatesPem = [.. a.Certificates.Select(der => new string(PemEncoding.Write("CERTIFICATE", der)) + "\n")],
         }),
     ];
 
-    /// <summary>"Issuing: HTTPS": the issuing policies that name the CA (only the OADM CA issues; its previous ones never do).</summary>
+    /// <summary>The names of the issuing policies that name the CA (only the OADM CA issues; its previous ones never do).</summary>
     private IEnumerable<string> IssuingPoliciesOf(CertificateAuthorityInfo authority) =>
         authority.Kind != CertificateAuthorityKind.Oadm
             ? []
             : PolicyKinds.All.Where(PolicyKinds.IsIssuing).SelectMany(Policies.PoliciesOf)
                 .Where(p => string.Equals(p.CaId ?? CertificateAuthorityInfo.OadmId, authority.Id, StringComparison.OrdinalIgnoreCase))
-                .Select(p => "Issuing: " + p.Name);
+                .Select(p => p.Name);
 
     private static DateTime LatestEnd(List<byte[]> certificates)
     {

@@ -360,6 +360,8 @@ public sealed class PolicyStoreTests
         // One phrase for "only devices OADM manages": the editor's check box, the row's summary and Used by.
         var oadm = (await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "OADM CA", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId })).Saved!;
         Assert.Equal("802.1X: OADM CA (only devices OADM manages)", PolicyTexts.UsedBy(oadm));
+        Assert.Equal("802.1X: OADM CA (only devices OADM manages), Lab", PolicyTexts.UsedBy([oadm, oadm with { Name = "Lab", OnlyManaged = false }])); // one prefix
+        Assert.Null(PolicyTexts.UsedBy(Array.Empty<PkiPolicy>()));
         Assert.Contains("802.1X: OADM CA (only devices OADM manages)", (await pki.StateAsync()).Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
         Assert.EndsWith(", only devices OADM manages", PolicyStore.Summary(oadm, new Dictionary<string, string>()), StringComparison.Ordinal);
         Assert.Equal(PolicyTexts.OnlyManaged, Client.PolicyEditorViewModel.OnlyManagedText);

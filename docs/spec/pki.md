@@ -404,7 +404,8 @@ fits the spec; to be confirmed by the maintainer).
 - **Page**: Create, Sign request and Import in the card header; row buttons View, Export (PEM, DER, With its key), Revoke,
   Delete; the row menu adds Revoke and Delete for several rows and Revoke all of this device. Dialogs without cards:
   `CreateCertificateWindow`, `SignRequestWindow`, `ImportCertificateWindow`, `ExportKeyWindow`.
-- **CA list**: Used by also names the issuing policies of the OADM CA ("Issuing: HTTPS").
+- **CA list**: Used by also names the issuing policies of the OADM CA, one prefix per group ("802.1X: OADM CA (only devices
+  OADM manages)", "Issuing: HTTPS, IEEE 802.1X, 802.1X server, EST server", then the services); the grid wraps to two lines.
 - **Tests**: `Oadm.Plugins.Pki.Tests` `CertificateListTests`, `CertificateListPerfTests` (Category=Perf),
   `CertificateCardHeadlessTests`, `BackupTests` (a created key restored on another server), `CertificatesTabTests`,
   `AuthorityTests`.
