@@ -39,8 +39,13 @@ public sealed class ServerLayoutTests
             var switches = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "SwitchesGrid");
             var squeezed = switches.Columns.Skip(1).Any(c => c.ActualWidth < c.MinWidth);
             var splitter = window.GetVisualDescendants().OfType<GridSplitter>().Any(s => s.Name == "SessionsSplitter" && s.IsEffectivelyVisible);
+
+            // The Duration header is right-aligned like its numbers, with room left of the text so it shows.
+            var duration = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Duration" && t.IsEffectivelyVisible);
+            var durationRight = duration.Classes.Contains("numberHeader") && duration.TextAlignment == Avalonia.Media.TextAlignment.Right
+                && duration.Bounds.Width - duration.TextLayout.WidthIncludingTrailingWhitespace >= 10;
             window.Close();
-            return (count, cards.Count, saveInCard, status, squeezed, splitter);
+            return (count, cards.Count, saveInCard, status, squeezed, splitter, durationRight);
         }, CancellationToken.None);
 
         Assert.Equal(columns, checks.count);
@@ -49,6 +54,7 @@ public sealed class ServerLayoutTests
         Assert.True(checks.status);
         Assert.False(checks.squeezed);
         Assert.True(checks.splitter); // Sessions and Log share the height
+        Assert.True(checks.durationRight);
 
     }
 

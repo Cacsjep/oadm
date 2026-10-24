@@ -155,7 +155,8 @@
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="IP address" Width="130" MinWidth="130" Binding="{Binding IpAddress}" x:DataType="vm:SessionRowViewModel" />
-                <DataGridTextColumn Width="100" MinWidth="100" Binding="{Binding Duration}" SortMemberPath="DurationValue" CellStyleClasses="number" x:DataType="vm:SessionRowViewModel">
+                <!-- Wide enough that the right-aligned header shows as such next to the header's sort icon space. -->
+                <DataGridTextColumn Width="130" MinWidth="130" Binding="{Binding Duration}" SortMemberPath="DurationValue" CellStyleClasses="number" x:DataType="vm:SessionRowViewModel">
                   <DataGridTextColumn.Header>
                     <TextBlock Classes="numberHeader" Text="Duration" />
                   </DataGridTextColumn.Header>
