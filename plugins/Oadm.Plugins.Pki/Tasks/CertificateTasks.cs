@@ -181,7 +181,7 @@ public static class CertificateQuery
             return PkiJson.Serialize(new CertificateListReply { Error = "Needs AXIS OS 11.11 or later." });
         }
 
-        var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
+        var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         try
         {
             var list = await CertificateInventory.ReadAsync(ctx.Vapix, device.Apis, registry, service, device, ct).ConfigureAwait(false);
@@ -247,7 +247,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
         }).ConfigureAwait(false);
 
         var service = Service;
-        var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
+        var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         var installed = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
             var read = await CertificateInventory.ReadAsync(ctx.Vapix, apis, registry, service, device, ct).ConfigureAwait(false);
@@ -272,7 +272,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
             return read;
         }).ConfigureAwait(false);
 
-        // A deleted certificate stays in the list of issued certificates (a copy could be in use): it can be revoked until it ends.
+        // A deleted certificate stays in the store, not listed (a copy could be in use): it can be revoked until it ends.
         foreach (var choice in chosen)
         {
             await ctx.StepAsync("Delete certificate " + choice.Alias, async step =>
@@ -286,7 +286,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
                     await CertApi.DeleteCertificateAsync(ctx.Vapix, choice.Alias, ct).ConfigureAwait(false);
                     if (installed.FirstOrDefault(c => c.Kind != CertificateKind.Ca && string.Equals(c.Alias, choice.Alias, StringComparison.Ordinal)) is { SerialNumber.Length: > 0 } gone)
                     {
-                        service?.Issued.MarkRemovedFromDevice(gone.SerialNumber); // stays listed, as Replaced
+                        service?.Issued.MarkRemovedFromDevice(gone.SerialNumber); // stays in the store, no longer listed
                     }
                 }
 
@@ -439,6 +439,7 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 var alias = await InstallAsync(ctx, bytes, payload.Password, file, ct).ConfigureAwait(false);
                 await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, alias, PkiSteps.SwitchWebServer, ct).ConfigureAwait(false);
                 await CertificateDeployment.FollowWebServerAsync(ctx, "https", contents.LeafFingerprint, Time, PkiSteps.VerifyHttps, ct).ConfigureAwait(false);
+                await ReplacedAsync(ctx, service, device, CertificatePurpose.Https).ConfigureAwait(false);
                 break;
             }
 
@@ -452,9 +453,22 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 var radius = CertificateDeployment.RadiusCas(policy, ca);
                 var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, radius, ct).ConfigureAwait(false);
                 var alias = await InstallAsync(ctx, bytes, payload.Password, file, ct).ConfigureAwait(false);
-                await Dot1xEnableTask.ConfigureAsync(ctx, policy, device, apis, network!, alias, aliases, null, ct).ConfigureAwait(false);
+                if (await Dot1xEnableTask.ConfigureAsync(ctx, policy, device, apis, network!, alias, aliases, null, ct).ConfigureAwait(false) == Dot1xCheck.Confirmed)
+                {
+                    await ReplacedAsync(ctx, service, device, CertificatePurpose.Dot1x).ConfigureAwait(false);
+                }
+
                 break;
             }
+        }
+    }
+
+    /// <summary>The installed file replaced OADM's current certificate of this use (verified): that one is revoked.</summary>
+    private static async Task ReplacedAsync(ITaskExecutionContext ctx, PkiService? service, IDeviceInfo device, string purpose)
+    {
+        if (service is not null && await service.Issued.ReplacedOnCameraAsync(device, purpose, CancellationToken.None).ConfigureAwait(false) is { } previous)
+        {
+            ctx.Log(TaskLogLevel.Info, $"The previous OADM certificate (serial {previous}) was revoked: replaced by the installed one.");
         }
     }
 

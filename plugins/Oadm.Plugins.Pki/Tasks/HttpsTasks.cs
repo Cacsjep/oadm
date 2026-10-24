@@ -56,8 +56,19 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.HttpsAliasPrefix, service.Time);
         var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
         var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, policy, stepPrefix, ct).ConfigureAwait(false);
-        await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
-        await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), ct).ConfigureAwait(false);
+        try
+        {
+            await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
+            await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), ct).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Not verified: the previous certificate stays current, the new one is revoked as unused.
+            await CertificateDeployment.NotUsedAsync(ctx, service, issued.SerialNumber, evenDelivered: false).ConfigureAwait(false);
+            throw;
+        }
+
+        await CertificateDeployment.ConfirmAsync(ctx, service, device, issued, CertificatePurpose.Https).ConfigureAwait(false);
         await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Https, [issued.Alias], PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);
     }
 

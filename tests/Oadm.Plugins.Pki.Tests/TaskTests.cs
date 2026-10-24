@@ -216,14 +216,17 @@ public sealed class HttpsTaskTests
         Assert.DoesNotContain(alias, h.Camera.CertificateAliases);
         Assert.NotEqual(alias, h.Camera.WebServerAlias);
 
-        // Both stay in the list of issued certificates: the deleted one as Replaced (a copy could still be in use).
-        var both = await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None);
-        Assert.Equal(2, both.Count);
-        var now = h.Time.GetUtcNow().UtcDateTime;
-        Assert.Equal(Oadm.Sdk.Certificates.IssuedCertificateState.Replaced, h.Pki.Service.Issued.StateOf(both.Single(e => e.Alias == alias), now, 30));
-        Assert.Equal(Oadm.Sdk.Certificates.IssuedCertificateState.Valid, h.Pki.Service.Issued.StateOf(both.Single(e => e.Alias != alias), now, 30));
-        Assert.NotNull(await h.Pki.Service.Issued.GetDerAsync(both[0].SerialNumber, CancellationToken.None)); // kept for View certificate
+        // Verified: the new one is current, the replaced one is revoked by OADM (Superseded) and left the store.
+        var current = Assert.Single(await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None));
+        Assert.NotEqual(alias, current.Alias);
+        Assert.False(current.Pending);
+        Assert.True(h.Pki.Service.Issued.IsCurrent(current.SerialNumber));
+        var revocation = h.Pki.Service.Issued.FindRevocation(issued.SerialNumber)!;
+        Assert.Equal((Oadm.Sdk.Certificates.RevocationReason.Superseded, IssuedRegistry.OadmUser), (revocation.Reason, revocation.UserName));
+        Assert.Equal("Certificate revoked on " + revocation.RevokedUtc.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + " (Replaced by a newer certificate)", revocation.Describe());
+        Assert.NotNull(await h.Pki.Service.Issued.GetDerAsync(current.SerialNumber, CancellationToken.None)); // kept for View certificate
         Assert.Contains(h.Context.LogEntries, e => e.Message.Contains("is replaced by a new one", StringComparison.Ordinal));
+        Assert.Contains(h.Context.LogEntries, e => e.Message.Contains("previous certificate (serial " + issued.SerialNumber + ") was revoked", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -403,6 +406,85 @@ public sealed class Dot1xTaskTests
     }
 }
 
+/// <summary>
+/// The tasks confirm a new certificate only after their verify step (docs/spec/pki.md "Current and pending"): then the
+/// previous one is revoked; a failed install or verify never revokes the previous one, and an IEEE 802.1X certificate the
+/// camera may use is never revoked as unused (device safety, no lock-out).
+/// </summary>
+public sealed class CertificateConfirmationTaskTests
+{
+    private static Oadm.Sdk.Certificates.RevocationReason? ReasonOf(TaskHarness h, string serial) => h.Pki.Service.Issued.FindRevocation(serial)?.Reason;
+
+    private static IssuedCertificate CurrentOf(TaskHarness h, string purpose) =>
+        h.Pki.Service.Issued.ForDevice(h.Device).Single(e => e.Purpose == purpose && h.Pki.Service.Issued.IsCurrent(e.SerialNumber));
+
+    [Fact]
+    public async Task A_failed_web_server_switch_revokes_the_new_certificate_and_keeps_the_previous_one()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable));
+        var previous = CurrentOf(h, CertificatePurpose.Https);
+        h.Camera.FailWebServerSwitch = true;
+
+        Assert.NotNull(await h.RunAsync(PkiTaskIds.HttpsEnable));
+
+        Assert.Contains("Switch web server to the new certificate: Failed", h.Lines);
+        Assert.Equal(previous.SerialNumber, CurrentOf(h, CertificatePurpose.Https).SerialNumber); // never revoked when the install failed
+        Assert.Null(ReasonOf(h, previous.SerialNumber));
+        var unused = h.Pki.Service.Issued.Revocations.Single();
+        Assert.Equal((Oadm.Sdk.Certificates.RevocationReason.Other, IssuedRegistry.OadmUser), (unused.Reason, unused.UserName));
+        Assert.Single(h.Pki.Service.Issued.ForDevice(h.Device)); // the unused one left the store
+        Assert.Contains(h.Context.LogEntries, e => e.Message.Contains("is not in use and was revoked", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_verified_ieee_8021x_certificate_revokes_the_previous_one()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
+        var previous = CurrentOf(h, CertificatePurpose.Dot1x);
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
+
+        Assert.NotEqual(previous.SerialNumber, CurrentOf(h, CertificatePurpose.Dot1x).SerialNumber);
+        Assert.Equal(Oadm.Sdk.Certificates.RevocationReason.Superseded, ReasonOf(h, previous.SerialNumber));
+    }
+
+    [Fact]
+    public async Task An_ieee_8021x_certificate_the_camera_may_use_is_never_revoked_when_the_task_fails_after_configuring()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
+        var previous = CurrentOf(h, CertificatePurpose.Dot1x);
+        h.Camera.FailDot1xAnswer = true; // applied, but the answer is an error
+
+        Assert.NotNull(await h.RunAsync(PkiTaskIds.Dot1xEnable));
+
+        Assert.Contains("Set 802.1X configuration: Failed", h.Lines);
+        Assert.Empty(h.Pki.Service.Issued.Revocations); // neither the new one (the camera may use it) nor the previous one
+        var pending = h.Pki.Service.Issued.ForDevice(h.Device).Single(e => e.Pending);
+        Assert.True(pending.Delivered);
+        Assert.Equal(previous.SerialNumber, CurrentOf(h, CertificatePurpose.Dot1x).SerialNumber);
+    }
+
+    [Fact]
+    public async Task An_ieee_8021x_certificate_the_camera_does_not_use_is_revoked_and_the_previous_one_stays()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
+        var previous = CurrentOf(h, CertificatePurpose.Dot1x);
+        h.Camera.KeepDot1xClient = true; // the read-back names the previous client certificate
+
+        await h.RunAsync(PkiTaskIds.Dot1xEnable);
+
+        Assert.Contains("Verify 802.1X settings: Warning", h.Lines);
+        Assert.Equal(previous.SerialNumber, CurrentOf(h, CertificatePurpose.Dot1x).SerialNumber);
+        Assert.Null(ReasonOf(h, previous.SerialNumber));
+        Assert.Equal(Oadm.Sdk.Certificates.RevocationReason.Other, Assert.Single(h.Pki.Service.Issued.Revocations).Reason);
+        Assert.DoesNotContain(h.Pki.Service.Issued.ForDevice(h.Device), e => e.Pending);
+    }
+}
+
 public sealed class RenewDeleteInstallTests
 {
     [Fact]
@@ -435,7 +517,11 @@ public sealed class RenewDeleteInstallTests
         Assert.NotEqual(oldDot1x, h.Camera.EapTlsParams["certClient"]!.GetValue<string>());
         Assert.DoesNotContain(oldHttps, h.Camera.CertificateAliases);
         Assert.DoesNotContain(oldDot1x, h.Camera.CertificateAliases);
-        Assert.Equal(4, (await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None)).Count); // the replaced ones stay listed
+        // Only the two new ones stay in the store; the replaced ones are on the revocation list.
+        var stored = await h.Pki.Service.Issued.ForDeviceAsync(h.Device.Id, CancellationToken.None);
+        Assert.Equal(2, stored.Count);
+        Assert.All(stored, e => Assert.True(h.Pki.Service.Issued.IsCurrent(e.SerialNumber)));
+        Assert.Equal(2, h.Pki.Service.Issued.Revocations.Count(r => r.Reason == Oadm.Sdk.Certificates.RevocationReason.Superseded));
         Assert.Equal("https", h.Context.Scheme);
     }
 
@@ -478,7 +564,7 @@ public sealed class RenewDeleteInstallTests
     }
 
     [Fact]
-    public async Task A_deleted_oadm_certificate_stays_listed_as_replaced()
+    public async Task A_deleted_oadm_certificate_stays_in_the_store_but_leaves_the_list()
     {
         await using var h = await TaskHarness.StartAsync();
         using var issued = RevocationTests.Issue(h.Pki.Service.Ca!, h.Device.Serial, client: false);
@@ -489,8 +575,10 @@ public sealed class RenewDeleteInstallTests
 
         var entry = h.Pki.Service.Issued.Find(issued.SerialNumber)!; // found by the read before the delete
         Assert.NotNull(entry.RemovedFromDeviceUtc);
-        var row = (await h.Pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest())).Rows.Single(r => r.SerialNumber == Oadm.Sdk.Certificates.CertificateSerials.Normalize(issued.SerialNumber));
-        Assert.Equal(Oadm.Sdk.Certificates.IssuedCertificateState.Replaced, row.State);
+        var rows = (await h.Pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest())).Rows;
+        Assert.DoesNotContain(rows, r => r.SerialNumber == Oadm.Sdk.Certificates.CertificateSerials.Normalize(issued.SerialNumber));
+        Assert.False(h.Pki.Service.Issued.IsRevoked(issued.SerialNumber)); // a copy could be in use: Revoke can still take it
+        Assert.Contains(Oadm.Sdk.Certificates.CertificateSerials.Normalize(issued.SerialNumber), h.Pki.Service.Issued.RevocableOf(h.Device));
     }
 
     [Fact]

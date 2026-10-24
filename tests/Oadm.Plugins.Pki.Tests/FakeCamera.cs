@@ -123,6 +123,15 @@ internal sealed class FakeCamera : IVapixClient
     /// <summary>A REST call whose path contains this text answers with error code 5.</summary>
     public string? FailPath { get; set; }
 
+    /// <summary>SetWebServerTlsConfiguration answers with a SOAP fault and changes nothing.</summary>
+    public bool FailWebServerSwitch { get; set; }
+
+    /// <summary>setWired8021XConfiguration answers with an error after it applied the settings (the answer got lost).</summary>
+    public bool FailDot1xAnswer { get; set; }
+
+    /// <summary>setWired8021XConfiguration keeps the client certificate it had (the read-back names another one).</summary>
+    public bool KeepDot1xClient { get; set; }
+
     public string Policy { get; set; }
 
     public IReadOnlyList<string> Ciphers { get; }
@@ -356,6 +365,11 @@ internal sealed class FakeCamera : IVapixClient
 
         if (body.Contains("SetWebServerTlsConfiguration", StringComparison.Ordinal))
         {
+            if (FailWebServerSwitch)
+            {
+                return (HttpStatusCode.InternalServerError, PkiFixture.Read(PkiFixture.Fault), "application/soap+xml");
+            }
+
             var xml = XDocument.Parse(body);
             XNamespace web = WebServerTls.WebNs;
             XNamespace cert = WebServerTls.CertNs;
@@ -399,10 +413,15 @@ internal sealed class FakeCamera : IVapixClient
 
             foreach (var key in new[] { "identity", "eapolVersion", "certClient", "certsCA" })
             {
-                if (p[key] is { } value)
+                if (p[key] is { } value && !(KeepDot1xClient && key == "certClient"))
                 {
                     EapTlsParams[key] = value.DeepClone();
                 }
+            }
+
+            if (FailDot1xAnswer)
+            {
+                return Json("{\"error\":{\"code\":1100,\"message\":\"Internal error\"}}");
             }
 
             return Json(new JsonObject { ["apiVersion"] = request["apiVersion"]!.GetValue<string>(), ["method"] = method, ["data"] = new JsonObject() }.ToJsonString());

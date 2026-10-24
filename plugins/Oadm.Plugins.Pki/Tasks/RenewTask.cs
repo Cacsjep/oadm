@@ -53,7 +53,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         }
 
         var network = await HttpsEnableTask.ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
-        var registry = await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
+        var registry = await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         bool IsOadm(string? alias) =>
             alias is not null
             && certificates.FirstOrDefault(c => string.Equals(c.Alias, alias, StringComparison.Ordinal)) is { } certificate
