@@ -24,8 +24,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
   - **Profiles** (at most 2 per camera, the camera's limit: a third add is refused, "No more profiles can be added",
     seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
-    MQTT, RTSPS), validity (days), key (RSA 2048+ / ECC P-256+). Two ready-made: **HTTPS** (server certificates) and
-    **IEEE 802.1X** (client certificates).
+    MQTT, RTSPS), issuing policy (PKI's HTTPS certificate policies for HTTPS and RTSPS, IEEE 802.1X certificate policies for
+    IEEE 802.1X and MQTT: their valid days and key; docs/spec/pki.md "Code (stage 4)"), on. The profile name stays what
+    the camera uses in its URL. Two ready-made: **HTTPS** (server certificates, policy "HTTPS") and **IEEE 802.1X** (client
+    certificates, policy "IEEE 802.1X"). A profile whose policy cannot be read issues nothing (503 "The issuing policy of
+    this profile cannot be read.").
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). **View
     certificate** (toolbar, or a double click on a row; decision 2026-10-23) shows the certificate an enrollment issued
     in OADM's own window (the shared `ui:CertificateWindow` of the client SDK, also used by PKI and the 802.1X server): validity with a status chip, issued to and issued by, key and
@@ -112,8 +115,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
   or no valid identity, 403 not managed / other site / certificate of another camera, 400 request unreadable or refused, 404 unknown, 503 no
   OADM PRO or no CA (Retry-After 600).
-- The server's TLS certificate: ECC P-256 key made in memory (never stored), 90 days, made again with a third left or
-  when the addresses or the CA change.
+- The server's TLS certificate: made in memory (never stored) with the days and key of PKI's Server certificate policy
+  "EST server" (90 days, ECC P-256 by default; RSA 2048), made again 30 days (at most a third of its time) before its end,
+  when the addresses, the CA or the policy's key change; other days apply to the next one.
 
 ## Certificate renewals and pinning
 

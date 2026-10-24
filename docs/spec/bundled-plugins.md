@@ -136,8 +136,9 @@ plugin"); only these two servers need OADM PRO, PKI itself never does (Plugins p
 One certificate authority for device certificates (generated on first start or imported), the server's trust in it, and
 the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
 Delete and Install certificates, Install CA certificates; one page (docs/spec/pki.md "The PKI page"): the certificate
-authorities, the policies (802.1X server, Allow CA, VLAN, Block, Revoke, Expiry warning; the 802.1X server reads its rules
-there) and the list of every certificate the OADM CA issued with the revocation list (Revoke; docs/spec/radius-server.md
+authorities, the policies (the issuing policies HTTPS certificate, IEEE 802.1X certificate and Server certificate:
+the values Enable HTTPS, Enable IEEE 802.1X, the EST profiles and the two servers issue with; 802.1X server, Allow CA, VLAN,
+Block, Revoke, Expiry warning; the 802.1X server reads its rules there) and the list of every certificate the OADM CA issued with the revocation list (Revoke; docs/spec/radius-server.md
 "Certificates and revocation"); the events "Certificate expires soon" and "Certificate expired" (group "Certificates").
 Details: plugin
 `README.md`; device API research:
@@ -148,7 +149,10 @@ Details: plugin
   devices have certificates from the current one; the CA and its previous CAs are trust anchors, so OADM-issued device
   certificates rate **Trusted** without an OS change; keys of device certificates are created on the device, OADM signs
   with its own subject and SAN (never the CSR's); every task checks AXIS OS 11.11+ (cert v1 from a fresh
-  `config/discover`) before the first write and fails "Nothing was changed" otherwise; Enable HTTPS pins the new
+  `config/discover`) and the key type of the chosen issuing policy against the device's keystore before the first write and
+  fails "Nothing was changed" otherwise; the dialogs of Enable HTTPS and Enable IEEE 802.1X pick an issuing policy whose
+  values the user may change for the run; the last HTTPS or IEEE 802.1X certificate policy, one an EST profile names and
+  the servers' policies are never deleted; Enable HTTPS pins the new
   certificate through `UpdateDeviceTlsAsync`; 802.1X checks the device clock first; only OADM's own certificates that
   nothing uses are removed; passwords of imports and backups are never stored or logged; nothing in tests touches a real
   trust store; View and Delete certificates read at most 5,000 devices per window (each device is read, 4 at a time; a

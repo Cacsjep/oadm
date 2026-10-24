@@ -13,8 +13,7 @@ change to the operating system.
 
 <Image src={shot} alt="The PKI page with the certificate authorities, the policies and the certificates" class="screen" />
 
-The page has the cards **Certificate authorities** and **Policies** (side by side on a wide window), **Certificates**,
-**Device certificates** and **IEEE 802.1X**.
+The page has the cards **Certificate authorities** and **Policies** (side by side on a wide window) and **Certificates**.
 
 ## Certificate authorities
 
@@ -51,10 +50,13 @@ there.
 ## Policies
 
 The policies are the rules for certificates and for the [802.1X server](../radius-server/). Filter them with **All**,
-**Certificates**, **802.1X** and **Revoke**. **Add policy** adds one; Edit and Delete sit at the end of each row.
+**Issuing**, **Certificates**, **802.1X** and **Revoke**. **Add policy** adds one; Edit and Delete sit at the end of each row.
 
 | Kind | What it does | Devices |
 |---|---|---|
+| **HTTPS certificate** | The CA, how many days the certificate is valid (1 to 3650) and the key (ECC or RSA) for **Enable HTTPS** and EST profiles for HTTPS and RTSPS. | no |
+| **IEEE 802.1X certificate** | The same, plus the EAPOL version, the EAP identity (MAC address, host name or a custom text) and the CA of your RADIUS server (the OADM CA or one you import), for **Enable IEEE 802.1X** and EST profiles for IEEE 802.1X and MQTT. | no |
+| **Server certificate** | The CA, days and key of the certificate of the 802.1X server or of the EST server. One for each. | no |
 | **802.1X server** | Minimum TLS version, cipher suites, largest EAP packet and how often cameras sign in again (the switch decides, or every N minutes). One only. | no |
 | **Allow CA** | Lets devices with a certificate of this CA onto the network: only devices OADM manages (default) or any device. | no |
 | **VLAN** | Puts the devices in a VLAN (1 to 4094). | yes |
@@ -62,8 +64,14 @@ The policies are the rules for certificates and for the [802.1X server](../radiu
 | **Revoke** | Revokes the certificates of the devices, also every new one while the policy exists. | devices and sites |
 | **Expiry warning** | How many days before the end a certificate shows as expiring soon. | yes |
 
-At the start OADM has the policies "802.1X server", "OADM CA" and "Axis device ID" (Allow CA, only devices OADM
-manages) and "All devices" (Expiry warning, 30 days).
+At the start OADM has the policies "HTTPS" and "IEEE 802.1X" (365 days, ECC), the server certificates "802.1X server"
+(365 days) and "EST server" (90 days), "802.1X server", "OADM CA" and "Axis device ID" (Allow CA, only devices OADM
+manages) and "All devices" (Expiry warning, 30 days). After an update from an older OADM, "HTTPS" and "IEEE 802.1X" keep
+the settings of the former Device certificates and IEEE 802.1X cards and RSA keys.
+
+- Add more certificate policies, for example "HTTPS 2 years"; Enable HTTPS and Enable IEEE 802.1X let you pick one.
+- The last HTTPS or IEEE 802.1X certificate policy, one an EST profile uses and the server certificates cannot be
+  deleted. A server certificate policy with other days applies to the next certificate; another key makes a new one.
 
 - A device can be in only one policy of each kind: saving names the device that is in two. Each CA is in one Allow CA
   policy at most.
@@ -80,14 +88,6 @@ manages) and "All devices" (Expiry warning, 30 days).
 Every certificate the OADM CA issued: device, use, valid until and state. **Search** finds text in every column.
 **View certificate** shows it (also a double click). **Revoke** takes the chosen certificates out of use: they no longer
 get a camera onto the network and are no longer renewed.
-
-## Settings
-
-- **Device certificates**: how many days a device certificate is valid (default 365).
-- **IEEE 802.1X**: the EAPOL version, the EAP identity (MAC address, host name or a custom text) and the CA of your
-  RADIUS server (the OADM CA or one you import).
-
-Click **Save** at the end of the IEEE 802.1X card to store both cards.
 
 ## Use the certificates on devices
 

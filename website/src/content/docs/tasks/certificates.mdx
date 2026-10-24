@@ -18,9 +18,12 @@ Other devices show the entries greyed with the reason.
 
 ## Enable or disable HTTPS
 
-**Enable HTTPS** gives each device its own HTTPS certificate from the OADM CA:
+**Enable HTTPS** gives each device its own HTTPS certificate from the OADM CA. The dialog shows the **Policy** (an HTTPS
+certificate policy of the [PKI](../../tools/pki/) page, the first one is chosen) with its **Valid (days)** and **Key**;
+you can change them for this run. Then:
 
-1. The device creates a key. The private key never leaves the device.
+1. The device creates a key of the policy's kind (ECC or RSA). The private key never leaves the device. A device that
+   cannot create that key is not changed.
 2. OADM signs the request with the device's IP addresses and host names.
 3. OADM installs the certificate, switches the web server to it (HTTP only becomes HTTP and HTTPS) and connects again
    over HTTPS.
@@ -32,19 +35,22 @@ certificates stay on the device.
 ## Enable or disable IEEE 802.1X
 
 **Enable IEEE 802.1X** installs the RADIUS server CA and the OADM CA, issues a client certificate and turns on 802.1X
-with EAP-TLS. EAPOL version, identity and the RADIUS server CA are set on the [PKI](../../tools/pki/) page. Before it
+with EAP-TLS. The dialog shows the **Policy** (an IEEE 802.1X certificate policy) with its valid days, key, EAPOL
+version, EAP identity and RADIUS server CA; you can change them for this run. Before it
 changes anything, OADM checks the device clock: more than 5 minutes off fails with "Set the date and time first.
 Nothing was changed."
 
 <Aside type="danger">
-Devices on switch ports that enforce 802.1X become unreachable if authentication fails. OADM asks before it starts.
+Devices on switch ports that enforce 802.1X become unreachable if authentication fails. The dialog says so above the
+policy.
 </Aside>
 
 **Disable IEEE 802.1X** turns 802.1X off. The certificates stay.
 
 ## Renew certificates
 
-**Renew certificates** renews the HTTPS and 802.1X certificates that OADM issued, with a new key. A purpose without an
+**Renew certificates** renews the HTTPS and 802.1X certificates that OADM issued, with a new key and the first policy of
+each kind. A purpose without an
 OADM certificate is skipped, for example "No OADM HTTPS certificate on this device".
 
 ## View and delete certificates

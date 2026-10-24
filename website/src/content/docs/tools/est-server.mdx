@@ -72,8 +72,11 @@ A profile is one kind of certificate. The cameras ask for it by its name. Two pr
 You can add profiles for **MQTT** (client certificate) and **RTSPS** (server certificate); each use can have one profile.
 
 - **Profile**: the name, 1 to 32 letters, digits or `_`.
-- **Valid (days)**: how long each certificate is valid, 1 to 825 days (default 365). It never lasts longer than the CA.
-- **Key**: the key the camera creates, **ECC** or **RSA**. The camera signs in with the device ID of the same kind.
+- **Issuing policy**: the certificate policy of the [PKI](../pki/) page the certificates get their days and key from:
+  an HTTPS certificate policy for HTTPS and RTSPS, an IEEE 802.1X certificate policy for IEEE 802.1X and MQTT. A
+  certificate never lasts longer than the CA. The camera creates a key of the policy's kind and signs in with the device
+  ID of the same kind. After an update, each profile names the policy with its former validity and key ("HTTPS", or a
+  new one such as "EST dot1x").
 - **On**: a profile that is off answers like one that does not exist; cameras set up with it get nothing until you turn
   it on again.
 

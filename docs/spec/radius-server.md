@@ -180,7 +180,9 @@ certificate").
   alert numbers on all three systems. Stage 1 starts with a proof: a full EAP-TLS exchange with a BouncyCastle client in a
   unit test.
 - **Server certificate:** issued by the OADM CA (PKI) for the server, names = the listen addresses and the server's host
-  name, renewed automatically 30 days before it expires; the cameras trust it through the PKI task "IEEE 802.1X".
+  name, valid for the days of PKI's Server certificate policy "802.1X server" (365 by default, ECC only: the cipher suites
+  follow the key), renewed automatically 30 days (at most a third of its time) before it expires and at once for a new CA;
+  other days apply to the next one; the cameras trust it through the PKI task "Enable IEEE 802.1X".
 
 ## Libraries (research 2026-10-23)
 

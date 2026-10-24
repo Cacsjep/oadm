@@ -12,8 +12,13 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   - `Serving/EstService`: listens on TCP 9454 (setting `config.port`, 1025..65535) on the server's network through
     `ICorePluginContext.Network.ListenTcpAsync`; TLS 1.2+ (`SslStream`, client certificate requested, checked per request);
     at most 64 connections, 20 requests and 30 s idle per connection.
-  - `Serving/ServerCertificates`: the server's TLS certificate from the OADM CA (ECC P-256 key made in memory, 90 days,
-    made again with a third left, when the addresses or the CA change); SAN = the server's addresses (network cards that
+  - `Serving/ServerCertificates`: the server's TLS certificate from the OADM CA (key made in memory with the days and key
+    of PKI's Server certificate policy "EST server", 90 days ECC P-256 by default; made again 30 days, at most a third,
+    before its end, when the addresses, the CA or the policy's key change);
+  - `Serving/EstPolicies`: a profile's issuing policy (`EstProfile.PolicyId`; HTTPS certificate for HTTPS and RTSPS, IEEE
+    802.1X certificate for IEEE 802.1X and MQTT): its valid days for enrollments and renewals, its key for Set up; none
+    readable: 503 "The issuing policy of this profile cannot be read."; the once-only conversion of the profiles of 4.1
+    (owner `oadm.est:profiles`) and the profiles' uses PKI checks before deleting a policy; SAN = the server's addresses (network cards that
     are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
     `POST .../simplereenroll`; everything else and unknown or disabled profiles 404. Who may enroll: the camera's Axis

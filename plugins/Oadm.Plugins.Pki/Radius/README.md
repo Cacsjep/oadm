@@ -13,7 +13,8 @@ License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `
   with switches, 64 workers, the tick of the Sessions tab and the log), `SwitchTable` (immutable, swapped on every change),
   `DeviceCertificateValidator` and `CaTrust` (who passes), `DroppedRequests` (log rows of requests from a switch that is
   not added or with a wrong shared secret, at most one per sender and reason per minute), `DeviceIndex` (the managed devices in memory),
-  `ServerIdentityKeeper` (the server certificate from the OADM CA), `SessionBoard`, `RadiusLog`, `RadiusPolicies` and
+  `ServerIdentityKeeper` (the server certificate from the OADM CA, valid for the days of PKI's Server certificate policy
+  "802.1X server"), `SessionBoard`, `RadiusLog`, `RadiusPolicies` and
   `RadiusRuleSet` (the rules from PKI's policies: trusted CAs, `PolicyPlan`, the server policy's TLS, packet size and
   reauthentication; the conversion of the settings from before the policies), `RadiusStore`.
 - Settings: `config` (Listen on, Port, Log entries kept), `switches` (secrets encrypted with the master key, at least 8
