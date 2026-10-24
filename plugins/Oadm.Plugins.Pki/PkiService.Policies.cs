@@ -152,6 +152,8 @@ public sealed partial class PkiService
             Error = unreadable ? PolicyTexts.Unreadable : null,
             Rows = Policies.Rows(devices),
             Cas = Policies.CaChoices(),
+            SignInCas = Policies.SignInCaChoices(),
+            EstProfiles = await Policies.EstProfilesAsync(ct).ConfigureAwait(false),
             CipherSuites = CipherSuites,
             Sites = [.. (_sites?.List ?? []).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(s => new PolicySite(s.Id, s.Name))],
             Tags = Policies.TagChoices(devices),

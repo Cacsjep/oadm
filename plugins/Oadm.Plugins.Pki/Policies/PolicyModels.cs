@@ -18,8 +18,8 @@ public static class PolicyGroups
     public const string Est = "est";
     public const string Revoke = "revoke";
 
-    /// <summary>The filter chips of this stage, in order: only groups that have kinds (EST comes with its kinds).</summary>
-    public static IReadOnlyList<string> Shown { get; } = [All, Issuing, Certificates, Dot1x, Revoke];
+    /// <summary>The filter chips, in order.</summary>
+    public static IReadOnlyList<string> Shown { get; } = [All, Issuing, Certificates, Dot1x, Est, Revoke];
 
     /// <summary>"All", "Issuing", "Certificates", "802.1X", "EST", "Revoke".</summary>
     public static string Label(string group) => group switch
@@ -34,7 +34,7 @@ public static class PolicyGroups
     };
 }
 
-/// <summary>The kinds of policies (docs/spec/pki.md "Policies", the kinds of stages 3 and 4).</summary>
+/// <summary>The kinds of policies (docs/spec/pki.md "Policies", the kinds of stages 3, 4 and 6).</summary>
 public static class PolicyKinds
 {
     /// <summary>Issuing: the certificates of Enable HTTPS and of the EST profiles for HTTPS and RTSPS (no devices).</summary>
@@ -64,8 +64,14 @@ public static class PolicyKinds
     /// <summary>The certificates of the devices count as "expires soon" this many days before their end.</summary>
     public const string ExpiryWarning = "expiryWarning";
 
+    /// <summary>EST: the profiles the devices may use (all, chosen ones, or no enrollment). A device no such policy holds is refused.</summary>
+    public const string Enrollment = "enrollment";
+
+    /// <summary>EST: cameras may sign in with certificates of this CA, for new certificates or for renewals (no devices).</summary>
+    public const string SignInCa = "signInCa";
+
     /// <summary>Every kind in the order of the editor's choice and the card (by group).</summary>
-    public static IReadOnlyList<string> All { get; } = [HttpsCertificate, Dot1xCertificate, ServerCertificate, ExpiryWarning, Dot1xServer, AllowCa, Vlan, Block, Revoke];
+    public static IReadOnlyList<string> All { get; } = [HttpsCertificate, Dot1xCertificate, ServerCertificate, ExpiryWarning, Dot1xServer, AllowCa, Vlan, Block, Enrollment, SignInCa, Revoke];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind, StringComparer.Ordinal);
 
@@ -81,6 +87,8 @@ public static class PolicyKinds
         Block => "Block",
         Revoke => "Revoke",
         ExpiryWarning => "Expiry warning",
+        Enrollment => "Enrollment",
+        SignInCa => "Sign-in CA",
         _ => kind,
     };
 
@@ -91,6 +99,7 @@ public static class PolicyKinds
         Revoke => PolicyGroups.Revoke,
         ExpiryWarning => PolicyGroups.Certificates,
         HttpsCertificate or Dot1xCertificate or ServerCertificate => PolicyGroups.Issuing,
+        Enrollment or SignInCa => PolicyGroups.Est,
         _ => PolicyGroups.All,
     };
 
@@ -101,7 +110,7 @@ public static class PolicyKinds
     public static bool IsDeviceIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate;
 
     /// <summary>The kind chooses devices (the shared device selector).</summary>
-    public static bool HasDevices(string kind) => kind is Vlan or Block or Revoke or ExpiryWarning;
+    public static bool HasDevices(string kind) => kind is Vlan or Block or Revoke or ExpiryWarning or Enrollment;
 
     /// <summary>
     /// The kind may hold "All devices" (<see cref="PolicyDevices.AllDevices"/>): every device, also of sites added later and,
@@ -118,6 +127,15 @@ public static class PolicyKinds
     /// <summary>A kind of the 802.1X server (its page counts them: "6 policies apply").</summary>
     public static bool IsDot1x(string kind) => GroupOf(kind) == PolicyGroups.Dot1x || kind == Revoke;
 
+    /// <summary>A kind of the EST server (its page counts them: "2 policies apply").</summary>
+    public static bool IsEst(string kind) => GroupOf(kind) == PolicyGroups.Est;
+
+    /// <summary>
+    /// The kind gives its devices something (a VLAN, enrollment): without the host's protection of tags its tags match no
+    /// device (fail closed), since a user limited to a device group could add the tag to a device.
+    /// </summary>
+    public static bool GrantsByTag(string kind) => kind is Vlan or Enrollment;
+
     /// <summary>What the kind does, one short line in the editor.</summary>
     public static string? Description(string kind) => kind switch
     {
@@ -130,6 +148,8 @@ public static class PolicyKinds
         Block => "The 802.1X server refuses these devices, also with a valid certificate. Nothing is revoked.",
         Revoke => "Revokes the IEEE 802.1X certificates of these devices, also new ones while the policy exists.",
         ExpiryWarning => "Certificates of these devices show Expires soon this many days before their end.",
+        Enrollment => "The EST profiles these devices may use. The EST server refuses devices no Enrollment policy holds.",
+        SignInCa => "Cameras may sign in to the EST server with certificates of this CA.",
         _ => null,
     };
 }
@@ -190,6 +210,54 @@ public static class PolicyKeys
         Ecc => "ECC",
         Rsa => "RSA",
         _ => key ?? string.Empty,
+    };
+}
+
+/// <summary>Which EST profiles an Enrollment policy lets its devices use.</summary>
+public static class PolicyProfiles
+{
+    /// <summary>Every profile of the EST server.</summary>
+    public const string All = "all";
+
+    /// <summary>Only <see cref="PkiPolicy.Profiles"/>.</summary>
+    public const string Chosen = "chosen";
+
+    /// <summary>No enrollment: every profile is refused.</summary>
+    public const string None = "none";
+
+    public static IReadOnlyList<string> Scopes { get; } = [All, Chosen, None];
+
+    public static bool IsKnown(string? scope) => scope is All or Chosen or None;
+
+    /// <summary>"All profiles", "Chosen profiles", "No enrollment".</summary>
+    public static string Name(string? scope) => scope switch
+    {
+        All => "All profiles",
+        Chosen => "Chosen profiles",
+        None => "No enrollment",
+        _ => scope ?? string.Empty,
+    };
+}
+
+/// <summary>What a Sign-in CA policy lets a camera sign in for.</summary>
+public static class PolicySignIn
+{
+    /// <summary>New certificates, and renewals too (decision of stage 6: a camera that may get a new certificate with it may renew with it).</summary>
+    public const string New = "new";
+
+    /// <summary>Renewals only.</summary>
+    public const string Renewal = "renewal";
+
+    public static IReadOnlyList<string> All { get; } = [New, Renewal];
+
+    public static bool IsKnown(string? value) => value is New or Renewal;
+
+    /// <summary>"New certificates", "Renewals".</summary>
+    public static string Name(string? value) => value switch
+    {
+        New => "New certificates",
+        Renewal => "Renewals",
+        _ => value ?? string.Empty,
     };
 }
 
@@ -320,6 +388,15 @@ public sealed record PkiPolicy
     /// <summary>Server certificate: the server it is for (<see cref="PolicyServers"/>).</summary>
     public string? Server { get; init; }
 
+    /// <summary>Enrollment: which profiles the devices may use (<see cref="PolicyProfiles"/>).</summary>
+    public string? ProfileScope { get; init; }
+
+    /// <summary>Enrollment with <see cref="PolicyProfiles.Chosen"/>: the names of the EST profiles (as the cameras use them in their URL).</summary>
+    public IReadOnlyList<string>? Profiles { get; init; }
+
+    /// <summary>Sign-in CA: new certificates or renewals (<see cref="PolicySignIn"/>).</summary>
+    public string? SignInFor { get; init; }
+
     /// <summary>Set by PKI: who saved it last (the user of a revoke policy's later revocations).</summary>
     public string? SavedBy { get; init; }
 }
@@ -358,6 +435,12 @@ public sealed record PolicyList
 
     /// <summary>The CAs of PKI an Allow CA policy can name.</summary>
     public IReadOnlyList<PolicyCaChoice> Cas { get; init; } = [];
+
+    /// <summary>The CAs a Sign-in CA policy can name: the Axis device ID, the OADM CA and the previous OADM CAs.</summary>
+    public IReadOnlyList<PolicyCaChoice> SignInCas { get; init; } = [];
+
+    /// <summary>The names of the EST server's profiles (an Enrollment policy chooses among them).</summary>
+    public IReadOnlyList<string> EstProfiles { get; init; } = [];
 
     /// <summary>The cipher suites of the 802.1X server policy, in the page's order.</summary>
     public IReadOnlyList<PolicyCipherSuite> CipherSuites { get; init; } = [];
@@ -434,6 +517,9 @@ public static class PolicyFields
     public const string CustomIdentity = "customIdentity";
     public const string RadiusCa = "radiusCa";
     public const string Server = "server";
+    public const string ProfileScope = "profileScope";
+    public const string Profiles = "profiles";
+    public const string SignInFor = "signInFor";
 }
 
 /// <summary>The texts of the policies (one phrase per concept), the same on the page and in the server's refusals.</summary>
@@ -470,6 +556,37 @@ public static class PolicyTexts
     public const string ServerKept = "A Server certificate policy keeps its server.";
     public const string Dot1xServerNeedsEcc = "The 802.1X server uses an ECC key.";
     public const string RadiusCaUnreadable = "The CA certificate of the RADIUS server cannot be read. Import it again.";
+    public const string ChooseProfileScope = "Choose which profiles.";
+    public const string ChooseProfiles = "Choose at least one profile.";
+    public const string ChooseSignInFor = "Choose new certificates or renewals.";
+    public const string NoSignInCa = "Cameras sign in with the Axis device ID or an OADM CA.";
+
+    /// <summary>"The EST server has no profile web." (an Enrollment policy names a profile the EST server does not have).</summary>
+    public static string UnknownProfile(string profile) => $"The EST server has no profile {profile}.";
+
+    /// <summary>The row's summary of an Enrollment policy: "All profiles", "Profile https", "Profiles https and dot1x", "No enrollment".</summary>
+    public static string EnrollmentSummary(PkiPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        if (policy.ProfileScope != PolicyProfiles.Chosen)
+        {
+            return PolicyProfiles.Name(policy.ProfileScope);
+        }
+
+        var profiles = policy.Profiles ?? [];
+        return profiles.Count switch
+        {
+            0 => PolicyProfiles.Name(PolicyProfiles.None),
+            1 => "Profile " + profiles[0],
+            _ => "Profiles " + string.Join(", ", profiles.Take(profiles.Count - 1)) + " and " + profiles[^1],
+        };
+    }
+
+    /// <summary>"for new certificates", "for renewals" (the row's summary of a Sign-in CA policy).</summary>
+    public static string SignInForText(string? value) => value == PolicySignIn.Renewal ? "for renewals" : "for new certificates";
+
+    /// <summary>"Another Sign-in CA policy has this CA."</summary>
+    public const string SignInCaTaken = "Another Sign-in CA policy has this CA.";
 
     /// <summary>"Another Server certificate policy is for the EST server."</summary>
     public static string ServerTaken(string? server) => $"Another Server certificate policy is for the {PolicyServers.Name(server)}.";

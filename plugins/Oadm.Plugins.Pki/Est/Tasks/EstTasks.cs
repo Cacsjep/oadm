@@ -98,6 +98,12 @@ public static class EstTaskIds
     public const string NeedsApis = "The camera has no certificate enrollment. Needs AXIS OS 12.10 or later. Nothing was changed.";
     public const string NoDeviceId = "The camera has no Axis device ID certificate. Nothing was changed.";
     public const string NoProfile = "The camera supports none of the EST server's profiles. Nothing was changed.";
+
+    /// <summary>No Enrollment policy of PKI holds the camera.</summary>
+    public const string NoEnrollmentPolicy = "No enrollment policy for this device. Add one on the PKI page. Nothing was changed.";
+
+    /// <summary>The Enrollment policies allow none of the profiles the camera supports.</summary>
+    public const string NoAllowedProfile = "The enrollment policies allow none of the profiles the camera supports. Nothing was changed.";
     public const string NoAddress = "OADM has no address towards the camera. Nothing was changed.";
     public static string InterfaceMissing(string notAvailable) => $"The EST server does not listen: {notAvailable}. Nothing was changed.";
 
@@ -232,6 +238,31 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             if (candidates.FirstOrDefault(p => est.IssuingOf(p) is null) is { } orphan)
             {
                 throw new InvalidOperationException(EstTexts.ProfileWithoutPolicy(orphan.Name));
+            }
+
+            // PKI's Enrollment policies, before the first write: a camera none holds is not set up; profiles a policy does
+            // not allow it are skipped (the EST server would refuse them).
+            var rules = est.Rules;
+            var refusedProfiles = 0;
+            foreach (var profile in candidates.ToList())
+            {
+                var check = rules.Check(device, profile.Name);
+                if (check is { Allowed: false, Status: 403 })
+                {
+                    throw new DeviceNotCompatibleException(EstTaskIds.NoEnrollmentPolicy);
+                }
+
+                if (!check.Allowed)
+                {
+                    candidates.Remove(profile);
+                    refusedProfiles++;
+                    step.Warn(check.Reason ?? EstTaskIds.NoAllowedProfile);
+                }
+            }
+
+            if (refusedProfiles > 0 && candidates.Count == 0)
+            {
+                throw new DeviceNotCompatibleException(EstTaskIds.NoAllowedProfile);
             }
 
             // IEEE 802.1X read fresh from the camera, never the cached state; unknown counts as on (no lock-out).

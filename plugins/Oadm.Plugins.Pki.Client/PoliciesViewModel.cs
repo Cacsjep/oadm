@@ -239,6 +239,8 @@ public sealed partial class PoliciesViewModel : ObservableObject
             PolicyKinds.Revoke => $"Delete the policy {row.Name}? Revoked certificates stay revoked: the devices need new certificates.",
             PolicyKinds.Dot1xServer => $"Delete the policy {row.Name}? The 802.1X server then uses the default TLS settings.",
             PolicyKinds.AllowCa => $"Delete the policy {row.Name}? Certificates of this CA no longer pass the 802.1X server.",
+            PolicyKinds.SignInCa => $"Delete the policy {row.Name}? Cameras can no longer sign in to the EST server with this CA.",
+            PolicyKinds.Enrollment => $"Delete the policy {row.Name}? The EST server refuses its devices unless another Enrollment policy holds them.",
             _ => $"Delete the policy {row.Name}?",
         };
         if (!await _ctx.ConfirmAsync("Delete policy", message, "Delete").ConfigureAwait(true))
@@ -314,6 +316,17 @@ public sealed partial class CipherSuiteViewModel(PolicyCipherSuite suite, Policy
     partial void OnIsCheckedChanged(bool value) => owner.CipherSuitesEdited();
 }
 
+/// <summary>One EST profile of an Enrollment policy: a check box with the profile's name.</summary>
+public sealed partial class EnrollmentProfileViewModel(string name, bool isChecked, PolicyEditorViewModel owner) : ObservableObject
+{
+    public string Name { get; } = name;
+
+    [ObservableProperty]
+    public partial bool IsChecked { get; set; } = isChecked;
+
+    partial void OnIsCheckedChanged(bool value) => owner.ProfilesEdited();
+}
+
 /// <summary>
 /// The policy editor (docs/spec/pki.md "Policies"): one dialog with the name, the kind (a new policy only; Kind and VLAN ID
 /// on one row) and the kind's own fields, and the shared device picker in its group mode where the kind has devices (sites
@@ -362,6 +375,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             : [.. PolicyKinds.All.Where(k => !(PolicyKinds.OneOnly(k) && hasServer) && !(k == PolicyKinds.ServerCertificate && ServerChoices.Count == 0))
                 .Select(k => new Choice<string>(k, PolicyKinds.Name(k)))];
         CaChoices = [.. list.Cas.Select(c => new Choice<string>(c.Id, CaLabel(c)))];
+        SignInCaChoices = [.. list.SignInCas.Select(c => new Choice<string>(c.Id, c.Name))];
         IssuingCaChoices = [.. list.Cas.Where(c => c.Kind == CertificateAuthorityKind.Oadm).Select(c => new Choice<string>(c.Id, c.Name))];
         CipherSuites = [.. list.CipherSuites.Select(s => new CipherSuiteViewModel(s, this))];
 
@@ -375,6 +389,21 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         Ca = CaChoices.FirstOrDefault(c => string.Equals(c.Value, policy.CaId, StringComparison.OrdinalIgnoreCase))
             ?? CaChoices.FirstOrDefault(c => !allowed.Contains(c.Value)) ?? (CaChoices.Count > 0 ? CaChoices[0] : null);
         OnlyManaged = policy.OnlyManaged ?? true;
+
+        // Sign-in CA: a new one starts with the first CA no Sign-in CA policy names yet, for new certificates.
+        var signingIn = list.Rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa && r.Policy.Id != existing?.Id).Select(r => r.Policy.CaId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var signIn = policy.Kind == PolicyKinds.SignInCa ? policy : null;
+        SignInCa = SignInCaChoices.FirstOrDefault(c => string.Equals(c.Value, signIn?.CaId, StringComparison.OrdinalIgnoreCase))
+            ?? SignInCaChoices.FirstOrDefault(c => !signingIn.Contains(c.Value)) ?? (SignInCaChoices.Count > 0 ? SignInCaChoices[0] : null);
+        SignInFor = SignInForChoices.FirstOrDefault(c => c.Value == signIn?.SignInFor) ?? SignInForChoices[0];
+
+        // Enrollment: all profiles for a new one; the EST server's profiles as check boxes (and a profile the policy names
+        // that the server no longer has, so it can be unchecked).
+        var enrollment = policy.Kind == PolicyKinds.Enrollment ? policy : null;
+        ProfileScope = ProfileScopeChoices.FirstOrDefault(c => c.Value == enrollment?.ProfileScope) ?? ProfileScopeChoices[0];
+        var named = new HashSet<string>(enrollment?.Profiles ?? [], StringComparer.OrdinalIgnoreCase);
+        ProfileChoices = [.. list.EstProfiles.Concat(enrollment?.Profiles ?? []).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(p => new EnrollmentProfileViewModel(p, named.Contains(p), this))];
         var server = existing?.Kind == PolicyKinds.Dot1xServer ? existing : null;
         MinimumTls = TlsVersions.FirstOrDefault(v => v.Value == server?.MinimumTls) ?? TlsVersions[PolicyRules.MinimumIndex(PolicyRules.DefaultMinimumTls) ?? 2];
         var checkedIds = (server?.CipherSuites ?? PolicyRules.DefaultSuites(list.CipherSuites, MinimumTls.Value)).ToHashSet();
@@ -433,6 +462,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             .Rule(nameof(Vlan), () => !IsVlan || ParseInt(Vlan) is >= PolicyRules.MinVlan and <= PolicyRules.MaxVlan ? null : PolicyTexts.VlanRange)
             .Rule(nameof(Days), () => !IsExpiry || ParseInt(Days) is >= PolicyLimits.MinExpiryDays and <= PolicyLimits.MaxExpiryDays ? null : PolicyTexts.DaysRange)
             .Rule(nameof(Ca), () => !IsAllowCa || Ca is not null ? null : PolicyTexts.ChooseCa)
+            .Rule(nameof(SignInCa), () => !IsSignInCa || SignInCa is not null ? null : PolicyTexts.ChooseCa)
+            .Rule(nameof(ProfileChoices), () => !IsChosenProfiles || ProfileChoices.Any(p => p.IsChecked) ? null : PolicyTexts.ChooseProfiles)
             .Rule(nameof(LargestPacket), () => !IsServer || ParseInt(LargestPacket) is >= PolicyRules.MinEapPacket and <= PolicyRules.MaxEapPacket ? null : PolicyRules.EapPacketRange)
             .Rule(nameof(ReauthMinutes), () => !IsServer || !Reauth.Value || ParseInt(ReauthMinutes) is >= PolicyLimits.MinReauthMinutes and <= PolicyLimits.MaxReauthMinutes
                 ? null : PolicyTexts.ReauthRange)
@@ -447,6 +478,71 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     }
 
     public static IReadOnlyList<Choice<string>> KeyChoices { get; } = [.. PolicyKeys.All.Select(k => new Choice<string>(k, PolicyKeys.Name(k)))];
+
+    /// <summary>New certificates, Renewals (Sign-in CA).</summary>
+    public static IReadOnlyList<Choice<string>> SignInForChoices { get; } = [.. PolicySignIn.All.Select(v => new Choice<string>(v, PolicySignIn.Name(v)))];
+
+    /// <summary>All profiles, Chosen profiles, No enrollment (Enrollment).</summary>
+    public static IReadOnlyList<Choice<string>> ProfileScopeChoices { get; } = [.. PolicyProfiles.Scopes.Select(v => new Choice<string>(v, PolicyProfiles.Name(v)))];
+
+    /// <summary>The hint below For: a CA for new certificates lets the cameras renew with it too.</summary>
+    public const string SignInNewHint = "Cameras may renew with it too.";
+
+    /// <summary>The CAs a Sign-in CA policy can name (the Axis device ID, the OADM CA, previous OADM CAs).</summary>
+    public IReadOnlyList<Choice<string>> SignInCaChoices { get; }
+
+    [ObservableProperty]
+    public partial Choice<string>? SignInCa { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SignInForHint))]
+    public partial Choice<string> SignInFor { get; set; }
+
+    /// <summary>"Cameras may renew with it too." for new certificates; null for renewals.</summary>
+    public string? SignInForHint => SignInFor.Value == PolicySignIn.New ? SignInNewHint : null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsChosenProfiles))]
+    public partial Choice<string> ProfileScope { get; set; }
+
+    /// <summary>The EST server's profiles (at most four: no virtualization needed).</summary>
+    public IReadOnlyList<EnrollmentProfileViewModel> ProfileChoices { get; }
+
+    /// <summary>One line when the EST server has no profiles to choose.</summary>
+    public string? ProfilesEmptyText => ProfileChoices.Count == 0 ? "The EST server has no profiles." : null;
+
+    /// <summary>The error of the profiles (a group of check boxes: shown below it by the field).</summary>
+    public string? ProfilesError => IsChosenProfiles ? Validation[nameof(ProfileChoices)] : null;
+
+    public bool IsSignInCa => Kind.Value == PolicyKinds.SignInCa;
+
+    public bool IsEnrollment => Kind.Value == PolicyKinds.Enrollment;
+
+    /// <summary>An Enrollment policy of chosen profiles: the check boxes show.</summary>
+    public bool IsChosenProfiles => IsEnrollment && ProfileScope.Value == PolicyProfiles.Chosen;
+
+    internal void ProfilesEdited()
+    {
+        if (_applying)
+        {
+            return;
+        }
+
+        Validation.Touch(nameof(ProfileChoices));
+        Validation.Validate();
+        OnPropertyChanged(nameof(ProfilesError));
+    }
+
+    partial void OnProfileScopeChanged(Choice<string> value)
+    {
+        if (_applying)
+        {
+            return;
+        }
+
+        Validation.Validate();
+        OnPropertyChanged(nameof(ProfilesError));
+    }
 
     public static IReadOnlyList<Choice<int>> EapolChoices { get; } = [new(1, "1"), new(2, "2")];
 
@@ -627,7 +723,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsVlan), nameof(IsExpiry), nameof(IsAllowCa), nameof(IsServer), nameof(HasDevices), nameof(KindHint), nameof(NamePlaceholder),
-        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(IsIssuing), nameof(IsDot1xCertificate), nameof(IsServerCertificate))]
+        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(IsIssuing), nameof(IsDot1xCertificate), nameof(IsServerCertificate),
+        nameof(IsSignInCa), nameof(IsEnrollment), nameof(IsChosenProfiles), nameof(ProfilesError))]
     public partial Choice<string> Kind { get; set; }
 
     /// <summary>The Devices choice: "All devices" or "Chosen devices" (the picker).</summary>
@@ -694,6 +791,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         PolicyKinds.HttpsCertificate => "e.g. HTTPS 2 years",
         PolicyKinds.Dot1xCertificate => "e.g. IEEE 802.1X Building B",
         PolicyKinds.ServerCertificate => "e.g. EST server",
+        PolicyKinds.SignInCa => "e.g. Axis device ID",
         _ => "e.g. Building C",
     };
 
@@ -736,7 +834,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             },
             Vlan = ParseInt(Vlan),
             Days = ParseInt(Days),
-            CaId = IsIssuing ? IssuingCa?.Value : Ca?.Value,
+            CaId = IsIssuing ? IssuingCa?.Value : IsSignInCa ? SignInCa?.Value : Ca?.Value,
             OnlyManaged = OnlyManaged,
             MinimumTls = MinimumTls.Value,
             CipherSuites = [.. CipherSuites.Where(s => s.IsListed && s.IsChecked).Select(s => s.Id)],
@@ -750,6 +848,9 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             CustomIdentity = CustomIdentity,
             RadiusCa = RadiusCa.Value,
             RadiusCaPem = RadiusCaPem,
+            SignInFor = SignInFor.Value,
+            ProfileScope = ProfileScope.Value,
+            Profiles = [.. ProfileChoices.Where(p => p.IsChecked).Select(p => p.Name)],
             SavedBy = _existing?.SavedBy,
         });
     }
@@ -759,6 +860,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     {
         Validation.ShowAll();
         OnPropertyChanged(nameof(CipherSuitesError));
+        OnPropertyChanged(nameof(ProfilesError));
         Picker.ErrorText = null;
         if (!IsFormValid)
         {
@@ -856,7 +958,10 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             PolicyFields.Kind => nameof(Kind),
             PolicyFields.Vlan => nameof(Vlan),
             PolicyFields.Days => nameof(Days),
-            PolicyFields.Ca => IsIssuing ? nameof(IssuingCa) : nameof(Ca),
+            PolicyFields.Ca => IsIssuing ? nameof(IssuingCa) : IsSignInCa ? nameof(SignInCa) : nameof(Ca),
+            PolicyFields.SignInFor => nameof(SignInFor),
+            PolicyFields.ProfileScope => nameof(ProfileScope),
+            PolicyFields.Profiles => nameof(ProfileChoices),
             PolicyFields.ValidDays => nameof(ValidDays),
             PolicyFields.Key => nameof(Key),
             PolicyFields.Server => nameof(IssuingServer),
@@ -879,6 +984,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
         Validation.SetServerError(property, error.Message);
         OnPropertyChanged(nameof(CipherSuitesError));
+        OnPropertyChanged(nameof(ProfilesError));
     }
 
     /// <summary>Revoke policies choose devices and sites only: said below the device choice at once.</summary>
@@ -908,6 +1014,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
         Validation.Validate();
         OnPropertyChanged(nameof(CipherSuitesError));
+        OnPropertyChanged(nameof(ProfilesError));
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(SaveBlockedReason));
         CheckTags();
@@ -941,6 +1048,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(SaveBlockedReason));
         OnPropertyChanged(nameof(CipherSuitesError));
+        OnPropertyChanged(nameof(ProfilesError));
     }
 
     /// <summary>"OADM CA (with 2 previous CAs)", "Axis device ID", "Contoso Root".</summary>

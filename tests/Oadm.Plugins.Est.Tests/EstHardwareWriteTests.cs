@@ -65,13 +65,20 @@ public sealed class EstHardwareWriteTests(ITestOutputHelper output)
         var devices = new Devices();
         var device = new FakeDevice { Serial = "B8A44F631339", Address = camera.Address, FirmwareVersion = "12.11.77", HttpsEnabled = true };
         devices.List.Add(device);
+        // PKI's policies of a new server (Enrollment "All devices", Sign-in CA) and an HTTPS policy of 30 days for the profile.
+        var policies = await TestPolicies.EstStoreAsync();
+        var thirtyDays = await TestPolicies.AddAsync(policies, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "HTTPS 30 days", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.HttpsCertificate, CaId = "oadm", ValidDays = 30, Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Ecc,
+        });
         var settings = new FakeSettings();
-        await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https, 30)] }), ct);
+        await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https, 30) { PolicyId = thirtyDays.Id }] }), ct);
         await using var network = new RealNetwork();
         await using var est = new EstService(new EstHost(settings, devices, network, () => ca, () => true)
         {
             LocalAddresses = () => [serverAddress.ToString()],
             HostName = "oadm-test",
+            Policies = () => policies,
         });
         await est.StartAsync(ct);
         Assert.Equal(RelayState.Running, est.Listener!.State);

@@ -49,8 +49,9 @@ there.
 
 ## Policies
 
-The policies are the rules for certificates and for the [802.1X server](../radius-server/). Filter them with **All**,
-**Issuing**, **Certificates**, **802.1X** and **Revoke**. **Add policy** adds one; Edit and Delete sit at the end of each row.
+The policies are the rules for certificates and for the [802.1X server](../radius-server/) and the
+[EST server](../est-server/). Filter them with **All**, **Issuing**, **Certificates**, **802.1X**, **EST** and **Revoke**.
+**Add policy** adds one; Edit and Delete sit at the end of each row.
 
 | Kind | What it does | Devices |
 |---|---|---|
@@ -61,22 +62,27 @@ The policies are the rules for certificates and for the [802.1X server](../radiu
 | **Allow CA** | Lets devices with a certificate of this CA onto the network: only devices OADM manages (default) or any device. | no |
 | **VLAN** | Puts the devices in a VLAN (1 to 4094). | yes |
 | **Block** | Keeps the devices off the network. | yes |
+| **Enrollment** | Which EST profiles the devices may use: all, chosen ones, or none. The EST server refuses a camera no Enrollment policy holds. | yes |
+| **Sign-in CA** | Cameras may sign in to the EST server with certificates of this CA (the Axis device ID, the OADM CA or a previous OADM CA): for new certificates (renewals too) or for renewals only. | no |
 | **Revoke** | Revokes the certificates of the devices, also every new one while the policy exists. | devices and sites |
 | **Expiry warning** | How many days before the end a certificate shows as expiring soon. | yes |
 
 At the start OADM has the policies "HTTPS" and "IEEE 802.1X" (365 days, ECC), the server certificates "802.1X server"
 (365 days) and "EST server" (90 days), "802.1X server", "OADM CA" and "Axis device ID" (Allow CA, only devices OADM
-manages) and "All devices" (Expiry warning, 30 days). After an update from an older OADM, "HTTPS" and "IEEE 802.1X" keep
-the settings of the former Device certificates and IEEE 802.1X cards and RSA keys.
+manages), "All devices" (Expiry warning, 30 days), "All devices" (Enrollment, all profiles) and "Axis device ID" (Sign-in
+CA, new certificates) and "OADM CA" (Sign-in CA, renewals). After an update from an older OADM, "HTTPS" and "IEEE 802.1X"
+keep the settings of the former Device certificates and IEEE 802.1X cards and RSA keys, and the EST server's **Sign in
+with** becomes one Sign-in CA policy per ticked CA.
 
 - Add more certificate policies, for example "HTTPS 2 years"; Enable HTTPS and Enable IEEE 802.1X let you pick one.
 - The last HTTPS or IEEE 802.1X certificate policy, one an EST profile uses and the server certificates cannot be
   deleted. A server certificate policy with other days applies to the next certificate; another key makes a new one.
 
 - A device can be in only one policy of each kind: saving names the device that is in two. Each CA is in one Allow CA
-  policy at most.
+  policy and one Sign-in CA policy at most.
 - When a later tag or site change puts a device in two policies, both rows show a warning and the safer one applies:
-  Block over VLAN, the older of two VLAN policies, the longer of two expiry warnings.
+  Block over VLAN, the older of two VLAN policies, the longer of two expiry warnings; of two Enrollment policies a
+  camera may use only the profiles both allow.
 - A device without a VLAN policy gets no VLAN from OADM: the switch port keeps its own.
 - A change applies at once. The days of the expiry warning are also used by the device list's **Certificate expires**
   column, the events **Certificate expires soon** and **Certificate expired** ([Event rules](../event-rules/)) and new

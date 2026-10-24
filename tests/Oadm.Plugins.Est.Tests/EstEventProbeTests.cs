@@ -54,10 +54,12 @@ public sealed class EstEventProbeTests(ITestOutputHelper output)
         await using var network = new EstHardwareWriteTests.RealNetwork();
         var settings = new FakeSettings();
         await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(new EstConfig { Profiles = [new EstProfile("probe", ProfileUse.Mqtt, 30)] }), ct);
+        var policies = await TestPolicies.EstStoreAsync(); // the camera signs in (Sign-in CA "Axis device ID") and is refused as not managed
         await using var est = new EstService(new EstHost(settings, new EstHardwareWriteTests.Devices(), network, () => ca, () => true)
         {
             LocalAddresses = () => [serverAddress],
             HostName = "oadm-test",
+            Policies = () => policies,
         });
         var caBefore = (await CameraEstApi.ListCaCertificatesAsync(vapix, ct)).Select(c => c.Alias).ToHashSet(StringComparer.Ordinal);
         var server = serverAddress + ":9459/.well-known/est/probe"; // nothing listens there

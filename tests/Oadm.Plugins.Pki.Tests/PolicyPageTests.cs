@@ -41,7 +41,7 @@ public sealed class PolicyPageTests
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "Revoke"], card.Filters.Select(f => f.Label)); // only groups with kinds now
+        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST", "Revoke"], card.Filters.Select(f => f.Label));
         Assert.Equal(["All devices", "HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
         Assert.Equal(
             ["Expiry warning", "HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
@@ -321,7 +321,7 @@ public sealed class PolicyHeadlessTests
         Assert.DoesNotContain("Previous certificate authorities", checks.texts); // previous CAs once: rows of the list
         Assert.Contains("Previous OADM CA", checks.texts);
         Assert.DoesNotContain("Warn before expiry (days)", checks.texts); // the Expiry warning policy
-        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "Revoke"], checks.segments);
+        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST", "Revoke"], checks.segments);
         Assert.Equal(0, checks.primaries); // no Save: the settings of device certificates and IEEE 802.1X are issuing policies
         Assert.DoesNotContain("Device certificates", checks.texts);
         Assert.DoesNotContain("EAPOL version", checks.texts);

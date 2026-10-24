@@ -252,6 +252,29 @@ public sealed partial class PolicyStore : IDisposable
                 }
             }
 
+            if (policy.Kind == PolicyKinds.SignInCa)
+            {
+                // The Axis device ID, the OADM CA or a previous OADM CA: EST reads a camera's serial only from those.
+                if (!SignInCaChoices().Any(a => string.Equals(a.Id, policy.CaId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return Refused(PolicyFields.Ca, PolicyTexts.NoSignInCa);
+                }
+
+                if (sameKind.Any(p => string.Equals(p.CaId, policy.CaId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return Refused(PolicyFields.Ca, PolicyTexts.SignInCaTaken);
+                }
+            }
+
+            if (policy is { Kind: PolicyKinds.Enrollment, ProfileScope: PolicyProfiles.Chosen } && ProfileNames is { } profileNames)
+            {
+                var known = new HashSet<string>(await profileNames(ct).ConfigureAwait(false), StringComparer.OrdinalIgnoreCase);
+                if ((policy.Profiles ?? []).FirstOrDefault(p => !known.Contains(p)) is { } unknown)
+                {
+                    return Refused(PolicyFields.Profiles, PolicyTexts.UnknownProfile(unknown));
+                }
+            }
+
             if (policy.Devices is { } chosen)
             {
                 var sites = _sites().Select(s => s.Id).ToHashSet();
@@ -343,6 +366,16 @@ public sealed partial class PolicyStore : IDisposable
     /// </summary>
     public Func<CancellationToken, Task<IReadOnlyList<(Guid PolicyId, string Profile)>>>? ProfileUses { get; set; }
 
+    /// <summary>
+    /// The names of the EST server's profiles, set by the EST server's core plugin (also while the server is off): an
+    /// Enrollment policy chooses among them. Null: not known (nothing is checked, the page offers none).
+    /// </summary>
+    public Func<CancellationToken, Task<IReadOnlyList<string>>>? ProfileNames { get; set; }
+
+    /// <summary>The names of the EST server's profiles; none while the EST server's core plugin did not tell them.</summary>
+    public async Task<IReadOnlyList<string>> EstProfilesAsync(CancellationToken ct) =>
+        ProfileNames is { } names ? await names(ct).ConfigureAwait(false) : [];
+
     /// <summary>The policy <paramref name="id"/>; null when there is none.</summary>
     public PkiPolicy? Find(Guid id) => id == Guid.Empty ? null : All.FirstOrDefault(p => p.Id == id);
 
@@ -410,6 +443,37 @@ public sealed partial class PolicyStore : IDisposable
         ];
     }
 
+    /// <summary>
+    /// The CAs a Sign-in CA policy can name: the Axis device ID, the OADM CA and each previous OADM CA (EST reads a camera's
+    /// serial only from the Axis device ID or the axis name the OADM CA put in its certificates; imported CAs never sign a
+    /// camera in). The OADM CA is listed while it has no certificate yet.
+    /// </summary>
+    public IReadOnlyList<PolicyCaChoice> SignInCaChoices()
+    {
+        var all = _authorities();
+        var choices = all.Where(a => a.Kind is CertificateAuthorityKind.AxisDeviceId or CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm)
+            .OrderBy(a => a.Kind switch { CertificateAuthorityKind.AxisDeviceId => 0, CertificateAuthorityKind.Oadm => 1, _ => 2 })
+            .GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(a => new PolicyCaChoice(a.Id, string.IsNullOrWhiteSpace(a.Name) ? DefaultCaName(a.Id) : a.Name, a.Kind)).ToList();
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.AxisDeviceId))
+        {
+            choices.Insert(0, new PolicyCaChoice(CertificateAuthorityInfo.AxisDeviceIdId, AxisDeviceIdName, CertificateAuthorityKind.AxisDeviceId));
+        }
+
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.Oadm))
+        {
+            choices.Insert(1, new PolicyCaChoice(CertificateAuthorityInfo.OadmId, IssuingCaName, CertificateAuthorityKind.Oadm));
+        }
+
+        return choices;
+    }
+
+    /// <summary>The name of the Axis device ID CAs.</summary>
+    public const string AxisDeviceIdName = "Axis device ID";
+
+    private static string DefaultCaName(string id) =>
+        string.Equals(id, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase) ? AxisDeviceIdName : IssuingCaName;
+
     /// <summary>The Allow CA policies that name <paramref name="authorityId"/> (a previous OADM CA: those of the OADM CA).</summary>
     public IReadOnlyList<PkiPolicy> UsingCa(string authorityId, CertificateAuthorityKind kind)
     {
@@ -450,6 +514,11 @@ public sealed partial class PolicyStore : IDisposable
                 $"TLS {policy.MinimumTls} or later, {policy.LargestEapPacket:N0} bytes, {PolicyTexts.Reauth(policy.ReauthMinutes)}"),
             PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate => IssuingSummary(policy, caNames),
             PolicyKinds.ServerCertificate => IssuingSummary(policy, caNames) + ", " + PolicyServers.Name(policy.Server),
+            PolicyKinds.Enrollment => PolicyTexts.EnrollmentSummary(policy),
+            PolicyKinds.SignInCa => (policy.CaId is { } signIn && caNames.TryGetValue(signIn, out var signInName) ? signInName
+                : string.Equals(policy.CaId, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase) ? AxisDeviceIdName
+                : string.Equals(policy.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase) ? IssuingCaName
+                : PolicyTexts.RemovedCa) + ", " + PolicyTexts.SignInForText(policy.SignInFor),
             _ => PolicyKinds.Name(policy.Kind),
         };
     }
@@ -467,8 +536,9 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>The OADM CA in a summary while it has no certificate (being made).</summary>
     public const string IssuingCaName = "OADM CA";
 
+    /// <summary>The names of PKI's CAs by id (previous OADM CAs too: a Sign-in CA policy names them).</summary>
     private Dictionary<string, string> CaNames() =>
-        _authorities().Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm).GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
+        _authorities().GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The overlaps of the same kind among <paramref name="devices"/>: per policy one line per other policy it shares devices with.</summary>
@@ -547,13 +617,42 @@ public sealed partial class PolicyStore : IDisposable
         return warnings;
     }
 
-    /// <summary>Which of two overlapping policies applies (<paramref name="older"/> is the older): the older VLAN, the longer warning.</summary>
+    /// <summary>
+    /// Which of two overlapping policies applies (<paramref name="older"/> is the older): the older VLAN, the longer warning;
+    /// of two Enrollment policies the one that allows fewer profiles (a device may use only the profiles every policy that
+    /// holds it allows), null when each allows one the other does not.
+    /// </summary>
     private static PkiPolicy? Applies(PkiPolicy older, PkiPolicy newer) => older.Kind switch
     {
         PolicyKinds.Vlan => older,
         PolicyKinds.ExpiryWarning => (newer.Days ?? 0) > (older.Days ?? 0) ? newer : older,
+        PolicyKinds.Enrollment => Narrower(older, newer),
         _ => null,
     };
+
+    /// <summary>The Enrollment policy whose profiles are within the other's; null when neither is.</summary>
+    private static PkiPolicy? Narrower(PkiPolicy a, PkiPolicy b)
+    {
+        static HashSet<string>? Allowed(PkiPolicy p) => p.ProfileScope switch
+        {
+            PolicyProfiles.All => null,
+            PolicyProfiles.Chosen => new HashSet<string>(p.Profiles ?? [], StringComparer.OrdinalIgnoreCase),
+            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+        };
+
+        var (first, second) = (Allowed(a), Allowed(b));
+        if (first is null)
+        {
+            return b; // all profiles: the other is within it
+        }
+
+        if (second is null || first.IsSubsetOf(second))
+        {
+            return a;
+        }
+
+        return second.IsSubsetOf(first) ? b : null;
+    }
 
     private static string DeviceLabel(IDeviceInfo device) => string.IsNullOrWhiteSpace(device.Address) ? device.Serial : device.Address;
 
@@ -648,6 +747,20 @@ public sealed partial class PolicyStore : IDisposable
             case PolicyKinds.Vlan when policy.Devices?.AllDevices == true:
                 return list.Any(p => p.Kind == PolicyKinds.Vlan
                     && (p.Devices?.AllDevices == true || string.Equals(p.Name.Trim(), PolicyLimits.AllDevicesName, StringComparison.OrdinalIgnoreCase)));
+            case PolicyKinds.SignInCa:
+                var signIn = list.FindIndex(p => p.Kind == PolicyKinds.SignInCa && string.Equals(p.CaId, policy.CaId, StringComparison.OrdinalIgnoreCase));
+                if (signIn < 0)
+                {
+                    return false;
+                }
+
+                // The same CA once: for renewals only when either was (the stricter).
+                var renewalOnly = list[signIn].SignInFor == PolicySignIn.Renewal || policy.SignInFor == PolicySignIn.Renewal;
+                list[signIn] = list[signIn] with { SignInFor = renewalOnly ? PolicySignIn.Renewal : PolicySignIn.New };
+                return true;
+            case PolicyKinds.Enrollment:
+                // Enrollment policies made before the conversion decide: an "All devices" one would let every device in.
+                return list.Any(p => p.Kind == PolicyKinds.Enrollment);
             default:
                 return false;
         }

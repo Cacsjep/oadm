@@ -182,7 +182,8 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 - **802.1X server:** Server (Listen on, Port, Log entries kept; no Advanced dialog: its settings are the 802.1X server
   policy), Switches, Sessions and Log (a splitter between
   the two), a line "Rules: Policies on the PKI page". No Trusted CAs card, no Policies card, no Default VLAN.
-- **EST server:** General, Profiles (name, issuing policy, on), Enrollments in its own card.
+- **EST server:** General (with "3 policies apply" and Edit in PKI), Profiles (name, issuing policy, on), Enrollments in
+  its own card. No Sign in with (stage 6: Sign-in CA policies).
 
 ## Rules for the move (decisions 2026-10-24)
 
@@ -395,6 +396,63 @@ fits the spec; to be confirmed by the maintainer).
   `CertificateCardHeadlessTests`, `BackupTests` (a created key restored on another server), `CertificatesTabTests`,
   `AuthorityTests`.
 
+## Code (stage 6)
+
+Built 2026-10-24. Rules the sections above leave open are marked "decision of stage 6" (the most conservative choice that
+fits the spec; to be confirmed by the maintainer).
+
+- **Kinds** (`PolicyKinds.Enrollment`, `SignInCa`, group EST, the filter chip EST): Enrollment has devices (All devices
+  too: every device OADM manages, EST never serves another) and `ProfileScope` (`PolicyProfiles`: all, chosen, none) with
+  `Profiles` (names of the EST profiles, case-insensitive; "Choose at least one profile."); Sign-in CA has `CaId` and
+  `SignInFor` (`PolicySignIn`: new, renewal), no devices. The CAs a Sign-in CA can name (`PolicyStore.SignInCaChoices`): the
+  Axis device ID, the OADM CA and each previous OADM CA (decision of stage 6: never an imported CA, EST reads a serial only
+  from the Axis device ID or the axis name the OADM CA put in; "Cameras sign in with the Axis device ID or an OADM CA.");
+  the same CA twice is refused ("Another Sign-in CA policy has this CA."). A chosen profile the EST server does not have is
+  refused on save ("The EST server has no profile web."; the EST core plugin hands the store `ProfileNames`, also while
+  the server is off). Rows: "All profiles", "Profiles https and dot1x", "No enrollment"; "Axis device ID, for new
+  certificates", "OADM Root CA SERVER01, for renewals".
+- **For new certificates renews too** (decision of stage 6): a Sign-in CA for new certificates lets cameras sign in for
+  `simpleenroll` and `simplereenroll` (as before, a renewal with the Axis device ID passes); one for renewals only
+  `simplereenroll`. The converted defaults keep today's behaviour except that a certificate of the OADM CA no longer gets
+  a new certificate by `simpleenroll` (it was accepted for both before; "for renewals" says it).
+- **Overlaps**: as the other kinds with devices. Of two Enrollment policies that hold a device later (a tag or site
+  change) a profile must be allowed by both (decision of stage 6: the safer one); the warning names the narrower policy
+  when one is within the other. Tags of Enrollment policies match only while the host protects them (like VLAN: an
+  Enrollment gives something; `PolicyKinds.GrantsByTag`).
+- **EST server** (`Serving/EstRules`, built from the store and again when its version moves or PKI started again): a
+  device no Enrollment policy holds: 403 "No enrollment policy for this device." (listed, event Enrollment refused,
+  connection closed); a profile a policy that holds the device does not allow (or "No enrollment"): the 404 of an unknown
+  profile, listed with "The enrollment policy PTZ does not allow the profile https." / "... allows no enrollment."
+  (checked after the device and site, before the revocation list). Sign-in CAs come only from the policies: without
+  PKI's store, with a store that cannot be read or without a Sign-in CA policy nothing signs in (401, fail closed; decision
+  of stage 6: also without the store, as the 802.1X server). EST reports the CAs of the policies PKI still holds plus the
+  OADM CA to PKI (`SetUsedBy`) at the start, on a policy change and on PKI's Changed. `cacerts` stays open to every
+  profile that exists (no device is known then).
+- **Set up** checks the policies in Check compatibility, before the first write: none holds the camera: "No enrollment
+  policy for this device. Add one on the PKI page. Nothing was changed."; a profile not allowed is skipped with the
+  policy's reason as a warning; none left: "The enrollment policies allow none of the profiles the camera supports.
+  Nothing was changed." (decision of stage 6).
+- **Page**: the "Sign in with" check boxes are gone; General shows "3 policies apply" with Edit in PKI (`plugin:oadm.pki`)
+  and, in the warning style, why no camera can enroll ("Cameras cannot sign in: there is no Sign-in CA policy.", "No
+  camera can enroll: there is no Enrollment policy.", the store's own texts). Users limited to a device group see neither
+  (`EstState.PoliciesApply` and `PolicyProblem` null). `config.signInWith` stays stored and is kept by a save (read only
+  by the conversion). The policy editor: Enrollment with Profiles (All profiles, Chosen profiles with a check box per EST
+  profile, also one a policy names that the server no longer has, No enrollment) and the device choice; Sign-in CA with
+  CA and For (hint "Cameras may renew with it too." for new certificates).
+- **Conversion** (owner `oadm.est`, `EstPolicies.ConvertRulesAsync`, at the EST core plugin's start after the profiles'):
+  the Enrollment policy "All devices" and one Sign-in CA policy per CA of `config.signInWith` (4.1 had none: the Axis
+  device ID and the OADM CA), named "Axis device ID" (new), "OADM CA" (renewals) or the previous CA's name (renewals); a
+  previous CA PKI no longer lists is not converted (it let nothing in). A conversion after EST policies were made merges:
+  no second policy of a CA (for renewals when either was, the stricter), no "All devices" when an Enrollment policy exists
+  (decision of stage 6: it would let every device in). EST settings that cannot be read convert nothing (tried again at
+  the next start; fail closed meanwhile). A renamed or removed EST profile is not followed into the policies (decision of
+  stage 6: the policy keeps the name, which then allows nothing; the editor shows it to uncheck).
+- **Tests**: `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests` (kinds, defaults, overlaps, rules, conversion with fixtures
+  `est-config-4.1.json` and `est-config-stage4.json`, the late merge), `ServerTests` (sign-in per operation and CA, fail
+  closed, refused and not allowed devices and profiles over TLS, Used by), `TaskTests` (Set up and the policies), `PageTests`
+  (the page line, Edit in PKI, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
+  `EstPolicyPageTests` (filter, rows, both editors, headless editors).
+
 ## Not planned
 
 - A limit of devices per switch port (decision 2026-10-24): OADM sees no logoff without RADIUS accounting; set the limit
@@ -415,4 +473,5 @@ fits the spec; to be confirmed by the maintainer).
    task dialogs pick a policy; EST profiles point to one. See "Code (stage 4)".
 5. Built (2026-10-24, branch `pp-certs`): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
    See "Code (stage 5)".
-6. EST Enrollment and Sign-in CA policies.
+6. Built (2026-10-24, branch `pp-est`): EST Enrollment and Sign-in CA policies; the EST page's Sign in with goes away. See
+   "Code (stage 6)".

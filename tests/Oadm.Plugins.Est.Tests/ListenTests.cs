@@ -109,7 +109,7 @@ public sealed class ListenTests : IAsyncLifetime
     [Fact]
     public async Task Set_up_gives_the_camera_the_address_of_the_chosen_interface()
     {
-        await _est.SaveAsync(new SaveRequest(_est.Store.Config with { InterfaceId = "cams", Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await _est.SaveAsync(new SaveRequest(_est.Store.Config with { InterfaceId = "cams", Profiles = [new EstProfile("https", ProfileUse.Https) { PolicyId = _est.Store.Config.Profiles[0].PolicyId }] }), CancellationToken.None);
         var device = new FakeDevice { Serial = "B8A44F631339", Address = "192.168.50.20", FirmwareVersion = "12.11.77" };
         var camera = new TaskTests.EstCamera { Server = _est, Device = device };
         var ctx = new FakeTaskContext(camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.17") } };
@@ -135,10 +135,14 @@ public sealed class ListenTests : IAsyncLifetime
 
     private async Task<EstService> StartAsync()
     {
+        // PKI's policies of a new server; the profiles name their issuing policies, as after the EST core plugin's start.
+        var policies = await TestPolicies.EstStoreAsync();
+        await EstPolicies.ConvertAsync(_settings, policies, CancellationToken.None);
         var est = new EstService(new EstHost(_settings, new ServerTests.Devices(), _network, () => _ca, () => true)
         {
             Time = _time,
             Interfaces = _interfaces,
+            Policies = () => policies,
         });
         await est.StartAsync(CancellationToken.None);
         return est;

@@ -59,6 +59,14 @@ public static class PolicyRules
                 return server;
             case PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate or PolicyKinds.ServerCertificate when ValidateIssuing(policy) is { } issuing:
                 return issuing;
+            case PolicyKinds.SignInCa when string.IsNullOrWhiteSpace(policy.CaId):
+                return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
+            case PolicyKinds.SignInCa when !PolicySignIn.IsKnown(policy.SignInFor):
+                return new(PolicyFields.SignInFor, PolicyTexts.ChooseSignInFor);
+            case PolicyKinds.Enrollment when !PolicyProfiles.IsKnown(policy.ProfileScope):
+                return new(PolicyFields.ProfileScope, PolicyTexts.ChooseProfileScope);
+            case PolicyKinds.Enrollment when policy.ProfileScope == PolicyProfiles.Chosen && !(policy.Profiles?.Any(p => !string.IsNullOrWhiteSpace(p)) ?? false):
+                return new(PolicyFields.Profiles, PolicyTexts.ChooseProfiles);
         }
 
         if (PolicyKinds.HasDevices(policy.Kind))
@@ -225,6 +233,8 @@ public static class PolicyRules
         ArgumentNullException.ThrowIfNull(policy);
         var kind = policy.Kind?.Trim() ?? string.Empty;
         var dot1x = kind == PolicyKinds.Dot1xCertificate;
+        var enrollment = kind == PolicyKinds.Enrollment;
+        var scope = enrollment ? policy.ProfileScope?.Trim() : null;
         PolicyDevices? devices = null;
         if (PolicyKinds.HasDevices(kind))
         {
@@ -247,7 +257,7 @@ public static class PolicyRules
             Kind = kind,
             Devices = devices,
             Vlan = kind == PolicyKinds.Vlan ? policy.Vlan : null,
-            CaId = kind == PolicyKinds.AllowCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() : null,
+            CaId = kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() : null,
             OnlyManaged = kind == PolicyKinds.AllowCa ? policy.OnlyManaged ?? true : null,
             MinimumTls = kind == PolicyKinds.Dot1xServer ? policy.MinimumTls?.Trim() : null,
             CipherSuites = kind == PolicyKinds.Dot1xServer ? [.. (policy.CipherSuites ?? []).Distinct().Order()] : null,
@@ -262,6 +272,11 @@ public static class PolicyRules
             RadiusCa = dot1x ? policy.RadiusCa?.Trim() : null,
             RadiusCaPem = dot1x && policy.RadiusCa?.Trim() == RadiusCaSource.Imported ? policy.RadiusCaPem : null,
             Server = kind == PolicyKinds.ServerCertificate ? policy.Server?.Trim() : null,
+            ProfileScope = scope,
+            Profiles = enrollment && scope == PolicyProfiles.Chosen
+                ? [.. (policy.Profiles ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)]
+                : null,
+            SignInFor = kind == PolicyKinds.SignInCa ? policy.SignInFor?.Trim() : null,
             SavedBy = policy.SavedBy,
         };
 
@@ -295,11 +310,11 @@ public sealed class PolicyMatcher
         _except = new HashSet<string>((devices.ExceptSerials ?? []).Select(s => s.Trim()), StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>The matcher of <paramref name="policy"/>: Revoke never by tag.</summary>
+    /// <summary>The matcher of <paramref name="policy"/>: Revoke never by tag; VLAN and Enrollment by tag only while the host protects the tags.</summary>
     public static PolicyMatcher Of(PkiPolicy policy, bool tagsProtected = true)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        return new PolicyMatcher(policy.Devices, !PolicyKinds.NoTags(policy.Kind) && (tagsProtected || policy.Kind != PolicyKinds.Vlan));
+        return new PolicyMatcher(policy.Devices, !PolicyKinds.NoTags(policy.Kind) && (tagsProtected || !PolicyKinds.GrantsByTag(policy.Kind)));
     }
 
     /// <summary>"All devices": holds every device, also one OADM does not manage.</summary>

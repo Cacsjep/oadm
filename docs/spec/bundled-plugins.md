@@ -507,7 +507,7 @@ Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugi
 source-available `Est/LICENSE`. The server is off by default: **Turn on** / **Turn off** on its page (stored choice); it runs,
 and opens TCP 9454, only while it is on and OADM PRO is active. Spec: `docs/spec/est-server.md`; details: `Est/README.md`.
 
-- Rules that must hold: only cameras that sign in with a valid Axis device ID (or a valid certificate the OADM CA itself issued them, naming exactly one camera) and that
+- Rules that must hold: only cameras that sign in with a certificate of a CA a Sign-in CA policy of PKI names (the Axis device ID, or a valid certificate the OADM CA itself issued them, naming exactly one camera), that an Enrollment policy holds for the profile, and that
   OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the OADM CA of PKI
   signs (no CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
   requests are logged; a certificate on PKI's revocation list renews nothing (403 "Certificate revoked on ...");

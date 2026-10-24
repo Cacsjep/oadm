@@ -10,12 +10,28 @@ namespace Oadm.Plugins.Est.Tests;
 /// <summary>PKI's policies for the EST tests: a store with the default issuing policies of a new server.</summary>
 internal static class TestPolicies
 {
-    public static async Task<PolicyStore> StoreAsync(bool usedBefore = false, FakeSettings? settings = null)
+    /// <summary>The OADM CA of the test store.</summary>
+    public static CertificateAuthorityInfo OadmCa { get; } = new(CertificateAuthorityInfo.OadmId, "OADM Root CA TEST", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(5), true);
+
+    public static async Task<PolicyStore> StoreAsync(bool usedBefore = false, FakeSettings? settings = null, Func<IReadOnlyList<CertificateAuthorityInfo>>? authorities = null,
+        Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? devices = null, IProtectedTags? tags = null)
     {
-        var store = new PolicyStore(settings ?? new FakeSettings(), _ => Task.FromResult<IReadOnlyList<IDeviceInfo>>([]), () => [],
-            () => [new CertificateAuthorityInfo(CertificateAuthorityInfo.OadmId, "OADM Root CA TEST", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(5), true)], null);
+        var store = new PolicyStore(settings ?? new FakeSettings(), devices ?? (_ => Task.FromResult<IReadOnlyList<IDeviceInfo>>([])), () => [],
+            authorities ?? (() => [OadmCa]), tags);
         await store.LoadAsync(CancellationToken.None);
         await store.ConvertOnceAsync(PkiService.IssuingOwner, _ => Task.FromResult(PkiService.ConvertIssuing(new PkiConfig(), usedBefore)), CancellationToken.None);
+        return store;
+    }
+
+    /// <summary>
+    /// A store of a new server with the EST policies too (stage 6): the Enrollment policy "All devices" and the Sign-in CA
+    /// policies "Axis device ID" (new) and "OADM CA" (renewals), converted from <paramref name="estSettings"/> (none: a new server).
+    /// </summary>
+    public static async Task<PolicyStore> EstStoreAsync(FakeSettings? estSettings = null, FakeSettings? settings = null, Func<IReadOnlyList<CertificateAuthorityInfo>>? authorities = null,
+        Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? devices = null, IProtectedTags? tags = null)
+    {
+        var store = await StoreAsync(settings: settings, authorities: authorities, devices: devices, tags: tags);
+        Assert.True(await EstPolicies.ConvertRulesAsync(estSettings ?? new FakeSettings(), store, CancellationToken.None));
         return store;
     }
 

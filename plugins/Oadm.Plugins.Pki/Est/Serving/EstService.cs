@@ -124,7 +124,31 @@ public sealed partial class EstService : IAsyncDisposable
             async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null, InAnyGroup)
         {
             IssuingOf = IssuingOf,
+            Rules = () => Rules,
         };
+    }
+
+    private volatile EstRules? _rules;
+
+    /// <summary>
+    /// PKI's EST policies now (Sign-in CA, Enrollment), built again when the store's version moved or PKI started again (a
+    /// new store), so a change applies to the next request and never half. Without the store: nothing passes (fail closed).
+    /// </summary>
+    public EstRules Rules
+    {
+        get
+        {
+            var store = _host.Policies();
+            var rules = _rules;
+            if (rules is not null && ReferenceEquals(rules.Store, store) && store is not null && rules.Version == store.Version)
+            {
+                return rules;
+            }
+
+            rules = EstRules.Of(store);
+            _rules = rules;
+            return rules;
+        }
     }
 
     /// <summary>What <paramref name="profile"/> issues with (<see cref="EstPolicies.IssuingOf"/>); null: its policy cannot be read (nothing is issued).</summary>
@@ -426,8 +450,9 @@ public sealed partial class EstService : IAsyncDisposable
         return new EstState
         {
             Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount, Interfaces = ListInterfaces(),
-            SignInChoices = SignInChoices(ca), IssuingCa = IssuingName(ca),
+            IssuingCa = IssuingName(ca),
             IssuingPolicies = EstPolicies.Choices(_host.Policies(), ca?.Authorities ?? []),
+            PoliciesApply = Rules.Count, PolicyProblem = Rules.Problem,
         };
     }
 
@@ -442,6 +467,8 @@ public sealed partial class EstService : IAsyncDisposable
         {
             Listeners = [.. state.Listeners.Where(l => view.CoversSite(l.SiteId))],
             CertificateCount = _store.CountCertificates(view.Contains),
+            PoliciesApply = null, // the policies are server-wide: like the 802.1X page, not for users limited to a group
+            PolicyProblem = null,
         };
     }
 
@@ -489,7 +516,8 @@ public sealed partial class EstService : IAsyncDisposable
             return new SaveReply(null, error.Field, error.Message);
         }
 
-        var config = request.Config;
+        // "Sign in with" of before the policies is read only by the conversion: a save keeps what is stored.
+        var config = request.Config with { SignInWith = _store.Config.SignInWith };
         if (InterfaceOptions.IsAll(config.InterfaceId))
         {
             config = config with { InterfaceId = InterfaceOptions.AllId, InterfaceName = InterfaceOptions.AllLabel };
@@ -552,11 +580,6 @@ public sealed partial class EstService : IAsyncDisposable
         if (config.Profiles.Count == 0)
         {
             return ("profiles", "Add a profile.");
-        }
-
-        if (config.SignInWith is not { Count: > 0 })
-        {
-            return ("signInWith", "Choose at least one.");
         }
 
         for (var i = 0; i < config.Profiles.Count; i++)
@@ -1146,7 +1169,16 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
-    private void OnPoliciesChanged(object? sender, EventArgs e) => PublishState();
+    private void OnPoliciesChanged(object? sender, EventArgs e)
+    {
+        if (_stopping)
+        {
+            return;
+        }
+
+        ReportUsedBy(); // the CAs of the Sign-in CA policies
+        PublishState(); // the page's issuing policies and "N policies apply"
+    }
 
     private void PublishState()
     {
