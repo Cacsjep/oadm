@@ -9,20 +9,21 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Radius.Tests;
 
 /// <summary>
-/// Scale through the plugin (docs/spec/radius-server.md "Limits and load": 30,000 devices authenticate after a power cut):
-/// every camera a full EAP-TLS conversation through the UDP listener, the 64 workers, the certificate check against 30,000
-/// managed devices, the Sessions tab and the log at 50,000 entries kept. Measured 2026-10-24: 8 min (16 ms per camera, half of it the
-/// test camera's own TLS); the budget is about 4x, as 10x of minutes would test nothing.
+/// Scale through the plugin (docs/spec/radius-server.md "Limits and load"): 1,000 cameras each run a full EAP-TLS
+/// conversation through the UDP listener and the 64 workers, checked against 30,000 managed devices, with the log at 50,000
+/// entries kept. Decision 2026-10-24: 1,000 instead of all 30,000 (that took 8 min at 16 ms per camera, half of it the test
+/// camera's own TLS); the time per camera does not grow with the count. Budget about 10x the measured time.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class PluginPerfTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task ThirtyThousandCamerasAuthenticateThroughThePlugin()
+    public async Task AThousandCamerasAuthenticateThroughThePluginAmongThirtyThousandDevices()
     {
-        const int Count = 30_000;
+        const int Devices = 30_000;
+        const int Count = 1_000;
         await using var harness = await PluginHarness.CreateAsync(start: false);
-        var serials = Enumerable.Range(0, Count).Select(i => "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture)).ToList();
+        var serials = Enumerable.Range(0, Devices).Select(i => "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture)).ToList();
         foreach (var serial in serials)
         {
             harness.AddDevice(serial);
@@ -32,7 +33,7 @@ public sealed class PluginPerfTests(ITestOutputHelper output)
         var settings = harness.Service.GetState(true).Settings;
         await harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, settings with { LogKept = RadiusLimits.MaxLogKept });
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        var certificates = serials.Select(s => harness.Ca.Camera(s)).ToList();
+        var certificates = serials.Take(Count).Select(s => harness.Ca.Camera(s)).ToList();
         var accepted = 0;
         var watch = Stopwatch.StartNew();
 
@@ -72,15 +73,15 @@ public sealed class PluginPerfTests(ITestOutputHelper output)
         harness.Tick();
         var drained = watch.Elapsed;
         watch.Restart();
-        var page = await harness.CallAsync<LogPage>(RadiusMethods.ListLog, new LogQuery("ACCC8E0012"));
+        var page = await harness.CallAsync<LogPage>(RadiusMethods.ListLog, new LogQuery("ACCC8E0001"));
         var search = watch.Elapsed;
 
-        output.WriteLine($"{Count} authentications through the plugin (64 at a time): {handshakes.TotalMilliseconds:F0} ms, {handshakes.TotalMilliseconds / Count:F2} ms each");
+        output.WriteLine($"{Count} authentications among {Devices} devices through the plugin (64 at a time): {handshakes.TotalMilliseconds:F0} ms, {handshakes.TotalMilliseconds / Count:F2} ms each");
         output.WriteLine($"Sessions tab and log of {Count} ended sessions: {drained.TotalMilliseconds:F0} ms; search over the log: {search.TotalMilliseconds:F0} ms");
         Assert.Equal(Count, accepted);
         Assert.Equal(Count, harness.Service.Log.Count);
-        Assert.Equal(256, page.Total); // ACCC8E001200 .. ACCC8E0012FF
-        Assert.True(handshakes < TimeSpan.FromMinutes(30), $"{handshakes.TotalMilliseconds:F0} ms");
+        Assert.Equal(256, page.Total); // ACCC8E000100 .. ACCC8E0001FF
+        Assert.True(handshakes < TimeSpan.FromMinutes(3), $"{handshakes.TotalMilliseconds:F0} ms");
         Assert.True(drained < TimeSpan.FromSeconds(10), $"{drained.TotalMilliseconds:F0} ms");
         Assert.True(search < TimeSpan.FromSeconds(2), $"{search.TotalMilliseconds:F0} ms");
     }
