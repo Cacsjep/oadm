@@ -140,7 +140,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }
 
         var authorities = ctx.Services.Find<IDeviceCertificateAuthority>()?.Authorities ?? [];
-        await store.ConvertOnceAsync(PluginId, token => RadiusPolicies.ConvertAsync(ctx.Settings, authorities, ctx.Sites?.List ?? [], token), ct).ConfigureAwait(false);
+        await store.ConvertOnceAsync(PluginId, token => RadiusPolicies.ConvertAsync(ctx.Settings, authorities, token), ct).ConfigureAwait(false);
     }
 
     /// <summary>

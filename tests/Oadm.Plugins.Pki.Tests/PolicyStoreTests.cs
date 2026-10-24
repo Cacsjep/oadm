@@ -100,6 +100,29 @@ public sealed class PolicyStoreTests
     }
 
     [Fact]
+    public async Task AllDevicesHoldsEveryDeviceAndOverlapsEveryOtherPolicyOfItsKindButNeverRevokes()
+    {
+        var sites = new FakeSites();
+        var devices = new List<IDeviceInfo> { new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48" } };
+        using var store = Store(devices, sites);
+        var all = await SaveAsync(store, Vlan("Everyone", 99, new PolicyDevices { AllDevices = true, ThisServer = true, Serials = ["ACCC8E000001"] }));
+        Assert.Equal(PolicyDevices.Everything, all.Devices); // "All devices" alone
+        Assert.True(PolicyMatcher.Of(all).Holds(new FakeDevice { SiteId = sites.Add("Building C").Id })); // a site bound later
+        Assert.Equal(PolicyTexts.AllDevices, PolicyTexts.DevicesText(all.Devices, new Dictionary<Guid, string>()));
+
+        // Refused on save as any overlap, also without a shared device of now.
+        Assert.Equal(new PolicyFieldError(PolicyFields.Devices, "Everyone includes every device, also those of PTZ."),
+            await RefusedAsync(store, Vlan("PTZ", 40, new PolicyDevices { Tags = ["PTZ"] })));
+        await SaveAsync(store, Expiry("PTZ", 60, new PolicyDevices { Tags = ["PTZ"] })); // another kind
+        Assert.Equal(new PolicyFieldError(PolicyFields.Devices, "All devices includes every device, also those of PTZ."),
+            await RefusedAsync(store, Expiry("All devices", 30, PolicyDevices.Everything)));
+        Assert.Null(await RefusedAsync(store, new PkiPolicy { Name = "Lobby", Kind = PolicyKinds.Block, Devices = PolicyDevices.Everything })); // Block may hold what VLAN holds
+        Assert.Equal(new PolicyFieldError(PolicyFields.Devices, PolicyTexts.RevokeNoAll),
+            await RefusedAsync(store, new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = PolicyDevices.Everything }));
+        Assert.False(PolicyKinds.AllowsAllDevices(PolicyKinds.Revoke));
+    }
+
+    [Fact]
     public async Task AnOverlapATagMadeLaterWarnsInBothRowsAndTheSaferOneApplies()
     {
         var device = new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48" };
@@ -176,8 +199,9 @@ public sealed class PolicyStoreTests
         {
             var expiry = Assert.Single(pki.Policies.PoliciesOf(PolicyKinds.ExpiryWarning));
             Assert.Equal((PolicyLimits.AllDevicesName, 45), (expiry.Name, expiry.Days!.Value)); // OADM 4.1's "Warn before expiry"
-            Assert.True(expiry.Devices!.ThisServer);
-            Assert.Equal([site.Id], expiry.Devices.SiteIds);
+            Assert.True(expiry.Devices!.AllDevices);
+            Assert.Equal(45, pki.Policies.ExpiryDaysFor(new FakeDevice { SiteId = site.Id }));
+            Assert.Equal(45, pki.Policies.ExpiryDaysFor(new FakeDevice { SiteId = sites.Add("Building C").Id })); // a site bound later too
             Assert.Equal(730, pki.Service.Config.DeviceCertValidityDays); // the other settings stay where they are (stage 4)
             await pki.Policies.SaveAsync(expiry with { Days = 20 }, "admin", Suites, CancellationToken.None);
         }

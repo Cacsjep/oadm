@@ -1,8 +1,11 @@
 using Oadm.Plugins.Pki.Policies;
+using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Server;
 using Oadm.Plugins.Radius.Tests.Support;
 using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Sites;
 using Oadm.Sdk.Testing;
+using Org.BouncyCastle.Tls;
 
 namespace Oadm.Plugins.Radius.Tests;
 
@@ -14,6 +17,9 @@ namespace Oadm.Plugins.Radius.Tests;
 /// </summary>
 public sealed class ConversionTests
 {
+    private static TestSupplicant Camera(PluginHarness harness, TestCertificate certificate) =>
+        new(new SupplicantOptions { Certificate = certificate, TrustedCa = harness.Ca.CaCertificate, Versions = [ProtocolVersion.TLSv13, ProtocolVersion.TLSv12] });
+
     private static readonly Guid FixtureSite = new("7d1f3f6e-2b7c-4b55-9c3e-5a1f6c0a9b01");
 
     private static string Fixture(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Conversion", name));
@@ -43,13 +49,15 @@ public sealed class ConversionTests
         Assert.Equal(["PTZ"], vlans[0].Devices!.Tags);
         Assert.True(vlans[1].Devices!.ThisServer);
         Assert.Equal([FixtureSite], vlans[2].Devices!.SiteIds);
-        Assert.True(vlans[3].Devices!.ThisServer);
-        Assert.Equal([site.Id], vlans[3].Devices!.SiteIds); // this server and every site: no device changes its VLAN
+        Assert.True(vlans[3].Devices!.AllDevices); // every device, also of sites added later: no device changes its VLAN
+        Assert.Empty(vlans[3].Devices!.SiteIds);
+        Assert.NotEqual(Guid.Empty, site.Id);
 
-        // The overlap the conversion found is kept and shows its warning in both rows; the older applies.
+        // The overlaps the conversion made are kept and show their warning in both rows; the older applies.
         var rows = harness.Policies.Rows([.. harness.Ctx.DeviceList]);
-        Assert.Equal("10.0.1.10 is in This server and All devices. This server applies.", rows.Single(r => r.Policy.Name == "This server").Warning);
-        Assert.Equal(rows.Single(r => r.Policy.Name == "This server").Warning, rows.Single(r => r.Policy.Name == PolicyLimits.AllDevicesName).Warning);
+        var warning = "All devices includes every device, also those of This server. This server applies.";
+        Assert.Equal(warning, rows.Single(r => r.Policy.Name == "This server").Warning);
+        Assert.Contains(warning, rows.Single(r => r.Policy.Name == PolicyLimits.AllDevicesName).Warning);
 
         // The old settings stay as they were: nothing is deleted.
         Assert.NotNull(await harness.Ctx.PluginSettings.GetAsync(RadiusStore.VlansKey, CancellationToken.None));
@@ -98,6 +106,34 @@ public sealed class ConversionTests
         // The server applies them at once (TLS 1.3 only, 1,200 bytes).
         Assert.Equal(Protocol.Tls.TlsVersion.Tls13, harness.Service.Processor.Options.Tls.MinimumVersion);
         Assert.Equal(1200, harness.Service.Processor.Options.LargestFragment);
+    }
+
+    [Fact]
+    public async Task TheConvertedDefaultVlanStillReachesDevicesOadmDoesNotManageAndDevicesOfSitesAddedLater()
+    {
+        await using var harness = await StoredAsync((RadiusStore.TrustedCasKey, "trusted-cas.json"), (RadiusStore.PoliciesKey, "policies-main.json"));
+        using var company = new TestAuthority("Contoso Root");
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM Root CA"), harness.DeviceIds.Info,
+            company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Root")];
+        await harness.StartAsync();
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+
+        // A certificate of the Allow CA for any device, naming no device OADM manages: the Default VLAN gave it 99, so does "All devices".
+        var unmanaged = await harness.Switch().RunAsync(Camera(harness, company.Camera("ACCC8E999999")));
+        Assert.Equal(RadiusCode.AccessAccept, unmanaged.Final);
+        Assert.Equal(99, PluginSwitch.VlanOf(unmanaged.LastAnswer!));
+
+        // A site bound after the conversion: its devices are in "All devices" too.
+        var site = harness.Ctx.FakeSites.Add("Building C");
+        site.AllowedPorts.Add((SiteProtocol.Udp, 1812));
+        site.Network.LocalAddress = System.Net.IPAddress.Parse("10.2.0.5");
+        harness.AddDevice("ACCC8E777777", site.Id);
+        await harness.RefreshDevicesAsync();
+        await harness.AddSwitchAsync("Site switch", "192.168.2.2", site.Id);
+        var relay = (InMemoryUdpRelay)harness.Service.SiteRelay(site.Id)!;
+        var atSite = await harness.Switch("192.168.2.2", relay: relay).RunAsync(Camera(harness, harness.Ca.Camera("ACCC8E777777")));
+        Assert.Equal(RadiusCode.AccessAccept, atSite.Final);
+        Assert.Equal(99, PluginSwitch.VlanOf(atSite.LastAnswer!));
     }
 
     [Fact]

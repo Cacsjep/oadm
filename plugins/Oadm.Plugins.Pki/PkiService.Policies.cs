@@ -28,19 +28,15 @@ public sealed partial class PkiService
     /// <summary>The cipher suites of the 802.1X server policy.</summary>
     public static IReadOnlyList<PolicyCipherSuite> CipherSuites => RadiusPolicies.CipherSuites;
 
-    /// <summary>"All devices": this server and every site there is now.</summary>
-    public static PolicyDevices AllDevices(IEnumerable<ISiteInfo>? sites) =>
-        new() { ThisServer = true, SiteIds = [.. (sites ?? []).Select(s => s.Id).Distinct()] };
-
     /// <summary>
     /// PKI's settings from before the policies (docs/spec/pki.md "Converting existing settings"): the Device certificates
     /// card's "Warn before expiry" becomes the Expiry warning policy "All devices" (30 days on a new server).
     /// </summary>
-    public static IReadOnlyList<PkiPolicy> ConvertOwnSettings(PkiConfig config, IEnumerable<ISiteInfo>? sites)
+    public static IReadOnlyList<PkiPolicy> ConvertOwnSettings(PkiConfig config)
     {
         ArgumentNullException.ThrowIfNull(config);
         var days = config.ExpiryWarningDays is >= PolicyLimits.MinExpiryDays and <= PolicyLimits.MaxExpiryDays ? config.ExpiryWarningDays : PolicyLimits.DefaultExpiryDays;
-        return [new PkiPolicy { Name = PolicyLimits.AllDevicesName, Kind = PolicyKinds.ExpiryWarning, Days = days, Devices = AllDevices(sites) }];
+        return [new PkiPolicy { Name = PolicyLimits.AllDevicesName, Kind = PolicyKinds.ExpiryWarning, Days = days, Devices = PolicyDevices.Everything }];
     }
 
     /// <summary>Loads the policies, converts PKI's own settings once and starts the minute round of Revoke.</summary>
@@ -48,7 +44,7 @@ public sealed partial class PkiService
     {
         await Policies.LoadAsync(ct).ConfigureAwait(false);
         var config = _config;
-        await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config, _sites?.List)), ct).ConfigureAwait(false);
+        await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
         _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);

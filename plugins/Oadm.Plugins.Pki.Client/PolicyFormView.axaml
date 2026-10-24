@@ -22,6 +22,11 @@
       </StackPanel>
     </ui:FormField>
 
+    <!-- Kinds with devices except Revoke: All devices, or the picker below -->
+    <ui:FormField Label="Devices" IsVisible="{Binding OffersAllDevices}">
+      <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}" />
+    </ui:FormField>
+
     <!-- Allow CA -->
     <ui:FormField Label="CA" InputWidth="360" IsVisible="{Binding IsAllowCa}">
       <StackPanel Spacing="8">

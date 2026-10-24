@@ -5,7 +5,6 @@ using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Tls;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Plugins;
-using Oadm.Sdk.Sites;
 
 namespace Oadm.Plugins.Radius.Server;
 
@@ -92,15 +91,13 @@ public static class RadiusPolicies
     /// settings"): Advanced (setting <c>config</c>) -> the 802.1X server policy; Trusted CAs (<c>trustedCas</c>; none stored =
     /// the OADM CA and the Axis device ID, only managed) -> one Allow CA per checked CA; the policies (<c>policies</c>) or OADM
     /// 4.1's VLAN rules (<c>vlans</c>, only when Assign VLANs was on) -> VLAN, Block and Revoke policies with the same names,
-    /// devices and order; a Default VLAN that applied -> a last VLAN policy "All devices" (this server and every site), so no
-    /// device changes its VLAN. Nothing stored: the defaults of the kinds. Nothing is dropped; the old settings stay as they are.
+    /// devices and order; a Default VLAN that applied -> a last VLAN policy "All devices" (every device, also of sites added
+    /// later and devices OADM does not manage), so no device changes its VLAN. Nothing stored: the defaults of the kinds. Nothing is dropped; the old settings stay as they are.
     /// </summary>
-    public static async Task<IReadOnlyList<PkiPolicy>> ConvertAsync(IPluginSettings settings, IReadOnlyList<CertificateAuthorityInfo> authorities,
-        IReadOnlyList<ISiteInfo> sites, CancellationToken ct)
+    public static async Task<IReadOnlyList<PkiPolicy>> ConvertAsync(IPluginSettings settings, IReadOnlyList<CertificateAuthorityInfo> authorities, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(authorities);
-        ArgumentNullException.ThrowIfNull(sites);
         var store = new RadiusStore(settings);
         var list = new List<PkiPolicy> { ServerPolicyOf(await store.LegacyAdvancedAsync(ct).ConfigureAwait(false)) };
 
@@ -110,7 +107,7 @@ public static class RadiusPolicies
             list.Add(new PkiPolicy { Name = CaPolicyName(choice.Id, authorities), Kind = PolicyKinds.AllowCa, CaId = choice.Id, OnlyManaged = choice.OnlyManaged });
         }
 
-        var allDevices = new PolicyDevices { ThisServer = true, SiteIds = [.. sites.Select(s => s.Id).Distinct()] };
+        var allDevices = PolicyDevices.Everything; // also sites added later and devices OADM does not manage, as the Default VLAN gave them
         if (await store.PoliciesAsync(ct).ConfigureAwait(false) is { } stored)
         {
             foreach (var policy in stored.Policies ?? [])

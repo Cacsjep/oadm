@@ -84,6 +84,12 @@ public static class PolicyKinds
     /// <summary>The kind chooses devices (the shared device selector).</summary>
     public static bool HasDevices(string kind) => kind is Vlan or Block or Revoke or ExpiryWarning;
 
+    /// <summary>
+    /// The kind may hold "All devices" (<see cref="PolicyDevices.AllDevices"/>): every device, also of sites added later and,
+    /// for the 802.1X kinds, devices OADM does not manage. Never Revoke (like tags: it would revoke every device's certificate).
+    /// </summary>
+    public static bool AllowsAllDevices(string kind) => HasDevices(kind) && kind != Revoke;
+
     /// <summary>At most one policy of the kind.</summary>
     public static bool OneOnly(string kind) => kind == Dot1xServer;
 
@@ -127,12 +133,21 @@ public static class PolicyLimits
 }
 
 /// <summary>
-/// The devices of a policy, chosen like a device group (the shared device picker's group mode): every device without a site
-/// (<see cref="ThisServer"/>), the devices of <see cref="SiteIds"/>, the devices with one of <see cref="Tags"/> (by name),
-/// single devices by serial, minus <see cref="ExceptSerials"/>.
+/// The devices of a policy: <see cref="AllDevices"/>, or chosen like a device group (the shared device picker's group mode):
+/// every device without a site (<see cref="ThisServer"/>), the devices of <see cref="SiteIds"/>, the devices with one of
+/// <see cref="Tags"/> (by name), single devices by serial, minus <see cref="ExceptSerials"/>.
 /// </summary>
 public sealed record PolicyDevices
 {
+    /// <summary>The choice "All devices".</summary>
+    public static PolicyDevices Everything { get; } = new() { AllDevices = true };
+
+    /// <summary>
+    /// Every device: also the devices of sites added later and, for the 802.1X kinds, devices OADM does not manage (a
+    /// certificate of an Allow CA for any device). The other fields are empty. Overlaps every other policy of its kind.
+    /// </summary>
+    public bool AllDevices { get; init; }
+
     public bool ThisServer { get; init; }
 
     public IReadOnlyList<Guid> SiteIds { get; init; } = [];
@@ -146,11 +161,11 @@ public sealed record PolicyDevices
 
     /// <summary>No site, tag or device is chosen.</summary>
     [JsonIgnore]
-    public bool IsEmpty => !ThisServer && (SiteIds?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && (Serials?.Count ?? 0) == 0;
+    public bool IsEmpty => !AllDevices && !ThisServer && (SiteIds?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && (Serials?.Count ?? 0) == 0;
 
     /// <summary>The same choice (order and case of tags and serials do not count).</summary>
     public bool SameAs(PolicyDevices? other) =>
-        other is not null && ThisServer == other.ThisServer
+        other is not null && AllDevices == other.AllDevices && ThisServer == other.ThisServer
         && (SiteIds ?? []).ToHashSet().SetEquals(other.SiteIds ?? [])
         && (Tags ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(other.Tags ?? [])
         && (Serials ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(other.Serials ?? [])
@@ -312,6 +327,7 @@ public static class PolicyTexts
     public const string ChooseKind = "Choose a kind.";
     public const string ChooseDevices = "Choose sites, tags or devices.";
     public const string RevokeNoTags = "Revoke policies choose devices and sites, not tags.";
+    public const string RevokeNoAll = "Revoke policies choose devices and sites, not all devices.";
     public const string SiteGone = "This site no longer exists.";
     public const string PolicyGone = "This policy no longer exists.";
     public const string KindKept = "A policy keeps its kind. Add a new policy instead.";
@@ -323,6 +339,8 @@ public static class PolicyTexts
     public const string ReauthRange = "Use 10 to 1,440 minutes.";
     public const string TooMany = "Use at most 200 policies.";
     public const string ThisServer = "This server";
+    public const string AllDevices = PolicyLimits.AllDevicesName;
+    public const string ChosenDevices = "Chosen devices";
     public const string OnlyManaged = "Only devices OADM manages";
     public const string AnyDevice = "Any device with a valid certificate";
     public const string SwitchDecides = "Switch decides";
@@ -341,6 +359,9 @@ public static class PolicyTexts
     public static string Overlap(string device, int more, string first, string second) => more == 0
         ? $"{device} is in {first} and {second}."
         : string.Create(CultureInfo.CurrentCulture, $"{device} and {more:N0} other {(more == 1 ? "device are" : "devices are")} in {first} and {second}.");
+
+    /// <summary>"All devices includes every device, also those of PTZ." (an "All devices" policy overlaps every other of its kind).</summary>
+    public static string OverlapAll(string all, string other) => $"{all} includes every device, also those of {other}.";
 
     /// <summary>"Building B applies." after the warning of a later overlap.</summary>
     public static string Applies(string name) => $"{name} applies.";
@@ -369,13 +390,18 @@ public static class PolicyTexts
     public static string Reauth(int? minutes) =>
         minutes is { } m ? string.Create(CultureInfo.CurrentCulture, $"reauthenticate every {m:N0} minutes") : "switch decides reauthentication";
 
-    /// <summary>"This server, site Building B, tag Lobby, 3 devices, except 1".</summary>
+    /// <summary>"All devices"; "This server, site Building B, tag Lobby, 3 devices, except 1".</summary>
     public static string DevicesText(PolicyDevices? devices, IReadOnlyDictionary<Guid, string> siteNames)
     {
         ArgumentNullException.ThrowIfNull(siteNames);
         if (devices is null)
         {
             return string.Empty;
+        }
+
+        if (devices.AllDevices)
+        {
+            return AllDevices;
         }
 
         var parts = new List<string>();

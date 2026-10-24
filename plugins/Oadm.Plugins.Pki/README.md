@@ -110,7 +110,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
 - Page: card **Policies** (`PoliciesViewModel`): the filter (All, Certificates, 802.1X, Revoke) as a segmented switch, rows
   (Name, Kind, Summary with the warning of a later overlap, Devices, Edit and Delete icon buttons), **Add policy**; the
   editor (`PolicyEditorViewModel`, `PolicyFormView` on the shared `DevicePickerWindow`; the device part only for kinds with
-  devices): Name, Kind (a new policy only) with VLAN ID or Days on its row, Allow CA's CA and "Only devices OADM manages",
+  devices and not "All devices"): Name, Kind (a new policy only) with VLAN ID or Days on its row, Devices ("All devices" or
+  "Chosen devices"; not for Revoke), Allow CA's CA and "Only devices OADM manages",
   the 802.1X server's Minimum TLS version, Cipher suites (Reset to default), Largest EAP packet, Reauthentication. A Revoke
   policy asks first with `countRevocations`.
 - Events "Certificate expires soon", "Certificate expired" and their Any device twins (`ExpiryEvents`, group

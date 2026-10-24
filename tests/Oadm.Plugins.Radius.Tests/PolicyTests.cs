@@ -70,6 +70,14 @@ public sealed class PolicyTests
         var plan = new PolicyPlan([older, block]);
         Assert.Equal("Storage room", plan.RefusalFor(device)?.Name);
         Assert.Equal((null, null), new PolicyPlan([older]).VlanFor(null)); // a device OADM does not manage: no VLAN
+
+        // ... except from an "All devices" policy, the oldest of them; an "All devices" Block refuses it.
+        var everyone = Vlan("All devices", 99, PolicyDevices.Everything);
+        Assert.Equal((99, "All devices"), new PolicyPlan([older, everyone]).VlanFor(null));
+        Assert.Equal((30, "Building B"), new PolicyPlan([older, everyone]).VlanFor(device));
+        var blockAll = new PkiPolicy { Name = "Closed", Kind = PolicyKinds.Block, Devices = PolicyDevices.Everything };
+        Assert.Equal("Closed", new PolicyPlan([block, blockAll]).RefusalFor(null)?.Name);
+        Assert.Null(plan.RefusalFor(null));
     }
 
     [Fact]

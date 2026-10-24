@@ -17,7 +17,7 @@ public partial class PolicyFormView : UserControl
 
     /// <summary>
     /// The policy editor: the shared device picker in its group mode with this form on top (the device part only for kinds
-    /// with devices); Save runs <see cref="PolicyEditorViewModel.SaveAsync"/> and closes the window only when the server stored
+    /// with devices and not "All devices"); Save runs <see cref="PolicyEditorViewModel.SaveAsync"/> and closes the window only when the server stored
     /// the policy. A revoke policy asks first, owned by the editor window (red Revoke).
     /// </summary>
     public static DevicePickerWindow CreateWindow(PolicyEditorViewModel editor)
@@ -29,12 +29,12 @@ public partial class PolicyFormView : UserControl
         window.AcceptButton.Bind(IsEnabledProperty, new Binding(nameof(PolicyEditorViewModel.CanSave)) { Source = editor });
         window.AcceptButton.Bind(ToolTip.TipProperty, new Binding(nameof(PolicyEditorViewModel.SaveBlockedReason)) { Source = editor });
         ToolTip.SetShowOnDisabled(window.AcceptButton, true);
-        window.IsPickerVisible = editor.HasDevices;
+        window.IsPickerVisible = editor.ShowsPicker;
         void OnChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(PolicyEditorViewModel.HasDevices))
+            if (e.PropertyName == nameof(PolicyEditorViewModel.ShowsPicker))
             {
-                window.IsPickerVisible = editor.HasDevices;
+                window.IsPickerVisible = editor.ShowsPicker;
             }
         }
 

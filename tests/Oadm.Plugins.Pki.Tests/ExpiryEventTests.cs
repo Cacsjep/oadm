@@ -69,12 +69,12 @@ public sealed class ExpiryEventTests
         Assert.Equal([Guid.Empty], publisher.Replaced[ExpiryEvents.AnyExpired]);
         Assert.Contains((ExpiryEvents.AnyExpiresSoon, true, "1"), publisher.States);
 
-        // Building B warns 60 days before the end (out of "All devices" first: a device is in one policy of a kind): its device
+        // Building B warns 60 days before the end ("All devices" becomes this server first: it overlaps every other policy of its kind): its device
         // expires soon at once.
         var all = pki.Policies.PoliciesOf(PolicyKinds.ExpiryWarning)[0];
-        Assert.Equal(new PolicyFieldError(PolicyFields.Devices, "192.0.2.10 is in Building B and All devices."),
+        Assert.Equal(new PolicyFieldError(PolicyFields.Devices, "All devices includes every device, also those of Building B."),
             (await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "Building B", Kind = PolicyKinds.ExpiryWarning, Days = 60, Devices = new PolicyDevices { SiteIds = [site.Id] } })).Error);
-        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, all with { Devices = all.Devices! with { SiteIds = [] } })).Error);
+        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, all with { Devices = new PolicyDevices { ThisServer = true } })).Error);
         var reply = await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy
         {
             Name = "Building B", Kind = PolicyKinds.ExpiryWarning, Days = 60, Devices = new PolicyDevices { SiteIds = [site.Id] },

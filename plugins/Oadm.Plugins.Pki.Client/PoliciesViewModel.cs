@@ -327,6 +327,9 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     public static IReadOnlyList<Choice<bool>> ReauthChoices { get; } = [new(false, PolicyTexts.SwitchDecides), new(true, ReauthEvery)];
 
+    /// <summary>"All devices" (every device, also of sites added later and, for 802.1X, devices OADM does not manage) or the picker's choice.</summary>
+    public static IReadOnlyList<Choice<bool>> DeviceScopes { get; } = [new(true, PolicyTexts.AllDevices), new(false, PolicyTexts.ChosenDevices)];
+
     private readonly ICorePluginClientContext _ctx;
     private readonly PoliciesViewModel _owner;
     private readonly PkiPolicy? _existing;
@@ -370,6 +373,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         ReauthMinutes = (server?.ReauthMinutes ?? 60).ToString(CultureInfo.InvariantCulture);
 
         var chosen = policy.Devices ?? new PolicyDevices();
+        Scope = DeviceScopes[chosen.AllDevices ? 0 : 1];
         var tags = list.Tags.Concat(chosen.Tags ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var options = new DeviceGroupPickerOptions
         {
@@ -424,8 +428,14 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     public partial string Name { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsVlan), nameof(IsExpiry), nameof(IsAllowCa), nameof(IsServer), nameof(HasDevices), nameof(KindHint), nameof(NamePlaceholder))]
+    [NotifyPropertyChangedFor(nameof(IsVlan), nameof(IsExpiry), nameof(IsAllowCa), nameof(IsServer), nameof(HasDevices), nameof(KindHint), nameof(NamePlaceholder),
+        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker))]
     public partial Choice<string> Kind { get; set; }
+
+    /// <summary>The Devices choice: "All devices" or "Chosen devices" (the picker).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAllDevices), nameof(ShowsPicker), nameof(CanSave), nameof(SaveBlockedReason))]
+    public partial Choice<bool> Scope { get; set; }
 
     [ObservableProperty]
     public partial string Vlan { get; set; }
@@ -463,8 +473,17 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     public bool IsReauthEvery => Reauth.Value;
 
-    /// <summary>The kind chooses devices: the device picker shows.</summary>
+    /// <summary>The kind chooses devices.</summary>
     public bool HasDevices => PolicyKinds.HasDevices(Kind.Value);
+
+    /// <summary>The kind may hold "All devices" (not Revoke): the Devices choice shows.</summary>
+    public bool OffersAllDevices => PolicyKinds.AllowsAllDevices(Kind.Value);
+
+    /// <summary>"All devices" is chosen (for a kind that offers it).</summary>
+    public bool IsAllDevices => OffersAllDevices && Scope.Value;
+
+    /// <summary>The device picker shows: a kind with devices and not "All devices".</summary>
+    public bool ShowsPicker => HasDevices && !IsAllDevices;
 
     /// <summary>What the kind does (below the kind).</summary>
     public string? KindHint => PolicyKinds.Description(Kind.Value);
@@ -490,12 +509,12 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>Asks before a revoke policy revokes (the view sets it, owned by the editor window); null: the page's question.</summary>
     public Func<string, string, Task<bool>>? ConfirmRevoke { get; set; }
 
-    public bool CanSave => !IsBusy && IsFormValid && (!HasDevices || HasChosenDevices);
+    public bool CanSave => !IsBusy && IsFormValid && (!ShowsPicker || HasChosenDevices);
 
     private bool HasChosenDevices => Picker is not null && !Picker.GroupChoice.IsEmpty;
 
     /// <summary>Why Save is off (its tooltip).</summary>
-    public string? SaveBlockedReason => FormError ?? (!HasDevices || HasChosenDevices ? null : PolicyTexts.ChooseDevices);
+    public string? SaveBlockedReason => FormError ?? (!ShowsPicker || HasChosenDevices ? null : PolicyTexts.ChooseDevices);
 
     /// <summary>The policy of the editor (the fields of its kind).</summary>
     public PkiPolicy ToPolicy()
@@ -506,7 +525,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             Id = _existing?.Id ?? Guid.Empty,
             Name = Name.Trim(),
             Kind = Kind.Value,
-            Devices = new PolicyDevices
+            Devices = IsAllDevices ? PolicyDevices.Everything : new PolicyDevices
             {
                 ThisServer = choice.ThisServer,
                 SiteIds = choice.SiteIds,
@@ -632,6 +651,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             PolicyFields.ReauthMinutes => nameof(ReauthMinutes),
             PolicyFields.MinimumTls => nameof(MinimumTls),
             PolicyFields.CipherSuites => nameof(CipherSuites),
+            PolicyFields.Devices when IsAllDevices => nameof(Scope), // the picker is hidden: below the Devices choice
             _ => null,
         };
         if (property is null)

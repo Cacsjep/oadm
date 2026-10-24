@@ -110,6 +110,11 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
   as a device OADM does not manage is today.
 - A device that no VLAN policy matches gets no VLAN from the server (the switch port keeps its own). There is no default
   VLAN.
+- **All devices** (decision 2026-10-24): the device selector offers "All devices" next to "Chosen devices" (every kind with
+  devices except Revoke). It holds every device, also those of sites added later and, for the 802.1X kinds, devices OADM
+  does not manage (a certificate of an Allow CA for any device: an "All devices" VLAN gives its VLAN, an "All devices"
+  Block refuses it). It overlaps every other policy of its kind: saving is refused as for any overlap ("All devices includes
+  every device, also those of PTZ."); converted data keeps the overlap with its warning.
 - **Expiry warning** (decision 2026-10-24) applies to every device certificate, whoever issued it (the HTTPS certificate
   polling reads, as today). The events **Certificate expires soon** and **Certificate expired** move from the built-in
   events (fixed 30 days, `docs/spec/event-rules.md`) to PKI's event group "Certificates" and use the policy's days; they
@@ -151,7 +156,8 @@ On the first start after the update, once, without asking:
 - 802.1X Advanced (minimum TLS version, cipher suites, largest EAP packet): the 802.1X server policy.
 - 802.1X Trusted CAs: one Allow CA policy per ticked CA, with its "Only devices OADM manages".
 - 802.1X policies: VLAN, Block and Revoke policies with the same names, devices and order. A Default VLAN of OADM 4.1
-  or of a development build becomes a last VLAN policy "All devices" (this server plus every site), so no device changes its VLAN.
+  or of a development build becomes a last VLAN policy "All devices" (every device, also of sites added later and devices
+  OADM does not manage), so no device changes its VLAN.
 - EST: the Enrollment policy "All devices" (as today: every managed device, every profile). Sign in with: one Sign-in CA
   policy per ticked CA. EST profiles keep their names and point to an issuing policy
   with their validity and key ("https" → "HTTPS", or a new one when the values differ).
@@ -209,7 +215,7 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   older VLAN policy, the longer Expiry warning. Block and VLAN may hold the same device (different kinds, no warning): Block
   refuses first. Overlaps of Block or Revoke policies change nothing.
 - **Expiry warning**: the days of a device are the longest of the Expiry warning policies that hold it; a device no such
-  policy holds keeps 30 days (decision of stage 3: a site added after "All devices" never loses its warnings). A check that
+  policy holds keeps 30 days. A check that
   covers no single device (a new Compliance check) gets the longest days of the policies, else 30.
 - **Tags**: the tags of every policy except Revoke are protected under PKI (`ctx.ProtectedTags`, "The tag Floor 3 is used by
   a PKI policy. ..."); the 802.1X server releases the tags it protected until OADM 4.5. Without the host's protection the tag
@@ -231,7 +237,7 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   RADIUS-Request in every Access-Accept (RFC 3580 3.17, 3.19). Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN
   30 by Building B"); refusals name Block and Revoke policies ("Blocked by Storage room", "Certificate revoked by Stolen").
 - **Conversion** (once per owner, `PolicyStore.ConvertOnceAsync`, the owner noted in the stored list): PKI at its start
-  (`PkiService.ConvertOwnSettings`: "All devices" with the stored warn days, this server and every site); the 802.1X server's
+  (`PkiService.ConvertOwnSettings`: "All devices" with the stored warn days, `PolicyDevices.AllDevices`); the 802.1X server's
   core plugin at its start hands its settings over (`RadiusPolicies.ConvertAsync`; PKI starts first, the core plugins of a
   package start in name order; without the store the next start converts). The old settings stay where they are (decision of
   stage 3: nothing is deleted; they are no longer read). A server without them gets the defaults of the kinds the same way.

@@ -65,6 +65,11 @@ public static class PolicyRules
                 return new(PolicyFields.Devices, PolicyTexts.ChooseDevices);
             }
 
+            if (policy.Devices.AllDevices && !PolicyKinds.AllowsAllDevices(policy.Kind))
+            {
+                return new(PolicyFields.Devices, PolicyTexts.RevokeNoAll);
+            }
+
             if (PolicyKinds.NoTags(policy.Kind) && (policy.Devices.Tags?.Any(t => !string.IsNullOrWhiteSpace(t)) ?? false))
             {
                 return new(PolicyFields.Devices, PolicyTexts.RevokeNoTags);
@@ -125,7 +130,7 @@ public static class PolicyRules
     private static bool Fits(PolicyCipherSuite suite, int minimum) => suite.Tls13 || (suite.Legacy ? minimum < 2 : minimum <= 2);
 
     /// <summary>
-    /// The policy in one form: trimmed name, only the fields of its kind, the devices without doubles (sites: "This server" is
+    /// The policy in one form: trimmed name, only the fields of its kind, the devices without doubles ("All devices" alone; sites: "This server" is
     /// <see cref="PolicyDevices.ThisServer"/>, serials upper case), Allow CA's "Only devices OADM manages" on unless off.
     /// </summary>
     public static PkiPolicy Normalize(PkiPolicy policy)
@@ -137,7 +142,7 @@ public static class PolicyRules
         {
             var given = policy.Devices ?? new PolicyDevices();
             var sites = (given.SiteIds ?? []).Distinct().ToList();
-            devices = new PolicyDevices
+            devices = given.AllDevices ? PolicyDevices.Everything : new PolicyDevices
             {
                 ThisServer = given.ThisServer || sites.Contains(Guid.Empty),
                 SiteIds = [.. sites.Where(id => id != Guid.Empty)],
@@ -172,6 +177,7 @@ public static class PolicyRules
 /// <summary>The devices of a policy compiled for lookups in O(1) per device (hash sets of sites, tags and serials).</summary>
 public sealed class PolicyMatcher
 {
+    private readonly bool _all;
     private readonly bool _thisServer;
     private readonly HashSet<Guid> _sites;
     private readonly HashSet<string> _tags;
@@ -183,6 +189,7 @@ public sealed class PolicyMatcher
     public PolicyMatcher(PolicyDevices? devices, bool useTags = true)
     {
         devices ??= new PolicyDevices();
+        _all = devices.AllDevices;
         _thisServer = devices.ThisServer;
         _sites = [.. devices.SiteIds ?? []];
         _tags = useTags
@@ -199,6 +206,9 @@ public sealed class PolicyMatcher
         return new PolicyMatcher(policy.Devices, !PolicyKinds.NoTags(policy.Kind) && (tagsProtected || policy.Kind != PolicyKinds.Vlan));
     }
 
+    /// <summary>"All devices": holds every device, also one OADM does not manage.</summary>
+    public bool HoldsEveryDevice => _all;
+
     public bool Holds(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -207,7 +217,7 @@ public sealed class PolicyMatcher
             return false;
         }
 
-        if (_serials.Contains(device.Serial) || (device.SiteId is { } site ? _sites.Contains(site) : _thisServer))
+        if (_all || _serials.Contains(device.Serial) || (device.SiteId is { } site ? _sites.Contains(site) : _thisServer))
         {
             return true;
         }

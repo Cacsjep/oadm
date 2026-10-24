@@ -391,15 +391,38 @@ public sealed partial class PolicyStore : IDisposable
                 {
                     for (var b = a + 1; b < holders.Count; b++)
                     {
+                        if (matchers[holders[a]].HoldsEveryDevice || matchers[holders[b]].HoldsEveryDevice)
+                        {
+                            continue; // below: an "All devices" policy overlaps every other of its kind
+                        }
+
                         var key = (holders[a], holders[b]);
                         pairs[key] = pairs.TryGetValue(key, out var known) ? (known.First, known.Count + 1) : (device, 1);
                     }
                 }
             }
 
-            foreach (var ((a, b), (first, count)) in pairs.OrderBy(p => p.Key.Item1).ThenBy(p => p.Key.Item2))
+            var texts = new List<(int A, int B, string Text)>();
+            foreach (var ((a, b), (first, count)) in pairs)
             {
-                var text = PolicyTexts.Overlap(DeviceLabel(first), count - 1, policies[a].Name, policies[b].Name);
+                texts.Add((a, b, PolicyTexts.Overlap(DeviceLabel(first), count - 1, policies[a].Name, policies[b].Name)));
+            }
+
+            for (var a = 0; a < policies.Count; a++)
+            {
+                for (var b = a + 1; b < policies.Count; b++)
+                {
+                    if (matchers[a].HoldsEveryDevice || matchers[b].HoldsEveryDevice)
+                    {
+                        var (all, other) = matchers[a].HoldsEveryDevice ? (a, b) : (b, a);
+                        texts.Add((a, b, PolicyTexts.OverlapAll(policies[all].Name, policies[other].Name)));
+                    }
+                }
+            }
+
+            foreach (var (a, b, overlap) in texts.OrderBy(t => t.A).ThenBy(t => t.B))
+            {
+                var text = overlap;
                 if (Applies(policies[a], policies[b]) is { } applies)
                 {
                     text += " " + PolicyTexts.Applies(applies.Name);
@@ -440,6 +463,18 @@ public sealed partial class PolicyStore : IDisposable
         var now = PolicyMatcher.Of(policy, TagsProtected);
         var then = before is null ? null : PolicyMatcher.Of(before, TagsProtected);
         var others = sameKind.Select(p => PolicyMatcher.Of(p, TagsProtected)).ToArray();
+
+        // "All devices" overlaps every other policy of its kind, devices or not; refused unless that overlap was there before.
+        for (var i = 0; i < others.Length; i++)
+        {
+            var overlapsNow = now.HoldsEveryDevice || others[i].HoldsEveryDevice;
+            var overlappedBefore = then is not null && (then.HoldsEveryDevice || others[i].HoldsEveryDevice);
+            if (overlapsNow && !overlappedBefore)
+            {
+                return now.HoldsEveryDevice ? PolicyTexts.OverlapAll(policy.Name, sameKind[i].Name) : PolicyTexts.OverlapAll(sameKind[i].Name, policy.Name);
+            }
+        }
+
         var first = new IDeviceInfo?[others.Length];
         var more = new int[others.Length];
         foreach (var device in devices)
@@ -468,7 +503,7 @@ public sealed partial class PolicyStore : IDisposable
 
         for (var i = 0; i < others.Length; i++)
         {
-            if (first[i] is { } device)
+            if (first[i] is { } device && !now.HoldsEveryDevice && !others[i].HoldsEveryDevice)
             {
                 return PolicyTexts.Overlap(DeviceLabel(device), more[i], policy.Name, sameKind[i].Name);
             }

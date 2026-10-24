@@ -26,7 +26,7 @@ public sealed class PolicyPageTests
     internal static async Task<PkiHarness> StartAsync(params IDeviceInfo[] devices)
     {
         var pki = await PkiHarness.StartAsync(devices: devices.Length == 0 ? [Camera, Other] : devices);
-        await pki.Policies.ConvertOnceAsync(Radius.RadiusPlugin.PluginId, ct => RadiusPolicies.ConvertAsync(new FakeSettings(), pki.Service.Authorities(), [], ct), CancellationToken.None);
+        await pki.Policies.ConvertOnceAsync(Radius.RadiusPlugin.PluginId, ct => RadiusPolicies.ConvertAsync(new FakeSettings(), pki.Service.Authorities(), ct), CancellationToken.None);
         await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "Building B", Kind = PolicyKinds.Vlan, Vlan = 30, Devices = new PolicyDevices { ThisServer = true, ExceptSerials = ["ACCC8E000002"] } });
         await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "Storage room", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Serials = ["ACCC8E000002"] } });
         return pki;
@@ -48,7 +48,7 @@ public sealed class PolicyPageTests
         Assert.Equal("TLS 1.2 or later, 1,020 bytes, switch decides reauthentication", card.Rows[1].Summary);
         Assert.Equal("OADM Root CA SERVER01, only devices OADM manages", card.Rows[2].Summary); // the CA's name in PKI
         Assert.Equal("VLAN 30", card.Rows[4].Summary);
-        Assert.Equal(["This server", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
+        Assert.Equal(["All devices", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
         Assert.True(card.MayManage);
         Assert.True(card.AddCommand.CanExecute(null));
 
@@ -120,6 +120,35 @@ public sealed class PolicyPageTests
         editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Block);
         Assert.True(await editor.SaveAsync()); // another kind may hold it
         Assert.Contains(card.Rows, r => r.Name == "PTZ" && r.Kind == "Block");
+    }
+
+    [Fact]
+    public async Task All_devices_hides_the_device_picker_and_its_overlap_shows_below_the_devices_choice()
+    {
+        await using var pki = await StartAsync();
+        var card = new PoliciesViewModel(Page(pki));
+        await card.LoadAsync(CancellationToken.None);
+        var editor = card.NewEditor(null);
+        Assert.Equal([PolicyTexts.AllDevices, PolicyTexts.ChosenDevices], PolicyEditorViewModel.DeviceScopes.Select(c => c.Label));
+        Assert.True(editor.OffersAllDevices);
+        Assert.True(editor.ShowsPicker); // a new policy starts with the picker
+
+        editor.Name = "Everyone";
+        editor.Vlan = "99";
+        editor.Scope = PolicyEditorViewModel.DeviceScopes[0];
+        Assert.False(editor.ShowsPicker);
+        Assert.True(editor.CanSave); // nothing to pick
+        Assert.Equal(PolicyDevices.Everything, editor.ToPolicy().Devices);
+        Assert.False(await editor.SaveAsync());
+        Assert.Equal("Everyone includes every device, also those of Building B.", editor.ErrorOf(nameof(PolicyEditorViewModel.Scope)));
+
+        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Revoke);
+        Assert.False(editor.OffersAllDevices); // Revoke: devices and sites only
+        Assert.True(editor.ShowsPicker);
+
+        var expiry = card.NewEditor(card.Rows.Single(r => r.Kind == "Expiry warning").Source);
+        Assert.True(expiry.IsAllDevices); // the default "All devices"
+        Assert.False(expiry.ShowsPicker);
     }
 
     [Fact]
@@ -329,6 +358,7 @@ public sealed class PolicyHeadlessTests
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(expiryWindow, outDir, "pki-policy-expiry.png");
             var expiryTexts = Texts(expiryWindow);
+            var expiryPicker = expiryWindow.IsPickerVisible;
             expiryWindow.Close();
 
             var question = new MessageWindow { Heading = "Add policy", Message = "Saving revokes 7 IEEE 802.1X certificates of these devices, and every new one while the policy exists. This cannot be undone.", ConfirmText = "Revoke", CancelText = "Cancel", IsDanger = true };
@@ -338,7 +368,7 @@ public sealed class PolicyHeadlessTests
             HeadlessPageTests.Capture(question, outDir, "pki-policy-revoke-question.png");
             var red = question.ConfirmButton.Classes.Contains("danger");
             question.Close();
-            return (vlanTexts, vlanPicker, allowTexts, allowPicker, serverTexts, expiryTexts, red);
+            return (vlanTexts, vlanPicker, allowTexts, allowPicker, serverTexts, expiryTexts, expiryPicker, red);
         }, CancellationToken.None);
 
         Assert.True(checks.vlanPicker);
@@ -355,6 +385,8 @@ public sealed class PolicyHeadlessTests
         Assert.Contains(PolicyRules.EapPacketRange, checks.serverTexts);
         Assert.Contains("Minutes", checks.serverTexts);
         Assert.Contains("Days", checks.expiryTexts);
+        Assert.Contains(PolicyTexts.AllDevices, checks.expiryTexts); // the Devices choice; no picker
+        Assert.False(checks.expiryPicker);
         Assert.True(checks.red);
     }
 

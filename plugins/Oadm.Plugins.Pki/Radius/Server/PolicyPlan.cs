@@ -7,7 +7,8 @@ namespace Oadm.Plugins.Radius.Server;
 /// PKI's VLAN, Block and Revoke policies compiled for the certificate check (docs/spec/pki.md "Policies"): of the VLAN
 /// policies that hold a device the oldest gives its VLAN, none gives no VLAN (the switch port keeps its own; there is no
 /// default VLAN); any Block or Revoke policy that holds it refuses it (Block over VLAN), a Revoke policy also revokes its
-/// certificate. Immutable; a change of the policies builds a new one before the next handshake. The tag parts of VLAN
+/// certificate. A device OADM does not manage (a certificate of an Allow CA for any device) is held only by "All devices"
+/// policies (<see cref="PolicyDevices.AllDevices"/>): their VLAN, their Block. Immutable; a change of the policies builds a new one before the next handshake. The tag parts of VLAN
 /// policies apply only while the host protects the tags (<see cref="IProtectedTags"/>); without it they match no device
 /// (fail closed: a group user could tag a device into a VLAN). Block policies keep their tag parts (fail closed the other
 /// way). Revoke policies never match by tag: a tag could revoke the certificates of every device that gets it later.
@@ -45,17 +46,15 @@ public sealed class PolicyPlan
 
     public IReadOnlyList<PkiPolicy> RevokePolicies { get; }
 
-    /// <summary>The VLAN of <paramref name="device"/> and the policy that gives it; (null, null) for none or a device OADM does not manage.</summary>
+    /// <summary>
+    /// The VLAN of <paramref name="device"/> and the policy that gives it; (null, null) for none. A device OADM does not manage
+    /// (null) gets the VLAN of the oldest "All devices" VLAN policy.
+    /// </summary>
     public (int? Vlan, string? Policy) VlanFor(IDeviceInfo? device)
     {
-        if (device is null)
-        {
-            return (null, null);
-        }
-
         foreach (var (policy, matcher) in _vlans)
         {
-            if (matcher.Holds(device))
+            if (device is null ? matcher.HoldsEveryDevice : matcher.Holds(device))
             {
                 return (policy.Vlan, policy.Name);
             }
@@ -64,13 +63,15 @@ public sealed class PolicyPlan
         return (null, null);
     }
 
-    /// <summary>The oldest Block or Revoke policy that holds <paramref name="device"/>, null when none does.</summary>
-    public PkiPolicy? RefusalFor(IDeviceInfo device)
+    /// <summary>
+    /// The oldest Block or Revoke policy that holds <paramref name="device"/>, null when none does. A device OADM does not
+    /// manage (null): the oldest "All devices" Block policy.
+    /// </summary>
+    public PkiPolicy? RefusalFor(IDeviceInfo? device)
     {
-        ArgumentNullException.ThrowIfNull(device);
         foreach (var (policy, matcher) in _refusals)
         {
-            if (matcher.Holds(device))
+            if (device is null ? matcher.HoldsEveryDevice : matcher.Holds(device))
             {
                 return policy;
             }

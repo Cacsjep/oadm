@@ -459,9 +459,16 @@ public sealed partial class DeviceCertificateValidator(
                     : ClientCertificateVerdict.Refuse(CertificateRefusals.NotManaged(serial), 49, new CheckedCertificate(null, serial, certificateSerial));
             }
 
-            // A CA without "Only devices OADM manages": any valid certificate of it passes (no VLAN: no policy holds a device
-            // OADM does not manage); the log shows its subject.
-            return ClientCertificateVerdict.Accept(null, null, new CheckedCertificate(null, serial, certificateSerial) { Subject = leaf.Subject });
+            // A CA without "Only devices OADM manages": any valid certificate of it passes; only "All devices" policies hold
+            // such a device (their Block refuses it, their VLAN applies). The log shows its subject.
+            var unmanaged = new CheckedCertificate(null, serial, certificateSerial) { Subject = leaf.Subject };
+            if (plan.RefusalFor(null) is { Kind: PolicyKinds.Block } block)
+            {
+                return ClientCertificateVerdict.Refuse(CertificateRefusals.Blocked(block.Name), 49, unmanaged);
+            }
+
+            var (anyVlan, anyVlanPolicy) = plan.VlanFor(null);
+            return ClientCertificateVerdict.Accept(anyVlan, null, unmanaged with { VlanPolicy = anyVlanPolicy });
         }
 
         var tag = new CheckedCertificate(device.Id, serial, certificateSerial);
