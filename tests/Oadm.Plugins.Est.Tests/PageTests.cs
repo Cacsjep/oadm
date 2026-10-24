@@ -521,7 +521,7 @@ public sealed class PageTests : IAsyncLifetime
         GC.KeepAlive(session);
 
         Assert.Equal([("Certificates", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
-        foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments", "Edit in PKI" })
+        foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments", "Edit policies" })
         {
             Assert.Contains(title, checks.texts);
         }
@@ -909,7 +909,7 @@ public sealed class PageTests : IAsyncLifetime
             return Task.FromResult(Confirm);
         }
 
-        /// <summary>The host pages the page opened (Edit in PKI).</summary>
+        /// <summary>The host pages the page opened (Edit policies).</summary>
         public List<string> Opened { get; } = [];
 
         public Task OpenAsync(string hostPage)

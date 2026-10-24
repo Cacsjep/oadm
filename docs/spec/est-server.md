@@ -20,7 +20,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run
   ("The EST server is off. Turn it on on the EST server page. Nothing was changed.", or "OADM PRO is not active.").
 - **Page "EST server"** (rail, group Security, next to PKI):
-  - **General** left (Listen on, port, enrollments kept, Issued by, "3 policies apply" with **Edit in PKI**: who may
+  - **General** left (Listen on, port, enrollments kept, Issued by, "3 policies apply" with **Edit policies**: who may
     enroll and which CAs sign in are PKI's Enrollment and Sign-in CA policies, docs/spec/pki.md "Code (stage 6)"; below
     it, in the warning style, why no camera can enroll), **Profiles** right; the status left of Save: "Running on port 9454", "OADM PRO is not
     active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").

@@ -91,6 +91,8 @@ public sealed class IssuedCertificateList : UserControl
                         status.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateStatus.Tip)));
                         return status;
                     }, supportsRecycling: true),
+                    // Side by side below the badges, wrapped only when the column is too narrow.
+                    ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 10, LineSpacing = 2 }),
                 };
                 more.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(IssuedCertificateRow.MoreStates)));
                 more.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.HasMoreStates)));

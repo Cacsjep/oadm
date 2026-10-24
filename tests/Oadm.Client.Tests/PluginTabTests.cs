@@ -153,7 +153,7 @@ public sealed class PluginTabTests
         Assert.Equal("plugin:oadm.pki", rig.Shell.CurrentItem?.Key);
         Assert.Equal(["oadm.est"], requested);
 
-        // Edit in PKI of a server tab: the host page on its own first tab.
+        // Edit policies of a server tab: the host page on its own first tab.
         await rig.Radius.Contexts[0].OpenAsync("plugin:oadm.pki");
         Assert.Equal(["oadm.est", "oadm.pki"], requested);
 

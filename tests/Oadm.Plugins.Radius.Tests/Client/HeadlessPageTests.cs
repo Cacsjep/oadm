@@ -150,7 +150,7 @@ public sealed class HeadlessPageTests
         Assert.Contains("Wrong secret", checks.texts);
         Assert.DoesNotContain("Advanced", checks.labels);
         Assert.Contains("6 policies apply", checks.texts);
-        Assert.Contains("Edit in PKI", checks.texts);
+        Assert.Contains("Edit policies", checks.texts);
         Assert.Contains("VLAN 20 by PTZ", checks.texts);
         Assert.Contains("Authenticated with VLAN 20 by PTZ", checks.texts);
         Assert.Contains("Add switch", checks.labels);
@@ -187,7 +187,7 @@ public sealed class HeadlessPageTests
         Assert.Contains("Sessions", checks.texts);
         Assert.Contains("Log", checks.texts);
         Assert.DoesNotContain("Switches", checks.texts);
-        Assert.DoesNotContain("Edit in PKI", checks.texts);
+        Assert.DoesNotContain("Edit policies", checks.texts);
         Assert.False(checks.deleteAll);
     }
 

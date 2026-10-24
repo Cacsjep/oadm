@@ -51,7 +51,7 @@ public sealed class PkiTabsTests
         ctx.RequestTab("made.up"); // unknown: nothing changes
         Assert.Same(radius, vm.ActiveTabView);
 
-        ctx.RequestTab(PkiPluginInfo.PluginId); // Edit in PKI: Certificates
+        ctx.RequestTab(PkiPluginInfo.PluginId); // Edit policies: Certificates
         Assert.True(vm.IsCertificatesTab);
         Assert.Null(vm.ActiveTabView);
     }

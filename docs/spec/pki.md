@@ -64,7 +64,7 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   "manage" permissions stay as they are.
 - A server's tab shows only for users whose role has that core plugin's "show" permission (the server lists only the
   pages the role may show, the host follows role changes). With no server tab the tab row is left out.
-- **Edit in PKI** on a server tab opens the Certificates tab. Everything that opens `plugin:oadm.radius` or
+- **Edit policies** on a server tab opens the Certificates tab. Everything that opens `plugin:oadm.radius` or
   `plugin:oadm.est` (`OpenAsync`, a role's start page, links of the Plugins page) opens the PKI page on that tab;
   `plugin:oadm.pki` opens it on Certificates. A click on the rail entry keeps the tab that was open.
 - Only the open tab's view is in the window: a server tab reads its state when it is opened (like a page).
@@ -248,12 +248,12 @@ The two pages are tabs of the PKI page since stage 7 ("The PKI page").
 - **802.1X server:** Server (Listen on, Port, Log entries kept; no Advanced dialog: its settings are the 802.1X server
   policy), Switches, Sessions and Log (a splitter between
   the two), a line "Rules: Policies on the PKI page". No Trusted CAs card, no Policies card, no Default VLAN.
-- **EST server:** General (with "3 policies apply" and Edit in PKI), Profiles (name, issuing policy, on), Enrollments in
+- **EST server:** General (with "3 policies apply" and Edit policies), Profiles (name, issuing policy, on), Enrollments in
   its own card. No Sign in with (stage 6: Sign-in CA policies).
 
 ## Rules for the move (decisions 2026-10-24)
 
-- The 802.1X tab shows "4 policies apply" with **Edit in PKI** (opens the Certificates tab); Sessions and Log rows name the policy that matched
+- The 802.1X tab shows "4 policies apply" with **Edit policies** (opens the Certificates tab); Sessions and Log rows name the policy that matched
   ("VLAN 30 by Building B", "Blocked by Storage room").
 - OADM PRO: see "One plugin"; PKI's own kinds (issuing, Revoke) always work.
 - The conversion is tested on a copy of real data (a backup of a 4.1 server and of the development server) before the
@@ -337,7 +337,7 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   without devices the device part hides (`DevicePickerWindow.IsPickerVisible`). The Device certificates card kept only the
   validity (gone in stage 4); users limited to a device group still see the page with the Certificates of their devices (decision of stage 3:
   the Certificates list of stage 1 stays; the Policies card is hidden for them).
-- **802.1X page**: Server (with "6 policies apply" and Edit in PKI: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
+- **802.1X page**: Server (with "6 policies apply" and Edit policies: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
   and Switches side by side from 1,000 px of page width, Sessions and Log below with a `paneSplitter` between them (pixel
   rows inside the page's scroll viewer); every column but the state or result is as wide as its longest text (`MinWidth` =
   `Width`, the grid scrolls sideways on narrow pages). The switch dialog no longer names the RADIUS server's address; the
@@ -511,7 +511,7 @@ fits the spec; to be confirmed by the maintainer).
   policy for this device. Add one on the PKI page. Nothing was changed."; a profile not allowed is skipped with the
   policy's reason as a warning; none left: "The enrollment policies allow none of the profiles the camera supports.
   Nothing was changed." (decision of stage 6).
-- **Page**: the "Sign in with" check boxes are gone; General shows "3 policies apply" with Edit in PKI (`plugin:oadm.pki`)
+- **Page**: the "Sign in with" check boxes are gone; General shows "3 policies apply" with Edit policies (`plugin:oadm.pki`)
   and, in the warning style, why no camera can enroll ("Cameras cannot sign in: there is no Sign-in CA policy.", "No
   camera can enroll: there is no Enrollment policy.", the store's own texts). Users limited to a device group see neither
   (`EstState.PoliciesApply` and `PolicyProblem` null). `config.signInWith` stays stored and is kept by a save (read only
@@ -529,7 +529,7 @@ fits the spec; to be confirmed by the maintainer).
 - **Tests**: `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests` (kinds, defaults, overlaps, rules, conversion with fixtures
   `est-config-4.1.json` and `est-config-stage4.json`, the late merge), `ServerTests` (sign-in per operation and CA, fail
   closed, refused and not allowed devices and profiles over TLS, Used by), `TaskTests` (Set up and the policies), `PageTests`
-  (the page line, Edit in PKI, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
+  (the page line, Edit policies, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
   `EstPolicyPageTests` (filter, rows, both editors, headless editors).
 
 ## Code (stage 7)

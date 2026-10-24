@@ -34,7 +34,7 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     certificates also renews, for renewals only `simplereenroll`; only those PKI still lists count; no store, an unreadable
     one or none: nothing signs in); Enrollment policies hold the devices and their profiles (`Check(device, profile)`: none
     holds it 403 "No enrollment policy for this device.", a profile not allowed the 404 of an unknown profile, listed with
-    the policy). `EstState.PoliciesApply` ("3 policies apply", Edit in PKI) and `PolicyProblem` (null for group users);
+    the policy). `EstState.PoliciesApply` ("3 policies apply", Edit policies) and `PolicyProblem` (null for group users);
     "Issued by" (the OADM CA by its name in PKI, else the name in its certificate). EST reports
     `SetUsedBy("oadm.est", "EST server", sign-in CAs ∩ listed + oadm)` at the start, on a policy change and on PKI's
     `Changed`, and clears it when it stops. `config.signInWith` ("Sign in with" of before) is read only by the conversion

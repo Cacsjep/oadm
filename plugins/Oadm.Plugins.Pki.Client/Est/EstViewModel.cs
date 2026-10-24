@@ -240,7 +240,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial string IssuingCa { get; set; } = "-";
 
-    /// <summary>The id of PKI's core plugin (Edit in PKI opens its page).</summary>
+    /// <summary>The id of PKI's core plugin (Edit policies opens its page).</summary>
     public const string PkiPluginId = "oadm.pki";
 
     /// <summary>"2 policies apply": PKI's EST policies the server applies (Enrollment, Sign-in CA); empty for a user limited to a device group.</summary>
@@ -248,7 +248,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowsPolicies))]
     public partial string PoliciesText { get; set; } = string.Empty;
 
-    /// <summary>The line with "N policies apply" and Edit in PKI shows (users with all devices).</summary>
+    /// <summary>The line with "N policies apply" and Edit policies shows (users with all devices).</summary>
     public bool ShowsPolicies => PoliciesText.Length > 0;
 
     /// <summary>Why no camera can enroll ("Cameras cannot sign in: there is no Sign-in CA policy."); null when none.</summary>
@@ -263,7 +263,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies apply"),
     };
 
-    /// <summary>Edit in PKI: the Enrollment and Sign-in CA policies are on the PKI page.</summary>
+    /// <summary>Edit policies: the Enrollment and Sign-in CA policies are on the PKI page.</summary>
     [RelayCommand]
     private Task EditInPkiAsync() => _ctx.OpenAsync("plugin:" + PkiPluginId);
 

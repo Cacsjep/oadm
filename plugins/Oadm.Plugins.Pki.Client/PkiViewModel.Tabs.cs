@@ -36,7 +36,7 @@ public sealed partial class PkiTabViewModel : ObservableObject
 /// <summary>
 /// The tabs of the PKI page (docs/spec/pki.md "The PKI page"): Certificates, then the 802.1X server and the EST server when
 /// the host hands their pages over (<see cref="ICorePluginClientContext.Tabs"/>: only the ones the role may show). The host
-/// asks for a tab with <see cref="ICorePluginClientContext.OpenTabRequested"/> (Edit in PKI: Certificates).
+/// asks for a tab with <see cref="ICorePluginClientContext.OpenTabRequested"/> (Edit policies: Certificates).
 /// </summary>
 public sealed partial class PkiViewModel
 {
