@@ -32,10 +32,14 @@ public sealed class ServerTests : IAsyncLifetime
     private X509Certificate2 _deviceId = null!;
     private EstService _service = null!;
     private bool _pro = true;
-    private Oadm.Plugins.Pki.Policies.PolicyStore? _policies; // PKI's policies (null: no PKI, the profiles' own values)
+    private Oadm.Plugins.Pki.Policies.PolicyStore? _policies; // PKI's policies (null: no PKI: nothing signs in)
 
     public async Task InitializeAsync()
     {
+        // A new server's policies: the issuing ones and the EST ones (Enrollment "All devices", Sign-in CA "Axis device ID"
+        // for new certificates and "OADM CA" for renewals). The store lists the CAs of the fake PKI once it has its list.
+        _policies = await TestPolicies.EstStoreAsync(authorities: () => _ca.AuthorityList.Count > 0 ? [.. _ca.AuthorityList] : [TestPolicies.OadmCa],
+            devices: _ => _devices.ListAsync(CancellationToken.None));
         _intermediate = TestPki.Intermediate(_root, "Device ID Intermediate");
         _deviceId = TestPki.DeviceId(_intermediate, Serial);
         _devices.List.Add(new FakeDevice { Serial = Serial, Address = "10.0.0.48", HostName = "cam-entrance" });
@@ -65,7 +69,7 @@ public sealed class ServerTests : IAsyncLifetime
     [Fact]
     public async Task Enrollment_and_renewal_issue_with_the_valid_days_of_the_profiles_policy()
     {
-        _policies = await TestPolicies.StoreAsync();
+        _policies = await TestPolicies.EstStoreAsync();
         var (csr, key) = TestPki.Request("CN=whatever");
         using var _ = key;
 
@@ -101,7 +105,7 @@ public sealed class ServerTests : IAsyncLifetime
     [Fact]
     public async Task A_profile_without_a_usable_policy_is_refused_on_save_and_issues_nothing()
     {
-        _policies = await TestPolicies.StoreAsync();
+        _policies = await TestPolicies.EstStoreAsync();
         var config = _service.Store.Config;
 
         var none = await _service.SaveAsync(new SaveRequest(config), CancellationToken.None); // the profiles name no policy
@@ -110,23 +114,27 @@ public sealed class ServerTests : IAsyncLifetime
         var wrong = await _service.SaveAsync(new SaveRequest(config with { Profiles = [.. config.Profiles.Select(p => p with { PolicyId = dot1x.Id })] }), CancellationToken.None);
         Assert.Equal(("profiles[0].policy", EstTexts.PolicyGone), (wrong.Field, wrong.Error)); // an IEEE 802.1X policy for HTTPS
 
-        // A store that cannot be read: nothing is issued (fail closed).
+        // A stored profile whose policy is of another kind (settings written before the check): nothing is issued (fail closed).
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+        await _service.Store.SaveConfigAsync(config with { Profiles = [.. config.Profiles.Select(p => p with { PolicyId = dot1x.Id })] }, CancellationToken.None);
+        var refused = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(503, refused.Status);
+        Assert.Contains(EstRefusals.NoPolicy, refused.Body, StringComparison.Ordinal);
+
+        // A store that cannot be read: nobody signs in, nothing is issued.
         var damaged = new FakeSettings();
         await damaged.SetAsync(Oadm.Plugins.Pki.Policies.PolicyStore.SettingsKey, "{\"policies\":3}", CancellationToken.None);
         _policies = await TestPolicies.StoreAsync(settings: damaged);
         Assert.True(_policies.IsUnreadable);
-        var (csr, key) = TestPki.Request("CN=whatever");
-        using var _ = key;
-        var refused = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
-        Assert.Equal(503, refused.Status);
-        Assert.Contains(EstRefusals.NoPolicy, refused.Body, StringComparison.Ordinal);
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
         Assert.DoesNotContain(_ca.Requests, r => r.DeviceId is not null); // only the server's own certificate
     }
 
     [Fact]
     public async Task The_server_certificate_follows_the_policy_est_server()
     {
-        _policies = await TestPolicies.StoreAsync();
+        _policies = await TestPolicies.EstStoreAsync();
         var policy = _policies.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est)!;
         X509Certificate2? server = null;
         Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
@@ -165,7 +173,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Issued_by_and_sign_in_with_name_the_oadm_ca_by_its_certificate_when_pki_lists_no_cas()
+    public void Issued_by_names_the_oadm_ca_by_its_certificate_when_pki_lists_no_cas()
     {
         Assert.Empty(_ca.AuthorityList); // a PKI without the list
         var name = _ca.Certificate.GetNameInfo(X509NameType.SimpleName, false);
@@ -173,8 +181,9 @@ public sealed class ServerTests : IAsyncLifetime
 
         var state = _service.GetState();
 
-        Assert.Equal(name, state.IssuingCa); // never "OADM CA, for renewals"
-        Assert.Equal([SignInNames.AxisDeviceId, name + ", for renewals"], state.SignInChoices.Select(c => c.Name));
+        Assert.Equal(name, state.IssuingCa);
+        Assert.Equal(3, state.PoliciesApply); // "All devices", "Axis device ID", "OADM CA"
+        Assert.Null(state.PolicyProblem);
     }
 
     [Fact]
@@ -447,7 +456,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Sign_in_with_lets_cameras_in_only_through_the_chosen_cas_pki_holds()
+    public async Task Sign_in_ca_policies_let_cameras_in_only_through_their_cas_for_new_certificates_or_renewals()
     {
         _ca.ListDefaults();
         var (csr, key) = TestPki.Request();
@@ -458,57 +467,144 @@ public sealed class ServerTests : IAsyncLifetime
         using var previousLeaf = Leaf(previousCa, axisName);
         async Task<int> StatusAsync(X509Certificate2 identity, string operation = "simplereenroll") =>
             (await SendAsync("POST", "/.well-known/est/https/" + operation, identity, Body(csr))).Status;
-        async Task SignInWithAsync(params string[] ids) =>
-            Assert.Null((await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = ids }), CancellationToken.None)).Error);
+        var signIn = _policies!.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa);
+        var axis = signIn.Single(p => p.CaId == CertificateAuthorityInfo.AxisDeviceIdId);
+        var oadm = signIn.Single(p => p.CaId == CertificateAuthorityInfo.OadmId);
 
-        // Today's behaviour by default: the Axis device ID and the OADM CA (renewals); a previous CA only when chosen.
-        Assert.Equal(EstConfig.DefaultSignInWith, _service.Store.Config.SignInWith);
+        // The defaults keep today's behaviour: the Axis device ID for new certificates (and renewals), the OADM CA for renewals.
+        Assert.Equal(("Axis device ID", "new", "OADM CA", "renewal"), (axis.Name, axis.SignInFor, oadm.Name, oadm.SignInFor));
         Assert.Equal(200, await StatusAsync(_deviceId, "simpleenroll"));
+        Assert.Equal(200, await StatusAsync(_deviceId));
         Assert.Equal(200, await StatusAsync(own));
+        Assert.Equal(401, await StatusAsync(own, "simpleenroll")); // the OADM CA only renews
         _ca.AuthorityList.Add(new("oadm-previous:AB", "OADM CA 2025", CertificateAuthorityKind.PreviousOadm, [previousCa.RawData], previousCa.NotAfter.ToUniversalTime(), false));
-        Assert.Equal(401, await StatusAsync(previousLeaf));
+        Assert.Equal(401, await StatusAsync(previousLeaf)); // no policy names it
 
-        await SignInWithAsync(CertificateAuthorityInfo.AxisDeviceIdId);
-        Assert.Equal(401, await StatusAsync(own));
-        Assert.Equal(200, await StatusAsync(_deviceId, "simpleenroll"));
-
-        await SignInWithAsync(CertificateAuthorityInfo.OadmId, "oadm-previous:AB");
-        Assert.Equal(401, await StatusAsync(_deviceId, "simpleenroll"));
-        Assert.Equal(200, await StatusAsync(own));
+        // A previous OADM CA for renewals; the Axis device ID for renewals only.
+        await TestPolicies.AddAsync(_policies, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "OADM CA 2025", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa, CaId = "oadm-previous:AB", SignInFor = "renewal",
+        });
         Assert.Equal(200, await StatusAsync(previousLeaf));
+        await TestPolicies.AddAsync(_policies, axis with { SignInFor = "renewal" });
+        Assert.Equal(401, await StatusAsync(_deviceId, "simpleenroll"));
+        Assert.Equal(200, await StatusAsync(_deviceId));
 
         // A CA that left PKI's list lets nothing in any more (fail closed).
         _ca.AuthorityList.RemoveAll(a => a.Kind == CertificateAuthorityKind.PreviousOadm);
         Assert.Equal(401, await StatusAsync(previousLeaf));
 
-        // The page's choices and the CA that issues come from PKI's list.
-        var state = _service.GetState();
-        Assert.Equal([(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID"), (CertificateAuthorityInfo.OadmId, "OADM Test CA, for renewals")],
-            state.SignInChoices.Select(c => (c.Id, c.Name)));
-        Assert.Equal("OADM Test CA", state.IssuingCa);
+        // The same CA twice, a CA that never signs a camera in: refused on save.
+        var twice = await _policies.SaveAsync(new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "Again", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa, CaId = CertificateAuthorityInfo.OadmId, SignInFor = "new",
+        }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
+        Assert.Equal(("caId", "Another Sign-in CA policy has this CA."), (twice.Error?.Field, twice.Error?.Message));
+        var imported = await _policies.SaveAsync(new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "Contoso", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa, CaId = "imported:AA", SignInFor = "new",
+        }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
+        Assert.Equal(Oadm.Plugins.Pki.Policies.PolicyTexts.NoSignInCa, imported.Error?.Message);
 
-        var none = await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = [] }), CancellationToken.None);
-        Assert.Equal(("signInWith", "Choose at least one."), (none.Field, none.Error));
+        // No Sign-in CA policy: nothing signs in (fail closed), and the page says why.
+        foreach (var policy in _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa))
+        {
+            Assert.Null((await _policies.DeleteAsync(policy.Id, "admin", CancellationToken.None)).Error);
+        }
+
+        Assert.Equal(401, await StatusAsync(_deviceId, "simpleenroll"));
+        Assert.Equal(401, await StatusAsync(own));
+        Assert.Equal(EstTexts.NoSignInPolicy, _service.GetState().PolicyProblem);
+        Assert.Equal(1, _service.GetState().PoliciesApply);
+    }
+
+    [Fact]
+    public async Task Without_pki_policies_nothing_signs_in()
+    {
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+
+        _policies = null; // no PKI store (a PKI that started again offers a new one)
+        var none = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(401, none.Status);
+        Assert.Equal(Oadm.Plugins.Pki.Policies.PolicyTexts.NotRunning, _service.GetState().PolicyProblem);
+
+        var damaged = new FakeSettings();
+        await damaged.SetAsync(Oadm.Plugins.Pki.Policies.PolicyStore.SettingsKey, "{\"policies\":3}", CancellationToken.None);
+        _policies = await TestPolicies.StoreAsync(settings: damaged);
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+        Assert.Equal(Oadm.Plugins.Pki.Policies.PolicyTexts.Unreadable, _service.GetState().PolicyProblem);
+        Assert.Empty(DeviceRequests());
+    }
+
+    [Fact]
+    public async Task A_device_no_enrollment_policy_holds_is_refused_and_a_profile_not_allowed_answers_like_an_unknown_one()
+    {
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+        var store = _policies!;
+        var all = store.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single();
+        Assert.Equal(("All devices", "all", true), (all.Name, all.ProfileScope, all.Devices!.AllDevices));
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+
+        // Only chosen devices: a camera none holds is refused (403) and listed.
+        var other = new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.99" };
+        _devices.List.Add(other);
+        await TestPolicies.AddAsync(store, all with { Name = "Others", Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = [other.Serial] } });
+        var refused = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal((403, EstRefusals.NoEnrollmentPolicy), (refused.Status, refused.Body.Trim()));
+        Assert.Equal((false, EstRefusals.NoEnrollmentPolicy), (_service.Store.Enrollments()[0].Ok, _service.Store.Enrollments()[0].Reason));
+        Assert.Contains(_publisher.Fired, f => f.Type == EstPluginInfo.RefusedEvent);
+
+        // A policy for the camera that allows dot1x only: https answers like an unknown profile (404), with the reason in the list.
+        await TestPolicies.AddAsync(store, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "Entrance", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment, ProfileScope = "chosen", Profiles = ["dot1x"],
+            Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = [Serial] },
+        });
+        var unknown = await SendAsync("POST", "/.well-known/est/nosuch/simpleenroll", _deviceId, Body(csr));
+        var notAllowed = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal((unknown.Status, unknown.Body), (notAllowed.Status, notAllowed.Body)); // no probing: the same answer
+        Assert.Equal(404, notAllowed.Status);
+        Assert.Equal("The enrollment policy Entrance does not allow the profile https.", _service.Store.Enrollments()[0].Reason);
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/dot1x/simpleenroll", _deviceId, Body(csr))).Status);
+
+        // No enrollment for the camera: every profile, also renewals.
+        var entrance = store.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single(p => p.Name == "Entrance");
+        await TestPolicies.AddAsync(store, entrance with { ProfileScope = "none", Profiles = null });
+        Assert.Equal(404, (await SendAsync("POST", "/.well-known/est/dot1x/simplereenroll", _deviceId, Body(csr))).Status);
+        Assert.Equal("The enrollment policy Entrance allows no enrollment.", _service.Store.Enrollments()[0].Reason);
+
+        // A profile the EST server does not have is refused on save; the list says how many apply.
+        store.ProfileNames = token => EstPolicies.ProfileNamesAsync(_settings, token);
+        var bad = await store.SaveAsync(entrance with { Profiles = ["web"] }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
+        Assert.Equal(("profiles", "The EST server has no profile web."), (bad.Error?.Field, bad.Error?.Message));
+        Assert.Equal(4, _service.GetState().PoliciesApply);
     }
 
     [Fact]
     public async Task Est_tells_pki_which_cas_it_uses_and_clears_it_when_it_stops()
     {
-        // At the start (a PKI without the list): the defaults.
+        // At the start (a PKI without the list): the CAs of the Sign-in CA policies.
         Assert.Equal("EST server", _ca.UsedBy[EstPluginInfo.PluginId].Name);
         Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId, CertificateAuthorityInfo.OadmId], _ca.UsedBy[EstPluginInfo.PluginId].Ids.Order(StringComparer.Ordinal));
 
-        // Only the Axis device ID chosen: the OADM CA still counts, EST signs with it.
+        // Only the Axis device ID signs in: the OADM CA still counts, EST signs with it.
         _ca.ListDefaults();
-        await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = [CertificateAuthorityInfo.AxisDeviceIdId] }), CancellationToken.None);
+        var oadm = _policies!.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa).Single(p => p.CaId == CertificateAuthorityInfo.OadmId);
+        Assert.Null((await _policies.DeleteAsync(oadm.Id, "admin", CancellationToken.None)).Error);
         Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId, CertificateAuthorityInfo.OadmId], _ca.UsedBy[EstPluginInfo.PluginId].Ids.Order(StringComparer.Ordinal));
 
-        // A chosen CA PKI no longer holds is not reported; PKI's Changed reports again.
-        await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = ["oadm-previous:AB", CertificateAuthorityInfo.AxisDeviceIdId] }), CancellationToken.None);
-        Assert.DoesNotContain("oadm-previous:AB", _ca.UsedBy[EstPluginInfo.PluginId].Ids);
+        // A CA PKI no longer holds is not reported; PKI's Changed reports again.
         _ca.AuthorityList.Add(new("oadm-previous:AB", "OADM CA 2025", CertificateAuthorityKind.PreviousOadm, [_root.RawData], DateTime.UtcNow.AddYears(1), false));
-        _ca.RaiseChanged();
+        await TestPolicies.AddAsync(_policies, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "OADM CA 2025", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa, CaId = "oadm-previous:AB", SignInFor = "renewal",
+        });
         Assert.Contains("oadm-previous:AB", _ca.UsedBy[EstPluginInfo.PluginId].Ids);
+        _ca.AuthorityList.RemoveAll(a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        _ca.RaiseChanged();
+        Assert.DoesNotContain("oadm-previous:AB", _ca.UsedBy[EstPluginInfo.PluginId].Ids);
 
         await _service.DisposeAsync();
         Assert.False(_ca.UsedBy.ContainsKey(EstPluginInfo.PluginId));
@@ -517,6 +613,7 @@ public sealed class ServerTests : IAsyncLifetime
     [Fact]
     public async Task Settings_are_checked_and_a_new_port_opens_a_new_listener()
     {
+        _policies = null; // no PKI: the profiles' own validity counts (the profile checks come first)
         var bad = await _service.SaveAsync(new SaveRequest(new EstConfig { Port = 80 }), CancellationToken.None);
         Assert.Equal("port", bad.Field);
         var twice = await _service.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new("a", ProfileUse.Https), new("b", ProfileUse.Https)] }), CancellationToken.None);

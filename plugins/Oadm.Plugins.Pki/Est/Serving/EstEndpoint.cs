@@ -36,6 +36,9 @@ public static class EstRefusals
     public const string BadRequest = "The certificate request cannot be read.";
     public const string NoPolicy = EstTexts.NoPolicy;
 
+    /// <summary>No Enrollment policy of PKI holds the camera (docs/spec/pki.md "Policies").</summary>
+    public const string NoEnrollmentPolicy = "No enrollment policy for this device.";
+
     /// <summary>The camera signed in with a certificate on PKI's revocation list (with the date and reason when known).</summary>
     public const string Revoked = "Certificate revoked";
 }
@@ -43,8 +46,9 @@ public static class EstRefusals
 /// <summary>
 /// The EST operations (RFC 7030) of one request: <c>GET /.well-known/est/&lt;profile&gt;/cacerts</c>,
 /// <c>POST .../simpleenroll</c> and <c>POST .../simplereenroll</c>; everything else and unknown or disabled profiles 404.
-/// Who may enroll (docs/spec/est-server.md): the camera signs in with its Axis device ID, or with a certificate EST issued
-/// it, and its serial number is a device OADM manages (at a site: a device of that site).
+/// Who may enroll (docs/spec/est-server.md, docs/spec/pki.md "Policies"): the camera signs in with a certificate of a CA a
+/// Sign-in CA policy names (its Axis device ID, or a certificate the OADM CA issued it), its serial number is a device OADM
+/// manages (at a site: a device of that site), and an Enrollment policy holds it and allows the profile.
 /// </summary>
 public sealed partial class EstEndpoint(
     EstStore store,
@@ -60,6 +64,9 @@ public sealed partial class EstEndpoint(
 
     /// <summary>What a profile issues with (its policy's valid days); null: the policy cannot be read, the request is refused (fail closed).</summary>
     public Func<EstProfile, ProfileIssuing?> IssuingOf { get; init; } = p => new ProfileIssuing(p.ValidityDays, p.Key, null);
+
+    /// <summary>PKI's EST policies now (Sign-in CA, Enrollment); without them nothing signs in and no device enrolls.</summary>
+    public Func<EstRules> Rules { get; init; } = () => EstRules.Closed(Oadm.Plugins.Pki.Policies.PolicyTexts.NotRunning);
 
     // Without the host's groups every device counts as covered (fail closed): no host name the camera reports.
     private readonly Func<IDeviceInfo, bool> _inAnyGroup = inAnyGroup ?? (_ => true);
@@ -128,7 +135,8 @@ public sealed partial class EstEndpoint(
             return Refuse(401, EstRefusals.NoIdentity);
         }
 
-        var serial = SerialOf(client, identity.Presented, ca);
+        var rules = Rules();
+        var serial = SerialOf(client, identity.Presented, ca, rules.SignInCas(kind));
         if (serial is null)
         {
             return Refuse(401, EstRefusals.NotDeviceId);
@@ -143,6 +151,15 @@ public sealed partial class EstEndpoint(
         if (device.SiteId != origin.SiteId)
         {
             return Refuse(403, EstRefusals.OtherSite, device);
+        }
+
+        // PKI's Enrollment policies: none holds the device (403), or one that holds it does not allow the profile: the
+        // answer of an unknown profile (no probing), listed in Enrollments with the policy that refused it.
+        if (rules.Check(device, profile.Name) is { Allowed: false } check)
+        {
+            return check.Status == 404
+                ? new EstResult(NotFound(), operation, profile.Name, Record(device, device.Address, profile, kind, ok: false, check.Reason ?? string.Empty))
+                : Refuse(check.Status, check.Reason ?? EstRefusals.NoEnrollmentPolicy, device);
         }
 
         // A certificate on PKI's revocation list renews nothing (docs/spec/radius-server.md "Certificates and revocation"):
@@ -221,12 +238,11 @@ public sealed partial class EstEndpoint(
 
     /// <summary>
     /// The camera's serial: from its Axis device ID, or from a certificate of an OADM CA it signs in with; only through the
-    /// CAs of "Sign in with" that PKI still holds (fail closed).
+    /// CAs of the Sign-in CA policies for this request (<paramref name="chosen"/>) that PKI still holds (fail closed).
     /// </summary>
-    private string? SerialOf(X509Certificate2 client, IReadOnlyList<X509Certificate2> presented, IDeviceCertificateAuthority ca)
+    private string? SerialOf(X509Certificate2 client, IReadOnlyList<X509Certificate2> presented, IDeviceCertificateAuthority ca, IReadOnlySet<string> chosen)
     {
         var now = _time.GetUtcNow();
-        var chosen = new HashSet<string>(store.Config.SignInWith, StringComparer.OrdinalIgnoreCase);
         var authorities = ca.Authorities;
         var legacy = authorities.Count == 0; // a PKI without the list: the Axis device ID and the OADM CA as before
         if (chosen.Contains(CertificateAuthorityInfo.AxisDeviceIdId) && (legacy || authorities.Any(a => a.Kind == CertificateAuthorityKind.AxisDeviceId))

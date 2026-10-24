@@ -46,19 +46,17 @@
         <ui:FormField Label="Enrollments kept">
           <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
         </ui:FormField>
-        <!-- PKI's CAs a camera may sign in with (a few check boxes: no virtualization needed). -->
-        <ui:FormField Label="Sign in with" Error="{Binding SignInError}">
-          <ItemsControl ItemsSource="{Binding SignIn}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:SignInRowViewModel">
-                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" IsEnabled="{Binding MayManage}" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ui:FormField>
         <ui:FormField Label="Issued by">
           <TextBlock Text="{Binding IssuingCa}" TextTrimming="CharacterEllipsis" />
         </ui:FormField>
+        <!-- Who may enroll and which CAs sign in are PKI's policies (Enrollment, Sign-in CA): how many apply, and the way
+             there, like the 802.1X page. Not for users limited to a device group (the policies are server-wide). -->
+        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding ShowsPolicies}">
+          <TextBlock Classes="secondary" Text="{Binding PoliciesText}" VerticalAlignment="Center" />
+          <Button Classes="link" Content="Edit in PKI" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Classes="warning" Text="{Binding PolicyProblem}" TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"
+                   IsVisible="{Binding PolicyProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
 
       <StackPanel Spacing="6">

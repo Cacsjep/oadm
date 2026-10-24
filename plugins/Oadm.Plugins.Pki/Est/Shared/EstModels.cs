@@ -141,8 +141,9 @@ public sealed record EstConfig
     public int EnrollmentsKept { get; init; } = EstPluginInfo.DefaultEnrollmentsKept;
 
     /// <summary>
-    /// "Sign in with": the ids of PKI's CAs a camera may sign in with (docs/spec/pki.md). Default: the Axis device ID and
-    /// the OADM CA (renewals). An id PKI no longer holds lets nothing in.
+    /// Before the Sign-in CA policies (stage 1 of docs/spec/pki.md): the ids of PKI's CAs a camera could sign in with.
+    /// Default: the Axis device ID and the OADM CA (renewals). Read only by the conversion into Sign-in CA policies; a save of
+    /// the page keeps the stored value.
     /// </summary>
     public IReadOnlyList<string> SignInWith { get; init; } = DefaultSignInWith;
 
@@ -244,8 +245,11 @@ public sealed record EstState
 
     public int CertificateCount { get; init; }
 
-    /// <summary>The CAs a camera may sign in with ("Sign in with" check boxes), from PKI's list.</summary>
-    public IReadOnlyList<SignInChoice> SignInChoices { get; init; } = [];
+    /// <summary>PKI's EST policies the server applies (Enrollment, Sign-in CA): "2 policies apply". Null for a user limited to a device group.</summary>
+    public int? PoliciesApply { get; init; }
+
+    /// <summary>Why no camera can enroll ("There is no Sign-in CA policy..."); null when none. Null for a user limited to a device group.</summary>
+    public string? PolicyProblem { get; init; }
 
     /// <summary>The CA that issues the certificates (the OADM CA's name); null without one.</summary>
     public string? IssuingCa { get; init; }
@@ -265,6 +269,18 @@ public static class EstTexts
 
     /// <summary>The set-up task: a profile without a usable issuing policy (before the first write).</summary>
     public static string ProfileWithoutPolicy(string profile) => $"The EST profile {profile} has no issuing policy. Choose one on the EST server page. Nothing was changed.";
+
+    /// <summary>The page: PKI has no Sign-in CA policy (nothing signs in, fail closed).</summary>
+    public const string NoSignInPolicy = "Cameras cannot sign in: there is no Sign-in CA policy.";
+
+    /// <summary>The page: PKI has no Enrollment policy (every device is refused).</summary>
+    public const string NoEnrollmentPolicies = "No camera can enroll: there is no Enrollment policy.";
+
+    /// <summary>"The enrollment policy PTZ does not allow the profile dot1x." (Enrollments; the camera gets the answer of an unknown profile).</summary>
+    public static string ProfileNotAllowed(string policy, string profile) => $"The enrollment policy {policy} does not allow the profile {profile}.";
+
+    /// <summary>"The enrollment policy Storage room allows no enrollment."</summary>
+    public static string EnrollmentOff(string policy) => $"The enrollment policy {policy} allows no enrollment.";
 }
 
 /// <summary>An issuing policy a profile can name: "HTTPS" (OADM Root CA SERVER01, 365 days, ECC).</summary>
@@ -273,19 +289,13 @@ public sealed record IssuingPolicyChoice(Guid Id, string Name, string Kind, stri
 
 public sealed record EnrollmentList(IReadOnlyList<Enrollment> Enrollments);
 
-/// <summary>One CA of "Sign in with": PKI's id and the name shown.</summary>
-public sealed record SignInChoice(string Id, string Name);
-
-/// <summary>The names of the "Sign in with" choices: "Axis device ID", "OADM Root CA SERVER01, for renewals".</summary>
+/// <summary>The names of PKI's CAs on the EST page.</summary>
 public static class SignInNames
 {
     public const string AxisDeviceId = "Axis device ID";
 
     /// <summary>The OADM CA's name when PKI names none (its certificate unreadable).</summary>
     public const string Oadm = "OADM CA";
-
-    /// <summary>After the name of an OADM CA (the current and the previous ones).</summary>
-    public const string ForRenewals = ", for renewals";
 }
 
 /// <param name="Certificates">The certificates the cameras did not renew in time (the first 500).</param>

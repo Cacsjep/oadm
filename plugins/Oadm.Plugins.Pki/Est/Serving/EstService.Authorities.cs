@@ -6,40 +6,13 @@ using Oadm.Sdk.Certificates;
 namespace Oadm.Plugins.Est.Serving;
 
 /// <summary>
-/// "Sign in with" (docs/spec/pki.md "Services select CAs"): which of PKI's CAs a camera may sign in with. EST tells PKI what
-/// it uses (<see cref="IDeviceCertificateAuthority.SetUsedBy"/>): the chosen CAs that PKI still holds and the OADM CA it
-/// signs with.
+/// The CAs EST uses (docs/spec/pki.md "Policies"): the CAs of PKI's Sign-in CA policies and the OADM CA it signs with. EST
+/// tells PKI what it uses (<see cref="IDeviceCertificateAuthority.SetUsedBy"/>): those PKI still holds.
 /// </summary>
 public sealed partial class EstService
 {
     private readonly Lock _usedByGate = new();
     private IDeviceCertificateAuthority? _watched;
-
-    /// <summary>
-    /// The CAs a camera may sign in with: the Axis device ID, the OADM CA and the previous OADM CAs PKI holds (a PKI without
-    /// the list: the Axis device ID and the OADM CA).
-    /// </summary>
-    internal static IReadOnlyList<SignInChoice> SignInChoices(IDeviceCertificateAuthority? ca)
-    {
-        var authorities = ca?.Authorities ?? [];
-        if (authorities.Count == 0)
-        {
-            return ca is null
-                ? [new(CertificateAuthorityInfo.AxisDeviceIdId, SignInNames.AxisDeviceId), new(CertificateAuthorityInfo.OadmId, SignInNames.Oadm + SignInNames.ForRenewals)]
-                : [new(CertificateAuthorityInfo.AxisDeviceIdId, SignInNames.AxisDeviceId), new(CertificateAuthorityInfo.OadmId, ChainName(ca) + SignInNames.ForRenewals)];
-        }
-
-        return
-        [
-            .. authorities.Where(a => a.Kind is CertificateAuthorityKind.AxisDeviceId or CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm)
-                .OrderBy(a => a.Kind switch { CertificateAuthorityKind.AxisDeviceId => 0, CertificateAuthorityKind.Oadm => 1, _ => 2 })
-                .Select(a => new SignInChoice(a.Id, a.Kind switch
-                {
-                    CertificateAuthorityKind.AxisDeviceId => SignInNames.AxisDeviceId,
-                    _ => (string.IsNullOrWhiteSpace(a.Name) ? SignInNames.Oadm : a.Name) + SignInNames.ForRenewals,
-                })),
-        ];
-    }
 
     /// <summary>The name of the CA that issues (the OADM CA, as the PKI page names it); null without one.</summary>
     internal static string? IssuingName(IDeviceCertificateAuthority? ca) =>
@@ -96,8 +69,7 @@ public sealed partial class EstService
             return;
         }
 
-        var available = SignInChoices(ca).Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var used = _store.Config.SignInWith.Where(available.Contains).Append(CertificateAuthorityInfo.OadmId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var used = EstRules.Held(Rules.AllSignInCas, ca.Authorities).Append(CertificateAuthorityInfo.OadmId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         ca.SetUsedBy(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, _stopping ? [] : used);
     }
 
@@ -125,6 +97,6 @@ public sealed partial class EstService
         }
 
         ReportUsedBy();
-        PublishState(); // the page's choices follow PKI's list
+        PublishState(); // the issuing CA's name follows PKI's list
     }
 }

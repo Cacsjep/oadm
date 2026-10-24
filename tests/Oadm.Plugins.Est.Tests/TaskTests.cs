@@ -24,11 +24,19 @@ public sealed class TaskTests : IAsyncLifetime
     private readonly EstCamera _camera = new();
     private readonly FakeDevice _device = new() { Serial = "B8A44F631339", Address = "10.0.0.48", FirmwareVersion = "12.11.77" };
     private EstService _est = null!;
+    private Oadm.Plugins.Pki.Policies.PolicyStore _policies = null!; // a new server's policies: issuing, Enrollment "All devices", Sign-in CA
+
+    /// <summary>The settings with every profile naming the first issuing policy of its kind (as the EST server page saves them).</summary>
+    private SaveRequest Named(EstConfig config) => new(config with
+    {
+        Profiles = [.. config.Profiles.Select(p => p.PolicyId is null ? p with { PolicyId = _policies.FirstOf(EstProfile.PolicyKindOf(p.Use))!.Id } : p)],
+    });
 
     public async Task InitializeAsync()
     {
+        _policies = await TestPolicies.EstStoreAsync();
         // No device group covers the device: the host name the camera reports goes into its profile.
-        _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Scopes = new FakeCoreContext().FakeScopes });
+        _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Scopes = new FakeCoreContext().FakeScopes, Policies = () => _policies });
         await _est.StartAsync(CancellationToken.None);
         _camera.Server = _est;
         _camera.Device = _device;
@@ -43,7 +51,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task Set_up_writes_the_https_profile_with_the_device_id_and_a_second_run_writes_nothing()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var task = new EstSetupTask(() => _est);
         var ctx = Context();
 
@@ -71,7 +79,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task A_camera_behind_is_refused_before_any_write_unless_the_user_continued()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var task = new EstSetupTask(() => _est);
         _camera.ClockOffset = -TimeSpan.FromMinutes(12);
 
@@ -157,7 +165,7 @@ public sealed class TaskTests : IAsyncLifetime
     {
         _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
         _camera.Profiles["corp"] = new JsonObject { ["id"] = "corp", ["services"] = new JsonArray("WEBSERVER", "NETAUTH"), ["status"] = "ENROLLED" };
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
         var ctx = Context();
 
         await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
@@ -192,6 +200,32 @@ public sealed class TaskTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Set_up_follows_the_enrollment_policies_before_the_first_write()
+    {
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        var all = _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single();
+
+        // Enrollment for mqtt only: https is skipped with the policy's reason.
+        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.Chosen, Profiles = ["mqtt"] });
+        var ctx = Context();
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device with { Dot1xEnabled = false }, "{}", CancellationToken.None));
+        Assert.Equal(["oadm_mqtt"], _camera.Profiles.Keys);
+        Assert.Contains(EstTexts.ProfileNotAllowed(all.Name, "https"), ctx.Warnings);
+
+        // No enrollment: nothing allowed, nothing written.
+        var writes = _camera.Writes;
+        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.None });
+        var none = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
+        Assert.Equal(EstTaskIds.NoAllowedProfile, none.Message);
+
+        // A camera no Enrollment policy holds is not set up.
+        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.All, Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = ["ACCC8E000001"] } });
+        var held = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
+        Assert.Equal(EstTaskIds.NoEnrollmentPolicy, held.Message);
+        Assert.Equal(writes, _camera.Writes);
+    }
+
+    [Fact]
     public async Task A_camera_with_two_profiles_that_stay_is_not_touched()
     {
         _camera.Profiles["a"] = new JsonObject { ["id"] = "a", ["services"] = new JsonArray("MQTT") };
@@ -221,7 +255,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task A_profile_of_oadm_that_set_up_removes_stops_the_renewal_check_of_its_certificate()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("web", ProfileUse.Https)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("web", ProfileUse.Https)] }), CancellationToken.None);
         _camera.Profiles["oadm_https"] = new JsonObject { ["id"] = "oadm_https", ["services"] = new JsonArray("WEBSERVER"), ["status"] = "ENROLLED" };
         var now = DateTime.UtcNow;
         _est.Store.AddCertificate(new IssuedCertificate { SerialNumber = "01", DeviceId = _device.Id, Device = _device.Address, Profile = "https", IssuedUtc = now, NotAfterUtc = now.AddDays(365) });
@@ -239,9 +273,9 @@ public sealed class TaskTests : IAsyncLifetime
         var sites = new FakeSites();
         var site = sites.Add("Building B");
         site.AllowedPorts.Add((Sdk.Sites.SiteProtocol.Tcp, EstPluginInfo.DefaultPort));
-        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(sites), () => _ca, () => true) { Sites = sites });
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(sites), () => _ca, () => true) { Sites = sites, Policies = () => _policies });
         await est.StartAsync(CancellationToken.None);
-        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var device = _device with { Address = "192.168.5.20", SiteId = site.Id };
         _camera.Server = est;
         var ctx = new FakeTaskContext(_camera) { Network = new FakeDeviceNetwork(site.Id) { LocalAddress = IPAddress.Parse("192.168.5.2") } };
@@ -272,7 +306,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task A_refusal_of_the_est_server_ends_the_wait_with_its_reason()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         _camera.Enroll = false;
         _camera.OnProfileAdded = () => _est.Store.AddEnrollment(new Enrollment
         {
@@ -288,7 +322,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task A_profile_set_up_again_after_remove_takes_the_other_name_and_the_older_certificate_goes()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var task = new EstSetupTask(() => _est);
         var first = Context();
         await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, _device, "{}", CancellationToken.None));
@@ -326,7 +360,7 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task An_older_certificate_no_use_holds_is_deleted_and_its_name_taken()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
         _camera.Certificates["oadm_mqtt"] = new(null, "old"); // left over, no use holds it
         var ctx = Context();
 
@@ -354,9 +388,9 @@ public sealed class TaskTests : IAsyncLifetime
     public async Task A_camera_that_reports_enrolled_but_keeps_its_older_certificate_says_so()
     {
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time });
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time, Policies = () => _policies });
         await est.StartAsync(CancellationToken.None);
-        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         _camera.Server = est;
         _camera.KeepsOlderCertificate = true; // the server issues, the camera answers ENROLLED and stores nothing
         _camera.Certificates["oadm_https"] = new(null, "old");
@@ -380,9 +414,9 @@ public sealed class TaskTests : IAsyncLifetime
     public async Task A_camera_without_a_certificate_after_two_minutes_says_whether_it_reached_the_server(string status, bool unreachable)
     {
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time });
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time, Policies = () => _policies });
         await est.StartAsync(CancellationToken.None);
-        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         _camera.Enroll = false;
         _camera.ProfileStatus = status;
         var ctx = Context();
@@ -402,9 +436,9 @@ public sealed class TaskTests : IAsyncLifetime
     public async Task A_written_profile_needs_a_new_certificate_the_previous_one_does_not_count()
     {
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time });
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Time = time, Policies = () => _policies });
         await est.StartAsync(CancellationToken.None);
-        await est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        await est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         _camera.Server = null; // the camera says ENROLLED with the certificate it had, nothing new reaches the server
         var ctx = Context();
 
@@ -422,13 +456,13 @@ public sealed class TaskTests : IAsyncLifetime
     [Fact]
     public async Task Setting_up_again_after_one_profile_changed_rewrites_only_that_one()
     {
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt)] }), CancellationToken.None);
         var task = new EstSetupTask(() => _est);
         var first = Context();
         await StepRun.RunAsync(first.Steps, () => task.ExecuteAsync(first, _device, "{}", CancellationToken.None));
         Assert.Equal(["oadm_https", "oadm_mqtt"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
 
-        await _est.SaveAsync(new SaveRequest(_est.Store.Config with { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt, Enabled: false)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(_est.Store.Config with { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("mqtt", ProfileUse.Mqtt, Enabled: false)] }), CancellationToken.None);
         var again = Context();
         await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, "{}", CancellationToken.None));
 
@@ -465,7 +499,7 @@ public sealed class TaskTests : IAsyncLifetime
         // IEEE 802.1X on, "replace" ticked, but the EST server's IEEE 802.1X profile is off: nothing replaces it.
         _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
         _camera.Profiles["oadm_dot1x"] = new JsonObject { ["id"] = "oadm_dot1x", ["services"] = new JsonArray("NETAUTH"), ["status"] = "ENROLLED" };
-        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("dot1x", ProfileUse.Dot1x, Enabled: false)] }), CancellationToken.None);
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https), new EstProfile("dot1x", ProfileUse.Dot1x, Enabled: false)] }), CancellationToken.None);
         var ctx = Context();
 
         await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));

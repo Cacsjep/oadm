@@ -22,6 +22,9 @@ public static class EstPolicies
     /// <summary>The owner of the conversion of the profiles' validity and key (stage 4; "oadm.est" stays for the EST policies of stage 6).</summary>
     public const string Owner = EstPluginInfo.PluginId + ":profiles";
 
+    /// <summary>The owner of the conversion of "Sign in with" and today's enrollment into Sign-in CA and Enrollment policies (stage 6).</summary>
+    public const string RulesOwner = EstPluginInfo.PluginId;
+
     /// <summary>The policy of <paramref name="profile"/>: the one it names when that is of its use's kind; without a name the first of the kind. Null: none (fail closed).</summary>
     public static PkiPolicy? PolicyOf(EstProfile profile, PolicyStore? store)
     {
@@ -79,6 +82,70 @@ public static class EstPolicies
         ArgumentNullException.ThrowIfNull(settings);
         var config = Read(await settings.GetAsync(EstStore.ConfigKey, ct).ConfigureAwait(false));
         return config is null ? [] : [.. config.Profiles.Where(p => p.PolicyId is not null).Select(p => (p.PolicyId!.Value, p.Name))];
+    }
+
+    /// <summary>The names of the profiles in the stored settings (an Enrollment policy chooses among them); none when they cannot be read.</summary>
+    public static async Task<IReadOnlyList<string>> ProfileNamesAsync(IPluginSettings settings, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var config = Read(await settings.GetAsync(EstStore.ConfigKey, ct).ConfigureAwait(false));
+        return config is null ? [] : [.. config.Profiles.Select(p => p.Name)];
+    }
+
+    /// <summary>
+    /// Once (docs/spec/pki.md "Converting existing settings"): the EST server's rules of before the policies become PKI's EST
+    /// policies: the Enrollment policy "All devices" (every device OADM manages, every profile: as before) and one Sign-in CA
+    /// policy per CA of "Sign in with" (the Axis device ID for new certificates, the OADM CA and previous OADM CAs for
+    /// renewals; OADM 4.1 had no "Sign in with": the Axis device ID and the OADM CA). A conversion that runs after EST policies
+    /// were made merges (<see cref="PolicyStore.ConvertOnceAsync"/>): no second policy of a CA, no "All devices" next to
+    /// Enrollment policies made before. Settings that cannot be read convert nothing (fail closed; the next start tries again).
+    /// True when it converted now.
+    /// </summary>
+    public static async Task<bool> ConvertRulesAsync(IPluginSettings settings, PolicyStore store, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(store);
+        if (store.IsUnreadable || store.Converted.Contains(RulesOwner, StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        if (Read(await settings.GetAsync(EstStore.ConfigKey, ct).ConfigureAwait(false)) is not { } config)
+        {
+            return false;
+        }
+
+        return await store.ConvertOnceAsync(RulesOwner, _ => Task.FromResult(RulesOf(config, store.SignInCaChoices())), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>The Enrollment and Sign-in CA policies of <paramref name="config"/> (see <see cref="ConvertRulesAsync"/>).</summary>
+    internal static IReadOnlyList<PkiPolicy> RulesOf(EstConfig config, IReadOnlyList<PolicyCaChoice> signInCas)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(signInCas);
+        var list = new List<PkiPolicy>
+        {
+            new() { Name = PolicyLimits.AllDevicesName, Kind = PolicyKinds.Enrollment, Devices = PolicyDevices.Everything, ProfileScope = PolicyProfiles.All },
+        };
+        foreach (var id in (config.SignInWith ?? EstConfig.DefaultSignInWith).Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            // A CA PKI no longer holds let nothing in (a previous OADM CA that ended): nothing to convert.
+            if (signInCas.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase)) is not { } ca)
+            {
+                continue;
+            }
+
+            var axis = ca.Kind == CertificateAuthorityKind.AxisDeviceId;
+            list.Add(new PkiPolicy
+            {
+                Name = axis ? PolicyStore.AxisDeviceIdName : ca.Kind == CertificateAuthorityKind.Oadm ? PolicyStore.IssuingCaName : ca.Name,
+                Kind = PolicyKinds.SignInCa,
+                CaId = ca.Id,
+                SignInFor = axis ? PolicySignIn.New : PolicySignIn.Renewal,
+            });
+        }
+
+        return list;
     }
 
     /// <summary>
