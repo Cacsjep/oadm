@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using Oadm.Plugins.Est.DeviceId;
+using Oadm.Plugins.DeviceIds;
 using Oadm.Plugins.Est.Protocol;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Certificates;

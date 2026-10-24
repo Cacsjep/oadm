@@ -1,7 +1,8 @@
-# 802.1X server (OADM PRO, planned)
+# 802.1X server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-23; in work: the protocol layer is built ("Code (protocol)"), the rest follows the stages at the end.
+Agreed 2026-10-23; built 2026-10-24: the protocol layer ("Code (protocol)") and the server part ("Code (server)"); the
+page is the client part.
 
 An OADM PRO plugin (`oadm.radius`, `"pro": true`, its own source-available license like EST). OADM answers the switches
 of the network as their **RADIUS server** and authenticates the cameras on the switch ports with **EAP-TLS** (IEEE
@@ -393,14 +394,77 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
 - **RFC vectors**: RFC 2865 7 and RFC 5997 6 (Message-Authenticator). The second request of RFC 2865 7.3 is printed with
   a State length of 0x10 for 8 octets and is malformed as printed (a test shows the parser drops it).
 
+## Code (server)
+
+`plugins/Oadm.Plugins.Radius/Server/` (namespace `Oadm.Plugins.Radius.Server`), the page contract in `Api/RadiusApi.cs`
+(methods `RadiusMethods`, topics `RadiusTopics`, DTOs, the input rules `RadiusRules` shared with the page, `RadiusJson`
+camelCase with enums as camelCase strings; linked into the client part). Built 2026-10-24.
+
+- **Wiring** (`RadiusPlugin`, `RadiusHost`, `RadiusService`): PKI's CA through `ctx.Services.Find<IDeviceCertificateAuthority>()`
+  each time, OADM PRO through `ctx.Pro` on every datagram (none answered without it). Listener `ctx.Network.ListenUdpAsync(port,
+  "802.1X server", addresses)` (SDK 0.4.0: the addresses of the Listen on interface; empty = every address), tried again
+  every 30 s when the interface is gone or moved; one relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
+  released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
+- **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
+  addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th),
+  a bounded queue (8,192; full = dropped, the switch retransmits), 64 workers (`RadiusHost.Workers`, the bound on parallel
+  handshakes) call `RadiusProcessor.Process` with the switch of now (a switch removed meanwhile: its sessions end, nothing
+  sent). The switch row's state: Site offline (site or relay offline), Wrong secret (the last request had a missing or wrong
+  Message-Authenticator), Answered, No requests yet; dropped counts malformed, wrong secret and too large answers.
+- **Switches** (setting `switches`, at most 500): secret `ctx.Secrets.Protect(secret, "radius:switch:<id>")` (no protector:
+  saving refused "This server cannot keep shared secrets."; an unreadable secret takes the switch out with a warning), never
+  logged or returned (Edit with an empty secret keeps it). A save or delete builds a new table and swaps it; a changed
+  address or site, or a delete, ends the switch's sessions (`EndSessions`). Host names resolved on the switch's route
+  (`ForSite(siteId).ResolveAsync`) when saved (none: "The server cannot find this host name.") and every 10 minutes;
+  `radiusServerAddress` = the Listen on interface's IPv4, else `LocalAddressTowardsAsync` (at a site the node's).
+  `generateSecret`: 24 letters and digits (no look-alikes), nothing stored.
+- **Certificate check** (`DeviceCertificateValidator`, in memory): dates (alert 45, "Client certificate expired on ..."),
+  extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
+  (the CA's `Chain` and `PreviousChains`, SDK 0.4.0: self-signed ones are the anchors; rebuilt when the CA changes, checked
+  every minute) giving the one serial of its `axis-<serial>.local` names (none or two: "Client certificate names no
+  device"), else the Axis device ID roots (`plugins/Shared/DeviceId/AxisDeviceId`, shared with EST) giving the subject's
+  serial, else alert 48; then the revocation list (44, `FindRevocation(...).Describe()`), the managed device by serial
+  (`DeviceIndex`: the full device list read every 10 s and soon after a miss; 49 "Certificate of a device OADM does not
+  manage (...)"), the switch's site (49 "The device belongs to another site"), the MAC warning and the VLAN
+  (`VlanPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial) goes with the session.
+- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the OADM CA for the IPv4 listen addresses (every card's
+  with All interfaces) and the host name, 365 days, kept in the setting `serverCertificate` (key encrypted with
+  `radius:server-key`), made again with a new CA, new names or 30 days before its end (checked at the start and every
+  minute); a new one goes into the processor's options at once. Without a CA none: handshakes are refused, the status
+  says "The PKI has no certificate authority."
+- **Sessions tab** (`SessionBoard`): `SessionChanged` only queues; every 500 ms the tick drains it (rows keyed by session,
+  the device the certificate named or a MAC guess), ends timed-out sessions (every second), takes rows ended 10 s ago off
+  (`removed`), and publishes the changed rows as `sessions` with `PluginEventAudience.DeviceRows` (500 rows per event;
+  rows without a device: `Guid.Empty`, users with all devices only).
+- **Log** (`RadiusLog`): one row per ended session (also Timed out and Abandoned), records `log` (key = id, only new and
+  removed rows, every 2 s) and `logCertificates` (the leaf DER once per fingerprint, deleted with its last row); kept per
+  "Log entries kept"; `listLog` searches every column in one pass; `deleteLog` clears both collections and publishes
+  `logCleared`. Event rules: `oadm.radius.authenticated` (device, switch, port, VLAN) and `oadm.radius.failed` (the device
+  the certificate named or none; switch, port, reason) for Failed and Timed out, never for Abandoned or a MAC warning.
+- **Page methods** (`RadiusMethods`, roles in `RequiredRole`, `RequiresAllDevices` for every save, `generateSecret`,
+  `deleteSwitch`, `deleteLog` and `revoke`): rows of sessions, the log, `getLogCertificate`, `listRevoked`,
+  `listCertificates` (PKI's `ListIssuedAsync` with the caller's `DeviceIds`) and `getIssuedCertificate` follow the caller's
+  devices (`ViewedSet`); a row or certificate of another device answers like an unknown one; `listSites` the group's sites;
+  `getVlans` gives tag choices of the devices only to users with all devices. `state` goes to users with all devices and to
+  each group that read the page (`ViewerScopes`), `switches`, `logCleared` and `revoked` (PKI's `RevocationChanged`) to
+  every page.
+- **Tests**: `tests/Oadm.Plugins.Radius.Tests` `ServerTests` (end to end through the in-memory listener and relays with a
+  BouncyCastle camera: accept TLS 1.2 and 1.3 and the device ID, every refusal, removed device, MAC warning, sites,
+  switches added and removed while sessions run, wrong secret, VLANs, no PRO, no CA, server certificate kept and renewed,
+  previous CA, secrets, input rules, host names, Advanced, Listen on, the log), `PluginTests` (manifest, the canary over every
+  method, rows of a group user), `PluginPerfTests` (Category=Perf: 30,000 authentications through the plugin, the log at
+  50,000 kept). Support: `Support/PluginHarness.cs` (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).
+- **Not built yet**: recorded conversations of real switches (no hardware here; the protocol tests replay the RFC
+  examples), accounting.
+
 ## Stages
 
 1. **Built 2026-10-24:** PKI: the list of issued certificates and the revocation list (Certificates tab, Revoke, the SDK
    members), device groups filtering of the Certificates tab; EST refuses revoked certificates.
-2. RADIUS and EAP-TLS core (own RADIUS codec, BouncyCastle TLS proof first), fragmentation, the server certificate,
+2. **Built 2026-10-24 (server part):** RADIUS and EAP-TLS core (own RADIUS codec, BouncyCastle TLS proof first), fragmentation, the server certificate,
    switches (changed while running), Sessions and Log, the TLS alert texts, Advanced, the Revoked tab.
-3. VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab was filtered in stage 1).
-4. Switches at sites through the site node.
+3. **Built 2026-10-24 (server part):** VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab was filtered in stage 1).
+4. **Built 2026-10-24 (server part):** Switches at sites through the site node.
 
 The switches, VLAN rules, settings, the issued certificates and the revocation list are part of the encrypted backup
 (plugin settings and records, `docs/spec/settings-backup.md`); a restore brings back the revocation list with the CA.

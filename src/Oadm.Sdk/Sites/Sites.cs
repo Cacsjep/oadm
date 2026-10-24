@@ -236,6 +236,14 @@ public interface IPluginNetwork
     /// </summary>
     Task<ITcpRelay> ListenTcpAsync(int port, string reason, IReadOnlyList<IPAddress> addresses, CancellationToken ct) =>
         ListenTcpAsync(port, reason, ct);
+
+    /// <summary>
+    /// Listens on UDP <paramref name="port"/> on <paramref name="addresses"/> of the server only (the addresses of the
+    /// interface a page's "Listen on" chose); an empty list listens on every address. SDK 0.4.0 (OADM 4.2): implementations
+    /// that do not override it listen on every address.
+    /// </summary>
+    Task<IUdpRelay> ListenUdpAsync(int port, string reason, IReadOnlyList<IPAddress> addresses, CancellationToken ct) =>
+        ListenUdpAsync(port, reason, ct);
 }
 
 /// <summary>Texts about sites shared by host and plugins.</summary>

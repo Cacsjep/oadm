@@ -103,6 +103,14 @@ public interface IDeviceCertificateAuthority
     /// <summary>The revocation of <paramref name="serialNumber"/>, null when it is not revoked (for the refusal's text).</summary>
     CertificateRevocation? FindRevocation(string serialNumber) => null;
 
+    /// <summary>
+    /// The previous OADM CAs (replaced, kept while their device certificates may still be valid), newest first: each one as
+    /// DER, the CA certificate first, then the certificates above it. A server that checks device certificates (the 802.1X
+    /// server) trusts them next to <see cref="Chain"/>. They change when a CA is replaced or a previous one removed: read
+    /// them again after <see cref="Changed"/> and now and then. Default: none.
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<byte[]>> PreviousChains => [];
+
     /// <summary>The revocation list: revoked certificates that could still be valid, newest first.</summary>
     IReadOnlyList<CertificateRevocation> Revocations => [];
 

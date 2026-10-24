@@ -407,9 +407,10 @@ public abstract class LocalListener : IRelay
     private protected virtual ValueTask OnDisposedAsync() => ValueTask.CompletedTask;
 
     /// <summary>A UDP listener on the server's own network.</summary>
-    internal static async Task<IUdpRelay> OpenUdpAsync(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly, CancellationToken ct)
+    internal static async Task<IUdpRelay> OpenUdpAsync(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly,
+        IReadOnlyList<IPAddress>? addresses, CancellationToken ct)
     {
-        var listener = new LocalUdpListener(port, reason, firewall, time, loopbackOnly);
+        var listener = new LocalUdpListener(port, reason, firewall, time, loopbackOnly, addresses);
         await listener.StartAsync(ct).ConfigureAwait(false);
         return listener;
     }
@@ -423,8 +424,8 @@ public abstract class LocalListener : IRelay
         return listener;
     }
 
-    private sealed class LocalUdpListener(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly)
-        : LocalListener(SiteProtocol.Udp, port, reason, firewall, time, loopbackOnly), IUdpRelay
+    private sealed class LocalUdpListener(int port, string reason, Sdk.Network.IFirewallRules? firewall, TimeProvider? time, bool loopbackOnly, IReadOnlyList<IPAddress>? addresses)
+        : LocalListener(SiteProtocol.Udp, port, reason, firewall, time, loopbackOnly, addresses), IUdpRelay
     {
         private readonly System.Threading.Channels.Channel<(Datagram Datagram, Socket Socket)> _received =
             System.Threading.Channels.Channel.CreateBounded<(Datagram, Socket)>(new System.Threading.Channels.BoundedChannelOptions(1024)

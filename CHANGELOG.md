@@ -8,6 +8,9 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- **802.1X server** (OADM PRO, off by default): OADM answers your switches and lets only cameras it manages, with a
+  certificate from the OADM CA or their Axis device ID, onto the network. Switches at sites go through the site node.
+  VLANs per site or tag, a live Sessions tab, a log, and the event rules "Device authenticated" and "Authentication failed".
 - PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST), with filters, search and
   View certificate. **Revoke** takes certificates out of use for good; EST no longer renews a revoked certificate.
   Certificates from before this version are added when OADM reads them from the devices.

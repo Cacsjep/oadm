@@ -229,8 +229,15 @@ public sealed class FakePluginNetwork(FakeSites? sites = null) : IPluginNetwork
         : new FakeDeviceNetwork(siteId) { Failure = new InvalidOperationException("Site offline") };
 
     /// <inheritdoc />
-    public Task<IUdpRelay> ListenUdpAsync(int port, string reason, CancellationToken ct)
+    public Task<IUdpRelay> ListenUdpAsync(int port, string reason, CancellationToken ct) => ListenUdpAsync(port, reason, [], ct);
+
+    /// <summary>The addresses of the last UDP listener (empty = every address).</summary>
+    public IReadOnlyList<System.Net.IPAddress> LastUdpAddresses { get; private set; } = [];
+
+    /// <inheritdoc />
+    public Task<IUdpRelay> ListenUdpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct)
     {
+        LastUdpAddresses = addresses;
         var relay = new InMemoryUdpRelay(null, port, reason, SiteTexts.ThisServer, ListenState);
         Listeners.Enqueue(relay);
         return Task.FromResult<IUdpRelay>(relay);

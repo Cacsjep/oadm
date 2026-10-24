@@ -3,7 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-using Oadm.Plugins.Est.DeviceId;
+using Oadm.Plugins.DeviceIds;
 using Oadm.Plugins.Est.Protocol;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;

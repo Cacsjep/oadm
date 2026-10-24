@@ -183,6 +183,24 @@ public sealed class PluginNetworkTests
         Assert.Equal(IPAddress.Loopback, connection.Remote.Address);
     }
 
+    [Fact]
+    public async Task AUdpListenerOnOneInterfaceServesTheAddressesItCanBindAndAnswersFromThem()
+    {
+        await using var scope = new PluginNetworkScope(DeviceNetworks.Local);
+
+        var listener = await scope.ListenUdpAsync(0, "802.1X server", [IPAddress.Loopback, IPAddress.Parse("203.0.113.9")], CancellationToken.None);
+
+        Assert.Equal(RelayState.Running, listener.State);
+        using var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        await client.SendAsync(new byte[] { 1, 2, 3 }, new IPEndPoint(IPAddress.Loopback, listener.Port));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var datagram = await listener.ReceiveAsync(cts.Token);
+        Assert.Equal(IPAddress.Loopback, datagram.Remote.Address);
+        await listener.SendAsync(new byte[] { 9 }, datagram.Remote, cts.Token);
+        var answer = await client.ReceiveAsync(cts.Token);
+        Assert.Equal([9], answer.Buffer);
+    }
+
     // ---------- the plugin's scope ----------
 
     [Fact]

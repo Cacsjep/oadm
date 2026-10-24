@@ -508,11 +508,17 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
 
 ## 802.1X server (core plugin, OADM PRO, in work)
 
-`plugins/Oadm.Plugins.Radius` (+ `.Client` later), id `oadm.radius`, display name **802.1X server** (group Security,
-icon `lock`), off by default, `"pro": true`, its own source-available `LICENSE`, site support full with UDP 1812. Spec:
-`docs/spec/radius-server.md`; details: plugin `README.md`. So far the protocol layer (`Protocol/`) only; the plugin
-starts nothing and has no page yet.
+`plugins/Oadm.Plugins.Radius` (+ `.Client`), id `oadm.radius`, display name **802.1X server** (group Security, icon
+`lock`), off by default, `"pro": true`, its own source-available `LICENSE`, site support full with UDP 1812. Spec:
+`docs/spec/radius-server.md`; details: plugin `README.md`. The switches' RADIUS server on UDP 1812 (Listen on) and at
+every site with switches (the node's relay); EAP-TLS with the server certificate from the OADM CA; Sessions, Log, VLAN
+rules, the event rules "Device authenticated" and "Authentication failed".
 
-- Rules that must hold: only devices whose client certificate passes (the OADM CA or a trusted root, a managed device)
-  are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets are dropped, never answered;
-  secrets and keys are never logged.
+- Rules that must hold: only devices whose client certificate passes (the OADM CA, a previous OADM CA or a root above
+  them, or the Axis device ID roots; client authentication; exactly one managed device; at a site a device of that site;
+  not on PKI's revocation list) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
+  and requests of unknown senders are dropped, never answered; OADM PRO is checked on every request; shared secrets are
+  stored only encrypted, never logged and never sent to a page; keys are never logged.
+- Roles and device groups: reading for everyone with the page; saves, Delete all and Revoke Admin (permission "Change
+  the 802.1X server"), audited, and only for users with all devices; a user with a group sees the Sessions, Log and
+  Revoked rows of the group's devices (rows without a managed device never).
