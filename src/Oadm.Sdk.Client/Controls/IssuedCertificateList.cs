@@ -37,6 +37,7 @@ public sealed class IssuedCertificateList : UserControl
 
     private readonly ContentControl _toolbar = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl _banner = new();
+    private readonly DataGridTemplateColumn _usedIn;
     private IssuedCertificateListViewModel? _vm;
     private bool _restoring;
 
@@ -123,7 +124,23 @@ public sealed class IssuedCertificateList : UserControl
                 return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true, Children = { date, chip } };
             }, supportsRecycling: true),
         });
-        // No Used by column (decision 2026-10-25).
+        // No Used by column (decision 2026-10-25). Used in: only for a CA list (IssuedCertificateListViewModel.ShowsUsedIn), the
+        // names of the policies that use the CA as neutral badges in one line, "+N" for the rest, every name as tooltip.
+        _usedIn = new DataGridTemplateColumn
+        {
+            Header = "Used in",
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            MinWidth = 130,
+            IsVisible = false,
+            CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
+            {
+                var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true, Background = Brushes.Transparent };
+                panel.Children.Add(Badges(nameof(IssuedCertificateRow.UsedIn), wrap: false));
+                panel.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.UsedInTip)));
+                return panel;
+            }, supportsRecycling: true),
+        };
+        Table.Columns.Add(_usedIn);
         Table.Columns.Add(new DataGridTemplateColumn
         {
             // One fixed narrow column: the ⋯ button opens the row's actions (IssuedCertificateListViewModel.MenuOf).
@@ -282,6 +299,7 @@ public sealed class IssuedCertificateList : UserControl
         }
 
         _vm = DataContext as IssuedCertificateListViewModel;
+        _usedIn.IsVisible = _vm?.ShowsUsedIn == true;
         if (_vm is not null)
         {
             _vm.SelectionRestored += OnSelectionRestored;
