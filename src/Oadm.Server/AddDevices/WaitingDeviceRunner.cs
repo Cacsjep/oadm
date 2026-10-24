@@ -559,7 +559,7 @@ public sealed partial class WaitingDeviceRunner(
                 var viewed = await reach.View.GetAsync([device.Id], ct).ConfigureAwait(false);
                 await tags.SetDeviceTagsAsync(viewed, [.. entry.Tags], [], ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is TagNameException or TagLimitException or TagInUseByGroupException or Oadm.Sdk.Devices.DevicesNotAvailableException)
+            catch (Exception ex) when (ex is TagNameException or TagLimitException or TagNeedsAllDevicesException or Oadm.Sdk.Devices.DevicesNotAvailableException)
             {
                 LogTagsFailed(found.Serial, ex.Message);
             }

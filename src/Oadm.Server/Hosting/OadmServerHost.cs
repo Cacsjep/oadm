@@ -373,7 +373,8 @@ public static partial class OadmServerHost
             services: sp.GetRequiredService<PluginServiceRegistry>(),
             jobs: sp.GetRequiredService<PluginJobRegistry>(),
             deviceScopes: sp.GetRequiredService<HostDeviceScopes>(),
-            viewWatcher: sp.GetRequiredService<Core.DeviceGroups.DeviceViewWatcher>()));
+            viewWatcher: sp.GetRequiredService<Core.DeviceGroups.DeviceViewWatcher>(),
+            protectedTags: sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>()));
         services.AddSingleton<PluginServiceRegistry>();
         services.AddSingleton<HostDeviceScopes>();
         services.AddSingleton<Core.Auth.AccessEpochs>(); // the interceptor captures it, the job registry records changes in it

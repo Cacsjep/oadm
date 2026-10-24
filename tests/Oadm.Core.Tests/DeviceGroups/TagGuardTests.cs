@@ -59,6 +59,51 @@ public sealed class TagGuardTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task AGroupUserNeverAddsOrRemovesATagAPluginProtects()
+    {
+        var mine = await AddDeviceAsync("ACCC8E000001", tags: ["Lobby", "Vlan 30"]);
+        var group = await SaveGroupAsync("Lobby", tags: [await TagIdAsync("Lobby")]);
+        var registry = Db.Get<ProtectedTagRegistry>();
+        registry.For("oadm.radius").Protect(["Vlan 20", "vlan 30"], name => $"The tag {name} sets a VLAN.");
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Group.Id), "operator", Ct);
+        var devices = await view.GetAsync([mine.Id], Ct);
+
+        // By name, case-insensitive, with or without a definition; added or removed; refused whole.
+        var add = await Assert.ThrowsAsync<ProtectedTagException>(() => Tags.SetDeviceTagsAsync(devices, ["Outdoor", "VLAN 20"], [], Ct));
+        Assert.Equal("The tag VLAN 20 sets a VLAN.", add.Message);
+        await Assert.ThrowsAsync<ProtectedTagException>(() => Tags.SetDeviceTagsAsync(devices, [], ["Vlan 30"], Ct));
+        Assert.Equal(["Lobby", "Vlan 30"], (await Devices.GetAsync(mine.Id, Ct))!.Tags);
+        Assert.DoesNotContain(await Tags.ListDefinitionsAsync(Ct), t => t.Name is "Outdoor" or "VLAN 20");
+        Assert.Equal(1, (await Tags.SetDeviceTagsAsync(devices, ["Outdoor"], [], Ct)).DevicesChanged); // free tags as before
+
+        // Users with all devices are not limited; a stopped plugin protects nothing.
+        var all = await Views.ForScopeAsync(DeviceScope.All, "admin", Ct);
+        Assert.Equal(1, (await Tags.SetDeviceTagsAsync(await all.GetAsync([mine.Id], Ct), ["Vlan 20"], [], Ct)).DevicesChanged);
+        registry.RemoveOwner("oadm.radius");
+        Assert.Equal(1, (await Tags.SetDeviceTagsAsync(devices, [], ["Vlan 20"], Ct)).DevicesChanged);
+    }
+
+    [Fact]
+    public void TheRegistryRefusesWithItsOwnTextWhenThePluginsTextFailsAndForgetsAStoppedPlugin()
+    {
+        var registry = new ProtectedTagRegistry();
+        var first = registry.For("a.plugin");
+        first.Protect(["Vlan 20"], _ => throw new InvalidOperationException("broken"));
+        registry.For("b.plugin").Protect(["Vlan 40"], _ => "");
+
+        Assert.Equal(ProtectedTagRegistry.DefaultRefusal("vlan 20"), registry.RefusalFor(["Free", "vlan 20"])); // the name as the user wrote it
+        Assert.Equal(ProtectedTagRegistry.DefaultRefusal("Vlan 40"), registry.RefusalFor(["Vlan 40"]));
+        Assert.Null(registry.RefusalFor(["Free"]));
+        Assert.Equal(["Vlan 20", "Vlan 40"], registry.Names.Order(StringComparer.Ordinal));
+
+        registry.RemoveOwner("a.plugin");
+        first.Protect(["Vlan 20"], name => name); // a late call of the stopped plugin changes nothing
+        Assert.Null(registry.RefusalFor(["Vlan 20"]));
+        registry.For("a.plugin").Protect(["Vlan 21"], name => name); // started again
+        Assert.Equal("Vlan 21", registry.RefusalFor(["Vlan 21"]));
+    }
+
+    [Fact]
     public async Task AGroupSavedAfterTheViewWasReadIsSeenByTheWrite()
     {
         var mine = await AddDeviceAsync("ACCC8E000001", tags: ["Lobby"]);

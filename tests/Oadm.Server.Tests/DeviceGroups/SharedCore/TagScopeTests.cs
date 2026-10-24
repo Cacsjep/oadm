@@ -62,6 +62,35 @@ public sealed class TagScopeTests
     }
 
     [Fact]
+    public async Task ATagAPluginProtectsIsAddedOrRemovedOnlyByUsersWithAllDevices()
+    {
+        // The 802.1X server protects the tags of its VLAN rules: a group user (with every permission, or the built-in
+        // Operator role) never chooses a device's VLAN by tagging; a user with all devices does.
+        await using var host = await TestServerHost.StartAsync();
+        var inside = await GroupCallers.DeviceAsync(host, 1, "Lobby", "Vlan 30");
+        const string refusal = "The tag Vlan 20 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.";
+        host.Get<ProtectedTagRegistry>().For("oadm.radius").Protect(["vlan 20", "Vlan 30"], name => $"The tag {name} sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.");
+        var groupUser = await GroupCallers.ForTagAsync(host, "lobby", "Lobby");
+        await host.Users.AddAsync(new Proto.AddUserRequest { UserName = "olga", Password = "pw", RoleId = BuiltInRoles.OperatorId.ToString(), DeviceGroupId = groupUser.GroupId.ToString() });
+        var operatorCall = await host.InvokerForRoleAsync("olga", BuiltInRoles.OperatorId);
+
+        foreach (var invoker in new[] { groupUser.Invoker, operatorCall })
+        {
+            var tags = new Proto.TagService.TagServiceClient(invoker);
+            var added = await Assert.ThrowsAsync<RpcException>(async () => await tags.SetDeviceTagsAsync(Request([inside.Id], ["Vlan 20", "Outdoor"])));
+            Assert.Equal(StatusCode.PermissionDenied, added.StatusCode);
+            Assert.Equal(refusal, added.Status.Detail);
+            var removed = await Assert.ThrowsAsync<RpcException>(async () => await tags.SetDeviceTagsAsync(Request([inside.Id], [], ["vlan 30"])));
+            Assert.Equal(StatusCode.PermissionDenied, removed.StatusCode);
+            Assert.Equal(["Lobby", "Vlan 30"], await TagsOf(host, inside.Id)); // refused whole
+        }
+
+        var allDevices = new Proto.TagService.TagServiceClient(await GroupCallers.AllDevicesUserAsync(host, "anna"));
+        Assert.Equal(1, (await allDevices.SetDeviceTagsAsync(Request([inside.Id], ["Vlan 20"], ["Vlan 30"]))).DevicesChanged);
+        Assert.Equal(["Lobby", "Vlan 20"], await TagsOf(host, inside.Id));
+    }
+
+    [Fact]
     public async Task UnknownDeviceIdsRefuseTheCallForUsersWithAllDevicesToo()
     {
         await using var host = await TestServerHost.StartAsync();

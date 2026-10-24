@@ -299,6 +299,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public IDeviceScopes? DeviceScopes => FakeScopes;
 
+    /// <summary>The tag names the plugin protects (<see cref="Testing.FakeProtectedTags"/>).</summary>
+    public FakeProtectedTags FakeProtectedTags { get; } = new();
+
+    /// <inheritdoc />
+    public IProtectedTags? ProtectedTags => FakeProtectedTags;
+
     /// <summary>A call of a user with all devices (<see cref="FakeCallContext.AllDevices"/>).</summary>
     public FakeCallContext CallAsAllDevices(string userName = "admin") => FakeCallContext.AllDevices(this, userName);
 

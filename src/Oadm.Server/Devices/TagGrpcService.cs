@@ -189,7 +189,7 @@ public sealed class TagGrpcService(
         {
             throw new RpcException(new Status(StatusCode.AlreadyExists, ex.Message));
         }
-        catch (TagInUseByGroupException ex)
+        catch (TagNeedsAllDevicesException ex)
         {
             throw new RpcException(new Status(StatusCode.PermissionDenied, ex.Message));
         }

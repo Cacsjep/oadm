@@ -239,6 +239,26 @@ public sealed class CorePluginHostTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ATagAPluginProtectsStaysProtectedWhileThePluginRuns()
+    {
+        var protectedTags = new Oadm.Core.Devices.ProtectedTagRegistry();
+        await _host.DisposeAsync();
+        _host = new CorePluginHost(_registry, _devices, _vapix, _engine, _settings, protectedTags: protectedTags);
+        var plugin = new TestCorePlugin("core.vlan", []);
+        Assert.True(_registry.RegisterCorePlugin(plugin, new PluginOrigin("vlan.pkg", "1.0.0", null)));
+
+        await _host.StartAllAsync(CancellationToken.None);
+        plugin.Context!.ProtectedTags!.Protect(["Vlan 20"], name => "The tag " + name + " sets a VLAN.");
+        Assert.Equal("The tag Vlan 20 sets a VLAN.", protectedTags.RefusalFor(["Vlan 20"]));
+
+        _registry.SetEnabled("vlan.pkg", false);
+        await _host.SyncEnabledAsync(CancellationToken.None);
+        Assert.Null(protectedTags.RefusalFor(["Vlan 20"]));
+        plugin.Context.ProtectedTags.Protect(["Vlan 20"], name => name); // late, from the stopped plugin
+        Assert.Empty(protectedTags.Names);
+    }
+
+    [Fact]
     public async Task EveryPluginGetsItsOwnRecords()
     {
         var a = new TestCorePlugin("core.a", []);

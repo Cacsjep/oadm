@@ -14,9 +14,15 @@ namespace Oadm.Core.Devices;
 /// The store is the only writer of device tags and holds the device-group guard (docs/spec/device-scope.md, Decisions: Tags):
 /// a user with a device group tags devices of the group but never adds or removes a tag any device group uses (that would
 /// move devices between groups). The guard reads the groups inside the write transaction, which holds SQLite's write lock
-/// from its start, so a group saved meanwhile is either seen or commits after the tagging.
+/// from its start, so a group saved meanwhile is either seen or commits after the tagging. In the same transaction it refuses
+/// the tags core plugins protect (<see cref="ProtectedTagRegistry"/>) for such a user.
 /// </summary>
-public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed, TimeProvider time, ILogger<DeviceTagStore>? logger = null) : IDisposable
+public sealed partial class DeviceTagStore(
+    IDbContextFactory<OadmDbContext> dbFactory,
+    IDeviceChangeFeed changeFeed,
+    TimeProvider time,
+    ILogger<DeviceTagStore>? logger = null,
+    ProtectedTagRegistry? protectedTags = null) : IDisposable
 {
     private const int Chunk = 500;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -224,11 +230,13 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
     /// Adds and removes tag names on many devices in one transaction (one call for 5,000 devices). Names in
     /// <paramref name="add"/> without a definition get one (next palette color). The devices come from the caller's view;
     /// for a view of a device group no name in <paramref name="add"/> or <paramref name="remove"/> may be a tag a device
-    /// group uses (<see cref="TagInUseByGroupException"/>, nothing changed).
+    /// group uses (<see cref="TagInUseByGroupException"/>) or a plugin protects (<see cref="ProtectedTagException"/>, the
+    /// 802.1X server's VLAN tags); nothing changed.
     /// </summary>
     /// <exception cref="TagNameException">A name to add cannot be used, or a name is both added and removed.</exception>
     /// <exception cref="TagLimitException">A device would get more than <see cref="TagNames.MaxTagsPerDevice"/> tags, or too many definitions.</exception>
     /// <exception cref="TagInUseByGroupException">A user with a device group added or removed a tag a group uses.</exception>
+    /// <exception cref="ProtectedTagException">A user with a device group added or removed a tag a plugin protects.</exception>
     public async Task<SetDeviceTagsResult> SetDeviceTagsAsync(
         ViewedDevices devices, IReadOnlyCollection<string> add, IReadOnlyCollection<string> remove, CancellationToken ct)
     {
@@ -265,6 +273,15 @@ public sealed partial class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFa
             if (!devices.View.HasAllDevices)
             {
                 await GuardAsync(db, definitions, toAdd.Concat(toRemove), ct).ConfigureAwait(false);
+
+                // The tags plugins protect (the 802.1X server's VLAN rules), by name, in the same transaction.
+                foreach (var name in toAdd.Concat(toRemove))
+                {
+                    if (protectedTags?.RefusalFor([name]) is { } refusal)
+                    {
+                        throw new ProtectedTagException(definitions.TryGetValue(TagNames.Normalize(name), out var named) ? named.Name : name, refusal);
+                    }
+                }
             }
 
             for (int i = 0; i < toAdd.Count; i++)
