@@ -203,6 +203,16 @@ the UI thread.
   `GetLocalSetting` / `SetLocalSetting` (short texts a plugin keeps on this computer, `ClientSettings.PluginSettings`,
   at most 64 KB each; e.g. a page's last device choice), `IsPluginOn(packageId)` (from the client's package list, null
   when unknown; Dashboards' empty state), `OpenAsync("plugin:" + id)` opens another plugin's page while it is on.
+- **Pages shown as tabs** (SDK 0.4.0, stage 7 of `docs/spec/pki.md`): `ICorePluginPage.TabOf` (DIM null) names the core
+  plugin whose page shows this page as a tab. The host then adds no rail entry for it; it creates the view as for a rail
+  page (its own `ICorePluginClientContext`, its own plugin id for `InvokeAsync` and events) and hands it to the host page:
+  `ICorePluginClientContext.Tabs` (`CorePluginTab` {PluginId, Title, View}, in the server's order, only pages the role may
+  show) with `TabsChanged`. `OpenAsync("plugin:" + tab id)` (and a role's start page) opens the host page and raises
+  `OpenTabRequested(tab id)` on its context; `OpenAsync("plugin:" + host id)` raises it with the host's own id (its first
+  tab). A tab page whose host page is not listed for the user (no "show" permission, host plugin missing) is a rail page
+  as before. A window of the host page ("Open in new window") gets its own copies of the tab views; a tab that leaves or
+  comes closes the host's windows. Older hosts ignore `TabOf` (every page in the rail). First user: PKI with the 802.1X
+  and EST servers (`MainWindowViewModel` `TabPages`, tests `Oadm.Client.Tests` `PluginTabTests`).
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
   the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
   `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`,
