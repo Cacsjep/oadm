@@ -76,6 +76,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     public const string FailedEvent = "oadm.radius.failed";
 
     private const int QueueCapacity = 8192;
+    private const int PerSerialLookups = 50; // more serials to revoke: one pass over PKI's 802.1X certificates
     private const int EventChunk = 500;
     private const string SecretPurposePrefix = "radius:switch:";
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(500);
@@ -121,6 +122,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     private (string Address, string? Site, DateTime At)? _lastUnknown;
     private long _busyDrops;
     private int _tickCount;
+    private int _maintainAgain; // 1 = a maintenance round was asked for
     private int _switchesDirty; // 1 = a state changed: publish at the next tick
     private int _switchesStale; // 1 = only last-request times changed: publish at most every 5 s
     private int _stateStale;
@@ -138,7 +140,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         _board = new SessionBoard(host.Time);
         _index = new DeviceIndex(host.Devices, host.Time);
         _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Time, host.Logger);
-        var validator = new DeviceCertificateValidator(() => _trust, host.DeviceIds ?? new AxisDeviceId(), _index, host.Authority, () => _switches, () => _vlans, host.Time);
+        var validator = new DeviceCertificateValidator(TrustNow, host.DeviceIds ?? new AxisDeviceId(), _index, host.Authority, () => _switches, () => _vlans, host.Time);
         _processor = new RadiusProcessor(new RadiusProtocolOptions(), validator, host.Time);
         _processor.SessionChanged += _board.Enqueue;
         _index.Missed += (_, _) => Track(Task.Run(() => RefreshIndexAsync(onlyAfterMiss: true)));
@@ -195,7 +197,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     private async Task LoadAsync(CancellationToken ct)
     {
         var config = await _store.ConfigAsync(ct).ConfigureAwait(false) ?? new RadiusSettings();
-        if (config.CipherSuites.Count == 0 || TlsSettingsOf(config).Validate() is not null)
+        if (config.CipherSuites.Count == 0 || TlsSettingsOf(config).Validate(ServerIdentityKeeper.KeyKind) is not null)
         {
             config = config with { CipherSuites = [.. TlsCipherSuites.DefaultFor(VersionOf(config.MinimumTls) ?? TlsVersion.Tls12).Order()] };
         }
@@ -621,7 +623,11 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
     }
 
-    private void PublishSwitches() => PublishToEveryPage(RadiusTopics.Switches, RadiusJson.Serialize(ListSwitches()));
+    /// <summary>
+    /// The switch rows go to users with all devices only: a user limited to a group reads the switches of the group's routes
+    /// with <see cref="RadiusMethods.ListSwitches"/> (the event carries every switch).
+    /// </summary>
+    private void PublishSwitches() => _host.Events?.Publish(RadiusTopics.Switches, RadiusJson.Serialize(ListSwitches()), PluginEventAudience.AllDevices);
 
     private void PublishState()
     {
@@ -701,6 +707,19 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
 
         var vlans = _vlanSettings;
+        if (!hasAllDevices)
+        {
+            // A user limited to a group sees Sessions and Log only: the status, never the server-wide settings, the
+            // server's interfaces and addresses, the sites or the senders that are no switch (docs/spec "Device groups").
+            return new RadiusState
+            {
+                Running = kind == ServiceStatus.Ok,
+                StatusText = text,
+                StatusKind = kind,
+                HasAllDevices = false,
+            };
+        }
+
         return new RadiusState
         {
             Running = kind == ServiceStatus.Ok,
@@ -711,14 +730,17 @@ public sealed partial class RadiusService : IAsyncDisposable
             Interfaces = ListInterfaces(),
             ServerCertificate = _identity.Info,
             SitesNotAllowed = notAllowed,
-            HasAllDevices = hasAllDevices,
+            HasAllDevices = true,
             UnknownRequests = unknown,
         };
     }
 
     /// <summary>Every cipher suite the server can offer, for Advanced.</summary>
     public static IReadOnlyList<CipherSuiteOption> CipherSuites { get; } =
-        [.. TlsCipherSuites.All.Select(s => new CipherSuiteOption(s.Id, s.Name, s.Group == CipherSuiteGroup.LegacyCbc, s.Group == CipherSuiteGroup.Tls13))];
+        [.. TlsCipherSuites.All.Select(s => new CipherSuiteOption(s.Id, s.Name, s.Group == CipherSuiteGroup.LegacyCbc, s.Group == CipherSuiteGroup.Tls13)
+        {
+            Usable = s.Key is null || s.Key == ServerIdentityKeeper.KeyKind,
+        })];
 
     /// <summary>Save of General and Advanced (the VLAN fields are ignored). Throws <see cref="ArgumentException"/> with the field's message.</summary>
     public async Task<RadiusState> SaveSettingsAsync(RadiusSettings request, CancellationToken ct)
@@ -730,7 +752,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             throw RadiusErrors.Field(error.Field, error.Message);
         }
 
-        if (TlsSettingsOf(settings).Validate() is { } tlsError)
+        if (TlsSettingsOf(settings).Validate(ServerIdentityKeeper.KeyKind) is { } tlsError)
         {
             throw RadiusErrors.Field("cipherSuites", tlsError);
         }
@@ -864,13 +886,17 @@ public sealed partial class RadiusService : IAsyncDisposable
 
     // ------------------------------------------------------------------ switches
 
-    public SwitchList ListSwitches()
+    /// <summary>The switches; <paramref name="covers"/> (a user limited to a group): only those on the routes the group names.</summary>
+    public SwitchList ListSwitches(Func<Guid?, bool>? covers = null)
     {
         var stored = Volatile.Read(ref _stored);
         var rows = new List<SwitchRow>(stored.Count);
         foreach (var s in stored)
         {
-            rows.Add(RowOf(s));
+            if (covers is null || covers(s.SiteId))
+            {
+                rows.Add(RowOf(s));
+            }
         }
 
         return new SwitchList(rows);
@@ -1017,6 +1043,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             State = state,
             LastRequestUtc = runtime?.LastRequestUtc,
             DroppedCount = runtime?.Dropped ?? 0,
+            MacOnlyCount = runtime?.MacOnly ?? 0,
             RadiusServerAddress = runtime?.ServerAddress,
         };
     }
@@ -1163,7 +1190,25 @@ public sealed partial class RadiusService : IAsyncDisposable
     internal LogPage ListLog(LogQuery query, ViewedSet? view)
     {
         ArgumentNullException.ThrowIfNull(query);
-        return _log.Page(query.Search, query.Offset, query.Limit, view is null ? null : view.Contains);
+        return _log.Page(query.Search, query.Offset, query.Limit, view is null ? null : view.Contains, TimeZoneOf(query.TimeZoneId));
+    }
+
+    /// <summary>The page's time zone for the log search; null when it is not given or not known on this server.</summary>
+    private static TimeZoneInfo? TimeZoneOf(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(id.Trim());
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The client certificate of a log row the caller sees; any other row answers like one no longer kept.</summary>
@@ -1239,11 +1284,20 @@ public sealed partial class RadiusService : IAsyncDisposable
         PublishToEveryPage(RadiusTopics.LogCleared, "{}");
     }
 
-    /// <summary>PKI's revocation list, the rows of <paramref name="view"/>'s devices (null: all).</summary>
-    internal RevokedList ListRevoked(ViewedSet? view)
+    /// <summary>
+    /// One page of PKI's revocation list (newest first), the rows of <paramref name="view"/>'s devices (null: all) that match
+    /// the search (serial number in any notation, device, reason, user; case-insensitive). One pass.
+    /// </summary>
+    internal RevokedPage ListRevoked(RevokedQuery query, ViewedSet? view)
     {
+        ArgumentNullException.ThrowIfNull(query);
+        var offset = Math.Max(0, query.Offset);
+        var limit = Math.Clamp(query.Limit, 1, RadiusLimits.MaxRevokedPage);
+        var text = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
+        var serialText = text is null ? null : CertificateSerials.Normalize(text);
         var revocations = _host.Authority()?.Revocations ?? [];
-        var rows = new List<RevokedRow>(revocations.Count);
+        var rows = new List<RevokedRow>(Math.Min(limit, revocations.Count));
+        var total = 0;
         foreach (var r in revocations)
         {
             if (view is not null && !view.Contains(r.DeviceId))
@@ -1251,19 +1305,35 @@ public sealed partial class RadiusService : IAsyncDisposable
                 continue;
             }
 
-            rows.Add(new RevokedRow
+            var deviceName = r.DeviceId is { } id ? DeviceIndex.NameOf(_index.ById(id)) : string.Empty;
+            var reason = CertificateRevocation.ReasonText(r.Reason);
+            if (text is not null
+                && !r.SerialNumber.Contains(serialText!, StringComparison.OrdinalIgnoreCase)
+                && !deviceName.Contains(text, StringComparison.OrdinalIgnoreCase)
+                && !reason.Contains(text, StringComparison.OrdinalIgnoreCase)
+                && !r.UserName.Contains(text, StringComparison.OrdinalIgnoreCase))
             {
-                SerialNumber = r.SerialNumber,
-                RevokedUtc = r.RevokedUtc,
-                Reason = CertificateRevocation.ReasonText(r.Reason),
-                UserName = r.UserName,
-                DeviceId = r.DeviceId,
-                DeviceName = r.DeviceId is { } id ? DeviceIndex.NameOf(_index.ById(id)) : string.Empty,
-                NotAfterUtc = r.NotAfterUtc,
-            });
+                continue;
+            }
+
+            if (total >= offset && rows.Count < limit)
+            {
+                rows.Add(new RevokedRow
+                {
+                    SerialNumber = r.SerialNumber,
+                    RevokedUtc = r.RevokedUtc,
+                    Reason = reason,
+                    UserName = r.UserName,
+                    DeviceId = r.DeviceId,
+                    DeviceName = deviceName,
+                    NotAfterUtc = r.NotAfterUtc,
+                });
+            }
+
+            total++;
         }
 
-        return new RevokedList(rows);
+        return new RevokedPage(rows) { Total = total };
     }
 
     /// <summary>Revokes through PKI (the one revocation list).</summary>
@@ -1285,6 +1355,11 @@ public sealed partial class RadiusService : IAsyncDisposable
             _ => throw RadiusErrors.Field("reason", RadiusTexts.ChooseReason),
         };
         var ca = _host.Authority() ?? throw new InvalidOperationException(RadiusTexts.NoCa);
+        if (await FirstOtherUseAsync(ca, serials, ct).ConfigureAwait(false) is not null)
+        {
+            throw RadiusErrors.Field("serials", RadiusTexts.OnlyDot1x);
+        }
+
         var result = await ca.RevokeAsync(serials, reason, userName, ct).ConfigureAwait(false);
         if (_logger.IsEnabled(LogLevel.Information))
         {
@@ -1292,6 +1367,71 @@ public sealed partial class RadiusService : IAsyncDisposable
             LogRevoked(result.Revoked, reasonText, userName);
         }
         return new RevokeReply(result.Revoked, result.AlreadyRevoked, result.NotFound);
+    }
+
+    /// <summary>
+    /// The first serial that is no IEEE 802.1X certificate, else null: in PKI's list with another use (HTTPS, MQTT, RTSPS),
+    /// or in neither PKI's list nor this server's log (a client certificate the 802.1X server saw counts as one).
+    /// </summary>
+    private async Task<string?> FirstOtherUseAsync(IDeviceCertificateAuthority ca, List<string> serials, CancellationToken ct)
+    {
+        var dot1x = new HashSet<string>(StringComparer.Ordinal);
+        var wanted = serials.ToHashSet(StringComparer.Ordinal);
+        if (serials.Count > PerSerialLookups)
+        {
+            // Many: one pass over PKI's 802.1X certificates (pages of 500) until every chosen serial is found.
+            for (var offset = 0; ; offset += IssuedCertificateQuery.MaxLimit)
+            {
+                var page = await ca.ListIssuedAsync(new IssuedCertificateQuery
+                {
+                    Purpose = DeviceCertificatePurposes.Dot1x,
+                    Offset = offset,
+                    Limit = IssuedCertificateQuery.MaxLimit,
+                }, ct).ConfigureAwait(false);
+                foreach (var row in page.Rows)
+                {
+                    var serial = CertificateSerials.Normalize(row.SerialNumber);
+                    if (wanted.Contains(serial))
+                    {
+                        dot1x.Add(serial);
+                    }
+                }
+
+                if (dot1x.Count == wanted.Count || page.Rows.Count < IssuedCertificateQuery.MaxLimit || offset + page.Rows.Count >= page.Total)
+                {
+                    break;
+                }
+            }
+        }
+
+        IReadOnlySet<string>? seen = null;
+        foreach (var serial in serials)
+        {
+            if (dot1x.Contains(serial))
+            {
+                continue;
+            }
+
+            var found = await ca.ListIssuedAsync(new IssuedCertificateQuery { Search = serial, Limit = IssuedCertificateQuery.MaxLimit }, ct).ConfigureAwait(false);
+            var row = found.Rows.FirstOrDefault(r => CertificateSerials.Normalize(r.SerialNumber) == serial);
+            if (row is not null)
+            {
+                if (row.Purpose == DeviceCertificatePurposes.Dot1x)
+                {
+                    continue;
+                }
+
+                return serial;
+            }
+
+            seen ??= _log.CertificateSerials();
+            if (!seen.Contains(serial))
+            {
+                return serial;
+            }
+        }
+
+        return null;
     }
 
     // ------------------------------------------------------------------ maintenance: CA, server certificate, devices
@@ -1302,11 +1442,38 @@ public sealed partial class RadiusService : IAsyncDisposable
     /// </summary>
     internal async Task MaintainAsync(CancellationToken ct)
     {
-        if (!await _maintainGate.WaitAsync(0, ct).ConfigureAwait(false))
+        // A request while a round runs (a CA change in the middle of it) is never lost: the running round goes again.
+        Volatile.Write(ref _maintainAgain, 1);
+        while (Volatile.Read(ref _maintainAgain) == 1)
         {
-            return;
-        }
+            try
+            {
+                if (!await _maintainGate.WaitAsync(0, ct).ConfigureAwait(false))
+                {
+                    return; // the round that holds the gate sees the flag
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+            {
+                return;
+            }
 
+            try
+            {
+                while (Interlocked.Exchange(ref _maintainAgain, 0) == 1)
+                {
+                    await MaintainOnceAsync(ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _maintainGate.Release();
+            }
+        }
+    }
+
+    private async Task MaintainOnceAsync(CancellationToken ct)
+    {
         try
         {
             Follow();
@@ -1345,18 +1512,18 @@ public sealed partial class RadiusService : IAsyncDisposable
         {
             LogMaintainFailed(ex);
         }
-        finally
-        {
-            _maintainGate.Release();
-        }
     }
 
-    /// <summary>The names of the server certificate: the listen addresses (IPv4; with All interfaces every card's) and the host name.</summary>
+    /// <summary>
+    /// The names of the server certificate: the listen addresses (IPv4; with All interfaces those of every card that is up,
+    /// without self-assigned 169.254 addresses, which come and go with a cable) and the host name. The keeper makes no new
+    /// certificate while the names only shrink (a card went down), so the certificate does not change with every cable.
+    /// </summary>
     private List<string> CertificateNames()
     {
         var nic = ListenInterface();
         var cards = nic is null ? UsableInterfaces() : [nic];
-        var names = cards.SelectMany(n => n.Addresses).Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
+        var names = cards.SelectMany(n => n.Addresses).Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a) && !IsSelfAssigned(a))
             .Select(a => a.ToString()).Distinct(StringComparer.Ordinal).ToList();
         if (!string.IsNullOrWhiteSpace(_host.HostName))
         {
@@ -1364,6 +1531,31 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
 
         return names;
+    }
+
+    /// <summary>
+    /// The trusted OADM CAs for a handshake: rebuilt at once when PKI's CA is gone or changed since the last round, so a
+    /// stopped PKI or a replaced CA never leaves the old one trusted until the next minute (fail closed).
+    /// </summary>
+    private CaTrust TrustNow()
+    {
+        var trust = _trust;
+        var ca = _host.Authority();
+        if (CaTrust.KeyOf(ca) == trust.Key)
+        {
+            return trust;
+        }
+
+        trust = CaTrust.Build(ca);
+        _trust = trust;
+        return trust;
+    }
+
+    /// <summary>An IPv4 link-local address (169.254.0.0/16, RFC 3927) a card gives itself without a DHCP server.</summary>
+    private static bool IsSelfAssigned(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        return bytes.Length == 4 && bytes[0] == 169 && bytes[1] == 254;
     }
 
     private void Follow()
@@ -1450,6 +1642,8 @@ public sealed partial class RadiusService : IAsyncDisposable
     private static IReadOnlyList<IPAddress> ListenAddresses(ServerNetworkInterface? nic) =>
         nic is null ? [] : [.. nic.Addresses.Where(a => !a.IsIPv6LinkLocal)];
 
+    private List<IPAddress> AllListenAddresses() => [.. UsableInterfaces().SelectMany(ListenAddresses).Distinct()];
+
     private List<ServerNetworkInterface> UsableInterfaces() =>
         [.. _host.Interfaces.List().Where(n => n.IsUp && !n.IsLoopback && ListenAddresses(n).Count > 0)];
 
@@ -1471,8 +1665,11 @@ public sealed partial class RadiusService : IAsyncDisposable
             IUdpRelay listener;
             if (InterfaceOptions.IsAll(_config.ListenOn))
             {
-                _boundAddresses = [];
-                listener = await network.ListenUdpAsync(_config.Port, Reason, [], ct).ConfigureAwait(false);
+                // Every address of every card on its own socket: the answer leaves from the address the switch sent to, as
+                // switches check (RFC 2865 3, RFC 5080 2.2.1). One wildcard socket would answer from the address the routing
+                // table picks. No card with an address: every address.
+                _boundAddresses = AllListenAddresses();
+                listener = await network.ListenUdpAsync(_config.Port, Reason, _boundAddresses, ct).ConfigureAwait(false);
             }
             else if (ListenInterface() is { } nic)
             {
@@ -1520,11 +1717,36 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
     }
 
-    /// <summary>"Listen on" one interface: listens once it is back, and again on its new addresses after they changed.</summary>
+    /// <summary>
+    /// "Listen on" one interface: listens once it is back, and again on its new addresses after they changed. All interfaces:
+    /// again on the new set of addresses after a card or an address came or went.
+    /// </summary>
     private async Task RetryListenAsync(CancellationToken ct)
     {
         if (InterfaceOptions.IsAll(_config.ListenOn))
         {
+            try
+            {
+                if (_listener is not null && AllListenAddresses().ToHashSet().SetEquals(_boundAddresses))
+                {
+                    return;
+                }
+
+                await CloseAsync(release: false).ConfigureAwait(false);
+                await OpenAsync(ct).ConfigureAwait(false);
+                PublishState();
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+            {
+                // stopping
+            }
+#pragma warning disable CA1031 // Tried again in 30 s; the reason goes to the server log.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogListenFailed(ex);
+            }
+
             return;
         }
 
@@ -1770,8 +1992,12 @@ public sealed partial class RadiusService : IAsyncDisposable
     private sealed class SwitchRuntime
     {
         private long _dropped;
+        private long _macOnly;
 
         public long Dropped => Interlocked.Read(ref _dropped);
+
+        /// <summary>Requests without EAP (MAC address or password checks), never counted as a wrong secret.</summary>
+        public long MacOnly => Interlocked.Read(ref _macOnly);
 
         public DateTime? LastRequestUtc { get; private set; }
 
@@ -1798,6 +2024,9 @@ public sealed partial class RadiusService : IAsyncDisposable
                     break;
                 case RadiusOutcome.Dropped when result.Drop is RadiusDropReason.Malformed or RadiusDropReason.NotARequest or RadiusDropReason.AnswerTooLarge:
                     Interlocked.Increment(ref _dropped);
+                    break;
+                case RadiusOutcome.Dropped when result.Drop == RadiusDropReason.NotEap:
+                    Interlocked.Increment(ref _macOnly);
                     break;
             }
 
@@ -1827,6 +2056,13 @@ public static class RadiusTexts
     public const string ChooseReason = "Choose a reason.";
     public const string NotRunning = "The 802.1X server is not running.";
     public const string CertificateGone = "This certificate is not in the list.";
+    public const string OnlyDot1x = "Only IEEE 802.1X certificates can be revoked here.";
+
+    /// <summary>The plugin id of PKI, whose permission "Manage the certificate authority" Revoke needs too.</summary>
+    public const string PkiPluginId = "oadm.pki";
+
+    /// <summary>Revoke without PKI's permission (the host's wording of a missing permission).</summary>
+    public const string NeedsCaPermission = "Your role does not allow: PKI: Manage the certificate authority.";
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");
 

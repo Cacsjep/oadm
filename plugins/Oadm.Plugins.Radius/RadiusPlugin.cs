@@ -108,7 +108,10 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
-    /// <summary>Reading is for everyone with the page; every change is Admin (permission "Change the 802.1X server"), audited.</summary>
+    /// <summary>
+    /// Reading is for everyone with the page; every change is Admin (permission "Change the 802.1X server"), audited. Revoke
+    /// needs PKI's "Manage the certificate authority" too (checked with the call).
+    /// </summary>
     public UserRole RequiredRole(string method) => method is RadiusMethods.GetState or RadiusMethods.ListSwitches or RadiusMethods.GetVlans
         or RadiusMethods.ListSessions or RadiusMethods.ListLog or RadiusMethods.GetLogCertificate or RadiusMethods.ListRevoked
         or RadiusMethods.ListSites or RadiusMethods.ListCertificates or RadiusMethods.GetIssuedCertificate
@@ -149,7 +152,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             case RadiusMethods.SaveSettings:
                 return RadiusJson.Serialize(await service.SaveSettingsAsync(RadiusJson.Deserialize<RadiusSettings>(payloadJson), ct).ConfigureAwait(false));
             case RadiusMethods.ListSwitches:
-                return RadiusJson.Serialize(service.ListSwitches());
+                return RadiusJson.Serialize(caller.HasAllDevices ? service.ListSwitches() : service.ListSwitches(caller.CoversRoute));
             case RadiusMethods.SaveSwitch:
                 return RadiusJson.Serialize(await service.SaveSwitchAsync(RadiusJson.Deserialize<SaveSwitchRequest>(payloadJson), ct).ConfigureAwait(false));
             case RadiusMethods.GenerateSecret:
@@ -173,8 +176,15 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
                 var entry = RadiusJson.Deserialize<LogEntryRef>(payloadJson);
                 return RadiusJson.Serialize(await service.LogCertificateAsync(entry.Id, await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false));
             case RadiusMethods.ListRevoked:
-                return RadiusJson.Serialize(service.ListRevoked(await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false)));
+                var revoked = string.IsNullOrWhiteSpace(payloadJson) ? new RevokedQuery() : RadiusJson.Deserialize<RevokedQuery>(payloadJson);
+                return RadiusJson.Serialize(service.ListRevoked(revoked, await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false)));
             case RadiusMethods.Revoke:
+                if (!caller.Has(PermissionKeys.Of(RadiusTexts.PkiPluginId, PermissionKeys.Manage)))
+                {
+                    // The revocation list is PKI's: the 802.1X page revokes only for users who may manage the CA (fail closed).
+                    throw new DeviceAccessRefusedException(RadiusTexts.NeedsCaPermission);
+                }
+
                 return RadiusJson.Serialize(await service.RevokeAsync(RadiusJson.Deserialize<RevokeRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false));
             case RadiusMethods.ListSites:
                 return RadiusJson.Serialize(service.ListSites(await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false)));

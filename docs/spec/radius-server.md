@@ -13,8 +13,10 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 ## Decisions (2026-10-23)
 
 - **OADM PRO**, locked without a license or trial like EST (`docs/spec/licensing.md`).
-- **Only managed devices pass:** the client certificate must chain to the OADM CA (or a root of the PKI trusted root
-  store) **and** name a device OADM manages. A genuine certificate of a device OADM does not manage is refused.
+- **Only managed devices pass:** the client certificate must be issued by the OADM CA itself (the current or a previous
+  one; a root above an OADM CA imported as an intermediate anchors the chain, but a certificate of another CA under that
+  root never passes) **and** name a device OADM manages. A genuine certificate of a device OADM does not manage is refused.
+  The PKI trusted root store is not used (decision 2026-10-24, review round 1: safer than the first wording).
 - **Result:** Access-Accept or Access-Reject; **VLAN assignment** per rule, **off by default**.
 - **Switches change while the server runs:** adding, editing or removing a switch applies at once to the running
   server, without a restart and without dropping the sessions of the other switches. A removed switch's open sessions end
@@ -37,7 +39,8 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     status left of Save: "Running on port 1812", "OADM PRO is not active.", "The PKI has no
     certificate authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available".
   - **Switches** (card, right): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
-    last request; **Add switch**, Edit, Delete (red). The dialog: Name, Address, **Shared secret** (`ui:PasswordBox`,
+    last request, the requests without 802.1X (a MAC address or password check of the switch: not answered, counted apart,
+    never Wrong secret); **Add switch**, Edit, Delete (red). The dialog: Name, Address, **Shared secret** (`ui:PasswordBox`,
     16 characters or more, **Generate** fills a random one and shows it once to copy), validation below the fields.
     Changes apply to the running server at once (decision above). At most 500 switches.
   - **VLANs** (card, below; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
@@ -125,6 +128,10 @@ Every failure caused by a TLS alert names the alert, its number and who sent it,
 | 116 certificate required | No client certificate sent |
 | other | "TLS alert <n>" |
 
+A device that sends no certificate is refused with the alert of its version, and the reason names that alert: TLS 1.3
+"No client certificate sent (TLS alert 116, certificate required)" (RFC 8446 4.4.2.4), TLS 1.2 and older "No client
+certificate sent (TLS alert 40, handshake failure)" (RFC 5246 7.4.6).
+
 The device-sent form starts with "The device …" where it reads better (48: "The device does not trust the server
 certificate").
 
@@ -132,19 +139,29 @@ certificate").
 
 - **RADIUS** (RFC 2865) on UDP 1812 (setting), Access-Request / Access-Challenge / Access-Accept / Access-Reject;
   **EAP over RADIUS** (RFC 3579): EAP-Message split into 253-byte attributes, the `State` attribute ties the round trips.
-  **Status-Server** (RFC 5997) answered. No accounting (1813) in the first version.
+  **Status-Server** (RFC 5997) answered while the server can authenticate; without a server certificate (no CA) or
+  without OADM PRO it is silently discarded, so the switch fails over (RFC 5997 4.2). No accounting (1813) in the first
+  version.
 - **Message-Authenticator** (RFC 3579, BlastRADIUS hardening): required on every Access-Request (a request without it
-  or with a wrong one is dropped and counted as "Wrong secret" on the switch), sent first in every answer.
+  or with a wrong one is dropped and counted as "Wrong secret" on the switch), sent first in every answer. An
+  Access-Request with neither EAP-Message nor Message-Authenticator is a MAC address or password check, not 802.1X (RFC
+  3579 3.2 requires the attribute only with EAP-Message): dropped and counted apart on the switch row, never "Wrong
+  secret".
 - **Clients:** a request is answered only from a configured switch address (host names resolved when saved and every
   10 min); anything else is dropped (debug log, counted). The switch table is read for every request from an in-memory
   snapshot that a change replaces atomically (decision: switches change while the server runs).
 - **Duplicates:** a retransmission (same switch, port, identifier, authenticator) gets the cached answer, never a second
-  step. At most 4,096 cached answers, 30 s each.
+  step (RFC 5080 2.2.2). At most 20,000 cached answers (twice the open sessions allowed) and 32 MB, 30 s each, the oldest
+  answered ones go first and a request still in work is never evicted. The final answer of every ended session
+  (Access-Accept or Access-Reject) is kept apart for 30 s by switch and State (at most 65,536), so the retransmission of
+  the last request gets it again even after the busy cache dropped it (no "Session not found" Reject for a camera that
+  passed).
 - **EAP-TLS** (RFC 5216, TLS 1.2; RFC 9190, TLS 1.3 with the one-byte commitment message, no resumption, no tickets).
   TLS 1.2 and 1.3 by default; TLS 1.0 and 1.1 only when Advanced lowers the minimum (RFC 8996 deprecates them; SSL never).
 - **Fragmentation** (RFC 5216 2.1.5), both directions: the first fragment carries the L flag and the total length, M on
   every fragment but the last, each fragment acknowledged by an empty EAP-TLS message. Fragment size = **Largest
-  fragment** (Advanced), at most the switch's `Framed-MTU` minus the EAP and RADIUS overhead. Incoming total at most 64 KB (refused above, "Message
+  fragment** (Advanced), at most the smallest `Framed-MTU` the switch sent in the session minus the EAP and RADIUS
+  overhead (many switches send it in the first request only, RFC 3579 2.4). Incoming total at most 64 KB (refused above, "Message
   too large"), at most 60 round trips per session.
 - **Keys:** the MSK from the TLS key material (TLS 1.2: PRF "client EAP encryption"; TLS 1.3: exporter
   "EXPORTER_EAP_TLS_Key_Material"), sent as MS-MPPE-Recv-Key / MS-MPPE-Send-Key (RFC 2548) in the Access-Accept, encrypted
@@ -275,8 +292,9 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 
 ## Who passes
 
-- The client certificate: a chain to the OADM CA or a root of the PKI trusted root store, valid now, extended key usage
-  client authentication (or none), and it names **exactly one managed device**: the DNS name `axis-<serial>.local` the
+- The client certificate: issued by the OADM CA itself (the current or a previous one; the chain may end in a root above
+  it, a certificate of another CA under that root never passes), valid now, extended key usage client authentication (or
+  none), and it names **exactly one managed device**: the DNS name `axis-<serial>.local` the
   OADM CA puts into every device certificate, or the serial of the factory **Axis device ID** (checked against the Axis
   device ID roots EST ships). At a site: a device of that site.
 - Not revoked (PKI's revocation list, above); removing a device from OADM refuses it at its next authentication.
@@ -309,7 +327,9 @@ logic runs only on the server; the node never sees a secret or a key.
 ## Device groups
 
 A server-wide service: General, Switches and VLANs are changed only by users with all devices. Users with a group see the
-page with the Sessions and Log rows of their devices; rows without a managed device only users with all devices.
+page with the Sessions and Log rows of their devices; rows without a managed device only users with all devices. They get
+no server-wide data (settings, the server's interfaces and certificate, sites, senders that are no switch) and only the
+switches of the routes their group names (none when it names none).
 
 ## Secrets and logs
 
@@ -339,13 +359,15 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
 
 - **Datagram flow** (`Sessions/RadiusProcessor.Process(datagram, RadiusClient, IPEndPoint source)`, thread-safe, never
   throws): `RadiusPacket.Parse` (framing rules above) → only Access-Request and Status-Server → the Message-Authenticator
-  (`RadiusAuthenticators.VerifyRequest`, before anything else; missing or wrong = drop `WrongSecret`) → Status-Server
-  answered (Access-Accept, not cached) → `AccessRequest.Read` (attribute rules) → `RadiusDuplicateCache` (key: switch,
+  (`RadiusAuthenticators.VerifyRequest`, before anything else; missing or wrong = drop `WrongSecret`, but no EAP-Message
+  and no Message-Authenticator = drop `NotEap`) → Status-Server answered (Access-Accept, not cached; without a server
+  certificate dropped `NotReady`) → `AccessRequest.Read` (attribute rules) → `RadiusDuplicateCache` (key: switch,
   source address and port, Identifier; same authenticator = cached answer or drop while in work; a new authenticator
   replaces the entry) → the session of the State attribute or a new one → the answer by `RadiusPacketWriter.Response`
   (Message-Authenticator first, Response Authenticator, Proxy-State last in order). The result: `Answered` /
   `AnsweredFromCache` with the bytes to send to the source, or `Dropped` with a `RadiusDropReason` (Malformed,
-  NotARequest, WrongSecret, InProgress, StaleEapResponse, AnswerTooLarge, InternalError) and a short detail for the debug
+  NotARequest, WrongSecret, InProgress, StaleEapResponse, AnswerTooLarge, InternalError, NotEap: no EAP-Message and no
+  Message-Authenticator, NotReady: Status-Server without a server certificate) and a short detail for the debug
   log; the session snapshot after the step and the reason of an Access-Reject.
 - **The switch** is a `RadiusClient(Key, Secret)` the server part finds by the source address (site + address at a site);
   the processor never looks at NAS-Identifier or NAS-IP-Address for that. `EndSessions(key)` ends a removed switch's
@@ -355,6 +377,12 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   Reset to default), `LargestFragment` (500..1400), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
   `FromCertificate(x509, issuers)`, read when a handshake starts, so a renewal applies at once), the timeouts (30 s / 60 s),
   `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000.
+- **TLS versions, suites, signatures**: only the versions with a checked suite the server key can use are offered
+  (`TlsSettings.VersionsFor(key)`; TLS 1.3 without a checked TLS 1.3 suite is not offered), `Validate(key)` refuses a set
+  the key cannot use (only ECDHE_RSA suites with the ECDSA server certificate). The signature schemes OADM accepts and
+  uses (`EapTlsServer.AcceptedSignatures`): ECDSA, EdDSA, RSA-PSS and RSA PKCS#1 with SHA-256 or stronger, never
+  SHA-224; SHA-1 only when the minimum is TLS 1.0 or 1.1 (RFC 9155 2), then also the RFC 5246 default for a TLS 1.2
+  client without a list.
 - **Who passes**: `IClientCertificateValidator.Validate(ClientCertificateCheck)` (switch key, session id, the chain DER leaf
   first, TLS version, EAP identity and MAC shown only) returns `ClientCertificateVerdict.Accept(vlanId, warning, tag)` or
   `Refuse(reason, alert)`. Called synchronously inside the TLS handshake (in-memory lookups only); an exception refuses
@@ -373,12 +401,16 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
 - **First message**: EAP-Start (empty EAP-Message) → Identity request; Identity → EAP-TLS Start; a NAK without EAP-TLS fails;
   anything else the switch started → Identity request (RFC 3579 2.1, Appendix A). An EAP-Request from the switch: Access-
   Reject with EAP-Response/Nak (RFC 3579 2.6.2). An unreadable EAP packet: Access-Reject with EAP-Failure (RFC 3579 2.2).
-- **EAP Identifier** (RFC 3748 4.1): a response with the Identifier of the request before is a retransmission (the
+- **EAP Identifier** (RFC 3748 4.1): OADM's first request after the switch's own (its Identity request) uses that
+  Identifier + 1, never the same one; a response with the Identifier of the request before is a retransmission (the
   outstanding request again); any other Identifier is dropped. EAP-Success and EAP-Failure carry the response's Identifier.
 - **Fragments**: OADM's TLS data per EAP-TLS message = min(Largest fragment, Framed-MTU − 4 − 10), an 802.11 port at most
   1,496 EAP octets (RFC 3580 3.10); L and the total only on the first fragment, never on an unfragmented message (RFC 9190
   2.1.9). The device's fragments: L required on the first of a fragmented message (at most 64 KB), a repeated L only with
   the same value, the fragments add up exactly; else "Message could not be read".
+- **Accept**: EAP-Success only with an accepting verdict of the validator and the keys; the session is Authenticated only
+  once the Access-Accept is built (`CompleteAccept`): an answer above 4,096 bytes ends it Failed "Answer too large" (no
+  Accept is sent, the log never says Authenticated).
 - **Results**: an alert OADM raises is sent in an EAP-TLS request and the session waits for the device's answer before
   EAP-Failure ("Sending result" with the reason; a timeout then ends Failed with that reason); an alert from the device
   ends at once with EAP-Failure. TLS 1.3: the commitment message (application data 0x00) after the handshake.
@@ -402,15 +434,18 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 
 - **Wiring** (`RadiusPlugin`, `RadiusHost`, `RadiusService`): PKI's CA through `ctx.Services.Find<IDeviceCertificateAuthority>()`
   each time, OADM PRO through `ctx.Pro` on every datagram (none answered without it). Listener `ctx.Network.ListenUdpAsync(port,
-  "802.1X server", addresses)` (SDK 0.4.0: the addresses of the Listen on interface; empty = every address), tried again
-  every 30 s when the interface is gone or moved; one relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
+  "802.1X server", addresses)` (SDK 0.4.0: the addresses of the Listen on interface; with All interfaces the addresses of
+  every card that is up, each on its own socket, so the answer leaves from the address the switch sent to, as switches
+  check (RFC 2865 3, RFC 5080 2.2.1); no card with an address: every address), tried again every 30 s when the interface
+  is gone or its addresses changed (All interfaces: when a card or an address came or went); one relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
   released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
 - **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
   addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th),
   a bounded queue (8,192; full = dropped, the switch retransmits), 64 workers (`RadiusHost.Workers`, the bound on parallel
   handshakes) call `RadiusProcessor.Process` with the switch of now (a switch removed meanwhile: its sessions end, nothing
   sent). The switch row's state: Site offline (site or relay offline), Wrong secret (the last request had a missing or wrong
-  Message-Authenticator), Answered, No requests yet; dropped counts malformed, wrong secret and too large answers.
+  Message-Authenticator), Answered, No requests yet; dropped counts malformed, wrong secret and too large answers;
+  `macOnlyCount` the requests without EAP (MAC address or password checks).
 - **Switches** (setting `switches`, at most 500): secret `ctx.Secrets.Protect(secret, "radius:switch:<id>")` (no protector:
   saving refused "This server cannot keep shared secrets."; an unreadable secret takes the switch out with a warning), never
   logged or returned (Edit with an empty secret keeps it). A save or delete builds a new table and swaps it; a changed
@@ -420,38 +455,59 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   `generateSecret`: 24 letters and digits (no look-alikes), nothing stored.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): dates (alert 45, "Client certificate expired on ..."),
   extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
-  (the CA's `Chain` and `PreviousChains`, SDK 0.4.0: self-signed ones are the anchors; rebuilt when the CA changes, checked
-  every minute) giving the one serial of its `axis-<serial>.local` names (none or two: "Client certificate names no
+  (the CA's `Chain` and `PreviousChains`, SDK 0.4.0: self-signed ones are the anchors) whose direct issuer is one of the
+  OADM CAs themselves (`CaTrust.Issuers`: the first certificate of each chain, by SHA-256 hash; another CA under the same
+  root never passes); the set is rebuilt at once in the handshake when PKI's CA is gone or changed (fail closed: without
+  PKI's CA, and so without its revocation list, nothing of it passes; a stale set refuses with alert 80 "The PKI has no
+  certificate authority"), else when the CA changes and checked every minute; giving the one serial of its
+  `axis-<serial>.local` names (none or two: "Client certificate names no
   device"), else the Axis device ID roots (`plugins/Shared/DeviceId/AxisDeviceId`, shared with EST) giving the subject's
   serial, else alert 48; then the revocation list (44, `FindRevocation(...).Describe()`), the managed device by serial
-  (`DeviceIndex`: the full device list read every 10 s and soon after a miss; 49 "Certificate of a device OADM does not
+  (`DeviceIndex`: the full device list read every 10 s and after a miss, at most every 2 s: a miss right after a read waits
+  for the rest of the 2 s, never for the next round; 49 "Certificate of a device OADM does not
   manage (...)"), the switch's site (49 "The device belongs to another site"), the MAC warning and the VLAN
   (`VlanPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial) goes with the session.
-- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the OADM CA for the IPv4 listen addresses (every card's
-  with All interfaces) and the host name, 365 days, kept in the setting `serverCertificate` (key encrypted with
-  `radius:server-key`), made again with a new CA, new names or 30 days before its end (checked at the start and every
-  minute); a new one goes into the processor's options at once. Without a CA none: handshakes are refused, the status
+- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the OADM CA for the IPv4 listen addresses (with All
+  interfaces those of every card that is up, without self-assigned 169.254 addresses) and the host name, 365 days, kept in
+  the setting `serverCertificate` (key encrypted with `radius:server-key`), made again with a new CA, a new name or 30 days
+  before its end (checked at the start and every minute; a round asked for while one runs, e.g. a CA change, runs right
+  after it); names that only went away (a card or cable down, virtual adapters that come and go) keep the certificate, so
+  it does not change with every link; a new one goes into the processor's options at once. Without a CA none: handshakes are refused, the status
   says "The PKI has no certificate authority."
 - **Sessions tab** (`SessionBoard`): `SessionChanged` only queues; every 500 ms the tick drains it (rows keyed by session,
   the device the certificate named or a MAC guess), ends timed-out sessions (every second), takes rows ended 10 s ago off
   (`removed`), and publishes the changed rows as `sessions` with `PluginEventAudience.DeviceRows` (500 rows per event;
   rows without a device: `Guid.Empty`, users with all devices only).
 - **Log** (`RadiusLog`): one row per ended session (also Timed out and Abandoned), records `log` (key = id, only new and
-  removed rows, every 2 s) and `logCertificates` (the leaf DER once per fingerprint, deleted with its last row); kept per
-  "Log entries kept"; `listLog` searches every column in one pass; `deleteLog` clears both collections and publishes
-  `logCleared`. Event rules: `oadm.radius.authenticated` (device, switch, port, VLAN) and `oadm.radius.failed` (the device
+  removed rows, every 2 s) and `logCertificates` (the leaf DER once per fingerprint, deleted with its last row; certificates
+  no row points to are deleted at the start); kept per "Log entries kept"; `listLog` searches every column in one pass, the
+  time also as the page shows it (`LogQuery.TimeZoneId`, the page's `TimeZoneInfo.Local.Id`; unknown: UTC only);
+  `deleteLog` clears both collections and publishes `logCleared` (a write that failed during Delete all never brings its
+  rows back). Event rules: `oadm.radius.authenticated` (device, switch, port, VLAN) and `oadm.radius.failed` (the device
   the certificate named or none; switch, port, reason) for Failed and Timed out, never for Abandoned or a MAC warning.
 - **Page methods** (`RadiusMethods`, roles in `RequiredRole`, `RequiresAllDevices` for every save, `generateSecret`,
-  `deleteSwitch`, `deleteLog` and `revoke`): rows of sessions, the log, `getLogCertificate`, `listRevoked`,
+  `deleteSwitch`, `deleteLog` and `revoke`): `revoke` also needs PKI's "Manage the certificate authority"
+  (`oadm.pki:manage`, checked with the call: "Your role does not allow: PKI: Manage the certificate authority.") and takes
+  only IEEE 802.1X certificates (PKI's use dot1x, or a client certificate of this server's log that PKI's list does not
+  hold; anything else refuses the whole request "Only IEEE 802.1X certificates can be revoked here.", nothing revoked;
+  more than 50 serials are checked in one pass over PKI's 802.1X certificates); `listRevoked` takes `RevokedQuery`
+  (`offset`, `limit` 1..500, `search` over device, serial, reason and user) and answers one page (`RevokedPage`: `rows`, `total`); rows of sessions, the log,
+  `getLogCertificate`, `listRevoked`,
   `listCertificates` (PKI's `ListIssuedAsync` with the caller's `DeviceIds`) and `getIssuedCertificate` follow the caller's
   devices (`ViewedSet`); a row or certificate of another device answers like an unknown one; `listSites` the group's sites;
-  `getVlans` gives tag choices of the devices only to users with all devices. `state` goes to users with all devices and to
-  each group that read the page (`ViewerScopes`), `switches`, `logCleared` and `revoked` (PKI's `RevocationChanged`) to
-  every page.
+  `getVlans` gives tag choices of the devices only to users with all devices; `getState` gives a group user the status only
+  (no settings, interfaces, server certificate, sites or unknown senders) and `listSwitches` the switches of the routes
+  the group names (`CoversRoute`: its sites, This server only when the group has it). `state` goes to users with all
+  devices and to each group that read the page (`ViewerScopes`, the status only), `switches` to users with all devices
+  only, `logCleared` and `revoked` (PKI's `RevocationChanged`) to every page.
 - **Tests**: `tests/Oadm.Plugins.Radius.Tests` `ServerTests` (end to end through the in-memory listener and relays with a
   BouncyCastle camera: accept TLS 1.2 and 1.3 and the device ID, every refusal, removed device, MAC warning, sites,
   switches added and removed while sessions run, wrong secret, VLANs, no PRO, no CA, server certificate kept and renewed,
-  previous CA, secrets, input rules, host names, Advanced, Listen on, the log), `PluginTests` (manifest, the canary over every
+  previous CA, secrets, input rules, host names, Advanced, Listen on, the log), `HardeningTests` (review round 1: a sibling
+  CA under the enterprise root, PKI gone, revoke permission and uses, the revoked pages, a group user's state and switches,
+  requests without EAP, the device list after a miss, a CA change during maintenance, stable server certificate names, one
+  socket per address, the log search in local time, Delete all during a failed write, orphan certificates), `PluginTests`
+  (manifest, the canary over every
   method, rows of a group user), `PluginPerfTests` (Category=Perf: 30,000 authentications through the plugin, the log at
   50,000 kept). Support: `Support/PluginHarness.cs` (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).
 - **Not built yet**: recorded conversations of real switches (no hardware here; the protocol tests replay the RFC
@@ -486,7 +542,7 @@ data, also for the screenshots). Built 2026-10-24.
 - **Log**: pages of 500 from the server with the search (300 ms after the last key), live `log` rows on the first page when
   they match the search, the reason or the warning in the Result chip (a warning is amber), View certificate describes the
   DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed.
-- **Revoked**: `listRevoked` with a search in the client; **Revoke** opens the shared certificate list
+- **Revoked**: `listRevoked` pages of 500 with the search on the server (`RevokedQuery`, review round 1); **Revoke** opens the shared certificate list
   (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
   (`IssuedCertificateList.ConfirmRevokeAsync`), then `revoke`; "Nothing was revoked ..." when every chosen one was revoked
   already.

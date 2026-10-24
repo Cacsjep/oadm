@@ -21,6 +21,9 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
 {
     public static readonly TimeSpan Validity = TimeSpan.FromDays(365);
     public static readonly TimeSpan RenewBefore = TimeSpan.FromDays(30);
+
+    /// <summary>The key of every server certificate made here (ECDSA P-256): the cipher suites that can be negotiated follow it.</summary>
+    public const ServerKeyKind KeyKind = ServerKeyKind.Ecdsa;
     private const string KeyPurpose = "radius:server-key";
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -57,8 +60,10 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             }
 
             var wanted = names.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+            // Names that only went away (a card or cable down, an address gone) keep the certificate: only a new name, a new
+            // CA or the end near makes a new one, so the certificate does not change with every link.
             if (_current is { } current && current.CaCertificate.AsSpan().SequenceEqual(ca.Chain[0])
-                && current.Names.SequenceEqual(wanted, StringComparer.OrdinalIgnoreCase)
+                && wanted.All(n => current.Names.Contains(n, StringComparer.OrdinalIgnoreCase))
                 && current.NotAfterUtc - time.GetUtcNow().UtcDateTime > RenewBefore)
             {
                 return false;

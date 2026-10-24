@@ -4,6 +4,7 @@ using Oadm.Plugins.Radius.Protocol.Eap;
 using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Server;
 using Oadm.Plugins.Radius.Tests.Support;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Licensing;
 using Oadm.Sdk.Sites;
 using Oadm.Sdk.Testing;
@@ -560,6 +561,7 @@ public sealed class ServerTests
     public async Task RevokeGoesThroughPkiAndTheRevokedListFollowsIt()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = "7DFD05", Purpose = DeviceCertificatePurposes.Dot1x }, []));
 
         var reply = await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["00:7d:fd:05"], RevokeReasons.DeviceReplaced));
 
@@ -567,7 +569,7 @@ public sealed class ServerTests
         var call = Assert.Single(harness.Ca.RevokeCalls);
         Assert.Equal(["7DFD05"], call.Serials);
         Assert.Equal("admin", call.User);
-        Assert.Equal("7DFD05", Assert.Single((await harness.CallAsync<RevokedList>(RadiusMethods.ListRevoked)).Rows).SerialNumber);
+        Assert.Equal("7DFD05", Assert.Single((await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked)).Rows).SerialNumber);
         Assert.Contains(harness.Ctx.PublishedEvents, e => e.Topic == RadiusTopics.Revoked);
         await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest([], RevokeReasons.Other)));
         await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["01"], "nope")));

@@ -63,9 +63,16 @@ public sealed class DeviceIndex(IDeviceRepository devices, TimeProvider time) : 
     /// <summary>Reads the device list now (or not when <paramref name="onlyAfterMiss"/> and the last read is recent).</summary>
     public async Task RefreshAsync(bool onlyAfterMiss, CancellationToken ct)
     {
-        if (onlyAfterMiss && time.GetElapsedTime(Volatile.Read(ref _lastReadTicks)) < MissRefreshInterval && _lastReadTicks != long.MinValue)
+        var last = Volatile.Read(ref _lastReadTicks);
+        if (onlyAfterMiss && last != long.MinValue && time.GetElapsedTime(last) is var since && since < MissRefreshInterval)
         {
-            return;
+            // Read a moment ago: read again when the interval is over (the miss stays pending meanwhile, so one read follows
+            // however many lookups missed), never only with the next 10 s round.
+            await Task.Delay(MissRefreshInterval - since, time, ct).ConfigureAwait(false);
+            if (Volatile.Read(ref _missPending) == 0)
+            {
+                return; // a full read ran meanwhile
+            }
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);

@@ -51,10 +51,16 @@ public static class RadiusMethods
     /// <summary><see cref="LogEntryRef"/> -> <see cref="LogCertificate"/>: the client certificate of a log row.</summary>
     public const string GetLogCertificate = "getLogCertificate";
 
-    /// <summary>() -> <see cref="RevokedList"/>: PKI's revocation list (rows of the caller's devices).</summary>
+    /// <summary>
+    /// <see cref="RevokedQuery"/> (or none: the first page) -> <see cref="RevokedPage"/>: one page of PKI's revocation list,
+    /// newest first, with the search and the total (rows of the caller's devices).
+    /// </summary>
     public const string ListRevoked = "listRevoked";
 
-    /// <summary><see cref="RevokeRequest"/> -> <see cref="RevokeReply"/>, through PKI. Users with all devices.</summary>
+    /// <summary>
+    /// <see cref="RevokeRequest"/> -> <see cref="RevokeReply"/>, through PKI. Users with all devices whose role also has PKI's
+    /// "Manage the certificate authority"; only IEEE 802.1X certificates (any other use is refused, nothing is revoked).
+    /// </summary>
     public const string Revoke = "revoke";
 
     /// <summary>() -> <see cref="SiteList"/>: the bound sites (the Site of a switch, VLAN rules by site); a group user: the group's sites.</summary>
@@ -178,6 +184,7 @@ public static class RadiusLimits
     public const int MaxSecretLength = 128;
     public const int MaxNameLength = 64;
     public const int MaxLogPage = 500;
+    public const int MaxRevokedPage = 500;
 
     /// <summary>The minimum TLS versions of the select, oldest first.</summary>
     public static IReadOnlyList<string> TlsVersions { get; } = ["1.0", "1.1", "1.2", "1.3"];
@@ -255,7 +262,14 @@ public sealed record RadiusSettings
 /// <param name="Name">IANA name.</param>
 /// <param name="Legacy">An old AES-CBC SHA-1 suite: listed only for a minimum of TLS 1.0 or 1.1.</param>
 /// <param name="Tls13">A TLS 1.3 suite (the others are for TLS 1.2 and older).</param>
-public sealed record CipherSuiteOption(int Id, string Name, bool Legacy, bool Tls13);
+public sealed record CipherSuiteOption(int Id, string Name, bool Legacy, bool Tls13)
+{
+    /// <summary>
+    /// The server's certificate can use it (its key is ECDSA: the ECDHE_RSA suites are listed but never negotiated). At least
+    /// one checked suite must be usable.
+    /// </summary>
+    public bool Usable { get; init; } = true;
+}
 
 /// <summary>The server's own certificate (issued by the OADM CA).</summary>
 public sealed record ServerCertificateInfo(DateTime NotAfterUtc, IReadOnlyList<string> Names);
@@ -323,6 +337,12 @@ public sealed record SwitchRow
 
     /// <summary>Requests dropped (malformed, wrong secret) since the server started.</summary>
     public long DroppedCount { get; init; }
+
+    /// <summary>
+    /// Requests without 802.1X (a MAC address or password check of the switch) since the server started: not answered and
+    /// never shown as a wrong secret.
+    /// </summary>
+    public long MacOnlyCount { get; init; }
 
     /// <summary>The address the switch must use as RADIUS server (this server's, or the site node's); null when not known.</summary>
     public string? RadiusServerAddress { get; init; }
@@ -428,7 +448,14 @@ public sealed record SessionList(IReadOnlyList<SessionRow> Sessions);
 /// <summary>A page of the log.</summary>
 /// <param name="Search">Text in any column (case-insensitive); null or empty = every row.</param>
 /// <param name="Limit">1..500.</param>
-public sealed record LogQuery(string? Search, int Offset = 0, int Limit = 500);
+public sealed record LogQuery(string? Search, int Offset = 0, int Limit = 500)
+{
+    /// <summary>
+    /// The page's time zone (<c>TimeZoneInfo.Local.Id</c>): the search also finds the time as the page shows it
+    /// ("2026-10-24 14:05"); null or unknown: the UTC time only.
+    /// </summary>
+    public string? TimeZoneId { get; init; }
+}
 
 /// <summary>One log entry.</summary>
 public sealed record LogRow
@@ -501,7 +528,17 @@ public sealed record RevokedRow
     public DateTime NotAfterUtc { get; init; }
 }
 
-public sealed record RevokedList(IReadOnlyList<RevokedRow> Rows);
+/// <summary>A page of the revoked certificates.</summary>
+/// <param name="Search">Text in the serial number (any notation), device, reason or user; null or empty = every row.</param>
+/// <param name="Limit">1..500.</param>
+public sealed record RevokedQuery(string? Search = null, int Offset = 0, int Limit = RadiusLimits.MaxRevokedPage);
+
+/// <summary>One page of the revoked certificates.</summary>
+public sealed record RevokedPage(IReadOnlyList<RevokedRow> Rows)
+{
+    /// <summary>Rows matching the search.</summary>
+    public int Total { get; init; }
+}
 
 /// <summary>Certificates to revoke (at most 5,000) and why (<see cref="RevokeReasons"/>).</summary>
 public sealed record RevokeRequest(IReadOnlyList<string> Serials, string Reason);
@@ -563,7 +600,7 @@ public static class RadiusRules
         }
 
         var known = listed.ToDictionary(s => s.Id);
-        var usable = (settings.CipherSuites ?? []).Any(id => known.TryGetValue(id, out var suite) && Usable(suite, minimum));
+        var usable = (settings.CipherSuites ?? []).Any(id => known.TryGetValue(id, out var suite) && suite.Usable && Usable(suite, minimum));
         return usable && (settings.CipherSuites ?? []).All(known.ContainsKey) ? null : new("cipherSuites", CheckCipherSuite);
     }
 
