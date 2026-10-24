@@ -4,7 +4,7 @@
              xmlns:vm="using:Oadm.Plugins.Pki.Client"
              x:Class="Oadm.Plugins.Pki.Client.PkiView"
              x:DataType="vm:PkiViewModel"
-             ui:PageHeader.Subtitle="Issues device certificates for HTTPS and IEEE 802.1X.">
+             ui:PageHeader.Subtitle="Certificates, their policies, and the 802.1X and EST servers.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only (docs/spec/pki.md "The PKI page"):
        fixed tabs Certificates | 802.1X server | EST server. Certificates: Policies full width, then the certificate list
        full width with the CAs and their actions in it (no card of the CAs). -->
