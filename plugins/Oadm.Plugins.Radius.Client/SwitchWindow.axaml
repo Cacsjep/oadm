@@ -28,8 +28,7 @@
         <ui:FormField Label="Shared secret" Hint="{Binding SecretHint}">
           <Grid ColumnDefinitions="*,Auto">
             <ui:PasswordBox Grid.Column="0" Text="{Binding Secret}" RevealPassword="{Binding ShowSecret}" />
-            <Button Grid.Column="1" Classes="secondary" Margin="10,0,0,0" VerticalAlignment="Top" Command="{Binding GenerateCommand}"
-                    ToolTip.Tip="A random secret of 32 characters">
+            <Button Grid.Column="1" Classes="secondary" Margin="10,0,0,0" VerticalAlignment="Top" Command="{Binding GenerateCommand}">
               <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Generate" />
             </Button>
           </Grid>
