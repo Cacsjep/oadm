@@ -16,6 +16,10 @@ public sealed record TestCertificate(IReadOnlyList<byte[]> Chain, byte[] Pkcs8, 
 /// </summary>
 public static class TestPki
 {
+    // One issue time for every test certificate: validity periods computed from separate clock reads could cross a second
+    // and put an intermediate's end after its issuer's (the CA refuses that).
+    private static readonly DateTimeOffset Issued = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
     private static readonly Lazy<Issuer> OadmCa = new(() => CreateCa("OADM test CA"));
     private static readonly Lazy<Issuer> ForeignCa = new(() => CreateCa("Foreign CA"));
     private static readonly Lazy<TestCertificate> EcServer = new(() => Leaf(OadmCa.Value, "oadm-server", rsa: false, clientAuth: false));
@@ -73,7 +77,7 @@ public static class TestPki
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-        var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(5));
+        var certificate = request.CreateSelfSigned(Issued.AddDays(-1), Issued.AddYears(5));
         return new Issuer(certificate, key);
     }
 
@@ -83,7 +87,7 @@ public static class TestPki
         var request = new CertificateRequest($"CN={name}", key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign, true));
-        using var unsigned = request.Create(parent.Certificate, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(4), RandomNumberGenerator.GetBytes(12));
+        using var unsigned = request.Create(parent.Certificate, Issued.AddDays(-1), Issued.AddYears(4), RandomNumberGenerator.GetBytes(12));
         var certificate = unsigned.CopyWithPrivateKey(key);
         return new Issuer(certificate, key);
     }
@@ -101,7 +105,7 @@ public static class TestPki
         var san = new SubjectAlternativeNameBuilder();
         san.AddDnsName(name);
         request.CertificateExtensions.Add(san.Build());
-        using var certificate = request.Create(issuer.Certificate.SubjectName, X509SignatureGenerator.CreateForECDsa(issuer.Key), DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(2), RandomNumberGenerator.GetBytes(12));
+        using var certificate = request.Create(issuer.Certificate.SubjectName, X509SignatureGenerator.CreateForECDsa(issuer.Key), Issued.AddDays(-1), Issued.AddYears(2), RandomNumberGenerator.GetBytes(12));
         var pkcs8 = rsa ? rsaKey!.ExportPkcs8PrivateKey() : ec!.ExportPkcs8PrivateKey();
         return new TestCertificate([certificate.RawData, issuer.Certificate.RawData], pkcs8, rsa ? ServerKeyKind.Rsa : ServerKeyKind.Ecdsa);
     }
