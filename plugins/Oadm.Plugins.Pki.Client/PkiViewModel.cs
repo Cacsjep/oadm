@@ -444,7 +444,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         await Dialogs.ShowGenerateAsync(new GenerateCaViewModel(SubmitGenerateAsync, name)).ConfigureAwait(true);
     }
 
-    [RelayCommand(CanExecute = nameof(CanReplace))]
+    [RelayCommand(CanExecute = nameof(CanImportWithKey))]
     private async Task ImportAsync()
     {
         if (Dialogs is null)
@@ -456,6 +456,9 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     }
 
     private bool CanReplace() => !IsGenerating && !IsUnavailable;
+
+    /// <summary>A CA with its key can be kept only with the server's master key (like the OADM CA).</summary>
+    private bool CanImportWithKey() => !IsUnavailable;
 
     private async Task ExportPreviousAsync(PreviousCaRowViewModel? row)
     {
@@ -608,15 +611,16 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return [];
         }
 
-        // Accent badges next to its type (decision 2026-10-25): "Trusted by server", "Trusted here" once installed; the work or
-        // a failure in its own words; nothing while it is not installed (the row menu has Install).
+        // Accent badges next to its type (decision 2026-10-25): "OS root store: server", "OS root store: client" once
+        // installed; the work or a failure in its own words (a failure's reason as tooltip); nothing while it is not
+        // installed (the row menu has Install).
         List<IssuedCertificateStatus> states = [];
-        if (TrustBadge(ServerTrustKind, ServerTrustText, "Trusted by server", ServerTrustTip) is { } server)
+        if (TrustBadge(ServerTrustKind, ServerTrustText, TrustedByServer, TrustedByServerTip, ServerTrustTip) is { } server)
         {
             states.Add(server);
         }
 
-        if (TrustBadge(ClientTrustKind, ClientTrustText, "Trusted here", ClientTrustTip) is { } client)
+        if (TrustBadge(ClientTrustKind, ClientTrustText, TrustedHere, TrustedHereTip, ClientTrustTip) is { } client)
         {
             states.Add(client);
         }
@@ -624,9 +628,19 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         return states;
     }
 
-    private static IssuedCertificateStatus? TrustBadge(string kind, string text, string installed, string? tip) => kind switch
+    /// <summary>The OADM CA's badge once it is in the server's root store.</summary>
+    public const string TrustedByServer = "OS root store: server";
+
+    /// <summary>The OADM CA's badge once it is in this computer's root store.</summary>
+    public const string TrustedHere = "OS root store: client";
+
+    public const string TrustedByServerTip = "Installed in the operating system's trusted root store of the computer running the OADM server.";
+
+    public const string TrustedHereTip = "Installed in the operating system's trusted root store of this computer.";
+
+    private static IssuedCertificateStatus? TrustBadge(string kind, string text, string installed, string installedTip, string? tip) => kind switch
     {
-        ServiceStatus.Ok => new IssuedCertificateStatus(installed, kind, tip ?? text),
+        ServiceStatus.Ok => new IssuedCertificateStatus(installed, kind, installedTip),
         ServiceStatus.Neutral => null,
         _ => new IssuedCertificateStatus(text, kind, tip),
     };
@@ -654,24 +668,21 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         return await FinishReplaceAsync(dialog, reply, PkiFields.CommonName).ConfigureAwait(true);
     }
 
-    /// <summary>Import: the server checks the file first (field errors), then the replace confirmation, then the import.</summary>
+    /// <summary>
+    /// Import of a CA with its key (decision 2026-10-25): the server checks the file (field errors) and adds the CA to the list;
+    /// it never replaces the OADM CA, so nothing is asked.
+    /// </summary>
     internal async Task<bool> SubmitImportAsync(ImportCaViewModel dialog, ImportRequest request)
     {
         dialog.IsBusy = true;
-        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Import, PkiJson.Serialize(request with { Confirmed = false }), CancellationToken.None).ConfigureAwait(true));
-        if (reply.NeedsConfirmation)
+        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Import, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
+        var done = await FinishReplaceAsync(dialog, reply, PkiFields.File).ConfigureAwait(true);
+        if (done)
         {
-            dialog.IsBusy = false;
-            if (!await dialog.ConfirmAsync(ReplaceTitle, ReplaceMessage(reply.DevicesWithCurrentCa), "Replace").ConfigureAwait(true))
-            {
-                return false;
-            }
-
-            dialog.IsBusy = true;
-            reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Import, PkiJson.Serialize(request with { Confirmed = true }), CancellationToken.None).ConfigureAwait(true));
+            await LoadListsAsync().ConfigureAwait(true);
         }
 
-        return await FinishReplaceAsync(dialog, reply, PkiFields.File).ConfigureAwait(true);
+        return done;
     }
 
     /// <summary>Backup: the server builds the PKCS#12, then the save dialog.</summary>

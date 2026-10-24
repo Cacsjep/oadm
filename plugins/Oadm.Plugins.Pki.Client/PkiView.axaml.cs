@@ -70,15 +70,18 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
             return;
         }
 
-        var view = new DataGridCollectionView(vm.Policies.Rows);
-        var byGroup = new DataGridPathGroupDescription(nameof(PolicyRowViewModel.GroupLabel));
-        foreach (var label in PoliciesViewModel.GroupLabels)
-        {
-            byGroup.GroupKeys.Add(label);
-        }
+        PoliciesGrid.ItemsSource = PolicyGroupView(vm.Policies.Rows);
+    }
 
-        view.GroupDescriptions.Add(byGroup);
-        PoliciesGrid.ItemsSource = view;
+    /// <summary>
+    /// The policy rows grouped by <see cref="PolicyRowViewModel.GroupLabel"/>: the rows come in the groups' order, and only
+    /// groups with rows get a header (no fixed group keys: they showed empty groups, decision 2026-10-25).
+    /// </summary>
+    internal static DataGridCollectionView PolicyGroupView(System.Collections.IEnumerable rows)
+    {
+        var view = new DataGridCollectionView(rows);
+        view.GroupDescriptions.Add(new DataGridPathGroupDescription(nameof(PolicyRowViewModel.GroupLabel)));
+        return view;
     }
 
     public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)

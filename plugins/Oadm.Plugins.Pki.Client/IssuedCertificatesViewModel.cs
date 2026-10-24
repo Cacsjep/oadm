@@ -110,6 +110,7 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         // The CAs: a short list without groups, filters and search.
         CanGroup = part != PkiListPart.Authorities;
         ShowsFilters = part != PkiListPart.Authorities;
+        ShowsUsedIn = part == PkiListPart.Authorities; // the policies that use each CA (decision 2026-10-25)
         if (CanGroup && ctx.GetLocalSetting(GroupBySetting) is { } kept && GroupChoices.FirstOrDefault(c => c.Value.ToString() == kept) is { } choice)
         {
             GroupBy = choice;

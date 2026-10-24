@@ -22,12 +22,9 @@
       </StackPanel>
     </ui:FormField>
 
-    <!-- Issuing: the CA that issues, the server (Server certificate), valid days and the key -->
-    <ui:FormField Label="CA" InputWidth="360" IsVisible="{Binding IsIssuing}">
+    <!-- Issuing (also the 802.1X and EST server policies): the CA that issues (any CA with its key), valid days and the key -->
+    <ui:FormField Label="Issued by" InputWidth="360" IsVisible="{Binding IsIssuing}">
       <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding IssuingCaChoices}" SelectedItem="{Binding IssuingCa}" />
-    </ui:FormField>
-    <ui:FormField Label="For" IsVisible="{Binding IsServerCertificate}">
-      <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{Binding ServerChoices}" SelectedItem="{Binding IssuingServer}" IsEnabled="{Binding IsNew}" />
     </ui:FormField>
     <ui:FormField Label="Valid (days)" IsVisible="{Binding IsIssuing}">
       <TextBox Text="{Binding ValidDays}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 3650" />
@@ -64,7 +61,7 @@
       </StackPanel>
     </ui:FormField>
 
-    <!-- Sign-in CA: the CA (Axis device ID, OADM CA, previous OADM CAs) and what cameras may sign in with it for -->
+    <!-- EST sign-in CA: the CA (Axis device ID, OADM CA, previous OADM CAs) and what cameras may sign in with it for -->
     <ui:FormField Label="CA" InputWidth="360" IsVisible="{Binding IsSignInCa}">
       <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding SignInCaChoices}" SelectedItem="{Binding SignInCa}" />
     </ui:FormField>
@@ -94,12 +91,17 @@
       </StackPanel>
     </ui:FormField>
 
-    <!-- Kinds with devices except Revoke: All devices, or the picker below -->
+    <!-- Block: also revoke the devices' IEEE 802.1X certificates (then devices and sites only) -->
+    <ui:FormField Label="Revoke" IsVisible="{Binding IsBlock}">
+      <CheckBox Content="{x:Static vm:PolicyEditorViewModel.AlsoRevokeText}" IsChecked="{Binding AlsoRevoke}" />
+    </ui:FormField>
+
+    <!-- Kinds with devices (not a Block that also revokes): All devices, or the picker below -->
     <ui:FormField Label="Devices" IsVisible="{Binding OffersAllDevices}">
       <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}" />
     </ui:FormField>
 
-    <!-- Allow CA -->
+    <!-- 802.1X trusted CA -->
     <ui:FormField Label="CA" InputWidth="360" IsVisible="{Binding IsAllowCa}">
       <StackPanel Spacing="8">
         <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding CaChoices}" SelectedItem="{Binding Ca}" />
