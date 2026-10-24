@@ -1,19 +1,24 @@
 # EST server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-22; stages 1 to 4 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
+Agreed 2026-10-22; stages 1 to 4 built (stages at the end). Code details: `plugins/Oadm.Plugins.Pki/Est/README.md`.
 
-The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
+The first OADM PRO feature: since OADM 4.5 a PRO part of the PKI package (core plugin `oadm.est`, `plugins/Oadm.Plugins.Pki/Est`;
+OADM 4.1 shipped it as the plugin `oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
 every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**
 also at sites (through a relay of the site node). A clean-room implementation from RFC 7030 and the Axis camera APIs.
 
 ## What the user sees
 
-- **Plugins page:** "EST server" is listed for everyone with the chip **OADM PRO** (`plugin.json` `"pro": true`): without
-  an active OADM PRO license or trial the check box is locked, the server refuses to turn it on
-  (`ProLicenseTexts.NeedsPro` "Needs an OADM PRO license or trial.") and **Activate** opens Settings > License. When the
-  license ends or is removed, the host stops it: it stops serving, enrolled cameras keep their certificates until they
-  expire, renewals are refused while it is off. The same lock for every later PRO plugin (`docs/spec/plugins.md`).
+- **Turn on / Turn off** (since OADM 4.5 the EST server is a PRO part of PKI, `docs/spec/pki.md` "One plugin"; OADM 4.1 had
+  it as its own plugin with the Plugins page check box): off by default; **Turn on** on the page's General card stores the
+  choice and starts the server (TCP 9454 opens), **Turn off** (left of Save, confirmed) stops it. It runs only while it is on
+  and an OADM PRO license or trial is active: without one the page shows only General with
+  `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.") and a disabled Turn on; when the license ends or is
+  removed the server stops (enrolled cameras keep their certificates until they expire, renewals are refused while it is
+  off) and a new license starts it again with the kept choice. A 4.1 server whose plugin was on keeps it on (the choice is
+  taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run
+  ("The EST server is off. Turn it on on the EST server page. Nothing was changed.", or "OADM PRO is not active.").
 - **Page "EST server"** (rail, group Security, next to PKI):
   - **General** left (Listen on, port, enrollments kept), **Profiles** right; the status left of Save: "Running on port 9454", "OADM PRO is not
     active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
@@ -240,9 +245,9 @@ removes a profile of another EST server whole when it serves a use OADM sets up.
 
 ## License of the code
 
-`plugins/Oadm.Plugins.Est*` carry their own `LICENSE` (source-available: the source can be read, using the plugin needs
-an OADM PRO license; changing or removing the license check is not allowed). The rest of OADM stays Apache 2.0. The
-THIRD-PARTY notices list the plugin's license.
+`plugins/Oadm.Plugins.Pki/Est` and `plugins/Oadm.Plugins.Pki.Client/Est` carry their own `LICENSE` (source-available: the source
+can be read, using the EST server needs an OADM PRO license; changing or removing the license check is not allowed). The rest
+of OADM, PKI included, stays Apache 2.0. The THIRD-PARTY notices name the part ("Except the part Est of the plugin oadm.pki").
 
 ## Stages
 

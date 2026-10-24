@@ -2,8 +2,9 @@ OADM PRO Source-Available License 1.0 (DRAFT, to be reviewed before the first re
 
 Copyright (c) 2026 the OADM authors
 
-This license covers the files in plugins/Oadm.Plugins.Est and plugins/Oadm.Plugins.Est.Client of the OADM repository
-(the "EST server plugin"). The rest of OADM is licensed under the Apache License 2.0 (LICENSE at the repository root).
+This license covers the files in plugins/Oadm.Plugins.Pki/Est and plugins/Oadm.Plugins.Pki.Client/Est of the OADM
+repository (the "EST server plugin", a part of the PKI plugin). The rest of OADM, the rest of the PKI plugin included, is
+licensed under the Apache License 2.0 (LICENSE at the repository root).
 
 1. Reading. You may read, study and share the source code of the EST server plugin.
 

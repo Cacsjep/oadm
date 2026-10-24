@@ -1,9 +1,11 @@
 # 802.1X server (oadm.radius)
 
-An OADM PRO plugin. Spec: `docs/spec/radius-server.md`. License: `LICENSE` in this folder (source-available, not
-Apache 2.0).
+A PRO part of the PKI plugin (`../README.md`, `docs/spec/pki.md` "One plugin"). Spec: `docs/spec/radius-server.md`.
+License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `plugins/Oadm.Plugins.Pki.Client/Radius`.
 
-- Core plugin "802.1X server" (group Security, icon `lock`), off by default, `"pro": true`. OADM answers the switches as
+- Core plugin `oadm.radius` "802.1X server" of the PKI package (group Security, icon `lock`). The core plugin always runs;
+  the server (`RadiusService`) runs only while it is turned on (`ServerSwitch`, plugin setting `serverOn`, off by default)
+  and OADM PRO is active; page methods `getServer`, `turnOn`, `turnOff` (`../Servers/ServerSwitch.cs`). OADM answers the switches as
   their RADIUS server and authenticates the cameras on the switch ports with EAP-TLS. Page methods and events:
   `Api/RadiusApi.cs` (shared with the page); events for the event rules "Device authenticated" and "Authentication
   failed".
@@ -15,7 +17,7 @@ Apache 2.0).
 - Settings: `config`, `switches` (secrets encrypted with the master key), `vlans`, `serverCertificate` (key encrypted);
   records: `log`, `logCertificates`. All in the encrypted backup.
 - The Axis device ID CAs are shared with EST (`plugins/Shared/DeviceId`, linked with their PEM files).
-- Server part (`Oadm.Plugins.Radius.Server.dll`), protocol layer `Protocol/` (no sockets, no host, no UI; code map in the
+- Server part (in `Oadm.Plugins.Pki.Server.dll`, namespace `Oadm.Plugins.Radius`), protocol layer `Protocol/` (no sockets, no host, no UI; code map in the
   spec, "Code (protocol)"):
   - `Radius/`: the own RADIUS codec (RFC 2865, 2869, 3579, 5080, 5997, 8044): packets with their attributes in order and
     raw, malformed packets as a result value, the Access-Request reader, the Response Authenticator and the
@@ -37,11 +39,12 @@ Apache 2.0).
   sessions and 30,000 authentications through the plugin).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
-- Client part (`Oadm.Plugins.Radius.Client.dll`, `plugins/Oadm.Plugins.Radius.Client`): the page "802.1X server" with the
-  cards Server (with the Advanced dialog), Trusted CAs, Switches (with the switch dialog) and Policies (the policy editor on
+- Client part (in `Oadm.Plugins.Pki.Client.dll`, `plugins/Oadm.Plugins.Pki.Client/Radius`): the page "802.1X server"; while
+  the server does not run only the Server card with its status and Turn on (`Servers/ServerSwitchView`), else the
+  cards Server (Turn off left of Save) (with the Advanced dialog), Trusted CAs, Switches (with the switch dialog) and Policies (the policy editor on
   the shared device picker) in four, two or one column by the page width, then Sessions (live) and Log (search, View
   certificate, Delete all); code
-  map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (project reference, like EST).
+  map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (the client part references the server assembly).
   Tests: `tests/Oadm.Plugins.Radius.Tests/Client` against `FakeRadiusBackend`
   (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `Category=Perf` for 10,000 sessions and
   30,000 devices).

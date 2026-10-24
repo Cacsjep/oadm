@@ -17,9 +17,9 @@ EST (Enrollment over Secure Transport) is the standard the cameras' own certific
 side, the cameras ask it for certificates.
 
 <Aside type="note" title="OADM PRO">
-The EST server is an OADM PRO plugin. It runs while an OADM PRO license or 30-day trial is active
-([Activate OADM PRO](../../activate/)). Without one, it stays off and the cameras keep the certificates they have
-until these expire. Everything else in OADM works the same with or without a license.
+The EST server is part of PKI and needs OADM PRO. It runs while you have turned it on and an OADM PRO license or 30-day
+trial is active ([Activate OADM PRO](../../activate/)). Without one, it stays off and the cameras keep the certificates
+they have until these expire. Everything else in OADM works the same with or without a license.
 </Aside>
 
 <Image src={shot} alt="The EST server page with General, the profiles and the enrollments" class="screen" />
@@ -40,12 +40,14 @@ until these expire. Everything else in OADM works the same with or without a lic
 
 <Steps>
 
-1. Open **Plugins** and turn on **EST server**. The License column shows **OADM PRO**; without an active license the
-   check box is locked and **Activate** opens Settings > License.
-2. Open the **EST server** page in the navigation (group Security). The status left of **Save** shows **Running on port
-   9454** when it is ready.
+1. Open the **EST server** page in the navigation (group Security).
+2. Click **Turn on**. Without an active OADM PRO license or trial the button is off and the page says so.
+3. The status left of **Save** shows **Running on port 9454** when it is ready.
 
 </Steps>
+
+**Turn off** next to **Save** stops the server; your settings and the enrollments stay. OADM 4.1 had the EST server on the
+**Plugins** page: if it was on there, it is on after the update.
 
 ## The page
 

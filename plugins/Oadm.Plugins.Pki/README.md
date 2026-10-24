@@ -1,6 +1,13 @@
 # PKI (`oadm.pki`)
 
-Core plugin (+ `.Client`), rail page **PKI** (group Security, icon `shield`), always on. Device API research:
+Core plugin (+ `.Client`), rail page **PKI** (group Security, icon `shield`), always on. Since OADM 4.5 the package also
+holds the core plugins **EST server** (`oadm.est`, `Est/`, README there) and **802.1X server** (`oadm.radius`, `Radius/`,
+README there), each with its rail page and its own source-available `LICENSE`; the rest stays Apache 2.0
+(`docs/spec/pki.md` "One plugin"). One server assembly (`Oadm.Plugins.Pki.Server.dll`, namespaces `Oadm.Plugins.Pki`,
+`Oadm.Plugins.Est`, `Oadm.Plugins.Radius`), one client assembly, one `plugin.json`. Only the two servers need OADM PRO
+(`Servers/ServerSwitch.cs`: Turn on / Turn off, the stored choice `serverOn`, started and stopped with the license); PKI's
+own parts never do. The core plugins keep their 4.1 ids, so their settings, records, permissions and events keep their
+keys; a 4.1 folder `oadm.est` or `oadm.radius` is skipped ("Merged into PKI") and its on/off choice taken over once. Device API research:
 `tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
 part 2: the contributed Security tasks (below), and the OADM CA service (`PkiCertificateAuthority`, offered as
 `IDeviceCertificateAuthority` through `ICorePluginContext.Services` while the plugin runs; the EST server signs with it),

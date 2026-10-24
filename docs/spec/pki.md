@@ -37,8 +37,16 @@ permissions, one policy list in PKI's own code.
   (the loader skips it with one log line "Merged into PKI"); the installers remove it. Event rule events and actions,
   tasks, permissions and audit names keep their ids so stored rules and roles keep working (the permissions of 802.1X and
   EST keep their keys, now declared by PKI).
+  Built (stage 2): the core plugins keep their ids `oadm.est` and `oadm.radius`, and the host keys settings
+  (`Plugin:<id>:*`), records (PluginRecords), the data folder (`plugin-data/<id>`), events, permissions (`<id>:show`,
+  `<id>:manage`, `task:oadm.est.setup:enroll`) and services by core plugin id: all of it stays where 4.1 stored it and is
+  PKI's without a copy. The only choice stored per package, `Plugins.Enabled`, is taken over once
+  (`MergedPlugins.TakeOverAsync`: `oadm.est` / `oadm.radius` become `Plugin:<id>:serverOn`, a choice made since wins, the
+  entries leave `Plugins.Enabled`). Details: `docs/spec/plugins.md` "Merged packages" and "PRO parts of PKI".
 - **Sites:** the site node's EST relay follows PKI (the relay asks the server by the new owner, still answers the old id
-  for site nodes of 4.1 until they update).
+  for site nodes of 4.1 until they update). Built: the link to the node carries no plugin id (a relay is opened by protocol,
+  port and reason, "EST server" on TCP 9454 as in 4.1), so nodes of 4.1 and 4.5 relay unchanged; the relay opens only while
+  the EST server runs.
 
 ## The PKI page
 
@@ -180,8 +188,9 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 
 1. Done (on main, 2026-10-24): the CA list with Used by, 802.1X Trusted CAs and policies, EST Sign in with, the clock
    check.
-2. One plugin: EST and 802.1X move into the PKI package (three pages, Turn on per server, PRO for the two servers only,
-   taking over the 4.1 data and choices, the site relay), without changing what they do.
+2. Built (2026-10-24, branch `feature/pki-policies`): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
+   on per server, PRO for the two servers only, taking over the 4.1 data and choices, the site relay), without changing what
+   they do.
 3. The page with CAs, Policies and Certificates (today's list); 802.1X server, Allow CA, VLAN, Block and Revoke policies
    with the conversion; the 802.1X and EST page changes above.
 4. Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the task dialogs pick a policy; EST profiles point to

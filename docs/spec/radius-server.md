@@ -4,7 +4,11 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Agreed 2026-10-23; one-page redesign, trusted CAs from PKI and policies agreed 2026-10-24 (planned, `feature/pki-center`); built 2026-10-24: the protocol layer ("Code (protocol)") and the server part ("Code (server)"); the
 page is the client part.
 
-An OADM PRO plugin (`oadm.radius`, `"pro": true`, its own source-available license like EST). OADM answers the switches
+A PRO part of the PKI package since OADM 4.5 (core plugin `oadm.radius`, `plugins/Oadm.Plugins.Pki/Radius`, its own
+source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the page's Server card
+stores the choice and starts it (UDP 1812 opens), **Turn off** (left of Save, confirmed) stops it; it runs only while it is
+on and OADM PRO is active (without it the page shows only the Server card with "Needs an OADM PRO license or trial." and a
+disabled Turn on; a license that ends stops it, a new one starts it with the kept choice). OADM answers the switches
 of the network as their **RADIUS server** and authenticates the cameras on the switch ports with **EAP-TLS** (IEEE
 802.1X). It completes the certificate suite: PKI issues the camera's client certificate and trusts the OADM CA (task
 "IEEE 802.1X"), EST renews it, the 802.1X server checks it when the camera plugs in. A clean-room implementation from
@@ -24,8 +28,10 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 
 ## What the user sees
 
-- **Plugins page:** "802.1X server" with the chip **OADM PRO**; off by default; without an active license the same lock
-  and **Activate** as EST. When the license ends, the server stops answering (switches fall back to their own rule).
+- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, the Server card's Turn on (disabled
+  without an active license, the status says "Needs an OADM PRO license or trial."); while it does not run the page shows
+  only the Server card and reads nothing else. When the license ends, the server stops answering (switches fall back to
+  their own rule); a 4.1 server whose plugin was on keeps it on.
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
   their ports." **One page, no tabs** (decision 2026-10-24): a row of four cards, each as high as it needs —
   **Server** | **Trusted CAs** | **Switches** | **Policies** — then **Sessions** and **Log** full width below. Narrower pages
@@ -399,7 +405,7 @@ and reason, never secrets or key material.
 
 ## Code (protocol)
 
-`plugins/Oadm.Plugins.Radius/Protocol/` (namespace `Oadm.Plugins.Radius.Protocol.*`): the protocol without sockets, host or
+`plugins/Oadm.Plugins.Pki/Radius/Protocol/` (namespace `Oadm.Plugins.Radius.Protocol.*`): the protocol without sockets, host or
 UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`.
 
 - **Datagram flow** (`Sessions/RadiusProcessor.Process(datagram, RadiusClient, IPEndPoint source)`, thread-safe, never
@@ -473,7 +479,7 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
 
 ## Code (server)
 
-`plugins/Oadm.Plugins.Radius/Server/` (namespace `Oadm.Plugins.Radius.Server`), the page contract in `Api/RadiusApi.cs`
+`plugins/Oadm.Plugins.Pki/Radius/Server/` (namespace `Oadm.Plugins.Radius.Server`), the page contract in `Api/RadiusApi.cs`
 (methods `RadiusMethods`, topics `RadiusTopics`, DTOs, the input rules `RadiusRules` shared with the page, `RadiusJson`
 camelCase with enums as camelCase strings; linked into the client part). Built 2026-10-24.
 
@@ -604,7 +610,7 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 
 ## Code (page)
 
-`plugins/Oadm.Plugins.Radius.Client` (namespace `Oadm.Plugins.Radius.Client`, `RadiusPage`, `HasOwnCards`); tests in
+`plugins/Oadm.Plugins.Pki.Client/Radius` (namespace `Oadm.Plugins.Radius.Client`, `RadiusPage`, `HasOwnCards`); tests in
 `tests/Oadm.Plugins.Radius.Tests/Client` against a fake server (`FakeRadiusBackend`: every method of the contract with demo
 data, also for the screenshots; the four, two and one column layout and the rows of dropped requests in
 `ServerLayoutTests`). One page since 2026-10-24.
@@ -650,7 +656,7 @@ data, also for the screenshots; the four, two and one column layout and the rows
 - **Device groups**: a user with a group (the client's `HasAllDevices` or the state's `hasAllDevices` false, fail closed)
   sees only Sessions and Log; nothing server-wide is read, and what was read before a role change leaves at once. Users
   without "manage" see no Save, Add, Edit, Delete, Move or Delete all, and the inputs are read only.
-- **Contract**: `plugins/Oadm.Plugins.Radius/Api/RadiusApi.cs` (methods, topics, DTOs and `RadiusRules`, whose texts and
+- **Contract**: `plugins/Oadm.Plugins.Pki/Radius/Api/RadiusApi.cs` (methods, topics, DTOs and `RadiusRules`, whose texts and
   checks the page uses for its errors below the fields); the client project references the server project like EST.
   `listSites` -> every site of the server (without it the page takes the sites of the devices and switches it knows).
 

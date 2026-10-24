@@ -1,11 +1,14 @@
 # EST server (oadm.est)
 
-The first OADM PRO plugin. Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-available, not
-Apache 2.0).
+A PRO part of the PKI plugin (`../README.md`, `docs/spec/pki.md` "One plugin"; OADM 4.1 shipped it as its own plugin).
+Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-available, not Apache 2.0), also for
+`plugins/Oadm.Plugins.Pki.Client/Est`.
 
-- Core plugin, rail page **EST server** (group Security, icon `lock`), off by default, `"pro": true`: the host runs it only
-  while OADM PRO is active; every request checks the license again (503 "OADM PRO is not active.").
-- Server part (`Oadm.Plugins.Est.Server.dll`):
+- Core plugin `oadm.est` of the PKI package, rail page **EST server** (group Security, icon `lock`). The core plugin always
+  runs; the server (`EstService`) runs only while it is turned on (`ServerSwitch`, plugin setting `serverOn`, off by
+  default) and OADM PRO is active; every request checks the license again (503 "OADM PRO is not active.").
+  Page methods `getServer`, `turnOn`, `turnOff` (`../Servers/ServerSwitch.cs`) besides `EstMethods`.
+- Server part (in `Oadm.Plugins.Pki.Server.dll`, namespace `Oadm.Plugins.Est`):
   - `Serving/EstService`: listens on TCP 9454 (setting `config.port`, 1025..65535) on the server's network through
     `ICorePluginContext.Network.ListenTcpAsync`; TLS 1.2+ (`SslStream`, client certificate requested, checked per request);
     at most 64 connections, 20 requests and 30 s idle per connection.
@@ -66,8 +69,9 @@ Apache 2.0).
   profile; payload `SetupPayload.Action`). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
   stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`), whose connections get the site's own
   server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
-- Client part (`Oadm.Plugins.Est.Client.dll`): General (listen on, port, enrollments kept) and Profiles (name, use, days,
-  key, on; at most one per use), Save with the status left of it; Enrollments (live, search, Delete all); Not renewed (only while there are
+- Client part (in `Oadm.Plugins.Pki.Client.dll`, `Est/`, namespace `Oadm.Plugins.Est.Client`): while the server does not run
+  only General with its status and Turn on (`Servers/ServerSwitchView`); else General (listen on, port, enrollments kept) and Profiles (name, use, days,
+  key, on; at most one per use), Save with the status and Turn off left of it; Enrollments (live, search, Delete all); Not renewed (only while there are
   any; a revoked certificate is never flagged). No Revoke and no list of every certificate here: both are PKI's (tab
   Certificates, docs/spec/radius-server.md "Certificates and revocation").
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device

@@ -15,8 +15,9 @@ package and runtime pack with license, copyright, project and where it is used (
 license texts from `packaging/notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1; Apache-2.0,
 LGPL-2.1 and OFL-1.1 always) and the license and notice files the packages ship (root `LICENSE*`/`NOTICE*`/
 `THIRD-PARTY-NOTICES*`, the nuspec license file, `legal/**`), deduplicated by content; a license without a text is a
-warning. A plugin folder with its own `LICENSE` (the OADM PRO plugins, e.g. `oadm.est`) is named at the top ("Except the
-plugin oadm.est: it has its own license"). `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OADM contributors"; `LICENSE` keeps the Apache appendix template unchanged), `LGPL-2.1.txt` and `TERMS.md` are written next to
+warning. A plugin folder with its own `LICENSE`, or a folder of a plugin with one (PKI's `Est/` and `Radius/`, the EST and
+802.1X servers), is named at the top ("Except the part Est of the plugin oadm.pki: it has its own license
+(plugins/oadm.pki/Est/LICENSE)"). `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OADM contributors"; `LICENSE` keeps the Apache appendix template unchanged), `LGPL-2.1.txt` and `TERMS.md` are written next to
 each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share/doc/<package>/`); the About page starts
 its license sentence with the same copyright line.
 **Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device
@@ -89,6 +90,11 @@ SDK: "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`:
   `com.oadm.choice.server` "OADM server" (LaunchDaemon + server; uncheck for "Client only", or
   `installer -applyChoiceChangesXML`). Unsigned (executables ad hoc signed); Developer ID signing and notarization are a
   later step.
+- **Plugin folders a version no longer ships** (4.1's `oadm.est` and `oadm.radius`, parts of PKI since 4.5,
+  `docs/spec/pki.md` "One plugin") are removed on upgrade: the MSI removes the old version first (MajorUpgrade
+  `afterInstallValidate`), dpkg removes the old package's files and the server and client postinst remove what is left in
+  those two folders, the .pkg's server and client preinstall remove them (an installer upgrade keeps files the new
+  package lacks). Server and client skip such a folder anyway ("Merged into PKI").
 - The server runs as root / LocalSystem (NTP and DHCP plugins need UDP 123 and 67). As a service the host
   integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`,
   content root = app folder; no-ops on a console). `ServiceHosting.IsRunningAsService()` (Windows service, systemd, or

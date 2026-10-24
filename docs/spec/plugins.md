@@ -286,6 +286,14 @@ answers is unchanged. Used by the System report for server reports.
   host and never copied into the plugin folder.
 - Plugin failures (load or execution) are logged and isolated; a broken plugin never
   prevents server or client from starting.
+- A package may hold several core plugins (PKI: EST server, PKI, 802.1X server, each with its rail page): the loader
+  registers them by full type name, so the rail keeps one order inside a group; settings, records, data folder, events,
+  permissions and services belong to the core plugin id, on/off and licenses to the package.
+- **Merged packages** (`Oadm.Core.Plugins.MergedPlugins`, the client's `ClientPluginLoader.MergedPackages`): a plugin folder
+  `oadm.est` or `oadm.radius` (OADM 4.1, parts of PKI since 4.5) is never loaded by the server or the client, with one
+  log line "... skipped: Merged into PKI" (not a load error; the installers remove such folders). On every start, before
+  the stored choices apply, `MergedPlugins.TakeOverAsync` moves an entry of either id in `Plugins.Enabled` to the server's
+  own choice (`Plugin:<id>:serverOn`, unless one is stored) and removes it from `Plugins.Enabled` (idempotent).
 
 ### Plugins on and off
 
@@ -294,16 +302,16 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Action Rule Editor, Dashboards, Device triggers, Edge Recording Export, Edge storage, EST server, Hardening scan, Image Health Dashboard, I/O Monitor, Live View, Metadata Monitor and 802.1X server**. The administrator's choices are the
+  **Off by default: Action Rule Editor, Dashboards, Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**, and inside PKI the EST and 802.1X servers (their own Turn on, below). The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Dashboards, Edge Recording Export, Edge storage, Action Rule Editor, EST server (OADM PRO), 802.1X server (OADM PRO). Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Dashboards, Edge Recording Export, Edge storage, Action Rule Editor. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
-  plugin has one.
+  plugin has one (PKI adds a second: "802.1X and EST servers need OADM PRO.").
 - **OADM PRO plugins** (manifest `pro`, `PluginOrigin.Pro`; `docs/spec/licensing.md`): listed for everyone, on only while
   OADM PRO is active (`PluginRegistry.ProActive`): `IsEnabled` is the stored choice (or default) **and** an active license,
   so the choice is kept and a new license brings the plugin back. Turning one on without the license: `SetEnabled` throws,
@@ -311,7 +319,16 @@ is always on.
   When the license changes (imported, removed, ran out) `PluginActivation.FollowPro` starts or stops the core plugins.
   Plugins page: the License column shows the chip "OADM PRO" (ok while active, tooltip `NeedsPro` otherwise), the check
   box is locked without the license and **Activate** (administrators) opens Settings with the License card; the client
-  reloads the list after it imported or removed the license.
+  reloads the list after it imported or removed the license. No bundled package is a PRO plugin since OADM 4.5.
+- **PRO parts of PKI** (`docs/spec/pki.md` "One plugin", `plugins/Oadm.Plugins.Pki/Servers/ServerSwitch.cs`): the EST
+  server (`oadm.est`) and the 802.1X server (`oadm.radius`) are core plugins of the always-on PKI package. The core plugins
+  always run; each server inside runs, and opens its port, only while its stored choice (plugin setting `serverOn` of its
+  core plugin, JSON true / false, none = off) is on **and** `ICorePluginContext.Pro` is active; it follows `Pro.Changed`
+  with the kept choice. Page methods `getServer` (everyone with the page), `turnOn` (refused with `NeedsPro` without the
+  license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their pages
+  show only the Server / General card with the status and **Turn on** while the server does not run, **Turn off** left of
+  Save while it runs (`plugins/Oadm.Plugins.Pki.Client/Servers/ServerSwitchView`). The PKI row of the Plugins page has no
+  PRO chip; its description says "802.1X and EST servers need OADM PRO.".
 - **Plugin services** (`ICorePluginContext.Services`, `IPluginServices`: `Offer<T>`, `Withdraw<T>`, `Find<T>`; server
   `PluginServiceRegistry`): core plugins offer each other services. The contract is an SDK interface (plugins load in
   assembly contexts of their own, only SDK types are shared); one offer per interface (a second plugin's offer throws);
@@ -358,7 +375,10 @@ is always on.
   always-on packages are not listed; a refused change is undone with the reason below the list. Other clients see a change
   on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
-  descriptions), `tests/Oadm.Client.Tests/PluginListTests`, `ShellTests`.
+  descriptions; the takeover of the 4.1 choices), `tests/Oadm.Core.Tests/Plugins/MergedPluginsTests` (PKI with three core
+  plugins and the ids of 4.1, folders of 4.1 skipped, the takeover from a 4.1 fixture), `tests/Oadm.Client.Tests/PluginListTests`,
+  `ShellTests`, `ToolbarPluginTests` (a client folder of 4.1 skipped); the switch: `tests/Oadm.Plugins.Est.Tests/ServerSwitchTests`,
+  `tests/Oadm.Plugins.Radius.Tests/PluginTests`.
 
 ## Plugin licenses
 
