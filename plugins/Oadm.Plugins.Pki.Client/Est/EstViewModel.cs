@@ -22,25 +22,28 @@ public sealed record Choice<T>(T Value, string Label)
     public override string ToString() => Label;
 }
 
-/// <summary>One profile of the form: name, use, validity, key, on; errors below its fields.</summary>
+/// <summary>One profile of the form: name, use, issuing policy, on; errors below its fields.</summary>
 public sealed partial class ProfileRowViewModel : ValidatingViewModel
 {
     private readonly EstViewModel _owner;
+    private readonly EstProfile _source; // the stored profile: the validity and key of OADM 4.1 stay in it (no longer read)
 
     internal ProfileRowViewModel(EstViewModel owner, EstProfile profile)
     {
         _owner = owner;
+        _source = profile;
         Name = profile.Name;
         Use = EstViewModel.Uses.First(u => u.Value == profile.Use);
-        Validity = profile.ValidityDays.ToString(CultureInfo.InvariantCulture);
-        Key = EstViewModel.Keys.First(k => k.Value == profile.Key);
+        PolicyChoices = owner.PolicyChoicesFor(Use.Value);
+        Policy = PolicyChoices.FirstOrDefault(c => c.Value == profile.PolicyId) ?? (profile.PolicyId is null && PolicyChoices.Count > 0 ? PolicyChoices[0] : null);
         Enabled = profile.Enabled;
         Validation
             .Rule(nameof(Name), () => !NamePattern().IsMatch(Name.Trim()) ? "Use 1 to 32 letters, digits or _."
                 : _owner.Profiles.Any(p => p != this && string.Equals(p.Name.Trim(), Name.Trim(), StringComparison.OrdinalIgnoreCase)) ? "Another profile has this name."
                 : null)
-            .Rule(nameof(Validity), () => int.TryParse(Validity, NumberStyles.None, CultureInfo.InvariantCulture, out var days) && days is >= 1 and <= 825
-                ? null : "Use 1 to 825 days.")
+
+            // Without PKI's policies (none listed) the server takes the profile's own values: nothing to choose.
+            .Rule(nameof(Policy), () => Policy is null && _owner.IssuingPolicies.Count > 0 ? EstTexts.ChoosePolicy : null)
             .Rule(nameof(Use), () => _owner.Profiles.Any(p => p != this && p.Use == Use) ? "Another profile has this use." : null);
         Validation.Validate();
     }
@@ -51,29 +54,36 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial Choice<ProfileUse> Use { get; set; }
 
+    /// <summary>The issuing policies of the use's kind (HTTPS certificate for HTTPS and RTSPS, IEEE 802.1X certificate for IEEE 802.1X and MQTT).</summary>
     [ObservableProperty]
-    public partial string Validity { get; set; }
+    public partial IReadOnlyList<Choice<Guid>> PolicyChoices { get; set; }
 
     [ObservableProperty]
-    public partial Choice<ProfileKey> Key { get; set; }
+    [NotifyPropertyChangedFor(nameof(PolicySummary))]
+    public partial Choice<Guid>? Policy { get; set; }
+
+    /// <summary>"OADM Root CA SERVER01, 365 days, ECC" of the chosen policy (its tooltip).</summary>
+    public string? PolicySummary => Policy is { } chosen ? _owner.IssuingPolicies.FirstOrDefault(p => p.Id == chosen.Value)?.Summary : null;
 
     [ObservableProperty]
     public partial bool Enabled { get; set; }
 
 #pragma warning disable CA1822 // Instance properties for the compiled bindings of the row template.
     public IReadOnlyList<Choice<ProfileUse>> UseChoices => EstViewModel.Uses;
-
-    public IReadOnlyList<Choice<ProfileKey>> KeyChoices => EstViewModel.Keys;
 #pragma warning restore CA1822
 
     public bool MayManage => _owner.MayManage;
 
-    internal EstProfile ToProfile() => new(
-        Name.Trim(),
-        Use.Value,
-        int.TryParse(Validity, NumberStyles.None, CultureInfo.InvariantCulture, out var days) ? days : 0,
-        Key.Value,
-        Enabled);
+    internal EstProfile ToProfile() => _source with { Name = Name.Trim(), Use = Use.Value, Enabled = Enabled, PolicyId = Policy?.Value ?? _source.PolicyId };
+
+    /// <summary>PKI's policies changed: the choices of the use's kind again, the chosen one kept while it is listed.</summary>
+    internal void PoliciesChanged()
+    {
+        var chosen = Policy?.Value;
+        PolicyChoices = _owner.PolicyChoicesFor(Use.Value);
+        Policy = PolicyChoices.FirstOrDefault(c => c.Value == chosen) ?? (chosen is null && PolicyChoices.Count > 0 ? PolicyChoices[0] : null);
+        Validation.Validate();
+    }
 
     internal void Revalidate() => Validation.Validate();
 
@@ -87,7 +97,14 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
 
     partial void OnNameChanged(string value) => _owner.ProfilesEdited();
 
-    partial void OnUseChanged(Choice<ProfileUse> value) => _owner.ProfilesEdited();
+    partial void OnUseChanged(Choice<ProfileUse> value)
+    {
+        // Another use may take another kind of policy: the first of it unless the chosen one fits.
+        var chosen = Policy?.Value;
+        PolicyChoices = _owner.PolicyChoicesFor(value.Value);
+        Policy = PolicyChoices.FirstOrDefault(c => c.Value == chosen) ?? (PolicyChoices.Count > 0 ? PolicyChoices[0] : null);
+        _owner.ProfilesEdited();
+    }
 
     [GeneratedRegex("^[A-Za-z0-9_]{1,32}$")]
     private static partial Regex NamePattern();
@@ -173,12 +190,6 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         new(ProfileUse.Rtsps, "RTSPS"),
     ];
 
-    public static IReadOnlyList<Choice<ProfileKey>> Keys { get; } =
-    [
-        new(ProfileKey.Ecc, "ECC"),
-        new(ProfileKey.Rsa, "RSA"),
-    ];
-
     private readonly ICorePluginClientContext _ctx;
     private CancellationTokenSource? _active;
     private bool _profilesValid = true;
@@ -237,6 +248,16 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     }
 
     public RangeObservableCollection<ProfileRowViewModel> Profiles { get; } = [];
+
+    /// <summary>PKI's HTTPS and IEEE 802.1X certificate policies a profile can name (empty without PKI's policies).</summary>
+    public IReadOnlyList<IssuingPolicyChoice> IssuingPolicies { get; private set; } = [];
+
+    /// <summary>The policies a profile of <paramref name="use"/> can name, oldest first.</summary>
+    internal IReadOnlyList<Choice<Guid>> PolicyChoicesFor(ProfileUse use)
+    {
+        var kind = EstProfile.PolicyKindOf(use);
+        return [.. IssuingPolicies.Where(p => p.Kind == kind).Select(p => new Choice<Guid>(p.Id, p.Name))];
+    }
 
     /// <summary>"Sign in with": the CAs of PKI a camera may sign in with (a few check boxes).</summary>
     public RangeObservableCollection<SignInRowViewModel> SignIn { get; } = [];
@@ -619,7 +640,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             var property = match.Groups[2].Value switch
             {
                 "use" => nameof(ProfileRowViewModel.Use),
-                "validityDays" => nameof(ProfileRowViewModel.Validity),
+                "policy" => nameof(ProfileRowViewModel.Policy),
                 _ => nameof(ProfileRowViewModel.Name),
             };
             Profiles[index].ShowServerError(property, error);
@@ -655,6 +676,15 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         ListenersText = string.Join(Environment.NewLine, state.Listeners.Where(l => !l.Ok && l.SiteId is not null).Select(l => l.Text));
         Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
         IssuingCa = state.IssuingCa ?? "-";
+        if (!IssuingPolicies.SequenceEqual(state.IssuingPolicies))
+        {
+            IssuingPolicies = state.IssuingPolicies;
+            foreach (var row in Profiles)
+            {
+                row.PoliciesChanged();
+            }
+        }
+
         if (!form && SignIn.Select(s => s.Id).SequenceEqual(state.SignInChoices.Select(c => c.Id)))
         {
             return;

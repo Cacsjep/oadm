@@ -25,10 +25,13 @@ public sealed class PageTests : IAsyncLifetime
     private readonly FakeAuthority _ca = new();
     private readonly EstPlugin _plugin = new();
     private PageContext _ctx = null!;
+    private Oadm.Plugins.Pki.Policies.PolicyStore _policies = null!;
 
     public async Task InitializeAsync()
     {
         _core.FakeServices.Offer<IDeviceCertificateAuthority>(_ca);
+        _policies = await TestPolicies.StoreAsync(); // PKI's issuing policies: the profiles name theirs
+        _core.FakeServices.Offer(_policies);
         await _core.Settings.SetAsync(Oadm.Plugins.Pki.Servers.ServerSwitch<EstService>.SettingKey, "true", CancellationToken.None); // turned on
         await _plugin.StartAsync(_core, CancellationToken.None);
         _ctx = new PageContext(_plugin, _core);
@@ -57,6 +60,33 @@ public sealed class PageTests : IAsyncLifetime
         request.CertificateExtensions.Add(san.Build());
         using var leaf = request.Create(ca, now.AddMinutes(-5), now.AddDays(365), [0x7D, 0xFD, 0x05, 0x49]);
         return (leaf.RawData, leaf.SerialNumber);
+    }
+
+    [Fact]
+    public async Task A_profile_names_an_issuing_policy_of_its_use()
+    {
+        var twoYears = await TestPolicies.AddAsync(_policies, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "HTTPS 2 years", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.HttpsCertificate, CaId = "oadm", ValidDays = 730, Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa,
+        });
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+
+        var https = vm.Profiles.Single(p => p.Name == "https");
+        Assert.Equal(["HTTPS", "HTTPS 2 years"], https.PolicyChoices.Select(c => c.Label));
+        Assert.Equal("HTTPS", https.Policy!.Label); // converted: the default with the same values
+        Assert.Equal("OADM CA, 365 days, ECC", https.PolicySummary); // the fake CA lists no OADM CA: the plain name
+        var dot1x = vm.Profiles.Single(p => p.Name == "dot1x");
+        Assert.Equal(["IEEE 802.1X"], dot1x.PolicyChoices.Select(c => c.Label));
+
+        https.Policy = https.PolicyChoices[1];
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(twoYears.Id, _plugin.Service!.Store.Config.Profiles.Single(p => p.Name == "https").PolicyId);
+
+        // Another use takes a policy of its kind; PKI keeps a policy a profile names.
+        https.Use = Oadm.Plugins.Est.Client.EstViewModel.Uses.Single(u => u.Value == ProfileUse.Mqtt);
+        Assert.Equal(["IEEE 802.1X"], https.PolicyChoices.Select(c => c.Label));
+        Assert.Equal("Used by the EST profile https.", (await _policies.DeleteAsync(twoYears.Id, "admin", CancellationToken.None)).Error?.Message);
     }
 
     [Fact]

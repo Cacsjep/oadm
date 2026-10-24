@@ -110,6 +110,7 @@ public sealed partial class EstService : IAsyncDisposable
     private IReadOnlyList<System.Net.IPAddress> _boundAddresses = [];
     private (DateTimeOffset At, IReadOnlyList<string> Addresses)? _certificateAddresses;
     private int _checkingRenewals;
+    private Oadm.Plugins.Pki.Policies.PolicyStore? _policies; // followed for the page's issuing policies
 
     public EstService(EstHost host)
     {
@@ -160,6 +161,12 @@ public sealed partial class EstService : IAsyncDisposable
         try
         {
             await _store.LoadAsync(ct).ConfigureAwait(false);
+            _policies = _host.Policies();
+            if (_policies is not null)
+            {
+                _policies.Changed += OnPoliciesChanged; // the page's issuing policies follow PKI
+            }
+
             ReportUsedBy();
             await OpenAsync(_store.Config.Port, ct).ConfigureAwait(false);
             _renewalTimer = _host.Time.CreateTimer(_ => Track(CheckRenewalsAsync(_cts.Token)), null, RenewalCheckDelay, RenewalCheckInterval);
@@ -314,6 +321,11 @@ public sealed partial class EstService : IAsyncDisposable
         }
 
         _stopping = true;
+        if (_policies is not null)
+        {
+            _policies.Changed -= OnPoliciesChanged;
+        }
+
         StopReportingUsedBy();
         if (_host.Sites is { } sites)
         {
@@ -1133,6 +1145,8 @@ public sealed partial class EstService : IAsyncDisposable
             LogListenFailed(ex);
         }
     }
+
+    private void OnPoliciesChanged(object? sender, EventArgs e) => PublishState();
 
     private void PublishState()
     {
