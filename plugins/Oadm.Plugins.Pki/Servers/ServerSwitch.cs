@@ -232,7 +232,15 @@ public sealed class ServerSwitch<TService> : IAsyncDisposable
         {
             try
             {
-                _service = await _start(ct).ConfigureAwait(false);
+                // Turn on runs in a user's call: the server's timers and loops outlive it, so they start without the call's
+                // context (the host's caller and plugin call mark never flow into background work).
+                Task<TService> starting;
+                using (ExecutionContext.SuppressFlow())
+                {
+                    starting = Task.Run(() => _start(ct), CancellationToken.None);
+                }
+
+                _service = await starting.ConfigureAwait(false);
                 _problem = null;
                 ServerSwitchLog.Running(_logger, _name);
             }
