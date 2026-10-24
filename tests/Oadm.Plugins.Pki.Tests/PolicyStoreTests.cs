@@ -355,7 +355,7 @@ public sealed class PolicyStoreTests
 
         var state = await pki.StateAsync();
         Assert.Equal(["802.1X: Contoso"], state.Authorities.Single(a => a.Id == id).UsedBy);
-        Assert.Equal("Contoso Root, any device with a valid certificate", allow.List!.Rows.Single(r => r.Policy.Name == "Contoso").Summary);
+        Assert.Equal("The 802.1X server lets in any device with a valid certificate from Contoso Root.", allow.List!.Rows.Single(r => r.Policy.Name == "Contoso").Summary);
 
         // One phrase for "only devices OADM manages": the editor's check box, the row's summary and Used by.
         var oadm = (await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "OADM CA", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId })).Saved!;
@@ -363,7 +363,7 @@ public sealed class PolicyStoreTests
         Assert.Equal("802.1X: OADM CA (only devices OADM manages), Lab", PolicyTexts.UsedBy([oadm, oadm with { Name = "Lab", OnlyManaged = false }])); // one prefix
         Assert.Null(PolicyTexts.UsedBy(Array.Empty<PkiPolicy>()));
         Assert.Contains("802.1X: OADM CA (only devices OADM manages)", (await pki.StateAsync()).Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
-        Assert.EndsWith(", only devices OADM manages", PolicyStore.Summary(oadm, new Dictionary<string, string>()), StringComparison.Ordinal);
+        Assert.StartsWith("The 802.1X server lets in devices OADM manages", PolicyStore.Summary(oadm, new Dictionary<string, string>()), StringComparison.Ordinal);
         Assert.Equal(PolicyTexts.OnlyManaged, Client.PolicyEditorViewModel.OnlyManagedText);
 
         var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));

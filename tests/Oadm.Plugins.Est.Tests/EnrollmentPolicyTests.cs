@@ -64,7 +64,7 @@ public sealed class EnrollmentPolicyTests
 
         // The rows of the card.
         var rows = store.Rows(_devices);
-        Assert.Equal(["Axis device ID, for new certificates", "OADM Root CA TEST, for renewals"], rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa).Select(r => r.Summary));
+        Assert.Equal(["Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "Cameras with a certificate from OADM Root CA TEST may sign in to renew it."], rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa).Select(r => r.Summary));
         Assert.All(rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa), r => Assert.Equal((PolicyGroups.Est, "Sign-in CA"), (r.Group, r.KindName)));
     }
 
@@ -145,6 +145,7 @@ public sealed class EnrollmentPolicyTests
         Assert.Equal(["B8A44F631339"], normal.Devices!.Serials);
         Assert.Null(PolicyRules.Normalize(all with { ProfileScope = PolicyProfiles.All, Profiles = ["https"] }).Profiles);
         Assert.Equal("Profiles https and dot1x", PolicyTexts.EnrollmentSummary(normal));
+        Assert.Equal("These cameras may get certificates from the EST server for the profiles https and dot1x.", PolicyTexts.EnrollmentSentence(normal));
     }
 
     [Fact]

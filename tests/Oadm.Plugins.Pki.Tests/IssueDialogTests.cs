@@ -134,7 +134,7 @@ public sealed class IssueDialogTests
         https.ValidDays = "730";
         https.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
         Assert.True(await https.SaveAsync());
-        Assert.Equal("OADM Root CA SERVER01, 730 days, RSA", card.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", card.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
 
         var dot1x = card.NewEditor(card.Rows.Single(r => r.Name == "IEEE 802.1X").Source);
         dot1x.Identity = PolicyEditorViewModel.IdentityChoices.Single(c => c.Value == Dot1xIdentity.Custom);

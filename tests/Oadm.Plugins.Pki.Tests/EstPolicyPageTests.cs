@@ -37,8 +37,8 @@ public sealed class EstPolicyPageTests
 
         Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST", "Revoke"], card.Filters.Select(f => f.Label));
         card.SelectFilterCommand.Execute(PolicyGroups.Est);
-        Assert.Equal([("All devices", "Enrollment", "All profiles", "All devices"), ("Axis device ID", "Sign-in CA", "Axis device ID, for new certificates", "-"),
-            ("OADM CA", "Sign-in CA", "OADM Root CA SERVER01, for renewals", "-")], card.Rows.Select(r => (r.Name, r.Kind, r.Summary, r.Devices)));
+        Assert.Equal([("All devices", "Enrollment", "These cameras may get certificates from the EST server for every profile.", "All devices"), ("Axis device ID", "Sign-in CA", "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "-"),
+            ("OADM CA", "Sign-in CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", "-")], card.Rows.Select(r => (r.Name, r.Kind, r.Summary, r.Devices)));
         Assert.Equal(["https", "dot1x"], card.List.EstProfiles);
         Assert.Equal(["Axis device ID", "OADM Root CA SERVER01"], card.List.SignInCas.Select(c => c.Name));
     }
@@ -83,7 +83,7 @@ public sealed class EstPolicyPageTests
         Assert.True(await editor.SaveAsync());
         var saved = pki.Policies.PoliciesOf(PolicyKinds.Enrollment).Single(p => p.Name == "PTZ");
         Assert.Equal((PolicyProfiles.Chosen, "dot1x", "PTZ"), (saved.ProfileScope, saved.Profiles!.Single(), saved.Devices!.Tags.Single()));
-        Assert.Equal("Profile dot1x", card.List.Rows.Single(r => r.Policy.Id == saved.Id).Summary);
+        Assert.Equal("These cameras may get certificates from the EST server for the profile dot1x.", card.List.Rows.Single(r => r.Policy.Id == saved.Id).Summary);
 
         // An existing policy shows its profiles, also one the EST server no longer has (so it can be unchecked).
         var stale = card.NewEditor(saved with { Profiles = ["dot1x", "web"] });

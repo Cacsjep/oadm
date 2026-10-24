@@ -93,8 +93,21 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
 
 ## Policies
 
-One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a short summary
-("OADM CA, 365 days, ECC", "VLAN 30", "Only devices OADM manages"), devices (where the kind has them); Edit and Delete as
+One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a
+summary, devices (where the kind has them). The summary (decision 2026-10-24) is one plain sentence that says what the
+policy does with its values (one builder per kind, `PolicyStore.Summary`, also the editor's preview line below its fields;
+"these devices" stands for the Devices column; up to two lines in the row, the whole sentence as tooltip): "Certificates
+with 30 days or less left show a warning and raise Certificate expires soon.", "Enable HTTPS issues certificates from OADM
+Root CA acs, valid 365 days, with an ECC key.", the IEEE 802.1X one adds "Cameras sign in with their MAC address." (host
+name, or "as <identity>"), "The 802.1X server uses a certificate from ..., renewed 30 days before it ends." (EST server
+likewise), "The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide
+when cameras sign in again." ("... asks cameras to sign in again every 60 minutes."), "The 802.1X server lets in devices
+OADM manages that have a certificate from ..." / "... lets in any device with a valid certificate from Contoso Root.",
+"The 802.1X server puts these devices in VLAN 30.", "The 802.1X server refuses these devices.", "Certificates of these
+devices are revoked, new ones too.", "These cameras may get certificates from the EST server for every profile." ("... for
+the profiles https and dot1x.", "These cameras may not get certificates from the EST server."), "Cameras sign in to the EST
+server with their Axis device ID for new certificates and renewals.", "Cameras with a certificate from ... may sign in to
+renew it."; Edit and Delete as
 row buttons (like the Permissions page), **Add policy** in the card header. The editor is one dialog: name, kind, the
 kind's fields (each kind its own form, e.g. the 802.1X server policy: Minimum TLS version, Cipher suites with
 Reset to default, Largest EAP packet), the shared device selector where the kind has devices.

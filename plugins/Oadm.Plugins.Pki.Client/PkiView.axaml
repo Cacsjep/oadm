@@ -67,7 +67,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                   </DataGridTemplateColumn>
                   <DataGridTextColumn Header="Kind" Width="Auto" MinWidth="100" Binding="{Binding Kind}" x:DataType="vm:PolicyRowViewModel" />
-                  <DataGridTemplateColumn Header="Summary" Width="1.6*" MinWidth="140" x:DataType="vm:PolicyRowViewModel">
+                  <DataGridTemplateColumn Header="Summary" Width="2.6*" MinWidth="160" x:DataType="vm:PolicyRowViewModel">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate x:DataType="vm:PolicyRowViewModel">
                         <StackPanel Margin="10,4" Spacing="4" VerticalAlignment="Center">

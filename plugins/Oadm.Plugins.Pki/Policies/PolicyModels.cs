@@ -582,6 +582,26 @@ public static class PolicyTexts
         };
     }
 
+    /// <summary>
+    /// The sentence of an Enrollment policy: "These cameras may get certificates from the EST server for every profile.",
+    /// "... for the profile https.", "... for the profiles https and dot1x.", "These cameras may not get certificates from the
+    /// EST server."
+    /// </summary>
+    public static string EnrollmentSentence(PkiPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        var profiles = policy.Profiles ?? [];
+        if (policy.ProfileScope == PolicyProfiles.None || (policy.ProfileScope == PolicyProfiles.Chosen && profiles.Count == 0))
+        {
+            return "These cameras may not get certificates from the EST server.";
+        }
+
+        const string Start = "These cameras may get certificates from the EST server for ";
+        return policy.ProfileScope != PolicyProfiles.Chosen ? Start + "every profile."
+            : profiles.Count == 1 ? Start + "the profile " + profiles[0] + "."
+            : Start + "the profiles " + string.Join(", ", profiles.Take(profiles.Count - 1)) + " and " + profiles[^1] + ".";
+    }
+
     /// <summary>"for new certificates", "for renewals" (the row's summary of a Sign-in CA policy).</summary>
     public static string SignInForText(string? value) => value == PolicySignIn.Renewal ? "for renewals" : "for new certificates";
 

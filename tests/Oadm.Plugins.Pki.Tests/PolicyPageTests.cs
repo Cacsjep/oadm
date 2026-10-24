@@ -46,13 +46,13 @@ public sealed class PolicyPageTests
         Assert.Equal(
             ["Expiry warning", "HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
             card.Rows.Select(r => r.Kind));
-        Assert.Equal("30 days", card.Rows[0].Summary);
-        Assert.Equal("OADM Root CA SERVER01, 365 days, ECC", card.Rows[1].Summary); // the defaults of a new server
-        Assert.Equal("OADM Root CA SERVER01, 365 days, ECC, 802.1X server", card.Rows[3].Summary);
-        Assert.Equal("OADM Root CA SERVER01, 90 days, ECC, EST server", card.Rows[4].Summary);
-        Assert.Equal("TLS 1.2 or later, 1,020 bytes, switch decides reauthentication", card.Rows[5].Summary);
-        Assert.Equal("OADM Root CA SERVER01, only devices OADM manages", card.Rows[6].Summary); // the CA's name in PKI
-        Assert.Equal("VLAN 30", card.Rows[8].Summary);
+        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[0].Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", card.Rows[1].Summary); // the defaults of a new server
+        Assert.Equal("The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends.", card.Rows[3].Summary);
+        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[4].Summary);
+        Assert.Equal("The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide when cameras sign in again.", card.Rows[5].Summary);
+        Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01.", card.Rows[6].Summary); // the CA's name in PKI
+        Assert.Equal("The 802.1X server puts these devices in VLAN 30.", card.Rows[8].Summary);
         Assert.Equal(["All devices", "-", "-", "-", "-", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
         Assert.True(card.MayManage);
         Assert.True(card.AddCommand.CanExecute(null));
