@@ -4,13 +4,41 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 The plugin's details: `docs/spec/bundled-plugins.md` (PKI) and `plugins/Oadm.Plugins.Pki/README.md`.
 
 **Release (decision 2026-10-24):** all stages below ship together in **OADM 4.5** (with device groups and the 802.1X
-server; there is no 4.2 release). Main may hold a stage in between; nothing is released before stage 5.
+server; there is no 4.2 release). Main may hold a stage in between; nothing is released before stage 6.
 
 **Goal (decisions 2026-10-24):** PKI is the one place for everything about certificates. One page with three parts:
 the **CAs**, the **policies** (every rule: which certificate a device gets, what a certificate lets it do) and the
 **certificates** (every certificate OADM knows). Services that use certificates (802.1X server, EST server, the PKI tasks)
 keep no certificate rules of their own: they apply PKI's policies and show only how they run (server state, switches,
 sessions, logs, enrollments).
+
+## One plugin: PKI with the 802.1X and EST servers
+
+Decision 2026-10-24: the EST server (`oadm.est`) and the 802.1X server (`oadm.radius`) become part of the PKI plugin
+package (`oadm.pki`). No contract between plugins is needed any more: one settings store, one backup, one set of
+permissions, one policy list in PKI's own code.
+
+- **One package, three core plugins, three rail pages:** PKI, 802.1X server, EST server (a package may hold several core
+  plugins, `docs/spec/plugins.md`). One folder `plugins/Oadm.Plugins.Pki` (+ `.Client`); the EST and 802.1X code keeps its
+  own folders inside it (`Est/`, `Radius/`) with its source-available `LICENSE` (`docs/spec/licensing.md`); the rest of PKI
+  stays Apache-2.0. THIRD-PARTY-NOTICES and the plugin's license notice name both.
+- **On and off:** PKI is always on (as today). The 802.1X and EST servers are off by default and switched on their own
+  page ("Turn on" in the Server card, the stored choice kept like a plugin's on/off). They open their ports (UDP 1812,
+  TCP 9454) only while on.
+- **OADM PRO:** the 802.1X and EST servers start only with an active OADM PRO license (`PluginRegistry.ProActive`); without
+  it their page shows `ProLicenseTexts.NeedsPro` and the Turn on button is disabled; a license that runs out stops them,
+  a new one starts them again with the kept choice. PKI's own parts (CAs, issuing, Revoke, Certificates) never need a key:
+  OADM itself is never limited. `licensing.md` changes from "only PRO plugins read it" to "PRO plugins and the PRO parts
+  of PKI read it". Plugins page: the PKI row says "802.1X and EST servers need OADM PRO" in its description; no PRO chip
+  (PKI itself is free).
+- **Taking over 4.1 data, once, on the first start of 4.5:** the settings, records (enrollments, sessions, log, issued
+  lists) and the on/off choice stored under `oadm.est` and `oadm.radius` move to PKI (a server on when its plugin was on).
+  The old ids stay readable for this step only. A plugin folder `oadm.est` or `oadm.radius` left from 4.1 is not loaded
+  (the loader skips it with one log line "Merged into PKI"); the installers remove it. Event rule events and actions,
+  tasks, permissions and audit names keep their ids so stored rules and roles keep working (the permissions of 802.1X and
+  EST keep their keys, now declared by PKI).
+- **Sites:** the site node's EST relay follows PKI (the relay asks the server by the new owner, still answers the old id
+  for site nodes of 4.1 until they update).
 
 ## The PKI page
 
@@ -42,14 +70,13 @@ One page, no tabs, cards like the 802.1X page:
 
 ## Policies
 
-One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **802.1X**, **EST**, **Revoke**. Kinds of a
-plugin that is off stay hidden (and keep working again when it is turned back on). Each row: name, kind, a short summary
+One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a short summary
 ("OADM CA, 365 days, ECC", "VLAN 30", "Only devices OADM manages"), devices (where the kind has them); Edit and Delete as
 row buttons (like the Permissions page), **Add policy** in the card header. The editor is one dialog: name, kind, the
 kind's fields (each kind its own form, e.g. the 802.1X server policy: Minimum TLS version, Cipher suites with
 Reset to default, Largest EAP packet), the shared device selector where the kind has devices.
 
-| Group | Kind | Fields | Devices | Default policy (added when its plugin is turned on, editable, can be deleted) |
+| Group | Kind | Fields | Devices | Default policy (there from the start, editable, can be deleted) |
 |---|---|---|---|---|
 | Issuing | **HTTPS certificate** | CA (issuing CAs), valid (days), key (RSA, ECC), warn before expiry (days) | no | "HTTPS" (OADM CA, 365 days, ECC, warn 30 days before) |
 | Issuing | **IEEE 802.1X certificate** | CA, valid (days), key, warn before expiry (days), EAPOL version, EAP identity, RADIUS server CA | no | "IEEE 802.1X" (OADM CA, 365 days, ECC, the identity and server CA as today) |
@@ -77,9 +104,8 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 - **Revoke** works as today on the 802.1X page: on save it revokes the certificates of its devices, then every new
   certificate of them while it exists (no tags: a tag could revoke every device that gets it later, without undo).
 - Every change is audited; the 802.1X and EST servers apply a change at once (fail closed while a change is applied).
-- SDK: plugins contribute policy kinds (id, group, name, fields, has devices, default policies) as a default member on the
-  plugin SDK; PKI stores and edits them and hands each service the policies of its kinds; a service never stores rules of
-  its own.
+- The policy kinds live in PKI's code (no SDK): one store, one editor, the 802.1X and EST servers read it in process; a
+  server never stores rules of its own. Kinds of a server that is off stay listed and editable (they apply once it runs).
 
 ## Certificates
 
@@ -140,11 +166,7 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 
 - The 802.1X page shows "4 policies apply" with **Edit in PKI**; Sessions and Log rows name the policy that matched
   ("VLAN 30 by Building B", "Blocked by Storage room").
-- The policy kinds are an internal contract of the bundled plugins first (not in the public SDK on NuGet); they become
-  public SDK once they have proven themselves.
-- Turning on 802.1X or EST while PKI is off says so and offers to turn PKI on.
-- OADM PRO: PKI's own kinds (issuing, Revoke) always work; the 802.1X and EST kinds show only while those plugins are on.
-  OADM itself is never limited.
+- OADM PRO: see "One plugin"; PKI's own kinds (issuing, Revoke) always work.
 - The conversion is tested on a copy of real data (a backup of a 4.1 server and of the development server) before the
   merge, not only on test data.
 
@@ -158,9 +180,11 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 
 1. Done (on main, 2026-10-24): the CA list with Used by, 802.1X Trusted CAs and policies, EST Sign in with, the clock
    check.
-2. The page with CAs, Policies and Certificates (today's list); the policy SDK; 802.1X server, Allow CA, VLAN, Block and Revoke
-   move into PKI with the conversion; the 802.1X and EST page changes above.
-3. Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the task dialogs pick a policy; EST profiles point to
+2. One plugin: EST and 802.1X move into the PKI package (three pages, Turn on per server, PRO for the two servers only,
+   taking over the 4.1 data and choices, the site relay), without changing what they do.
+3. The page with CAs, Policies and Certificates (today's list); 802.1X server, Allow CA, VLAN, Block and Revoke policies
+   with the conversion; the 802.1X and EST page changes above.
+4. Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the task dialogs pick a policy; EST profiles point to
    one.
-4. The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
-5. EST Enrollment and Sign-in CA policies.
+5. The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
+6. EST Enrollment and Sign-in CA policies.
