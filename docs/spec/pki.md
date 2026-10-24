@@ -237,6 +237,9 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   `PolicyPlan` (VLAN, Block, Revoke) and the server policy's TLS, largest EAP packet and reauthentication. A handshake
   rebuilds it first when the store's version moved or PKI started again (a new store), so a change applies to the next
   handshake and never half; without the store nothing passes ("The PKI has no certificate authority", alert 80).
+  The default cipher suites (a new server, Reset to default, the fallback of a policy the server cannot use) have one
+  source, `PolicyRules.DefaultSuites`: the suites listed for the minimum that the server certificate can use (never the
+  ECDHE_RSA ones with its ECDSA key).
   Reauthentication every N minutes (decision of stage 3: 10 to 1,440 minutes) sends Session-Timeout and Termination-Action
   RADIUS-Request in every Access-Accept (RFC 3580 3.17, 3.19). Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN
   30 by Building B"); refusals name Block and Revoke policies ("Blocked by Storage room", "Certificate revoked by Stolen").

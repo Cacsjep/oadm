@@ -34,7 +34,7 @@ public static class RadiusPolicies
         Name = PolicyLimits.ServerPolicyName,
         Kind = PolicyKinds.Dot1xServer,
         MinimumTls = PolicyRules.DefaultMinimumTls,
-        CipherSuites = [.. TlsCipherSuites.DefaultFor(TlsVersion.Tls12).Order()],
+        CipherSuites = DefaultSuites(TlsVersion.Tls12),
         LargestEapPacket = PolicyRules.DefaultEapPacket,
         ReauthMinutes = null,
     };
@@ -48,8 +48,19 @@ public static class RadiusPolicies
         }
 
         var settings = new TlsSettings(minimum, (policy.CipherSuites ?? []).ToHashSet());
-        return settings.Validate(ServerIdentityKeeper.KeyKind) is null ? settings : new TlsSettings(minimum, TlsCipherSuites.DefaultFor(minimum));
+        return settings.Validate(ServerIdentityKeeper.KeyKind) is null ? settings : new TlsSettings(minimum, DefaultSuites(minimum).ToHashSet());
     }
+
+    /// <summary>The default cipher suites for <paramref name="minimum"/>: those the server's certificate can use (<see cref="PolicyRules.DefaultSuites"/>).</summary>
+    public static IReadOnlyList<int> DefaultSuites(TlsVersion minimum) => PolicyRules.DefaultSuites(CipherSuites, TextOf(minimum));
+
+    internal static string TextOf(TlsVersion version) => version switch
+    {
+        TlsVersion.Tls10 => "1.0",
+        TlsVersion.Tls11 => "1.1",
+        TlsVersion.Tls13 => "1.3",
+        _ => "1.2",
+    };
 
     /// <summary>The server key's check of an 802.1X server policy (only ECDHE_RSA suites with the ECDSA key); null when it can be used.</summary>
     public static PolicyFieldError? ValidateTls(PkiPolicy policy)
@@ -184,7 +195,7 @@ public static class RadiusPolicies
         var tls = new TlsSettings(VersionOf(minimum)!.Value, suites.ToHashSet());
         if (suites.Count == 0 || tls.Validate(ServerIdentityKeeper.KeyKind) is not null)
         {
-            suites = [.. TlsCipherSuites.DefaultFor(VersionOf(minimum)!.Value).Order()];
+            suites = [.. DefaultSuites(VersionOf(minimum)!.Value)];
         }
 
         return policy with

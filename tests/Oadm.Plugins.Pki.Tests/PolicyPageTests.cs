@@ -193,7 +193,7 @@ public sealed class PolicyPageTests
 
         editor.MinimumTls = PolicyEditorViewModel.TlsVersions[1]; // TLS 1.1
         Assert.Equal(PolicyEditorViewModel.OldTlsHint, editor.TlsHint);
-        Assert.All(editor.CipherSuites.Where(s => s.IsLegacy), s => Assert.True(s.IsListed && s.IsChecked)); // checked when lowered
+        Assert.All(editor.CipherSuites.Where(s => s.IsLegacy), s => Assert.True(s.IsListed && s.IsChecked == s.IsUsableWithKey)); // the usable ones checked when lowered
         Assert.Equal(5, editor.CipherSuites.Count(s => s.IsListed && s.HasKeyHint)); // the ECDHE_RSA suites and the server's ECDSA key
 
         editor.MinimumTls = PolicyEditorViewModel.TlsVersions[3]; // TLS 1.3
@@ -205,6 +205,13 @@ public sealed class PolicyPageTests
         Assert.Equal(PolicyRules.CheckCipherSuite, editor.CipherSuitesError);
         editor.ResetCipherSuitesCommand.Execute(null);
         Assert.Null(editor.CipherSuitesError);
+        Assert.Equal(RadiusPolicies.DefaultSuites(Radius.Protocol.Tls.TlsVersion.Tls13), editor.CipherSuites.Where(s => s.IsChecked).Select(s => s.Id).Order());
+        Assert.DoesNotContain(editor.CipherSuites, s => s.IsChecked && s.HasKeyHint); // never one the server cannot use
+
+        editor.MinimumTls = PolicyEditorViewModel.TlsVersions[2]; // TLS 1.2: Reset gives what a new server has
+        editor.ResetCipherSuitesCommand.Execute(null);
+        Assert.Equal(RadiusPolicies.DefaultServerPolicy().CipherSuites, editor.CipherSuites.Where(s => s.IsChecked).Select(s => s.Id).Order());
+        editor.MinimumTls = PolicyEditorViewModel.TlsVersions[3];
         editor.LargestPacket = "1500";
         Assert.Equal(PolicyRules.EapPacketRange, editor.ErrorOf(nameof(PolicyEditorViewModel.LargestPacket)));
         editor.LargestPacket = "1,200";

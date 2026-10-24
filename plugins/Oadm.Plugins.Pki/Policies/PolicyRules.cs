@@ -123,9 +123,13 @@ public static class PolicyRules
         return [.. all.Where(s => !s.Legacy || minimum < 2)];
     }
 
-    /// <summary>"Reset to default": every listed suite for the minimum.</summary>
+    /// <summary>
+    /// The default cipher suites of the 802.1X server policy for a minimum version (the one source of the default: a new
+    /// server, "Reset to default", the fallback of a policy the server cannot use): every suite listed for the minimum that
+    /// the server's certificate can use, in id order.
+    /// </summary>
     public static IReadOnlyList<int> DefaultSuites(IReadOnlyList<PolicyCipherSuite> all, string? minimumTls) =>
-        [.. Listed(all, minimumTls).Select(s => s.Id)];
+        [.. Listed(all, minimumTls).Where(s => s.Usable).Select(s => s.Id).Order()];
 
     private static bool Fits(PolicyCipherSuite suite, int minimum) => suite.Tls13 || (suite.Legacy ? minimum < 2 : minimum <= 2);
 

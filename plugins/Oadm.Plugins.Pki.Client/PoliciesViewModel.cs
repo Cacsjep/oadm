@@ -301,6 +301,9 @@ public sealed partial class CipherSuiteViewModel(PolicyCipherSuite suite, Policy
 
     public bool HasKeyHint => !suite.Usable;
 
+    /// <summary>The server's certificate can use it (whatever the minimum).</summary>
+    public bool IsUsableWithKey => suite.Usable;
+
     [ObservableProperty]
     public partial bool IsChecked { get; set; }
 
@@ -618,16 +621,17 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(CipherSuitesError));
     }
 
-    /// <summary>Reset to default: every suite listed for the chosen minimum checked (the secure default set).</summary>
+    /// <summary>Reset to default: the default suites of the chosen minimum (<see cref="PolicyRules.DefaultSuites"/>, those the server's certificate can use).</summary>
     [RelayCommand]
     private void ResetCipherSuites()
     {
         _applying = true;
         try
         {
+            var defaults = PolicyRules.DefaultSuites(_list.CipherSuites, MinimumTls.Value).ToHashSet();
             foreach (var suite in CipherSuites)
             {
-                suite.IsChecked = suite.IsListed;
+                suite.IsChecked = defaults.Contains(suite.Id);
             }
         }
         finally
@@ -709,7 +713,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         }
     }
 
-    /// <summary>The old suites show only below TLS 1.2 and are checked when the minimum is lowered there.</summary>
+    /// <summary>The old suites show only below TLS 1.2; those the server's certificate can use are checked when the minimum is lowered there.</summary>
     private void UpdateListed(bool lowered)
     {
         var legacy = PolicyRules.MinimumIndex(MinimumTls.Value) is < 2;
@@ -718,7 +722,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             suite.IsListed = legacy;
             if (lowered)
             {
-                suite.IsChecked = true;
+                suite.IsChecked = suite.IsUsableWithKey;
             }
         }
     }
