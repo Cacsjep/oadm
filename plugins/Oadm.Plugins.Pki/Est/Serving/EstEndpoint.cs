@@ -28,6 +28,9 @@ public static class EstRefusals
 {
     public const string NotPro = "OADM PRO is not active.";
     public const string NoCa = "The PKI has no certificate authority.";
+
+    /// <summary>The server in a sentence of its status ("The EST server has no certificate: ...").</summary>
+    public const string ServerName = "The EST server";
     public const string NoIdentity = "The camera did not sign in with its Axis device ID.";
     public const string NotDeviceId = "The camera's certificate is not a valid Axis device ID or an EST certificate.";
     public const string NotManaged = "OADM does not manage this camera.";

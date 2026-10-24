@@ -424,6 +424,10 @@ public sealed partial class EstService : IAsyncDisposable
         {
             text = !InterfaceOptions.IsAll(config.InterfaceId) && ListenInterface() is null ? NotAvailable(config) : "Stopped";
         }
+        else if (listener.State == RelayState.Running && Oadm.Plugins.Pki.Ca.IssuerChains.NoCertificateReason(_host.Authority(), _host.Policies()?.EstServerPolicy?.CaId, EstRefusals.ServerName) is { } reason)
+        {
+            text = reason; // the CA of the EST server policy cannot issue: no TLS certificate, no camera gets in
+        }
         else if (listener.State == RelayState.Running)
         {
             text = string.Create(CultureInfo.InvariantCulture, $"Running on port {config.Port}");

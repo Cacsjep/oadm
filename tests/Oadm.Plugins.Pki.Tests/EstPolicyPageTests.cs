@@ -9,7 +9,7 @@ using Oadm.Sdk.Testing;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// The EST kinds on the PKI page (docs/spec/pki.md "Policies", stage 6): the filter EST, the rows of the converted defaults,
+/// The EST kinds on the PKI page (docs/spec/pki.md "Policies", stage 6): the EST card with the converted defaults,
 /// the editors of Enrollment (profiles: all, chosen ones, or no enrollment; the device choice) and Sign-in CA (CA, for new
 /// certificates or renewals; no devices) with their errors below the fields.
 /// </summary>
@@ -29,17 +29,21 @@ public sealed class EstPolicyPageTests
         new(pki.Plugin, pki.Hub) { DeviceList = [new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48", Tags = ["PTZ"] }, new FakeDevice { Serial = "ACCC8E000002", Address = "10.0.0.49" }] };
 
     [Fact]
-    public async Task The_est_filter_shows_enrollment_and_sign_in_ca_with_their_summaries()
+    public async Task The_est_card_edits_the_server_in_place_and_lists_enrollment_with_its_system_row_first_and_the_sign_in_cas()
     {
         await using var pki = await StartAsync();
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "EST"], card.Filters.Select(f => f.Label));
-        card.SelectFilterCommand.Execute(PolicyGroups.Est);
-        Assert.Equal([("EST server", "EST server", "The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", "-"),
-            ("All devices", "Enrollment", "These cameras may get certificates from the EST server for every profile.", "All devices"), ("Axis device ID", "EST sign-in CA", "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "-"),
-            ("OADM CA", "EST sign-in CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", "-")], card.Rows.Select(r => (r.Name, r.Kind, r.Summary, r.Devices)));
+        Assert.Equal(("EST server", "90", PolicyKeys.Ecc), (card.EstServer!.Heading, card.EstServer.ValidDays, card.EstServer.Key.Value));
+        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.",
+            card.List.Rows.Single(r => r.Policy.Id == card.EstServer.PolicyId).Summary);
+        // The system Enrollment policy is the first row (it has devices, chosen in the editor), without Delete.
+        Assert.Equal([("All devices", "These cameras may get certificates from the EST server for every profile.", "All devices", true)],
+            card.Enrollment.Rows.Select(r => (r.Name, r.Summary, r.Devices, r.IsSystem)));
+        Assert.False(card.Enrollment.Rows[0].CanDelete);
+        Assert.Equal([("Axis device ID", "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", "-"),
+            ("OADM CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", "-")], card.SignInCas.Rows.Select(r => (r.Name, r.Summary, r.Devices)));
         Assert.Equal(["https", "dot1x"], card.List.EstProfiles);
         Assert.Equal(["Axis device ID", "OADM Root CA SERVER01"], card.List.SignInCas.Select(c => c.Name));
     }
@@ -50,8 +54,8 @@ public sealed class EstPolicyPageTests
         await using var pki = await StartAsync();
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
-        var editor = card.NewEditor(null);
-        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Enrollment);
+        var editor = card.NewEditor(null, PolicyKinds.Enrollment); // Add of the Enrollment list
+        Assert.Equal([PolicyKinds.Enrollment], editor.KindChoices.Select(k => k.Value));
 
         Assert.True(editor.IsEnrollment);
         Assert.True(editor.HasDevices);
@@ -78,7 +82,7 @@ public sealed class EstPolicyPageTests
 
         // The default for chosen devices only, then the new one saves.
         var all = card.List.Rows.Single(r => r.Policy.Kind == PolicyKinds.Enrollment).Policy;
-        Assert.Null((await card.SaveAsync(all with { Devices = new PolicyDevices { Serials = ["ACCC8E000002"] } })).Error);
+        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, all with { Devices = new PolicyDevices { Serials = ["ACCC8E000002"] } })).Error);
         editor.Scope = PolicyEditorViewModel.DeviceScopes[1];
         editor.Picker.Tags.Single(t => t.Name == "PTZ").IsChecked = true;
         Assert.True(await editor.SaveAsync());
@@ -99,8 +103,7 @@ public sealed class EstPolicyPageTests
         await using var pki = await StartAsync();
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
-        var editor = card.NewEditor(null);
-        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.SignInCa);
+        var editor = card.NewEditor(null, PolicyKinds.SignInCa);
 
         Assert.True(editor.IsSignInCa);
         Assert.False(editor.HasDevices);
@@ -139,8 +142,7 @@ public sealed class EstPolicyHeadlessTests
             var card = new PoliciesViewModel(ctx);
             await card.LoadAsync(CancellationToken.None);
 
-            var enrollment = card.NewEditor(null);
-            enrollment.Kind = enrollment.KindChoices.Single(k => k.Value == PolicyKinds.Enrollment);
+            var enrollment = card.NewEditor(null, PolicyKinds.Enrollment);
             enrollment.Name = "PTZ";
             enrollment.Scope = PolicyEditorViewModel.DeviceScopes[1];
             enrollment.ProfileScope = PolicyEditorViewModel.ProfileScopeChoices[1];

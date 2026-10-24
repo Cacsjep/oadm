@@ -217,6 +217,7 @@ For example, send an email when a certificate is not renewed: a certificate of 1
 |---|---|
 | Status **OADM PRO is not active.** | Activate OADM PRO in Settings > License. |
 | Status **The PKI has no certificate authority.** | Create or import a CA on the PKI page. |
+| Status **The EST server has no certificate: Corp CA cannot issue.** | The CA of the EST server policy lost its key. Import it again with its key, or choose another **Issued by** on the PKI page's Policies tab. |
 | Status **TCP 9454 is used by another program** | Choose another port and set up the cameras again. |
 | Set-up ends with **Needs AXIS OS 12.10 or later** | Upgrade the camera's AXIS OS. |
 | **The camera has no Axis device ID certificate.** | The camera has no AXIS Edge Vault device ID. It cannot use the EST server. |

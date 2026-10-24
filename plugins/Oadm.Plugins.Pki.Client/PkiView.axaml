@@ -6,8 +6,14 @@
              x:DataType="vm:PkiViewModel"
              ui:PageHeader.Subtitle="Certificates, their policies, and the 802.1X and EST servers.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only (docs/spec/pki.md "The PKI page"):
-       fixed tabs Certificates | Policies | 802.1X server | EST server. Certificates: the certificate list with the CAs and
-       their actions in it (no card of the CAs). Policies: the policy table, as high as the page. -->
+       fixed tabs Certificates | Policies | 802.1X server | EST server. Certificates: the CAs and the certificates. Policies:
+       cards by area (Check a device, Certificates for cameras, 802.1X network access, EST). -->
+  <UserControl.DataTemplates>
+    <!-- A system policy edited in place (the Policies tab's ContentControls; none while the policy is missing). -->
+    <DataTemplate DataType="vm:PolicyEditorViewModel">
+      <vm:PolicySettingsView />
+    </DataTemplate>
+  </UserControl.DataTemplates>
   <Grid RowDefinitions="Auto,*">
   <!-- The fixed tabs (docs/spec/pki.md "The PKI page"): Certificates, Policies, then the server pages the host hands over (only those
        the role may show); no row without a server tab. -->
@@ -26,91 +32,85 @@
   <ContentControl Grid.Row="1" Content="{Binding ActiveTabView}" IsVisible="{Binding IsServerTab}" />
 
   <!-- ============================== Policies ============================== -->
-  <Border x:Name="PoliciesCard" Grid.Row="1" Classes="card" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel"
-          IsVisible="{Binding $parent[vm:PkiView].((vm:PkiViewModel)DataContext).IsPoliciesTab}">
-        <Panel>
-          <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
-            <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
-              <TextBlock Classes="cardTitle" Text="Policies" VerticalAlignment="Center" Margin="0,0,12,0" />
-              <!-- Flat toolbar buttons like the device toolbar (decision 2026-10-25); Add policy is the accent one. -->
-              <ui:ToolbarButton Text="Add policy" IconKey="add" IsPrimary="True" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}"
-                                ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True" />
+  <!-- Cards by area in a fixed order (docs/spec/pki.md "Policies", decision 2026-10-25): Check a device, Certificates for
+       cameras, 802.1X network access, EST. System policies are settings edited in place (one Save each); user policies are
+       short rule lists. The tab scrolls; nothing scrolls sideways. -->
+  <Panel x:Name="PoliciesPage" Grid.Row="1" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel"
+         IsVisible="{Binding $parent[vm:PkiView].((vm:PkiViewModel)DataContext).IsPoliciesTab}">
+    <ScrollViewer x:Name="PoliciesScroll" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+        <!-- ========== Check a device: which policies apply to one camera (nothing is read before a choice) ========== -->
+        <Border x:Name="CheckCard" Classes="card">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="cardTitle" Text="Check a device" />
+            <!-- The tab's accent button: the shared one-device picker. -->
+            <Button Classes="primary" HorizontalAlignment="Left" MinWidth="220" MaxWidth="360" Command="{Binding ChooseCheckDeviceCommand}"
+                    ToolTip.Tip="See which policies apply to it">
+              <ui:IconLabel Icon="{DynamicResource Icon.device.camera}" Text="{Binding CheckButtonText}" />
+            </Button>
+            <ui:ProgressRow Text="Checking the device" IsVisible="{Binding IsChecking}" />
+            <TextBlock Classes="error" Text="{Binding CheckError}" IsVisible="{Binding HasCheckError}" TextWrapping="Wrap" />
+            <!-- A few lines (one per area, read-only fields like the certificate window's): no virtualization needed. -->
+            <ItemsControl ItemsSource="{Binding CheckLines}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PolicyCheckLineViewModel">
+                  <ui:FormField Label="{Binding Area}" InputWidth="NaN">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="{Binding Text}" Classes.warning="{Binding IsWarning}" TextWrapping="Wrap" />
+                      <TextBlock Classes="secondary" Text="{Binding By}" IsVisible="{Binding HasBy}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </ui:FormField>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <ui:ProgressRow Text="Reading the policies" IsVisible="{Binding IsReloading}" />
+        <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+
+        <!-- ========== Certificates for cameras ========== -->
+        <Border x:Name="CameraCertificatesCard" Classes="card">
+          <StackPanel Spacing="20">
+            <TextBlock Classes="cardTitle" Text="Certificates for cameras" />
+            <WrapPanel ItemSpacing="48" LineSpacing="24">
+              <ContentControl Content="{Binding Https}" />
+              <ContentControl Content="{Binding Dot1x}" />
+              <ContentControl Content="{Binding Expiry}" />
             </WrapPanel>
-            <!-- No filter (decision 2026-10-25): the table groups by what the policies do (PkiView.GroupPolicies). -->
-            <ui:ProgressRow Grid.Row="1" Text="Reading the policies" IsVisible="{Binding IsReloading}" />
-            <Panel Grid.Row="2">
-              <DataGrid x:Name="PoliciesGrid" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
-                        SelectionMode="Single">
-                <DataGrid.Columns>
-                  <DataGridTemplateColumn Header="Name" Width="0.6*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Name}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <!-- System (OADM needs it, no Delete; purple) or User (blue). -->
-                  <DataGridTemplateColumn Header="Type" Width="Auto" MinWidth="90" x:DataType="vm:PolicyRowViewModel">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <Border Classes="badge" Classes.system="{Binding IsSystem}" Classes.user="{Binding !IsSystem}" Margin="10,4"
-                                HorizontalAlignment="Left" VerticalAlignment="Center" ToolTip.Tip="{Binding OriginTip}">
-                          <TextBlock Text="{Binding Origin}" />
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTemplateColumn Header="Kind" Width="Auto" MinWidth="100" x:DataType="vm:PolicyRowViewModel">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <Border Classes="badge neutral" Margin="10,4" HorizontalAlignment="Left" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding Kind}" />
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTemplateColumn Header="Summary" Width="3.4*" MinWidth="160" x:DataType="vm:PolicyRowViewModel">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <StackPanel Margin="10,4" Spacing="4" VerticalAlignment="Center">
-                          <TextBlock Classes="secondary" Text="{Binding Summary}" ToolTip.Tip="{Binding Summary}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
-                          <!-- An overlap a tag or site change made later: the warning in the row. -->
-                          <ui:StatusChip Text="{Binding Warning}" IsWarning="True" MaxLines="2" ToolTip.Tip="{Binding Warning}" HorizontalAlignment="Left"
-                                         IsVisible="{Binding HasWarning}" />
-                        </StackPanel>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTemplateColumn Header="Devices" Width="1.2*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <TextBlock Text="{Binding Devices}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
-                                   ToolTip.Tip="{Binding Devices}" />
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTemplateColumn Width="52" x:DataType="vm:PolicyRowViewModel">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <!-- One ⋯ button with the row's actions, like the certificate tables: Edit, then Delete in red (not for
-                             system policies). -->
-                        <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}"
-                                Click="OnPolicyActions" IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.MayManage}">
-                          <ui:OadmIcon Data="{StaticResource Icon.more}" />
-                        </Button>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                </DataGrid.Columns>
-              </DataGrid>
-              <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                         TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,40,16,0" />
-            </Panel>
-            <TextBlock Grid.Row="3" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
-          </Grid>
-          <ui:LoadingOverlay Text="Reading the policies" IsVisible="{Binding IsLoading}" />
-        </Panel>
-  </Border>
+            <vm:PolicyRulesView DataContext="{Binding OtherIssuing}" />
+            <vm:PolicyRulesView DataContext="{Binding ExpiryRules}" />
+          </StackPanel>
+        </Border>
+
+        <!-- ========== 802.1X network access ========== -->
+        <Border x:Name="NetworkAccessCard" Classes="card">
+          <StackPanel Spacing="20">
+            <TextBlock Classes="cardTitle" Text="802.1X network access" />
+            <ContentControl Content="{Binding Dot1xServer}" HorizontalAlignment="Left" />
+            <vm:PolicyRulesView DataContext="{Binding TrustedCas}" />
+            <vm:PolicyRulesView DataContext="{Binding Vlans}" />
+            <vm:PolicyRulesView DataContext="{Binding Blocked}" />
+          </StackPanel>
+        </Border>
+
+        <!-- ========== EST ========== -->
+        <Border x:Name="EstCard" Classes="card">
+          <StackPanel Spacing="20">
+            <TextBlock Classes="cardTitle" Text="EST" />
+            <ContentControl Content="{Binding EstServer}" HorizontalAlignment="Left" />
+            <!-- The system Enrollment policy ("All devices") is the first row: it has devices, chosen in the editor. -->
+            <vm:PolicyRulesView DataContext="{Binding Enrollment}" />
+            <vm:PolicyRulesView DataContext="{Binding SignInCas}" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+    <ui:LoadingOverlay Text="Reading the policies" IsVisible="{Binding IsLoading}" />
+  </Panel>
 
   <!-- The two cards share the tab's height; the splitter between them gives one more room (like the tasks pane). -->
   <Grid x:Name="CertificatesPage" Grid.Row="1" IsVisible="{Binding IsCertificatesTab}">

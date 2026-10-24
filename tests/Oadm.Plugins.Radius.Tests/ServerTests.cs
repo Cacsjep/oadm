@@ -313,6 +313,33 @@ public sealed class ServerTests
     }
 
     [Fact]
+    public async Task WhenTheCaOfItsPolicyCannotIssueTheStateNamesIt()
+    {
+        // Decision 2026-10-25: the 802.1X server policy may name an imported CA with its key; without the key the server has
+        // no certificate (fail closed) and its status says why.
+        using var company = new TestAuthority("Contoso Issuing CA");
+        await using var harness = await PluginHarness.CreateAsync();
+        var imported = company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Issuing CA") with { Issues = true };
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM CA"), harness.DeviceIds.Info, imported];
+        harness.Ca.RaiseChanged();
+        await harness.SetServerPolicyAsync(p => p with { CaId = imported.Id });
+        await harness.Service.MaintainAsync(CancellationToken.None);
+        Assert.Equal("Running on port 1812", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
+
+        harness.Ca.AuthorityList = [.. harness.Ca.AuthorityList.Select(a => a.Id == imported.Id ? a with { Issues = false } : a)];
+        harness.Ca.RaiseChanged();
+        await harness.Service.MaintainAsync(CancellationToken.None);
+        var state = await harness.CallAsync<RadiusState>(RadiusMethods.GetState);
+        Assert.Equal(("The 802.1X server has no certificate: Contoso Issuing CA cannot issue.", false), (state.StatusText, state.Running));
+
+        // The CA left PKI.
+        harness.Ca.AuthorityList = [.. harness.Ca.AuthorityList.Where(a => a.Id != imported.Id)];
+        harness.Ca.RaiseChanged();
+        await harness.Service.MaintainAsync(CancellationToken.None);
+        Assert.Equal("The 802.1X server has no certificate: the CA of its policy is no longer in the PKI.", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
+    }
+
+    [Fact]
     public async Task TheServerCertificateIsKeptAcrossRestartsAndRenewed30DaysBeforeItEnds()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));

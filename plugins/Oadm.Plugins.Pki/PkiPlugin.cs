@@ -133,7 +133,7 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
     /// </summary>
     public UserRole RequiredRole(string method) => IsRead(method) ? UserRole.Operator : UserRole.Admin;
 
-    private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate or PolicyMethods.GetPolicies;
+    private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate or PolicyMethods.GetPolicies or PolicyMethods.CheckDevice;
 
     /// <summary>Admin methods (the Certificates card's Create, Sign request, Import, Delete and Export too) are audited by the host; the count of a revoke policy only reads.</summary>
     public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin && method != PolicyMethods.CountRevocations;
@@ -202,6 +202,12 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
                 return PkiJson.Serialize(await service.PolicyListAsync(caller.HasAllDevices, caller.HasAllDevices && caller.Has(PermissionKeys.Of(Id, PermissionKeys.Manage)), ct)
                     .ConfigureAwait(false));
 
+            case PolicyMethods.CheckDevice:
+                // Server-wide like the policy list: a user limited to a device group gets nothing.
+                return PkiJson.Serialize(caller.HasAllDevices
+                    ? await service.CheckDeviceAsync(PkiJson.Deserialize<PolicyCheckRequest>(payloadJson).DeviceId, ct).ConfigureAwait(false)
+                    : new PolicyCheck());
+
             default:
             {
                 var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
@@ -222,6 +228,7 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             PolicyMethods.SavePolicy => PkiJson.Serialize(await service.SavePolicyAsync(PkiJson.Deserialize<PkiPolicy>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
             PolicyMethods.DeletePolicy => PkiJson.Serialize(await service.DeletePolicyAsync(PkiJson.Deserialize<PolicyRef>(payloadJson).Id, InProcessUser, ct).ConfigureAwait(false)),
             PolicyMethods.CountRevocations => PkiJson.Serialize(await service.CountRevocationsAsync(PkiJson.Deserialize<PolicyDevices>(payloadJson), ct).ConfigureAwait(false)),
+            PolicyMethods.CheckDevice => PkiJson.Serialize(await service.CheckDeviceAsync(PkiJson.Deserialize<PolicyCheckRequest>(payloadJson).DeviceId, ct).ConfigureAwait(false)),
             PkiMethods.GetCertificates => PkiJson.Serialize(await service.GetCertificatesForEveryDeviceAsync(PkiJson.Deserialize<CertificatesRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.GetCertificate => PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), null, ct).ConfigureAwait(false)),
             PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),

@@ -19,8 +19,8 @@ namespace Oadm.Plugins.Pki.Tests;
 /// </summary>
 public sealed class PolicyPageTests
 {
-    private static readonly FakeDevice Camera = new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48", Tags = ["PTZ"] };
-    private static readonly FakeDevice Other = new FakeDevice { Serial = "ACCC8E000002", Address = "10.0.0.49" };
+    internal static readonly FakeDevice Camera = new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48", Tags = ["PTZ"] };
+    internal static readonly FakeDevice Other = new FakeDevice { Serial = "ACCC8E000002", Address = "10.0.0.49" };
 
     /// <summary>A PKI with the 802.1X defaults (the 802.1X server's conversion of a new server), one VLAN, one Block.</summary>
     internal static async Task<PkiHarness> StartAsync(params IDeviceInfo[] devices)
@@ -35,34 +35,224 @@ public sealed class PolicyPageTests
     private static PluginPageContext Page(PkiHarness pki) => new(pki.Plugin, pki.Hub) { DeviceList = [Camera, Other] };
 
     [Fact]
-    public async Task The_card_lists_every_policy_grouped_by_type_each_group_in_age_order()
+    public async Task System_policies_are_settings_in_place_and_user_policies_are_rules_of_their_card()
     {
         await using var pki = await StartAsync();
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        // Decision 2026-10-25: no Revoke group (Revoke is part of Block), the servers' certificates in their server policies.
-        Assert.Equal(["Issuing", "Certificates", "802.1X", "EST"], PoliciesViewModel.GroupLabels);
-        Assert.Equal(["HTTPS", "IEEE 802.1X", "All devices", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room", "EST server"], card.Rows.Select(r => r.Name));
+        // Certificates for cameras: the system HTTPS, IEEE 802.1X and Expiry warning policies in place (decision 2026-10-25).
         Assert.Equal(
-            ["HTTPS certificate", "IEEE 802.1X certificate", "Expiry warning", "802.1X server", "802.1X trusted CA", "802.1X trusted CA", "VLAN", "Block", "EST server"],
-            card.Rows.Select(r => r.Kind));
-        Assert.Equal(["Issuing", "Issuing", "Certificates", "802.1X", "802.1X", "802.1X", "802.1X", "802.1X", "EST"], card.Rows.Select(r => r.GroupLabel));
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", card.Rows[0].Summary); // the defaults of a new server
-        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[2].Summary);
-        Assert.Equal(
-            "The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends. It accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide when cameras sign in again.",
-            card.Rows[3].Summary);
-        Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01.", card.Rows[4].Summary); // the CA's name in PKI
-        Assert.Equal("The 802.1X server puts these devices in VLAN 30.", card.Rows[6].Summary);
-        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[8].Summary);
-        Assert.Equal(["-", "-", "All devices", "-", "-", "-", "This server, except 1", "1 device", "-"], card.Rows.Select(r => r.Devices));
+            [("HTTPS", PolicyKinds.HttpsCertificate), ("IEEE 802.1X", PolicyKinds.Dot1xCertificate), ("Expiry warning", PolicyKinds.ExpiryWarning), ("802.1X server", PolicyKinds.Dot1xServer), ("EST server", PolicyKinds.EstServer)],
+            card.Settings.Select(s => (s.Heading, s.Kind.Value)));
+        Assert.All(card.Settings, s => Assert.True(s.IsInPlace && !s.ShowsName && !s.ShowsPicker && !s.ShowsDeviceScope && !s.IsDirty && !s.CanSave && s.SaveStatus is null));
+        Assert.Equal(("365", PolicyKeys.Ecc, "Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key."),
+            (card.Https!.ValidDays, card.Https.Key.Value, card.List.Rows.Single(r => r.Policy.Id == card.Https.PolicyId).Summary)); // the defaults of a new server
+        Assert.Equal("30", card.Expiry!.Days);
+        Assert.Null(card.Expiry.DaysHint); // All devices
 
-        // System policies (OADM needs them, no Delete): the first of each kind that has one (the server policies among them).
-        Assert.Equal(["System", "System", "System", "System", "User", "User", "User", "User", "System"], card.Rows.Select(r => r.Origin));
-        Assert.All(card.Rows, r => Assert.Equal(!r.IsSystem, r.CanDelete));
+        // The rules: one line each, the summary sentence, devices where the kind has them; System rows have no Delete.
+        Assert.Empty(card.OtherIssuing.Rows);
+        Assert.Empty(card.ExpiryRules.Rows);
+        Assert.Equal(
+            [("OADM CA", "The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01."),
+                ("Axis device ID", "The 802.1X server lets in devices OADM manages that have a certificate from Axis device ID.")],
+            card.TrustedCas.Rows.Select(r => (r.Name, r.Summary)));
+        Assert.Equal([("Building B", "This server, except 1", "The 802.1X server puts these devices in VLAN 30.")], card.Vlans.Rows.Select(r => (r.Name, r.Devices, r.Summary)));
+        Assert.Equal([("Storage room", "1 device")], card.Blocked.Rows.Select(r => (r.Name, r.Devices)));
+        Assert.All(card.Sections.SelectMany(s => s.Rows), r => Assert.Equal(!r.IsSystem, r.CanDelete));
+        Assert.DoesNotContain(card.Sections.Where(s => !s.WithSystem).SelectMany(s => s.Rows), r => r.IsSystem); // in place, never twice
+        Assert.Equal([false, true, false, true, true, true, false], card.Sections.Select(s => s.HasDevices));
+
+        // Empty lists say in one line what to do first; every list adds its own kind.
+        Assert.Equal("No other issuing policies. Add one to issue with other values, e.g. HTTPS 90 days.", card.OtherIssuing.EmptyText);
+        Assert.Null(card.Vlans.EmptyText);
+        Assert.Equal([PolicyKinds.HttpsCertificate, PolicyKinds.Dot1xCertificate], card.OtherIssuing.AddChoices.Select(c => c.Value));
         Assert.True(card.MayManage);
-        Assert.True(card.AddCommand.CanExecute(null));
+        Assert.All(card.Sections, s => Assert.True(s.AddCommand.CanExecute(null) && s.CanAddRule));
+    }
+
+    [Fact]
+    public async Task Add_of_a_rule_list_opens_the_editor_with_its_kind_and_edit_and_delete_change_the_list()
+    {
+        await using var pki = await StartAsync();
+        var ctx = Page(pki);
+        var card = new PoliciesViewModel(ctx);
+        var dialogs = new SavingDialogs();
+        card.Dialogs = dialogs;
+        await card.LoadAsync(CancellationToken.None);
+
+        // Add: the kind of the list, no kind choice.
+        dialogs.Fill = editor =>
+        {
+            editor.Name = "Lobby";
+            editor.Vlan = "40";
+            editor.Picker.Visible.Single(i => i.Id == Other.Id).Chosen = true; // the camera Building B leaves out
+        };
+        await card.Vlans.AddCommand.ExecuteAsync(null);
+        var added = Assert.Single(dialogs.Shown);
+        Assert.Equal((PolicyKinds.Vlan, 1, "Add VLAN policy", true), (added.Kind.Value, added.KindChoices.Count, added.Title, added.IsNew));
+        Assert.Contains(card.Vlans.Rows, r => r.Name == "Lobby" && r.Devices == "1 device");
+
+        // Several kinds: the menu's choice is the kind.
+        dialogs.Fill = editor =>
+        {
+            editor.Name = "HTTPS 90 days";
+            editor.ValidDays = "90";
+        };
+        await card.OtherIssuing.AddCommand.ExecuteAsync(PolicyKinds.HttpsCertificate);
+        Assert.Equal(PolicyKinds.HttpsCertificate, dialogs.Shown[^1].Kind.Value);
+        Assert.Equal(["HTTPS 90 days"], card.OtherIssuing.Rows.Select(r => r.Name));
+
+        // Edit opens the same dialog with the policy; Delete asks, then the row goes.
+        dialogs.Fill = editor => editor.Vlan = "41";
+        await card.Vlans.EditRowCommand.ExecuteAsync(card.Vlans.Rows.Single(r => r.Name == "Lobby"));
+        Assert.Equal("Edit Lobby", dialogs.Shown[^1].Title);
+        Assert.Equal(41, pki.Policies.PoliciesOf(PolicyKinds.Vlan).Single(p => p.Name == "Lobby").Vlan);
+        await card.Vlans.DeleteRowCommand.ExecuteAsync(card.Vlans.Rows.Single(r => r.Name == "Lobby"));
+        Assert.Equal(("Delete policy", "Delete the policy Lobby?", "Delete"), ctx.Confirmations[^1]);
+        Assert.DoesNotContain(card.Vlans.Rows, r => r.Name == "Lobby");
+        Assert.Null(card.Error);
+    }
+
+    [Fact]
+    public async Task A_setting_in_place_saves_only_with_changes_keeps_them_over_a_reload_and_says_saved()
+    {
+        await using var pki = await StartAsync();
+        var card = new PoliciesViewModel(Page(pki));
+        await card.LoadAsync(CancellationToken.None);
+        var expiry = card.Expiry!;
+        Assert.Equal(PolicyEditorViewModel.NoChangesText, expiry.SaveBlockedReason);
+
+        // An error directly below the field, Save off; a valid value: Not saved left of Save.
+        expiry.Days = "400";
+        Assert.Equal(PolicyTexts.DaysRange, expiry.ErrorOf(nameof(PolicyEditorViewModel.Days)));
+        Assert.False(expiry.CanSave);
+        expiry.Days = "45";
+        Assert.True(expiry.CanSave);
+        Assert.Equal(PolicyEditorViewModel.NotSavedText, expiry.SaveStatus);
+        Assert.False(expiry.IsSaveStatusOk);
+
+        // A reload (another user's change) keeps the changes of a form not saved yet, and refreshes the others.
+        var https = card.Https!;
+        await card.LoadAsync(CancellationToken.None);
+        Assert.Same(expiry, card.Expiry);
+        Assert.NotSame(https, card.Https);
+
+        // Save: the server stores it, the form shows the saved policy and says Saved; the devices stay as they were.
+        await expiry.SaveInPlaceCommand.ExecuteAsync(null);
+        var saved = pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!;
+        Assert.Equal((45, true), (saved.Days, saved.Devices!.AllDevices));
+        Assert.NotSame(expiry, card.Expiry);
+        Assert.Equal(("45", PolicyEditorViewModel.SavedText, true, false), (card.Expiry!.Days, card.Expiry.SaveStatus, card.Expiry.IsSaveStatusOk, card.Expiry.CanSave));
+
+        // A refusal of the server: below its field, nothing saved.
+        var server = card.Dot1xServer!;
+        server.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
+        Assert.Equal(PolicyTexts.Dot1xServerNeedsEcc, server.ErrorOf(nameof(PolicyEditorViewModel.Key)));
+        Assert.False(server.CanSave);
+        server.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Ecc);
+        Assert.False(server.IsDirty); // back as it was
+    }
+
+    [Fact]
+    public async Task A_system_expiry_warning_for_chosen_devices_names_them_and_keeps_them_on_save()
+    {
+        await using var pki = await StartAsync();
+        var all = pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!;
+        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, all with { Devices = new PolicyDevices { Tags = ["PTZ"] } })).Error);
+        var card = new PoliciesViewModel(Page(pki));
+        await card.LoadAsync(CancellationToken.None);
+
+        Assert.Equal("For Tag PTZ", card.Expiry!.DaysHint);
+        card.Expiry.Days = "60";
+        Assert.True(await card.Expiry.SaveAsync());
+        Assert.Equal((60, "PTZ"), (pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Days, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Devices!.Tags.Single()));
+    }
+
+    [Fact]
+    public async Task Check_a_device_says_which_policies_apply_and_follows_a_change()
+    {
+        await using var pki = await StartAsync();
+        var ctx = Page(pki);
+        var card = new PoliciesViewModel(ctx) { Dialogs = new SavingDialogs { Pick = Camera.Id } };
+        await card.LoadAsync(CancellationToken.None);
+        Assert.Equal(PoliciesViewModel.ChooseDeviceText, card.CheckButtonText);
+        Assert.Empty(card.CheckLines); // nothing read before a choice
+
+        await card.ChooseCheckDeviceCommand.ExecuteAsync(null);
+        Assert.Equal("10.0.0.48 · P3265-V", card.CheckButtonText);
+        Assert.Null(card.CheckError);
+        Assert.Equal(
+            [
+                (PolicyCheckAreas.Https, "Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", "By HTTPS", false),
+                (PolicyCheckAreas.Dot1x, "Enable IEEE 802.1X issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key. Cameras sign in with their MAC address.", "By IEEE 802.1X", false),
+                (PolicyCheckAreas.Expiry, "Its certificates show a warning with 30 days or less left.", "By All devices", false),
+                (PolicyCheckAreas.Network, "It passes the 802.1X server with a certificate from OADM Root CA SERVER01 or Axis device ID.", "By OADM CA and Axis device ID", false),
+                (PolicyCheckAreas.Network, "It gets VLAN 30.", "By Building B", false),
+                (PolicyCheckAreas.Est, PolicyCheckTexts.NoEnrollment, null, true),
+            ],
+            card.CheckLines.Select(l => (l.Area, l.Text, l.By, l.IsWarning)));
+
+        // A change of the policies: the next read checks the device again.
+        var vlan = pki.Policies.PoliciesOf(PolicyKinds.Vlan).Single();
+        await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, vlan with { Vlan = 31 });
+        await card.LoadAsync(CancellationToken.None);
+        Assert.Contains(card.CheckLines, l => l.Text == "It gets VLAN 31.");
+    }
+
+    [Fact]
+    public async Task Check_a_device_of_a_blocked_device_says_so_and_a_group_user_gets_nothing()
+    {
+        await using var pki = await StartAsync();
+        var check = await pki.InvokeAsync<PolicyCheck>(PolicyMethods.CheckDevice, new PolicyCheckRequest(Other.Id));
+        var network = Assert.Single(check.Lines, l => l.Area == PolicyCheckAreas.Network);
+        Assert.Equal((PolicyCheckTexts.Blocked(false), "Storage room", true), (network.Text, network.Policies.Single(), network.IsWarning));
+        Assert.Equal(DeviceMessages.Removed, (await pki.InvokeAsync<PolicyCheck>(PolicyMethods.CheckDevice, new PolicyCheckRequest(Guid.NewGuid()))).Error);
+
+        // A user limited to a device group: the page reads nothing, the server answers nothing (server-wide).
+        var calls = new List<string>();
+        var group = Page(pki);
+        group.HasAllDevices = false;
+        group.Intercept = (method, payload) =>
+        {
+            calls.Add(method);
+            return pki.Plugin.InvokeAsync(method, payload, CancellationToken.None);
+        };
+        var card = new PoliciesViewModel(group) { Dialogs = new SavingDialogs { Pick = Camera.Id } };
+        await card.ChooseCheckDeviceCommand.ExecuteAsync(null);
+        Assert.Empty(card.CheckLines);
+        Assert.Empty(calls);
+
+        var core = new FakeCoreContext();
+        var inside = core.Add(new FakeDevice { Address = "10.0.0.48" });
+        await using var plugin = new PkiPlugin(PkiHarness.Options(new FakeTrustStore()));
+        await plugin.StartAsync(core, CancellationToken.None);
+        var limited = FakeCallContext.WithGroup(core, [inside.Id], "tech2");
+        var answer = PkiJson.Deserialize<PolicyCheck>(await core.InvokeAsync(plugin, limited, PolicyMethods.CheckDevice, PkiJson.Serialize(new PolicyCheckRequest(inside.Id))));
+        Assert.Equal((0, null), (answer.Lines.Count, answer.Error));
+        Assert.NotEmpty(PkiJson.Deserialize<PolicyCheck>(await core.InvokeAsync(plugin, core.CallAsAllDevices(), PolicyMethods.CheckDevice, PkiJson.Serialize(new PolicyCheckRequest(inside.Id)))).Lines);
+        Assert.Equal(Oadm.Sdk.Plugins.UserRole.Operator, ((Oadm.Sdk.Plugins.ICorePlugin)plugin).RequiredRole(PolicyMethods.CheckDevice));
+        Assert.False(plugin.IsAudited(PolicyMethods.CheckDevice));
+    }
+
+    /// <summary>The page's dialogs in a test: the editor is filled by <see cref="Fill"/> and saved; the picker answers <see cref="Pick"/>.</summary>
+    private sealed class SavingDialogs : IPolicyDialogs
+    {
+        public List<PolicyEditorViewModel> Shown { get; } = [];
+
+        public Action<PolicyEditorViewModel>? Fill { get; set; }
+
+        public Guid? Pick { get; set; }
+
+        public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)
+        {
+            Shown.Add(editor);
+            Fill?.Invoke(editor);
+            return await editor.SaveAsync();
+        }
+
+        public Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected) => Task.FromResult(Pick);
     }
 
     [Fact]
@@ -73,9 +263,11 @@ public sealed class PolicyPageTests
         ctx.Manage = false;
         var card = new PoliciesViewModel(ctx);
         await card.LoadAsync(CancellationToken.None);
-        Assert.NotEmpty(card.Rows);
+        Assert.NotEmpty(card.Vlans.Rows);
         Assert.False(card.MayManage);
-        Assert.False(card.AddCommand.CanExecute(null));
+        Assert.All(card.Sections, s => Assert.False(s.AddCommand.CanExecute(null) || s.MayManage));
+        Assert.All(card.Settings, s => Assert.True(s.ReadOnly && !s.IsEditable && !s.CanSave)); // read only in place
+        Assert.Equal("No other issuing policies.", card.OtherIssuing.EmptyText); // no Add to point to
 
         var calls = new List<string>();
         var group = Page(pki);
@@ -88,7 +280,8 @@ public sealed class PolicyPageTests
         var hidden = new PoliciesViewModel(group);
         await hidden.LoadAsync(CancellationToken.None);
         Assert.False(hidden.IsShown);
-        Assert.Empty(hidden.Rows);
+        Assert.All(hidden.Sections, s => Assert.Empty(s.Rows));
+        Assert.Empty(hidden.Settings);
         Assert.DoesNotContain(PolicyMethods.GetPolicies, calls); // server-wide: nothing read
     }
 
@@ -122,7 +315,7 @@ public sealed class PolicyPageTests
 
         editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Block);
         Assert.True(await editor.SaveAsync()); // another kind may hold it
-        Assert.Contains(card.Rows, r => r.Name == "PTZ" && r.Kind == "Block");
+        Assert.Contains(card.Blocked.Rows, r => r.Name == "PTZ" && r.Kind == "Block");
     }
 
     [Fact]
@@ -151,7 +344,7 @@ public sealed class PolicyPageTests
         Assert.False(editor.OffersAllDevices); // also revoking: devices and sites only
         Assert.True(editor.ShowsPicker);
 
-        var expiry = card.NewEditor(card.Rows.Single(r => r.Kind == "Expiry warning").Source);
+        var expiry = card.NewEditor(card.List.Rows.Single(r => r.KindName == "Expiry warning").Policy);
         Assert.True(expiry.IsAllDevices); // the default "All devices"
         Assert.False(expiry.ShowsPicker);
     }
@@ -175,7 +368,7 @@ public sealed class PolicyPageTests
         Assert.Equal(PolicyTexts.CaTaken, editor.ErrorOf(nameof(PolicyEditorViewModel.Ca)));
 
         // An existing policy keeps its kind.
-        var existing = card.NewEditor(card.Rows.Single(r => r.Name == "OADM CA").Source);
+        var existing = card.NewEditor(card.List.Rows.Single(r => r.Policy.Name == "OADM CA").Policy);
         Assert.False(existing.IsNew);
         Assert.Equal([PolicyKinds.AllowCa], existing.KindChoices.Select(k => k.Value));
         Assert.Equal("Edit OADM CA", existing.Title);
@@ -187,7 +380,7 @@ public sealed class PolicyPageTests
         await using var pki = await StartAsync();
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
-        var editor = card.NewEditor(card.Rows.Single(r => r.Kind == "802.1X server").Source);
+        var editor = card.NewEditor(card.List.Rows.Single(r => r.KindName == "802.1X server").Policy);
 
         Assert.True(editor.IsServer);
         Assert.False(editor.HasDevices);
@@ -259,8 +452,8 @@ public sealed class PolicyPageTests
         Assert.True(await editor.SaveAsync());
 
         Assert.Equal("Saving revokes 1 IEEE 802.1X certificate of these devices, and every new one while the policy exists. This cannot be undone.", question);
-        var stolen = Assert.Single(card.Rows, r => r.Name == "Stolen");
-        Assert.Equal((PolicyGroups.Dot1x, "Block", true), (stolen.Group, stolen.Kind, stolen.Source.AlsoRevoke));
+        var stolen = Assert.Single(card.Blocked.Rows, r => r.Name == "Stolen");
+        Assert.Equal(("Block", true), (stolen.Kind, stolen.Source.AlsoRevoke));
         Assert.Equal("The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too.", stolen.Summary);
         Assert.NotEmpty(pki.Service.Issued.Revocations);
     }
@@ -302,7 +495,7 @@ public sealed class PolicyHeadlessTests
             HeadlessPageTests.Capture(window, outDir, $"pki-page-{width}.png");
             List<string?> Texts() => [.. window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text)];
             int Primaries() => window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
-            var certificates = (Texts: Texts(), Primaries: Primaries(), Policies: view.FindControl<Border>("PoliciesCard")!.IsEffectivelyVisible);
+            var certificates = (Texts: Texts(), Primaries: Primaries(), Policies: view.FindControl<Panel>("PoliciesPage")!.IsEffectivelyVisible);
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Count(t => t.IsEffectivelyVisible);
 
             // The search boxes lie whole inside their lists (the filters wrap on a narrow card); the CAs have no filters.
@@ -315,12 +508,10 @@ public sealed class PolicyHeadlessTests
             });
             var caCombos = view.FindControl<IssuedCertificateList>("AuthoritiesList")!.GetVisualDescendants().OfType<ComboBox>().Count(c => c.IsEffectivelyVisible);
 
-            // The Policies tab: the table grouped by type, no filter.
+            // The Policies tab: cards by area (its own test renders it in detail).
             vm.ShowTab(PkiViewModel.PoliciesTabId);
             HeadlessPageTests.Pump();
-            HeadlessPageTests.Capture(window, outDir, $"pki-page-policies-{width}.png");
-            var segments = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("segment"));
-            var policies = (Texts: Texts(), Primaries: Primaries(), Segments: segments,
+            var policies = (Texts: Texts(), Primaries: Primaries(),
                 Lists: window.GetVisualDescendants().OfType<IssuedCertificateList>().Count(l => l.IsEffectivelyVisible),
                 Groups: window.GetVisualDescendants().OfType<DataGridRowGroupHeader>().Count(h => h.IsEffectivelyVisible));
             window.Close();
@@ -345,19 +536,16 @@ public sealed class PolicyHeadlessTests
         Assert.DoesNotContain("Used by", checks.certificates.Texts);
         Assert.Equal(1, checks.certificates.Primaries); // Create
 
-        // Policies: the table grouped by what the policies do, no filter, no certificate list.
-        foreach (var title in new[] { "Policies", "Add policy", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server", "System", "User" })
+        // Policies: the cards by area, no certificate list, no grouped table.
+        foreach (var title in new[] { "Check a device", "Certificates for cameras", "802.1X network access", "EST" })
         {
             Assert.Contains(title, checks.policies.Texts);
         }
 
-        Assert.Equal(0, checks.policies.Segments);
         Assert.Equal(0, checks.policies.Lists);
-        Assert.Equal(PoliciesViewModel.GroupLabels.Count, checks.policies.Groups); // Issuing, Certificates, 802.1X, EST, Revoke
-        Assert.Equal(1, checks.policies.Primaries); // Add policy
-        Assert.DoesNotContain("Warn before expiry (days)", checks.policies.Texts); // the Expiry warning policy
-        Assert.DoesNotContain("Device certificates", checks.policies.Texts);
-        Assert.DoesNotContain("EAPOL version", checks.policies.Texts);
+        Assert.Equal(0, checks.policies.Groups);
+        Assert.Equal(1, checks.policies.Primaries); // the device of Check a device
+        Assert.DoesNotContain("Add policy", checks.policies.Texts);
         Assert.All(checks.certificates.Texts.Concat(checks.policies.Texts), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }
 
@@ -372,7 +560,7 @@ public sealed class PolicyHeadlessTests
             var card = new PoliciesViewModel(ctx);
             await card.LoadAsync(CancellationToken.None);
 
-            var vlan = card.NewEditor(card.Rows.Single(r => r.Name == "Building B").Source);
+            var vlan = card.NewEditor(card.List.Rows.Single(r => r.Policy.Name == "Building B").Policy);
             var vlanWindow = PolicyFormView.CreateWindow(vlan);
             Oadm.Client.App.ApplyCrispText(vlanWindow);
             vlanWindow.Show();
@@ -383,11 +571,10 @@ public sealed class PolicyHeadlessTests
             var vlanPicker = vlanWindow.IsPickerVisible;
             vlanWindow.Close();
 
-            var allow = card.NewEditor(null);
+            var allow = card.NewEditor(null, PolicyKinds.AllowCa); // Add of Trusted CAs: no kind choice
             var allowWindow = PolicyFormView.CreateWindow(allow);
             Oadm.Client.App.ApplyCrispText(allowWindow);
             allowWindow.Show();
-            allow.Kind = allow.KindChoices.Single(k => k.Value == PolicyKinds.AllowCa);
             allow.Name = "Contoso";
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(allowWindow, outDir, "pki-policy-allow-ca.png");
@@ -395,7 +582,7 @@ public sealed class PolicyHeadlessTests
             var allowPicker = allowWindow.IsPickerVisible;
             allowWindow.Close();
 
-            var server = card.NewEditor(card.Rows.Single(r => r.Kind == "802.1X server").Source);
+            var server = card.NewEditor(card.List.Rows.Single(r => r.KindName == "802.1X server").Policy);
             var serverWindow = PolicyFormView.CreateWindow(server);
             Oadm.Client.App.ApplyCrispText(serverWindow);
             serverWindow.Show();
@@ -407,7 +594,7 @@ public sealed class PolicyHeadlessTests
             var serverTexts = Texts(serverWindow);
             serverWindow.Close();
 
-            var expiry = card.NewEditor(card.Rows.Single(r => r.Kind == "Expiry warning").Source);
+            var expiry = card.NewEditor(card.List.Rows.Single(r => r.KindName == "Expiry warning").Policy);
             var expiryWindow = PolicyFormView.CreateWindow(expiry);
             Oadm.Client.App.ApplyCrispText(expiryWindow);
             expiryWindow.Show();
@@ -418,7 +605,7 @@ public sealed class PolicyHeadlessTests
             expiryWindow.Close();
 
             // Block with Also revoke (decision 2026-10-25): the check box, then the picker without All devices.
-            var block = card.NewEditor(card.Rows.Single(r => r.Name == "Storage room").Source);
+            var block = card.NewEditor(card.List.Rows.Single(r => r.Policy.Name == "Storage room").Policy);
             var blockWindow = PolicyFormView.CreateWindow(block);
             Oadm.Client.App.ApplyCrispText(blockWindow);
             blockWindow.Show();
@@ -443,7 +630,8 @@ public sealed class PolicyHeadlessTests
         Assert.DoesNotContain(PolicyTexts.AllDevices, checks.blockTexts); // also revoking: devices and sites only
         Assert.True(checks.blockPicker);
         Assert.Contains("Issued by", checks.serverTexts); // the 802.1X server policy holds its certificate
-        Assert.Contains("802.1X trusted CA", checks.allowTexts);
+        Assert.Contains("Add 802.1X trusted CA policy", checks.allowTexts);
+        Assert.DoesNotContain("Kind", checks.allowTexts);
 
         Assert.True(checks.vlanPicker);
         Assert.Contains("Edit Building B", checks.vlanTexts);
@@ -460,7 +648,7 @@ public sealed class PolicyHeadlessTests
         Assert.Contains("Minutes", checks.serverTexts);
         Assert.Equal([PolicyTexts.SwitchDecides, "Every"], PolicyEditorViewModel.ReauthChoices.Select(c => c.Label)); // no placeholder letter
         Assert.DoesNotContain(checks.serverTexts, t => t?.Contains(" N ", StringComparison.Ordinal) == true);
-        Assert.Contains("Days", checks.expiryTexts);
+        Assert.Contains("Days before the end", checks.expiryTexts);
         Assert.Contains(PolicyTexts.AllDevices, checks.expiryTexts); // the Devices choice; no picker
         Assert.False(checks.expiryPicker);
         Assert.True(checks.red);

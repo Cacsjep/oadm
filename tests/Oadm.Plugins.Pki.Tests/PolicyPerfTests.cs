@@ -86,4 +86,45 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
         Assert.True(card < TimeSpan.FromSeconds(3), $"the rows took {card.TotalMilliseconds:F0} ms");
         Assert.True(expiry < TimeSpan.FromSeconds(1), $"the expiry days took {expiry.TotalMilliseconds:F0} ms");
     }
+
+    [Fact]
+    public async Task Check_a_device_and_the_cards_with_150_rules_at_30000_devices_stay_fast()
+    {
+        const int Rules = 150;
+        var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
+        {
+            Serial = "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture),
+            Address = "10.1." + (i / 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
+            Tags = ["Tag " + (i % Rules).ToString(CultureInfo.InvariantCulture)],
+        }).ToList();
+        await using var pki = await PkiHarness.StartAsync(devices: devices);
+        for (var i = 0; i < Rules; i++)
+        {
+            Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy
+            {
+                Name = "VLAN " + i.ToString(CultureInfo.InvariantCulture),
+                Kind = PolicyKinds.Vlan,
+                Vlan = 100 + i,
+                Devices = new PolicyDevices { Tags = ["Tag " + i.ToString(CultureInfo.InvariantCulture)] },
+            })).Error);
+        }
+
+        // The server checks one device: one pass over the devices to find it, then O(policies).
+        var watch = Stopwatch.StartNew();
+        var check = await pki.InvokeAsync<PolicyCheck>(PolicyMethods.CheckDevice, new PolicyCheckRequest(devices[^1].Id));
+        var checkTime = watch.Elapsed;
+        Assert.Contains(check.Lines, l => l.Text == "It gets VLAN " + (100 + (Devices - 1) % Rules).ToString(CultureInfo.InvariantCulture) + ".");
+
+        // The page: the rule lists and the settings in place from one list (one reset per list).
+        var list = await pki.InvokeAsync<PolicyList>(PolicyMethods.GetPolicies);
+        var card = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub) { DeviceList = devices });
+        watch.Restart();
+        card.Apply(list);
+        var apply = watch.Elapsed;
+        Assert.Equal(Rules, card.Vlans.Rows.Count);
+
+        output.WriteLine($"30,000 devices, {Rules} VLAN rules: Check a device {checkTime.TotalMilliseconds:F0} ms; the cards {apply.TotalMilliseconds:F0} ms");
+        Assert.True(checkTime < TimeSpan.FromMilliseconds(500), $"Check a device took {checkTime.TotalMilliseconds:F0} ms");
+        Assert.True(apply < TimeSpan.FromMilliseconds(500), $"the cards took {apply.TotalMilliseconds:F0} ms");
+    }
 }

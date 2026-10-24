@@ -152,6 +152,7 @@ public sealed class ServerTests : IAsyncLifetime
         // A CA that can no longer issue (its key gone): nothing is answered for the profile.
         _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = false };
         Assert.Equal(503, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null)).Status);
+        Assert.Equal("Running on port 9454", _service.GetState().StatusText); // the EST server's own certificate comes from the OADM CA
 
         // The EST server policy names the imported CA (with its key again): its next server certificate comes from that CA.
         _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = true };
@@ -163,6 +164,10 @@ public sealed class ServerTests : IAsyncLifetime
 
         Assert.Equal(Id, _ca.Requests[^1].IssuerId);
         Assert.Null(_ca.Requests[^1].DeviceId);
+
+        // Its key gone: the EST server has no certificate, and its status says why (fail closed).
+        _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = false };
+        Assert.Equal(("The EST server has no certificate: Contoso Issuing CA cannot issue.", false), (_service.GetState().StatusText, _service.GetState().StatusOk));
 
     }
 

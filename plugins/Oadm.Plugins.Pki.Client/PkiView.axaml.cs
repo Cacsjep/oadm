@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Collections;
 using Avalonia.Controls;
 
 using Oadm.Sdk.Certificates;
@@ -18,34 +17,6 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
     {
         InitializeComponent();
         Files = new PkiFilePicker(() => TopLevel.GetTopLevel(this));
-        PoliciesGrid.DoubleTapped += (_, _) =>
-        {
-            if (DataContext is PkiViewModel vm && PoliciesGrid.SelectedItem is PolicyRowViewModel row)
-            {
-                vm.Policies.EditRowCommand.Execute(row);
-            }
-        };
-    }
-
-    /// <summary>
-    /// A policy row's ⋯ button: its menu, like the certificate tables (Edit; Delete in red, not for a system policy). View
-    /// only: the entries run the view model's commands.
-    /// </summary>
-    private void OnPolicyActions(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (sender is not Button { DataContext: PolicyRowViewModel row } button || DataContext is not PkiViewModel vm)
-        {
-            return;
-        }
-
-        List<IssuedCertificateAction> actions = [new("Edit", vm.Policies.EditRowCommand, row)];
-        if (row.CanDelete)
-        {
-            actions.Add(IssuedCertificateAction.Separator);
-            actions.Add(new("Delete", vm.Policies.DeleteRowCommand, row, IsDanger: true));
-        }
-
-        RowActions.Show(button, actions);
     }
 
     /// <summary>
@@ -61,29 +32,6 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
         CertificatesSplitter.IsVisible = shown;
     }
 
-    /// <summary>The policy table grouped by what the policies do, the groups in their order (view only).</summary>
-    private void GroupPolicies(PkiViewModel? vm)
-    {
-        if (vm is null)
-        {
-            PoliciesGrid.ItemsSource = null;
-            return;
-        }
-
-        PoliciesGrid.ItemsSource = PolicyGroupView(vm.Policies.Rows);
-    }
-
-    /// <summary>
-    /// The policy rows grouped by <see cref="PolicyRowViewModel.GroupLabel"/>: the rows come in the groups' order, and only
-    /// groups with rows get a header (no fixed group keys: they showed empty groups, decision 2026-10-25).
-    /// </summary>
-    internal static DataGridCollectionView PolicyGroupView(System.Collections.IEnumerable rows)
-    {
-        var view = new DataGridCollectionView(rows);
-        view.GroupDescriptions.Add(new DataGridPathGroupDescription(nameof(PolicyRowViewModel.GroupLabel)));
-        return view;
-    }
-
     public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)
     {
         ArgumentNullException.ThrowIfNull(editor);
@@ -96,6 +44,12 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
         window.Show();
         return false;
     }
+
+    /// <summary>Check a device: the shared picker for one device.</summary>
+    public async Task<Guid?> PickDeviceAsync(IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> devices, Guid? selected) =>
+        TopLevel.GetTopLevel(this) is Window owner
+            ? await DevicePickerWindow.ShowOneAsync(owner, devices, selected, heading: "Choose a device").ConfigureAwait(true)
+            : null;
 
     public Task ShowCertificateAsync(CertificateDetails certificate) =>
         TopLevel.GetTopLevel(this) is Window owner ? CertificateWindow.ShowAsync(certificate, owner) : Task.CompletedTask;
@@ -135,6 +89,7 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
             vm.Certificates.Dialogs = this;
             vm.Authorities.Dialogs = this;
             vm.Policies.Dialogs = this;
+            vm.Policies.Files = Files;
             vm.Policies.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(PoliciesViewModel.IsShown))
@@ -144,8 +99,6 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
             };
             ShowAuthorities(vm.Policies.IsShown);
         }
-
-        GroupPolicies(DataContext as PkiViewModel);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

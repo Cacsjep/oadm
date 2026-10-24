@@ -4,22 +4,20 @@
              xmlns:vm="using:Oadm.Plugins.Pki.Client"
              x:Class="Oadm.Plugins.Pki.Client.PolicyFormView"
              x:DataType="vm:PolicyEditorViewModel">
-  <!-- The policy editor's form, on top of the shared device picker's card (hidden for kinds without devices): name, kind
-       (VLAN ID and the days on its row) and the kind's own fields. -->
-  <StackPanel Classes="form">
-    <ui:FormField Label="Name" InputWidth="360">
+  <!-- The policy's form: in the editor on top of the shared device picker's card (hidden for kinds without devices), and in
+       place for a system policy on its card (IsInPlace: no name, no devices). What the kind does, the name, the kind's own
+       fields (the kind is preset by the rule list's Add, decision 2026-10-25: no kind choice). Read only for users who may
+       not change the policies. -->
+  <StackPanel Classes="form" IsEnabled="{Binding IsEditable}">
+    <TextBlock Classes="secondary" Text="{Binding KindHint}" TextWrapping="Wrap" />
+    <ui:FormField Label="Name" InputWidth="360" IsVisible="{Binding ShowsName}">
       <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" PlaceholderText="{Binding NamePlaceholder}" />
     </ui:FormField>
-    <ui:FormField Label="Kind" Hint="{Binding KindHint}">
-      <StackPanel Orientation="Horizontal" Spacing="24">
-        <ComboBox Width="220" VerticalAlignment="Top" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" IsEnabled="{Binding IsNew}" />
-        <ui:FormField Label="VLAN ID" LabelWidth="70" IsVisible="{Binding IsVlan}">
-          <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
-        </ui:FormField>
-        <ui:FormField Label="Days" LabelWidth="50" IsVisible="{Binding IsExpiry}">
-          <TextBox Text="{Binding Days}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 365" />
-        </ui:FormField>
-      </StackPanel>
+    <ui:FormField Label="VLAN ID" IsVisible="{Binding IsVlan}">
+      <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
+    </ui:FormField>
+    <ui:FormField Label="Days before the end" Hint="{Binding DaysHint}" IsVisible="{Binding IsExpiry}">
+      <TextBox Text="{Binding Days}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 365" />
     </ui:FormField>
 
     <!-- Issuing (also the 802.1X and EST server policies): the CA that issues (any CA with its key), valid days and the key -->
@@ -97,7 +95,7 @@
     </ui:FormField>
 
     <!-- Kinds with devices (not a Block that also revokes): All devices, or the picker below -->
-    <ui:FormField Label="Devices" IsVisible="{Binding OffersAllDevices}">
+    <ui:FormField Label="Devices" IsVisible="{Binding ShowsDeviceScope}">
       <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}" />
     </ui:FormField>
 

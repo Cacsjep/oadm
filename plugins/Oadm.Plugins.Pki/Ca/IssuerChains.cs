@@ -26,4 +26,20 @@ public static class IssuerChains
 
         return authority.Authorities.FirstOrDefault(a => a.Issues && string.Equals(a.Id, caId, StringComparison.OrdinalIgnoreCase))?.Certificates ?? [];
     }
+
+    /// <summary>
+    /// Why <paramref name="server"/> ("The 802.1X server") has no certificate although PKI has its OADM CA: the CA its policy
+    /// names cannot issue ("The 802.1X server has no certificate: Corp CA cannot issue.") or left the PKI; null when that CA
+    /// can issue, or when PKI has no CA at all (the servers say that on their own).
+    /// </summary>
+    public static string? NoCertificateReason(IDeviceCertificateAuthority? authority, string? caId, string server)
+    {
+        if (authority is null || caId is null || string.Equals(caId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase) || Of(authority, caId).Count > 0)
+        {
+            return null;
+        }
+
+        var listed = authority.Authorities.FirstOrDefault(a => string.Equals(a.Id, caId, StringComparison.OrdinalIgnoreCase));
+        return Policies.PolicyTexts.ServerWithoutCertificate(server, listed?.Name);
+    }
 }

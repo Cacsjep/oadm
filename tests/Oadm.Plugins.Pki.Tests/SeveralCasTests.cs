@@ -304,27 +304,3 @@ public sealed class SeveralCasTests
         Assert.Null(new IssuedCertificateRow(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority }).UsedInTip);
     }
 }
-
-/// <summary>The policy table's group headers rendered in the shared headless session (decision 2026-10-25: no empty group).</summary>
-[Collection(HeadlessSessions.Name)]
-public sealed class PolicyGroupHeaderTests
-{
-    [Fact]
-    public async Task The_policy_table_has_a_group_header_only_for_groups_with_rows()
-    {
-        await using var pki = await PolicyPageTests.StartAsync();
-        var card = new PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub));
-        await card.LoadAsync(CancellationToken.None);
-
-        var groups = await HeadlessEntry.Session.Dispatch(() =>
-        {
-            var view = PkiView.PolicyGroupView(card.Rows);
-            return Task.FromResult(view.Groups.OfType<Avalonia.Collections.DataGridCollectionViewGroup>().Select(g => (g.Key?.ToString(), g.ItemCount)).ToList());
-        }, CancellationToken.None);
-
-        // The groups of the rows only, in their order: never a "Revoke" or an empty header.
-        Assert.Equal(card.Rows.Select(r => r.GroupLabel).Distinct(), groups.Select(g => g.Item1));
-        Assert.All(groups, g => Assert.True(g.ItemCount > 0));
-        Assert.DoesNotContain(groups, g => g.Item1 == "Revoke");
-    }
-}

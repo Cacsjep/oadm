@@ -25,7 +25,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     certificate, who may enroll and which CAs sign in are PKI's EST server, Enrollment and EST sign-in CA policies,
     docs/spec/pki.md "Code (stage 6)" and "Several CAs and the policy cleanup"; the
     tooltip lists them, it opens the Policies tab), the status left of Save: "Running on port 9454", "OADM PRO is not
-    active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
+    active.", "The PKI has no certificate authority.", "The EST server has no certificate: Corp CA cannot issue." (the CA
+    of the EST server policy lost its key, docs/spec/pki.md "Policies in cards"), or the listener's state ("... is used by
+    another program").
   - **Profiles** (at most 2 per camera, the camera's limit: a third add is refused, "No more profiles can be added",
     seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
     MQTT, RTSPS), issuing policy (PKI's HTTPS certificate policies for HTTPS and RTSPS, IEEE 802.1X certificate policies for

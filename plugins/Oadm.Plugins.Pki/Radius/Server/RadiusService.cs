@@ -741,7 +741,8 @@ public sealed partial class RadiusService : IAsyncDisposable
             switch (listener.State)
             {
                 case RelayState.Running when _identity.Identity is null:
-                    text = RadiusTexts.NoCa;
+                    // The CA of the 802.1X server policy cannot issue: say which, else PKI has no CA.
+                    text = Oadm.Plugins.Pki.Ca.IssuerChains.NoCertificateReason(_host.Authority(), _host.Policies()?.ServerPolicy?.CaId, RadiusTexts.ServerName) ?? RadiusTexts.NoCa;
                     break;
                 case RelayState.Running:
                     text = RadiusTexts.Running(config.Port);
@@ -2079,6 +2080,9 @@ public static class RadiusTexts
 {
     public const string NotPro = "OADM PRO is not active.";
     public const string NoCa = "The PKI has no certificate authority.";
+
+    /// <summary>The server in a sentence of its status ("The 802.1X server has no certificate: ...").</summary>
+    public const string ServerName = "The 802.1X server";
     public const string InterfaceGone = "This interface is not available on the server.";
     public const string SiteGone = "This site no longer exists.";
     public const string SwitchGone = "This switch no longer exists.";

@@ -13,7 +13,7 @@ change to the operating system.
 
 <Image src={shot} alt="The PKI page with its tabs, the policies and the certificates" class="screen" />
 
-The page has three tabs: **Certificates** (the policies and every certificate, the CAs among them),
+The page has four tabs: **Certificates** (every certificate, the CAs among them), **Policies**,
 [**802.1X server**](../radius-server/) and [**EST server**](../est-server/). You see a server's tab when your role may see
 that server.
 
@@ -56,8 +56,22 @@ there.
 ## Policies
 
 The policies are the rules for certificates and for the [802.1X server](../radius-server/) and the
-[EST server](../est-server/). The table groups them: **Issuing**, **Certificates**, **802.1X** and **EST**.
-**Add policy** adds one; Edit and Delete sit in each row's **⋯**.
+[EST server](../est-server/). The **Policies** tab shows them in cards: **Check a device**, **Certificates for cameras**,
+**802.1X network access** and **EST**.
+
+- The policies OADM needs are settings on their card: **HTTPS**, **IEEE 802.1X** and **Expiry warning**, the
+  **802.1X server** and the **EST server**. Change a value and click the **Save** below it; **Not saved** shows until you
+  do. Errors show below the fields.
+- Your own policies are short lists on the same card: **Other issuing**, **Expiry warnings for some devices**,
+  **Trusted CAs**, **VLANs**, **Blocked**, **Enrollment** and **Sign-in CAs**. **Add** adds one to that list (Other
+  issuing asks HTTPS or IEEE 802.1X); Edit and Delete sit in each row's **⋯**. The Enrollment policy "All devices" is the
+  first row of its list and shows **System**: it cannot be deleted.
+
+### Check a device
+
+Click **Choose a device** and pick a device. OADM lists what applies to it, each line with the policy that decides it:
+the certificates Enable HTTPS and Enable IEEE 802.1X issue, when its certificates show the expiry warning, whether the
+802.1X server lets it in (with which CAs), blocks it or puts it in a VLAN, and which EST profiles it may use.
 
 | Kind | What it does | Devices |
 |---|---|---|
@@ -80,9 +94,8 @@ keep the settings of the former Device certificates and IEEE 802.1X cards and RS
 with** becomes one EST sign-in CA policy per ticked CA.
 
 - Add more certificate policies, for example "HTTPS 2 years"; Enable HTTPS and Enable IEEE 802.1X let you pick one.
-- The first policy of the certificate kinds, the server policies, one an EST profile uses and the first Expiry warning
-  and Enrollment policy cannot be deleted. Another number of days applies to the next server certificate; another key
-  or CA makes a new one.
+- The policies OADM needs and a certificate policy an EST profile uses cannot be deleted. Another number of days applies
+  to the next server certificate; another key or CA makes a new one.
 - A CA a policy names cannot be removed: change the policy first.
 
 - A device can be in only one policy of each kind: saving names the device that is in two. Each CA is in one 802.1X
