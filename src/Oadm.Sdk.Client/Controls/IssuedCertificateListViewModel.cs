@@ -89,6 +89,12 @@ public static class IssuedCertificateTexts
     /// <summary>A certificate listed by OADM 4.1, before OADM kept a copy of each one.</summary>
     public const string NoCopy = IssuedCertificateMessages.NoCopy;
 
+    /// <summary>The overlay and the progress row while the list is read.</summary>
+    public const string Reading = "Reading the certificates";
+
+    /// <summary>The progress row while Revoke runs.</summary>
+    public const string Revoking = "Revoking the certificates";
+
     /// <summary>A revoked serial the list did not hold: OADM does not know its device.</summary>
     public const string UnknownDevice = "Unknown device";
 
@@ -258,7 +264,25 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
     /// <summary>A later read (filter, page, change on the server): the progress row above the grid.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsProgress), nameof(ProgressText))]
     public partial bool IsReloading { get; set; }
+
+    /// <summary>
+    /// The text of a write the page runs on the list ("Revoking the certificates"); null while none runs. The progress row
+    /// shows it above the grid.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWorking), nameof(ShowsProgress), nameof(ProgressText))]
+    public partial string? WorkText { get; protected set; }
+
+    /// <summary>A write of the page runs (<see cref="WorkText"/>): its buttons stay off.</summary>
+    public bool IsWorking => WorkText is not null;
+
+    /// <summary>The progress row above the grid shows: a later read or a write of the page.</summary>
+    public bool ShowsProgress => IsReloading || IsWorking;
+
+    /// <summary>The text of the progress row: the write while one runs, else "Reading the certificates".</summary>
+    public string ProgressText => WorkText ?? IssuedCertificateTexts.Reading;
 
     /// <summary>"Cannot read the certificates: ..." directly below the table; null after a good read.</summary>
     [ObservableProperty]
@@ -303,6 +327,13 @@ public partial class IssuedCertificateListViewModel : ObservableObject
         ViewCertificateCommand.NotifyCanExecuteChanged();
         OnSelectionChanged();
     }
+
+    /// <summary>After every change of <see cref="WorkText"/> (commands of a derived list stay off while a write runs).</summary>
+    protected virtual void OnWorkChanged()
+    {
+    }
+
+    partial void OnWorkTextChanged(string? value) => OnWorkChanged();
 
     /// <summary>After every change of <see cref="Selected"/> (commands of a derived list).</summary>
     protected virtual void OnSelectionChanged()
