@@ -88,8 +88,9 @@ public sealed class IssuedCertificateList : UserControl
         var search = new SearchBox { Placeholder = "Search device, serial number", Width = 260 };
         search.Bind(SearchBox.TextProperty, new Binding(nameof(IssuedCertificateListViewModel.Search)) { Mode = BindingMode.TwoWay });
         filters.Children.Add(search);
-        var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 16 };
-        Grid.SetColumn(filters, 2);
+        // The filters take the rest of the row (not Auto): on a narrow card they wrap, the search box below, never cut off.
+        var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 16 };
+        Grid.SetColumn(filters, 1);
         bar.Children.AddRange([_toolbar, filters]);
 
         var progress = new ProgressRow { Margin = new Thickness(0, 8, 0, 0) };

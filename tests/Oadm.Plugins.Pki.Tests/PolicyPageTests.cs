@@ -293,11 +293,18 @@ public sealed class PolicyHeadlessTests
             var primaries = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
             var segments = window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("segment")).Select(b => b.Content as string).ToList();
             var count = view.CardColumnCount;
+
+            // The certificates' search box lies whole inside its list (the filters wrap on a narrow card).
+            var list = window.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
+            var search = list.GetVisualDescendants().OfType<SearchBox>().Single();
+            var searchRight = Avalonia.VisualExtensions.TranslatePoint(search, new Avalonia.Point(search.Bounds.Width, 0), list)!.Value.X;
+            var searchFits = searchRight <= list.Bounds.Width + 0.5;
             window.Close();
-            return (texts, tabs, primaries, segments, count);
+            return (texts, tabs, primaries, segments, count, searchFits);
         }, CancellationToken.None);
 
         Assert.Equal(columns, checks.count);
+        Assert.True(checks.searchFits);
         Assert.Equal(0, checks.tabs); // one page, no tabs
         foreach (var title in new[] { "Certificate authorities", "Policies", "Certificates", "Add policy", "Generate new CA", "Import CA", "802.1X server", "Building B", "Storage room" })
         {
