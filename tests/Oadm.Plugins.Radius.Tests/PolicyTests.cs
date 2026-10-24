@@ -134,6 +134,21 @@ public sealed class PolicyTests
     }
 
     [Fact]
+    public async Task PoliciesThatCannotBeReadLetNothingPass()
+    {
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial), start: false);
+        await harness.PkiSettings.SetAsync(PolicyStore.SettingsKey, "{\"policies\":7}", CancellationToken.None);
+        await harness.Policies.LoadAsync(CancellationToken.None);
+        await harness.StartAsync();
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final);
+        Assert.Equal(CertificateRefusals.PoliciesUnreadable, (await LastLogRowAsync(harness)).Reason);
+        Assert.Empty(harness.Policies.All); // the 802.1X server's conversion wrote nothing over it
+        Assert.Equal("{\"policies\":7}", await harness.PkiSettings.GetAsync(PolicyStore.SettingsKey, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ReauthenticationOfTheServerPolicyIsSentAsSessionTimeoutWithTerminationActionRadiusRequest()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));

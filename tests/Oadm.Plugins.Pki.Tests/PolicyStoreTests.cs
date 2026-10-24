@@ -212,6 +212,30 @@ public sealed class PolicyStoreTests
     }
 
     [Fact]
+    public async Task StoredPoliciesThatCannotBeReadAreNeverConvertedOrOverwrittenAndThePageSaysSo()
+    {
+        const string Damaged = "{\"policies\":{\"name\":\"Building B\"}}"; // valid JSON (the host checks that), not a list of policies
+        var settings = new InMemoryPluginSettingsProvider();
+        await settings.GetSettings(PkiPluginInfo.PluginId).SetAsync(PolicyStore.SettingsKey, Damaged, CancellationToken.None);
+
+        await using var pki = await PkiHarness.StartAsync(settings);
+
+        Assert.True(pki.Policies.IsUnreadable);
+        Assert.Empty(pki.Policies.All); // no defaults converted over it
+        Assert.False(await pki.Policies.ConvertOnceAsync("oadm.radius", _ => Task.FromResult<IReadOnlyList<PkiPolicy>>([Expiry("Late", 10, PolicyDevices.Everything)]), CancellationToken.None));
+        Assert.Equal(new PolicyFieldError(PolicyFields.Name, PolicyTexts.Unreadable), await RefusedAsync(pki.Policies, Expiry("New", 10, PolicyDevices.Everything)));
+        Assert.Equal(PolicyTexts.Unreadable, (await pki.Policies.DeleteAsync(Guid.NewGuid(), "admin", CancellationToken.None)).Error?.Message);
+        Assert.Equal(Damaged, await settings.GetSettings(PkiPluginInfo.PluginId).GetAsync(PolicyStore.SettingsKey, CancellationToken.None)); // never overwritten
+
+        var list = await pki.InvokeAsync<PolicyList>(PolicyMethods.GetPolicies, null);
+        Assert.Equal(("The policies cannot be read. Restore a backup.", false), (list.Error, list.MayManage));
+        var card = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub));
+        await card.LoadAsync(CancellationToken.None);
+        Assert.Equal(PolicyTexts.Unreadable, card.Error); // below the table
+        Assert.False(card.MayManage);
+    }
+
+    [Fact]
     public async Task ANewServerStartsWithTheExpiryWarningAllDevicesOf30Days()
     {
         await using var pki = await PkiHarness.StartAsync();

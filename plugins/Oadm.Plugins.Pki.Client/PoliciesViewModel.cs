@@ -131,8 +131,9 @@ public sealed partial class PoliciesViewModel : ObservableObject
         IsReloading = !first;
         try
         {
-            Apply(PkiJson.Deserialize<PolicyList>(await _ctx.InvokeAsync(PolicyMethods.GetPolicies, null, ct).ConfigureAwait(true)));
-            Error = null;
+            var list = PkiJson.Deserialize<PolicyList>(await _ctx.InvokeAsync(PolicyMethods.GetPolicies, null, ct).ConfigureAwait(true));
+            Apply(list);
+            Error = list.Error; // the stored policies cannot be read: below the table
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

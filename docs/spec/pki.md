@@ -203,6 +203,10 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   and serials, O(1) per device), `PolicyStore` (PKI's setting `policies`: the list in age order and the converted owners;
   an immutable snapshot with a version, `Changed` after the write). PKI offers the store in process
   (`IPluginServices.Offer<PolicyStore>`); the 802.1X server finds it each time. No SDK contract.
+- **A stored list that cannot be read** (`PolicyStore.IsUnreadable`): one error in the log per load, nothing converted or
+  written (the stored value is never overwritten), every save and delete refused, the 802.1X server refuses every device
+  ("The PKI policies cannot be read", alert 80), the Policies card says "The policies cannot be read. Restore a backup."
+  below the table and is read only.
 - **Checks on save**: the policy on its own (name, the kind's fields, devices; Revoke without tags), then against the
   others: a name taken by another policy of the same kind (decision of stage 3: names are unique per kind, so "All devices"
   can be an Expiry warning and a VLAN policy), one 802.1X server policy, an Allow CA naming a CA PKI does not list or the same

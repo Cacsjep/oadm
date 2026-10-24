@@ -66,6 +66,12 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>Grows with every change of the stored policies (a reader compares it with what it built its rules from).</summary>
     public long Version => _snapshot.Version;
 
+    /// <summary>
+    /// A stored list exists but cannot be read (damaged): the store holds no policies, converts and writes nothing (the stored
+    /// value is never overwritten), refuses every change, and the 802.1X server refuses every device. A backup restores it.
+    /// </summary>
+    public bool IsUnreadable => _snapshot.Unreadable;
+
     /// <summary>The host protects the tags the policies use (only users with all devices add or remove them on devices).</summary>
     public bool TagsProtected => _protectedTags is not null;
 
@@ -96,9 +102,17 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>Reads the stored policies and protects their tags.</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
-        var stored = PkiJson.TryDeserialize<StoredPolicies>(await _settings.GetAsync(SettingsKey, ct).ConfigureAwait(false)) ?? new StoredPolicies();
+        var json = await _settings.GetAsync(SettingsKey, ct).ConfigureAwait(false);
+        var read = PkiJson.TryDeserialize<StoredPolicies>(json);
+        var unreadable = read is null && !string.IsNullOrWhiteSpace(json);
+        if (unreadable)
+        {
+            LogUnreadable();
+        }
+
+        var stored = read ?? new StoredPolicies();
         stored = stored with { Policies = WithUniqueIds(stored.Policies ?? []), Converted = stored.Converted ?? [] };
-        _snapshot = new Snapshot(stored, _snapshot.Version + 1, TagsProtected);
+        _snapshot = new Snapshot(stored, _snapshot.Version + 1, TagsProtected, unreadable);
         Protect(stored.Policies);
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -114,9 +128,9 @@ public sealed partial class PolicyStore : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(owner);
         ArgumentNullException.ThrowIfNull(convert);
-        if (Converted.Contains(owner, StringComparer.Ordinal))
+        if (IsUnreadable || Converted.Contains(owner, StringComparer.Ordinal))
         {
-            return false;
+            return false; // unreadable: converting would overwrite the stored list
         }
 
         var converted = await convert(ct).ConfigureAwait(false);
@@ -124,7 +138,7 @@ public sealed partial class PolicyStore : IDisposable
         try
         {
             var stored = _snapshot.Stored;
-            if (stored.Converted.Contains(owner, StringComparer.Ordinal))
+            if (_snapshot.Unreadable || stored.Converted.Contains(owner, StringComparer.Ordinal))
             {
                 return false;
             }
@@ -164,10 +178,20 @@ public sealed partial class PolicyStore : IDisposable
             return new PolicySaveResult(null, own);
         }
 
+        if (IsUnreadable)
+        {
+            return Refused(PolicyFields.Name, PolicyTexts.Unreadable);
+        }
+
         var devices = PolicyKinds.HasDevices(policy.Kind) ? await _devices(ct).ConfigureAwait(false) : [];
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (_snapshot.Unreadable)
+            {
+                return Refused(PolicyFields.Name, PolicyTexts.Unreadable);
+            }
+
             var stored = _snapshot.Stored;
             var list = stored.Policies.ToList();
             var index = policy.Id == Guid.Empty ? -1 : list.FindIndex(p => p.Id == policy.Id);
@@ -265,6 +289,11 @@ public sealed partial class PolicyStore : IDisposable
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (_snapshot.Unreadable)
+            {
+                return Refused(PolicyFields.Name, PolicyTexts.Unreadable);
+            }
+
             var stored = _snapshot.Stored;
             removed = stored.Policies.FirstOrDefault(p => p.Id == id);
             if (removed is null)
@@ -547,6 +576,9 @@ public sealed partial class PolicyStore : IDisposable
 
     public void Dispose() => _gate.Dispose();
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored policies cannot be read; nothing is converted or written, the 802.1X server refuses every device. Restore a backup.")]
+    private partial void LogUnreadable();
+
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} policies made from the settings of {Owner}")]
     private partial void LogConverted(int count, string owner);
 
@@ -560,8 +592,9 @@ public sealed partial class PolicyStore : IDisposable
     {
         private readonly (PolicyMatcher Matcher, int Days)[] _expiry;
 
-        public Snapshot(StoredPolicies stored, long version, bool tagsProtected)
+        public Snapshot(StoredPolicies stored, long version, bool tagsProtected, bool unreadable = false)
         {
+            Unreadable = unreadable;
             Stored = stored;
             Version = version;
             TagsProtected = tagsProtected;
@@ -572,6 +605,8 @@ public sealed partial class PolicyStore : IDisposable
         }
 
         public StoredPolicies Stored { get; }
+
+        public bool Unreadable { get; }
 
         public long Version { get; }
 

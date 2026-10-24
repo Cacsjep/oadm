@@ -269,6 +269,11 @@ public sealed class RadiusRuleSet
         }
 
         var version = store.Version;
+        if (store.IsUnreadable)
+        {
+            return new RadiusRuleSet(store, version, new TrustedCaSettings(), PolicyPlan.Unreadable, null); // fail closed, never the defaults
+        }
+
         var selection = new TrustedCaSettings
         {
             Cas = [.. store.PoliciesOf(PolicyKinds.AllowCa).Where(p => !string.IsNullOrWhiteSpace(p.CaId)).Select(p => new TrustedCaChoice(p.CaId!, p.OnlyManaged ?? true))],

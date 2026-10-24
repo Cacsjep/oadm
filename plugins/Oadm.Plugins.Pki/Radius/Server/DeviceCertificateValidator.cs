@@ -286,6 +286,7 @@ public static class CertificateRefusals
     public const string OtherSite = "The device belongs to another site";
     public const string Revoked = "Certificate revoked";
     public const string NoCa = "The PKI has no certificate authority";
+    public const string PoliciesUnreadable = "The PKI policies cannot be read";
 
     /// <summary>A certificate PKI lists with another use (MQTT, HTTPS, RTSPS); TLS alert 42 (bad certificate).</summary>
     public const string NotDot1x = "Certificate is not an IEEE 802.1X certificate";
@@ -379,10 +380,12 @@ public sealed partial class DeviceCertificateValidator(
         var certificateSerial = CertificateSerials.Normalize(leaf.SerialNumber);
         var none = new CheckedCertificate(null, null, certificateSerial);
         var ca = authority();
-        if (ca is null || policies().IsUnavailable)
+        var rules = policies();
+        if (ca is null || rules.IsUnavailable)
         {
-            // Without PKI there is no revocation list: no certificate passes, Axis device ID ones neither (fail closed).
-            return ClientCertificateVerdict.Refuse(CertificateRefusals.NoCa, 80, none);
+            // Without PKI there is no revocation list, without readable policies no rules: no certificate passes, Axis device
+            // ID ones neither (fail closed).
+            return ClientCertificateVerdict.Refuse(ca is null ? CertificateRefusals.NoCa : rules.UnavailableReason ?? CertificateRefusals.NoCa, 80, none);
         }
 
         var notAfter = leaf.NotAfter.ToUniversalTime();

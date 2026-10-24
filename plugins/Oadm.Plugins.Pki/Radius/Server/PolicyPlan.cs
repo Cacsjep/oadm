@@ -29,20 +29,27 @@ public sealed class PolicyPlan
         RevokePolicies = [.. list.Where(p => p.Kind == PolicyKinds.Revoke)];
     }
 
-    private PolicyPlan()
+    private PolicyPlan(string reason)
         : this([])
     {
         IsUnavailable = true;
+        UnavailableReason = reason;
     }
 
     /// <summary>No policies: no VLAN, nobody blocked.</summary>
     public static PolicyPlan Off { get; } = new([]);
 
     /// <summary>PKI's policies cannot be read (PKI stopped): every device is refused (fail closed).</summary>
-    public static PolicyPlan Unavailable { get; } = new();
+    public static PolicyPlan Unavailable { get; } = new(CertificateRefusals.NoCa);
+
+    /// <summary>PKI's stored policies cannot be read (damaged): every device is refused (fail closed) until a backup restores them.</summary>
+    public static PolicyPlan Unreadable { get; } = new(CertificateRefusals.PoliciesUnreadable);
 
     /// <summary>The plan of no store: the certificate check refuses every device.</summary>
     public bool IsUnavailable { get; }
+
+    /// <summary>The refusal of every device while <see cref="IsUnavailable"/> (the Log's reason).</summary>
+    public string? UnavailableReason { get; }
 
     public IReadOnlyList<PkiPolicy> RevokePolicies { get; }
 

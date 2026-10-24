@@ -95,14 +95,16 @@ public sealed partial class PkiService
         }
 
         var devices = await SystemDevicesAsync(ct).ConfigureAwait(false);
+        var unreadable = Policies.IsUnreadable;
         return new PolicyList
         {
+            Error = unreadable ? PolicyTexts.Unreadable : null,
             Rows = Policies.Rows(devices),
             Cas = Policies.CaChoices(),
             CipherSuites = CipherSuites,
             Sites = [.. (_sites?.List ?? []).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(s => new PolicySite(s.Id, s.Name))],
             Tags = Policies.TagChoices(devices),
-            MayManage = mayManage,
+            MayManage = mayManage && !unreadable, // nothing can be saved over a list that cannot be read
         };
     }
 

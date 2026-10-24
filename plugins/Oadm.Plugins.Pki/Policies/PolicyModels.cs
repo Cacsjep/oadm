@@ -263,6 +263,9 @@ public sealed record PolicyList
 
     /// <summary>The caller may change the policies ("Manage the certificate authority" and all devices).</summary>
     public bool MayManage { get; init; }
+
+    /// <summary>Why the list is empty although policies are stored (<see cref="PolicyTexts.Unreadable"/>); null when it was read.</summary>
+    public string? Error { get; init; }
 }
 
 /// <summary>An input error of a policy: the field (<see cref="PolicyFields"/>) and the message below it.</summary>
@@ -345,6 +348,7 @@ public static class PolicyTexts
     public const string AnyDevice = "Any device with a valid certificate";
     public const string SwitchDecides = "Switch decides";
     public const string NotRunning = "The PKI is not running.";
+    public const string Unreadable = "The policies cannot be read. Restore a backup.";
 
     /// <summary>"Another VLAN policy has this name."</summary>
     public static string NameTaken(string kind) => $"Another {PolicyKinds.Name(kind)} policy has this name.";
