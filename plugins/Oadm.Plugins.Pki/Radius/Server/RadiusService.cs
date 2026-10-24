@@ -384,6 +384,12 @@ public sealed partial class RadiusService : IAsyncDisposable
             return;
         }
 
+        if (result.Outcome == RadiusOutcome.Dropped && result.Drop == RadiusDropReason.WrongSecret)
+        {
+            // Counted before the switch's counter, so a reader that sees the switch's count also sees the log's.
+            _dropped.Count(DroppedRequests.Kind.WrongSecret, entry.SiteId, RadiusRules.Normalize(work.Datagram.Remote.Address), entry.Name, _host.Time.GetUtcNow().UtcDateTime);
+        }
+
         var runtime = _runtime.GetOrAdd(entry.Id, _ => new SwitchRuntime());
         if (runtime.Record(result, _host.Time.GetUtcNow().UtcDateTime))
         {
@@ -396,11 +402,6 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         if (result.Outcome == RadiusOutcome.Dropped)
         {
-            if (result.Drop == RadiusDropReason.WrongSecret)
-            {
-                _dropped.Count(DroppedRequests.Kind.WrongSecret, entry.SiteId, RadiusRules.Normalize(work.Datagram.Remote.Address), entry.Name, _host.Time.GetUtcNow().UtcDateTime);
-            }
-
             LogDropped(entry.Name, work.Datagram.Remote, result.Drop, result.Detail ?? string.Empty);
             return;
         }
