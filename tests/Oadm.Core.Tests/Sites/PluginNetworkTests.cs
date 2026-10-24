@@ -191,6 +191,7 @@ public sealed class PluginNetworkTests
         var listener = await scope.ListenUdpAsync(0, "802.1X server", [IPAddress.Loopback, IPAddress.Parse("203.0.113.9")], CancellationToken.None);
 
         Assert.Equal(RelayState.Running, listener.State);
+        Assert.Equal([IPAddress.Loopback], listener.BoundAddresses); // the plugin sees the address that is missing
         using var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         await client.SendAsync(new byte[] { 1, 2, 3 }, new IPEndPoint(IPAddress.Loopback, listener.Port));
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -199,6 +200,9 @@ public sealed class PluginNetworkTests
         await listener.SendAsync(new byte[] { 9 }, datagram.Remote, cts.Token);
         var answer = await client.ReceiveAsync(cts.Token);
         Assert.Equal([9], answer.Buffer);
+
+        await listener.DisposeAsync();
+        Assert.Empty(listener.BoundAddresses!);
     }
 
     // ---------- the plugin's scope ----------

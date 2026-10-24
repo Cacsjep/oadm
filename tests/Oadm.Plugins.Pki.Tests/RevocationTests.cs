@@ -174,6 +174,43 @@ public sealed class RevocationTests
         Assert.Equal(ours.RawData, await pki.Service.Issued.GetDerAsync(entry.SerialNumber, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task A_certificate_found_on_a_device_takes_its_use_from_the_est_profile_name()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var ca = pki.Service.Ca!;
+        var device = new PkiFakeDevice(Guid.NewGuid());
+        using var mqtt = Issue(ca, "B8A44F631339", client: true);
+        using var rtsps = Issue(ca, "B8A44F631339", client: false);
+        using var dot1x = Issue(ca, "B8A44F631339", client: true);
+
+        var added = await pki.Service.ImportFoundAsync(device,
+            [("oadm_mqtt", CaCertificates.ToPem(mqtt)), ("oadm2_rtsps", CaCertificates.ToPem(rtsps)), ("OADM 802.1X 20240101", CaCertificates.ToPem(dot1x))],
+            CancellationToken.None);
+
+        Assert.Equal(3, added);
+        var purposes = pki.Service.Issued.ForDevice(device.Id).ToDictionary(e => e.Alias!, e => e.Purpose);
+        Assert.Equal(CertificatePurpose.Mqtt, purposes["oadm_mqtt"]); // not IEEE 802.1X: the profile name says MQTT
+        Assert.Equal(CertificatePurpose.Rtsps, purposes["oadm2_rtsps"]);
+        Assert.Equal(CertificatePurpose.Dot1x, purposes["OADM 802.1X 20240101"]); // no profile name: a client certificate
+    }
+
+    [Theory]
+    [InlineData("oadm_mqtt", true, CertificatePurpose.Mqtt)]
+    [InlineData("oadm2_mqtt", true, CertificatePurpose.Mqtt)]
+    [InlineData("oadm_MQTT_cameras", true, CertificatePurpose.Mqtt)]
+    [InlineData("oadm_dot1x", true, CertificatePurpose.Dot1x)]
+    [InlineData("oadm_https", false, CertificatePurpose.Https)]
+    [InlineData("oadm2_rtsps", false, CertificatePurpose.Rtsps)]
+    [InlineData("oadm_mqtt", false, CertificatePurpose.Https)] // the name does not fit a server certificate: today's rule
+    [InlineData("oadm_https", true, CertificatePurpose.Dot1x)]
+    [InlineData("oadm_cameras", true, CertificatePurpose.Dot1x)] // a name without a use
+    [InlineData("oadm_mqttx", true, CertificatePurpose.Dot1x)]
+    [InlineData("mqtt", true, CertificatePurpose.Dot1x)] // not an EST profile
+    [InlineData("OADM HTTPS 20240101", false, CertificatePurpose.Https)]
+    public void The_use_of_a_found_certificate_follows_the_est_profile_name_when_it_fits(string alias, bool client, string expected) =>
+        Assert.Equal(expected, IssuedRegistry.PurposeOfFound(alias, client));
+
     /// <summary>A device certificate signed by the PKI's CA (like the tasks), naming the camera's axis name.</summary>
     internal static X509Certificate2 Issue(CaMaterial ca, string serial, bool client)
     {

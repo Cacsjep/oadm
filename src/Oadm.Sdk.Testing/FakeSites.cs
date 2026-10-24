@@ -234,11 +234,17 @@ public sealed class FakePluginNetwork(FakeSites? sites = null) : IPluginNetwork
     /// <summary>The addresses of the last UDP listener (empty = every address).</summary>
     public IReadOnlyList<System.Net.IPAddress> LastUdpAddresses { get; private set; } = [];
 
+    /// <summary>
+    /// Asked for every chosen address of a new listener: true leaves it out of <see cref="IRelay.BoundAddresses"/> as the host
+    /// does with an address that is not ready yet (the others serve). Null = every address binds.
+    /// </summary>
+    public Func<System.Net.IPAddress, bool>? RefuseAddress { get; set; }
+
     /// <inheritdoc />
     public Task<IUdpRelay> ListenUdpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct)
     {
         LastUdpAddresses = addresses;
-        var relay = new InMemoryUdpRelay(null, port, reason, SiteTexts.ThisServer, ListenState);
+        var relay = new InMemoryUdpRelay(null, port, reason, SiteTexts.ThisServer, ListenState) { BoundAddresses = Bound(addresses) };
         Listeners.Enqueue(relay);
         return Task.FromResult<IUdpRelay>(relay);
     }
@@ -253,10 +259,16 @@ public sealed class FakePluginNetwork(FakeSites? sites = null) : IPluginNetwork
     public Task<ITcpRelay> ListenTcpAsync(int port, string reason, IReadOnlyList<System.Net.IPAddress> addresses, CancellationToken ct)
     {
         LastTcpAddresses = addresses;
-        var relay = new InMemoryTcpRelay(null, port, reason, SiteTexts.ThisServer, ListenState);
+        var relay = new InMemoryTcpRelay(null, port, reason, SiteTexts.ThisServer, ListenState) { BoundAddresses = Bound(addresses) };
         Listeners.Enqueue(relay);
         return Task.FromResult<ITcpRelay>(relay);
     }
+
+    // Like the host: the chosen addresses that bind, the wildcard addresses for every address, none while not listening.
+    private List<System.Net.IPAddress> Bound(IReadOnlyList<System.Net.IPAddress> addresses) =>
+        ListenState != RelayState.Running ? []
+        : addresses.Count == 0 ? [System.Net.IPAddress.Any, System.Net.IPAddress.IPv6Any]
+        : [.. addresses.Where(a => RefuseAddress?.Invoke(a) != true)];
 }
 
 /// <summary>A relay or listener in memory: the test plays the devices on the other side.</summary>
@@ -294,6 +306,10 @@ public abstract class InMemoryRelay : IRelay
 
     /// <inheritdoc />
     public string StateText => SiteTexts.RelayStateText(_reason, _where, _state, Protocol, Port);
+
+    /// <inheritdoc />
+    /// <remarks>Listeners of <see cref="FakePluginNetwork"/> set it (see <see cref="FakePluginNetwork.RefuseAddress"/>); relays at sites keep null.</remarks>
+    public IReadOnlyList<IPAddress>? BoundAddresses { get; set; }
 
     /// <summary>The plugin disposed it (or its plugin stopped).</summary>
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;

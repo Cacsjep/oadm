@@ -267,8 +267,8 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     /// <summary>
     /// The certificates of the OADM CAs found in a device's certificate list (OADM before the list existed, or an answer that
     /// got lost): each one signed by one of <paramref name="cas"/> and naming this device (<c>axis-&lt;serial&gt;.local</c>)
-    /// is added once. Use: IEEE 802.1X for a client certificate, else HTTPS; source EST for the EST profile names
-    /// (<c>oadm_</c>, <c>oadm2_</c>), else Task. Returns how many were added.
+    /// is added once. Use: <see cref="PurposeOfFound"/>; source EST for the EST profile names (<c>oadm_</c>, <c>oadm2_</c>),
+    /// else Task. Returns how many were added.
     /// </summary>
     public async Task<int> ImportFoundAsync(IDeviceInfo device, IEnumerable<(string Alias, string Pem)> certificates, IReadOnlyList<X509Certificate2> cas, CancellationToken ct)
     {
@@ -321,13 +321,13 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     SerialNumber = certificate.SerialNumber.ToUpperInvariant(),
                     DeviceId = device.Id,
                     DeviceSerial = names[0],
-                    Purpose = client ? CertificatePurpose.Dot1x : CertificatePurpose.Https,
+                    Purpose = PurposeOfFound(alias, client),
                     CaId = CaCertificates.Fingerprint(ca),
                     NotBeforeUtc = notBefore,
                     NotAfterUtc = certificate.NotAfter.ToUniversalTime(),
                     IssuedUtc = notBefore,
                     Alias = alias,
-                    Source = alias.StartsWith("oadm_", StringComparison.Ordinal) || alias.StartsWith("oadm2_", StringComparison.Ordinal) ? IssuedCertificateSources.Est : null,
+                    Source = EstProfileName(alias) is not null ? IssuedCertificateSources.Est : null,
                 }, certificate.RawData, ct).ConfigureAwait(false);
                 added++;
             }
@@ -335,6 +335,34 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
         return added;
     }
+
+    /// <summary>
+    /// The use of a certificate found on a device: the one the EST profile name behind <c>oadm_</c> / <c>oadm2_</c> names
+    /// ("oadm_mqtt", "oadm2_mqtt_cameras" -> MQTT; "oadm_rtsps" -> RTSPS) when it fits the certificate (MQTT and IEEE 802.1X
+    /// are client certificates, HTTPS and RTSPS server certificates); else IEEE 802.1X for a client certificate, HTTPS for
+    /// the others.
+    /// </summary>
+    public static string PurposeOfFound(string alias, bool client)
+    {
+        if (EstProfileName(alias) is { } profile)
+        {
+            var named = DeviceCertificatePurposes.All.FirstOrDefault(p =>
+                profile.Equals(p, StringComparison.OrdinalIgnoreCase) || profile.StartsWith(p + "_", StringComparison.OrdinalIgnoreCase));
+            if (named is not null && (named is CertificatePurpose.Dot1x or CertificatePurpose.Mqtt) == client)
+            {
+                return named;
+            }
+        }
+
+        return client ? CertificatePurpose.Dot1x : CertificatePurpose.Https;
+    }
+
+    /// <summary>The EST profile of an alias the EST plugin gave ("oadm2_https" -> "https"); null for any other alias.</summary>
+    private static string? EstProfileName(string? alias) =>
+        alias is null ? null
+        : alias.StartsWith("oadm2_", StringComparison.Ordinal) ? alias["oadm2_".Length..]
+        : alias.StartsWith("oadm_", StringComparison.Ordinal) ? alias["oadm_".Length..]
+        : null;
 
     /// <summary>The serials of the <c>axis-&lt;12 hex&gt;.local</c> names in a certificate (upper case, distinct).</summary>
     public static IReadOnlyList<string> AxisSerials(X509Certificate2 certificate)

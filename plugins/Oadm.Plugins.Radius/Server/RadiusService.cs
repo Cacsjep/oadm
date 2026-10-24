@@ -116,7 +116,8 @@ public sealed partial class RadiusService : IAsyncDisposable
     private VlanSettings _vlanSettings = new();
     private RadiusSettings _config = new();
     private IUdpRelay? _listener;
-    private IReadOnlyList<IPAddress> _boundAddresses = [];
+    private IReadOnlyList<IPAddress> _requestedAddresses = []; // what the listener was asked for (empty = every address)
+    private HashSet<IPAddress>? _missingRetried; // the missing addresses the 5 s check already listened again for
     private IDeviceCertificateAuthority? _followed; // under _followGate
     private long _caVersion; // + 1 with every Changed of the followed CA (CaTrust.Version)
     private ITimer? _tickTimer;
@@ -1731,9 +1732,24 @@ public sealed partial class RadiusService : IAsyncDisposable
         try
         {
             var now = InterfaceOptions.IsAll(_config.ListenOn) ? AllListenAddresses() : ListenAddresses(ListenInterface());
-            if (now.ToHashSet().SetEquals(_boundAddresses))
+            if (now.ToHashSet().SetEquals(_requestedAddresses))
             {
-                return;
+                // An address the listener left out (not ready yet: an IPv6 address still checked) is listened again once
+                // here; one still missing after that waits for the 30 s retry, so a card that never takes it does not
+                // reopen the listener every 5 s.
+                var missing = MissingAddresses();
+                if (missing.Count == 0)
+                {
+                    _missingRetried = null;
+                    return;
+                }
+
+                if (_missingRetried is { } retried && retried.SetEquals(missing))
+                {
+                    return;
+                }
+
+                _missingRetried = missing;
             }
         }
 #pragma warning disable CA1031 // Checked again in 5 s.
@@ -1745,6 +1761,26 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         Track(RetryListenAsync(_cts.Token));
     }
+
+    /// <summary>
+    /// The requested addresses the listener did not bind (it listens on the others); empty while it does not listen (its own
+    /// retry binds again) or when the host does not tell (<see cref="IRelay.BoundAddresses"/> null: the requested ones).
+    /// </summary>
+    private HashSet<IPAddress> MissingAddresses()
+    {
+        if (_listener is not { State: RelayState.Running, BoundAddresses: { } bound } || _requestedAddresses.Count == 0)
+        {
+            return [];
+        }
+
+        var missing = _requestedAddresses.ToHashSet();
+        missing.ExceptWith(bound);
+        return missing;
+    }
+
+    /// <summary>The listener has every requested address (a missing one is listened again at the next check).</summary>
+    private bool ListensOn(IReadOnlyCollection<IPAddress> addresses) =>
+        addresses.ToHashSet().SetEquals(_requestedAddresses) && MissingAddresses().Count == 0;
 
     private List<ServerNetworkInterface> UsableInterfaces() =>
         [.. _host.Interfaces.List().Where(n => n.IsUp && !n.IsLoopback && ListenAddresses(n).Count > 0)];
@@ -1770,13 +1806,13 @@ public sealed partial class RadiusService : IAsyncDisposable
                 // Every address of every card on its own socket: the answer leaves from the address the switch sent to, as
                 // switches check (RFC 2865 3, RFC 5080 2.2.1). One wildcard socket would answer from the address the routing
                 // table picks. No card with an address: every address.
-                _boundAddresses = AllListenAddresses();
-                listener = await network.ListenUdpAsync(_config.Port, Reason, _boundAddresses, ct).ConfigureAwait(false);
+                _requestedAddresses = AllListenAddresses();
+                listener = await network.ListenUdpAsync(_config.Port, Reason, _requestedAddresses, ct).ConfigureAwait(false);
             }
             else if (ListenInterface() is { } nic)
             {
-                _boundAddresses = ListenAddresses(nic);
-                listener = await network.ListenUdpAsync(_config.Port, Reason, _boundAddresses, ct).ConfigureAwait(false);
+                _requestedAddresses = ListenAddresses(nic);
+                listener = await network.ListenUdpAsync(_config.Port, Reason, _requestedAddresses, ct).ConfigureAwait(false);
             }
             else
             {
@@ -1829,7 +1865,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         {
             try
             {
-                if (_listener is not null && AllListenAddresses().ToHashSet().SetEquals(_boundAddresses))
+                if (_listener is not null && ListensOn(AllListenAddresses()))
                 {
                     return;
                 }
@@ -1865,7 +1901,7 @@ public sealed partial class RadiusService : IAsyncDisposable
                 return;
             }
 
-            var moved = _listener is not null && !ListenAddresses(nic).ToHashSet().SetEquals(_boundAddresses);
+            var moved = _listener is not null && !ListensOn(ListenAddresses(nic));
             if (_listener is not null && !moved)
             {
                 return;

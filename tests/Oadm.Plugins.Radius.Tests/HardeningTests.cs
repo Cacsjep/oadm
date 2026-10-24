@@ -430,6 +430,56 @@ public sealed class HardeningTests
         Assert.Equal(RadiusCode.AccessAccept, conversation.Final); // the new listener answers
     }
 
+    [Fact]
+    public async Task AnAddressTheHostLeftOutIsListenedAgainByTheNextCheck()
+    {
+        // The host leaves out an address that is not ready yet (an IPv6 address still checked) while the others serve: the
+        // 5 s check sees it missing from the bound addresses and listens again.
+        var v6 = IPAddress.Parse("fd00::17");
+        var refused = 0;
+        await using var harness = await PluginHarness.CreateAsync(h =>
+        {
+            h.AddDevice(Serial);
+            h.Interfaces.Cards.Add(new ServerNetworkInterface("eth1", "eth1", "eth1", [v6], IsUp: true, IsLoopback: false));
+            h.Ctx.FakeNetwork.RefuseAddress = a => a.Equals(v6) && Interlocked.Increment(ref refused) == 1; // once
+        });
+        var first = harness.Listener;
+        Assert.Equal([IPAddress.Parse("10.0.0.17"), v6], harness.Ctx.FakeNetwork.LastUdpAddresses);
+        Assert.Equal([IPAddress.Parse("10.0.0.17")], first.BoundAddresses);
+
+        harness.Time.Advance(TimeSpan.FromSeconds(5));
+
+        await Eventually.TrueAsync(() => !ReferenceEquals(first, harness.Service.Listener), "listening again");
+        Assert.True(first.IsDisposed);
+        Assert.Equal([IPAddress.Parse("10.0.0.17"), v6], harness.Listener.BoundAddresses);
+        Assert.Equal(2, harness.Ctx.FakeNetwork.Listeners.Count);
+    }
+
+    [Fact]
+    public async Task AnAddressThatNeverBindsIsTriedAgainEvery30Seconds()
+    {
+        // Once at the next 5 s check, then with the 30 s retry: a card that never takes the address does not reopen the
+        // listener every 5 s.
+        var v6 = IPAddress.Parse("fd00::17");
+        await using var harness = await PluginHarness.CreateAsync(h =>
+        {
+            h.AddDevice(Serial);
+            h.Interfaces.Cards.Add(new ServerNetworkInterface("eth1", "eth1", "eth1", [v6], IsUp: true, IsLoopback: false));
+            h.Ctx.FakeNetwork.RefuseAddress = a => a.Equals(v6);
+        });
+        var listeners = harness.Ctx.FakeNetwork.Listeners;
+
+        harness.Time.Advance(TimeSpan.FromSeconds(5));
+        await Eventually.TrueAsync(() => listeners.Count == 2 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "listening again once");
+        for (var i = 0; i < 5; i++)
+        {
+            harness.Time.Advance(TimeSpan.FromSeconds(5)); // 10 s .. 30 s: only the 30 s retry listens again
+        }
+
+        await Eventually.TrueAsync(() => listeners.Count == 3 && ReferenceEquals(listeners.Last(), harness.Service.Listener), "the 30 s retry");
+        Assert.Equal([IPAddress.Parse("10.0.0.17")], harness.Listener.BoundAddresses); // the IPv4 address serves meanwhile
+    }
+
     // ------------------------------------------------------------------ log
 
     [Fact]
