@@ -118,7 +118,7 @@ public sealed class SessionBoard(TimeProvider time)
             Mac = snapshot.Mac.Display,
             Identity = snapshot.EapIdentity,
             DeviceId = device?.Id,
-            DeviceName = DeviceIndex.NameOf(device),
+            DeviceName = device is null && snapshot.Tag is CheckedCertificate { Subject: { Length: > 0 } subject } ? subject : DeviceIndex.NameOf(device),
             DeviceGuess = guess,
             IpAddress = DeviceIndex.IpAddressOf(device),
             State = StateName(snapshot.State),

@@ -46,25 +46,24 @@ public sealed class PluginTests
 
         // No method takes a device id: rows of devices are filtered to the caller (own tests below), changes are for users
         // with all devices. Every id field: the switch id (deleteSwitch, saveSwitch), the log row id (getLogCertificate), the
-        // certificate serials (getIssuedCertificate, revoke), the site and tag of VLAN rules (saveVlans).
+        // sites, tags and serials of the policies (savePolicies, countRevocations), the CA ids (saveTrustedCas).
         await new PluginCanary(harness.Ctx, harness.Plugin, inside, outside)
             .WithoutDevices(RadiusMethods.GetState, "server-wide state, no device data")
             .WithoutDevices(RadiusMethods.ListSwitches, "server-wide switches, no device data")
-            .WithoutDevices(RadiusMethods.GetVlans, "the rules; tag choices of the devices only for all devices")
+            .WithoutDevices(RadiusMethods.GetPolicies, "the policies; tag choices of the devices only for all devices")
+            .WithoutDevices(RadiusMethods.GetTrustedCas, "PKI's CAs, no device data")
             .WithoutDevices(RadiusMethods.ListSessions, "rows filtered to the caller's devices (GroupUsersSeeOnlyTheRowsOfTheirDevices)")
             .WithoutDevices(RadiusMethods.ListLog, "rows filtered to the caller's devices", """{"search":null}""")
             .WithoutDevices(RadiusMethods.GetLogCertificate, "a row id; rows of other devices answer like unknown ones", """{"id":1}""")
-            .WithoutDevices(RadiusMethods.ListRevoked, "rows filtered to the caller's devices")
             .WithoutDevices(RadiusMethods.ListSites, "the sites of the caller's devices")
-            .WithoutDevices(RadiusMethods.ListCertificates, "PKI's list filtered to the caller's devices", "{}")
-            .WithoutDevices(RadiusMethods.GetIssuedCertificate, "a serial; certificates of other devices answer like unknown ones", """{"serialNumber":"01"}""")
             .AllDevicesOnly(RadiusMethods.SaveSettings, RadiusJson.Serialize(harness.Service.GetState(true).Settings))
             .AllDevicesOnly(RadiusMethods.SaveSwitch, $$"""{"id":"{{row.Id}}","name":"x","address":"10.0.0.9"}""")
             .AllDevicesOnly(RadiusMethods.GenerateSecret)
             .AllDevicesOnly(RadiusMethods.DeleteSwitch, $$"""{"id":"{{row.Id}}"}""")
-            .AllDevicesOnly(RadiusMethods.SaveVlans, """{"enabled":true,"rules":[]}""")
+            .AllDevicesOnly(RadiusMethods.SavePolicies, """{"policies":[]}""")
+            .AllDevicesOnly(RadiusMethods.SaveTrustedCas, """{"cas":[]}""")
+            .AllDevicesOnly(RadiusMethods.CountRevocations, """{"thisServer":true}""")
             .AllDevicesOnly(RadiusMethods.DeleteLog)
-            .AllDevicesOnly(RadiusMethods.Revoke, """{"serials":["01"],"reason":"other"}""")
             .RunAsync();
         Assert.Single(harness.Service.ListSwitches().Switches); // the refused delete changed nothing
     }
@@ -87,9 +86,6 @@ public sealed class PluginTests
         }
 
         harness.Tick();
-        harness.Ca.List(insideCertificate, inside.Id);
-        harness.Ca.List(outsideCertificate, outside.Id);
-        harness.Ca.Revoke(TestAuthority.SerialOf(outsideCertificate), outside.Id);
         var group = harness.Ctx.CallAsGroup([inside.Id]);
 
         var log = await harness.CallAsync<LogPage>(RadiusMethods.ListLog, new LogQuery(null), group);
@@ -114,21 +110,9 @@ public sealed class PluginTests
         Assert.NotEmpty(seen);
         Assert.All(seen, id => Assert.Equal(inside.Id.ToString(), id));
 
-        // PKI's lists through the page: the group's devices only.
-        Assert.Empty((await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked, null, group)).Rows);
-        Assert.Single((await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked)).Rows);
-        var certificates = await harness.CallAsync<CertificateListPage>(RadiusMethods.ListCertificates, new CertificateListQuery(), group);
-        Assert.Equal(inside.Id, Assert.Single(certificates.Rows).DeviceId);
-        Assert.Equal(2, (await harness.CallAsync<CertificateListPage>(RadiusMethods.ListCertificates, new CertificateListQuery())).Total);
-        var outsideSerial = TestAuthority.SerialOf(outsideCertificate);
-        var unknownAnswer = await Assert.ThrowsAsync<KeyNotFoundException>(() => harness.CallAsync<LogCertificate>(RadiusMethods.GetIssuedCertificate, new SerialRequest("ABCDEF"), group));
-        var outsideAnswer = await Assert.ThrowsAsync<KeyNotFoundException>(() => harness.CallAsync<LogCertificate>(RadiusMethods.GetIssuedCertificate, new SerialRequest(outsideSerial), group));
-        Assert.Equal(unknownAnswer.Message, outsideAnswer.Message);
-        Assert.Equal(outsideCertificate.Leaf, Convert.FromBase64String((await harness.CallAsync<LogCertificate>(RadiusMethods.GetIssuedCertificate, new SerialRequest(outsideSerial))).Der));
-
         // Tag choices of the devices only for users with all devices.
-        Assert.Empty((await harness.CallAsync<VlanSettings>(RadiusMethods.GetVlans, null, group)).TagChoices);
-        Assert.Equal(["Lobby", "Secret tag"], (await harness.CallAsync<VlanSettings>(RadiusMethods.GetVlans)).TagChoices.Select(t => t.Name));
+        Assert.Empty((await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies, null, group)).TagChoices);
+        Assert.Equal(["Lobby", "Secret tag"], (await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies)).TagChoices.Select(t => t.Name));
         Assert.False((await harness.CallAsync<RadiusState>(RadiusMethods.GetState, null, group)).HasAllDevices);
         Assert.Empty(harness.Ctx.RefusedAccesses);
     }

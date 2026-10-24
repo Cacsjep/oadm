@@ -265,38 +265,6 @@ public sealed class ServerTests
     }
 
     [Fact]
-    public async Task VlanRulesAssignTheFirstMatchElseTheDefaultAndAreOffByDefault()
-    {
-        await using var harness = await PluginHarness.CreateAsync(h =>
-        {
-            h.AddDevice(Serial, tags: ["PTZ"]);
-            h.AddDevice("ACCC8E654321");
-        });
-        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        var accept = (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).LastAnswer!;
-        Assert.Null(PluginSwitch.VlanOf(accept)); // off by default
-
-        var saved = await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, new VlanSettings
-        {
-            Enabled = true,
-            Rules = [new VlanRule(VlanRuleKinds.Tag, "ptz", null, 20), new VlanRule(VlanRuleKinds.Site, RadiusLimits.ThisServerSiteId, null, 30)],
-            DefaultVlan = 99,
-        });
-        Assert.Equal(["ptz", "This server"], saved.Rules.Select(r => r.RefName));
-
-        var tagged = (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).LastAnswer!;
-        var other = (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera("ACCC8E654321")))).LastAnswer!;
-        Assert.Equal(20, PluginSwitch.VlanOf(tagged));
-        Assert.Equal(30, PluginSwitch.VlanOf(other));
-        Assert.Equal(VlanAttributes.TunnelTypeVlan, tagged.Find(64)!.Value.Value.Span[^1]);
-        harness.Tick();
-        var log = await harness.CallAsync<LogPage>(RadiusMethods.ListLog, new LogQuery(null));
-        Assert.Equal(30, log.Rows[0].Vlan);
-        Assert.Equal(20, log.Rows[1].Vlan);
-        Assert.True((await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).Settings.VlansEnabled);
-    }
-
-    [Fact]
     public async Task WithoutOadmProNothingIsAnswered()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
@@ -560,23 +528,5 @@ public sealed class ServerTests
             .SelectMany(e => RadiusJson.Deserialize<List<SessionRow>>(e.PayloadJson)).Last();
         Assert.True(removed.Removed);
         Assert.Empty((await harness.CallAsync<SessionList>(RadiusMethods.ListSessions)).Sessions);
-    }
-
-    [Fact]
-    public async Task RevokeGoesThroughPkiAndTheRevokedListFollowsIt()
-    {
-        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
-        harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = "7DFD05", Purpose = DeviceCertificatePurposes.Dot1x }, []));
-
-        var reply = await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["00:7d:fd:05"], RevokeReasons.DeviceReplaced));
-
-        Assert.Equal(1, reply.Revoked);
-        var call = Assert.Single(harness.Ca.RevokeCalls);
-        Assert.Equal(["7DFD05"], call.Serials);
-        Assert.Equal("admin", call.User);
-        Assert.Equal("7DFD05", Assert.Single((await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked)).Rows).SerialNumber);
-        Assert.Contains(harness.Ctx.PublishedEvents, e => e.Topic == RadiusTopics.Revoked);
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest([], RevokeReasons.Other)));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["01"], "nope")));
     }
 }

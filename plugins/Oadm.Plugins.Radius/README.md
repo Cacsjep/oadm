@@ -33,7 +33,7 @@ Apache 2.0).
 - Tests: `tests/Oadm.Plugins.Radius.Tests` (a BouncyCastle client as the camera through an in-memory switch, RFC vectors,
   parsing rules, fuzzing, fragmentation, alerts, timeouts; the plugin end to end through its in-memory UDP listener and
   site relays, `ServerTests`; the rules of the first review, `HardeningTests`; the device-group canary and filtering,
-  `PluginTests`; `Category=Perf` for many parallel
+  `PluginTests`; trusted CAs and policies, `TrustedCaTests`, `PolicyTests`; `Category=Perf` for many parallel
   sessions and 30,000 authentications through the plugin).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
