@@ -11,11 +11,15 @@ version and date, and the release workflow copies it into the GitHub release.
 - **802.1X server** (OADM PRO, off by default): OADM answers your switches and lets only cameras it manages, with a
   certificate from the OADM CA or their Axis device ID, onto the network. Switches at sites go through the site node.
   VLANs per site or tag, a live Sessions tab, a log, and the event rules "Device authenticated" and "Authentication failed".
-- PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST), with filters, search and
-  View certificate. **Revoke** takes certificates out of use for good; EST no longer renews a revoked certificate.
-  Certificates from before this version are added when OADM reads them from the devices.
-- 802.1X server (OADM PRO, in work): its page lists the switches, the VLAN rules, the cameras signing in right now, the
-  log of sign-ins and the revoked certificates; **Revoke** there picks from the PKI list of certificates.
+  Its page lists the switches, the VLAN rules, the cameras signing in right now, the log of sign-ins and the revoked
+  certificates; **Revoke** there picks from the PKI list of certificates.
+- PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST, with its use: HTTPS,
+  IEEE 802.1X, MQTT or RTSPS), with filters, search and View certificate. **Revoke** takes certificates out of use for
+  good; EST no longer renews a revoked certificate. A certificate stays in the list until a year after it ended; one that
+  **Delete certificates** removes from a device stays listed as Replaced, since a copy could still be in use.
+- PKI: certificates from before this version are added when OADM reads them from the devices: 5 minutes after the first
+  start OADM reads the certificate list of every device that answers, once (read only), and again later when no device
+  answered. **Revoke all of this device** also reads the device first and revokes the OADM certificates it finds there.
 - Device list: an **Architecture** column ("aarch64", "armv7hf"), off by default; turn it on in the column chooser.
   Also in the search and the export.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the
@@ -81,6 +85,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
+- PKI: the device counts of the page and of the Replace CA question count only certificates still in use, not ended,
+  revoked or deleted ones.
 - The **Users** page is now **Permissions**: users and device groups side by side (on small screens one below the
   other), the roles below. The user list no longer shows the last login.
 - Remove, Refresh, Check now, tagging, the RTSP port, the first password, the queries of task dialogs and the other
