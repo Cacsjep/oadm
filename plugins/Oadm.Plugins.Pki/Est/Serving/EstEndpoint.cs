@@ -34,6 +34,7 @@ public static class EstRefusals
     public const string OtherSite = "The camera belongs to another site.";
     public const string OtherCamera = "The camera signed in with the certificate of another camera.";
     public const string BadRequest = "The certificate request cannot be read.";
+    public const string NoPolicy = EstTexts.NoPolicy;
 
     /// <summary>The camera signed in with a certificate on PKI's revocation list (with the date and reason when known).</summary>
     public const string Revoked = "Certificate revoked";
@@ -56,6 +57,9 @@ public sealed partial class EstEndpoint(
     Func<IDeviceInfo, bool>? inAnyGroup = null)
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+
+    /// <summary>What a profile issues with (its policy's valid days); null: the policy cannot be read, the request is refused (fail closed).</summary>
+    public Func<EstProfile, ProfileIssuing?> IssuingOf { get; init; } = p => new ProfileIssuing(p.ValidityDays, p.Key, null);
 
     // Without the host's groups every device counts as covered (fail closed): no host name the camera reports.
     private readonly Func<IDeviceInfo, bool> _inAnyGroup = inAnyGroup ?? (_ => true);
@@ -170,6 +174,11 @@ public sealed partial class EstEndpoint(
             return Refuse(400, EstRefusals.BadRequest, device);
         }
 
+        if (IssuingOf(profile) is not { } issuing)
+        {
+            return Refuse(503, EstRefusals.NoPolicy, device);
+        }
+
         IssuedDeviceCertificate issued;
         try
         {
@@ -177,7 +186,7 @@ public sealed partial class EstEndpoint(
                 new DeviceCertificateRequest(csr, CommonName(device), IpAddresses(device, origin), DnsNames(device, _inAnyGroup(device)), profile.CertificateUse)
                 {
                     DeviceId = device.Id,
-                    Validity = TimeSpan.FromDays(profile.ValidityDays),
+                    Validity = TimeSpan.FromDays(issuing.ValidDays),
                     Source = IssuedCertificateSources.Est,
                     Purpose = profile.Purpose,
                 },

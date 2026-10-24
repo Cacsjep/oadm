@@ -32,6 +32,7 @@ public sealed class ServerTests : IAsyncLifetime
     private X509Certificate2 _deviceId = null!;
     private EstService _service = null!;
     private bool _pro = true;
+    private Oadm.Plugins.Pki.Policies.PolicyStore? _policies; // PKI's policies (null: no PKI, the profiles' own values)
 
     public async Task InitializeAsync()
     {
@@ -47,6 +48,7 @@ public sealed class ServerTests : IAsyncLifetime
             Sites = _sites,
             Events = _events,
             Scopes = _groups.FakeScopes,
+            Policies = () => _policies,
         });
         await _service.StartAsync(CancellationToken.None);
     }
@@ -58,6 +60,88 @@ public sealed class ServerTests : IAsyncLifetime
         _intermediate.Dispose();
         _root.Dispose();
         _ca.Dispose();
+    }
+
+    [Fact]
+    public async Task Enrollment_and_renewal_issue_with_the_valid_days_of_the_profiles_policy()
+    {
+        _policies = await TestPolicies.StoreAsync();
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+
+        // The ready-made profile names no policy yet: the first HTTPS certificate policy.
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
+        Assert.Equal(TimeSpan.FromDays(365), _ca.Requests[^1].Validity);
+
+        var twoYears = await TestPolicies.AddAsync(_policies, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "HTTPS 2 years", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.HttpsCertificate, CaId = "oadm", ValidDays = 730, Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa,
+        });
+        var config = _service.Store.Config;
+        var saved = await _service.SaveAsync(new SaveRequest(config with
+        {
+            Profiles = [.. config.Profiles.Select(p => p with { PolicyId = p.Use == ProfileUse.Https ? twoYears.Id : _policies.FirstOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Dot1xCertificate)!.Id })],
+        }), CancellationToken.None);
+        Assert.Null(saved.Error);
+        var enrolled = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(200, enrolled.Status);
+        Assert.Equal(TimeSpan.FromDays(730), _ca.Requests[^1].Validity);
+
+        // The renewal takes the policy's values of now.
+        Assert.Null((await _policies.SaveAsync(twoYears with { ValidDays = 200 }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None)).Error);
+        using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(enrolled.Body))[0]);
+        using var renewalIdentity = TestPki.Usable(issued.CopyWithPrivateKey(key));
+        var (csr2, key2) = TestPki.Request();
+        using var __ = key2;
+        Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", renewalIdentity, Body(csr2))).Status);
+        Assert.Equal(TimeSpan.FromDays(200), _ca.Requests[^1].Validity);
+        Assert.Equal(["HTTPS", "IEEE 802.1X", "HTTPS 2 years"], _service.GetState().IssuingPolicies.Select(p => p.Name));
+    }
+
+    [Fact]
+    public async Task A_profile_without_a_usable_policy_is_refused_on_save_and_issues_nothing()
+    {
+        _policies = await TestPolicies.StoreAsync();
+        var config = _service.Store.Config;
+
+        var none = await _service.SaveAsync(new SaveRequest(config), CancellationToken.None); // the profiles name no policy
+        Assert.Equal(("profiles[0].policy", EstTexts.ChoosePolicy), (none.Field, none.Error));
+        var dot1x = _policies.FirstOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Dot1xCertificate)!;
+        var wrong = await _service.SaveAsync(new SaveRequest(config with { Profiles = [.. config.Profiles.Select(p => p with { PolicyId = dot1x.Id })] }), CancellationToken.None);
+        Assert.Equal(("profiles[0].policy", EstTexts.PolicyGone), (wrong.Field, wrong.Error)); // an IEEE 802.1X policy for HTTPS
+
+        // A store that cannot be read: nothing is issued (fail closed).
+        var damaged = new FakeSettings();
+        await damaged.SetAsync(Oadm.Plugins.Pki.Policies.PolicyStore.SettingsKey, "{\"policies\":3}", CancellationToken.None);
+        _policies = await TestPolicies.StoreAsync(settings: damaged);
+        Assert.True(_policies.IsUnreadable);
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+        var refused = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(503, refused.Status);
+        Assert.Contains(EstRefusals.NoPolicy, refused.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(_ca.Requests, r => r.DeviceId is not null); // only the server's own certificate
+    }
+
+    [Fact]
+    public async Task The_server_certificate_follows_the_policy_est_server()
+    {
+        _policies = await TestPolicies.StoreAsync();
+        var policy = _policies.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est)!;
+        X509Certificate2? server = null;
+        Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
+        Assert.NotNull(server!.GetECDsaPublicKey());
+        Assert.Equal(TimeSpan.FromDays(90), _ca.Requests[^1].Validity);
+        var made = _ca.Requests.Count;
+
+        // Other days alone: the certificate stays until its renewal; another key: a new one at once.
+        await TestPolicies.AddAsync(_policies, policy with { ValidDays = 30 });
+        Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null)).Status);
+        Assert.Equal(made, _ca.Requests.Count);
+        await TestPolicies.AddAsync(_policies, _policies.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est)! with { Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa });
+        Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
+        Assert.Equal(2048, server!.GetRSAPublicKey()!.KeySize);
+        Assert.Equal(TimeSpan.FromDays(30), _ca.Requests[^1].Validity);
     }
 
     [Fact]

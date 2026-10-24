@@ -90,14 +90,25 @@ public enum ProfileKey
     Ecc = 1,
 }
 
-/// <summary>An EST profile: one path, one kind of certificate.</summary>
+/// <summary>An EST profile: one path, one kind of certificate, issued with one issuing policy of PKI.</summary>
 /// <param name="Name">The path segment and name ("https"): letters, digits and '_', 1..32 characters (the camera refuses '-' in its profile ids).</param>
 /// <param name="Use">What the camera uses the certificate for.</param>
-/// <param name="ValidityDays">How long each certificate is valid (1..825).</param>
-/// <param name="Key">The key the camera creates.</param>
+/// <param name="ValidityDays">Before the issuing policies (OADM 4.1): how long each certificate was valid. Read only by the conversion.</param>
+/// <param name="Key">Before the issuing policies: the key the camera created. Read only by the conversion.</param>
 /// <param name="Enabled">Off: the path answers like an unknown one.</param>
 public sealed record EstProfile(string Name, ProfileUse Use, int ValidityDays = 365, ProfileKey Key = ProfileKey.Ecc, bool Enabled = true)
 {
+    /// <summary>
+    /// The issuing policy of PKI the certificates of this profile are issued with (its valid days and key; docs/spec/pki.md):
+    /// an HTTPS certificate policy for HTTPS and RTSPS, an IEEE 802.1X certificate policy for IEEE 802.1X and MQTT.
+    /// </summary>
+    public Guid? PolicyId { get; init; }
+
+    /// <summary>The kind of issuing policy the profile's use takes (<c>PolicyKinds</c>).</summary>
+    public static string PolicyKindOf(ProfileUse use) => use is ProfileUse.Dot1x or ProfileUse.Mqtt
+        ? Oadm.Plugins.Pki.Policies.PolicyKinds.Dot1xCertificate
+        : Oadm.Plugins.Pki.Policies.PolicyKinds.HttpsCertificate;
+
     /// <summary>Server certificates for HTTPS and RTSPS, client certificates for IEEE 802.1X and MQTT.</summary>
     [JsonIgnore]
     public DeviceCertificateUse CertificateUse => Use is ProfileUse.Dot1x or ProfileUse.Mqtt ? DeviceCertificateUse.Client : DeviceCertificateUse.Server;
@@ -238,7 +249,27 @@ public sealed record EstState
 
     /// <summary>The CA that issues the certificates (the OADM CA's name); null without one.</summary>
     public string? IssuingCa { get; init; }
+
+    /// <summary>The HTTPS and IEEE 802.1X certificate policies of PKI a profile can name, oldest first.</summary>
+    public IReadOnlyList<IssuingPolicyChoice> IssuingPolicies { get; init; } = [];
 }
+
+/// <summary>Texts of the profiles' issuing policies (the page, the server's checks and refusals).</summary>
+public static class EstTexts
+{
+    public const string ChoosePolicy = "Choose an issuing policy.";
+    public const string PolicyGone = "This policy no longer exists. Choose another one.";
+
+    /// <summary>A request of a profile whose issuing policy cannot be read (fail closed).</summary>
+    public const string NoPolicy = "The issuing policy of this profile cannot be read.";
+
+    /// <summary>The set-up task: a profile without a usable issuing policy (before the first write).</summary>
+    public static string ProfileWithoutPolicy(string profile) => $"The EST profile {profile} has no issuing policy. Choose one on the EST server page. Nothing was changed.";
+}
+
+/// <summary>An issuing policy a profile can name: "HTTPS" (OADM Root CA SERVER01, 365 days, ECC).</summary>
+/// <param name="Kind">"httpsCertificate" or "dot1xCertificate" (<c>PolicyKinds</c>).</param>
+public sealed record IssuingPolicyChoice(Guid Id, string Name, string Kind, string Summary);
 
 public sealed record EnrollmentList(IReadOnlyList<Enrollment> Enrollments);
 

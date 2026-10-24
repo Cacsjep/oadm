@@ -93,7 +93,7 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
         CertificateRequest csr;
         try
         {
-            csr = CertificateRequest.LoadSigningRequest(request.Csr.ToArray(), HashAlgorithmName.SHA256);
+            csr = CertificateRequest.LoadSigningRequest(request.Csr.ToArray(), HashAlgorithmName.SHA256, CertificateRequestLoadOptions.Default, RSASignaturePadding.Pkcs1);
         }
         catch (CryptographicException ex)
         {
@@ -120,7 +120,8 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
         var serial = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
         serial[0] = (byte)((serial[0] & 0x7F) | 0x01);
         var notAfter = DateTimeOffset.UtcNow + (request.Validity ?? TimeSpan.FromDays(365));
-        using var signed = signing.Create(_ca, DateTimeOffset.UtcNow.AddMinutes(-5), notAfter, serial);
+        using var caKey = _ca.GetECDsaPrivateKey()!; // the generator: the request may hold an RSA key
+        using var signed = signing.Create(_ca.SubjectName, X509SignatureGenerator.CreateForECDsa(caKey), DateTimeOffset.UtcNow.AddMinutes(-5), notAfter, serial);
         return Task.FromResult(new IssuedDeviceCertificate(signed.RawData, Chain, signed.SerialNumber.ToUpperInvariant(), signed.NotAfter.ToUniversalTime()));
     }
 

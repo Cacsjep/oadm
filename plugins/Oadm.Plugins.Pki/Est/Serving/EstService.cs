@@ -53,6 +53,9 @@ public sealed record EstHost(
 
     /// <summary>The server's network interfaces for "Listen on".</summary>
     public IServerNetworkInterfaces Interfaces { get; init; } = SystemNetworkInterfaces.Instance;
+
+    /// <summary>PKI's policies (the profiles' issuing policies, the server certificate's policy); null: none (no profile issues).</summary>
+    public Func<Oadm.Plugins.Pki.Policies.PolicyStore?> Policies { get; init; } = () => null;
 }
 
 /// <summary>
@@ -114,11 +117,17 @@ public sealed partial class EstService : IAsyncDisposable
         _logger = host.Logger;
         Viewers = new ViewerScopes(host.Scopes);
         _store = new EstStore(host.Settings, host.Records, host.Time) { Logger = host.Logger };
-        _certificates = new ServerCertificates(host.Authority, host.Time);
+        _certificates = new ServerCertificates(host.Authority, host.Time) { Policy = () => host.Policies()?.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est) };
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time,
-            async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null, InAnyGroup);
+            async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null, InAnyGroup)
+        {
+            IssuingOf = IssuingOf,
+        };
     }
+
+    /// <summary>What <paramref name="profile"/> issues with (<see cref="EstPolicies.IssuingOf"/>); null: its policy cannot be read (nothing is issued).</summary>
+    public ProfileIssuing? IssuingOf(EstProfile profile) => EstPolicies.IssuingOf(profile, _host.Policies());
 
     /// <summary>
     /// True when a device group covers the device (also without the host's groups: fail closed). Its certificates then
@@ -406,6 +415,7 @@ public sealed partial class EstService : IAsyncDisposable
         {
             Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount, Interfaces = ListInterfaces(),
             SignInChoices = SignInChoices(ca), IssuingCa = IssuingName(ca),
+            IssuingPolicies = EstPolicies.Choices(_host.Policies(), ca?.Authorities ?? []),
         };
     }
 
@@ -462,7 +472,7 @@ public sealed partial class EstService : IAsyncDisposable
     public async Task<SaveReply> SaveAsync(SaveRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (Validate(request.Config) is { } error)
+        if (Validate(request.Config, _host.Policies()) is { } error)
         {
             return new SaveReply(null, error.Field, error.Message);
         }
@@ -515,7 +525,7 @@ public sealed partial class EstService : IAsyncDisposable
     }
 
     /// <summary>The field and its error of the first invalid entry; null when the settings are fine.</summary>
-    internal static (string Field, string Message)? Validate(EstConfig config)
+    internal static (string Field, string Message)? Validate(EstConfig config, Oadm.Plugins.Pki.Policies.PolicyStore? policies)
     {
         if (config.Port is < 1025 or > 65535)
         {
@@ -555,9 +565,13 @@ public sealed partial class EstService : IAsyncDisposable
                 return ($"profiles[{i}].use", "Another profile has this use.");
             }
 
-            if (profile.ValidityDays is < 1 or > 825)
+            // The profile names an issuing policy of its use's kind (the certificates get its valid days and key).
+            // Without PKI's store (tests with a CA of their own) the profile's own validity counts, as before the policies.
+            if (policies is null ? profile.ValidityDays is < 1 or > 825 : profile.PolicyId is null || EstPolicies.PolicyOf(profile, policies) is null)
             {
-                return ($"profiles[{i}].validityDays", "Use 1 to 825 days.");
+                return policies is null
+                    ? ($"profiles[{i}].validityDays", "Use 1 to 825 days.")
+                    : ($"profiles[{i}].policy", profile.PolicyId is null ? EstTexts.ChoosePolicy : EstTexts.PolicyGone);
             }
         }
 

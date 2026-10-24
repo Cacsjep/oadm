@@ -228,6 +228,12 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
             var services = free.Concat(existing.SelectMany(p => p.Services)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var candidates = est.Store.Config.Profiles.Where(p => p.Enabled && services.Contains(CameraEstApi.ServiceOf(p.Use))).ToList();
 
+            // Every profile issues with its policy (valid days, key): one that cannot be read stops the run before the first write.
+            if (candidates.FirstOrDefault(p => est.IssuingOf(p) is null) is { } orphan)
+            {
+                throw new InvalidOperationException(EstTexts.ProfileWithoutPolicy(orphan.Name));
+            }
+
             // IEEE 802.1X read fresh from the camera, never the cached state; unknown counts as on (no lock-out).
             var dot1xOn = await Dot1xOnAsync(ctx, ct).ConfigureAwait(false);
             var before = candidates.Count;
@@ -330,7 +336,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         // OADM's profile already on the camera keeps its name (either one), so it is compared and changed in place.
         var wanted = profiles.Select(p =>
         {
-            var w = Wanted(p, device, est.InAnyGroup(device), address, est.Store.Config.Port, caAliases, Pick(deviceIds, p.Key));
+            var w = Wanted(p, device, est.InAnyGroup(device), address, est.Store.Config.Port, caAliases, Pick(deviceIds, est.IssuingOf(p)?.Key ?? p.Key));
             if (current.FirstOrDefault(c => EstTaskIds.IsOadm(c.Id) && EstTaskIds.ProfileNameOf(c.Id) == p.Name) is { } have)
             {
                 w.Json["id"] = have.Id;

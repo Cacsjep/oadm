@@ -1,4 +1,5 @@
 using Oadm.Plugins.Est.Serving;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Certificates;
@@ -72,8 +73,10 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
+        await FollowPoliciesAsync(ctx, ct).ConfigureAwait(false);
         var server = new ServerSwitch<EstService>(EstPluginInfo.DisplayName, ctx.Settings, ctx.Pro, async token =>
         {
+            await FollowPoliciesAsync(ctx, token).ConfigureAwait(false); // PKI was not there at the start: converted with the first server start
             var service = new EstService(new EstHost(
                 ctx.Settings,
                 ctx.Devices,
@@ -87,12 +90,30 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
                 Publisher = ctx.EventPublisher,
                 Scopes = ctx.DeviceScopes,
                 Logger = ctx.Logger,
+                Policies = () => ctx.Services?.Find<PolicyStore>(),
             });
             await service.StartAsync(token).ConfigureAwait(false);
             return service;
         }, ctx.Events, ctx.Logger);
         _server = server;
         await server.StartAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The profiles name PKI's issuing policies: converts the profiles of OADM 4.1 once (<see cref="EstPolicies.ConvertAsync"/>)
+    /// and tells PKI's store which policies they name (never deleted while named), also while the server is off. PKI starts
+    /// first (the core plugins of a package start in name order); without its store nothing happens now.
+    /// </summary>
+    internal static async Task FollowPoliciesAsync(ICorePluginContext ctx, CancellationToken ct)
+    {
+        if (ctx.Services?.Find<PolicyStore>() is not { } store)
+        {
+            return;
+        }
+
+        var settings = ctx.Settings;
+        store.ProfileUses = token => EstPolicies.UsesAsync(settings, token);
+        await EstPolicies.ConvertAsync(settings, store, ct).ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken ct)

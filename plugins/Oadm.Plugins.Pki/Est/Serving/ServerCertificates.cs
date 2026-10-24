@@ -11,17 +11,23 @@ namespace Oadm.Plugins.Est.Serving;
 /// <summary>
 /// The EST server's own TLS certificates, issued by the OADM CA: one for this server's network (its addresses and host
 /// name) and one per site (the node's addresses towards the cameras). Cameras dial an address, so there is no SNI: the
-/// listener picks the certificate by the site the connection came through. A certificate is made again when its addresses
-/// change, the CA changes or a third of its time is left. Kept in memory only (the key never leaves the server).
+/// listener picks the certificate by the site the connection came through. Valid days and key come from PKI's Server
+/// certificate policy "EST server" (90 days, ECC by default; docs/spec/pki.md). A certificate is made again when its
+/// addresses change, the CA or the policy's key changes, or 30 days (at most a third of its time) are left; a change of the
+/// policy's days applies to the next certificate. Kept in memory only (the key never leaves the server).
 /// </summary>
 public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> authority, TimeProvider? time = null) : IDisposable
 {
-    private static readonly TimeSpan Validity = TimeSpan.FromDays(90);
+    /// <summary>Without PKI's policy: 90 days, ECC (as before the policies).</summary>
+    public static readonly TimeSpan DefaultValidity = TimeSpan.FromDays(Oadm.Plugins.Pki.Policies.PolicyLimits.DefaultEstServerDays);
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, Entry> _entries = [];
     private readonly SemaphoreSlim _making = new(1, 1);
+
+    /// <summary>PKI's Server certificate policy of the EST server (valid days, key); null: 90 days, ECC.</summary>
+    public Func<Oadm.Plugins.Pki.Policies.PkiPolicy?> Policy { get; init; } = () => null;
 
     /// <summary>
     /// The certificate (with its key) for <paramref name="siteId"/> (<see cref="Guid.Empty"/> = this server) naming
@@ -37,10 +43,10 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
 
         var names = string.Join('|', addresses.Order(StringComparer.Ordinal)) + "|" + hostName;
         var caId = ca.Chain.Count > 0 ? Convert.ToHexString(SHA256.HashData(ca.Chain[0])) : string.Empty;
+        var (validity, rsa) = Wanted(Policy());
         lock (_gate)
         {
-            if (_entries.TryGetValue(siteId, out var entry) && entry.Names == names && entry.CaId == caId
-                && entry.Certificate.NotAfter.ToUniversalTime() - _time.GetUtcNow().UtcDateTime > Validity / 3)
+            if (_entries.TryGetValue(siteId, out var entry) && Fits(entry, names, caId, rsa))
             {
                 return entry.Certificate;
             }
@@ -52,18 +58,17 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
         {
             lock (_gate)
             {
-                if (_entries.TryGetValue(siteId, out var entry) && entry.Names == names && entry.CaId == caId
-                    && entry.Certificate.NotAfter.ToUniversalTime() - _time.GetUtcNow().UtcDateTime > Validity / 3)
+                if (_entries.TryGetValue(siteId, out var entry) && Fits(entry, names, caId, rsa))
                 {
                     return entry.Certificate;
                 }
             }
 
-            var made = await MakeAsync(ca, addresses, hostName, ct).ConfigureAwait(false);
+            var made = await MakeAsync(ca, addresses, hostName, validity, rsa, ct).ConfigureAwait(false);
             lock (_gate)
             {
                 // The replaced certificate is left to the GC: a handshake may still use it.
-                _entries[siteId] = new Entry(names, caId, made);
+                _entries[siteId] = new Entry(names, caId, rsa, made);
             }
 
             return made;
@@ -137,19 +142,39 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
         }
     }
 
-    private static async Task<X509Certificate2> MakeAsync(IDeviceCertificateAuthority ca, IReadOnlyCollection<string> addresses, string? hostName, CancellationToken ct)
+    /// <summary>The validity and the key (RSA or ECC) of the policy; 90 days and ECC without one.</summary>
+    private static (TimeSpan Validity, bool Rsa) Wanted(Oadm.Plugins.Pki.Policies.PkiPolicy? policy) =>
+        policy is { ValidDays: > 0 and var days }
+            ? (TimeSpan.FromDays(days), policy.Key == Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa)
+            : (DefaultValidity, false);
+
+    /// <summary>The certificate made for these names by this CA with this key still has more than its renewal time left.</summary>
+    private bool Fits(Entry entry, string names, string caId, bool rsa)
     {
-        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var certificate = entry.Certificate;
+        var lifetime = certificate.NotAfter.ToUniversalTime() - certificate.NotBefore.ToUniversalTime();
+        return entry.Names == names && entry.CaId == caId && entry.Rsa == rsa
+            && certificate.NotAfter.ToUniversalTime() - _time.GetUtcNow().UtcDateTime > Oadm.Plugins.Pki.Policies.PolicyLimits.RenewBefore(lifetime);
+    }
+
+    private static async Task<X509Certificate2> MakeAsync(
+        IDeviceCertificateAuthority ca, IReadOnlyCollection<string> addresses, string? hostName, TimeSpan validity, bool rsa, CancellationToken ct)
+    {
+        using var rsaKey = rsa ? RSA.Create(2048) : null;
+        using var ecKey = rsa ? null : ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var commonName = !string.IsNullOrWhiteSpace(hostName) ? hostName : addresses.FirstOrDefault() ?? "OADM EST server";
-        var csr = new CertificateRequest("CN=" + commonName, key, HashAlgorithmName.SHA256).CreateSigningRequest();
+        var request = rsaKey is not null
+            ? new CertificateRequest("CN=" + commonName, rsaKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+            : new CertificateRequest("CN=" + commonName, ecKey!, HashAlgorithmName.SHA256);
+        var csr = request.CreateSigningRequest();
         var dns = string.IsNullOrWhiteSpace(hostName) ? Array.Empty<string>() : [hostName];
-        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, [.. addresses], dns, DeviceCertificateUse.Server) { Validity = Validity, Source = "EST" }, ct)
+        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, [.. addresses], dns, DeviceCertificateUse.Server) { Validity = validity, Source = "EST" }, ct)
             .ConfigureAwait(false);
         using var publicOnly = X509CertificateLoader.LoadCertificate(issued.Certificate);
-        using var withKey = publicOnly.CopyWithPrivateKey(key);
+        using var withKey = rsaKey is not null ? publicOnly.CopyWithPrivateKey(rsaKey) : publicOnly.CopyWithPrivateKey(ecKey!);
         // Through PKCS#12, so Windows TLS can use the key (an in-memory key fails there).
         return X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
     }
 
-    private sealed record Entry(string Names, string CaId, X509Certificate2 Certificate);
+    private sealed record Entry(string Names, string CaId, bool Rsa, X509Certificate2 Certificate);
 }
