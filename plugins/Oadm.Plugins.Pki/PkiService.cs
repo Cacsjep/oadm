@@ -153,6 +153,7 @@ public sealed partial class PkiService : IAsyncDisposable
         await _issued.LoadAsync(ct).ConfigureAwait(false); // the revocation list counts from the first request on
         _config = await _store.LoadConfigAsync(ct).ConfigureAwait(false);
         _previous = await PrunePreviousAsync(await _store.LoadPreviousAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+        await LoadImportedAsync(ct).ConfigureAwait(false);
         if (_secrets is null)
         {
             LogNoSecrets();
@@ -250,6 +251,7 @@ public sealed partial class PkiService : IAsyncDisposable
             DevicesWithPreviousCa = counts.WithPreviousCa,
             ExpiringSoon = counts.ExpiringSoon,
             RadiusCa = RadiusSummary(config.Dot1x.RadiusCaPem),
+            Authorities = AuthorityRows(),
         };
     }
 

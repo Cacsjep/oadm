@@ -1,3 +1,4 @@
+using Oadm.Plugins.DeviceClocks;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -60,8 +61,6 @@ public static class CertificateDeployment
     public const string RadiusCaAliasPrefix = "OADM RADIUS CA ";
     public const string ImportAliasPrefix = "OADM import ";
 
-    /// <summary>Largest allowed difference between the device clock and the server clock before 802.1X.</summary>
-    public static readonly TimeSpan MaxClockOffset = TimeSpan.FromMinutes(5);
 
     /// <summary>How long OADM waits for the web server to answer with the new setting.</summary>
     public static readonly TimeSpan SwitchTimeout = TimeSpan.FromSeconds(60);
@@ -434,8 +433,13 @@ public static class CertificateDeployment
         }
     }
 
-    /// <summary>The device clock against the server clock; throws beyond <see cref="MaxClockOffset"/> (802.1X safety).</summary>
-    public static async Task CheckClockAsync(ITaskExecutionContext ctx, IReadOnlyList<DeviceApi> apis, TimeProvider time, CancellationToken ct)
+    /// <summary>
+    /// The device clock against the server clock (docs/spec/pki.md "Clock check"): a device ahead is fine; one still behind the
+    /// certificate's start (5 min back) by more than 5 s fails with "Nothing was changed" unless the user answered the
+    /// dialog's question with Yes (<paramref name="confirmed"/>, the payload's <c>clockConfirmed</c>): then it goes on and
+    /// says when the certificate becomes valid on the device.
+    /// </summary>
+    public static async Task CheckClockAsync(ITaskExecutionContext ctx, IReadOnlyList<DeviceApi> apis, TimeProvider time, bool confirmed, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(time);
@@ -443,24 +447,23 @@ public static class CertificateDeployment
         {
             var deviceNow = await DeviceClock.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The device clock cannot be read. Nothing was changed.");
-            var offset = deviceNow - time.GetUtcNow();
-            var text = DescribeOffset(offset);
-            if (offset.Duration() > MaxClockOffset)
+            var behind = time.GetUtcNow() - deviceNow;
+            if (CameraClock.NeedsQuestion(behind))
             {
-                throw new InvalidOperationException($"The device clock is {text} off. Set the date and time first. Nothing was changed.");
+                var late = $"The device's time is {CameraClock.Describe(behind)} behind. The certificate becomes valid on the device only in {CameraClock.Describe(CameraClock.ValidIn(behind))}.";
+                if (!confirmed)
+                {
+                    throw new InvalidOperationException(late + " Set the device to use NTP. Nothing was changed.");
+                }
+
+                ctx.Log(TaskLogLevel.Warning, late + " The user chose to continue.");
+                step.Complete($"{CameraClock.Describe(behind)} behind, valid on the device in {CameraClock.Describe(CameraClock.ValidIn(behind))}");
+                return;
             }
 
-            step.Complete(offset.Duration() < TimeSpan.FromSeconds(1) ? "In sync with the server" : $"{text} off the server clock");
+            step.Complete(behind.Duration() < TimeSpan.FromSeconds(1) ? "In sync with the server"
+                : behind < TimeSpan.Zero ? $"{CameraClock.Describe(behind)} ahead of the server clock" : $"{CameraClock.Describe(behind)} behind the server clock");
         }).ConfigureAwait(false);
-    }
-
-    /// <summary>"12 min", "3 s", "2 h".</summary>
-    public static string DescribeOffset(TimeSpan offset)
-    {
-        var d = offset.Duration();
-        return d.TotalHours >= 1 ? string.Create(CultureInfo.InvariantCulture, $"{(int)d.TotalHours} h")
-            : d.TotalMinutes >= 1 ? string.Create(CultureInfo.InvariantCulture, $"{(int)d.TotalMinutes} min")
-            : string.Create(CultureInfo.InvariantCulture, $"{(int)d.TotalSeconds} s");
     }
 
     /// <summary>The EAP identity from the page setting: MAC (= serial), host name, or custom with {serial} / {hostName}.</summary>

@@ -156,31 +156,10 @@ public static class NetworkInfoApi
 /// <summary>The device clock: time-service <c>getDateTimeInfo</c> when listed, else the HTTP Date header of that request.</summary>
 public static class DeviceClock
 {
-    public const string TimeServiceId = "time-service";
-    public const string TimePath = "axis-cgi/time.cgi";
+    public const string TimeServiceId = Oadm.Plugins.DeviceClocks.CameraClock.TimeServiceId;
+    public const string TimePath = Oadm.Plugins.DeviceClocks.CameraClock.TimePath;
 
-    /// <summary>The device's current UTC time, or null when it cannot be read.</summary>
-    public static async Task<DateTimeOffset?> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, CancellationToken ct)
-    {
-        var version = apis.FindApi(TimeServiceId, 1)?.Version ?? "1.0";
-        var body = new JsonObject { ["apiVersion"] = version, ["context"] = "oadm", ["method"] = "getDateTimeInfo" }.ToJsonString();
-        var answer = await DeviceHttp.SendAsync(vapix, HttpMethod.Post, TimePath, DeviceHttp.JsonType, body, ct).ConfigureAwait(false);
-        if ((int)answer.Status is >= 200 and < 300)
-        {
-            try
-            {
-                var text = JsonNode.Parse(answer.Body)?["data"]?["dateTime"]?.GetValue<string>();
-                if (text is not null && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
-                {
-                    return parsed;
-                }
-            }
-            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
-            {
-                // fall back to the Date header
-            }
-        }
-
-        return answer.Date;
-    }
+    /// <summary>The device's current UTC time, or null when it cannot be read (<see cref="Oadm.Plugins.DeviceClocks.CameraClock.ReadAsync"/>).</summary>
+    public static Task<DateTimeOffset?> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, CancellationToken ct) =>
+        Oadm.Plugins.DeviceClocks.CameraClock.ReadAsync(vapix, apis, ct);
 }

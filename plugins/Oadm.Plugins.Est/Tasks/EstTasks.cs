@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Nodes;
 
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Est.Device;
 using Oadm.Plugins.Est.Serving;
 using Oadm.Sdk.Devices;
@@ -209,6 +210,10 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         }
 
         ArgumentNullException.ThrowIfNull(device);
+        if (payload.ClockConfirmed)
+        {
+            ctx.Log(TaskLogLevel.Info, "The camera's time may be behind: its certificates become valid on it a few minutes late. The user chose to continue.");
+        }
 
         var protectNetworkAccess = false;
         var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
@@ -885,6 +890,11 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        if (string.Equals(method, CameraClock.QueryMethod, StringComparison.Ordinal))
+        {
+            return await CameraClock.QueryAsync(ctx.Vapix, device, Service?.Time ?? TimeProvider.System, ct).ConfigureAwait(false); // the dialog's clock check
+        }
+
         if (!string.Equals(method, EstTaskIds.ListProfilesMethod, StringComparison.Ordinal))
         {
             throw new ArgumentException($"Unknown method '{method}'.", nameof(method));

@@ -51,6 +51,10 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
 
     public IReadOnlyList<CertificateRevocation> Revocations => service.Issued.Revocations;
 
+    public IReadOnlyList<CertificateAuthorityInfo> Authorities => service.Authorities();
+
+    public void SetUsedBy(string serviceId, string serviceName, IReadOnlyCollection<string> authorityIds) => service.SetUsedBy(serviceId, serviceName, authorityIds);
+
     public Task<IssuedCertificatePage> ListIssuedAsync(IssuedCertificateQuery query, CancellationToken ct) => service.QueryIssuedAsync(query, ct);
 
     public Task<byte[]?> GetIssuedCertificateAsync(string serialNumber, CancellationToken ct) => service.Issued.GetDerAsync(serialNumber, ct);

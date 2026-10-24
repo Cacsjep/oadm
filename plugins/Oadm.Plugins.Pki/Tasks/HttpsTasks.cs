@@ -1,3 +1,4 @@
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -12,11 +13,18 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// certificate, Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
 /// to the new certificate, Verify HTTPS, Remove previous OADM certificate.
 /// </summary>
-public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(service)
+public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(service), ITaskPluginQuery
 {
     public override string Id => PkiTaskIds.HttpsEnable;
 
     public override string DisplayName => PkiTaskIds.HttpsEnableName;
+
+    /// <summary>The dialog reads the camera clocks first and asks when one is behind (docs/spec/pki.md "Clock check").</summary>
+    public override bool RequiresDialog => true;
+
+    /// <summary>The dialog's clock check (<see cref="CameraClock.QueryMethod"/>), read only.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        ClockQuery.QueryAsync(ctx, device, method, Time, ct);
 
     public override string GetTaskName(string? payloadJson) => "Enable HTTPS";
 

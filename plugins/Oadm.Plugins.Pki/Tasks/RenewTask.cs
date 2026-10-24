@@ -99,7 +99,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         }
         else
         {
-            await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, ct).ConfigureAwait(false);
+            await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, confirmed: false, ct).ConfigureAwait(false);
             await Dot1xEnableTask.DeployAsync(ctx, service, ca, device, apis, network!, radius!, Dot1xPrefix, ct).ConfigureAwait(false);
         }
     }

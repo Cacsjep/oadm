@@ -356,9 +356,98 @@ public sealed partial class BackupViewModel : PkiDialogViewModel
     protected override void OnBusyChanged() => BackupCommand.NotifyCanExecuteChanged();
 }
 
+/// <summary>"Import CA" of the Certificate authorities card: one CA certificate without key (PEM or DER).</summary>
+public sealed partial class ImportAuthorityViewModel : PkiDialogViewModel
+{
+    private readonly Func<ImportAuthorityViewModel, ImportAuthorityRequest, Task<bool>> _submit;
+    private byte[]? _file;
+
+    /// <param name="submit">The page: imports, applies the state; true = done (errors go under the file).</param>
+    public ImportAuthorityViewModel(Func<ImportAuthorityViewModel, ImportAuthorityRequest, Task<bool>> submit)
+    {
+        _submit = submit ?? throw new ArgumentNullException(nameof(submit));
+        Validation.Rule(nameof(File), () => _file is null ? "Choose a file." : _file.Length > PkiPluginInfo.MaxImportBytes ? "The file is larger than 1 MB." : null);
+        Validation.Reset();
+    }
+
+    public static string Title => "Import CA";
+
+    public static string Intro => "A root or intermediate CA certificate, without its key. Services can then trust it.";
+
+    /// <summary>Name of the chosen file (the property the file errors belong to).</summary>
+    [ObservableProperty]
+    public partial string? File { get; set; }
+
+    public string? FileError => ErrorOf(nameof(File));
+
+    public string FileText => File ?? "No file chosen";
+
+    /// <summary>Sets the chosen file (also used by tests).</summary>
+    public void SetFile(PickedFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        _file = file.Data;
+        File = file.Name;
+        OnPropertyChanged(nameof(FileText));
+    }
+
+    [RelayCommand]
+    private async Task ChooseFileAsync()
+    {
+        if (Files is not null && await Files.OpenAsync("Choose the CA certificate", PkiFileKind.AuthorityCertificate).ConfigureAwait(true) is { } file)
+        {
+            SetFile(file);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanImport))]
+    private async Task ImportAsync()
+    {
+        Validation.ShowAll();
+        if (!Validation.IsValid)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            if (await _submit(this, new ImportAuthorityRequest(Convert.ToBase64String(_file!), File)).ConfigureAwait(true))
+            {
+                Close();
+            }
+        }
+#pragma warning disable CA1031 // Shown under the file; the dialog stays open.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Validation.SetServerError(nameof(File), Message(ex));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private bool CanImport() => IsFormValid && !IsBusy;
+
+    protected override void OnValidationChanged()
+    {
+        ImportCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(FileError));
+    }
+
+    protected override void OnBusyChanged() => ImportCommand.NotifyCanExecuteChanged();
+}
+
 /// <summary>Opens the PKI dialogs (implemented by the page view; tests use a fake).</summary>
 public interface IPkiDialogs
 {
+    Task ShowImportAuthorityAsync(ImportAuthorityViewModel dialog);
+
+    /// <summary>The shared certificate window (View of a CA in the list).</summary>
+    Task ShowCertificateAsync(Oadm.Sdk.Client.Controls.CertificateDetails certificate);
+
     Task ShowGenerateAsync(GenerateCaViewModel dialog);
 
     Task ShowImportAsync(ImportCaViewModel dialog);

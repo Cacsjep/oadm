@@ -151,6 +151,7 @@ public sealed partial class EstService : IAsyncDisposable
         try
         {
             await _store.LoadAsync(ct).ConfigureAwait(false);
+            ReportUsedBy();
             await OpenAsync(_store.Config.Port, ct).ConfigureAwait(false);
             _renewalTimer = _host.Time.CreateTimer(_ => Track(CheckRenewalsAsync(_cts.Token)), null, RenewalCheckDelay, RenewalCheckInterval);
             _listenRetry = _host.Time.CreateTimer(_ => Track(RetryListenAsync(_cts.Token)), null, ListenRetryInterval, ListenRetryInterval);
@@ -304,6 +305,7 @@ public sealed partial class EstService : IAsyncDisposable
         }
 
         _stopping = true;
+        StopReportingUsedBy();
         if (_host.Sites is { } sites)
         {
             sites.SitesChanged -= OnSitesChanged;
@@ -394,9 +396,16 @@ public sealed partial class EstService : IAsyncDisposable
                 .OrderBy(l => l.Name, StringComparer.CurrentCultureIgnoreCase));
         }
 
+        var ca = _host.Authority();
+        if (!_stopping && !ReferenceEquals(ca, Volatile.Read(ref _watched)))
+        {
+            ReportUsedBy(); // PKI restarted: tell the new one
+        }
+
         return new EstState
         {
             Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount, Interfaces = ListInterfaces(),
+            SignInChoices = SignInChoices(ca), IssuingCa = IssuingName(ca),
         };
     }
 
@@ -500,6 +509,7 @@ public sealed partial class EstService : IAsyncDisposable
             await SyncSitesAsync(ct).ConfigureAwait(false); // the sites listen on the new port
         }
 
+        ReportUsedBy();
         PublishState();
         return new SaveReply(GetState());
     }
@@ -520,6 +530,11 @@ public sealed partial class EstService : IAsyncDisposable
         if (config.Profiles.Count == 0)
         {
             return ("profiles", "Add a profile.");
+        }
+
+        if (config.SignInWith is not { Count: > 0 })
+        {
+            return ("signInWith", "Choose at least one.");
         }
 
         for (var i = 0; i < config.Profiles.Count; i++)

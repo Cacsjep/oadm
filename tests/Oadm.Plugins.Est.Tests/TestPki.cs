@@ -126,6 +126,36 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
 
     public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>PKI's list of CAs (SDK 0.4.0); empty = a PKI without the list.</summary>
+    public List<CertificateAuthorityInfo> AuthorityList { get; } = [];
+
+    public IReadOnlyList<CertificateAuthorityInfo> Authorities => AuthorityList;
+
+    /// <summary>What the services told with SetUsedBy, by service id.</summary>
+    public Dictionary<string, (string Name, IReadOnlyCollection<string> Ids)> UsedBy { get; } = [];
+
+    public void SetUsedBy(string serviceId, string serviceName, IReadOnlyCollection<string> authorityIds)
+    {
+        lock (UsedBy)
+        {
+            if (authorityIds.Count == 0)
+            {
+                UsedBy.Remove(serviceId);
+            }
+            else
+            {
+                UsedBy[serviceId] = (serviceName, [.. authorityIds]);
+            }
+        }
+    }
+
+    /// <summary>The OADM CA and the Axis device ID as PKI lists them.</summary>
+    public void ListDefaults() => AuthorityList.AddRange(
+    [
+        new(CertificateAuthorityInfo.OadmId, "OADM Test CA", CertificateAuthorityKind.Oadm, Chain, _ca.NotAfter.ToUniversalTime(), true),
+        new(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID", CertificateAuthorityKind.AxisDeviceId, [], DateTime.UtcNow.AddYears(10), false),
+    ]);
+
     /// <summary>The revocation list (PKI's, SDK 0.4.0), by normalized serial.</summary>
     public Dictionary<string, CertificateRevocation> Revoked { get; } = [];
 

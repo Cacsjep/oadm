@@ -21,6 +21,14 @@ Apache 2.0).
     the CA), 503 (no PRO, no CA). Every request names its use (`DeviceCertificateRequest.Purpose`) for PKI's list.
   - `AxisDeviceId` (`plugins/Shared/DeviceId`, linked, shared with the 802.1X server): the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
+  - "Sign in with" (`config.signInWith`, docs/spec/pki.md; `Serving/EstService.Authorities`): ids of PKI's CAs a camera may
+    sign in with, default `axis-device-id` + `oadm` (renewals; today's behaviour); previous OADM CAs can be chosen. Only
+    the chosen CAs PKI still lists count (fail closed; a PKI without the list: the two defaults). Choices and "Issued by"
+    (the OADM CA) in `EstState`; at least one ("Choose at least one." below the check boxes). EST reports
+    `SetUsedBy("oadm.est", "EST server", chosen ∩ listed + oadm)` at the start, after Save and on PKI's `Changed`, and
+    clears it when it stops.
+  - Set up reads the camera clocks first (`CameraClock`, query `readClock` of the Set up task; the run line shows the
+    reading) and asks Yes / No when one is behind the certificate's start; Yes sets `SetupPayload.ClockConfirmed` (logged).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
     keep-alive); `Protocol/EstMessages`: PKCS#7 certs-only and PKCS#10 in base64.
   - `Serving/EstStore`: plugin settings `config` (interface, port, profiles, enrollments kept 100..5000), `enrollments` (newest

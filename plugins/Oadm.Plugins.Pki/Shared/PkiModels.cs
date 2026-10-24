@@ -33,6 +33,9 @@ public static class PkiPluginInfo
     /// <summary>Rows of one page of the Certificates tab.</summary>
     public const int CertificatesPageSize = 500;
 
+    /// <summary>Most imported CAs (Certificate authorities card).</summary>
+    public const int MaxImportedCas = 50;
+
     /// <summary>Most serial numbers of one Revoke.</summary>
     public const int MaxRevokeAtOnce = 5000;
 
@@ -93,6 +96,12 @@ public static class PkiMethods
 
     /// <summary>Event (payload <c>{}</c>): the issued certificates or the revocation list changed; pages read their page again.</summary>
     public const string CertificatesTopic = "certificates";
+
+    /// <summary><see cref="ImportAuthorityRequest"/> -> <see cref="PkiReply"/>: a CA certificate without key into the list of CAs.</summary>
+    public const string ImportAuthority = "importAuthority";
+
+    /// <summary><see cref="RemoveAuthorityRequest"/> -> <see cref="PkiReply"/>: an imported CA out of the list (refused while a service uses it).</summary>
+    public const string RemoveAuthority = "removeAuthority";
 }
 
 /// <summary>The payload of <see cref="PkiMethods.GetCertificates"/>; filters as in <see cref="Oadm.Sdk.Certificates.IssuedCertificateQuery"/>.</summary>
@@ -248,6 +257,43 @@ public sealed record StoredPreviousCa
     public DateTime ReplacedUtc { get; init; }
 }
 
+/// <summary>Plugin setting <c>importedCas</c>: CA certificates an administrator imported (public, no key), oldest first.</summary>
+public sealed record StoredImportedCa
+{
+    /// <summary>SHA-256 of the certificate (upper hex); the authority id is <c>imported:&lt;Id&gt;</c>.</summary>
+    public string Id { get; init; } = string.Empty;
+
+    public string CertificatePem { get; init; } = string.Empty;
+
+    public DateTime ImportedUtc { get; init; }
+}
+
+/// <summary>One row of the Certificate authorities card (<see cref="Oadm.Sdk.Certificates.CertificateAuthorityInfo"/> plus what the page shows).</summary>
+public sealed record AuthorityRow
+{
+    /// <summary>The stable id ("oadm", "oadm-previous:&lt;sha256&gt;", "axis-device-id", "imported:&lt;sha256&gt;").</summary>
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
+
+    public Oadm.Sdk.Certificates.CertificateAuthorityKind Kind { get; init; }
+
+    public DateTime NotAfterUtc { get; init; }
+
+    /// <summary>SHA-256 of the first certificate, with colons.</summary>
+    public string Fingerprint { get; init; } = string.Empty;
+
+    /// <summary>The services that use it ("802.1X server"), in name order.</summary>
+    public IReadOnlyList<string> UsedBy { get; init; } = [];
+
+    /// <summary>The certificates (PEM, public), the CA's own first: View shows them.</summary>
+    public IReadOnlyList<string> CertificatesPem { get; init; } = [];
+}
+
+public sealed record ImportAuthorityRequest(string? FileBase64, string? FileName);
+
+public sealed record RemoveAuthorityRequest(string? Id);
+
 /// <summary>
 /// One device certificate the OADM CA issued: a row of the plugin records <c>issued</c> (by serial number; its DER in
 /// <c>issuedDer</c>), written by <see cref="Ca.IssuedRegistry"/> only. Before 4.2 the plugin setting <c>issued</c> held them.
@@ -396,6 +442,9 @@ public sealed record PkiState
     /// <summary>The imported RADIUS server CA of the stored configuration.</summary>
     public CertificateSummary? RadiusCa { get; init; }
 
+    /// <summary>Every CA PKI holds: the OADM CA, previous ones, the Axis device ID, imported CAs.</summary>
+    public IReadOnlyList<AuthorityRow> Authorities { get; init; } = [];
+
     /// <summary>Set by the client's fake backend: nothing is installed on this computer.</summary>
     public bool Simulated { get; init; }
 }
@@ -484,6 +533,7 @@ public static class PkiFields
     public const string Identity = "Identity";
     public const string CustomIdentity = "CustomIdentity";
     public const string RadiusCa = "RadiusCa";
+    public const string AuthorityFile = "AuthorityFile";
 }
 
 public static class PkiJson

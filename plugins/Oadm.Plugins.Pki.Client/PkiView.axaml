@@ -119,6 +119,46 @@
         </StackPanel>
       </Border>
 
+      <!-- ============================== Certificate authorities ============================== -->
+      <Border Classes="card">
+        <StackPanel Classes="form">
+          <ui:CardHeader Title="Certificate authorities" Description="The CAs services can trust or sign with." />
+          <DataGrid ItemsSource="{Binding Authorities}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                    SelectionMode="Single" MaxHeight="320">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="Name" Width="*" x:DataType="vm:AuthorityRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:AuthorityRowViewModel">
+                    <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Tooltip}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Kind" Width="160" Binding="{Binding KindText}" x:DataType="vm:AuthorityRowViewModel" />
+              <DataGridTextColumn Header="Valid until" Width="130" Binding="{Binding ValidUntil}" x:DataType="vm:AuthorityRowViewModel" />
+              <DataGridTextColumn Header="Used by" Width="*" Binding="{Binding UsedBy}" x:DataType="vm:AuthorityRowViewModel" />
+              <DataGridTemplateColumn Width="170" x:DataType="vm:AuthorityRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:AuthorityRowViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                      <Button Classes="link" Content="View"
+                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ViewAuthorityCommand}" CommandParameter="{Binding}" />
+                      <Button Classes="link danger" Content="Remove" IsVisible="{Binding IsRemovable}"
+                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).RemoveAuthorityCommand}" CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" IsVisible="{Binding MayManage}">
+            <Button Classes="secondary" Command="{Binding ImportAuthorityCommand}"
+                    ToolTip.Tip="Add a CA certificate without its key">
+              <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import CA" />
+            </Button>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
       <!-- ============================== Device certificates ============================== -->
       <Border Classes="card">
         <StackPanel Classes="form" IsEnabled="{Binding MayManage}">

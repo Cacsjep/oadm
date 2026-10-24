@@ -129,6 +129,15 @@ public sealed record EstConfig
     /// <summary>Enrollments kept (newest first), 100..5000.</summary>
     public int EnrollmentsKept { get; init; } = EstPluginInfo.DefaultEnrollmentsKept;
 
+    /// <summary>
+    /// "Sign in with": the ids of PKI's CAs a camera may sign in with (docs/spec/pki.md). Default: the Axis device ID and
+    /// the OADM CA (renewals). An id PKI no longer holds lets nothing in.
+    /// </summary>
+    public IReadOnlyList<string> SignInWith { get; init; } = DefaultSignInWith;
+
+    public static IReadOnlyList<string> DefaultSignInWith { get; } =
+        [Oadm.Sdk.Certificates.CertificateAuthorityInfo.AxisDeviceIdId, Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId];
+
     /// <summary>The two ready-made profiles.</summary>
     public static IReadOnlyList<EstProfile> Defaults { get; } =
     [
@@ -223,9 +232,26 @@ public sealed record EstState
     public IReadOnlyList<InterfaceOption> Interfaces { get; init; } = [];
 
     public int CertificateCount { get; init; }
+
+    /// <summary>The CAs a camera may sign in with ("Sign in with" check boxes), from PKI's list.</summary>
+    public IReadOnlyList<SignInChoice> SignInChoices { get; init; } = [];
+
+    /// <summary>The CA that issues the certificates (the OADM CA's name); null without one.</summary>
+    public string? IssuingCa { get; init; }
 }
 
 public sealed record EnrollmentList(IReadOnlyList<Enrollment> Enrollments);
+
+/// <summary>One CA of "Sign in with": PKI's id and the name shown.</summary>
+public sealed record SignInChoice(string Id, string Name);
+
+/// <summary>The names of the "Sign in with" choices.</summary>
+public static class SignInNames
+{
+    public const string AxisDeviceId = "Axis device ID";
+    public const string Oadm = "OADM CA, for renewals";
+    public const string PreviousSuffix = ", for renewals";
+}
 
 /// <param name="Certificates">The certificates the cameras did not renew in time (the first 500).</param>
 /// <param name="Total">All of them.</param>
@@ -245,6 +271,12 @@ public sealed record SetupPayload(bool ReplaceDot1x = false)
 {
     /// <summary>Set up (default) or remove <see cref="Profiles"/>.</summary>
     public SetupAction Action { get; init; }
+
+    /// <summary>
+    /// The user answered the dialog's clock question with Yes (a camera is behind the certificate's start,
+    /// docs/spec/pki.md "Clock check"): the task goes on and notes it in the log.
+    /// </summary>
+    public bool ClockConfirmed { get; init; }
 
     /// <summary>With <see cref="SetupAction.Remove"/>: the profile ids to remove from every selected camera (any profile).</summary>
     public IReadOnlyList<string> Profiles { get; init; } = [];
