@@ -15,10 +15,10 @@ namespace Oadm.Plugins.Pki;
 public static class PkiCertificateTexts
 {
     /// <summary>A serial that is not listed, or a certificate of a device outside the user's group (the same answer).</summary>
-    public const string NotListed = "This certificate is not in the list.";
+    public const string NotListed = IssuedCertificateMessages.NotListed;
 
     /// <summary>A certificate listed before OADM kept a copy of each one (4.1 and older).</summary>
-    public const string NoCopy = "OADM keeps no copy of this certificate.";
+    public const string NoCopy = IssuedCertificateMessages.NoCopy;
 
     public const string ChooseOne = "Choose at least one certificate.";
 
@@ -36,6 +36,28 @@ public sealed partial class PkiService
     private readonly Lock _knownGate = new();
     private (string Key, IReadOnlyList<X509Certificate2> Certificates) _known = (string.Empty, []);
     private int _certificatesEventPending;
+
+    /// <summary>
+    /// Reads a device's certificate list (alias and PEM, read only) for Revoke all of this device; null = no device access
+    /// (tests, a host without it). Set by the plugin.
+    /// </summary>
+    public Func<IDeviceInfo, CancellationToken, Task<IReadOnlyList<(string Alias, string Pem)>>>? DeviceCertificateReader { get; set; }
+
+    /// <summary>The latest end of the active and the previous CAs: no certificate they signed lasts longer (null without a CA).</summary>
+    public DateTime? LatestCaEnd()
+    {
+        DateTime? latest = null;
+        foreach (var ca in KnownCaCertificates())
+        {
+            var end = ca.NotAfter.ToUniversalTime();
+            if (latest is null || end > latest)
+            {
+                latest = end;
+            }
+        }
+
+        return latest;
+    }
 
     /// <summary>
     /// The certificates of the active and the previous CAs (public parts), for finding OADM certificates on devices. Built
@@ -182,7 +204,11 @@ public sealed partial class PkiService
         return Reply(await _issued.RevokeAsync(serials, request.Reason, userName, ct).ConfigureAwait(false));
     }
 
-    /// <summary>Revokes every certificate of a device that is still valid (Revoke all of this device).</summary>
+    /// <summary>
+    /// Revokes every certificate of a device that is still valid (Revoke all of this device). A device that answers has its
+    /// certificate list read first (at most <see cref="PkiOptions.DeviceReadTimeout"/>), so OADM certificates on it that the
+    /// list did not hold yet (from before the list) are revoked too.
+    /// </summary>
     internal async Task<RevokeReply> RevokeDeviceAsync(RevokeDeviceRequest request, string userName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -191,10 +217,44 @@ public sealed partial class PkiService
             return new RevokeReply { Error = PkiCertificateTexts.UnknownReason };
         }
 
+        await ReadDeviceCertificatesAsync(request.DeviceId, ct).ConfigureAwait(false);
         var serials = _issued.RevocableOf(request.DeviceId);
         return serials.Count == 0
             ? new RevokeReply()
             : Reply(await _issued.RevokeAsync(serials, request.Reason, userName, ct).ConfigureAwait(false));
+    }
+
+    /// <summary>Adds the OADM certificates on the device to the list (best effort: an offline or older device adds nothing).</summary>
+    private async Task ReadDeviceCertificatesAsync(Guid deviceId, CancellationToken ct)
+    {
+        if (DeviceCertificateReader is not { } read)
+        {
+            return;
+        }
+
+        var device = (await SystemDevicesAsync(ct).ConfigureAwait(false)).FirstOrDefault(d => d.Id == deviceId);
+        if (device is not { Status: DeviceStatus.Ok } || !Tasks.PkiCompatibility.CanRunCertificateTask(device))
+        {
+            return;
+        }
+
+        using var limit = new CancellationTokenSource(_options.DeviceReadTimeout, _options.Time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, limit.Token);
+        try
+        {
+            var found = await read(device, linked.Token).ConfigureAwait(false);
+            await ImportFoundAsync(device, found, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // The device's list is extra: revoking what the list holds goes on.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogDeviceReadFailed(device.Address, ex.Message);
+        }
     }
 
     /// <summary>The CA service's revoke.</summary>
@@ -277,4 +337,7 @@ public sealed partial class PkiService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: the server offers no plugin records; the issued certificates and the revocation list are kept in memory only")]
     private partial void LogNoRecords();
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "PKI: the certificates of {Device} could not be read before revoking: {Error}")]
+    private partial void LogDeviceReadFailed(string device, string error);
 }

@@ -132,8 +132,9 @@ public interface IDeviceCertificateAuthority
     Task<byte[]?> GetIssuedCertificateAsync(string serialNumber, CancellationToken ct) => Task.FromResult<byte[]?>(null);
 
     /// <summary>
-    /// Puts the certificates on the revocation list (no undo; only for users with all devices: the caller checks). Unknown
-    /// and expired serials are counted, never added. Raises <see cref="RevocationChanged"/> once. Default: not supported.
+    /// Puts the certificates on the revocation list (no undo; only for users with all devices: the caller checks). Expired
+    /// ones are counted, never added; a serial the list does not hold (a certificate of the CA from before the list) is added
+    /// without a device. Raises <see cref="RevocationChanged"/> once. Default: not supported.
     /// </summary>
     Task<RevokeResult> RevokeAsync(IReadOnlyCollection<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct) =>
         throw new NotSupportedException("This certificate authority keeps no revocation list.");

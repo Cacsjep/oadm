@@ -43,16 +43,23 @@ public sealed class PkiStore(IPluginSettings settings)
 public sealed record IssuedCounts(int Devices, int WithCurrentCa, int WithPreviousCa, int ExpiringSoon, IReadOnlyDictionary<string, int> DevicesPerCa)
 {
     /// <summary>
-    /// Per device and purpose only the newest certificate counts. A device counts once: "with the current CA" when any of
-    /// its newest certificates comes from <paramref name="currentCaId"/>, "from a previous CA" when any comes from another CA,
-    /// "expiring soon" when any ends within <paramref name="warningDays"/> (or ended).
+    /// Only certificates still in use count: not ended, not revoked (<paramref name="isRevoked"/>) and not deleted from the
+    /// device (the list keeps those a year after their end, which would inflate the counts). Per device and purpose only the
+    /// newest of them counts. A device counts once: "with the current CA" when any of its newest certificates comes from
+    /// <paramref name="currentCaId"/>, "from a previous CA" when any comes from another CA, "expiring soon" when any ends within
+    /// <paramref name="warningDays"/>.
     /// </summary>
-    public static IssuedCounts From(IReadOnlyList<IssuedCertificate> issued, string? currentCaId, DateTime nowUtc, int warningDays)
+    public static IssuedCounts From(IReadOnlyList<IssuedCertificate> issued, string? currentCaId, DateTime nowUtc, int warningDays, Func<string, bool>? isRevoked = null)
     {
         ArgumentNullException.ThrowIfNull(issued);
         var newest = new Dictionary<(Guid, string), IssuedCertificate>();
         foreach (var entry in issued)
         {
+            if (entry.NotAfterUtc <= nowUtc || entry.RemovedFromDeviceUtc is not null || (isRevoked?.Invoke(entry.SerialNumber) ?? false))
+            {
+                continue;
+            }
+
             var key = (entry.DeviceId, entry.Purpose ?? string.Empty);
             if (!newest.TryGetValue(key, out var known) || entry.IssuedUtc >= known.IssuedUtc)
             {

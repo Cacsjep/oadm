@@ -36,6 +36,12 @@ public sealed class PkiOptions
 
     /// <summary>The one pass that reads the certificates of every device starts this long after the plugin (tests: zero).</summary>
     public TimeSpan ExistingImportDelay { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>The pass runs again this long after a round that reached no device (all offline, or the list not read yet).</summary>
+    public TimeSpan ExistingImportRetry { get; init; } = TimeSpan.FromHours(1);
+
+    /// <summary>Revoke all of this device reads the device's certificate list for at most this long first.</summary>
+    public TimeSpan DeviceReadTimeout { get; init; } = TimeSpan.FromSeconds(20);
 }
 
 /// <summary>
@@ -96,6 +102,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
+        _issued.UnknownNotAfter = LatestCaEnd;
         _issued.Changed += OnIssuedChanged;
     }
 
@@ -208,7 +215,7 @@ public sealed partial class PkiService : IAsyncDisposable
             issued = [.. issued.Where(entry => view.Contains(entry.DeviceId))];
         }
 
-        var counts = IssuedCounts.From(issued, ca?.Id, now, config.ExpiryWarningDays);
+        var counts = IssuedCounts.From(issued, ca?.Id, now, config.ExpiryWarningDays, _issued.IsRevoked);
 
         bool? installed = null;
         var trustError = _serverTrustError;
@@ -863,7 +870,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
-        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, _config.ExpiryWarningDays).WithCurrentCa;
+        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, _config.ExpiryWarningDays, _issued.IsRevoked).WithCurrentCa;
     }
 
     private async Task PublishAsync()
