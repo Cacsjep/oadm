@@ -607,7 +607,7 @@ data, also for the screenshots; the four, two and one column layout and the rows
 `ServerLayoutTests`). One page since 2026-10-24.
 
 - **One page, no tabs** (`RadiusView`): Server | Trusted CAs | Switches | Policies (`RadiusView.Arrange` in
-  `MeasureOverride`, before the cards are measured: four columns from 1,850 px with Switches 1.6 and Policies 1.35 parts,
+  `MeasureOverride`, before the cards are measured: four columns from 1,640 px (a Full HD screen) with Switches 1.6 and Policies 1.35 parts,
   two from 1,000 px (Server and Trusted CAs | Switches and Policies), else one; a DataGrid measured once too narrow keeps
   its fixed columns shrunk), then Sessions and Log full width (grids of fixed height inside the page's scroll viewer, so
   they stay virtualized). `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites`,

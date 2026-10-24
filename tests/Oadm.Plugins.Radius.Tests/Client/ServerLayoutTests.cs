@@ -14,7 +14,7 @@ namespace Oadm.Plugins.Radius.Tests.Client;
 public sealed class ServerLayoutTests
 {
     [Theory]
-    [InlineData(1900, 4)]
+    [InlineData(1700, 4)]
     [InlineData(1300, 2)]
     [InlineData(900, 1)]
     public async Task The_cards_use_four_two_or_one_column_by_width_and_save_sits_in_the_server_card(int width, int columns)

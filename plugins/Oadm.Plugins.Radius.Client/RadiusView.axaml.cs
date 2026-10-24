@@ -16,7 +16,7 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs, IAdv
     /// From this width of the page the four cards Server, Trusted CAs, Switches and Policies stand side by side (Switches
     /// gets 1.6 and Policies 1.35 parts: their tables are the widest).
     /// </summary>
-    public const double FourColumnWidth = 1850;
+    public const double FourColumnWidth = 1640;
 
     /// <summary>From this width two columns: Server and Trusted CAs on the left, Switches and Policies on the right; below it one.</summary>
     public const double TwoColumnWidth = 1000;
@@ -83,13 +83,13 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs, IAdv
         var gap = new GridLength(16);
         var none = new GridLength(0);
         var definitions = CardColumns.ColumnDefinitions;
-        definitions[0].Width = new GridLength(1, GridUnitType.Star);
+        definitions[0].Width = new GridLength(columns == 4 ? 0.95 : 1, GridUnitType.Star);
         definitions[1].Width = columns == 4 ? gap : none;
-        definitions[2].Width = columns == 4 ? new GridLength(1, GridUnitType.Star) : none;
+        definitions[2].Width = columns == 4 ? new GridLength(0.8, GridUnitType.Star) : none;
         definitions[3].Width = columns >= 2 ? gap : none;
-        definitions[4].Width = columns == 4 ? new GridLength(1.6, GridUnitType.Star) : columns == 2 ? new GridLength(1.25, GridUnitType.Star) : none;
+        definitions[4].Width = columns == 4 ? new GridLength(1.75, GridUnitType.Star) : columns == 2 ? new GridLength(1.25, GridUnitType.Star) : none;
         definitions[5].Width = columns == 4 ? gap : none;
-        definitions[6].Width = columns == 4 ? new GridLength(1.35, GridUnitType.Star) : none;
+        definitions[6].Width = columns == 4 ? new GridLength(1.45, GridUnitType.Star) : none;
         var below = new Thickness(0, 16, 0, 0);
         switch (columns)
         {

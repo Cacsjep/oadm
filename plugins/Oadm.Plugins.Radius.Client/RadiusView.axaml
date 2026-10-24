@@ -19,7 +19,7 @@
             <StackPanel Classes="form">
               <TextBlock Classes="cardTitle" Text="Server" />
               <StackPanel Classes="form" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
-                <ui:FormField Label="Listen on" InputWidth="290">
+                <ui:FormField Label="Listen on" LabelWidth="110" InputWidth="290">
                   <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
                             ToolTip.Tip="The interface the switches reach this server on.">
                     <ComboBox.ItemTemplate>
@@ -29,10 +29,10 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
                 </ui:FormField>
-                <ui:FormField Label="Port">
+                <ui:FormField Label="Port" LabelWidth="110">
                   <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
                 </ui:FormField>
-                <ui:FormField Label="Log entries kept">
+                <ui:FormField Label="Log entries kept" LabelWidth="110">
                   <TextBox Text="{Binding LogKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
                 </ui:FormField>
               </StackPanel>
@@ -92,28 +92,40 @@
                 <Button Classes="secondary" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
                   <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add switch" />
                 </Button>
-                <Button Classes="secondary" Command="{Binding EditCommand}" IsVisible="{Binding MayManage}">
-                  <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Edit" />
-                </Button>
-                <Button Classes="danger" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}">
-                  <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Delete" />
-                </Button>
               </WrapPanel>
               <Panel>
                 <DataGrid x:Name="SwitchesGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" IsReadOnly="True" CanUserSortColumns="True"
                           CanUserReorderColumns="False" SelectionMode="Single" Height="240">
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="Name" Width="*" MinWidth="90" Binding="{Binding Name}" x:DataType="vm:SwitchRowViewModel" />
-                    <DataGridTextColumn Header="Address" Width="100" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
-                    <DataGridTextColumn Header="Site" Width="95" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
-                    <DataGridTemplateColumn Header="State" Width="138" SortMemberPath="State" x:DataType="vm:SwitchRowViewModel">
+                    <DataGridTextColumn Header="Name" Width="*" MinWidth="80" Binding="{Binding Name}" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTextColumn Header="Address" Width="95" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTextColumn Header="Site" Width="84" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTemplateColumn Header="State" Width="116" SortMemberPath="State" x:DataType="vm:SwitchRowViewModel">
                       <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate x:DataType="vm:SwitchRowViewModel">
                           <ui:StatusChip Margin="10,0" Text="{Binding State}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" />
                         </DataTemplate>
                       </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Last request" Width="112" Binding="{Binding LastRequest}" SortMemberPath="LastRequestSortKey" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTextColumn Header="Last request" Width="84" Binding="{Binding LastRequest}" SortMemberPath="LastRequestSortKey" x:DataType="vm:SwitchRowViewModel" />
+                    <DataGridTemplateColumn Width="72" CanUserSort="False" x:DataType="vm:SwitchRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:SwitchRowViewModel">
+                          <!-- Row actions like the Permissions page: icon buttons in fixed places, Delete in red -->
+                          <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0"
+                                      IsVisible="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Switches.MayManage}">
+                            <Button Classes="toolbar iconOnly" ToolTip.Tip="Edit switch"
+                                    Command="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Switches.EditRowCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.edit}" />
+                            </Button>
+                            <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
+                                    Command="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Switches.DeleteRowCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                            </Button>
+                          </StackPanel>
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                   </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -130,32 +142,50 @@
                 <Button Classes="secondary" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
                   <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add policy" />
                 </Button>
-                <Button Classes="secondary" Command="{Binding EditCommand}" IsVisible="{Binding MayManage}">
-                  <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Edit" />
-                </Button>
-                <Button Classes="danger" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}">
-                  <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Delete" />
-                </Button>
-                <ui:ToolbarButton IsIconOnly="True" IconKey="chevronUp" Text="Move up" Command="{Binding MoveUpCommand}" IsVisible="{Binding MayManage}" />
-                <ui:ToolbarButton IsIconOnly="True" IconKey="chevronDown" Text="Move down" Command="{Binding MoveDownCommand}" IsVisible="{Binding MayManage}" />
               </WrapPanel>
               <Panel>
                 <DataGrid x:Name="PoliciesGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Classes="wrapRows" IsReadOnly="True"
                           CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single" Height="240">
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="Name" Width="*" MinWidth="90" Binding="{Binding Name}" x:DataType="vm:PolicyRowViewModel" />
-                    <DataGridTemplateColumn Header="Policy" Width="130" x:DataType="vm:PolicyRowViewModel">
+                    <DataGridTextColumn Header="Name" Width="*" MinWidth="80" Binding="{Binding Name}" x:DataType="vm:PolicyRowViewModel" />
+                    <DataGridTemplateColumn Header="Policy" Width="96" x:DataType="vm:PolicyRowViewModel">
                       <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate x:DataType="vm:PolicyRowViewModel">
                           <ui:StatusChip Margin="10,0" Text="{Binding Kind}" IsError="{Binding IsBlock}" />
                         </DataTemplate>
                       </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Devices" Width="1.5*" MinWidth="120" x:DataType="vm:PolicyRowViewModel">
+                    <DataGridTemplateColumn Header="Devices" Width="1.5*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
                       <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate x:DataType="vm:PolicyRowViewModel">
                           <TextBlock Text="{Binding Devices}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                      ToolTip.Tip="{Binding Devices}" />
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Width="136" CanUserSort="False" x:DataType="vm:PolicyRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                          <!-- Row actions like the Permissions page: icon buttons in fixed places, Delete in red -->
+                          <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0"
+                                      IsVisible="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Policies.MayManage}">
+                            <Button Classes="toolbar iconOnly" ToolTip.Tip="Move up"
+                                    Command="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Policies.MoveRowUpCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.chevronUp}" />
+                            </Button>
+                            <Button Classes="toolbar iconOnly" ToolTip.Tip="Move down"
+                                    Command="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Policies.MoveRowDownCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.chevronDown}" />
+                            </Button>
+                            <Button Classes="toolbar iconOnly" ToolTip.Tip="Edit policy"
+                                    Command="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Policies.EditRowCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.edit}" />
+                            </Button>
+                            <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
+                                    Command="{Binding $parent[UserControl].((vm:RadiusViewModel)DataContext).Policies.DeleteRowCommand}" CommandParameter="{Binding}">
+                              <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                            </Button>
+                          </StackPanel>
                         </DataTemplate>
                       </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -201,7 +231,12 @@
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="IP address" Width="100" Binding="{Binding IpAddress}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTextColumn Header="IP address" Width="110" Binding="{Binding IpAddress}" x:DataType="vm:SessionRowViewModel" />
+                <DataGridTextColumn Width="110" Binding="{Binding Duration}" SortMemberPath="DurationValue" CellStyleClasses="number" x:DataType="vm:SessionRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Duration" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
                 <DataGridTemplateColumn Header="State" Width="*" MinWidth="220" SortMemberPath="State" x:DataType="vm:SessionRowViewModel">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate x:DataType="vm:SessionRowViewModel">
@@ -209,11 +244,6 @@
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Width="80" Binding="{Binding Duration}" SortMemberPath="DurationValue" CellStyleClasses="number" x:DataType="vm:SessionRowViewModel">
-                  <DataGridTextColumn.Header>
-                    <TextBlock Classes="numberHeader" Text="Duration" />
-                  </DataGridTextColumn.Header>
-                </DataGridTextColumn>
               </DataGrid.Columns>
             </DataGrid>
             <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -250,7 +280,12 @@
                 <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Mac}" x:DataType="vm:LogRowViewModel" />
                 <DataGridTextColumn Header="EAP identity" Width="130" Binding="{Binding Identity}" x:DataType="vm:LogRowViewModel" />
                 <DataGridTextColumn Header="Device" Width="100" Binding="{Binding Device}" x:DataType="vm:LogRowViewModel" />
-                <DataGridTextColumn Header="IP address" Width="100" Binding="{Binding IpAddress}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Header="IP address" Width="110" Binding="{Binding IpAddress}" x:DataType="vm:LogRowViewModel" />
+                <DataGridTextColumn Width="90" Binding="{Binding Vlan}" CellStyleClasses="number" x:DataType="vm:LogRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="VLAN" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
                 <DataGridTemplateColumn Header="Result" Width="*" MinWidth="220" x:DataType="vm:LogRowViewModel">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate x:DataType="vm:LogRowViewModel">
@@ -259,11 +294,6 @@
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Width="64" Binding="{Binding Vlan}" CellStyleClasses="number" x:DataType="vm:LogRowViewModel">
-                  <DataGridTextColumn.Header>
-                    <TextBlock Classes="numberHeader" Text="VLAN" />
-                  </DataGridTextColumn.Header>
-                </DataGridTextColumn>
               </DataGrid.Columns>
             </DataGrid>
             <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

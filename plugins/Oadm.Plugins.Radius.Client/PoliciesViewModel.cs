@@ -254,6 +254,25 @@ public sealed partial class PoliciesViewModel : ValidatingViewModel
 
     private bool CanEdit() => MayManage && !IsSaving && Selected is not null;
 
+    /// <summary>The row's buttons (like the Permissions page): each selects its row, then acts on it.</summary>
+    [RelayCommand]
+    private Task EditRowAsync(PolicyRowViewModel? row) => Row(row, EditCommand.CanExecute, EditAsync);
+
+    [RelayCommand]
+    private Task DeleteRowAsync(PolicyRowViewModel? row) => Row(row, DeleteCommand.CanExecute, DeleteAsync);
+
+    [RelayCommand]
+    private Task MoveRowUpAsync(PolicyRowViewModel? row) => Row(row, MoveUpCommand.CanExecute, MoveUpAsync);
+
+    [RelayCommand]
+    private Task MoveRowDownAsync(PolicyRowViewModel? row) => Row(row, MoveDownCommand.CanExecute, MoveDownAsync);
+
+    private Task Row(PolicyRowViewModel? row, Func<object?, bool> can, Func<Task> act)
+    {
+        Selected = row;
+        return can(null) ? act() : Task.CompletedTask;
+    }
+
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private async Task EditAsync()
     {

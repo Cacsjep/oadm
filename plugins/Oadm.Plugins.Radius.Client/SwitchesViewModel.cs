@@ -140,6 +140,22 @@ public sealed partial class SwitchesViewModel : ObservableObject
 
     private bool CanEdit() => MayManage && Selected is not null;
 
+    /// <summary>The row's Edit button (like the Permissions page): selects the row, then edits it.</summary>
+    [RelayCommand]
+    private Task EditRowAsync(SwitchRowViewModel? row)
+    {
+        Selected = row;
+        return EditCommand.CanExecute(null) ? EditAsync() : Task.CompletedTask;
+    }
+
+    /// <summary>The row's Delete button.</summary>
+    [RelayCommand]
+    private Task DeleteRowAsync(SwitchRowViewModel? row)
+    {
+        Selected = row;
+        return DeleteCommand.CanExecute(null) ? DeleteAsync() : Task.CompletedTask;
+    }
+
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private async Task EditAsync()
     {
