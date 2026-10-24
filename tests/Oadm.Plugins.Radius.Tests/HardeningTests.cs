@@ -59,18 +59,72 @@ public sealed class HardeningTests
     [Fact]
     public async Task WhenPkiStopsAnOadmCertificateNoLongerPasses()
     {
-        // Fail closed: without PKI's CA there is no revocation list, so nothing of the CA passes, at once (not after the
-        // next maintenance round).
+        // Fail closed: without PKI's CA there is no revocation list, so nothing passes, at once (not after the next
+        // maintenance round): neither a certificate of the CA nor an Axis device ID one.
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         var certificate = harness.Ca.Camera(Serial);
+        var deviceId = harness.DeviceIds.Device(Serial);
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, certificate))).Final);
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, deviceId))).Final);
 
         harness.Ctx.FakeServices.Withdraw<IDeviceCertificateAuthority>();
-        var conversation = await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, certificate));
 
-        Assert.Equal(RadiusCode.AccessReject, conversation.Final);
-        Assert.Equal(CertificateRefusals.NotTrusted, (await LastLogRowAsync(harness)).Reason);
+        foreach (var presented in new[] { certificate, deviceId })
+        {
+            var conversation = await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, presented));
+            Assert.Equal(RadiusCode.AccessReject, conversation.Final);
+            Assert.StartsWith(CertificateRefusals.NoCa, (await LastLogRowAsync(harness)).Reason, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task APkiListedCertificateOfAnotherUseIsRefusedAndAnUnlistedOnePasses()
+    {
+        // An MQTT client certificate of the OADM CA (client authentication, axis-<serial>.local) is no network access
+        // certificate; one PKI does not list (from before the list) passes as before.
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        var device = harness.Ctx.DeviceList[0].Id;
+        var mqtt = harness.Ca.Camera(Serial);
+        var dot1x = harness.Ca.Camera(Serial);
+        var unlisted = harness.Ca.Camera(Serial);
+        harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = TestAuthority.SerialOf(mqtt), DeviceId = device, Purpose = DeviceCertificatePurposes.Mqtt }, mqtt.Leaf));
+        harness.Ca.List(dot1x, device);
+
+        var camera = Camera(harness.Ca.CaCertificate, mqtt);
+        var refused = await harness.Switch().RunAsync(camera);
+        Assert.Equal(RadiusCode.AccessReject, refused.Final);
+        Assert.StartsWith(CertificateRefusals.NotDot1x, (await LastLogRowAsync(harness)).Reason, StringComparison.Ordinal);
+        Assert.Equal((short)42, camera.AlertReceived); // bad certificate
+
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, dot1x))).Final);
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, unlisted))).Final);
+    }
+
+    [Fact]
+    public async Task AHandshakeNeverReadsTheCasAgainAndAChangedCaIsTrustedAtOnce()
+    {
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, harness.Ca.Camera(Serial)))).Final);
+        var reads = harness.Ca.PreviousReads;
+
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, harness.Ca.Camera(Serial)))).Final);
+        }
+
+        Assert.Equal(reads, harness.Ca.PreviousReads); // no hashing of the CAs per handshake
+
+        // The CA changed (a previous CA came with a replace): the next handshake builds the set again, without waiting for
+        // the minute round.
+        using var previous = new TestAuthority("Previous OADM CA");
+        var ofPrevious = previous.Camera(Serial);
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
+        harness.Ca.Previous.Add([previous.CaCertificate]);
+        harness.Ca.RaiseChanged();
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
     }
 
     // ------------------------------------------------------------------ revoke
@@ -119,7 +173,31 @@ public sealed class HardeningTests
     }
 
     [Fact]
-    public async Task ManySerialsAreCheckedInOnePassOverTheIeee8021XCertificates()
+    public async Task AnAxisDeviceIdSerialFromTheLogIsNeverRevoked()
+    {
+        // Revoking the factory certificate's serial would lock the camera out of 802.1X and EST for good: a serial only the
+        // log knows counts only when the logged certificate was issued by an OADM CA (also a previous one).
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        var factory = harness.DeviceIds.Device(Serial);
+        using var previous = new TestAuthority("Previous OADM CA");
+        harness.Ca.Previous.Add([previous.CaCertificate]);
+        harness.Ca.RaiseChanged();
+        var ofPrevious = previous.Camera(Serial);
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, factory))).Final);
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
+        harness.Tick();
+
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() =>
+            harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest([TestAuthority.SerialOf(factory)], RevokeReasons.DeviceReplaced)));
+        Assert.StartsWith(RadiusTexts.OnlyDot1x, refused.Message, StringComparison.Ordinal);
+        Assert.Empty(harness.Ca.RevokeCalls);
+
+        Assert.Equal(1, (await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest([TestAuthority.SerialOf(ofPrevious)], RevokeReasons.DeviceReplaced))).Revoked);
+    }
+
+    [Fact]
+    public async Task ManySerialsAreCheckedInOnePassWithoutSearchingPkiPerSerial()
     {
         await using var harness = await PluginHarness.CreateAsync();
         var serials = Enumerable.Range(1, 1200).Select(i => i.ToString("X6", System.Globalization.CultureInfo.InvariantCulture)).ToList();
@@ -131,8 +209,7 @@ public sealed class HardeningTests
         var reply = await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(serials, RevokeReasons.DeviceRemoved));
 
         Assert.Equal(1200, reply.Revoked);
-        Assert.All(harness.Ca.IssuedQueries, q => Assert.Equal(DeviceCertificatePurposes.Dot1x, q.Purpose)); // pages, never one search per serial
-        Assert.Equal(3, harness.Ca.IssuedQueries.Count);
+        Assert.Empty(harness.Ca.IssuedQueries); // the uses come from PKI's list in memory, never one search per serial
     }
 
     [Fact]
@@ -189,6 +266,55 @@ public sealed class HardeningTests
         await harness.AddSwitchAsync("Floor switch", "10.0.0.3");
         Assert.All(harness.Ctx.PublishedEvents.Where(e => e.Topic == RadiusTopics.Switches), e => Assert.Equal(PluginEventAudienceKind.AllDevices, e.Audience.Kind));
         Assert.DoesNotContain(harness.Ctx.EventsSeenBy(group), e => e.Topic == RadiusTopics.Switches);
+    }
+
+    [Fact]
+    public async Task AGroupUserGetsEmptyVlanSettings()
+    {
+        await using var harness = await PluginHarness.CreateAsync();
+        var device = harness.AddDevice(Serial, tags: ["Lobby"]);
+        await harness.RefreshDevicesAsync();
+        await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, new VlanSettings
+        {
+            Enabled = true,
+            Rules = [new VlanRule(VlanRuleKinds.Tag, "Vlan 20", null, 20), new VlanRule(VlanRuleKinds.Site, RadiusLimits.ThisServerSiteId, null, 30)],
+            DefaultVlan = 99,
+        });
+
+        var mine = await harness.CallAsync<VlanSettings>(RadiusMethods.GetVlans, null, harness.Ctx.CallAsGroup([device.Id]));
+
+        Assert.False(mine.Enabled);
+        Assert.Empty(mine.Rules);
+        Assert.Null(mine.DefaultVlan);
+        Assert.Empty(mine.TagChoices); // no tag that sets a VLAN to choose
+        var all = await harness.CallAsync<VlanSettings>(RadiusMethods.GetVlans);
+        Assert.Equal(2, all.Rules.Count);
+        Assert.Equal(["Lobby", "Vlan 20"], all.TagChoices.Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task TheTagsOfTheVlanRulesAreProtectedAndATagRuleWithoutProtectionMatchesNothing()
+    {
+        await using var harness = await PluginHarness.CreateAsync();
+        var settings = new VlanSettings
+        {
+            Enabled = true,
+            Rules = [new VlanRule(VlanRuleKinds.Tag, "Vlan 20", null, 20), new VlanRule(VlanRuleKinds.Tag, "Vlan 21", null, 21), new VlanRule(VlanRuleKinds.Site, RadiusLimits.ThisServerSiteId, null, 30)],
+        };
+
+        await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, settings);
+
+        Assert.Equal(["Vlan 20", "Vlan 21"], harness.Ctx.FakeProtectedTags.Names.Order(StringComparer.Ordinal));
+        Assert.NotNull(harness.Ctx.FakeProtectedTags.RefusalFor("VLAN 21")); // case-insensitive
+        Assert.Equal(RadiusTexts.VlanTag("Vlan 20"), harness.Ctx.FakeProtectedTags.RefusalFor("Vlan 20"));
+        Assert.Equal("The tag Vlan 20 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.", RadiusTexts.VlanTag("Vlan 20"));
+        await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, settings with { Rules = [settings.Rules[2]] });
+        Assert.Empty(harness.Ctx.FakeProtectedTags.Names); // a removed rule frees its tag
+
+        // A host that cannot protect the tags: the tag rules match no device (fail closed), site rules as before.
+        var tagged = new FakeDevice { Serial = Serial, Tags = ["Vlan 20"] };
+        Assert.Equal(20, new VlanPlan(settings).For(tagged));
+        Assert.Equal(30, new VlanPlan(settings, tagsProtected: false).For(tagged));
     }
 
     // ------------------------------------------------------------------ requests without EAP
@@ -283,15 +409,21 @@ public sealed class HardeningTests
     {
         // One socket per address: the answer leaves from the address the switch sent its request to (RFC 2865 3; a switch
         // drops an answer from another address). A wildcard socket would answer from the address the routing table picks.
-        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
-        Assert.Equal([IPAddress.Parse("10.0.0.17")], harness.Ctx.FakeNetwork.LastUdpAddresses);
+        // The loopback address stays listened (a test on the server itself); a new address is listened on within 5 s.
+        await using var harness = await PluginHarness.CreateAsync(h =>
+        {
+            h.AddDevice(Serial);
+            h.Interfaces.Cards.Add(new ServerNetworkInterface("lo", "lo", "Loopback", [IPAddress.Loopback], IsUp: true, IsLoopback: true));
+        });
+        Assert.Equal([IPAddress.Parse("10.0.0.17"), IPAddress.Loopback], harness.Ctx.FakeNetwork.LastUdpAddresses);
+        Assert.DoesNotContain(InterfaceOptions.From(harness.Interfaces.Cards[^1]).Id, harness.Service.ListInterfaces().Select(i => i.Id)); // not a choice
         var first = harness.Listener;
 
         harness.Interfaces.Cards.Add(FixedInterfaces.Card("eth1", "10.0.5.1"));
-        harness.Time.Advance(TimeSpan.FromSeconds(30));
+        harness.Time.Advance(TimeSpan.FromSeconds(5));
 
-        await Eventually.TrueAsync(() => harness.Ctx.FakeNetwork.LastUdpAddresses.Count == 2, "listening on the new address too");
-        Assert.Equal([IPAddress.Parse("10.0.0.17"), IPAddress.Parse("10.0.5.1")], harness.Ctx.FakeNetwork.LastUdpAddresses);
+        await Eventually.TrueAsync(() => harness.Ctx.FakeNetwork.LastUdpAddresses.Count == 3, "listening on the new address too");
+        Assert.Equal([IPAddress.Parse("10.0.0.17"), IPAddress.Parse("10.0.5.1"), IPAddress.Loopback], harness.Ctx.FakeNetwork.LastUdpAddresses);
         await Eventually.TrueAsync(() => !ReferenceEquals(first, harness.Service.Listener), "the new listener in place");
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         var conversation = await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, harness.Ca.Camera(Serial)));

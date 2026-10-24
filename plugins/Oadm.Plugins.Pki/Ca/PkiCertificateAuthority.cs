@@ -45,6 +45,8 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
 
     public bool IsRevoked(string serialNumber) => service.Issued.IsRevoked(serialNumber);
 
+    public string? PurposeOf(string serialNumber) => service.Issued.Find(serialNumber)?.Purpose;
+
     public CertificateRevocation? FindRevocation(string serialNumber) => service.Issued.FindRevocation(serialNumber);
 
     public IReadOnlyList<CertificateRevocation> Revocations => service.Issued.Revocations;

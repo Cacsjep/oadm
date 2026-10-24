@@ -68,6 +68,7 @@ public sealed partial class PkiService : IAsyncDisposable
     private volatile CaMaterial? _ca;
     private volatile StoredCa? _stored;
     private volatile IReadOnlyList<StoredPreviousCa> _previous = [];
+    private PreviousChainCache? _previousChains; // PreviousChains() of the list in _previous
     private volatile PkiConfig _config = new();
     private volatile bool _generating;
     private volatile string? _generationError;
@@ -135,7 +136,7 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <summary>Completes when the default CA of the first start is created (tests).</summary>
     public Task Background => _background;
 
-    /// <summary>Raised after a new CA became active (generated, imported, replaced).</summary>
+    /// <summary>Raised after a new CA became active (generated, imported, replaced) and after a previous CA was removed.</summary>
     public event EventHandler? CaChanged;
 
     /// <summary>Raised after certificates were revoked or left the revocation list (the CA service's <c>RevocationChanged</c>).</summary>
@@ -420,12 +421,26 @@ public sealed partial class PkiService : IAsyncDisposable
 
     /// <summary>
     /// The previous CAs (public parts, DER) for other plugins' certificate checks, newest first: each the CA certificate,
-    /// then its chain; unreadable entries are left out.
+    /// then its chain; unreadable entries are left out. Read from the PEM once per list of previous CAs (the list is replaced
+    /// on every change), so a caller may ask for every authentication. The arrays are shared: read only.
     /// </summary>
     public IReadOnlyList<IReadOnlyList<byte[]>> PreviousChains()
     {
+        var previous = _previous;
+        if (Volatile.Read(ref _previousChains) is { } cached && ReferenceEquals(cached.Source, previous))
+        {
+            return cached.Chains;
+        }
+
+        var chains = ReadChains(previous);
+        Volatile.Write(ref _previousChains, new PreviousChainCache(previous, chains));
+        return chains;
+    }
+
+    private static List<IReadOnlyList<byte[]>> ReadChains(IReadOnlyList<StoredPreviousCa> previousCas)
+    {
         var chains = new List<IReadOnlyList<byte[]>>();
-        foreach (var previous in _previous)
+        foreach (var previous in previousCas)
         {
             try
             {
@@ -500,6 +515,8 @@ public sealed partial class PkiService : IAsyncDisposable
         {
             _gate.Release();
         }
+
+        CaChanged?.Invoke(this, EventArgs.Empty); // the 802.1X server stops trusting the removed CA at once
 
         await PublishAsync().ConfigureAwait(false);
         return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
@@ -1063,4 +1080,7 @@ public sealed partial class PkiService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: publishing the state failed")]
     private partial void LogPublishFailed(Exception ex);
+
+    /// <summary><see cref="PreviousChains"/> of one list of previous CAs.</summary>
+    private sealed record PreviousChainCache(IReadOnlyList<StoredPreviousCa> Source, IReadOnlyList<IReadOnlyList<byte[]>> Chains);
 }

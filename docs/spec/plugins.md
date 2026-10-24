@@ -322,9 +322,16 @@ is always on.
   the serial, `CertificateSerials.Normalize`), `FindRevocation`, `Revocations`, event `RevocationChanged` (it belongs to the
   offer: subscribe again when `Find` returns another instance), `ListIssuedAsync(IssuedCertificateQuery)`,
   `GetIssuedCertificateAsync(serial)` (DER), `RevokeAsync(serials, RevocationReason, userName)`, `PreviousChains` (the
-  previous OADM CAs with their chains, DER, for servers that check device certificates: the 802.1X server); the request's
+  previous OADM CAs with their chains, DER, for servers that check device certificates: the 802.1X server; PKI reads them
+  once per change), `PurposeOf(serial)` (the use of a listed certificate, a lookup in memory); the request's
   `Purpose` (`DeviceCertificatePurposes`). `CertificateDescriber` (SDK) and the client SDK's `CertificateWindow` show a certificate
   in plain names. Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
+- **Protected tags** (`ICorePluginContext.ProtectedTags`, `Oadm.Sdk.Devices.IProtectedTags.Protect(names, refusal)`, SDK
+  0.4.0; server `ProtectedTagRegistry`): a core plugin whose settings act on devices by tag names those tags; only users
+  with all devices then add them to or remove them from devices (docs/spec/tags.md "Protected tags"). Each call replaces
+  the plugin's set; the host forgets it when the plugin stops, faults or its package is turned off, and a late call of a
+  stopped plugin changes nothing. Null on older hosts: the plugin treats its tag rules as unsafe (the 802.1X server's tag
+  rules then match nothing). Test fake: `FakeProtectedTags` (`FakeCoreContext.FakeProtectedTags`).
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
   (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
   set); `AllTaskPlugins` / `AllCorePlugins` / `Packages` (`PluginPackageState`: origin, enabled, has page, menu task

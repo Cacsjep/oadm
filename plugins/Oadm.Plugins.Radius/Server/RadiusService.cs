@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
 
 using Microsoft.Extensions.Logging;
@@ -40,6 +41,9 @@ public sealed record RadiusHost(
 
     public IEventPublisher? Publisher { get; init; }
 
+    /// <summary>The tags of the VLAN rules, protected by the host; null on older hosts (tag rules then match no device).</summary>
+    public IProtectedTags? ProtectedTags { get; init; }
+
     /// <summary>The device groups (state events per group); null on older hosts.</summary>
     public IDeviceScopes? Scopes { get; init; }
 
@@ -76,13 +80,13 @@ public sealed partial class RadiusService : IAsyncDisposable
     public const string FailedEvent = "oadm.radius.failed";
 
     private const int QueueCapacity = 8192;
-    private const int PerSerialLookups = 50; // more serials to revoke: one pass over PKI's 802.1X certificates
     private const int EventChunk = 500;
     private const string SecretPurposePrefix = "radius:switch:";
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MaintainInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan ResolveInterval = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan ListenRetryInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan AddressCheckInterval = TimeSpan.FromSeconds(5); // a new address is listened on within 5 s
     private static readonly TimeSpan QuietPublish = TimeSpan.FromSeconds(5);
 
     private readonly RadiusHost _host;
@@ -103,6 +107,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     private readonly Dictionary<Guid, (string Name, IUdpRelay Relay)> _siteRelays = [];
     private readonly HashSet<Task> _running = [];
     private readonly Lock _unknownGate = new();
+    private readonly Lock _followGate = new();
     private Task[] _workers = [];
     private volatile SwitchTable _switches = SwitchTable.Empty;
     private List<StoredSwitch> _stored = [];
@@ -112,11 +117,13 @@ public sealed partial class RadiusService : IAsyncDisposable
     private RadiusSettings _config = new();
     private IUdpRelay? _listener;
     private IReadOnlyList<IPAddress> _boundAddresses = [];
-    private IDeviceCertificateAuthority? _followed;
+    private IDeviceCertificateAuthority? _followed; // under _followGate
+    private long _caVersion; // + 1 with every Changed of the followed CA (CaTrust.Version)
     private ITimer? _tickTimer;
     private ITimer? _maintainTimer;
     private ITimer? _indexTimer;
     private ITimer? _listenRetry;
+    private ITimer? _addressCheck;
     private long _lastResolveTicks;
     private long _unknownCount;
     private (string Address, string? Site, DateTime At)? _lastUnknown;
@@ -185,6 +192,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             _maintainTimer = _host.Time.CreateTimer(_ => Track(MaintainAsync(_cts.Token)), null, MaintainInterval, MaintainInterval);
             _indexTimer = _host.Time.CreateTimer(_ => Track(RefreshIndexAsync(onlyAfterMiss: false)), null, DeviceIndex.RefreshInterval, DeviceIndex.RefreshInterval);
             _listenRetry = _host.Time.CreateTimer(_ => Track(RetryListenAsync(_cts.Token)), null, ListenRetryInterval, ListenRetryInterval);
+            _addressCheck = _host.Time.CreateTimer(_ => CheckAddresses(), null, AddressCheckInterval, AddressCheckInterval);
             LogStarted(_config.Port, _switches.All.Count);
         }
         catch
@@ -215,7 +223,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         };
         _config = config;
         _vlanSettings = await _store.VlansAsync(ct).ConfigureAwait(false) ?? new VlanSettings();
-        _vlans = new VlanPlan(_vlanSettings);
+        _vlans = PlanOf(_vlanSettings);
         _stored = [.. await _store.SwitchesAsync(ct).ConfigureAwait(false)];
         var entries = new List<SwitchEntry>();
         foreach (var stored in _stored)
@@ -248,7 +256,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
 
         Unfollow();
-        foreach (var timer in new[] { _tickTimer, _maintainTimer, _indexTimer, _listenRetry })
+        foreach (var timer in new[] { _tickTimer, _maintainTimer, _indexTimer, _listenRetry, _addressCheck })
         {
             if (timer is not null)
             {
@@ -817,20 +825,38 @@ public sealed partial class RadiusService : IAsyncDisposable
         return GetState(hasAllDevices: true);
     }
 
-    /// <summary>The VLAN rules with the tag choices (a user limited to a group: only the tags the rules name).</summary>
+    /// <summary>
+    /// The VLAN rules with the tag choices of the managed devices and the rules. A user limited to a group gets empty VLAN
+    /// settings: the rules are server-wide (docs/spec/device-scope.md "Server-wide services") and their tags are protected.
+    /// </summary>
     public VlanSettings GetVlans(bool hasAllDevices)
     {
-        var vlans = _vlanSettings;
-        var tags = vlans.Rules.Where(r => r.Kind == VlanRuleKinds.Tag).Select(r => r.RefId);
-        if (hasAllDevices)
+        if (!hasAllDevices)
         {
-            tags = tags.Concat(_index.Tags());
+            return new VlanSettings();
         }
 
+        var vlans = _vlanSettings;
+        var tags = VlanPlan.TagsOf(vlans).Concat(_index.Tags());
         return vlans with
         {
             TagChoices = [.. tags.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Select(t => new TagChoice(t, t))],
         };
+    }
+
+    /// <summary>
+    /// The plan of <paramref name="vlans"/> with its tags protected by the host (only users with all devices add or remove
+    /// them on devices, docs/spec/radius-server.md "VLANs"); without the host's protection the tag rules match nothing.
+    /// </summary>
+    private VlanPlan PlanOf(VlanSettings vlans)
+    {
+        if (_host.ProtectedTags is not { } protectedTags)
+        {
+            return new VlanPlan(vlans, tagsProtected: false);
+        }
+
+        protectedTags.Protect(VlanPlan.TagsOf(vlans), RadiusTexts.VlanTag);
+        return new VlanPlan(vlans);
     }
 
     /// <summary>Save of the VLAN rules; applies to the next authentication of each device.</summary>
@@ -870,9 +896,17 @@ public sealed partial class RadiusService : IAsyncDisposable
         await _saveGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await _store.SaveVlansAsync(vlans, ct).ConfigureAwait(false);
-            _vlanSettings = vlans;
-            _vlans = new VlanPlan(vlans);
+            // The tags of the old and the new rules stay protected while the save runs (a failed save keeps the old plan).
+            _host.ProtectedTags?.Protect([.. VlanPlan.TagsOf(_vlanSettings), .. VlanPlan.TagsOf(vlans)], RadiusTexts.VlanTag);
+            try
+            {
+                await _store.SaveVlansAsync(vlans, ct).ConfigureAwait(false);
+                _vlanSettings = vlans;
+            }
+            finally
+            {
+                _vlans = PlanOf(_vlanSettings);
+            }
         }
         finally
         {
@@ -1370,68 +1404,73 @@ public sealed partial class RadiusService : IAsyncDisposable
     }
 
     /// <summary>
-    /// The first serial that is no IEEE 802.1X certificate, else null: in PKI's list with another use (HTTPS, MQTT, RTSPS),
-    /// or in neither PKI's list nor this server's log (a client certificate the 802.1X server saw counts as one).
+    /// The first serial that is no IEEE 802.1X certificate, else null, in one pass (docs/spec/radius-server.md "Revoke"): PKI
+    /// lists it with another use (HTTPS, MQTT, RTSPS); or PKI does not list it and not every client certificate of this
+    /// server's log with that serial was issued by an OADM CA (an Axis device ID certificate never counts: revoking its
+    /// serial would lock the camera out for good), or the log has none.
     /// </summary>
     private async Task<string?> FirstOtherUseAsync(IDeviceCertificateAuthority ca, List<string> serials, CancellationToken ct)
     {
-        var dot1x = new HashSet<string>(StringComparer.Ordinal);
-        var wanted = serials.ToHashSet(StringComparer.Ordinal);
-        if (serials.Count > PerSerialLookups)
+        var unlisted = new List<string>();
+        foreach (var serial in serials)
         {
-            // Many: one pass over PKI's 802.1X certificates (pages of 500) until every chosen serial is found.
-            for (var offset = 0; ; offset += IssuedCertificateQuery.MaxLimit)
+            switch (ca.PurposeOf(serial))
             {
-                var page = await ca.ListIssuedAsync(new IssuedCertificateQuery
-                {
-                    Purpose = DeviceCertificatePurposes.Dot1x,
-                    Offset = offset,
-                    Limit = IssuedCertificateQuery.MaxLimit,
-                }, ct).ConfigureAwait(false);
-                foreach (var row in page.Rows)
-                {
-                    var serial = CertificateSerials.Normalize(row.SerialNumber);
-                    if (wanted.Contains(serial))
-                    {
-                        dot1x.Add(serial);
-                    }
-                }
-
-                if (dot1x.Count == wanted.Count || page.Rows.Count < IssuedCertificateQuery.MaxLimit || offset + page.Rows.Count >= page.Total)
-                {
+                case null:
+                    unlisted.Add(serial);
                     break;
-                }
+                case DeviceCertificatePurposes.Dot1x:
+                    break;
+                default:
+                    return serial;
             }
         }
 
-        IReadOnlySet<string>? seen = null;
-        foreach (var serial in serials)
+        if (unlisted.Count == 0)
         {
-            if (dot1x.Contains(serial))
+            return null;
+        }
+
+        var logged = _log.CertificatesOf(unlisted.ToHashSet(StringComparer.Ordinal));
+        var trust = TrustNow(); // the current and the previous OADM CAs
+        var now = _host.Time.GetUtcNow();
+        foreach (var serial in unlisted)
+        {
+            if (!logged.TryGetValue(serial, out var fingerprints))
             {
-                continue;
+                return serial;
             }
 
-            var found = await ca.ListIssuedAsync(new IssuedCertificateQuery { Search = serial, Limit = IssuedCertificateQuery.MaxLimit }, ct).ConfigureAwait(false);
-            var row = found.Rows.FirstOrDefault(r => CertificateSerials.Normalize(r.SerialNumber) == serial);
-            if (row is not null)
+            foreach (var fingerprint in fingerprints)
             {
-                if (row.Purpose == DeviceCertificatePurposes.Dot1x)
+                if (await _log.CertificateByFingerprintAsync(fingerprint, ct).ConfigureAwait(false) is not { } der || !IssuedByOadmCa(trust, der, now))
                 {
-                    continue;
+                    return serial;
                 }
-
-                return serial;
-            }
-
-            seen ??= _log.CertificateSerials();
-            if (!seen.Contains(serial))
-            {
-                return serial;
             }
         }
 
         return null;
+    }
+
+    /// <summary>The logged certificate chains to an OADM CA that issued it directly (checked within its own validity).</summary>
+    private static bool IssuedByOadmCa(CaTrust trust, byte[] der, DateTimeOffset now)
+    {
+        X509Certificate2 leaf;
+        try
+        {
+            leaf = X509CertificateLoader.LoadCertificate(der);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+
+        using (leaf)
+        {
+            var notAfter = new DateTimeOffset(leaf.NotAfter.ToUniversalTime());
+            return DeviceCertificateValidator.ChainsTo(trust, leaf, [], notAfter < now ? notAfter : now);
+        }
     }
 
     // ------------------------------------------------------------------ maintenance: CA, server certificate, devices
@@ -1478,9 +1517,11 @@ public sealed partial class RadiusService : IAsyncDisposable
         {
             Follow();
             var ca = _host.Authority();
-            if (CaTrust.KeyOf(ca) != _trust.Key)
+            var trust = _trust;
+            if (!ReferenceEquals(ca, trust.Authority) || CaTrust.KeyOf(ca) != trust.Key)
             {
-                _trust = CaTrust.Build(ca);
+                // Once a minute the hashes too: previous CAs that changed without a Changed event.
+                _trust = CaTrust.Build(ca, Volatile.Read(ref _caVersion));
             }
 
             try
@@ -1541,12 +1582,13 @@ public sealed partial class RadiusService : IAsyncDisposable
     {
         var trust = _trust;
         var ca = _host.Authority();
-        if (CaTrust.KeyOf(ca) == trust.Key)
+        if (ReferenceEquals(ca, trust.Authority) && trust.Version == Volatile.Read(ref _caVersion))
         {
-            return trust;
+            return trust; // the same offer, no Changed since the build: two reads, no hashing per handshake
         }
 
-        trust = CaTrust.Build(ca);
+        Follow(); // a new offer: its Changed events count from now on
+        trust = CaTrust.Build(ca, Volatile.Read(ref _caVersion));
         _trust = trust;
         return trust;
     }
@@ -1558,24 +1600,36 @@ public sealed partial class RadiusService : IAsyncDisposable
         return bytes.Length == 4 && bytes[0] == 169 && bytes[1] == 254;
     }
 
+    /// <summary>Follows the current CA offer's events (from the maintenance round and from a handshake that met a new offer).</summary>
     private void Follow()
     {
-        var ca = _host.Authority();
-        if (ReferenceEquals(ca, _followed))
+        lock (_followGate)
         {
-            return;
-        }
+            var ca = _host.Authority();
+            if (ReferenceEquals(ca, _followed) || _stopping)
+            {
+                return;
+            }
 
-        Unfollow();
-        _followed = ca;
-        if (ca is not null)
-        {
-            ca.Changed += OnCaChanged;
-            ca.RevocationChanged += OnRevocationChanged;
+            UnfollowLocked();
+            _followed = ca;
+            if (ca is not null)
+            {
+                ca.Changed += OnCaChanged;
+                ca.RevocationChanged += OnRevocationChanged;
+            }
         }
     }
 
     private void Unfollow()
+    {
+        lock (_followGate)
+        {
+            UnfollowLocked();
+        }
+    }
+
+    private void UnfollowLocked()
     {
         if (_followed is { } old)
         {
@@ -1585,7 +1639,12 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
     }
 
-    private void OnCaChanged(object? sender, EventArgs e) => Track(Task.Run(() => MaintainAsync(_cts.Token)));
+    /// <summary>The CA changed: the next handshake builds the trusted set again (<see cref="CaTrust.Version"/>), the round follows.</summary>
+    private void OnCaChanged(object? sender, EventArgs e)
+    {
+        Interlocked.Increment(ref _caVersion);
+        Track(Task.Run(() => MaintainAsync(_cts.Token)));
+    }
 
     private void OnRevocationChanged(object? sender, EventArgs e) => PublishToEveryPage(RadiusTopics.Revoked, "{}");
 
@@ -1642,7 +1701,50 @@ public sealed partial class RadiusService : IAsyncDisposable
     private static IReadOnlyList<IPAddress> ListenAddresses(ServerNetworkInterface? nic) =>
         nic is null ? [] : [.. nic.Addresses.Where(a => !a.IsIPv6LinkLocal)];
 
-    private List<IPAddress> AllListenAddresses() => [.. UsableInterfaces().SelectMany(ListenAddresses).Distinct()];
+    /// <summary>
+    /// All interfaces: every address of every card that is up, plus the loopback addresses (a RADIUS test on the server
+    /// itself, as with the wildcard socket before); none without a card (then the listener takes every address).
+    /// </summary>
+    private List<IPAddress> AllListenAddresses()
+    {
+        var cards = UsableInterfaces().SelectMany(ListenAddresses).ToList();
+        if (cards.Count == 0)
+        {
+            return [];
+        }
+
+        var loopback = _host.Interfaces.List().Where(n => n.IsUp && n.IsLoopback).SelectMany(ListenAddresses).Where(IPAddress.IsLoopback);
+        return [.. cards.Concat(loopback).Distinct()];
+    }
+
+    /// <summary>
+    /// Every 5 s while listening: the addresses of the cards (one cheap list of the interfaces); when they changed, listens on
+    /// the new set at once instead of at the next 30 s retry. The OS has no address change event the plugin host passes on.
+    /// </summary>
+    private void CheckAddresses()
+    {
+        if (_listener is null || _stopping)
+        {
+            return; // the 30 s retry opens a listener that is not there
+        }
+
+        try
+        {
+            var now = InterfaceOptions.IsAll(_config.ListenOn) ? AllListenAddresses() : ListenAddresses(ListenInterface());
+            if (now.ToHashSet().SetEquals(_boundAddresses))
+            {
+                return;
+            }
+        }
+#pragma warning disable CA1031 // Checked again in 5 s.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return;
+        }
+
+        Track(RetryListenAsync(_cts.Token));
+    }
 
     private List<ServerNetworkInterface> UsableInterfaces() =>
         [.. _host.Interfaces.List().Where(n => n.IsUp && !n.IsLoopback && ListenAddresses(n).Count > 0)];
@@ -2063,6 +2165,9 @@ public static class RadiusTexts
 
     /// <summary>Revoke without PKI's permission (the host's wording of a missing permission).</summary>
     public const string NeedsCaPermission = "Your role does not allow: PKI: Manage the certificate authority.";
+
+    /// <summary>"The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed."</summary>
+    public static string VlanTag(string tag) => $"The tag {tag} sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.";
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");
 
