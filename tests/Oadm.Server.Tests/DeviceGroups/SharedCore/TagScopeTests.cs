@@ -97,7 +97,7 @@ public sealed class TagScopeTests
     }
 
     [Fact]
-    public async Task AProtectedTagIsNeverRenamedOrDeletedAlsoByAnAdministrator()
+    public async Task AProtectedTagIsNotRenamedOrDeletedWhileItsPluginRunsAlsoByAnAdministrator()
     {
         await using var host = await TestServerHost.StartAsync();
         await GroupCallers.DeviceAsync(host, 1, "Vlan 20", "Vlan 30");
@@ -115,11 +115,10 @@ public sealed class TagScopeTests
         Assert.Contains(tags, t => t.Name == "Vlan 20");
         Assert.Contains(tags, t => t.Name == "Vlan 30");
 
-        // A recolor keeps the name; a stopped plugin still refuses, a removed one no longer.
+        // A recolor keeps the name; a stopped plugin no longer refuses a rename or delete (its rules match nothing then,
+        // and OADM is never limited by a plugin that is off, e.g. a lapsed license).
         await host.Tags.UpdateAsync(new Proto.UpdateTagRequest { Name = "Vlan 20", Color = Proto.TagColor.Blue });
         registry.Detach("oadm.radius");
-        Assert.Equal(StatusCode.FailedPrecondition, (await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.DeleteAsync(new Proto.TagName { Name = "Vlan 20" }))).StatusCode);
-        registry.RemoveOwner("oadm.radius");
         await host.Tags.UpdateAsync(new Proto.UpdateTagRequest { Name = "Vlan 20", NewName = "Vlan 21" });
         await host.Tags.DeleteAsync(new Proto.TagName { Name = "Vlan 21" });
     }
