@@ -24,6 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The settings of OADM 4.1 and of development builds that PKI makes policies of (docs/spec/pki.md "Converting existing settings"). -->
+    <None Include="Fixtures\Conversion\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <!-- The 802.1X server is part of the PKI package (Radius/ in both projects). -->
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki\Oadm.Plugins.Pki.csproj" />

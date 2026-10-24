@@ -1,0 +1,1 @@
+{"enabled":true,"rules":[{"kind":"tag","refId":"PTZ","refName":"PTZ","vlan":20},{"kind":"site","refId":"00000000-0000-0000-0000-000000000000","refName":"This server","vlan":30},{"kind":"site","refId":"7d1f3f6e-2b7c-4b55-9c3e-5a1f6c0a9b01","refName":"PTZ","vlan":40}],"defaultVlan":99}

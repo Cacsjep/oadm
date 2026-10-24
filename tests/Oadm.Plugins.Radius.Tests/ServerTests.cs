@@ -290,9 +290,7 @@ public sealed class ServerTests
         Assert.Contains("oadm-test", state.ServerCertificate.Names);
         Assert.Equal(["all", "eth0"], state.Interfaces.Select(i => i.Id));
         Assert.Equal(RadiusLimits.DefaultLogKept, state.Settings.LogKept);
-        Assert.Equal("1.2", state.Settings.MinimumTls);
-        Assert.NotEmpty(state.Settings.CipherSuites);
-        Assert.DoesNotContain(state.CipherSuitesListed.Where(s => s.Legacy), s => state.Settings.CipherSuites.Contains(s.Id));
+        Assert.Equal(3, state.PoliciesApply); // the defaults: 802.1X server, Allow CA OADM CA and Axis device ID
 
         harness.Listener.SetState(RelayState.PortInUse);
         Assert.Equal("Port 1812 is used by another program", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
@@ -420,26 +418,24 @@ public sealed class ServerTests
     }
 
     [Fact]
-    public async Task SettingsAreCheckedAppliedAndTheMinimumVersionRefusesOlderCameras()
+    public async Task SettingsAreCheckedAndAppliedAndTheServerPolicysMinimumVersionRefusesOlderCameras()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         var state = await harness.CallAsync<RadiusState>(RadiusMethods.GetState);
 
         await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with { LogKept = 10 }));
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with { CipherSuites = [] }));
         await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with { ListenOn = "gone" }));
-        // TLS 1.3 only, but just TLS 1.2 suites checked: nothing usable.
-        await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with
-        {
-            MinimumTls = "1.3",
-            CipherSuites = [.. state.CipherSuitesListed.Where(s => !s.Tls13 && !s.Legacy).Select(s => s.Id)],
-        }));
-
-        var saved = await harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with { MinimumTls = "1.3", LogKept = 2000 });
-
-        Assert.Equal("1.3", saved.Settings.MinimumTls);
+        var saved = await harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with { LogKept = 2000 });
         Assert.Equal(2000, saved.Settings.LogKept);
+
+        // TLS 1.3 only, but just TLS 1.2 suites checked: nothing usable (PKI refuses the 802.1X server policy).
+        var server = harness.Policies.ServerPolicy!;
+        var tls12Only = server with { MinimumTls = "1.3", CipherSuites = [.. RadiusPolicies.CipherSuites.Where(s => !s.Tls13 && !s.Legacy).Select(s => s.Id)] };
+        Assert.Equal(Pki.Policies.PolicyFields.CipherSuites, (await harness.Policies.SaveAsync(tls12Only, "admin", RadiusPolicies.CipherSuites, CancellationToken.None)).Error?.Field);
+
+        await harness.SetServerPolicyAsync(p => p with { MinimumTls = "1.3" });
+        Assert.Equal(Protocol.Tls.TlsVersion.Tls13, harness.Service.Processor.Options.Tls.MinimumVersion); // at once, without a restart
         var oldCamera = Camera(harness, harness.Ca.Camera(Serial), [ProtocolVersion.TLSv12]);
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(oldCamera)).Final);
         harness.Tick();

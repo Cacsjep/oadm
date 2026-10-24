@@ -91,13 +91,11 @@ public sealed class PluginTests
         var row = await harness.AddSwitchAsync("Core switch", "10.0.0.2");
 
         // No method takes a device id: rows of devices are filtered to the caller (own tests below), changes are for users
-        // with all devices. Every id field: the switch id (deleteSwitch, saveSwitch), the log row id (getLogCertificate), the
-        // sites, tags and serials of the policies (savePolicies, countRevocations), the CA ids (saveTrustedCas).
+        // with all devices. Every id field: the switch id (deleteSwitch, saveSwitch), the log row id (getLogCertificate). The
+        // policies are PKI's (its own canary).
         await new PluginCanary(harness.Ctx, harness.Plugin, inside, outside)
             .WithoutDevices(RadiusMethods.GetState, "server-wide state, no device data")
             .WithoutDevices(RadiusMethods.ListSwitches, "server-wide switches, no device data")
-            .WithoutDevices(RadiusMethods.GetPolicies, "the policies; tag choices of the devices only for all devices")
-            .WithoutDevices(RadiusMethods.GetTrustedCas, "PKI's CAs, no device data")
             .WithoutDevices(RadiusMethods.ListSessions, "rows filtered to the caller's devices (GroupUsersSeeOnlyTheRowsOfTheirDevices)")
             .WithoutDevices(RadiusMethods.ListLog, "rows filtered to the caller's devices", """{"search":null}""")
             .WithoutDevices(RadiusMethods.GetLogCertificate, "a row id; rows of other devices answer like unknown ones", """{"id":1}""")
@@ -106,9 +104,6 @@ public sealed class PluginTests
             .AllDevicesOnly(RadiusMethods.SaveSwitch, $$"""{"id":"{{row.Id}}","name":"x","address":"10.0.0.9"}""")
             .AllDevicesOnly(RadiusMethods.GenerateSecret)
             .AllDevicesOnly(RadiusMethods.DeleteSwitch, $$"""{"id":"{{row.Id}}"}""")
-            .AllDevicesOnly(RadiusMethods.SavePolicies, """{"policies":[]}""")
-            .AllDevicesOnly(RadiusMethods.SaveTrustedCas, """{"cas":[]}""")
-            .AllDevicesOnly(RadiusMethods.CountRevocations, """{"thisServer":true}""")
             .AllDevicesOnly(RadiusMethods.DeleteLog)
             .RunAsync();
         Assert.Single(harness.Service.ListSwitches().Switches); // the refused delete changed nothing
@@ -156,9 +151,6 @@ public sealed class PluginTests
         Assert.NotEmpty(seen);
         Assert.All(seen, id => Assert.Equal(inside.Id.ToString(), id));
 
-        // Tag choices of the devices only for users with all devices.
-        Assert.Empty((await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies, null, group)).TagChoices);
-        Assert.Equal(["Lobby", "Secret tag"], (await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies)).TagChoices.Select(t => t.Name));
         Assert.False((await harness.CallAsync<RadiusState>(RadiusMethods.GetState, null, group)).HasAllDevices);
         Assert.Empty(harness.Ctx.RefusedAccesses);
     }

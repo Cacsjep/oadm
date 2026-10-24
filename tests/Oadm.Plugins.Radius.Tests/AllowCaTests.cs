@@ -1,3 +1,4 @@
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Server;
@@ -9,10 +10,11 @@ using Org.BouncyCastle.Tls;
 namespace Oadm.Plugins.Radius.Tests;
 
 /// <summary>
-/// Trusted CAs (docs/spec/radius-server.md "Who passes", docs/spec/pki.md "Services select CAs"): the default selection,
-/// PKI's "Used by", a CA left out or gone refuses at once, an imported CA without "Only devices OADM manages".
+/// Allow CA policies (docs/spec/pki.md "Policies", docs/spec/radius-server.md "Who passes"): the defaults, a CA without a
+/// policy or gone refuses at once, an imported CA without "Only devices OADM manages", an enterprise root never lets a
+/// sibling CA in.
 /// </summary>
-public sealed class TrustedCaTests
+public sealed class AllowCaTests
 {
     private const string Serial = "ACCC8E123456";
 
@@ -26,66 +28,58 @@ public sealed class TrustedCaTests
     }
 
     [Fact]
-    public async Task TheOadmCaWithItsPreviousOnesAndTheAxisDeviceIdAreTrustedByDefaultAndPkiKnows()
+    public async Task TheOadmCaWithItsPreviousOnesAndTheAxisDeviceIdAreAllowedByDefault()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         using var previous = new TestAuthority("Previous OADM CA");
         harness.Ca.Previous.Add([previous.CaCertificate]);
         harness.Ca.RaiseChanged();
 
-        var list = await harness.CallAsync<TrustedCaList>(RadiusMethods.GetTrustedCas);
-
-        Assert.Equal([CertificateAuthorityInfo.OadmId, CertificateAuthorityInfo.AxisDeviceIdId], list.Cas.Select(c => c.Id));
-        Assert.All(list.Cas, c => Assert.True(c.Trusted && c.OnlyManaged));
-        Assert.Equal(1, list.Cas[0].PreviousCount);
-        await Eventually.TrueAsync(() => harness.Ca.UsedBy.LastOrDefault().Ids?.Count == 3, "PKI told about the previous CA too");
-        var used = harness.Ca.UsedBy.Last();
-        Assert.Equal(("oadm.radius", "802.1X server"), (used.Service, used.Name));
-        Assert.Contains(CaTrust.PreviousId(previous.CaCertificate), used.Ids);
+        Assert.Equal([CertificateAuthorityInfo.OadmId, CertificateAuthorityInfo.AxisDeviceIdId], harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Select(p => p.CaId));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, previous.Camera(Serial)))).Final);
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
+        Assert.Empty(harness.Ca.UsedBy); // PKI knows its own policies: the 802.1X server tells it nothing
     }
 
     [Fact]
-    public async Task ACaLeftOutRefusesItsCertificatesAtOnce()
+    public async Task ACaWithoutAPolicyRefusesItsCertificatesAtOnce()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
 
-        var saved = await harness.CallAsync<TrustedCaList>(RadiusMethods.SaveTrustedCas, new TrustedCaSettings { Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId)] });
+        await harness.SetAllowCasAsync((CertificateAuthorityInfo.OadmId, true));
 
-        Assert.False(saved.Cas.Single(c => c.Id == CertificateAuthorityInfo.AxisDeviceIdId).Trusted);
-        Assert.Equal([CertificateAuthorityInfo.OadmId], harness.Ca.UsedBy.Last().Ids);
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
         Assert.Equal(CertificateRefusals.NotTrusted, (await LastLogRowAsync(harness)).Reason);
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final);
 
-        var unknown = await Assert.ThrowsAsync<ArgumentException>(() =>
-            harness.CallAsync<TrustedCaList>(RadiusMethods.SaveTrustedCas, new TrustedCaSettings { Cas = [new TrustedCaChoice("imported:nope")] }));
-        Assert.Equal("cas", unknown.ParamName);
+        var unknown = await harness.Policies.SaveAsync(new PkiPolicy { Name = "Nope", Kind = PolicyKinds.AllowCa, CaId = "imported:nope" }, "admin", RadiusPolicies.CipherSuites, CancellationToken.None);
+        Assert.Equal(new PolicyFieldError(PolicyFields.Ca, PolicyTexts.UnknownCa), unknown.Error);
+        var twice = await harness.Policies.SaveAsync(new PkiPolicy { Name = "Again", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId }, "admin", RadiusPolicies.CipherSuites, CancellationToken.None);
+        Assert.Equal(new PolicyFieldError(PolicyFields.Ca, PolicyTexts.CaTaken), twice.Error);
     }
 
     [Fact]
-    public async Task ACaUntickedWhileAHandshakeRebuildsTheSetNeverPassesAfterwards()
+    public async Task APolicyDeletedWhileAHandshakeRebuildsTheSetNeverLetsTheCaPassAfterwards()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
 
-        // PKI offers a new CA object: the next handshake rebuilds the set from the selection it read, and the save that
-        // unticks the Axis device ID lands in the middle of that rebuild.
+        // PKI offers a new CA object: the next handshake rebuilds the set from the rules it read, and the delete of the Axis
+        // device ID policy lands in the middle of that rebuild.
         using var restarted = new TestAuthority("OADM CA after a restart");
-        var saved = false;
+        var deleted = false;
+        var axis = harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Single(p => p.CaId == CertificateAuthorityInfo.AxisDeviceIdId);
         restarted.OnNextPreviousRead(() =>
         {
-            Task.Run(() => harness.CallAsync<TrustedCaList>(RadiusMethods.SaveTrustedCas,
-                new TrustedCaSettings { Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId)] })).GetAwaiter().GetResult();
-            saved = true;
+            Task.Run(() => harness.Policies.DeleteAsync(axis.Id, "admin", CancellationToken.None)).GetAwaiter().GetResult();
+            deleted = true;
         });
         harness.Ctx.FakeServices.Offer<IDeviceCertificateAuthority>(restarted);
-        await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial))); // started before the save: either answer
-        Assert.True(saved);
+        await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial))); // started before the delete: either answer
+        Assert.True(deleted);
 
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
         Assert.Equal(CertificateRefusals.NotTrusted, (await LastLogRowAsync(harness)).Reason);
@@ -102,11 +96,8 @@ public sealed class TrustedCaTests
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         var pc = company.Camera("ACCC8E999999"); // not managed
 
-        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, pc))).Final); // not checked yet
-        await harness.CallAsync<TrustedCaList>(RadiusMethods.SaveTrustedCas, new TrustedCaSettings
-        {
-            Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId), new TrustedCaChoice("imported:contoso", OnlyManaged: false)],
-        });
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, pc))).Final); // no policy yet
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Contoso", Kind = PolicyKinds.AllowCa, CaId = "imported:contoso", OnlyManaged = false });
 
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, pc))).Final);
         var row = await LastLogRowAsync(harness);
@@ -128,7 +119,7 @@ public sealed class TrustedCaTests
     [Fact]
     public async Task AnImportedEnterpriseRootNeverLetsASiblingCaIn()
     {
-        // The OADM CA sits under an enterprise root that is also imported and checked: only certificates the root issued
+        // The OADM CA sits under an enterprise root that is also imported and allowed: only certificates the root issued
         // itself pass through it, never those of another CA under it.
         using var root = new TestAuthority("Enterprise root");
         var oadm = new TestAuthority("OADM CA", root);
@@ -136,10 +127,7 @@ public sealed class TrustedCaTests
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial), authority: oadm);
         oadm.AuthorityList = [oadm.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm), root.Info("imported:root", CertificateAuthorityKind.Imported)];
         oadm.RaiseChanged();
-        await harness.CallAsync<TrustedCaList>(RadiusMethods.SaveTrustedCas, new TrustedCaSettings
-        {
-            Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId), new TrustedCaChoice("imported:root", OnlyManaged: false)],
-        });
+        await harness.SetAllowCasAsync((CertificateAuthorityInfo.OadmId, true), ("imported:root", false));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
 
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, oadm.Camera(Serial)))).Final);

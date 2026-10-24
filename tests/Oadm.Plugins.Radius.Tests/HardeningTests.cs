@@ -146,8 +146,7 @@ public sealed class HardeningTests
         Assert.Empty(state.Interfaces);
         Assert.Null(state.ServerCertificate);
         Assert.Equal(0, state.UnknownRequests.Count);
-        Assert.Empty(state.Settings.CipherSuites);
-        Assert.Empty(state.CipherSuitesListed);
+        Assert.Equal(0, state.PoliciesApply);
         Assert.Empty(state.SitesNotAllowed);
         Assert.NotEmpty(state.StatusText);
         Assert.Empty((await harness.CallAsync<SwitchList>(RadiusMethods.ListSwitches, null, group)).Switches);
@@ -159,63 +158,6 @@ public sealed class HardeningTests
         Assert.All(harness.Ctx.PublishedEvents.Where(e => e.Topic == RadiusTopics.Switches), e => Assert.Equal(PluginEventAudienceKind.AllDevices, e.Audience.Kind));
         Assert.DoesNotContain(harness.Ctx.EventsSeenBy(group), e => e.Topic == RadiusTopics.Switches);
     }
-
-    [Fact]
-    public async Task AGroupUserGetsEmptyPoliciesAndNoTrustedCas()
-    {
-        await using var harness = await PluginHarness.CreateAsync();
-        var device = harness.AddDevice(Serial, tags: ["Lobby"]);
-        await harness.RefreshDevicesAsync();
-        await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, new PolicySettings
-        {
-            Policies = [PolicyTests.Vlan("Twenty", 20, new PolicyDevices { Tags = ["Vlan 20"] }), PolicyTests.Vlan("Thirty", 30, new PolicyDevices { ThisServer = true })],
-            DefaultVlan = 99,
-        });
-        var group = harness.Ctx.CallAsGroup([device.Id]);
-
-        var mine = await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies, null, group);
-
-        Assert.Empty(mine.Policies);
-        Assert.Null(mine.DefaultVlan);
-        Assert.Empty(mine.TagChoices); // no tag of a policy to choose
-        Assert.Empty((await harness.CallAsync<TrustedCaList>(RadiusMethods.GetTrustedCas, null, group)).Cas);
-        var all = await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies);
-        Assert.Equal(2, all.Policies.Count);
-        Assert.Equal(["Lobby", "Vlan 20"], all.TagChoices.Select(t => t.Name));
-    }
-
-    [Fact]
-    public async Task TheTagsOfThePoliciesAreProtectedAndAVlanTagWithoutProtectionMatchesNothing()
-    {
-        await using var harness = await PluginHarness.CreateAsync();
-        var settings = new PolicySettings
-        {
-            Policies =
-            [
-                PolicyTests.Vlan("Twenty", 20, new PolicyDevices { Tags = ["Vlan 20"] }),
-                new RadiusPolicy { Name = "Lobby", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Vlan 21"] } },
-                PolicyTests.Vlan("Thirty", 30, new PolicyDevices { ThisServer = true }),
-            ],
-        };
-
-        var saved = await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, settings);
-
-        Assert.Equal(["Vlan 20", "Vlan 21"], harness.Ctx.FakeProtectedTags.Names.Order(StringComparer.Ordinal));
-        Assert.NotNull(harness.Ctx.FakeProtectedTags.RefusalFor("VLAN 21")); // case-insensitive
-        Assert.Equal(RadiusTexts.VlanTag("Vlan 20"), harness.Ctx.FakeProtectedTags.RefusalFor("Vlan 20"));
-        Assert.Equal(RadiusTexts.VlanTagChange("Vlan 20"), harness.Ctx.FakeProtectedTags.ChangeRefusalFor("Vlan 20")); // not renamed or deleted while the server runs
-        Assert.Equal("The tag Vlan 20 is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed.", RadiusTexts.VlanTag("Vlan 20"));
-        await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, saved with { Policies = [saved.Policies[2]] });
-        Assert.Empty(harness.Ctx.FakeProtectedTags.Names); // a removed policy frees its tag
-
-        // A host that cannot protect the tags: the tag parts of VLAN policies match no device (fail closed), block ones still do.
-        var tagged = new FakeDevice { Serial = Serial, Tags = ["Vlan 20", "Vlan 21"] };
-        Assert.Equal(20, new PolicyPlan(settings).VlanFor(tagged));
-        Assert.Equal(30, new PolicyPlan(settings, tagsProtected: false).VlanFor(tagged));
-        Assert.Equal("Lobby", new PolicyPlan(settings, tagsProtected: false).RefusalFor(tagged)?.Name);
-    }
-
-    // ------------------------------------------------------------------ requests without EAP
 
     [Fact]
     public async Task AMacAddressCheckOfTheSwitchIsCountedApartAndNeverShowsWrongSecret()
@@ -485,16 +427,19 @@ public sealed class HardeningTests
     [Fact]
     public void OnlyRsaSuitesCannotBeSavedWithTheEcdsaServerCertificate()
     {
-        var listed = RadiusService.CipherSuites;
+        var listed = RadiusPolicies.CipherSuites;
         var rsa = listed.Single(s => s.Id == CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256);
         var ecdsa = listed.Single(s => s.Id == CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256);
 
         Assert.False(rsa.Usable);
         Assert.True(ecdsa.Usable);
         Assert.All(listed.Where(s => s.Tls13), s => Assert.True(s.Usable));
-        Assert.Equal(new RadiusFieldError("cipherSuites", RadiusRules.CheckCipherSuite),
-            RadiusRules.Validate(new RadiusSettings { CipherSuites = [rsa.Id] }, listed));
-        Assert.Null(RadiusRules.Validate(new RadiusSettings { CipherSuites = [rsa.Id, ecdsa.Id] }, listed));
+        var server = RadiusPolicies.DefaultServerPolicy();
+        Assert.Equal(new Pki.Policies.PolicyFieldError(Pki.Policies.PolicyFields.CipherSuites, Pki.Policies.PolicyRules.CheckCipherSuite),
+            Pki.Policies.PolicyRules.Validate(server with { CipherSuites = [rsa.Id] }, listed));
+        Assert.Null(Pki.Policies.PolicyRules.Validate(server with { CipherSuites = [rsa.Id, ecdsa.Id] }, listed));
+        Assert.NotNull(RadiusPolicies.ValidateTls(server with { MinimumTls = "1.2", CipherSuites = [rsa.Id] })); // the server key's own check
+        Assert.Null(RadiusPolicies.ValidateTls(server));
     }
 
     /// <summary>A user's call whose role has only <paramref name="permissions"/>.</summary>
