@@ -160,8 +160,9 @@ Details: plugin
   OADM CA to other plugins (`IDeviceCertificateAuthority`, `docs/spec/plugins.md` "Plugin services"), which signs the
   same way; every certificate the OADM CA issues for a device (tasks and the service) goes into the list of issued
   certificates with its DER; a revocation is written before the call returns, never changed and never undone, and
-  `IsRevoked` is a hash lookup in memory; a certificate stays listed a year after it ended, a revocation while its
-  certificate is valid.
+  `IsRevoked` is a hash lookup in memory; a certificate stays in the store 30 days after it ended (decision 2026-10-25), a
+  revocation while its certificate is valid; the list shows each camera's current certificate per use
+  (`docs/spec/pki.md` "Current and pending").
 - Roles: everything but `getState`, `getCertificates` and `getCertificate` is Admin and audited (Revoke too, and the Certificates card's Create, Sign request, Import, Export and Delete: `docs/spec/pki.md` "Certificates"); "Install in trusted root store" on the server asks with the CA's
   SHA-256 fingerprint.
 - Device groups (SDK 0.4.0): every method but `getState`, `getCertificates` and `getCertificate` is for users with all

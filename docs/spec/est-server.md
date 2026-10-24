@@ -116,7 +116,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   came from, never another camera's axis name), never from the CSR; EKU from the profile; key
   policy RSA >= 2048 / EC >= 256; SHA-1/MD5 CSRs refused. The answer carries the leaf **and the chain** (Axis refuses a
   leaf only), PKCS#7 certs-only, base64 wrapped at 76 characters. Every certificate goes into PKI's list of issued
-  certificates with its use (`DeviceCertificateRequest.Purpose`: HTTPS, IEEE 802.1X, MQTT, RTSPS) and source EST.
+  certificates with its use (`DeviceCertificateRequest.Purpose`: HTTPS, IEEE 802.1X, MQTT, RTSPS) and source EST, pending
+  until the camera has it (decision 2026-10-25, `docs/spec/pki.md` "Current and pending"): once the 200 answer is written
+  (`EstService` after `EstHttp.WriteAsync`, `ICertificateDelivery.DeliveredAsync`) HTTPS, RTSPS and MQTT certificates
+  become current and the previous one of the camera and use is revoked; an IEEE 802.1X one only when the camera signs in
+  to OADM's 802.1X server with it. An answer that cannot be written revokes the new certificate as unused.
 - **The server's TLS certificate:** issued by the OADM CA, SANs = the server's addresses and host name; **one per site**
   with the node's addresses toward the cameras (cameras dial an IP, so no SNI: the plugin picks the certificate by the
   site the connection came through). Re-issued when the addresses change (node network cards, DHCP).

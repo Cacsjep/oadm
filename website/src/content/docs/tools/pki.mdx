@@ -92,8 +92,9 @@ with** becomes one Sign-in CA policy per ticked CA.
 
 ## Certificates
 
-Every certificate OADM knows: the CAs, the certificates of the 802.1X and EST servers, the ones created, signed or
-imported here and the device certificates the OADM CA issued. Each row shows the name (with the key and the issuer
+Every certificate OADM uses now: the CAs, the certificates of the 802.1X and EST servers, the ones created, signed or
+imported here and each camera's current certificate for each use. Once a camera has its new certificate installed, OADM
+revokes the one it replaced. A camera removed from OADM leaves the list; added again, its certificates come back. Each row shows the name (with the key and the issuer
 below), its type as badges (for example Root CA, OADM CA, HTTPS, Imported), valid until (with Expires in 12 days, Expired
 or Revoked when it needs attention) and what uses it. **Group by** groups the rows by type, by the CA that issued them,
 or not at all. **Search** finds text in every column; filter by state, use and issuing CA.
@@ -105,8 +106,8 @@ or not at all. **Search** finds text in every column; filter by state, use and i
 - **Import** > **Certificate** adds a certificate (.crt, .cer, .pem) or a .pfx / .p12 file with its password.
 - Each row's **⋯**: **View**, **Export** (PEM, DER, or with its key as .p12 where OADM holds the key; never a CA key or a
   device's key), then in red **Revoke** and **Delete**. Revoke takes certificates out of use: they no longer get a camera
-  onto the network and are no longer renewed. Delete removes certificates nothing uses: revoked or expired ones, and the
-  ones created, signed or imported here. A revocation stays in force. With several rows chosen, the menu revokes or
+  onto the network and are no longer renewed. A revoked camera certificate leaves the list until the camera gets a new
+  one. Delete removes certificates nothing uses: expired ones, and the ones created, signed or imported here. A revocation stays in force. With several rows chosen, the menu revokes or
   deletes all of them.
 
 Only administrators with "Manage the certificate authority" and access to all devices can change the list. Users

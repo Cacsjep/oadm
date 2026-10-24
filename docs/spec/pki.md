@@ -175,11 +175,11 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 
 ## Certificates
 
-Every certificate OADM knows, paged on the server (search over every column, filters: use, issued by, state), so 30,000
-devices with two certificates each stay fast. The full management view of PKI (stage 7): still a table (the shared
+Every certificate OADM uses now (decision 2026-10-25: no history, see "Current and pending"), paged on the server (search
+over every column, filters: use, issued by, state), so 30,000 devices with two certificates each stay fast. The full management view of PKI (stage 7): still a table (the shared
 `ui:IssuedCertificateList`, virtualized, pages of 500), with the CAs and their actions in it.
 
-- Includes the CAs, the device certificates the OADM CA issued (tasks and EST), OADM's server certificates and the
+- Includes the CAs, each managed camera's current certificate per use (tasks and EST), OADM's server certificates and the
   certificates created, signed or imported here.
 - **Columns** (decisions 2026-10-24, one line per row where it fits): **Name** with a second line (the key and the issuer:
   "RSA 4096 · issued by OADM Root CA SERVER01", a device certificate "Issued by OADM Root CA SERVER01", a root CA its key
@@ -189,7 +189,7 @@ devices with two certificates each stay fast. The full management view of PKI (s
   server" / "Not installed on the server", the same for this computer, "Failed on ..." with the reason, the progress of an
   install); **Valid until**: the date, and below it a status (`ui:StatusChip`, one line) only when the state needs
   attention: "Expires in 12 days" (amber, the Expiry warning policy's days), "Expired" and "Revoked" (red, the revocation
-  as tooltip), "Replaced"; a valid certificate shows its date only (there is no State column; the state filter stays);
+  as tooltip); a valid certificate shows its date only (there is no State column; the state filter stays);
   **Used by** in one line: badges, one per user (a CA: one per group, "802.1X", "EST", "Issuing", no policy names; a server
   certificate "802.1X server" or "EST server"), a device certificate the device as text, "-" when nothing uses it; the full
   list ("802.1X: OADM CA (only devices OADM manages)", "Issuing: HTTPS, IEEE 802.1X, ...", one per line) is the cell's
@@ -227,6 +227,64 @@ devices with two certificates each stay fast. The full management view of PKI (s
   - **View** (`ui:CertificateWindow`), **Revoke** (as today), **Delete** (only certificates nothing uses; revoked or
     expired ones, or imported ones no longer needed).
   - Create and Sign request never name an Axis camera (`axis-<12 hex>`, any domain): only device certificates do.
+
+## Current and pending (decisions 2026-10-25)
+
+The Certificates list shows what is in use now, not the history. Code: `Ca/IssuedRegistry` (`plugins/Oadm.Plugins.Pki/README.md`
+"Issued certificates and revocation").
+
+- **The store** (plugin records `issued`, `issuedDer`): per camera and use (HTTPS, IEEE 802.1X, MQTT, RTSPS) the
+  **current** certificate (the one confirmed on the camera) and at most one **pending** one (issued, not confirmed yet).
+  Cameras are matched by their **serial** (`deviceSerial`, from `axis-<serial>.local`), never only by the device entry's id:
+  a camera removed and added again gets a new id. An entry without a serial (OADM before 4.2) counts by its device id;
+  the list then hides it when the camera has a newer current one under its serial. Every caller that keys by device finds
+  a camera added again: `ForDevice(IDeviceInfo)` and `RevocableOf(IDeviceInfo)` look up the id and the serial (the tasks'
+  reads, Revoke all of this device, the Revoke policies). Created, signed and imported certificates and the servers'
+  certificates are kept as before.
+- **The list** (`IssuedRegistry.Query`, `currentOnly`): the current certificate of each use of each camera OADM manages,
+  not deleted from the camera by a task. A current one stays listed when it is expired or revoked from before (the camera
+  needs attention). Not listed, but kept for the 802.1X checks, EST and Revoke: pending ones, older entries of OADM before
+  4.5 and the current ones of cameras OADM no longer manages (they stay valid, no revocation on removal; a camera added
+  again gets its rows back). The state Replaced is gone from the list and its filter (`IssuedCertificateState.Replaced`
+  stays in the SDK, never answered). The CA service's `ListIssuedAsync` still lists every stored certificate.
+- **Confirmed** (the pending one becomes current; the previous current one goes on the revocation list with the reason
+  `RevocationReason.Superseded` (shown "Replaced by a newer certificate"), user "OADM", and leaves the store):
+  - Enable HTTPS, Renew certificates (HTTPS): after Verify HTTPS passed.
+  - Enable IEEE 802.1X, Renew certificates (IEEE 802.1X): after Verify 802.1X settings read back 802.1X on with the new
+    certificate and its CA certificates.
+  - Install certificates (a file OADM did not issue): after its verify step the camera's current OADM certificate of that
+    use is revoked the same way (the file's certificate is not stored).
+  - EST, HTTPS, RTSPS and MQTT profiles: when `EstHttp.WriteAsync` of the 200 answer returned (the answer is handed to
+    TLS; the camera is not asked to acknowledge).
+  - EST, IEEE 802.1X profile: only when the camera next signs in to OADM's 802.1X server with the new certificate. With the
+    802.1X server off or another RADIUS server it stays pending; the previous one stays valid.
+  - Any other caller of the CA service (`SignAsync` with a device, a source other than EST): current at once.
+- **Unused** (revoked with the reason Other, user "OADM", and removed from the store): an install that failed before the
+  certificate was in use (HTTPS: any failure up to Verify HTTPS), an EST answer that could not be written, an EST
+  certificate still pending after `IssuedRegistry.PendingTimeout` (1 hour) without its answer (the server stopped in
+  between). A newer pending one of the same camera and use replaces an older one (Superseded).
+- **Device safety (IEEE 802.1X tasks):** once "Set 802.1X configuration" ran, the new certificate is `Delivered` and never
+  revoked as unused, unless the read-back names another client certificate. A newer pending one does not revoke it either
+  (it stays in the store, not current). While the read-back does not confirm the new certificate the task deletes no
+  previous OADM certificate from the camera (Remove previous OADM certificate: Skipped).
+- **Revoke** (the page, Revoke all of this device, the Revoke policies, the 802.1X server's policy revokes): the
+  certificate goes on the revocation list and leaves the store; its camera has no row until it gets a new certificate. The
+  revoke dialog and its reasons are unchanged; Delete stays for what ended or was revoked before 4.5, and for created,
+  signed and imported certificates.
+- **The revocation list** (`revoked`): serial, time, reason, user, device, valid until; kept until the certificate ends.
+  The 802.1X server and EST sign-in check it as before: an OADM certificate passes unless it is on the list (certificates
+  missing from the store pass, so an update, a backup restore and `ImportFoundAsync` stay safe). `ImportFoundAsync` never
+  adds a serial that is on the list.
+- **Existing data:** no conversion. Entries of OADM before 4.5 stay; the newest of each camera and use counts as current,
+  the others are hidden. Nothing is revoked by the update.
+- **Pruning:** a stored certificate leaves `KeptAfterEnd` (30 days, before 365) after its end, also a hidden current one of a
+  camera OADM no longer manages; server certificates the same.
+- **Audit:** automatic revocations go to the server log ("PKI: revoked N certificates (Replaced by a newer certificate)
+  for OADM") and to the task's log; plugins have no audit API.
+- **Later:** a CRL for other vendors' RADIUS servers would need its own list of removed serials.
+- **Tests:** `Oadm.Plugins.Pki.Tests` `CurrentCertificateTests`, `CertificateConfirmationTaskTests`, `IssuedRegistryTests`,
+  `IssuedScaleTests` (Category=Perf); `Oadm.Plugins.Est.Tests` `ServerTests` (the delivery after the answer);
+  `Oadm.Plugins.Radius.Tests` `ServerTests` (the sign-in).
 
 ## Converting existing settings
 
@@ -443,7 +501,8 @@ fits the spec; to be confirmed by the maintainer).
   Created, SignedRequest, Imported), `Name`, `IssuedBy`, `UsedBy`, `HasKey`; uses `ListedCertificateUses`: HTTPS, IEEE
   802.1X, MQTT, RTSPS, Server, CA, Other). Decisions of stage 5: **Issued by** is the issuing CA's name (the column and filter
   of Task / EST are gone from the page; the shared list still offers them when a server lists no CAs); the filter lists the CAs
-  of the CA card and "Other CA". MQTT and RTSPS stay uses of their own; the state Replaced stays. The columns Valid from and
+  of the CA card and "Other CA". MQTT and RTSPS stay uses of their own; the state Replaced stays (gone from the list since 2026-10-25, see "Current
+  and pending"). The columns Valid from and
   Serial number left the grid (the search still finds a serial; View shows both). **Used by**: a device certificate names
   its device while it is the newest of its use and not deleted from the device; server certificates their server; the rest
   "-". Server and local rows count Expires soon with the longest Expiry warning policy (`DefaultExpiryDays`).
