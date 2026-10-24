@@ -385,7 +385,7 @@ public sealed partial class PolicyStore : IDisposable
             PolicyKinds.Revoke => "IEEE 802.1X certificates revoked",
             PolicyKinds.ExpiryWarning => string.Create(CultureInfo.CurrentCulture, $"{policy.Days:N0} {(policy.Days == 1 ? "day" : "days")}"),
             PolicyKinds.AllowCa => (policy.CaId is { } id && caNames.TryGetValue(id, out var name) ? name : PolicyTexts.RemovedCa) + ", "
-                + (policy.OnlyManaged ?? true ? "only devices OADM manages" : "any device with a valid certificate"),
+                + PolicyTexts.AllowCaScope(policy.OnlyManaged ?? true),
             PolicyKinds.Dot1xServer => string.Create(CultureInfo.CurrentCulture,
                 $"TLS {policy.MinimumTls} or later, {policy.LargestEapPacket:N0} bytes, {PolicyTexts.Reauth(policy.ReauthMinutes)}"),
             _ => PolicyKinds.Name(policy.Kind),

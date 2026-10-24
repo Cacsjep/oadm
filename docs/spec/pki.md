@@ -69,7 +69,7 @@ One page, no tabs, cards like the 802.1X page:
 | Axis device ID | "Axis device ID" | no | built in (the RSA and ECC roots and intermediates EST ships, `plugins/Shared/DeviceId`) |
 | Imported CA | "Contoso Root" | no | **Import CA** (a root or intermediate certificate, PEM or DER; no key) |
 
-- Each row: name, kind, valid until, **Used by** (the policies that name it, e.g. "802.1X: OADM CA, managed only");
+- Each row: name, kind, valid until, **Used by** (the policies that name it, e.g. "802.1X: OADM CA (only devices OADM manages)");
   **View** (`ui:CertificateWindow`), **Remove** (imported CAs only; refused while a policy names it: "Used by the policy
   <name>. Change or delete the policy first.").
 - The CA key is never exported on its own; it leaves OADM only in the encrypted CA backup (Back up) and the server

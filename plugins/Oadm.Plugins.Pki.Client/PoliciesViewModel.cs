@@ -324,6 +324,9 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     public const string ReauthEvery = "Every N minutes";
     public const string OnlyManagedText = PolicyTexts.OnlyManaged;
 
+    /// <summary>"Off: any device with a valid certificate of this CA".</summary>
+    public static string OnlyManagedTip { get; } = "Off: " + PolicyTexts.AllowCaScope(onlyManaged: false) + " of this CA";
+
     public static IReadOnlyList<Choice<string>> TlsVersions { get; } = [.. PolicyRules.TlsVersions.Select(v => new Choice<string>(v, "TLS " + v))];
 
     public static IReadOnlyList<Choice<bool>> ReauthChoices { get; } = [new(false, PolicyTexts.SwitchDecides), new(true, ReauthEvery)];

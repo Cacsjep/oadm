@@ -355,6 +355,14 @@ public sealed class PolicyStoreTests
 
         var state = await pki.StateAsync();
         Assert.Equal(["802.1X: Contoso"], state.Authorities.Single(a => a.Id == id).UsedBy);
+        Assert.Equal("Contoso Root, any device with a valid certificate", allow.List!.Rows.Single(r => r.Policy.Name == "Contoso").Summary);
+
+        // One phrase for "only devices OADM manages": the editor's check box, the row's summary and Used by.
+        var oadm = (await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "OADM CA", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId })).Saved!;
+        Assert.Equal("802.1X: OADM CA (only devices OADM manages)", PolicyTexts.UsedBy(oadm));
+        Assert.Contains("802.1X: OADM CA (only devices OADM manages)", (await pki.StateAsync()).Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
+        Assert.EndsWith(", only devices OADM manages", PolicyStore.Summary(oadm, new Dictionary<string, string>()), StringComparison.Ordinal);
+        Assert.Equal(PolicyTexts.OnlyManaged, Client.PolicyEditorViewModel.OnlyManagedText);
 
         var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));
         Assert.Equal("Used by the policy Contoso. Change or delete the policy first.", refused.Error);

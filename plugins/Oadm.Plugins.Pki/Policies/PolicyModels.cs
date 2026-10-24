@@ -379,11 +379,18 @@ public static class PolicyTexts
     /// <summary>"Used by the policy OADM CA. Change or delete the policy first."</summary>
     public static string UsedByPolicy(string name) => $"Used by the policy {name}. Change or delete the policy first.";
 
-    /// <summary>"802.1X: OADM CA, managed only" (the Used by column of the CA list).</summary>
+    /// <summary>"only devices OADM manages" or "any device with a valid certificate": <see cref="OnlyManaged"/> or <see cref="AnyDevice"/> inside a sentence.</summary>
+    public static string AllowCaScope(bool onlyManaged)
+    {
+        var text = onlyManaged ? OnlyManaged : AnyDevice;
+        return char.ToLowerInvariant(text[0]) + text[1..];
+    }
+
+    /// <summary>"802.1X: OADM CA (only devices OADM manages)" (the Used by column of the CA list; its entries are joined with commas).</summary>
     public static string UsedBy(PkiPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        return "802.1X: " + policy.Name + (policy.OnlyManaged ?? true ? ", managed only" : string.Empty);
+        return "802.1X: " + policy.Name + (policy.OnlyManaged ?? true ? " (" + AllowCaScope(true) + ")" : string.Empty);
     }
 
     /// <summary>"VLAN 30 by Building B" (Sessions and Log of the 802.1X server).</summary>

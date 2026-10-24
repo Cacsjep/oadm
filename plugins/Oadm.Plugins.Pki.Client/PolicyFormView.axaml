@@ -32,7 +32,7 @@
       <StackPanel Spacing="8">
         <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding CaChoices}" SelectedItem="{Binding Ca}" />
         <CheckBox Content="{x:Static vm:PolicyEditorViewModel.OnlyManagedText}" IsChecked="{Binding OnlyManaged}"
-                  ToolTip.Tip="Off: any device with a valid certificate of this CA" />
+                  ToolTip.Tip="{x:Static vm:PolicyEditorViewModel.OnlyManagedTip}" />
       </StackPanel>
     </ui:FormField>
 

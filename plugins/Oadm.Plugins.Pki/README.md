@@ -64,8 +64,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
   460 px wide). Certificate authorities: Generate new CA and Import CA (a menu: "Own CA with its key" replaces the OADM CA,
   "CA certificate only" adds a row) in the header; the OADM CA's chips (status "CA valid until <date>" ok / "CA expires in
   N days" warning (within the longest Expiry warning) / "CA expired", "CA key cannot be read" error; the trusted root store
-  of the server and of this computer); the list (Name, Kind, Valid until, Used by: the Allow CA policies "802.1X: OADM CA,
-  managed only" and the services; View for every row, Export for a previous CA, Remove red for imported and previous
+  of the server and of this computer); the list (Name, Kind, Valid until, Used by: the Allow CA policies "802.1X: OADM CA
+  (only devices OADM manages)" and the services; View for every row, Export for a previous CA, Remove red for imported and previous
   CAs, confirmed); Install in trusted root store, Export public certificate (PEM / DER menu) and Back up below it.
   Policies: see "Policies". Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
   FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
