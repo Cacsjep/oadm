@@ -274,6 +274,12 @@ the CA service.
   this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
   "manage"; while either runs (Revoke all of this device reads the device first, up to 20 s) the list's progress row says
   "Revoking the certificates" and both are off (`WorkText`; a write runs to its end, no Cancel). The card reads with the page; every `certificates` event reads the shown page again.
+- **Certificates card (stage 5, docs/spec/pki.md "Code (stage 5)")**: `PkiService.CertificateList` pages the CAs, the
+  server certificates, the local certificates (`Certificates/LocalCertificates`, plugin records `localCertificates`, keys
+  encrypted with the master key, purpose `pki:certificate:<id>`) and the registry in one list; `PkiService.CertificateActions`
+  holds `createCertificate`, `signRequest`, `importCertificate`, `deleteCertificates` and the download `downloadCertificate`
+  (`CertificateMethods`). Client: `CertificateDialogViewModels` with `CreateCertificateWindow`, `SignRequestWindow`,
+  `ImportCertificateWindow`, `ExportKeyWindow`; row buttons in `PkiView.axaml`.
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
   View certificate describes a certificate the fake CA signs; Revoke changes the rows.
 
@@ -297,6 +303,6 @@ the Certificates tab of a group user).
 ## Permissions
 
 `oadm.pki:show` (`getState`, `getCertificates`, `getCertificate`), `:manage` "Manage the certificate authority" (every other
-method, Revoke too, except `installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
+method, Revoke and the Certificates card's Create, Sign request, Import, Delete and Export too, except `installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
 and locks the settings without "manage", and hides "Install in trusted root store" without "trustServer". The Security
 tasks have one key each (`task:oadm.pki....`). Operator default: show and the tasks.

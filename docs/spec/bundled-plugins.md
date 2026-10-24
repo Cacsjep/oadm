@@ -162,10 +162,10 @@ Details: plugin
   certificates with its DER; a revocation is written before the call returns, never changed and never undone, and
   `IsRevoked` is a hash lookup in memory; a certificate stays listed a year after it ended, a revocation while its
   certificate is valid.
-- Roles: everything but `getState`, `getCertificates` and `getCertificate` is Admin and audited (Revoke too); "Install in trusted root store" on the server asks with the CA's
+- Roles: everything but `getState`, `getCertificates` and `getCertificate` is Admin and audited (Revoke too, and the Certificates card's Create, Sign request, Import, Export and Delete: `docs/spec/pki.md` "Certificates"); "Install in trusted root store" on the server asks with the CA's
   SHA-256 fingerprint.
 - Device groups (SDK 0.4.0): every method but `getState`, `getCertificates` and `getCertificate` is for users with all
-  devices (`RequiresAllDevices`); the Certificates tab of a user with a group lists only the group's devices; a user
+  devices (`RequiresAllDevices`); the Certificates card of a user with a group lists only the device certificates of the group's devices; a user
   with a group sees the page read only, the counts of issued certificates only of the group's devices (the `state` event
   per group that read the page, `PluginEventAudience.DeviceScope`). Host names, FQDNs and a name address go into a
   device certificate only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`); else only its

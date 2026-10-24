@@ -130,7 +130,7 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 ## Certificates
 
 Every certificate OADM knows, paged on the server (search over every column, filters: use, issued by, state), so 30,000
-devices with two certificates each stay fast (today's list stops at 5,000).
+devices with two certificates each stay fast.
 
 - Columns: name or device, use (HTTPS, IEEE 802.1X, Server, CA, Other), issued by, valid until, **used by** (the device it
   is installed on, the 802.1X server, the EST server, "-"), state (Valid, Expires soon, Revoked, Expired).
@@ -334,12 +334,66 @@ fits the spec; to be confirmed by the maintainer).
   take the days and key of their policy for the next certificate; renewed 30 days before the end, at most a third of its time,
   at once for a new CA or (EST) another key; other days alone wait for the next renewal.
 - **Page**: the Device certificates and IEEE 802.1X cards are gone (no Save on the page); the editor has the issuing fields
-  (RADIUS server CA with Import and View owned by the editor window). Used by of the CAs still lists Allow CA policies only
-  (not built: the issuing policies there).
+  (RADIUS server CA with Import and View owned by the editor window). Used by of the CAs lists the issuing policies since
+  stage 5.
 - **Tests**: `Oadm.Plugins.Pki.Tests` `IssuingPolicyTests` (fixtures `pki-config-4.1.json`, `pki-config-4.1-imported-radius.json`,
   `pki-policies-stage3.json`), `IssuingTaskTests`, `IssueDialogTests` (+ headless dialogs and editors);
   `Oadm.Plugins.Est.Tests` `PolicyTests`, `ServerTests` and `PageTests` (profile policies, server certificate);
   `Oadm.Plugins.Radius.Tests` `ServerTests` (server certificate days).
+
+## Code (stage 5)
+
+Built 2026-10-24. Rules the sections above leave open are marked "decision of stage 5" (the most conservative choice that
+fits the spec; to be confirmed by the maintainer).
+
+- **One list** (`PkiService.CertificateList`, page method `getCertificates`): first the CAs (each certificate of the CA card's
+  CAs: the OADM CA, the previous ones, every Axis device ID root and intermediate, the imported CAs), then the certificates of
+  the 802.1X and EST servers, then the ones created, signed or imported here (newest first), then the device certificates
+  (newest first, the issued registry). Decision of stage 5: this fixed order makes paging one count plus one registry pass.
+  The rows before the device certificates are at most a few hundred and built per request. Measured at 30,000 devices x 2
+  plus 50 created: under 110 ms per page, search or filter (`CertificateListPerfTests`).
+- **Columns** (SDK 0.4.0 `IssuedCertificateInfo` gains `Id`, `Kind` (`ListedCertificateKind`: Device, Authority, Server,
+  Created, SignedRequest, Imported), `Name`, `IssuedBy`, `UsedBy`, `HasKey`; uses `ListedCertificateUses`: HTTPS, IEEE
+  802.1X, MQTT, RTSPS, Server, CA, Other). Decisions of stage 5: **Issued by** is the issuing CA's name (the column and filter
+  of Task / EST are gone from the page; the shared list still offers them when a server lists no CAs); the filter lists the CAs
+  of the CA card and "Other CA". MQTT and RTSPS stay uses of their own; the state Replaced stays. The columns Valid from and
+  Serial number left the grid (the search still finds a serial; View shows both). **Used by**: a device certificate names
+  its device while it is the newest of its use and not deleted from the device; server certificates their server; the rest
+  "-". Server and local rows count Expires soon with the longest Expiry warning policy (`DefaultExpiryDays`).
+- **Server certificates**: noted when the OADM CA signs a request without a device and a server use
+  (`PkiCertificateAuthority.SignAsync`; source "EST" = EST server, `ServerCertificateSources.Dot1x` = 802.1X server) and when
+  the 802.1X server reads its stored certificate at its start. In memory only (the servers keep their keys; decision of stage
+  5). No PKCS#12 export of server certificates (not built: the EST server keeps its key in memory and its code was not
+  changed in this stage).
+- **Create** (`createCertificate`): use HTTPS or IEEE 802.1X, an issuing policy of that kind (its days and key: ECC P-256 or
+  RSA 2048), name (1 to 64 characters), addresses (host names and IP addresses, at most 20; at least one for HTTPS); the
+  dialog then downloads the .p12 with the password (at least 8 characters, like the CA backup). Server certificate policies
+  are no choice (decision of stage 5).
+- **Sign request** (`signRequest`): PKCS#10 PEM or DER up to 1 MB, its signature checked, SHA-1 / MD5 refused, RSA 2048+ or
+  EC P-256 / P-384 / P-521, and the key kind of the chosen policy (decision of stage 5: an RSA request with an ECC policy is
+  refused). Names: the request's CN and its host names and IP addresses (plain host names only); an HTTPS policy needs one.
+- **Import** (`importCertificate`): one PEM or DER certificate, or a PKCS#12 file with exactly one certificate with its key
+  (RSA or ECC; the chain in it is not kept). Refused (decision of stage 5): CA certificates ("Use Import CA"), expired ones,
+  a PEM with a private key, several certificates in one PEM, one already listed. Use from the extended key usage: server ->
+  HTTPS, client -> IEEE 802.1X, else Other.
+- **Export** (download `downloadCertificate`, audited with "Export certificate <name> (<format>)"): PEM or DER of the
+  certificate only (no chain); PKCS#12 only of certificates created or imported with a key, with the issuing CA, AES-256,
+  100,000 iterations. Never a CA key or a device's key.
+- **Delete** (`deleteCertificates`): all or nothing, the first refusal says why ("The certificate of 10.0.0.48 is still
+  valid. Revoke it first. Nothing was deleted."). Device certificates only revoked or expired; CAs never ("Remove CAs in
+  Certificate authorities."); server certificates only ended; created, signed and imported ones always. A revocation stays.
+- **Revoke** also takes created and signed certificates (the OADM CA issued them; decision of stage 5).
+- **Limits** (decision of stage 5): at most 1,000 certificates created, signed or imported; files up to 1 MB. The upload of
+  a file goes through `InvokeAsync` as base64 (core plugins have no upload path), within the server's 16 MB message limit.
+- **Who**: every action Admin with "Manage the certificate authority" and all devices, audited by the host; a user limited to
+  a device group sees only the device certificates of the group's devices and no actions.
+- **Page**: Create, Sign request and Import in the card header; row buttons View, Export (PEM, DER, With its key), Revoke,
+  Delete; the row menu adds Revoke and Delete for several rows and Revoke all of this device. Dialogs without cards:
+  `CreateCertificateWindow`, `SignRequestWindow`, `ImportCertificateWindow`, `ExportKeyWindow`.
+- **CA list**: Used by also names the issuing policies of the OADM CA ("Issuing: HTTPS").
+- **Tests**: `Oadm.Plugins.Pki.Tests` `CertificateListTests`, `CertificateListPerfTests` (Category=Perf),
+  `CertificateCardHeadlessTests`, `BackupTests` (a created key restored on another server), `CertificatesTabTests`,
+  `AuthorityTests`.
 
 ## Not planned
 
@@ -359,5 +413,6 @@ fits the spec; to be confirmed by the maintainer).
    802.1X and EST page changes above. See "Code (stage 3)".
 4. Built (2026-10-24, branch `feature/pki-policies`): Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the
    task dialogs pick a policy; EST profiles point to one. See "Code (stage 4)".
-5. The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
+5. Built (2026-10-24, branch `pp-certs`): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
+   See "Code (stage 5)".
 6. EST Enrollment and Sign-in CA policies.

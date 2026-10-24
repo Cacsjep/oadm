@@ -85,9 +85,22 @@ the settings of the former Device certificates and IEEE 802.1X cards and RSA key
 
 ## Certificates
 
-Every certificate the OADM CA issued: device, use, valid until and state. **Search** finds text in every column.
-**View certificate** shows it (also a double click). **Revoke** takes the chosen certificates out of use: they no longer
-get a camera onto the network and are no longer renewed.
+Every certificate OADM knows: the CAs, the certificates of the 802.1X and EST servers, the ones created, signed or
+imported here and the device certificates the OADM CA issued. Each row shows the name or device, use, issued by, valid
+until, used by and state. **Search** finds text in every column; filter by state, use and issuing CA.
+
+- **Create** makes a key and a certificate with an issuing policy (name, host names and IP addresses). You save it as a
+  .p12 file with a password of at least 8 characters. OADM keeps the key encrypted; it is part of the server backup.
+- **Sign request** signs a certificate request (.csr, PEM or DER) of another system. Its key stays there.
+- **Import** adds a certificate (.crt, .cer, .pem) or a .pfx / .p12 file with its password. CA certificates belong in
+  Certificate authorities.
+- Each row: **View**, **Export** (PEM, DER, or with its key as .p12 where OADM holds the key; never a CA key or a
+  device's key), **Revoke** and **Delete**. Revoke takes certificates out of use: they no longer get a camera onto the
+  network and are no longer renewed. Delete removes certificates nothing uses: revoked or expired ones, and the ones
+  created, signed or imported here. A revocation stays in force.
+
+Only administrators with "Manage the certificate authority" and access to all devices can change the list. Users
+limited to a device group see the certificates of their devices.
 
 ## Use the certificates on devices
 
