@@ -164,6 +164,17 @@ public sealed partial class VlansViewModel : ValidatingViewModel
         TagChoices = [.. tags.Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase).Select(t => new Choice<string>(t, t))];
     }
 
+    /// <summary>
+    /// Empties the card (a user limited to a group: the server sends no rules, no default VLAN and no tag choices, and
+    /// nothing read before stays): no choices, Assign VLANs off, no rules.
+    /// </summary>
+    public void Clear()
+    {
+        SiteChoices = [];
+        TagChoices = [];
+        Apply(new VlanSettings());
+    }
+
     /// <summary>Fills the card from the server; nothing shows as an error afterwards.</summary>
     public void Apply(VlanSettings vlans)
     {

@@ -187,7 +187,24 @@ public sealed partial class RevokedViewModel : ObservableObject
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsProgress), nameof(ProgressText))]
     public partial bool IsReloading { get; set; }
+
+    /// <summary>Revoke runs on the server (up to 5,000 certificates): the progress row shows, Revoke is off.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsProgress), nameof(ProgressText))]
+    [NotifyCanExecuteChangedFor(nameof(RevokeCommand))]
+    public partial bool IsRevoking { get; set; }
+
+    /// <summary>The progress row above the table: a later read or a revocation.</summary>
+    public bool ShowsProgress => IsReloading || IsRevoking;
+
+    /// <summary>"Revoking the certificates" while Revoke runs, else "Reading the revoked certificates".</summary>
+    public string ProgressText => IsRevoking ? RevokingText : ReadingText;
+
+    public const string ReadingText = "Reading the revoked certificates";
+
+    public const string RevokingText = "Revoking the certificates";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -328,7 +345,7 @@ public sealed partial class RevokedViewModel : ObservableObject
         _ => RevokeReasons.Other,
     };
 
-    private bool CanRevoke() => MayManage;
+    private bool CanRevoke() => MayManage && !IsRevoking;
 
     /// <summary>Revoke (red): choose certificates from PKI's list, confirm with the reason, revoke them.</summary>
     [RelayCommand(CanExecute = nameof(CanRevoke))]
@@ -351,20 +368,29 @@ public sealed partial class RevokedViewModel : ObservableObject
             return;
         }
 
+        // A write on the server: it runs to its end (no Cancel), the progress row shows meanwhile.
+        string? answer = null;
+        IsRevoking = true;
         try
         {
             var result = RadiusJson.Deserialize<RevokeReply>(await _ctx.InvokeAsync(RadiusMethods.Revoke,
                 RadiusJson.Serialize(new RevokeRequest([.. chosen.Select(r => r.Source.SerialNumber)], ReasonCode(reason))), CancellationToken.None).ConfigureAwait(true));
-            if (result.Revoked == 0)
-            {
-                await _ctx.ShowMessageAsync("Revoke", IssuedCertificateTexts.NothingRevoked).ConfigureAwait(true);
-            }
+            answer = result.Revoked == 0 ? IssuedCertificateTexts.NothingRevoked : null;
         }
 #pragma warning disable CA1031 // Shown to the user.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            await _ctx.ShowMessageAsync("Revoke", ServerErrors.Message(ex)).ConfigureAwait(true);
+            answer = ServerErrors.Message(ex);
+        }
+        finally
+        {
+            IsRevoking = false;
+        }
+
+        if (answer is not null)
+        {
+            await _ctx.ShowMessageAsync("Revoke", answer).ConfigureAwait(true);
         }
 
         await LoadAsync().ConfigureAwait(true);

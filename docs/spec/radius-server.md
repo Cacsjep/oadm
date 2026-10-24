@@ -35,7 +35,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     boxes, the secure default set checked, **Reset to default**: TLS 1.3 suites and TLS 1.2 ECDHE suites with AES-GCM or
     ChaCha20-Poly1305; with a minimum of 1.0 or 1.1 the list also shows the old ECDHE suites with AES-CBC and SHA-1, which
     those versions need, checked when the minimum is lowered; never RC4, 3DES, NULL, export or RSA key exchange; at least
-    one usable suite for the chosen versions must stay checked), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
+    one usable suite for the chosen versions must stay checked; a suite the server certificate cannot use, ECDHE_RSA with
+    its ECDSA key, says "Not usable with the server certificate." below its name and does not count: Save stays off with
+    the reason as its tooltip), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
     status left of Save: "Running on port 1812", "OADM PRO is not active.", "The PKI has no
     certificate authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available".
   - **Switches** (card, right): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
@@ -250,7 +252,8 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   `ui:MessageWindow` with the choice **Reason**: Key compromised, Device replaced, Device removed, Other; red Revoke):
   the serials go into the revocation list with time, reason and user; **Revoke all of this device** (row menu, last):
   every certificate of the row's device that is still valid; a device that answers has its certificate list read first
-  (read only, at most 20 s), so OADM certificates on it from before the list are revoked too. Expired serials (and text
+  (read only, at most 20 s), so OADM certificates on it from before the list are revoked too. While either runs the
+  list's progress row says "Revoking the certificates" and both are off (a write runs to its end: no Cancel). Expired serials (and text
   that is no serial number) are skipped and counted, an existing revocation is never changed. A serial the list does not
   hold (decision 2026-10-24: a certificate of the OADM CA from before the list that no read found) is revoked too, without
   a device, and kept until the latest end of the OADM CAs (the 802.1X Revoked tab shows "Unknown device"). No undo (the device gets a new certificate by Enable IEEE 802.1X or Certificate
@@ -523,7 +526,7 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 
 `plugins/Oadm.Plugins.Radius.Client` (namespace `Oadm.Plugins.Radius.Client`, `RadiusPage`, `HasOwnCards`); tests in
 `tests/Oadm.Plugins.Radius.Tests/Client` against a fake server (`FakeRadiusBackend`: every method of the contract with demo
-data, also for the screenshots). Built 2026-10-24.
+data, also for the screenshots; review round 2 in `ReviewRound2PageTests` and `ReviewRound2HeadlessTests`). Built 2026-10-24.
 
 - **Fixed tabs** (`ui:PageTab`): **Server** (General with Advanced left, Switches right, VLANs below), **Sessions**, **Log**,
   **Revoked**. Nothing of a tab is read before it opens (the Server tab reads `getState`, `listSwitches`, `getVlans` each
@@ -536,14 +539,18 @@ data, also for the screenshots). Built 2026-10-24.
   the card when it is valid, else the saved rules with Assign VLANs off. Switches apply in their dialog at once.
 - **Advanced** is a chevron (`ToggleButton.sectionExpander`) and starts collapsed; the old CBC suites are listed and checked
   only while the minimum is below TLS 1.2; the page sends only the listed checked suites; the error "Check at least one
-  cipher suite." below the list.
+  cipher suite." below the list. A suite with `usable: false` (the server's key cannot use it) shows "Not usable with
+  the server certificate." below its name and never counts as the checked one (review round 2).
 - **Switch dialog**: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per site), Site (only when
   the server has sites), Shared secret (`ui:PasswordBox`, 16..128 characters; **Generate** asks `generateSecret` and shows
   the secret in plain text once with "Copy it now into the switch: OADM does not show it again."; on Edit empty keeps it),
   the line "RADIUS server for this switch: <address>, port <port>" (the row's `radiusServerAddress`, else the Listen on
   address, the site node's address for a site). A refusal of the server goes below the field it names, else into a message.
 - **VLANs**: Assign VLANs (check box), the rules (Match Site or Tag, the site or tag, VLAN ID 1..4094, move up and down,
-  Remove), Default VLAN (optional). Tags: the server's list plus the tags of the devices this client knows.
+  Remove), Default VLAN (optional). Tags: the server's list (`tagChoices`) plus the tags of the devices this client knows
+  and of the saved rules. A user limited to a group (the client's `HasAllDevices` or the state's `hasAllDevices` false,
+  fail closed) reads no VLANs: no `getVlans`, the card's content hidden and emptied (no rules, no tag or site choices);
+  rules read before a role change leave at once. Empty settings from the server show an empty card (review round 2).
 - **Reads and events**: a list read while the page was away is stale (`MarkStale` on `Activate`) and read again when its
   tab opens (the progress row, the rows stay). Events that arrive during a read wait and apply after it: session batches
   in order (an update older than the read row, a shorter duration, is left out), log rows once each.
@@ -552,20 +559,18 @@ data, also for the screenshots). Built 2026-10-24.
   open rows); the device in italics while it is a guess from the MAC (`TextBlock.guess`); the state chip running (violet),
   ok or error with the text of the server ("Sending server certificate: fragment 2 of 4").
 - **Log**: pages of 500 from the server with the search (300 ms after the last key), live `log` rows on the first page when
-  they match the search, the reason or the warning in the Result chip (a warning is amber), View certificate describes the
-  DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed.
-- **Revoked**: `listRevoked` pages of 500 with the search on the server (`RevokedQuery`, review round 1); **Revoke** opens the shared certificate list
-  (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
-  they match the search (the chosen row stays chosen when they push the full page), the reason or the warning in the
-  Result chip (a warning is amber), View certificate describes the DER of `getLogCertificate` with the SDK's
-  `CertificateDescriber` in the client, Delete all red and confirmed.
+  they match the search (the chosen row stays chosen when they push the full page), the reason or the warning in the Result chip (a warning is amber), View certificate describes the
+  DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed. Every
+  read sends `timeZoneId` (`TimeZoneInfo.Local.Id`) so the search finds the times as shown; `logCleared` during a read
+  drops that read and the live rows that waited for it (review round 2).
 - **Revoked**: pages of 500 from the server: `listRevoked` with `{offset, limit (at most 500), search}` (search over device,
   serial, reason and user, 300 ms after the last key) -> `{total, rows}` newest first, Previous / Next and "1-500 of
   1,202" below the table; a server part that answers only `{rows}` gets the search and the pages in the client. A row
   without a device id says "Unknown device", a removed device "Device (removed)". **Revoke** opens the shared certificate
   list (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
-  (`IssuedCertificateList.ConfirmRevokeAsync`), then `revoke`; "Nothing was revoked ..." when every chosen one was revoked
-  already. View certificate in the choice shows the row's revocation and "ends soon" as the row's state says (the list
+  (`IssuedCertificateList.ConfirmRevokeAsync`), then `revoke`, with "Revoking the certificates" in the progress row and
+  Revoke off until the server answered (no Cancel: a write runs to its end); "Nothing was revoked ..." when every chosen
+  one was revoked already. View certificate in the choice shows the row's revocation and "ends soon" as the row's state says (the list
   sends no warning days; PKI's own tab uses the days of its answer).
 - **Device groups**: a user with a group sees only Sessions and Log (the server filters the rows); users without "manage"
   or without all devices see no Save, Add switch, Edit, Delete, Delete all or Revoke, and the inputs are read only.
@@ -577,8 +582,8 @@ data, also for the screenshots). Built 2026-10-24.
   of the server; without it the page takes the sites of the devices and switches it knows), `listCertificates` (PKI's
   list through `IDeviceCertificateAuthority.ListIssuedAsync`: `{state, purpose, source, search, offset, limit}` ->
   `{rows: [IssuedCertificateInfo], total, offset}`, rows of the caller's devices) and `getIssuedCertificate`
-  (`{serialNumber}` -> `{der}`, empty when OADM kept no copy). VLAN tag choices: the tags of the devices the client knows
-  and those of the saved rules.
+  (`{serialNumber}` -> `{der}`, empty when OADM kept no copy). VLAN tag choices: the server's `tagChoices`, the tags of the
+  devices the client knows and those of the saved rules (users with all devices only).
 
 ## Stages
 

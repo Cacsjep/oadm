@@ -83,6 +83,12 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     /// <summary>The user reaches every device: Server and Revoked show (server-wide), else only Sessions and Log.</summary>
     public bool HasAllDevices => _ctx.HasAllDevices;
 
+    /// <summary>
+    /// The VLAN rules are read and shown: users with all devices only (fail closed: the server also answers a group user
+    /// with empty VLAN settings).
+    /// </summary>
+    public bool SeesVlans => _ctx.HasAllDevices && (_state?.HasAllDevices ?? true);
+
     /// <summary>Users with all devices whose role may manage the plugin (the server refuses others anyway).</summary>
     public bool MayManage => _ctx.HasAllDevices && (_state?.HasAllDevices ?? true) && _ctx.Has(PermissionKeys.Of(RadiusPluginInfo.PluginId, PermissionKeys.Manage));
 
@@ -214,9 +220,24 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
             ApplyState(state, form: true);
             await Switches.LoadAsync(ct).ConfigureAwait(true);
             _sites = await ReadSitesAsync(ct).ConfigureAwait(true);
+            if (!SeesVlans)
+            {
+                Vlans.Clear(); // a user limited to a group: no VLAN rules and no tag choices (the server sends none either)
+                return;
+            }
+
             var vlans = RadiusJson.Deserialize<VlanSettings>(await _ctx.InvokeAsync(RadiusMethods.GetVlans, null, ct).ConfigureAwait(true));
-            Vlans.SetChoices(_sites, _ctx.Devices.SelectMany(d => d.Tags).Concat(vlans.Rules.Where(r => r.Kind == VlanRuleKinds.Tag).Select(r => r.RefId)));
-            Vlans.Apply(vlans);
+            if (!SeesVlans)
+            {
+                Vlans.Clear(); // the role changed during the read
+                return;
+            }
+
+            // The server's tag choices, the tags of the saved rules and of the devices this client knows.
+            Vlans.SetChoices(_sites, (vlans.TagChoices ?? []).Select(t => t.Name)
+                .Concat(_ctx.Devices.SelectMany(d => d.Tags))
+                .Concat((vlans.Rules ?? []).Where(r => r.Kind == VlanRuleKinds.Tag).Select(r => r.RefId)));
+            Vlans.Apply(vlans with { Rules = vlans.Rules ?? [] });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -338,6 +359,12 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         Log.NotifyRole();
         Revoked.NotifyRole();
         NotifySave();
+        if (!SeesVlans && (Vlans.Rules.Count > 0 || Vlans.TagChoices.Count > 0 || Vlans.Enabled))
+        {
+            Vlans.Clear(); // nothing read with all devices stays for a user limited to a group
+        }
+
+        OnPropertyChanged(nameof(SeesVlans));
         if (!HasAllDevices && Tab is RadiusTab.Server or RadiusTab.Revoked)
         {
             Tab = RadiusTab.Sessions;
