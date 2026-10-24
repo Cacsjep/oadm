@@ -7,21 +7,27 @@
              x:Class="Oadm.Plugins.Est.Client.EstView"
              x:DataType="vm:EstViewModel"
              ui:PageHeader.Subtitle="Cameras get and renew their certificates from the OADM CA by themselves.">
-  <!-- One card (the host's page card): General and Profiles with Save and the status left of it, then the enrollments and,
-       only when there are any, the certificates the cameras did not renew in time. Shared controls and theme classes only. -->
+  <!-- Own cards (ICorePluginPage.HasOwnCards): General and Profiles with Save and the status left of it in one card, the
+       enrollments and, only when there are any, the certificates the cameras did not renew in time in their own card below
+       (docs/spec/pki.md "Pages of the services after this"). Shared controls and theme classes only. -->
   <Panel>
     <!-- The server does not run (turned off, no OADM PRO, a start that failed): only General with Turn on (docs/spec/pki.md
          "One plugin"). -->
-    <StackPanel Classes="form" IsVisible="{Binding Server.ShowOffState}">
-      <TextBlock Classes="sectionTitle" Text="General" />
-      <srv:ServerSwitchView DataContext="{Binding Server}" HorizontalAlignment="Left" />
-    </StackPanel>
+    <Border Classes="card" HorizontalAlignment="Left" MinWidth="360" VerticalAlignment="Top" IsVisible="{Binding Server.ShowOffState}">
+      <StackPanel Classes="form">
+        <TextBlock Classes="cardTitle" Text="General" />
+        <srv:ServerSwitchView DataContext="{Binding Server}" HorizontalAlignment="Left" />
+      </StackPanel>
+    </Border>
 
-  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" IsVisible="{Binding Server.Running}">
+  <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding Server.Running}">
     <!-- Two columns: General (listen on, port, enrollments kept) left, the profiles right; Save with the status below, at
          the right edge. -->
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,48,Auto" RowDefinitions="Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
-      <StackPanel Grid.Column="0" Classes="form">
+    <Border Grid.Row="0" Classes="card">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
+      <!-- Side by side while they fit, Profiles below General on a narrow page; Save at the right edge of the two. -->
+      <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="48" LineSpacing="24">
+      <StackPanel Classes="form">
         <TextBlock Classes="sectionTitle" Text="General" />
         <!-- Same shared select as the NTP and DHCP server pages. -->
         <ui:FormField Label="Listen on" InputWidth="320">
@@ -55,7 +61,7 @@
         </ui:FormField>
       </StackPanel>
 
-      <StackPanel Grid.Column="2" Spacing="6">
+      <StackPanel Spacing="6">
         <TextBlock Classes="sectionTitle" Text="Profiles" />
         <Grid ColumnDefinitions="180,12,150,12,100,12,90,12,Auto,12,Auto">
           <TextBlock Grid.Column="0" Classes="secondary" Text="Profile" />
@@ -91,8 +97,9 @@
           <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add profile" />
         </Button>
       </StackPanel>
+      </WrapPanel>
 
-      <DockPanel Grid.Row="1" Grid.ColumnSpan="3" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <DockPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,16,0,0">
         <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
                 ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
         <!-- Turn off (for users who may change the server) between the status of the server and Save. -->
@@ -100,16 +107,20 @@
         <ui:StatusChip VerticalAlignment="Center" Margin="0,0,12,0"
                        Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" />
       </DockPanel>
-      <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Classes="secondary" Text="{Binding ListenersText}" TextWrapping="Wrap" HorizontalAlignment="Right"
+      <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding ListenersText}" TextWrapping="Wrap" HorizontalAlignment="Right"
                  TextAlignment="Right" Margin="0,6,0,0" IsVisible="{Binding HasListenerProblems}" />
-      <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right"
+      <TextBlock Grid.Row="3" Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right"
                  IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     </Grid>
+    </Border>
 
+    <!-- ============================== Enrollments ============================== -->
+    <Border Grid.Row="1" Classes="card">
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
     <!-- Like the event rule log: title, Delete all (red, confirmed), search at the right. -->
-    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" Margin="{DynamicResource Oadm.GapTop}">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
-        <TextBlock Classes="sectionTitle" Text="Enrollments" VerticalAlignment="Center" />
+        <TextBlock Classes="cardTitle" Text="Enrollments" VerticalAlignment="Center" />
         <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
           <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
         </Button>
@@ -119,7 +130,7 @@
       </StackPanel>
       <ui:SearchBox Grid.Column="2" Text="{Binding EnrollmentSearch}" Placeholder="Search device, profile, result, reason" Width="260" />
     </Grid>
-    <Panel Grid.Row="2" Margin="0,8,0,0">
+    <Panel Grid.Row="1" Margin="0,8,0,0">
       <DataGrid x:Name="EnrollmentsGrid" ItemsSource="{Binding Enrollments}" SelectedItem="{Binding SelectedEnrollment}" Classes="wrapRows" IsReadOnly="True"
                 CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single" MinHeight="140">
         <DataGrid.Columns>
@@ -140,11 +151,11 @@
                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
     </Panel>
 
-    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="{DynamicResource Oadm.GapTop}" IsVisible="{Binding HasNotRenewed}">
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="{DynamicResource Oadm.GapTop}" IsVisible="{Binding HasNotRenewed}">
       <TextBlock Classes="sectionTitle" Text="Not renewed" VerticalAlignment="Center" />
       <TextBlock Classes="secondary" Text="{Binding NotRenewedSummary}" VerticalAlignment="Center" />
     </StackPanel>
-    <DataGrid Grid.Row="4" Margin="0,8,0,0" ItemsSource="{Binding NotRenewed}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+    <DataGrid Grid.Row="3" Margin="0,8,0,0" ItemsSource="{Binding NotRenewed}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
               SelectionMode="Single" MaxHeight="240" IsVisible="{Binding HasNotRenewed}">
       <DataGrid.Columns>
         <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:NotRenewedRow" />
@@ -159,7 +170,8 @@
         </DataGridTemplateColumn>
       </DataGrid.Columns>
     </DataGrid>
-
+    </Grid>
+    </Border>
   </Grid>
 
     <ui:LoadingOverlay Text="Reading the EST server" IsVisible="{Binding IsLoading}" />

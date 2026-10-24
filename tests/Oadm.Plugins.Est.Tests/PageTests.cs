@@ -372,8 +372,10 @@ public sealed class PageTests : IAsyncLifetime
         Assert.True(checks.on.Item3);
     }
 
-    [Fact]
-    public async Task Page_renders()
+    [Theory]
+    [InlineData(1700)]
+    [InlineData(1000)]
+    public async Task Page_renders_with_the_enrollments_in_their_own_card(int width)
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var store = _plugin.Service!.Store;
@@ -401,24 +403,36 @@ public sealed class PageTests : IAsyncLifetime
         store.MarkNotRenewed("11AB", now);
 
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
-        await session.Dispatch(async () =>
+        var cards = await session.Dispatch(async () =>
         {
             var view = new EstView();
             using var vm = new EstViewModel(_ctx);
-            var window = Host(view);
+            var window = Host(view, width, 1000);
             window.Show();
             view.DataContext = vm; // after attaching: no live watch, deterministic content
             await vm.LoadServerAsync(CancellationToken.None); // the switch, then the cards
             Pump();
-            Capture(window, outDir, "est-page.png");
+            Capture(window, outDir, $"est-page-{width}.png");
+
+            // The card of each title: Enrollments apart from General and Profiles (docs/spec/pki.md "Pages of the services after this").
+            Border? CardOf(string title) => window.GetVisualDescendants().OfType<TextBlock>().First(t => t.IsEffectivelyVisible && t.Text == title)
+                .GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("card"));
+            var result = (General: CardOf("General"), Profiles: CardOf("Profiles"), Enrollments: CardOf("Enrollments"));
 
             vm.Port = "80";
             vm.Profiles[0].Name = "a b";
             Pump();
-            Capture(window, outDir, "est-page-errors.png");
+            Capture(window, outDir, $"est-page-{width}-errors.png");
             window.Close();
+            return result;
         }, CancellationToken.None);
         GC.KeepAlive(session);
+
+        Assert.NotNull(cards.General);
+        Assert.Same(cards.General, cards.Profiles);
+        Assert.NotNull(cards.Enrollments);
+        Assert.NotSame(cards.General, cards.Enrollments);
+        Assert.True(new Oadm.Plugins.Est.Client.EstPage().HasOwnCards);
     }
 
     [Fact]
@@ -714,13 +728,14 @@ public sealed class PageTests : IAsyncLifetime
             Task.FromResult(Run!(deviceIds, payloadJson, progress));
     }
 
-    private static Window Host(Control view)
+    private static Window Host(Control view, int width = 1280, int height = 960)
     {
+        // The real host page with the plugin's own cards (EstPage.HasOwnCards), like in the client.
         var page = new Oadm.Client.Shell.CorePluginPageView
         {
-            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, view),
+            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, view, hasOwnCards: true),
         };
-        var window = new Window { Width = 1280, Height = 960, Content = new Border { Padding = new Thickness(16), Child = page } };
+        var window = new Window { Width = width, Height = height, Content = new Border { Padding = new Thickness(16), Child = page } };
         Oadm.Client.App.ApplyCrispText(window);
         return window;
     }
