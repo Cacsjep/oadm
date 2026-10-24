@@ -9,7 +9,8 @@ Apache 2.0).
   failed".
 - Server part `Server/` (code map in the spec, "Code (server)"): `RadiusService` (listener with Listen on, a relay per site
   with switches, 64 workers, the tick of the Sessions tab and the log), `SwitchTable` (immutable, swapped on every change),
-  `DeviceCertificateValidator` and `CaTrust` (who passes), `DeviceIndex` (the managed devices in memory),
+  `DeviceCertificateValidator` and `CaTrust` (who passes), `DroppedRequests` (log rows of requests from a switch that is
+  not added or with a wrong shared secret, at most one per sender and reason per minute), `DeviceIndex` (the managed devices in memory),
   `ServerIdentityKeeper` (the server certificate from the OADM CA), `SessionBoard`, `RadiusLog`, `VlanPlan`, `RadiusStore`.
 - Settings: `config`, `switches` (secrets encrypted with the master key), `vlans`, `serverCertificate` (key encrypted);
   records: `log`, `logCertificates`. All in the encrypted backup.
@@ -37,8 +38,9 @@ Apache 2.0).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
 - Client part (`Oadm.Plugins.Radius.Client.dll`, `plugins/Oadm.Plugins.Radius.Client`): the page "802.1X server" with the
-  fixed tabs Server (General with Advanced, Switches with the switch dialog, VLANs, one Save), Sessions (live), Log (search,
-  View certificate, Delete all) and Revoked (Revoke through the shared `ui:IssuedCertificateList` of the client SDK); code
+  fixed tabs Server (General with Advanced, Switches with the switch dialog, VLANs in three, two or one column by the page
+  width, one Save below them), Sessions (live), Log (search, View certificate, Add switch for a sender that is not added,
+  Delete all) and Revoked (Revoke through the shared `ui:IssuedCertificateList` of the client SDK); code
   map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (project reference, like EST).
   Tests: `tests/Oadm.Plugins.Radius.Tests/Client` against `FakeRadiusBackend`
   (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `Category=Perf` for 10,000 sessions and

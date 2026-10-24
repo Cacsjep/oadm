@@ -28,7 +28,13 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   and **Activate** as EST. When the license ends, the server stops answering (switches fall back to their own rule).
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
   their ports."
-  - **General** (card, left): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Log entries
+  - **Server** (tab): three cards side by side, each as high as it needs: **General** | **Switches** | **VLANs**; one
+    row below them, right aligned, with the server certificate's end, the status chip and **Save** (decision 2026-10-24,
+    the maintainer's screenshot). Narrower pages (small or scaled screens, `RadiusView.ThreeColumnWidth` /
+    `TwoColumnWidth`, like the Permissions page): from 2,040 px three columns (each card needs about 665 px for a VLAN
+    rule: a QHD screen), from 1,350 px two (General with VLANs below it | Switches), below that one (General, Switches,
+    VLANs).
+  - **General** (card): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Log entries
     kept** (1,000..50,000, default 5,000). **Advanced** (collapsed, the defaults fit almost every network):
     **Minimum TLS version** (one select: TLS 1.0, TLS 1.1, **TLS 1.2** (default), TLS 1.3; for 1.0 or 1.1 the hint below
     the field says "Only for old devices: TLS 1.0 and 1.1 are no longer considered secure."), **Cipher suites** (check
@@ -38,14 +44,14 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     one usable suite for the chosen versions must stay checked; a suite the server certificate cannot use, ECDHE_RSA with
     its ECDSA key, says "Not usable with the server certificate." below its name and does not count: Save stays off with
     the reason as its tooltip), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
-    status left of Save: "Running on port 1812", "OADM PRO is not active.", "The PKI has no
+    status left of Save (below the cards): "Running on port 1812", "OADM PRO is not active.", "The PKI has no
     certificate authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available".
-  - **Switches** (card, right): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
+  - **Switches** (card): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
     last request, the requests without 802.1X (a MAC address or password check of the switch: not answered, counted apart,
     never Wrong secret); **Add switch**, Edit, Delete (red). The dialog: Name, Address, **Shared secret** (`ui:PasswordBox`,
     16 characters or more, **Generate** fills a random one and shows it once to copy), validation below the fields.
     Changes apply to the running server at once (decision above). At most 500 switches.
-  - **VLANs** (card, below; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
+  - **VLANs** (card; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
     a **site** or a **tag** → **VLAN ID** (1..4094); **Default VLAN** (optional; empty = no VLAN for devices no rule
     matches). Applies to the next authentication of each device. The tags of the rules are protected: only users with all
     devices (also an Operator with "Tag devices") add them to devices or remove them, also while the 802.1X server is
@@ -57,8 +63,17 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
   - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, IP address, result (status chip
     Authenticated / Failed), reason, VLAN; **search** over every column (one pass, one grid reset), **View
-    certificate** (the client certificate of the row, the shared `ui:CertificateWindow`, built with stage 1), **Delete
-    all** (red, confirmed, users with all devices). Kept entries per the setting, newest first.
+    certificate** (the client certificate of the row, the shared `ui:CertificateWindow`, built with stage 1), **Add switch**
+    (a row from a switch that is not added: the switch dialog with its address and site filled in; users who manage the
+    server), **Delete all** (red, confirmed, users with all devices). Kept entries per the setting, newest first.
+  - **Log rows of dropped requests** (decision 2026-10-24): a request from a sender that is no switch, and one from an
+    added switch with a wrong shared secret (the most common setup mistake), are logged too, not only counted: switch =
+    "10.0.0.9 (not added)" ("10.0.0.9 at Building B (not added)" at a site) or the switch's name, result Failed, reason
+    "Request from a switch that is not added. Add it under Switches." or "Wrong shared secret: the request's check value
+    does not match.", no port, MAC, device or certificate. At most one row per sender address and reason per minute: the
+    first request gives a row at once, the ones after it within the minute one row when the minute ended, whose reason
+    ends with "12 requests in the last minute." (the count in the reason, not a column: the grid stays as it is). No
+    device: only users with all devices see them; the search finds them; no event rule fires (no device tried).
 - **Event rules:** "Device authenticated" (device, switch, port, VLAN), "Authentication failed" (device or unknown,
   switch, port, reason).
 - **PKI task "IEEE 802.1X"** (exists): its dialog names this server ("Uses the OADM 802.1X server" when it is on) and the
@@ -485,7 +500,8 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   addresses of the cards or the missing ones change (logged once). One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
   released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
 - **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
-  addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th),
+  addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th,
+  and counted in `DroppedRequests`),
   a bounded queue (8,192; full = dropped, the switch retransmits), 64 workers (`RadiusHost.Workers`, the bound on parallel
   handshakes) call `RadiusProcessor.Process` with the switch of now (a switch removed meanwhile: its sessions end, nothing
   sent). The switch row's state: Site offline (site or relay offline), Wrong secret (the last request had a missing or wrong
@@ -529,7 +545,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   the device the certificate named or a MAC guess), ends timed-out sessions (every second), takes rows ended 10 s ago off
   (`removed`), and publishes the changed rows as `sessions` with `PluginEventAudience.DeviceRows` (500 rows per event;
   rows without a device: `Guid.Empty`, users with all devices only).
-- **Log** (`RadiusLog`): one row per ended session (also Timed out and Abandoned), records `log` (key = id, only new and
+- **Dropped requests** (`DroppedRequests`): a sender that is no switch (by site + address) and a `WrongSecret` drop of the
+  processor (by switch) are counted per sender and reason in O(1); the 500 ms tick drains the due ones (no row in the
+  last minute) into the log as `LogRow`s with `Requests` (the count), `Sender` and `SenderSiteId` (only for a sender that
+  is no switch) and no device id, published like session rows (audience `Guid.Empty`: users with all devices). A sender
+  without requests for a minute is forgotten; at most 64 senders that are no switch are followed at once (spoofed
+  addresses cannot grow it or flood the log; the others are only counted), senders with a wrong secret are added
+  switches (at most 500). Texts: `DroppedRequestTexts` in `Api/RadiusApi.cs`.
+- **Log** (`RadiusLog`): one row per ended session (also Timed out and Abandoned) and the rows of dropped requests, records `log` (key = id, only new and
   removed rows, every 2 s) and `logCertificates` (the leaf DER once per fingerprint, deleted with its last row; certificates
   no row points to are deleted at the start); kept per "Log entries kept"; `listLog` searches every column in one pass, the
   time also as the page shows it (`LogQuery.TimeZoneId`, the page's `TimeZoneInfo.Local.Id`; unknown: UTC only);
@@ -563,7 +586,8 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   nothing passes without PKI, a listed MQTT certificate refused, no CA reads per handshake and a changed CA trusted at
   once, an Axis device ID serial from the log never revoked, the revoke check without a search per serial, empty VLAN
   settings for a group user, the VLAN tags protected and tag rules without protection, loopback and a new address within
-  5 s), `PluginTests`
+  5 s), `DroppedRequestTests` (rows of a sender that is no switch and of a wrong secret, one per minute with the count,
+  never for group users, the cap of followed senders), `PluginTests`
   (manifest, the canary over every
   method, rows of a group user), `PluginPerfTests` (Category=Perf: 30,000 authentications through the plugin, the log at
   50,000 kept). Support: `Support/PluginHarness.cs` (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).
@@ -574,12 +598,15 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 
 `plugins/Oadm.Plugins.Radius.Client` (namespace `Oadm.Plugins.Radius.Client`, `RadiusPage`, `HasOwnCards`); tests in
 `tests/Oadm.Plugins.Radius.Tests/Client` against a fake server (`FakeRadiusBackend`: every method of the contract with demo
-data, also for the screenshots; review round 2 in `ReviewRound2PageTests` and `ReviewRound2HeadlessTests`). Built 2026-10-24.
+data, also for the screenshots; review round 2 in `ReviewRound2PageTests` and `ReviewRound2HeadlessTests`; the three, two
+and one column Server tab and the rows of dropped requests with Add switch in `ServerLayoutTests`). Built 2026-10-24.
 
-- **Fixed tabs** (`ui:PageTab`): **Server** (General with Advanced left, Switches right, VLANs below), **Sessions**, **Log**,
+- **Fixed tabs** (`ui:PageTab`): **Server** (General with Advanced, Switches, VLANs in three, two or one column;
+  `RadiusView.Arrange` moves the cards in `MeasureOverride`, before they are measured: a DataGrid measured once too
+  narrow keeps its fixed columns shrunk), **Sessions**, **Log**,
   **Revoked**. Nothing of a tab is read before it opens (the Server tab reads `getState`, `listSwitches`, `getVlans` each
   time it opens, the overlay over the cards; the lists the first time, then the events keep them).
-- **One Save** at the end of the VLANs card saves General with Advanced (`saveSettings`) and then the VLANs (`saveVlans`),
+- **One Save** below the cards saves General with Advanced (`saveSettings`) and then the VLANs (`saveVlans`),
   the status chip and the server certificate's end directly left of it, the sites that did not allow the port and a save
   error without a field below it (one accent button per view). Both parts are checked with `RadiusRules` before the first
   call (an error below its field, else below Save), so a refusal leaves nothing half saved; a `saveVlans` refused for
@@ -606,7 +633,9 @@ data, also for the screenshots; review round 2 in `ReviewRound2PageTests` and `R
   an ended row leaves 10 s after it ended (one step per second, the page's one-second tick also moves the durations of the
   open rows); the device in italics while it is a guess from the MAC (`TextBlock.guess`); the state chip running (violet),
   ok or error with the text of the server ("Sending server certificate: fragment 2 of 4").
-- **Log**: pages of 500 from the server with the search (300 ms after the last key), live `log` rows on the first page when
+- **Log**: **Add switch** (toolbar, `LogViewModel.AddSwitchCommand`, on for a row with `sender` and the manage
+  permission) reads the switches and opens the switch dialog with the sender's address and site
+  (`SwitchesViewModel.AddSenderAsync`). Pages of 500 from the server with the search (300 ms after the last key), live `log` rows on the first page when
   they match the search (the chosen row stays chosen when they push the full page), the reason or the warning in the Result chip (a warning is amber), View certificate describes the
   DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed. Every
   read sends `timeZoneId` (`TimeZoneInfo.Local.Id`) so the search finds the times as shown; `logCleared` during a read

@@ -7,8 +7,9 @@
              x:DataType="vm:RadiusViewModel"
              ui:PageHeader.Subtitle="Switches ask OADM which cameras may use their ports.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only. Fixed tabs: Server (General with
-       Advanced and Switches side by side, VLANs below, one Save for General and VLANs with the status left of it),
-       Sessions, Log, Revoked. Users limited to a device group see Sessions and Log only. -->
+       Advanced, Switches and VLANs side by side, two or one column on narrower pages (RadiusView.Arrange); one Save for
+       General and VLANs below the cards with the status left of it), Sessions, Log, Revoked. Users limited to a device
+       group see Sessions and Log only. -->
   <Grid RowDefinitions="Auto,*">
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="2" Margin="0,0,0,8">
       <ui:PageTab Title="Server" IsActive="{Binding IsServerTab}" ActivateCommand="{Binding ShowServerTabCommand}" IsVisible="{Binding HasAllDevices}" />
@@ -21,9 +22,10 @@
     <Panel Grid.Row="1" IsVisible="{Binding IsServerTab}">
       <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="{DynamicResource Oadm.Gap}">
-          <Grid ColumnDefinitions="*,16,*">
+          <!-- Three columns, each card as high as it needs; RadiusView.Arrange moves the cards for two or one column. -->
+          <Grid x:Name="ServerColumns" ColumnDefinitions="*,16,*,16,*" RowDefinitions="Auto,Auto,Auto">
             <!-- ========== General ========== -->
-            <Border Grid.Column="0" Classes="card" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
+            <Border x:Name="GeneralCard" Grid.Column="0" Classes="card" VerticalAlignment="Top" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
               <StackPanel Classes="form">
                 <ui:CardHeader Title="General" />
                 <ui:FormField Label="Listen on" InputWidth="320">
@@ -78,7 +80,7 @@
             </Border>
 
             <!-- ========== Switches ========== -->
-            <Border Grid.Column="2" Classes="card" DataContext="{Binding Switches}" x:DataType="vm:SwitchesViewModel">
+            <Border x:Name="SwitchesCard" Grid.Column="2" Classes="card" VerticalAlignment="Top" DataContext="{Binding Switches}" x:DataType="vm:SwitchesViewModel">
               <Grid RowDefinitions="Auto,Auto,*">
                 <ui:CardHeader Grid.Row="0" Title="Switches" />
                 <WrapPanel Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,8" IsVisible="{Binding MayManage}">
@@ -114,13 +116,10 @@
                 </Panel>
               </Grid>
             </Border>
-          </Grid>
 
-          <!-- ========== VLANs (collapsed while off) and the one Save ========== -->
-          <Border Classes="card">
-            <StackPanel Classes="form">
-              <!-- Users limited to a group: no VLAN rules (the server sends none). -->
-              <StackPanel Classes="form" IsVisible="{Binding SeesVlans}">
+            <!-- ========== VLANs (collapsed while off); users limited to a group: no VLAN rules (the server sends none) ========== -->
+            <Border x:Name="VlansCard" Grid.Column="4" Classes="card" VerticalAlignment="Top" IsVisible="{Binding SeesVlans}">
+              <StackPanel Classes="form">
                 <ui:CardHeader Title="VLANs" />
                 <StackPanel Classes="form" DataContext="{Binding Vlans}" x:DataType="vm:VlansViewModel">
                   <CheckBox Content="Assign VLANs" IsChecked="{Binding Enabled}" IsEnabled="{Binding MayManage}" />
@@ -164,21 +163,24 @@
                   </StackPanel>
                 </StackPanel>
               </StackPanel>
+            </Border>
+          </Grid>
 
-              <DockPanel HorizontalAlignment="Right" Margin="{DynamicResource Oadm.GapTop}">
-                <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
-                        ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
-                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,12,0" VerticalAlignment="Center">
-                  <TextBlock Classes="secondary" Text="{Binding CertificateText}" VerticalAlignment="Center"
-                             IsVisible="{Binding CertificateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <ui:StatusChip VerticalAlignment="Center" Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsWarning="{Binding StatusWarning}" IsError="{Binding StatusError}" />
-                </StackPanel>
-              </DockPanel>
-              <TextBlock Classes="secondary" Text="{Binding SitesText}" TextWrapping="Wrap" HorizontalAlignment="Right" TextAlignment="Right"
-                         IsVisible="{Binding HasSiteProblems}" />
-              <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right" IsVisible="{Binding HasActionError}" />
-            </StackPanel>
-          </Border>
+          <!-- ========== The one Save for General and VLANs, below the cards ========== -->
+          <StackPanel Classes="form">
+            <DockPanel HorizontalAlignment="Right">
+              <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+                      ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+              <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,12,0" VerticalAlignment="Center">
+                <TextBlock Classes="secondary" Text="{Binding CertificateText}" VerticalAlignment="Center"
+                           IsVisible="{Binding CertificateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <ui:StatusChip VerticalAlignment="Center" Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsWarning="{Binding StatusWarning}" IsError="{Binding StatusError}" />
+              </StackPanel>
+            </DockPanel>
+            <TextBlock Classes="secondary" Text="{Binding SitesText}" TextWrapping="Wrap" HorizontalAlignment="Right" TextAlignment="Right"
+                       IsVisible="{Binding HasSiteProblems}" />
+            <TextBlock Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right" IsVisible="{Binding HasActionError}" />
+          </StackPanel>
         </StackPanel>
       </ScrollViewer>
       <ui:LoadingOverlay Text="Reading the 802.1X server" IsVisible="{Binding IsLoading}" />
@@ -236,6 +238,10 @@
             <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
               <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
             </Button>
+            <Button Classes="toolbar" Command="{Binding AddSwitchCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="For rows from a switch that is not added"
+                    ToolTip.ShowOnDisabled="True">
+              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add switch" Spacing="8" />
+            </Button>
             <Button Classes="toolbar danger" Command="{Binding DeleteAllCommand}" IsVisible="{Binding MayManage}">
               <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
             </Button>
@@ -248,7 +254,7 @@
                     CanUserReorderColumns="False" SelectionMode="Single" MinHeight="200">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Time" Width="140" Binding="{Binding Time}" x:DataType="vm:LogRowViewModel" />
-              <DataGridTextColumn Header="Switch" Width="100" Binding="{Binding Switch}" x:DataType="vm:LogRowViewModel" />
+              <DataGridTextColumn Header="Switch" Width="150" Binding="{Binding Switch}" x:DataType="vm:LogRowViewModel" />
               <DataGridTextColumn Header="Port" Width="130" Binding="{Binding Port}" x:DataType="vm:LogRowViewModel" />
               <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Mac}" x:DataType="vm:LogRowViewModel" />
               <DataGridTextColumn Header="EAP identity" Width="130" Binding="{Binding Identity}" x:DataType="vm:LogRowViewModel" />

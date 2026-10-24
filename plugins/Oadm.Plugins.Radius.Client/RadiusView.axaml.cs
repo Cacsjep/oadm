@@ -12,7 +12,21 @@ namespace Oadm.Plugins.Radius.Client;
 /// </summary>
 public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs, IRevokeDialogs
 {
+    /// <summary>
+    /// From this width of the page the cards General, Switches and VLANs stand side by side: each card needs about 665 px for
+    /// its widest row (a VLAN rule; the Switches columns about 600), so 3 x 665 + 2 x 16. A QHD screen keeps three columns, a
+    /// Full HD screen at 100 % gets two.
+    /// </summary>
+    public const double ThreeColumnWidth = 2040;
+
+    /// <summary>
+    /// From this width two columns (2 x 665 + 16): General with VLANs below it on the left, Switches on the right; below it
+    /// one column (General, Switches, VLANs).
+    /// </summary>
+    public const double TwoColumnWidth = 1350;
+
     private RadiusViewModel? _vm;
+    private int _columns;
 
     public RadiusView()
     {
@@ -31,6 +45,73 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs, IRev
                 _vm.Log.ViewCertificateCommand.Execute(null);
             }
         };
+    }
+
+    /// <summary>
+    /// The columns follow the width before the cards are measured: a grid measured once too narrow keeps its fixed columns
+    /// shrunk (the Switches grid), so the cards never get a pass at a width they do not fit.
+    /// </summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (double.IsFinite(availableSize.Width))
+        {
+            Arrange(availableSize.Width);
+        }
+
+        return base.MeasureOverride(availableSize);
+    }
+
+    /// <summary>The columns of the Server tab now: 3, 2 or 1 (tests; 3 before the first layout, as in the XAML).</summary>
+    public int ServerColumnCount => _columns == 0 ? 3 : _columns;
+
+    /// <summary>
+    /// Three columns (General | Switches | VLANs), two (General and VLANs | Switches) or one (General, Switches, VLANs) by
+    /// the width of the Server tab (like the Permissions page). Layout only.
+    /// </summary>
+    private void Arrange(double width)
+    {
+        var columns = width >= ThreeColumnWidth ? 3 : width >= TwoColumnWidth ? 2 : 1;
+        if (columns == _columns)
+        {
+            return;
+        }
+
+        _columns = columns;
+        var star = new GridLength(1, GridUnitType.Star);
+        var gap = new GridLength(16);
+        var none = new GridLength(0);
+        var definitions = ServerColumns.ColumnDefinitions;
+        definitions[1].Width = columns >= 2 ? gap : none;
+        definitions[2].Width = columns >= 2 ? star : none;
+        definitions[3].Width = columns == 3 ? gap : none;
+        definitions[4].Width = columns == 3 ? star : none;
+        var below = new Thickness(0, 16, 0, 0);
+        switch (columns)
+        {
+            case 3:
+                Place(GeneralCard, 0, 0, 1, default);
+                Place(SwitchesCard, 0, 2, 1, default);
+                Place(VlansCard, 0, 4, 1, default);
+                break;
+            case 2:
+                Place(GeneralCard, 0, 0, 1, default);
+                Place(VlansCard, 1, 0, 1, below);
+                Place(SwitchesCard, 0, 2, 2, default);
+                break;
+            default:
+                Place(GeneralCard, 0, 0, 1, default);
+                Place(SwitchesCard, 1, 0, 1, below);
+                Place(VlansCard, 2, 0, 1, below);
+                break;
+        }
+    }
+
+    private static void Place(Control card, int row, int column, int rowSpan, Thickness margin)
+    {
+        Grid.SetRow(card, row);
+        Grid.SetColumn(card, column);
+        Grid.SetRowSpan(card, rowSpan);
+        card.Margin = margin;
     }
 
     public async Task<bool> ShowSwitchAsync(SwitchDialogViewModel dialog)

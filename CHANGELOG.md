@@ -8,6 +8,9 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- 802.1X server: the log also lists requests from a switch that is not added and from a switch with a wrong shared
+  secret (at most one row per switch and minute, with the count); **Add switch** in the log adds such a switch. The Server
+  tab shows General, Switches and VLANs side by side on wide screens, with Save below them.
 - **802.1X server** (OADM PRO, off by default): OADM answers your switches and lets only cameras it manages, with a
   certificate from the OADM CA or their Axis device ID, onto the network. Switches at sites go through the site node.
   VLANs per site or tag, a live Sessions tab, a log, and the event rules "Device authenticated" and "Authentication failed".

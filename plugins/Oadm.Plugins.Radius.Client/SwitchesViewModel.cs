@@ -170,11 +170,28 @@ public sealed partial class SwitchesViewModel : ObservableObject
         }
     }
 
-    internal SwitchDialogViewModel NewDialog(SwitchRow? existing)
+    internal SwitchDialogViewModel NewDialog(SwitchRow? existing, string? address = null, Guid? siteId = null)
     {
         var state = _state();
         var others = Rows.Where(r => r.Source.Id != existing?.Id).Select(r => r.Source).ToList();
-        return new SwitchDialogViewModel(_ctx, existing, _sites(), others, state);
+        return new SwitchDialogViewModel(_ctx, existing, _sites(), others, state, address, siteId);
+    }
+
+    /// <summary>
+    /// Add switch of a log row from a sender that is no switch: the switches are read first (the dialog checks names and
+    /// addresses against them), then the dialog opens with the sender's address and site filled in.
+    /// </summary>
+    public async Task<bool> AddSenderAsync(string address, Guid? siteId)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        await ReloadAsync().ConfigureAwait(true);
+        if (!CanAdd() || Dialogs is not { } dialogs || !await dialogs.ShowSwitchAsync(NewDialog(null, address, siteId)).ConfigureAwait(true))
+        {
+            return false;
+        }
+
+        await ReloadAsync().ConfigureAwait(true);
+        return true;
     }
 
     private async Task ReloadAsync()
@@ -202,7 +219,10 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
     private readonly IReadOnlyList<SwitchRow> _others;
     private readonly RadiusState? _state;
 
-    public SwitchDialogViewModel(ICorePluginClientContext ctx, SwitchRow? existing, IReadOnlyList<SiteRef> sites, IReadOnlyList<SwitchRow> others, RadiusState? state)
+    /// <param name="address">A new switch's address filled in (Add switch of a log row from a sender that is no switch).</param>
+    /// <param name="siteId">The site of that sender.</param>
+    public SwitchDialogViewModel(ICorePluginClientContext ctx, SwitchRow? existing, IReadOnlyList<SiteRef> sites, IReadOnlyList<SwitchRow> others, RadiusState? state,
+        string? address = null, Guid? siteId = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         ArgumentNullException.ThrowIfNull(sites);
@@ -211,8 +231,9 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
         _state = state;
         SiteChoices = [new Choice<Guid?>(null, SwitchRowViewModel.ThisServer), .. sites.OrderBy(s => s.SiteName, StringComparer.CurrentCultureIgnoreCase).Select(s => new Choice<Guid?>(s.SiteId, s.SiteName))];
         Name = existing?.Name ?? string.Empty;
-        Address = existing?.Address ?? string.Empty;
-        Site = SiteChoices.FirstOrDefault(c => c.Value == existing?.SiteId) ?? SiteChoices[0];
+        Address = existing?.Address ?? address ?? string.Empty;
+        var site = existing is null ? siteId : existing.SiteId;
+        Site = SiteChoices.FirstOrDefault(c => c.Value == site) ?? SiteChoices[0];
         Validation
             .Rule(nameof(Name), () => Name.Trim().Length == 0 ? RadiusRules.EnterName
                 : Name.Trim().Length > RadiusLimits.MaxNameLength ? RadiusRules.NameTooLong

@@ -278,6 +278,19 @@ internal sealed class FakeRadiusBackend
         HasCertificate = true,
     };
 
+    /// <summary>A row of dropped requests: a sender that is no switch (<paramref name="sender"/>) or a wrong shared secret.</summary>
+    public static LogRow DroppedEntry(DateTime time, string switchName, string reason, int requests, string? sender, Guid? siteId = null) => new()
+    {
+        Id = Interlocked.Increment(ref _nextLogId),
+        TimeUtc = time,
+        SwitchName = switchName,
+        Result = LogResults.Failed,
+        Reason = DroppedRequestTexts.Reason(reason, requests),
+        Requests = requests,
+        Sender = sender,
+        SenderSiteId = siteId,
+    };
+
     private static long _nextLogId;
 
     private SwitchRow SaveSwitch(SaveSwitchRequest request)

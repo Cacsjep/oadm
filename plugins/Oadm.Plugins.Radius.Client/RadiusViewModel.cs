@@ -42,7 +42,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         Switches = new SwitchesViewModel(ctx, () => MayManage, () => _state, () => _sites);
         Vlans = new VlansViewModel(() => MayManage);
         Sessions = new SessionsViewModel(ctx, _time);
-        Log = new LogViewModel(ctx, () => MayManage, _time);
+        Log = new LogViewModel(ctx, () => MayManage, _time, (address, siteId) => Switches.AddSenderAsync(address, siteId));
         Revoked = new RevokedViewModel(ctx, () => MayManage, _time);
         Tab = HasAllDevices ? RadiusTab.Server : RadiusTab.Sessions;
         Settings.PropertyChanged += (_, e) =>
