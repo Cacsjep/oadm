@@ -583,6 +583,13 @@ public static partial class OadmServerHost
             LogPluginError(logger, error.Source, error.Message);
         }
 
+        // 2a. Protected tags: the sets of the installed core plugins (on or off, running or not) before any tag write; the sets
+        // of plugins no longer installed are forgotten (all kept while a plugin failed to load: it may still be installed).
+        var installedCores = registry.Errors.Count == 0
+            ? registry.AllCorePlugins.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+        await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().LoadAsync(installedCores, ct).ConfigureAwait(false);
+
         // 2b. Roles: every permission the loaded plugins declare (on or off); a role gets the default of a new one once.
         var hadUsers = await sp.GetRequiredService<Core.Auth.UserStore>().HasUsersAsync(ct).ConfigureAwait(false);
         var catalog = Core.Auth.PermissionCatalog.Build(registry);
@@ -682,6 +689,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
+        await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().FlushAsync().ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<EventLog>().DisposeAsync().ConfigureAwait(false);

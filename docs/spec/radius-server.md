@@ -48,7 +48,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   - **VLANs** (card, below; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
     a **site** or a **tag** → **VLAN ID** (1..4094); **Default VLAN** (optional; empty = no VLAN for devices no rule
     matches). Applies to the next authentication of each device. The tags of the rules are protected: only users with all
-    devices add them to devices or remove them ("The tag Floor 3 sets a VLAN. Only users with all devices can add or remove
+    devices (also an Operator with "Tag devices") add them to devices or remove them, also while the 802.1X server is
+    stopped or off, and nobody renames or deletes them ("The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing
+    was changed.") ("The tag Floor 3 sets a VLAN. Only users with all devices can add or remove
     it. Nothing was changed.", docs/spec/tags.md "Protected tags").
   - **Sessions** (tab): the authentications in progress, live: started, switch, port, MAC address, EAP identity, device,
     **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
@@ -351,8 +353,14 @@ their group names (none when it names none). The tags of the VLAN rules are prot
 devices but has a group could otherwise choose a device's VLAN. The plugin hands the rules' tag names to the host
 (`ctx.ProtectedTags.Protect`, SDK 0.4.0) at its start and with every save (the old and the new names while the save runs);
 `DeviceTagStore` refuses them for a group user in the tagging transaction. On a host without `ProtectedTags` the tag rules
-match no device (fail closed; site rules and the default VLAN apply). A stopped 802.1X server protects no tags (it assigns
-no VLAN either).
+match no device (fail closed; site rules and the default VLAN apply). The host keeps the protected names while the plugin
+is installed (round 3): a stopped or turned-off 802.1X server (PRO lapsed, a restart with it off) still protects the tags
+of its stored rules, so a tag a group user adds meanwhile never sets a VLAN when the server starts again; the names are
+forgotten only when the plugin is removed (docs/spec/tags.md "Protected tags"). A rename or delete of such a tag is refused
+for every user (`Protect(names, RadiusTexts.VlanTag, RadiusTexts.VlanTagChange)`): the rules keep tags by name. A save
+of the rules waits for group users' tag writes in flight (`Protect` returns after them). Users with all devices, also an Operator
+with all devices and "Tag devices", add and remove the VLAN-rule tags: they manage VLAN membership (decision
+2026-10-24).
 
 ## Secrets and logs
 

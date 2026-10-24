@@ -76,6 +76,15 @@ public sealed class TagInUseByGroupException(string name)
 /// </summary>
 public sealed class ProtectedTagException(string name, string message) : TagNeedsAllDevicesException(name, message);
 
+/// <summary>
+/// A rename or delete of a tag a plugin protects (<see cref="ProtectedTagRegistry.ChangeRefusalFor"/>): the plugin's settings
+/// name the tag, so every user, administrators too, changes them first. The message is the plugin's text. Nothing was changed.
+/// </summary>
+public sealed class ProtectedTagChangeException(string name, string message) : InvalidOperationException(message)
+{
+    public string Name { get; } = name;
+}
+
 /// <summary>A tag name that cannot be used; the message says why (shown below the name field).</summary>
 public sealed class TagNameException(string message) : ArgumentException(message);
 

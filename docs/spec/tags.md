@@ -33,8 +33,25 @@ with the labels in the grid, the search, the export and the import; plugins read
   text: "The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed."; a plugin
   text that fails or is empty: "Only users with all devices can add or remove the tag Floor 3. Nothing was changed.").
   Both refusals are `TagNeedsAllDevicesException` (the waiting list logs them like the group one). Rename and delete need
-  all devices anyway. `ProtectedTagRegistry` (server, `Oadm.Core.Devices`) holds one set per plugin and forgets it when
-  the plugin stops.
+  all devices anyway. Users with all devices (also an Operator with all devices and "Tag devices") add and remove protected
+  tags like any other: they manage VLAN membership (decision 2026-10-24, 802.1X round 3).
+  **Rename and delete of a protected tag are refused for every user, administrators too** (decision 2026-10-24, 802.1X
+  round 3: the plugin's rules keep tags by name and would silently stop matching): `UpdateAsync` with a new name and
+  `DeleteAsync` throw `ProtectedTagChangeException` (FAILED_PRECONDITION) with the plugin's text
+  (`Protect(names, refusal, changeRefusal)`: "The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing was
+  changed.") or the host's "A plugin's settings use the tag Floor 3. Change them first. Nothing was changed."; a recolor
+  is allowed. The client shows the text below the tag list. A new protected set waits for tag writes in flight
+  (`BeginTagWrite` in the group user's tagging, rename and delete; `Protect` returns once the writes that started before
+  it ended), so no write checked against the older names commits after the new set is in force.
+  `ProtectedTagRegistry` (server, `Oadm.Core.Devices`) holds one set per plugin (name -> refusal text). **A set is kept while
+  the plugin is installed** (decision 2026-10-24, 802.1X round 3): a stop, a fault, a package turned off or a lapsed PRO
+  license only closes the plugin's views (late calls change nothing; the refusal is the text the plugin gave); the sets are
+  stored in the server setting `Tags.Protected` (JSON plugin id -> name -> text, "" = the default text; part of the
+  database, so a backup and its restore keep them) and restored at server start right after the plugins are loaded,
+  before any tag write (gRPC and the waiting list start later). A plugin's new `Protect` call replaces its set. A set is
+  forgotten only when its plugin is removed: at server start, a stored plugin id that no loaded core plugin (on or off)
+  has; while a plugin failed to load, every stored set is kept (it may still be installed). The writes run in the
+  background, one at a time (the last state wins); the server stop waits for them (`FlushAsync`).
 - **Client store**: `Tags/TagStore` (fed by `TagService.Watch` in `ServerConnection`, owned by `DeviceStore.Tags`) keeps
   one shared `TagInfo` per name (case-insensitive); device rows hold `TagChips` of those shared objects, so a recolor
   updates every chip and group header without touching 5,000 rows. `DeviceRowViewModel.Tags` / `TagsText`

@@ -146,6 +146,56 @@ public sealed class BackupServiceTests
     }
 
     [Fact]
+    public async Task TheProtectedTagsOfAnInstalledPluginComeBackWithTheRestore()
+    {
+        var restart = new RecordingRestart();
+        var host = await TestServerHost.StartAsync(configureServices: services =>
+        {
+            services.RemoveAll<BackupArchive>();
+            services.AddSingleton(sp => new BackupArchive(sp.GetRequiredService<OadmPaths>()) { Iterations = 1000 });
+            services.RemoveAll<IServerRestart>();
+            services.AddSingleton<IServerRestart>(restart);
+            DeviceGroups.SharedCore.TagScopeTests.InstalledVlanPlugin.Install(services);
+        });
+        host.KeepDataDirectory = true;
+        var dataDirectory = host.DataDirectory;
+        try
+        {
+            var registry = host.Get<ProtectedTagRegistry>();
+            registry.For(DeviceGroups.SharedCore.TagScopeTests.InstalledVlanPlugin.PluginId).Protect(["Vlan 20"], name => $"The tag {name} sets a VLAN.");
+            await registry.FlushAsync();
+            var (name, content) = await ReadAllAsync(Client(host).Create(new Proto.CreateBackupRequest { Password = Password }));
+
+            // After the backup the rule is gone; the restore brings the protected tag back.
+            registry.For(DeviceGroups.SharedCore.TagScopeTests.InstalledVlanPlugin.PluginId).Protect([], name => name);
+            await registry.FlushAsync();
+            var fileId = await UploadAsync(host, name, content);
+            await Client(host).RestoreAsync(new Proto.RestoreRequest { FileId = fileId, Password = Password });
+            Assert.Equal(1, restart.Requests);
+        }
+        finally
+        {
+            await host.DisposeAsync();
+        }
+
+        var restarted = await TestServerHost.StartAsync(dataDirectory: dataDirectory, configureServices: services =>
+        {
+            services.RemoveAll<BackupArchive>();
+            services.AddSingleton(sp => new BackupArchive(sp.GetRequiredService<OadmPaths>()) { Iterations = 1000 });
+            DeviceGroups.SharedCore.TagScopeTests.InstalledVlanPlugin.Install(services);
+        });
+        try
+        {
+            Assert.Equal("The tag Vlan 20 sets a VLAN.", restarted.Get<ProtectedTagRegistry>().RefusalFor(["Vlan 20"]));
+        }
+        finally
+        {
+            restarted.KeepDataDirectory = false;
+            await restarted.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task ABackupOfANewerOadmOrADamagedFileIsRefusedAndNothingChanges()
     {
         var restart = new RecordingRestart();

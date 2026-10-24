@@ -109,6 +109,7 @@ public sealed partial class DeviceTagStore(
     /// rewrites every device's tag in the same transaction. A name used only on devices gets a definition.
     /// </summary>
     /// <exception cref="KeyNotFoundException">No such tag.</exception>
+    /// <exception cref="ProtectedTagChangeException">A rename of a tag a plugin protects (every user).</exception>
     public async Task<TagUpdateResult> UpdateAsync(string name, string? newName, TagColor color, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -149,6 +150,12 @@ public sealed partial class DeviceTagStore(
             }
 
             string target = cleanNew ?? oldName;
+            using var protectedWrite = protectedTags?.BeginTagWrite(); // a new protected set waits for this rename
+            if (!string.Equals(target, oldName, StringComparison.Ordinal) && protectedTags?.ChangeRefusalFor(oldName) is { } refusal)
+            {
+                throw new ProtectedTagChangeException(oldName, refusal); // the plugin's rules name the tag; a recolor is fine
+            }
+
             if (!TagNames.Comparer.Equals(target, oldName)
                 && await db.TagDefinitions.AnyAsync(t => t.NormalizedName == TagNames.Normalize(target) && t.Id != definition.Id, ct).ConfigureAwait(false))
             {
@@ -185,6 +192,7 @@ public sealed partial class DeviceTagStore(
     /// their tags before and after. Device groups that use the tag lose it (their rules keep the id of a tag that is gone).
     /// </summary>
     /// <exception cref="KeyNotFoundException">No such tag.</exception>
+    /// <exception cref="ProtectedTagChangeException">A tag a plugin protects (every user).</exception>
     public async Task<TagDeleteResult> DeleteAsync(string name, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -201,6 +209,12 @@ public sealed partial class DeviceTagStore(
             string normalized = TagNames.Normalize(name);
             var definition = await db.TagDefinitions.FirstOrDefaultAsync(t => t.NormalizedName == normalized, ct).ConfigureAwait(false);
             deletedName = definition?.Name ?? name.Trim();
+            using var protectedWrite = protectedTags?.BeginTagWrite(); // a new protected set waits for this delete
+            if (protectedTags?.ChangeRefusalFor(deletedName) is { } refusal)
+            {
+                throw new ProtectedTagChangeException(deletedName, refusal);
+            }
+
             if (definition is not null)
             {
                 db.TagDefinitions.Remove(definition);
@@ -270,6 +284,8 @@ public sealed partial class DeviceTagStore(
             await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
             var definitions = (await db.TagDefinitions.ToListAsync(ct).ConfigureAwait(false))
                 .ToDictionary(d => d.NormalizedName, StringComparer.Ordinal);
+            // A plugin that protects new names meanwhile waits until this write ended (checked against the older names).
+            using var protectedWrite = devices.View.HasAllDevices ? null : protectedTags?.BeginTagWrite();
             if (!devices.View.HasAllDevices)
             {
                 await GuardAsync(db, definitions, toAdd.Concat(toRemove), ct).ConfigureAwait(false);
@@ -314,6 +330,11 @@ public sealed partial class DeviceTagStore(
 
                 return result.SequenceEqual(tags, StringComparer.Ordinal) ? null : result;
             }, ct).ConfigureAwait(false);
+            if (protectedWrite is not null && AfterProtectedCheck is { } afterCheck)
+            {
+                await afterCheck().ConfigureAwait(false);
+            }
+
             await transaction.CommitAsync(ct).ConfigureAwait(false);
         }
         finally
@@ -543,6 +564,9 @@ public sealed partial class DeviceTagStore(
 
     /// <summary>Tests: runs before the names are read again after a write (throw to simulate a failed read).</summary>
     internal Action? BeforeNamesReload { get; set; }
+
+    /// <summary>Tests: runs in a group user's tag write after the protected-tag check, before the commit.</summary>
+    internal Func<Task>? AfterProtectedCheck { get; set; }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the tag names after a change failed; device groups keep the names they had until the next change")]
     private static partial void LogNamesReloadFailed(ILogger logger, Exception ex);
