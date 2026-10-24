@@ -33,6 +33,21 @@ public sealed class CertificateAndCategoryDisplayTests
     }
 
     [Fact]
+    public void The_chip_follows_the_days_of_the_devices_expiry_warning_policy()
+    {
+        DateTime notAfter = Now.AddDays(40);
+        Assert.Equal(PillKind.Ok, CertificateDisplay.ExpiryKind(notAfter, Now)); // 30 days without PKI
+        Assert.Equal(PillKind.Warning, CertificateDisplay.ExpiryKind(notAfter, Now, 60));
+        Assert.Equal(PillKind.Ok, CertificateDisplay.ExpiryKind(notAfter, Now, 0)); // the server said nothing: 30
+
+        Device device = TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V");
+        device.CertNotAfter = Timestamp.FromDateTime(DateTime.UtcNow.AddDays(40).AddHours(1));
+        Assert.Equal(PillKind.Ok, new DeviceRowViewModel(device).CertExpires.Kind);
+        device.CertWarningDays = 60;
+        Assert.Equal(new ChipInfo("40 days", PillKind.Warning), new DeviceRowViewModel(device).CertExpires);
+    }
+
+    [Fact]
     public void No_certificate_shows_empty_cells()
     {
         Assert.Equal("", CertificateDisplay.ExpiryText(null, Now));

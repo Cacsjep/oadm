@@ -21,7 +21,7 @@ public sealed class DeviceGroupTests
     private static readonly string[] ManageMethods =
     [
         PkiMethods.Generate, PkiMethods.Import, PkiMethods.PreviewReplace, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
-        PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust, PkiMethods.SaveSettings, PkiMethods.ImportRadiusCa,
+        PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust, PkiMethods.ImportRadiusCa,
         PkiMethods.Revoke, PkiMethods.RevokeDevice,
     ];
 
@@ -69,11 +69,12 @@ public sealed class DeviceGroupTests
         Assert.Equal(2, PkiJson.Deserialize<PkiState>(await ctx.InvokeAsync(plugin, admin, PkiMethods.GetState, null)).IssuedDevices);
         Assert.Empty(ctx.RefusedAccesses);
 
-        // A change of the settings: the group's page gets the state with its own counts, users with all devices the full one.
-        var config = PkiJson.Deserialize<PkiState>(await ctx.InvokeAsync(plugin, admin, PkiMethods.GetState, null)).Config with { ExpiryWarningDays = 45 };
-        await ctx.InvokeAsync(plugin, admin, PkiMethods.SaveSettings, PkiJson.Serialize(new SaveSettingsRequest(config)));
+        // A change of the policies: the group's page gets the state with its own counts, users with all devices the full one.
+        var https = plugin.Service!.Policies.FirstOf(Policies.PolicyKinds.HttpsCertificate)!;
+        await ctx.InvokeAsync(plugin, admin, Policies.PolicyMethods.SavePolicy, PkiJson.Serialize(https with { ValidDays = 45 }));
+        await Eventually.TrueAsync(() => ctx.EventsSeenBy(group).Any(e => e.Topic == PkiMethods.StateTopic), "the state after the change");
         PkiState Last(ICallContext watcher) => PkiJson.Deserialize<PkiState>(ctx.EventsSeenBy(watcher).Last(e => e.Topic == PkiMethods.StateTopic).PayloadJson);
-        Assert.Equal((1, 45), (Last(group).IssuedDevices, Last(group).Config.ExpiryWarningDays));
+        Assert.Equal(1, Last(group).IssuedDevices);
         Assert.Equal(2, Last(admin).IssuedDevices);
         Assert.DoesNotContain(ctx.EventsSeenBy(ctx.CallAsGroup([outside.Id])), e => e.Topic == PkiMethods.StateTopic); // never read the page
     }
@@ -105,7 +106,8 @@ public sealed class DeviceGroupTests
         Assert.Equal(1, await CountAsync(admin, "10.0.0.49"));
         Assert.Equal(0, await CountAsync(group, "ACCC8E"));
         var all = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(plugin, admin, PkiMethods.GetCertificates, "{}"));
-        Assert.Equal(3, all.Total);
+        Assert.Equal(3, all.Rows.Count(r => r.Kind == Oadm.Sdk.Certificates.ListedCertificateKind.Device)); // and the CAs, which a group user never sees
+        Assert.All(seen.Rows, r => Assert.Equal(Oadm.Sdk.Certificates.ListedCertificateKind.Device, r.Kind));
         Assert.False(all.Rows.Single(r => r.SerialNumber == Oadm.Sdk.Certificates.CertificateSerials.Normalize(gone.SerialNumber)).DeviceManaged);
 
         // A certificate of another device answers like an unknown one.
@@ -204,6 +206,6 @@ public sealed class DeviceGroupTests
 
         Assert.False(vm.MayManage);
         Assert.False(vm.MayTrustServer);
-        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.False(vm.Policies.IsShown);
     }
 }

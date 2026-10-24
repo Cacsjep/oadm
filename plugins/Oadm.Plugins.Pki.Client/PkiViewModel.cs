@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Pki.Ca;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.TrustStore;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Validation;
@@ -37,8 +38,11 @@ public sealed class PreviousCaRowViewModel(PreviousCaInfo info)
     };
 }
 
-/// <summary>One row of "Certificate authorities": name, kind, valid until, used by; View, and Remove for imported CAs.</summary>
-public sealed class AuthorityRowViewModel(AuthorityRow row, bool mayManage = true)
+/// <summary>
+/// One row of "Certificate authorities": name, kind, valid until, used by; View, Export for a previous OADM CA, Remove for
+/// imported and previous CAs (previous CAs are rows of this list only, with their device counts in the tooltip).
+/// </summary>
+public sealed class AuthorityRowViewModel(AuthorityRow row, bool mayManage = true, PreviousCaRowViewModel? previous = null)
 {
     public AuthorityRow Row { get; } = row;
 
@@ -52,12 +56,21 @@ public sealed class AuthorityRowViewModel(AuthorityRow row, bool mayManage = tru
 
     public string UsedBy { get; } = row.UsedBy.Count == 0 ? "-" : string.Join(", ", row.UsedBy);
 
-    public string Tooltip { get; } = "SHA-256 " + row.Fingerprint;
+    public string Tooltip { get; } = previous is { } old ? old.Tooltip + " · SHA-256 " + row.Fingerprint : "SHA-256 " + row.Fingerprint;
 
     public bool IsImported => Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported;
 
-    /// <summary>Remove is shown: an imported CA and the user may manage the CA.</summary>
-    public bool IsRemovable { get; } = mayManage && row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported;
+    /// <summary>A replaced OADM CA (kept while its certificates live).</summary>
+    public bool IsPrevious => Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm;
+
+    /// <summary>The previous CA's own row data (its id for Export and Remove); null for the other kinds.</summary>
+    public PreviousCaRowViewModel? Previous { get; } = previous;
+
+    /// <summary>Export is shown: a previous OADM CA (the current one: Export public certificate below the list).</summary>
+    public bool IsExportable { get; } = mayManage && previous is not null;
+
+    /// <summary>Remove is shown: an imported or a previous CA and the user may manage the CA.</summary>
+    public bool IsRemovable { get; } = mayManage && (row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported || previous is not null);
 
     public static string KindName(Oadm.Sdk.Certificates.CertificateAuthorityKind kind) => kind switch
     {
@@ -69,9 +82,10 @@ public sealed class AuthorityRowViewModel(AuthorityRow row, bool mayManage = tru
 }
 
 /// <summary>
-/// The PKI page: the certificate authority (details, trusted root store, export, backup, generate, import), the device
-/// certificate settings with the issued summary, the 802.1X settings and the previous CAs. <see cref="Activate"/> while the
-/// page is shown (reads the state and watches the live events; without events it re-reads every 2 s).
+/// The PKI page (docs/spec/pki.md "The PKI page"), one page without tabs: Certificate authorities (the CAs with the OADM CA's
+/// actions: trusted root store, export, backup, generate, import) and Policies side by side, then Certificates (every
+/// certificate the OADM CA issued, revoke), then the settings of device certificates and IEEE 802.1X. <see cref="Activate"/>
+/// while the page is shown (reads everything and watches the live events).
 /// </summary>
 public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 {
@@ -84,9 +98,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     private readonly ITrustStoreInstaller _clientTrust;
     private readonly PkiClientSettingsStore _clientSettings;
     private CancellationTokenSource? _active;
-    private bool _formLoaded;
     private string? _clientCheckedCaId;
-    private bool _certificatesStale = true;
 
     /// <param name="ctx">Page context of the host.</param>
     /// <param name="clientTrust">This computer's trusted root store (<see cref="TrustStoreInstallers.ForClient"/>); tests pass a fake.</param>
@@ -103,46 +115,20 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public PkiViewModel(ICorePluginClientContext ctx, ITrustStoreInstaller clientTrust, PkiClientSettingsStore? clientSettings = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        Policies = new PoliciesViewModel(ctx);
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayManage));
             OnPropertyChanged(nameof(MayTrustServer));
-            SaveCommand.NotifyCanExecuteChanged();
+            Policies.NotifyRole();
         };
         _clientTrust = clientTrust ?? throw new ArgumentNullException(nameof(clientTrust));
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
-        Certificates = new IssuedCertificatesViewModel(ctx);
-        Identity = IdentityChoices[0];
-        RadiusCa = RadiusChoices[0];
-        EapolVersion = EapolChoices[0];
-        Validation.Rule(nameof(DeviceCertValidityDays), () => PkiValidation.ParseInt(DeviceCertValidityDays) is { } days
-            ? PkiValidation.DeviceCertValidityDays(days)
-            : PkiValidation.DeviceCertValidityDays(0));
-        Validation.Rule(nameof(ExpiryWarningDays), () => PkiValidation.ParseInt(ExpiryWarningDays) is { } days
-            ? PkiValidation.ExpiryWarningDays(days)
-            : PkiValidation.ExpiryWarningDays(0));
-        Validation.Rule(nameof(CustomIdentity), () => PkiValidation.CustomIdentity(Identity.Value, CustomIdentity));
-        Validation.Rule(nameof(RadiusCa), () => PkiValidation.RadiusCa(RadiusCa.Value, RadiusCaPem));
-        Validation.Reset();
+        Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings) { PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)] };
     }
 
     /// <summary>The dialogs and file pickers of the page view.</summary>
     public IPkiDialogs? Dialogs { get; set; }
-
-    public IReadOnlyList<Choice> EapolChoices { get; } = [new("1", "1"), new("2", "2")];
-
-    public IReadOnlyList<Choice> IdentityChoices { get; } =
-    [
-        new(Dot1xIdentity.Mac, "MAC address"),
-        new(Dot1xIdentity.HostName, "Host name"),
-        new(Dot1xIdentity.Custom, "Custom"),
-    ];
-
-    public IReadOnlyList<Choice> RadiusChoices { get; } =
-    [
-        new(RadiusCaSource.Oadm, "This OADM CA"),
-        new(RadiusCaSource.Imported, "Imported CA"),
-    ];
 
     public ObservableCollection<PreviousCaRowViewModel> PreviousCas { get; } = [];
 
@@ -253,82 +239,16 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial string? ClientTrustTip { get; set; }
 
-    // ---------------------------------------------------------------- device certificates and 802.1X (one form, one Save)
-
-    [ObservableProperty]
-    public partial string DeviceCertValidityDays { get; set; } = "365";
-
-    [ObservableProperty]
-    public partial string ExpiryWarningDays { get; set; } = "30";
-
-    [ObservableProperty]
-    public partial Choice EapolVersion { get; set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCustomIdentity))]
-    public partial Choice Identity { get; set; }
-
-    public bool IsCustomIdentity => Identity.Value == Dot1xIdentity.Custom;
-
-    [ObservableProperty]
-    public partial string CustomIdentity { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRadiusImported))]
-    public partial Choice RadiusCa { get; set; }
-
-    public bool IsRadiusImported => RadiusCa.Value == RadiusCaSource.Imported;
-
-    /// <summary>The imported RADIUS server CA of the form (saved with Save).</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ViewRadiusCaCommand))]
-    public partial string? RadiusCaPem { get; set; }
-
-    [ObservableProperty]
-    public partial CertificateSummary? RadiusSummary { get; set; }
-
-    public string RadiusCaLine => RadiusSummary is { } summary
-        ? $"{summary.CommonName}, valid until {summary.NotAfterUtc:yyyy-MM-dd}"
-        : "No CA certificate imported yet.";
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
-    public partial bool IsSaving { get; set; }
-
-    [ObservableProperty]
-    public partial string? SaveResult { get; set; }
-
-    public bool HasPreviousCas => PreviousCas.Count > 0;
 
     public bool IsActive => _active is not null;
 
-    // ---------------------------------------------------------------- tabs
+    // ---------------------------------------------------------------- policies and certificates
 
-    /// <summary>The Certificates tab: every certificate the OADM CA issued, revoke.</summary>
+    /// <summary>The Certificates card: every certificate the OADM CA issued, revoke.</summary>
     public IssuedCertificatesViewModel Certificates { get; }
 
-    /// <summary>The Certificates tab is shown (else Certificate authority: the cards).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCaTab))]
-    public partial bool IsCertificatesTab { get; set; }
-
-    public bool IsCaTab => !IsCertificatesTab;
-
-    [RelayCommand]
-    private void ShowCaTab() => IsCertificatesTab = false;
-
-    [RelayCommand]
-    private Task ShowCertificatesTabAsync()
-    {
-        IsCertificatesTab = true;
-        if (!_certificatesStale)
-        {
-            return Task.CompletedTask;
-        }
-
-        _certificatesStale = false;
-        return Certificates.LoadAsync();
-    }
+    /// <summary>The Policies card.</summary>
+    public PoliciesViewModel Policies { get; }
 
     // ---------------------------------------------------------------- lifecycle
 
@@ -386,9 +306,12 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         ArgumentNullException.ThrowIfNull(item);
         if (item.Topic == PkiMethods.CertificatesTopic)
         {
-            // Only the shown tab reads again; the other reads when it is opened.
-            _certificatesStale = !IsCertificatesTab;
-            return IsCertificatesTab ? Certificates.HandleEventAsync(item.Topic) : Task.CompletedTask;
+            return Certificates.HandleEventAsync(item.Topic);
+        }
+
+        if (item.Topic == PolicyMethods.Topic)
+        {
+            return Policies.LoadAsync(_active?.Token ?? CancellationToken.None);
         }
 
         return item.Topic == PkiMethods.StateTopic && !string.IsNullOrEmpty(item.PayloadJson)
@@ -431,18 +354,14 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             PreviousCas.Add(new PreviousCaRowViewModel(previous));
         }
 
-        OnPropertyChanged(nameof(HasPreviousCas));
-
+        // The previous CAs once: rows of the list of CAs (their device counts in the tooltip, Export and Remove in the row).
+        var previousById = PreviousCas.GroupBy(p => PkiService.PreviousAuthorityId(p.Id), StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         Authorities.Clear();
         foreach (var authority in state.Authorities)
         {
-            Authorities.Add(new AuthorityRowViewModel(authority, MayManage));
+            Authorities.Add(new AuthorityRowViewModel(authority, MayManage, previousById.GetValueOrDefault(authority.Id)));
         }
 
-        if (!_formLoaded)
-        {
-            ApplyForm(state);
-        }
 
         await CheckClientTrustAsync(state).ConfigureAwait(true);
     }
@@ -563,7 +482,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     private bool CanReplace() => !IsGenerating && !IsUnavailable;
 
-    [RelayCommand]
     private async Task ExportPreviousAsync(PreviousCaRowViewModel? row)
     {
         if (row is null)
@@ -575,7 +493,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         await SaveFileAsync("Export previous CA certificate", reply, PkiFileKind.CertificatePem).ConfigureAwait(true);
     }
 
-    [RelayCommand]
     private async Task RemovePreviousAsync(PreviousCaRowViewModel? row)
     {
         if (row is null)
@@ -648,8 +565,17 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     }
 
     [RelayCommand]
+    private Task ExportAuthorityAsync(AuthorityRowViewModel? row) => row?.Previous is { } previous ? ExportPreviousAsync(previous) : Task.CompletedTask;
+
+    [RelayCommand]
     private async Task RemoveAuthorityAsync(AuthorityRowViewModel? row)
     {
+        if (row?.Previous is { } previous)
+        {
+            await RemovePreviousAsync(previous).ConfigureAwait(true);
+            return;
+        }
+
         if (row is not { IsImported: true })
         {
             return;
@@ -672,113 +598,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanSave))]
-    private async Task SaveAsync()
-    {
-        Validation.ShowAll();
-        if (!Validation.IsValid)
-        {
-            return;
-        }
-
-        IsSaving = true;
-        SaveResult = null;
-        try
-        {
-            var config = new PkiConfig
-            {
-                DeviceCertValidityDays = PkiValidation.ParseInt(DeviceCertValidityDays) ?? 0,
-                ExpiryWarningDays = PkiValidation.ParseInt(ExpiryWarningDays) ?? 0,
-                Dot1x = new Dot1xConfig
-                {
-                    EapolVersion = int.Parse(EapolVersion.Value, CultureInfo.InvariantCulture),
-                    Identity = Identity.Value,
-                    CustomIdentity = CustomIdentity.Trim(),
-                    RadiusCa = RadiusCa.Value,
-                    RadiusCaPem = IsRadiusImported ? RadiusCaPem : null,
-                },
-            };
-            var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.SaveSettings, PkiJson.Serialize(new SaveSettingsRequest(config)), CancellationToken.None).ConfigureAwait(true));
-            foreach (var (field, message) in reply.Errors ?? new Dictionary<string, string>())
-            {
-                Validation.SetServerError(field, message);
-            }
-
-            if (reply.Error is { } error)
-            {
-                SetStatus(ServiceStatus.Error, "Saving failed", error);
-            }
-
-            if (reply.Ok && reply.State is { } state)
-            {
-                ApplyForm(state);
-                await ApplyStateAsync(state).ConfigureAwait(true);
-                SaveResult = "Saved";
-            }
-        }
-#pragma warning disable CA1031 // Shown in the status line.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            SetStatus(ServiceStatus.Error, "Saving failed", PkiDialogViewModel.Message(ex));
-        }
-        finally
-        {
-            IsSaving = false;
-        }
-    }
-
-    private bool CanSave() => MayManage && !IsSaving && IsFormValid;
-
-    [RelayCommand]
-    private async Task ImportRadiusCaAsync()
-    {
-        if (Dialogs?.Files is not { } files || await files.OpenAsync("Choose the CA of the RADIUS server", PkiFileKind.RadiusCa).ConfigureAwait(true) is not { } file)
-        {
-            return;
-        }
-
-        await ApplyRadiusFileAsync(file).ConfigureAwait(true);
-    }
-
-    /// <summary>Checks a RADIUS CA file on the server and puts it into the form (also used by tests).</summary>
-    public async Task ApplyRadiusFileAsync(PickedFile file)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-        var reply = PkiJson.Deserialize<RadiusCaReply>(await _ctx.InvokeAsync(PkiMethods.ImportRadiusCa, PkiJson.Serialize(new ImportRadiusCaRequest(Convert.ToBase64String(file.Data))), CancellationToken.None).ConfigureAwait(true));
-        if (reply.Errors is { Count: > 0 } errors)
-        {
-            foreach (var (field, message) in errors)
-            {
-                Validation.SetServerError(field, message);
-            }
-
-            return;
-        }
-
-        RadiusCaPem = reply.Pem;
-        RadiusSummary = reply.Summary;
-        Validation.Touch(nameof(RadiusCa));
-    }
-
-    [RelayCommand(CanExecute = nameof(CanViewRadiusCa))]
-    private async Task ViewRadiusCaAsync()
-    {
-        if (RadiusSummary is not { } summary)
-        {
-            return;
-        }
-
-        var text = string.Join(
-            Environment.NewLine,
-            $"Subject: {summary.Subject}",
-            $"Issuer: {summary.Issuer}",
-            $"Valid: {summary.NotBeforeUtc:yyyy-MM-dd} to {summary.NotAfterUtc:yyyy-MM-dd}",
-            $"Fingerprint (SHA-256): {summary.Fingerprint}");
-        await _ctx.ShowMessageAsync("RADIUS server CA", text).ConfigureAwait(true);
-    }
-
-    private bool CanViewRadiusCa() => !string.IsNullOrEmpty(RadiusCaPem);
 
     // ---------------------------------------------------------------- dialog backends
 
@@ -918,14 +737,8 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
                     // Subscribe first, then read the state: nothing published in between is lost.
                     var next = events.MoveNextAsync();
                     await LoadAsync(ct).ConfigureAwait(true);
-                    if (IsCertificatesTab)
-                    {
-                        await Certificates.LoadAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
-                    }
-                    else
-                    {
-                        _certificatesStale = true;
-                    }
+                    await Policies.LoadAsync(ct).ConfigureAwait(true);
+                    await Certificates.LoadAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
                     while (await next.ConfigureAwait(true))
                     {
                         await HandleEventAsync(events.Current).ConfigureAwait(true);
@@ -953,22 +766,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         {
             // page hidden
         }
-    }
-
-    private void ApplyForm(PkiState state)
-    {
-        _formLoaded = true;
-        var config = state.Config;
-        var dot1x = config.Dot1x ?? new Dot1xConfig();
-        DeviceCertValidityDays = config.DeviceCertValidityDays.ToString(CultureInfo.InvariantCulture);
-        ExpiryWarningDays = config.ExpiryWarningDays.ToString(CultureInfo.InvariantCulture);
-        EapolVersion = EapolChoices.FirstOrDefault(c => c.Value == dot1x.EapolVersion.ToString(CultureInfo.InvariantCulture)) ?? EapolChoices[0];
-        Identity = IdentityChoices.FirstOrDefault(c => c.Value == dot1x.Identity) ?? IdentityChoices[0];
-        CustomIdentity = dot1x.CustomIdentity ?? string.Empty;
-        RadiusCa = RadiusChoices.FirstOrDefault(c => c.Value == dot1x.RadiusCa) ?? RadiusChoices[0];
-        RadiusCaPem = dot1x.RadiusCaPem;
-        RadiusSummary = state.RadiusCa;
-        Validation.Reset();
     }
 
     private void ApplyServerTrust(bool? installed, string? error)
@@ -1063,7 +860,4 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         return certificates[0];
     }
 
-    partial void OnRadiusSummaryChanged(CertificateSummary? value) => OnPropertyChanged(nameof(RadiusCaLine));
-
-    protected override void OnValidationChanged() => SaveCommand.NotifyCanExecuteChanged();
 }

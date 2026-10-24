@@ -207,7 +207,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
         DateTime now = DateTime.UtcNow;
         CertNotAfterUtc = device.CertNotAfter?.ToDateTime();
-        CertExpires = CertificateDisplay.Expiry(CertNotAfterUtc, now);
+        CertExpires = CertificateDisplay.Expiry(CertNotAfterUtc, now, device.CertWarningDays); // PKI's days of the device (0: 30)
         CertTrust = CertificateDisplay.Trust(device.CertTrust, CertNotAfterUtc, now);
         CertTooltip = CertificateDisplay.Tooltip(device.CertSubject, device.CertIssuer, CertNotAfterUtc);
     }

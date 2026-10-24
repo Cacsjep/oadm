@@ -33,6 +33,35 @@ public sealed class ToolbarPluginTests
             toolbar.Plugins.Select(p => p.Id).ToArray());
     }
 
+    [Theory]
+    [InlineData("oadm.est", false)]
+    [InlineData("oadm.radius", false)]
+    [InlineData("acme.other", true)]
+    public void A_client_folder_left_from_41_of_a_server_merged_into_pki_is_skipped(string id, bool loads)
+    {
+        // docs/spec/pki.md "One plugin": the EST and 802.1X pages are PKI's now; an old folder never adds a second copy.
+        string root = Path.Combine(Path.GetTempPath(), "oadm-merged-client-" + Guid.NewGuid().ToString("N"));
+        string folder = Directory.CreateDirectory(Path.Combine(root, id)).FullName;
+        try
+        {
+            foreach (string file in Directory.GetFiles(Path.Combine(TestPluginRoot, "oadm.sample")))
+            {
+                File.Copy(file, Path.Combine(folder, Path.GetFileName(file)));
+            }
+
+            File.WriteAllText(Path.Combine(folder, "plugin.json"), $$"""{"id":"{{id}}","version":"0.1.0","minSdkVersion":"0.4.0"}""");
+
+            var loader = new ClientPluginLoader([root], NullLogger<ClientPluginLoader>.Instance);
+
+            Assert.Equal(loads ? 1 : 0, loader.ToolbarPlugins.Count);
+            Assert.Equal(!loads, ClientPluginLoader.MergedPackages.Contains(id));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void Sample_toolbar_plugin_loads_from_a_client_dll()
     {

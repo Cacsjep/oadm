@@ -12,6 +12,7 @@ using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Licensing;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
 
@@ -24,10 +25,14 @@ public sealed class PageTests : IAsyncLifetime
     private readonly FakeAuthority _ca = new();
     private readonly EstPlugin _plugin = new();
     private PageContext _ctx = null!;
+    private Oadm.Plugins.Pki.Policies.PolicyStore _policies = null!;
 
     public async Task InitializeAsync()
     {
         _core.FakeServices.Offer<IDeviceCertificateAuthority>(_ca);
+        _policies = await TestPolicies.StoreAsync(); // PKI's issuing policies: the profiles name theirs
+        _core.FakeServices.Offer(_policies);
+        await _core.Settings.SetAsync(Oadm.Plugins.Pki.Servers.ServerSwitch<EstService>.SettingKey, "true", CancellationToken.None); // turned on
         await _plugin.StartAsync(_core, CancellationToken.None);
         _ctx = new PageContext(_plugin, _core);
     }
@@ -58,30 +63,64 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Sign_in_with_shows_pki_cas_errors_below_the_field_and_saves_the_choice()
+    public async Task A_profile_names_an_issuing_policy_of_its_use()
+    {
+        var twoYears = await TestPolicies.AddAsync(_policies, new Oadm.Plugins.Pki.Policies.PkiPolicy
+        {
+            Name = "HTTPS 2 years", Kind = Oadm.Plugins.Pki.Policies.PolicyKinds.HttpsCertificate, CaId = "oadm", ValidDays = 730, Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa,
+        });
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+
+        var https = vm.Profiles.Single(p => p.Name == "https");
+        Assert.Equal(["HTTPS", "HTTPS 2 years"], https.PolicyChoices.Select(c => c.Label));
+        Assert.Equal("HTTPS", https.Policy!.Label); // converted: the default with the same values
+        Assert.Equal("OADM CA, 365 days, ECC", https.PolicySummary); // the fake CA lists no OADM CA: the plain name
+        var dot1x = vm.Profiles.Single(p => p.Name == "dot1x");
+        Assert.Equal(["IEEE 802.1X"], dot1x.PolicyChoices.Select(c => c.Label));
+
+        https.Policy = https.PolicyChoices[1];
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(twoYears.Id, _plugin.Service!.Store.Config.Profiles.Single(p => p.Name == "https").PolicyId);
+
+        // Another use takes a policy of its kind; PKI keeps a policy a profile names.
+        https.Use = Oadm.Plugins.Est.Client.EstViewModel.Uses.Single(u => u.Value == ProfileUse.Mqtt);
+        Assert.Equal(["IEEE 802.1X"], https.PolicyChoices.Select(c => c.Label));
+        Assert.Equal("Used by the EST profile https.", (await _policies.DeleteAsync(twoYears.Id, "admin", CancellationToken.None)).Error?.Message);
+    }
+
+    [Fact]
+    public async Task The_page_shows_how_many_pki_policies_apply_and_edit_in_pki_opens_the_pki_page()
     {
         _ca.ListDefaults();
         using var vm = new EstViewModel(_ctx);
         await vm.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["Axis device ID", "OADM CA, for renewals"], vm.SignIn.Select(s => s.Name));
-        Assert.All(vm.SignIn, s => Assert.True(s.IsChecked));
+        // The EST policies the conversion made at the start: Enrollment "All devices", Sign-in CA "Axis device ID" and "OADM CA".
+        Assert.Equal("3 policies apply", vm.PoliciesText);
+        Assert.True(vm.ShowsPolicies);
+        Assert.Null(vm.PolicyProblem);
         Assert.Equal("OADM Test CA", vm.IssuingCa);
-        Assert.Null(vm.SignInError);
+        await vm.EditInPkiCommand.ExecuteAsync(null);
+        Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
 
-        foreach (var row in vm.SignIn)
+        // A save of the page keeps "Sign in with" of before the policies (read only by the conversion).
+        var stored = _plugin.Service!.Store.Config.SignInWith;
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Null(vm.ActionError);
+        Assert.Equal(stored, _plugin.Service!.Store.Config.SignInWith);
+
+        // Without a Sign-in CA policy the page says that cameras cannot sign in.
+        foreach (var policy in _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa))
         {
-            row.IsChecked = false;
+            Assert.Null((await _policies.DeleteAsync(policy.Id, "admin", CancellationToken.None)).Error);
         }
 
-        Assert.Equal("Choose at least one.", vm.SignInError);
-        Assert.False(vm.SaveCommand.CanExecute(null));
-
-        vm.SignIn[0].IsChecked = true;
-        Assert.Null(vm.SignInError);
-        await vm.SaveCommand.ExecuteAsync(null);
-        Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId], _plugin.Service!.Store.Config.SignInWith);
-        Assert.Equal([true, false], vm.SignIn.Select(s => s.IsChecked));
+        await vm.LoadAsync(CancellationToken.None);
+        Assert.Equal("1 policy applies", vm.PoliciesText);
+        Assert.Equal(EstTexts.NoSignInPolicy, vm.PolicyProblem);
+        Assert.Equal("2 policies apply", EstViewModel.PoliciesApplyText(2));
+        Assert.Equal("No policies apply", EstViewModel.PoliciesApplyText(0));
     }
 
     [Fact]
@@ -310,7 +349,70 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Page_renders()
+    public async Task Turned_off_the_page_shows_only_general_with_turn_on_which_waits_for_oadm_pro()
+    {
+        // docs/spec/pki.md "One plugin": the server is off by default and turned on on its own page.
+        await _plugin.InvokeAsync(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.TurnOff, null, CancellationToken.None);
+        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var pro = (FakeProLicense)_core.Pro!;
+        static List<string?> Texts(Window window) =>
+            [.. window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text)];
+        static Button? Button(Window window, string label) => window.GetVisualDescendants().OfType<Button>()
+            .FirstOrDefault(b => b.IsEffectivelyVisible && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == label));
+
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var checks = await session.Dispatch(async () =>
+        {
+            var view = new EstView();
+            using var vm = new EstViewModel(_ctx);
+            var window = Host(view);
+            window.Show();
+            view.DataContext = vm; // after attaching: no live watch, deterministic content
+            await vm.LoadServerAsync(CancellationToken.None);
+            Pump();
+            Capture(window, outDir, "est-page-off.png");
+            var off = (Texts(window), Button(window, "Turn on")?.IsEffectivelyEnabled, Button(window, "Turn off") is null, vm.IsLoading);
+
+            pro.Current = ProLicenseInfo.None;
+            await vm.Server.LoadAsync(CancellationToken.None);
+            Pump();
+            Capture(window, outDir, "est-page-needs-pro.png");
+            var turnOn = Button(window, "Turn on");
+            var noPro = (Texts(window), turnOn?.IsEffectivelyEnabled, ToolTip.GetTip(turnOn!) as string);
+
+            pro.Current = FakeProLicense.ActivePro().Current;
+            await vm.Server.LoadAsync(CancellationToken.None);
+            await vm.Server.TurnOnCommand.ExecuteAsync(null);
+            await vm.LoadAsync(CancellationToken.None); // the live watch would read the cards (not started here)
+            Pump();
+            var on = (Texts(window), Button(window, "Turn off") is not null, Button(window, "Turn on") is null);
+            window.Close();
+            return (off, noPro, on);
+        }, CancellationToken.None);
+        GC.KeepAlive(session);
+
+        Assert.Contains("General", checks.off.Item1);
+        Assert.Contains(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.OffText, checks.off.Item1);
+        Assert.DoesNotContain("Profiles", checks.off.Item1);
+        Assert.DoesNotContain("Enrollments", checks.off.Item1);
+        Assert.True(checks.off.Item2);
+        Assert.True(checks.off.Item3);
+        Assert.False(checks.off.Item4);
+
+        Assert.Contains(ProLicenseTexts.NeedsPro, checks.noPro.Item1);
+        Assert.False(checks.noPro.Item2); // disabled without OADM PRO, the tooltip says why
+        Assert.Equal(ProLicenseTexts.NeedsPro, checks.noPro.Item3);
+
+        Assert.Contains("Profiles", checks.on.Item1);
+        Assert.Contains("Enrollments", checks.on.Item1);
+        Assert.True(checks.on.Item2);
+        Assert.True(checks.on.Item3);
+    }
+
+    [Theory]
+    [InlineData(1700)]
+    [InlineData(1000)]
+    public async Task Page_renders_with_the_enrollments_in_their_own_card(int width)
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var store = _plugin.Service!.Store;
@@ -338,24 +440,48 @@ public sealed class PageTests : IAsyncLifetime
         store.MarkNotRenewed("11AB", now);
 
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
-        await session.Dispatch(async () =>
+        var cards = await session.Dispatch(async () =>
         {
             var view = new EstView();
             using var vm = new EstViewModel(_ctx);
-            var window = Host(view);
+            var window = Host(view, width, 1000);
             window.Show();
             view.DataContext = vm; // after attaching: no live watch, deterministic content
-            await vm.LoadAsync(CancellationToken.None);
+            await vm.LoadServerAsync(CancellationToken.None); // the switch, then the cards
             Pump();
-            Capture(window, outDir, "est-page.png");
+            Capture(window, outDir, $"est-page-{width}.png");
+
+            // The card of each title: Enrollments apart from General and Profiles (docs/spec/pki.md "Pages of the services after this").
+            Border? CardOf(string title) => window.GetVisualDescendants().OfType<TextBlock>().First(t => t.IsEffectivelyVisible && t.Text == title)
+                .GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("card"));
+            var result = (General: CardOf("General"), Profiles: CardOf("Profiles"), Enrollments: CardOf("Enrollments"));
 
             vm.Port = "80";
             vm.Profiles[0].Name = "a b";
             Pump();
-            Capture(window, outDir, "est-page-errors.png");
+            Capture(window, outDir, $"est-page-{width}-errors.png");
+
+            // Without a Sign-in CA policy: the warning below "N policies apply".
+            foreach (var policy in _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa))
+            {
+                await _policies.DeleteAsync(policy.Id, "admin", CancellationToken.None);
+            }
+
+            await vm.LoadServerAsync(CancellationToken.None);
+            Pump();
+            Capture(window, outDir, $"est-page-{width}-no-sign-in.png");
+            var warning = window.GetVisualDescendants().OfType<TextBlock>().Any(t => t.IsEffectivelyVisible && t.Classes.Contains("warning") && t.Text == EstTexts.NoSignInPolicy);
             window.Close();
+            return (result.General, result.Profiles, result.Enrollments, Warning: warning);
         }, CancellationToken.None);
         GC.KeepAlive(session);
+
+        Assert.True(cards.Warning);
+        Assert.NotNull(cards.General);
+        Assert.Same(cards.General, cards.Profiles);
+        Assert.NotNull(cards.Enrollments);
+        Assert.NotSame(cards.General, cards.Enrollments);
+        Assert.True(new Oadm.Plugins.Est.Client.EstPage().HasOwnCards);
     }
 
     [Fact]
@@ -651,13 +777,14 @@ public sealed class PageTests : IAsyncLifetime
             Task.FromResult(Run!(deviceIds, payloadJson, progress));
     }
 
-    private static Window Host(Control view)
+    private static Window Host(Control view, int width = 1280, int height = 960)
     {
+        // The real host page with the plugin's own cards (EstPage.HasOwnCards), like in the client.
         var page = new Oadm.Client.Shell.CorePluginPageView
         {
-            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, view),
+            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, view, hasOwnCards: true),
         };
-        var window = new Window { Width = 1280, Height = 960, Content = new Border { Padding = new Thickness(16), Child = page } };
+        var window = new Window { Width = width, Height = height, Content = new Border { Padding = new Thickness(16), Child = page } };
         Oadm.Client.App.ApplyCrispText(window);
         return window;
     }
@@ -714,6 +841,15 @@ public sealed class PageTests : IAsyncLifetime
         {
             LastConfirm = message;
             return Task.FromResult(Confirm);
+        }
+
+        /// <summary>The host pages the page opened (Edit in PKI).</summary>
+        public List<string> Opened { get; } = [];
+
+        public Task OpenAsync(string hostPage)
+        {
+            Opened.Add(hostPage);
+            return Task.CompletedTask;
         }
     }
 }

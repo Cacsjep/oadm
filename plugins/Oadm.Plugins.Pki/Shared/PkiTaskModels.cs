@@ -35,6 +35,56 @@ public static class PkiQueries
 {
     /// <summary>() -> <see cref="CertificateListReply"/> for one device.</summary>
     public const string ListCertificates = "listCertificates";
+
+    /// <summary>
+    /// () -> <see cref="IssuingPolicyList"/>: the issuing policies of the task's kind (Enable HTTPS: HTTPS certificate,
+    /// Enable IEEE 802.1X: IEEE 802.1X certificate), oldest first. Asked once with the first selected device.
+    /// </summary>
+    public const string ListIssuingPolicies = "listIssuingPolicies";
+}
+
+/// <summary>The answer of <see cref="PkiQueries.ListIssuingPolicies"/>.</summary>
+public sealed record IssuingPolicyList
+{
+    /// <summary>The policies of the kind, oldest first (the first is preselected).</summary>
+    public IReadOnlyList<Policies.PkiPolicy> Policies { get; init; } = [];
+
+    /// <summary>The OADM CA's name ("OADM Root CA SERVER01"); null without a CA.</summary>
+    public string? CaName { get; init; }
+
+    /// <summary>The RADIUS server CA of each policy that imported one: "Contoso RADIUS CA, valid until 2030-01-01" by policy id.</summary>
+    public IReadOnlyDictionary<Guid, string> RadiusCaSummaries { get; init; } = new Dictionary<Guid, string>();
+
+    /// <summary>Why there are none (the policies cannot be read, the PKI does not run); null otherwise.</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>
+/// Payload of Enable HTTPS and Enable IEEE 802.1X: the issuing policy the dialog chose and the values used for this run
+/// (decision 2026-10-24: the dialog fills them from the policy, the user may change them). A value left out comes from the
+/// policy (a run without dialog: the first policy of the kind). Payloads are never stored.
+/// </summary>
+public sealed record IssuePayload
+{
+    /// <summary>The user answered the clock question with Yes (<c>CameraClock</c>).</summary>
+    public bool ClockConfirmed { get; init; }
+
+    public Guid? PolicyId { get; init; }
+
+    public int? ValidDays { get; init; }
+
+    /// <summary><c>PolicyKeys</c>.</summary>
+    public string? Key { get; init; }
+
+    public int? EapolVersion { get; init; }
+
+    /// <summary><see cref="Dot1xIdentity"/>.</summary>
+    public string? Identity { get; init; }
+
+    public string? CustomIdentity { get; init; }
+
+    /// <summary><see cref="RadiusCaSource"/>; an imported one is the policy's certificate.</summary>
+    public string? RadiusCa { get; init; }
 }
 
 /// <summary>Group of an installed certificate in the view and delete dialogs.</summary>

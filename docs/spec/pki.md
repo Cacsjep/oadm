@@ -37,8 +37,16 @@ permissions, one policy list in PKI's own code.
   (the loader skips it with one log line "Merged into PKI"); the installers remove it. Event rule events and actions,
   tasks, permissions and audit names keep their ids so stored rules and roles keep working (the permissions of 802.1X and
   EST keep their keys, now declared by PKI).
+  Built (stage 2): the core plugins keep their ids `oadm.est` and `oadm.radius`, and the host keys settings
+  (`Plugin:<id>:*`), records (PluginRecords), the data folder (`plugin-data/<id>`), events, permissions (`<id>:show`,
+  `<id>:manage`, `task:oadm.est.setup:enroll`) and services by core plugin id: all of it stays where 4.1 stored it and is
+  PKI's without a copy. The only choice stored per package, `Plugins.Enabled`, is taken over once
+  (`MergedPlugins.TakeOverAsync`: `oadm.est` / `oadm.radius` become `Plugin:<id>:serverOn`, a choice made since wins, the
+  entries leave `Plugins.Enabled`). Details: `docs/spec/plugins.md` "Merged packages" and "PRO parts of PKI".
 - **Sites:** the site node's EST relay follows PKI (the relay asks the server by the new owner, still answers the old id
-  for site nodes of 4.1 until they update).
+  for site nodes of 4.1 until they update). Built: the link to the node carries no plugin id (a relay is opened by protocol,
+  port and reason, "EST server" on TCP 9454 as in 4.1), so nodes of 4.1 and 4.5 relay unchanged; the relay opens only while
+  the EST server runs.
 
 ## The PKI page
 
@@ -61,7 +69,7 @@ One page, no tabs, cards like the 802.1X page:
 | Axis device ID | "Axis device ID" | no | built in (the RSA and ECC roots and intermediates EST ships, `plugins/Shared/DeviceId`) |
 | Imported CA | "Contoso Root" | no | **Import CA** (a root or intermediate certificate, PEM or DER; no key) |
 
-- Each row: name, kind, valid until, **Used by** (the policies that name it, e.g. "802.1X: OADM CA, managed only");
+- Each row: name, kind, valid until, **Used by** (the policies that name it, e.g. "802.1X: OADM CA (only devices OADM manages)");
   **View** (`ui:CertificateWindow`), **Remove** (imported CAs only; refused while a policy names it: "Used by the policy
   <name>. Change or delete the policy first.").
 - The CA key is never exported on its own; it leaves OADM only in the encrypted CA backup (Back up) and the server
@@ -80,7 +88,7 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 |---|---|---|---|---|
 | Issuing | **HTTPS certificate** | CA (issuing CAs), valid (days), key (RSA, ECC) | no | "HTTPS" (OADM CA, 365 days, ECC) |
 | Issuing | **IEEE 802.1X certificate** | CA, valid (days), key, EAPOL version, EAP identity, RADIUS server CA | no | "IEEE 802.1X" (OADM CA, 365 days, ECC, the identity and server CA as today) |
-| Issuing | **Server certificate** | CA, valid (days), key, for (802.1X server, EST server) | no | "802.1X server", "EST server" (OADM CA, 365 days, renewed 30 days before the end, as today) |
+| Issuing | **Server certificate** | CA, valid (days), key, for (802.1X server, EST server) | no | "802.1X server" (OADM CA, 365 days, ECC) and "EST server" (OADM CA, 90 days, ECC), renewed 30 days before the end, as today |
 | 802.1X | **802.1X server** (one only) | Minimum TLS version (1.2, 1.3), cipher suites, largest EAP packet (bytes), reauthentication (Switch decides, or every N minutes: sent to the switch as the session timeout) | no | "802.1X server" (TLS 1.2, the default cipher suites, 1,020 bytes as RFC 3748 3.1, Switch decides) |
 | 802.1X | **Allow CA** | CA, Only devices OADM manages (on) or any device with a valid certificate of it | no | "OADM CA" (with its previous CAs) and "Axis device ID", both only managed |
 | 802.1X | **VLAN** | VLAN ID (1..4094) | yes | none |
@@ -102,6 +110,11 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
   as a device OADM does not manage is today.
 - A device that no VLAN policy matches gets no VLAN from the server (the switch port keeps its own). There is no default
   VLAN.
+- **All devices** (decision 2026-10-24): the device selector offers "All devices" next to "Chosen devices" (every kind with
+  devices except Revoke). It holds every device, also those of sites added later and, for the 802.1X kinds, devices OADM
+  does not manage (a certificate of an Allow CA for any device: an "All devices" VLAN gives its VLAN, an "All devices"
+  Block refuses it). It overlaps every other policy of its kind: saving is refused as for any overlap ("All devices includes
+  every device, also those of PTZ."); converted data keeps the overlap with its warning.
 - **Expiry warning** (decision 2026-10-24) applies to every device certificate, whoever issued it (the HTTPS certificate
   polling reads, as today). The events **Certificate expires soon** and **Certificate expired** move from the built-in
   events (fixed 30 days, `docs/spec/event-rules.md`) to PKI's event group "Certificates" and use the policy's days; they
@@ -117,7 +130,7 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 ## Certificates
 
 Every certificate OADM knows, paged on the server (search over every column, filters: use, issued by, state), so 30,000
-devices with two certificates each stay fast (today's list stops at 5,000).
+devices with two certificates each stay fast.
 
 - Columns: name or device, use (HTTPS, IEEE 802.1X, Server, CA, Other), issued by, valid until, **used by** (the device it
   is installed on, the 802.1X server, the EST server, "-"), state (Valid, Expires soon, Revoked, Expired).
@@ -131,7 +144,8 @@ devices with two certificates each stay fast (today's list stops at 5,000).
   - **Export**: PEM, DER; PKCS#12 only where OADM holds the key (created, imported with key, server certificates), with
     a password. Device certificates have no key in OADM (the camera made it). Every export with a key is audited.
   - **View** (`ui:CertificateWindow`), **Revoke** (as today), **Delete** (only certificates nothing uses; revoked or
-    expired ones, or created ones no longer needed).
+    expired ones, or imported ones no longer needed).
+  - Create and Sign request never name an Axis camera (`axis-<12 hex>`, any domain): only device certificates do.
 
 ## Converting existing settings
 
@@ -143,7 +157,8 @@ On the first start after the update, once, without asking:
 - 802.1X Advanced (minimum TLS version, cipher suites, largest EAP packet): the 802.1X server policy.
 - 802.1X Trusted CAs: one Allow CA policy per ticked CA, with its "Only devices OADM manages".
 - 802.1X policies: VLAN, Block and Revoke policies with the same names, devices and order. A Default VLAN of OADM 4.1
-  or of a development build becomes a last VLAN policy "All devices" (this server plus every site), so no device changes its VLAN.
+  or of a development build becomes a last VLAN policy "All devices" (every device, also of sites added later and devices
+  OADM does not manage), so no device changes its VLAN.
 - EST: the Enrollment policy "All devices" (as today: every managed device, every profile). Sign in with: one Sign-in CA
   policy per ticked CA. EST profiles keep their names and point to an issuing policy
   with their validity and key ("https" → "HTTPS", or a new one when the values differ).
@@ -168,7 +183,8 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 - **802.1X server:** Server (Listen on, Port, Log entries kept; no Advanced dialog: its settings are the 802.1X server
   policy), Switches, Sessions and Log (a splitter between
   the two), a line "Rules: Policies on the PKI page". No Trusted CAs card, no Policies card, no Default VLAN.
-- **EST server:** General, Profiles (name, issuing policy, on), Enrollments in its own card.
+- **EST server:** General (with "3 policies apply" and Edit in PKI), Profiles (name, issuing policy, on), Enrollments in
+  its own card. No Sign in with (stage 6: Sign-in CA policies).
 
 ## Rules for the move (decisions 2026-10-24)
 
@@ -177,6 +193,279 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 - OADM PRO: see "One plugin"; PKI's own kinds (issuing, Revoke) always work.
 - The conversion is tested on a copy of real data (a backup of a 4.1 server and of the development server) before the
   merge, not only on test data.
+
+## Code (stage 3)
+
+Built 2026-10-24. The rules of this stage that the sections above leave open are marked "decision of stage 3" (the most
+conservative choice that fits the spec; to be confirmed by the maintainer).
+
+- **Store** (`plugins/Oadm.Plugins.Pki/Policies/`): `PolicyModels.cs` (the contract shared with the page: `PolicyKinds`,
+  `PolicyGroups`, `PkiPolicy` with the fields of every kind, `PolicyDevices`, `PolicyList`, `PolicyMethods`, `PolicyTexts`),
+  `PolicyRules` (the checks of one policy, the same on the page and in the store; `PolicyMatcher`: hash sets of sites, tags
+  and serials, O(1) per device), `PolicyStore` (PKI's setting `policies`: the list in age order and the converted owners;
+  an immutable snapshot with a version, `Changed` after the write). PKI offers the store in process
+  (`IPluginServices.Offer<PolicyStore>`); the 802.1X server finds it each time. No SDK contract.
+- **A stored list that cannot be read** (`PolicyStore.IsUnreadable`): one error in the log per load, nothing converted or
+  written (the stored value is never overwritten), every save and delete refused, the 802.1X server refuses every device
+  ("The PKI policies cannot be read", alert 80), the Policies card says "The policies cannot be read. Restore a backup."
+  below the table and is read only.
+- **Checks on save**: the policy on its own (name, the kind's fields, devices; Revoke without tags), then against the
+  others: a name taken by another policy of the same kind (decision of stage 3: names are unique per kind, so "All devices"
+  can be an Expiry warning and a VLAN policy), one 802.1X server policy, an Allow CA naming a CA PKI does not list or the same
+  CA twice, sites that no longer exist, at most 200 policies, and a device of now that the policy shares with another of its
+  kind and did not share before the save ("10.0.0.48 is in Building B and PTZ.", "... and 3 other devices are in ..."; an
+  overlap stored before, e.g. by the conversion, never blocks an edit of something else). One pass over the devices per other
+  policy of the kind, only over the devices the policy holds. A policy keeps its kind (decision of stage 3: the editor offers
+  the kind for a new policy only).
+- **Later overlaps** (a tag or site change): `PolicyStore.Rows` gives both rows the warning with the one that applies: the
+  older VLAN policy, the longer Expiry warning. Block and VLAN may hold the same device (different kinds, no warning): Block
+  refuses first. Overlaps of Block or Revoke policies change nothing.
+- **Expiry warning**: the days of a device are the longest of the Expiry warning policies that hold it; a device no such
+  policy holds keeps 30 days. A check that
+  covers no single device (a new Compliance check) gets the longest days of the policies, else 30.
+- **Tags**: the tags of every policy except Revoke are protected under PKI (`ctx.ProtectedTags`, "The tag Floor 3 is used by
+  a PKI policy. ..."); the 802.1X server releases the tags it protected until OADM 4.5. Without the host's protection the tag
+  parts of VLAN policies match no device (fail closed), those of Block and Expiry warning still do.
+- **Page methods** (`PolicyMethods`, PKI's `InvokeAsync`): `getPolicies` (rows with summary and warning, the CA choices, the
+  cipher suites, the sites, the tags of the devices and policies, `mayManage`; a user limited to a device group gets an
+  empty list), `savePolicy` (one policy, `PolicySaveReply` with the field error or the list), `deletePolicy`,
+  `countRevocations`. Saving and deleting: Admin with "Manage the certificate authority" and all devices, audited by the
+  host; the count only reads (not audited). Event `policies` after every change.
+- **Revoke** (PKI's own, never needs OADM PRO): a save of a revoke policy revokes the IEEE 802.1X certificates of its
+  devices (never by tag) that are neither ended nor revoked, by the user who saved it, reason Other; a round every minute
+  revokes new ones (EST, tasks). The 802.1X server still refuses a device a revoke policy holds and revokes the certificate
+  it met.
+- **The 802.1X server** builds `RadiusRuleSet` from the store (`RadiusPolicies`): the trusted CAs of the Allow CA policies,
+  `PolicyPlan` (VLAN, Block, Revoke) and the server policy's TLS, largest EAP packet and reauthentication. A handshake
+  rebuilds it first when the store's version moved or PKI started again (a new store), so a change applies to the next
+  handshake and never half; without the store nothing passes ("The PKI has no certificate authority", alert 80).
+  The default cipher suites (a new server, Reset to default, the fallback of a policy the server cannot use) have one
+  source, `PolicyRules.DefaultSuites`: the suites listed for the minimum that the server certificate can use (never the
+  ECDHE_RSA ones with its ECDSA key).
+  Reauthentication (the editor: "Switch decides" or "Every" with Minutes next to it; decision of stage 3: 10 to 1,440
+  minutes) sends Session-Timeout and Termination-Action RADIUS-Request in every Access-Accept (RFC 3580 3.17, 3.19).
+  Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN 30 by Building B"); refusals name Block and Revoke policies
+  ("Blocked by Storage room", "Certificate revoked by Stolen").
+- **Conversion** (once per owner, `PolicyStore.ConvertOnceAsync`, the owner noted in the stored list): PKI at its start
+  (`PkiService.ConvertOwnSettings`: "All devices" with the stored warn days, `PolicyDevices.AllDevices`); the 802.1X server's
+  core plugin at its start hands its settings over (`RadiusPolicies.ConvertAsync`; PKI starts first, the core plugins of a
+  package start in name order; without the store the next start converts). A conversion that runs after policies exist
+  merges: an Allow CA of a CA already allowed changes the one there (only devices OADM manages when either was: the
+  stricter), a second 802.1X server policy or a second "All devices" VLAN policy is not added. The 802.1X server reads a CA
+  named twice anyway (`CaTrust.Chosen`) as only managed when either is. The old settings stay where they are (decision of
+  stage 3: nothing is deleted; they are no longer read). A server without them gets the defaults of the kinds the same way.
+- **Expiry events** (`ExpiryEvents`, PKI is an `IEventSource`): the ids `oadm.device.certificate-expires-soon`,
+  `oadm.device.certificate-expired` and their Any device twins (group "Certificates" for all four, decision of stage 3), the
+  full report at the start, a round every minute and after a change of the policies. The host lost them from its built-in
+  events (`BuiltInEvents` keeps the ids as constants); stored rules find them under PKI.
+- **The grid's chip and Compliance** (SDK 0.4.0 `ITrustAnchors.SetExpiryWarning(daysFor, defaultDays)`, only PKI's count):
+  PKI hands the host its days when the Expiry warning policies changed; the host sends every device row again
+  (`ExpiryWarningPublisher`, one batch) with `Device.cert_warning_days`, and the Compliance catalog gives a new certificate
+  check the default days. The PKI page's own list: each device's days (`CertificatesReply.WarningDays` is null).
+- **PKI page** (`PkiView`, `PoliciesViewModel`, `PolicyEditorViewModel`, `PolicyFormView`): the top row side by side from
+  1,280 px of page width, else stacked (`PkiView.Arrange`). Certificate authorities: the OADM CA's state and trust chips,
+  the list (previous CAs as rows with Export and Remove, imported CAs with Remove, View for all), Generate new CA and Import
+  CA in the header (Import CA a menu: "Own CA with its key" replaces the OADM CA, "CA certificate only" adds a row; decision
+  of stage 3: one button, two entries), Install in trusted root store, Export public certificate and Back up below the list.
+  Policies: the filter as a segmented switch (All, Certificates, 802.1X, Revoke; Issuing since stage 4), rows with Edit and Delete icon buttons,
+  the warning as an amber chip in the summary. The editor is the shared `DevicePickerWindow` with the form on top; for kinds
+  without devices the device part hides (`DevicePickerWindow.IsPickerVisible`). The Device certificates card kept only the
+  validity (gone in stage 4); users limited to a device group still see the page with the Certificates of their devices (decision of stage 3:
+  the Certificates list of stage 1 stays; the Policies card is hidden for them).
+- **802.1X page**: Server (with "6 policies apply" and Edit in PKI: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
+  and Switches side by side from 1,000 px of page width, Sessions and Log below with a `paneSplitter` between them (pixel
+  rows inside the page's scroll viewer); every column but the state or result is as wide as its longest text (`MinWidth` =
+  `Width`, the grid scrolls sideways on narrow pages). The switch dialog no longer names the RADIUS server's address; the
+  shared secret needs 8 characters or more.
+- **EST page**: its own cards (`EstPage.HasOwnCards`): General and Profiles (side by side while they fit) with Save, then
+  Enrollments with Not renewed.
+- **Tests**: `Oadm.Plugins.Pki.Tests` `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (+ headless at 1,700 and
+  1,000 px), `PolicyPerfTests` (Category=Perf: 30,000 devices); `Oadm.Plugins.Radius.Tests` `PolicyTests`, `AllowCaTests`,
+  `ConversionTests` (fixtures of every stored format in `Fixtures/Conversion`); `Oadm.Core.Tests` `ExpiryWarningTests` and
+  the rule engine's stored rule; `Oadm.Server.Tests` the Compliance default and the device rows' days.
+- **Not built yet**: the conversion on a copy of real data (a backup of a 4.1 server and of the development server, see
+  "Rules for the move"): no such backup was at hand.
+
+## Code (stage 4)
+
+Built 2026-10-24. Rules the sections above leave open are marked "decision of stage 4" (the most conservative choice that
+fits the spec; to be confirmed by the maintainer).
+
+- **Kinds** (`PolicyKinds.HttpsCertificate`, `Dot1xCertificate`, `ServerCertificate`, group Issuing, no devices):
+  `PkiPolicy.CaId` (only the OADM CA issues: "Only the OADM CA issues certificates."), `ValidDays` (1 to 3,650, the range of
+  the former Device certificates card), `Key` (`PolicyKeys`: ecc, rsa); IEEE 802.1X adds `EapolVersion`, `Identity`,
+  `CustomIdentity`, `RadiusCa`, `RadiusCaPem` with the rules of the former IEEE 802.1X card (`PolicyRules.ValidateIssuing`);
+  Server certificate adds `Server` (`PolicyServers`: dot1xServer, estServer). One Server certificate policy per server, and
+  it keeps its server (decision of stage 4). The 802.1X server's policy allows ECC only ("The 802.1X server uses an ECC key.";
+  decision of stage 4: its cipher suites follow an ECDSA key). Rows: "OADM Root CA SERVER01, 365 days, ECC" (the CA's real
+  name, as Allow CA rows), a server certificate adds the server.
+- **Deleting is refused** for the last policy of HTTPS or IEEE 802.1X certificate ("Enable HTTPS needs an HTTPS certificate
+  policy. Add another one first."), an issuing policy an EST profile names ("Used by the EST profile https."; the EST core
+  plugin hands the store `ProfileUses`, read from its settings, also while the server is off), and every Server certificate
+  policy ("The EST server gets its certificate from this policy. Change it instead.").
+- **Conversion** (owner `oadm.pki:issuing`, apart from stage 3's `oadm.pki`, so a server of stage 3 converts too;
+  `PkiService.ConvertIssuing`): "HTTPS" and "IEEE 802.1X" with the validity of the Device certificates card and the 802.1X
+  settings (an imported RADIUS CA that cannot be read stays "imported" without a certificate: the task refuses until it is
+  imported again, never a silent switch to the OADM CA); "802.1X server" (365 days, ECC) and "EST server" (90 days, ECC: as
+  they were made before; decision of stage 4, the table had 365 for both). The key: ECC on a new server, **RSA where an
+  OADM ran before** (a stored CA or page settings), because the tasks made RSA 2048 keys on the devices (decision of stage
+  4: what the devices get does not change with the update). EST profiles (owner `oadm.est:profiles`, `EstPolicies.ConvertAsync`
+  at the EST core plugin's start): a profile without a policy names one with its validity and key, the default when the
+  values match ("https" -> "HTTPS"), else one named after the profile ("EST dot1x"; an IEEE 802.1X one takes the 802.1X
+  settings of the first of its kind). A run after a crash between the two writes finds the policy by its values. The old
+  settings stay where they are, no longer read; the page method `saveSettings` is gone.
+- **Tasks**: Enable HTTPS and Enable IEEE 802.1X take the policy of the payload (`IssuePayload`: policy id and the values of
+  the run; without a policy id the first of the kind; a policy deleted after the dialog: "The chosen policy no longer exists.
+  Start the task again. Nothing was changed."), check the values like a saved policy and the key types of the device's default
+  keystore (`GET cert/v1`: `settings.keystore`, `keystores[].key_types`) in Check compatibility, before the first write. ECC
+  is EC-P256 on the device, RSA is RSA-2048; a device that does not list its key types gets RSA only (decision of stage 4).
+  Renew certificates and Install certificates (IEEE 802.1X) take the first policy of each kind (decision of stage 4).
+- **Dialogs** (`IssueCertificateWindow`, `IssueCertificateViewModel`, no card, one form): Policy (the first preselected,
+  read once through the task's read-only query `listIssuingPolicies` with the first selected device, `ui:LoadingOverlay`
+  while it reads), CA (the OADM CA's name, no choice today), Valid (days), Key, and for IEEE 802.1X its warning, EAPOL
+  version, EAP identity, Custom identity and RADIUS server CA (the imported CA only when the policy has one). Enable gives
+  the payload with every value; the clock check follows as before. The 802.1X confirmation popup is gone (its warning is
+  in the dialog).
+- **EST**: a profile has `PolicyId`; enrollment and renewal issue with the policy's valid days, Set up asks the camera for
+  the policy's key. A profile whose policy cannot be read issues nothing (503 "The issuing policy of this profile cannot be
+  read.", Set up stops before the first write). Without PKI's store (no PKI: no CA either) the profile's own values count.
+  The page: Profiles with "Issuing policy" (the policies of the use's kind, HTTPS certificate for HTTPS and RTSPS, IEEE
+  802.1X certificate for IEEE 802.1X and MQTT; decision of stage 4) instead of Valid (days) and Key; it follows changes of
+  the policies.
+- **Server certificates**: the 802.1X server (`ServerIdentityKeeper.Policy`) and the EST server (`ServerCertificates.Policy`)
+  take the days and key of their policy for the next certificate; renewed 30 days before the end, at most a third of its time,
+  at once for a new CA or (EST) another key; other days alone wait for the next renewal.
+- **Page**: the Device certificates and IEEE 802.1X cards are gone (no Save on the page); the editor has the issuing fields
+  (RADIUS server CA with Import and View owned by the editor window). Used by of the CAs lists the issuing policies since
+  stage 5.
+- **Tests**: `Oadm.Plugins.Pki.Tests` `IssuingPolicyTests` (fixtures `pki-config-4.1.json`, `pki-config-4.1-imported-radius.json`,
+  `pki-policies-stage3.json`), `IssuingTaskTests`, `IssueDialogTests` (+ headless dialogs and editors);
+  `Oadm.Plugins.Est.Tests` `PolicyTests`, `ServerTests` and `PageTests` (profile policies, server certificate);
+  `Oadm.Plugins.Radius.Tests` `ServerTests` (server certificate days).
+
+## Code (stage 5)
+
+Built 2026-10-24. Rules the sections above leave open are marked "decision of stage 5" (the most conservative choice that
+fits the spec; to be confirmed by the maintainer).
+
+- **One list** (`PkiService.CertificateList`, page method `getCertificates`): first the CAs (each certificate of the CA card's
+  CAs: the OADM CA, the previous ones, every Axis device ID root and intermediate, the imported CAs), then the certificates of
+  the 802.1X and EST servers, then the ones created, signed or imported here (newest first), then the device certificates
+  (newest first, the issued registry). Decision of stage 5: this fixed order makes paging one count plus one registry pass.
+  The rows before the device certificates are at most a few hundred and built per request. Measured at 30,000 devices x 2
+  plus 50 created: under 110 ms per page, search or filter (`CertificateListPerfTests`).
+- **Columns** (SDK 0.4.0 `IssuedCertificateInfo` gains `Id`, `Kind` (`ListedCertificateKind`: Device, Authority, Server,
+  Created, SignedRequest, Imported), `Name`, `IssuedBy`, `UsedBy`, `HasKey`; uses `ListedCertificateUses`: HTTPS, IEEE
+  802.1X, MQTT, RTSPS, Server, CA, Other). Decisions of stage 5: **Issued by** is the issuing CA's name (the column and filter
+  of Task / EST are gone from the page; the shared list still offers them when a server lists no CAs); the filter lists the CAs
+  of the CA card and "Other CA". MQTT and RTSPS stay uses of their own; the state Replaced stays. The columns Valid from and
+  Serial number left the grid (the search still finds a serial; View shows both). **Used by**: a device certificate names
+  its device while it is the newest of its use and not deleted from the device; server certificates their server; the rest
+  "-". Server and local rows count Expires soon with the longest Expiry warning policy (`DefaultExpiryDays`).
+- **Server certificates**: noted when the OADM CA signs a request without a device and a server use
+  (`PkiCertificateAuthority.SignAsync`; source "EST" = EST server, `ServerCertificateSources.Dot1x` = 802.1X server) and when
+  the 802.1X server reads its stored certificate at its start. In memory only (the servers keep their keys; decision of stage
+  5). No PKCS#12 export of server certificates (not built: the EST server keeps its key in memory and its code was not
+  changed in this stage).
+- **Create** (`createCertificate`): use HTTPS or IEEE 802.1X, an issuing policy of that kind (its days and key: ECC P-256 or
+  RSA 2048), name (1 to 64 characters), addresses (host names and IP addresses, at most 20; at least one for HTTPS); the
+  dialog then downloads the .p12 with the password (at least 8 characters, like the CA backup). Server certificate policies
+  are no choice (decision of stage 5). A name or address like an Axis camera's (`axis-<12 hex>`, any domain, any case:
+  `CertificateRules.IsCameraName`, the guard of the device flows) is refused below its field ("This name belongs to an Axis
+  camera."): EST and the 802.1X server take a camera's serial from such a name.
+- **Sign request** (`signRequest`): PKCS#10 PEM or DER up to 1 MB, its signature checked, SHA-1 / MD5 refused, RSA 2048+ or
+  EC P-256 / P-384 / P-521, and the key kind of the chosen policy (decision of stage 5: an RSA request with an ECC policy is
+  refused). Names: the request's CN and its host names and IP addresses (plain host names only, never a camera's
+  `axis-<12 hex>` name); an HTTPS policy needs one. Nothing else of the request's subject is copied (the certificate's
+  subject is its CN only), so no serial number attribute reaches the certificate.
+- **Never a device's certificate**: a certificate of the Certificates list (created, signed or imported) is never a camera's,
+  whatever it names. `PkiCertificateAuthority.PurposeOf` answers `NotDevicePurpose` for its serial (checked before the issued
+  registry, a hash lookup in `LocalCertificates.HasSerial`); EST then finds no camera in it (401 "The camera's certificate is
+  not a valid Axis device ID or an EST certificate.") and the 802.1X server refuses it (alert 42, "Certificate is not a
+  device certificate"). Fail closed: also when such a certificate was found on a device and listed in the registry.
+- **Import** (`importCertificate`): one PEM or DER certificate, or a PKCS#12 file with exactly one certificate with its key
+  (RSA or ECC; the chain in it is not kept). Refused (decision of stage 5): CA certificates ("Use Import CA"), expired ones,
+  a PEM with a private key, several certificates in one PEM, one already listed. A wrong password shows below Password only
+  for a PKCS#12 file (its outer structure read without the password, `LooksLikePkcs12`); any other file "The file cannot be
+  read." below File. Use from the extended key usage: server ->
+  HTTPS, client -> IEEE 802.1X, else Other.
+- **Export** (download `downloadCertificate`, audited with "Export certificate <name> (<format>)"): PEM or DER of the
+  certificate only (no chain); PKCS#12 only of certificates created or imported with a key, with the issuing CA, AES-256,
+  100,000 iterations. Never a CA key or a device's key.
+- **Delete** (`deleteCertificates`): all or nothing, the first refusal says why ("The certificate of 10.0.0.48 is still
+  valid. Revoke it first. Nothing was deleted."). Device certificates and created and signed ones (the OADM CA issued them:
+  deleted while valid, they would still be accepted without a trace) only revoked or expired; CAs never ("Remove CAs in
+  Certificate authorities."); server certificates only ended; imported ones always. A revocation stays.
+- **Revoke** also takes created and signed certificates (the OADM CA issued them; decision of stage 5).
+- **Limits** (decision of stage 5): at most 1,000 certificates created, signed or imported; files up to 1 MB. The upload of
+  a file goes through `InvokeAsync` as base64 (core plugins have no upload path), within the server's 16 MB message limit.
+- **Who**: every action Admin with "Manage the certificate authority" and all devices, audited by the host; a user limited to
+  a device group sees only the device certificates of the group's devices and no actions.
+- **Page**: Create, Sign request and Import in the card header; row buttons View, Export (PEM, DER, With its key), Revoke,
+  Delete; the row menu adds Revoke and Delete for several rows and Revoke all of this device. Dialogs without cards:
+  `CreateCertificateWindow`, `SignRequestWindow`, `ImportCertificateWindow`, `ExportKeyWindow`.
+- **CA list**: Used by also names the issuing policies of the OADM CA, one prefix per group ("802.1X: OADM CA (only devices
+  OADM manages)", "Issuing: HTTPS, IEEE 802.1X, 802.1X server, EST server", then the services); the grid wraps to two lines.
+- **Tests**: `Oadm.Plugins.Pki.Tests` `CertificateListTests`, `CertificateListPerfTests` (Category=Perf),
+  `CertificateCardHeadlessTests`, `BackupTests` (a created key restored on another server), `CertificatesTabTests`,
+  `AuthorityTests`.
+
+## Code (stage 6)
+
+Built 2026-10-24. Rules the sections above leave open are marked "decision of stage 6" (the most conservative choice that
+fits the spec; to be confirmed by the maintainer).
+
+- **Kinds** (`PolicyKinds.Enrollment`, `SignInCa`, group EST, the filter chip EST): Enrollment has devices (All devices
+  too: every device OADM manages, EST never serves another) and `ProfileScope` (`PolicyProfiles`: all, chosen, none) with
+  `Profiles` (names of the EST profiles, case-insensitive; "Choose at least one profile."); Sign-in CA has `CaId` and
+  `SignInFor` (`PolicySignIn`: new, renewal), no devices. The CAs a Sign-in CA can name (`PolicyStore.SignInCaChoices`): the
+  Axis device ID, the OADM CA and each previous OADM CA (decision of stage 6: never an imported CA, EST reads a serial only
+  from the Axis device ID or the axis name the OADM CA put in; "Cameras sign in with the Axis device ID or an OADM CA.");
+  the same CA twice is refused ("Another Sign-in CA policy has this CA."). A chosen profile the EST server does not have is
+  refused on save ("The EST server has no profile web."; the EST core plugin hands the store `ProfileNames`, also while
+  the server is off). Rows: "All profiles", "Profiles https and dot1x", "No enrollment"; "Axis device ID, for new
+  certificates", "OADM Root CA SERVER01, for renewals".
+- **For new certificates renews too** (decision of stage 6): a Sign-in CA for new certificates lets cameras sign in for
+  `simpleenroll` and `simplereenroll` (as before, a renewal with the Axis device ID passes); one for renewals only
+  `simplereenroll`. The converted defaults keep today's behaviour except that a certificate of the OADM CA no longer gets
+  a new certificate by `simpleenroll` (it was accepted for both before; "for renewals" says it).
+- **Overlaps**: as the other kinds with devices. Of two Enrollment policies that hold a device later (a tag or site
+  change) a profile must be allowed by both (decision of stage 6: the safer one); the warning names the narrower policy
+  when one is within the other. Tags of Enrollment policies match only while the host protects them (like VLAN: an
+  Enrollment gives something; `PolicyKinds.GrantsByTag`).
+- **EST server** (`Serving/EstRules`, built from the store and again when its version moves or PKI started again): a
+  device no Enrollment policy holds: 403 "No enrollment policy for this device." (listed, event Enrollment refused,
+  connection closed); a profile a policy that holds the device does not allow (or "No enrollment"): the 404 of an unknown
+  profile, listed with "The enrollment policy PTZ does not allow the profile https." / "... allows no enrollment."
+  (checked after the device and site, before the revocation list). Sign-in CAs come only from the policies: without
+  PKI's store, with a store that cannot be read or without a Sign-in CA policy nothing signs in (401, fail closed; decision
+  of stage 6: also without the store, as the 802.1X server). EST reports the CAs of the policies PKI still holds plus the
+  OADM CA to PKI (`SetUsedBy`) at the start, on a policy change and on PKI's Changed. `cacerts` stays open to every
+  profile that exists (no device is known then).
+- **Set up** checks the policies in Check compatibility, before the first write: none holds the camera: "No enrollment
+  policy for this device. Add one on the PKI page. Nothing was changed."; a profile not allowed is skipped with the
+  policy's reason as a warning; none left: "The enrollment policies allow none of the profiles the camera supports.
+  Nothing was changed." (decision of stage 6).
+- **Page**: the "Sign in with" check boxes are gone; General shows "3 policies apply" with Edit in PKI (`plugin:oadm.pki`)
+  and, in the warning style, why no camera can enroll ("Cameras cannot sign in: there is no Sign-in CA policy.", "No
+  camera can enroll: there is no Enrollment policy.", the store's own texts). Users limited to a device group see neither
+  (`EstState.PoliciesApply` and `PolicyProblem` null). `config.signInWith` stays stored and is kept by a save (read only
+  by the conversion). The policy editor: Enrollment with Profiles (All profiles, Chosen profiles with a check box per EST
+  profile, also one a policy names that the server no longer has, No enrollment) and the device choice; Sign-in CA with
+  CA and For (hint "Cameras may renew with it too." for new certificates).
+- **Conversion** (owner `oadm.est`, `EstPolicies.ConvertRulesAsync`, at the EST core plugin's start after the profiles'):
+  the Enrollment policy "All devices" and one Sign-in CA policy per CA of `config.signInWith` (4.1 had none: the Axis
+  device ID and the OADM CA), named "Axis device ID" (new), "OADM CA" (renewals) or the previous CA's name (renewals); a
+  previous CA PKI no longer lists is not converted (it let nothing in). A conversion after EST policies were made merges:
+  no second policy of a CA (for renewals when either was, the stricter), no "All devices" when an Enrollment policy exists
+  (decision of stage 6: it would let every device in). EST settings that cannot be read convert nothing (tried again at
+  the next start; fail closed meanwhile). A renamed or removed EST profile is not followed into the policies (decision of
+  stage 6: the policy keeps the name, which then allows nothing; the editor shows it to uncheck).
+- **Tests**: `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests` (kinds, defaults, overlaps, rules, conversion with fixtures
+  `est-config-4.1.json` and `est-config-stage4.json`, the late merge), `ServerTests` (sign-in per operation and CA, fail
+  closed, refused and not allowed devices and profiles over TLS, Used by), `TaskTests` (Set up and the policies), `PageTests`
+  (the page line, Edit in PKI, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
+  `EstPolicyPageTests` (filter, rows, both editors, headless editors).
 
 ## Not planned
 
@@ -188,11 +477,15 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 
 1. Done (on main, 2026-10-24): the CA list with Used by, 802.1X Trusted CAs and policies, EST Sign in with, the clock
    check.
-2. One plugin: EST and 802.1X move into the PKI package (three pages, Turn on per server, PRO for the two servers only,
-   taking over the 4.1 data and choices, the site relay), without changing what they do.
-3. The page with CAs, Policies and Certificates (today's list); 802.1X server, Allow CA, VLAN, Block, Revoke and Expiry
-   warning policies (the expiry events move to PKI) with the conversion; the 802.1X and EST page changes above.
-4. Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the task dialogs pick a policy; EST profiles point to
-   one.
-5. The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
-6. EST Enrollment and Sign-in CA policies.
+2. Built (2026-10-24, branch `feature/pki-policies`): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
+   on per server, PRO for the two servers only, taking over the 4.1 data and choices, the site relay), without changing what
+   they do.
+3. Built (2026-10-24, branch `feature/pki-policies`): The page with CAs, Policies and Certificates (today's list); 802.1X
+   server, Allow CA, VLAN, Block, Revoke and Expiry warning policies (the expiry events move to PKI) with the conversion; the
+   802.1X and EST page changes above. See "Code (stage 3)".
+4. Built (2026-10-24, branch `feature/pki-policies`): Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the
+   task dialogs pick a policy; EST profiles point to one. See "Code (stage 4)".
+5. Built (2026-10-24, branch `pp-certs`): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
+   See "Code (stage 5)".
+6. Built (2026-10-24, branch `pp-est`): EST Enrollment and Sign-in CA policies; the EST page's Sign in with goes away. See
+   "Code (stage 6)".

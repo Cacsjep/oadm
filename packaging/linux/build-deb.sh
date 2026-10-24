@@ -129,9 +129,10 @@ cp "$HERE/oadm.desktop" "$ROOT/usr/share/applications/oadm.desktop"
 cp "$REPO_ROOT/packaging/icons/oadm-256.png" "$ROOT/usr/share/icons/hicolor/256x256/apps/oadm.png"
 cp "$REPO_ROOT/packaging/icons/oadm.png" "$ROOT/usr/share/icons/hicolor/512x512/apps/oadm.png"
 write_docs "$ROOT" oadm-client "$CLIENT_DIR"
+tr -d '\r' < "$HERE/client-postinst" > "$ROOT/DEBIAN/postinst"
 build_package "$ROOT" oadm-client "$CLIENT_DEPENDS" "Description: Open AXIS Device Management client
  OADM manages Axis network devices. This package is the desktop client; it
  connects to an OADM server on this or another computer. Start it from the
  application menu or as oadm-client." "$TAKES_OVER
 Recommends: libwebkit2gtk-4.1-0" \
-  opt/oadm/client/Oadm.Client
+  opt/oadm/client/Oadm.Client DEBIAN/postinst

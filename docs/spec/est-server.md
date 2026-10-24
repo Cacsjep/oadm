@@ -1,26 +1,36 @@
 # EST server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-22; stages 1 to 4 built (stages at the end). Code details: `plugins/Oadm.Plugins.Est/README.md`.
+Agreed 2026-10-22; stages 1 to 4 and 6 built (stages at the end). Code details: `plugins/Oadm.Plugins.Pki/Est/README.md`.
 
-The first OADM PRO plugin (`oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
+The first OADM PRO feature: since OADM 4.5 a PRO part of the PKI package (core plugin `oadm.est`, `plugins/Oadm.Plugins.Pki/Est`;
+OADM 4.1 shipped it as the plugin `oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
 every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**
 also at sites (through a relay of the site node). A clean-room implementation from RFC 7030 and the Axis camera APIs.
 
 ## What the user sees
 
-- **Plugins page:** "EST server" is listed for everyone with the chip **OADM PRO** (`plugin.json` `"pro": true`): without
-  an active OADM PRO license or trial the check box is locked, the server refuses to turn it on
-  (`ProLicenseTexts.NeedsPro` "Needs an OADM PRO license or trial.") and **Activate** opens Settings > License. When the
-  license ends or is removed, the host stops it: it stops serving, enrolled cameras keep their certificates until they
-  expire, renewals are refused while it is off. The same lock for every later PRO plugin (`docs/spec/plugins.md`).
+- **Turn on / Turn off** (since OADM 4.5 the EST server is a PRO part of PKI, `docs/spec/pki.md` "One plugin"; OADM 4.1 had
+  it as its own plugin with the Plugins page check box): off by default; **Turn on** on the page's General card stores the
+  choice and starts the server (TCP 9454 opens), **Turn off** (left of Save, confirmed) stops it. It runs only while it is on
+  and an OADM PRO license or trial is active: without one the page shows only General with
+  `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.") and a disabled Turn on; when the license ends or is
+  removed the server stops (enrolled cameras keep their certificates until they expire, renewals are refused while it is
+  off) and a new license starts it again with the kept choice. A 4.1 server whose plugin was on keeps it on (the choice is
+  taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run
+  ("The EST server is off. Turn it on on the EST server page. Nothing was changed.", or "OADM PRO is not active.").
 - **Page "EST server"** (rail, group Security, next to PKI):
-  - **General** left (Listen on, port, enrollments kept), **Profiles** right; the status left of Save: "Running on port 9454", "OADM PRO is not
+  - **General** left (Listen on, port, enrollments kept, Issued by, "3 policies apply" with **Edit in PKI**: who may
+    enroll and which CAs sign in are PKI's Enrollment and Sign-in CA policies, docs/spec/pki.md "Code (stage 6)"; below
+    it, in the warning style, why no camera can enroll), **Profiles** right; the status left of Save: "Running on port 9454", "OADM PRO is not
     active.", "The PKI has no certificate authority.", or the listener's state ("... is used by another program").
   - **Profiles** (at most 2 per camera, the camera's limit: a third add is refused, "No more profiles can be added",
     seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
-    MQTT, RTSPS), validity (days), key (RSA 2048+ / ECC P-256+). Two ready-made: **HTTPS** (server certificates) and
-    **IEEE 802.1X** (client certificates).
+    MQTT, RTSPS), issuing policy (PKI's HTTPS certificate policies for HTTPS and RTSPS, IEEE 802.1X certificate policies for
+    IEEE 802.1X and MQTT: their valid days and key; docs/spec/pki.md "Code (stage 4)"), on. The profile name stays what
+    the camera uses in its URL. Two ready-made: **HTTPS** (server certificates, policy "HTTPS") and **IEEE 802.1X** (client
+    certificates, policy "IEEE 802.1X"). A profile whose policy cannot be read issues nothing (503 "The issuing policy of
+    this profile cannot be read.").
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). **View
     certificate** (toolbar, or a double click on a row; decision 2026-10-23) shows the certificate an enrollment issued
     in OADM's own window (the shared `ui:CertificateWindow` of the client SDK, also used by PKI and the 802.1X server): validity with a status chip, issued to and issued by, key and
@@ -71,10 +81,17 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - **Who may enroll:** mutual TLS with the camera's factory **Axis device ID** certificate (IEEE 802.1AR, AXIS Edge Vault),
   checked against the two Axis device ID root CAs (RSA, ECC; valid to 2060) shipped with the plugin (the camera sends the
   intermediates). No passwords, nothing to hand out. **And** the serial in the device ID certificate must be a device of
-  the device list (at a site: a device of that site): a genuine Axis camera OADM does not manage gets nothing.
+  the device list (at a site: a device of that site): a genuine Axis camera OADM does not manage gets nothing. **And**
+  (since stage 6 of docs/spec/pki.md) the CA must be named by a **Sign-in CA** policy of PKI (default: "Axis device ID"
+  for new certificates, which renews too, and "OADM CA" for renewals; none, no PKI or policies that cannot be read: nothing
+  signs in), and an **Enrollment** policy must hold the device and allow the profile (default "All devices", every
+  profile). None holds it: 403 "No enrollment policy for this device."; a profile not allowed: the 404 of an unknown
+  profile (no probing), listed in Enrollments with the policy that refused it.
 - **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate the OADM CA
   itself issued (chain element 1 is the OADM CA, never another CA below a root above an imported OADM CA) whose DNS
-  names hold exactly one `axis-<serial>.local` serial, a managed device; with a record of it, the record's device must
+  names hold exactly one `axis-<serial>.local` serial, a managed device, and that PKI does not mark as not a device's
+  (`PurposeOf` = `PkiCertificateAuthority.NotDevicePurpose`: created, signed or imported on PKI's Certificates card; 401
+  like no identity); with a record of it, the record's device must
   be that device (a record of a device OADM no longer manages is forgotten: a camera removed and added again). A record
   is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps. A
   certificate on PKI's revocation list (`IDeviceCertificateAuthority.IsRevoked`, one lookup) is refused, for
@@ -105,10 +122,12 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - Revocation: PKI's revocation list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
 - Logs: one line per request (no keys, no CSR bodies).
 - Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
-  or no valid identity, 403 not managed / other site / certificate of another camera, 400 request unreadable or refused, 404 unknown, 503 no
-  OADM PRO or no CA (Retry-After 600).
-- The server's TLS certificate: ECC P-256 key made in memory (never stored), 90 days, made again with a third left or
-  when the addresses or the CA change.
+  or no valid identity (also a CA no Sign-in CA policy names for the operation), 403 not managed / other site / no
+  enrollment policy / certificate of another camera, 400 request unreadable or refused, 404 unknown (also a profile the
+  device's Enrollment policy does not allow), 503 no OADM PRO or no CA (Retry-After 600).
+- The server's TLS certificate: made in memory (never stored) with the days and key of PKI's Server certificate policy
+  "EST server" (90 days, ECC P-256 by default; RSA 2048), made again 30 days (at most a third of its time) before its end,
+  when the addresses, the CA or the policy's key change; other days apply to the next one.
 
 ## Certificate renewals and pinning
 
@@ -180,8 +199,9 @@ removes the chosen profile ids); the profiles come from the EST server page. Dev
 
 Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+** (`CanRun`), and before the first write a fresh
 `config/discover` with `cert` v1 and `cert-est` v1, an Axis device ID certificate of this camera's serial on the camera
-(found by its chain, not its alias), and at least one enabled profile whose service the camera has. Others: Nothing was
-changed. Checked on 10.0.0.48 (P3265-V, 12.11.77): device ID certificates ECC P-256, RSA 2048 and RSA 4096, subject
+(found by its chain, not its alias), and at least one enabled profile whose service the camera has and that an
+Enrollment policy allows the camera (none holds it: "No enrollment policy for this device. Add one on the PKI page.";
+a profile not allowed is skipped with a warning). Others: Nothing was changed. Checked on 10.0.0.48 (P3265-V, 12.11.77): device ID certificates ECC P-256, RSA 2048 and RSA 4096, subject
 `serialNumber` = the serial in lower case, issued by "Axis device ID Intermediate CA ECC 2" / "RSA 2" (in the shipped
 bundles), valid to 9999; the camera starts with no EST profiles.
 
@@ -240,9 +260,9 @@ removes a profile of another EST server whole when it serves a use OADM sets up.
 
 ## License of the code
 
-`plugins/Oadm.Plugins.Est*` carry their own `LICENSE` (source-available: the source can be read, using the plugin needs
-an OADM PRO license; changing or removing the license check is not allowed). The rest of OADM stays Apache 2.0. The
-THIRD-PARTY notices list the plugin's license.
+`plugins/Oadm.Plugins.Pki/Est` and `plugins/Oadm.Plugins.Pki.Client/Est` carry their own `LICENSE` (source-available: the source
+can be read, using the EST server needs an OADM PRO license; changing or removing the license check is not allowed). The rest
+of OADM, PKI included, stays Apache 2.0. The THIRD-PARTY notices name the part ("Except the part Est of the plugin oadm.pki").
 
 ## Stages
 
@@ -261,3 +281,5 @@ THIRD-PARTY notices list the plugin's license.
    that do not run below Save ("EST server at <site>: waiting for approval in the OADM Site Node app"); the set-up's wait
    ends with that text when the relay does not run.
 5. **Docs:** user docs page, plugin README, website PRO section.
+6. **Policies** (built 2026-10-24, docs/spec/pki.md "Code (stage 6)"): Enrollment and Sign-in CA policies of PKI replace
+   "Sign in with" and the rule that every managed device may use every profile.

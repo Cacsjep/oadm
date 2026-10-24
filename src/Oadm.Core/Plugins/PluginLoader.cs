@@ -124,6 +124,14 @@ public sealed partial class PluginLoader
             }
 
             var manifest = ReadManifest(Path.Combine(directory, ManifestFileName));
+            if (MergedPlugins.MergedInto(manifest.Id) is not null)
+            {
+                // A folder of a package that is part of PKI now, left from OADM 4.1: never loaded (its core plugins would
+                // take the ids of PKI's), not an error.
+                LogMerged(manifest.Id, directory);
+                return null;
+            }
+
             if (!IsSdkCompatible(manifest.MinSdkVersion))
             {
                 throw new PluginLoadException(
@@ -276,7 +284,9 @@ public sealed partial class PluginLoader
         var count = 0;
         var contributedTypes = new HashSet<Type>();
 
-        foreach (var type in types.Where(t => typeof(ICorePlugin).IsAssignableFrom(t)))
+        // By full type name: a package with several core plugins (PKI with the EST and 802.1X servers) registers them in the
+        // same order on every start, and the rail keeps the server's order inside a group.
+        foreach (var type in types.Where(t => typeof(ICorePlugin).IsAssignableFrom(t)).OrderBy(t => t.FullName, StringComparer.Ordinal))
         {
             if (TryCreate(type, origin) is not ICorePlugin core)
             {
@@ -394,6 +404,9 @@ public sealed partial class PluginLoader
             return null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} in {Directory} skipped: Merged into PKI")]
+    private partial void LogMerged(string packageId, string directory);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Plugin root {Root} does not exist, skipped")]
     private partial void LogRootMissing(string? root);

@@ -249,22 +249,9 @@ public sealed class ServiceTests
     }
 
     [Fact]
-    public async Task Save_settings_validates_and_persists_and_radius_ca_import_checks_the_file()
+    public async Task The_radius_ca_import_checks_the_file_and_the_policy_stores_it()
     {
         await using var pki = await PkiHarness.StartAsync();
-        var invalid = new PkiConfig
-        {
-            DeviceCertValidityDays = 0,
-            ExpiryWarningDays = 400,
-            Dot1x = new Dot1xConfig { EapolVersion = 3, Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{mac}", RadiusCa = RadiusCaSource.Imported },
-        };
-        var errors = (await pki.InvokeAsync<PkiReply>(PkiMethods.SaveSettings, new SaveSettingsRequest(invalid))).Errors!;
-        Assert.Equal("Enter a whole number from 1 to 3650.", errors[PkiFields.DeviceCertValidityDays]);
-        Assert.Equal("Enter a whole number from 1 to 365.", errors[PkiFields.ExpiryWarningDays]);
-        Assert.Equal("Choose EAPOL version 1 or 2.", errors[PkiFields.EapolVersion]);
-        Assert.Equal("Unknown placeholder {mac}. Use {serial} or {hostName}.", errors[PkiFields.CustomIdentity]);
-        Assert.Equal("Import the CA certificate of the RADIUS server.", errors[PkiFields.RadiusCa]);
-
         using var radius = TestCa.Root("Corp RADIUS CA");
         Assert.Equal("The file is not a certificate (.crt or .cer, PEM or DER).", (await pki.InvokeAsync<RadiusCaReply>(PkiMethods.ImportRadiusCa, new ImportRadiusCaRequest(Convert.ToBase64String([9, 9])))).Errors![PkiFields.RadiusCa]);
         Assert.StartsWith("This is not a CA certificate.", (await pki.InvokeAsync<RadiusCaReply>(PkiMethods.ImportRadiusCa, new ImportRadiusCaRequest(Convert.ToBase64String(LeafWithConstraints(radius))))).Errors![PkiFields.RadiusCa], StringComparison.Ordinal);
@@ -272,24 +259,13 @@ public sealed class ServiceTests
         Assert.Equal("Corp RADIUS CA", imported.Summary!.CommonName);
         Assert.DoesNotContain("PRIVATE", imported.Pem, StringComparison.Ordinal);
 
-        var valid = invalid with
-        {
-            DeviceCertValidityDays = 730,
-            ExpiryWarningDays = 45,
-            Dot1x = invalid.Dot1x with { EapolVersion = 2, CustomIdentity = " cam-{serial}@{hostName} ", RadiusCaPem = imported.Pem },
-        };
-        var saved = await pki.InvokeAsync<PkiReply>(PkiMethods.SaveSettings, new SaveSettingsRequest(valid));
-        Assert.True(saved.Ok);
-        Assert.Equal("cam-{serial}@{hostName}", saved.State!.Config.Dot1x.CustomIdentity);
-        Assert.Equal("Corp RADIUS CA", saved.State.RadiusCa!.CommonName);
-        var stored = PkiJson.Deserialize<PkiConfig>(await pki.Settings.GetAsync(PkiStore.ConfigKey, CancellationToken.None));
-        Assert.Equal(730, stored.DeviceCertValidityDays);
-        Assert.Equal(2, stored.Dot1x.EapolVersion);
-
-        // Back to this CA: the imported RADIUS CA is dropped.
-        var back = await pki.InvokeAsync<PkiReply>(PkiMethods.SaveSettings, new SaveSettingsRequest(valid with { Dot1x = valid.Dot1x with { RadiusCa = RadiusCaSource.Oadm } }));
-        Assert.Null(back.State!.Config.Dot1x.RadiusCaPem);
-        Assert.Null(back.State.RadiusCa);
+        // The IEEE 802.1X certificate policy keeps it; back to this CA drops it.
+        var policy = pki.Policies.FirstOf(Policies.PolicyKinds.Dot1xCertificate)!;
+        var saved = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, policy with { RadiusCa = RadiusCaSource.Imported, RadiusCaPem = imported.Pem });
+        Assert.Null(saved.Error);
+        Assert.Equal(imported.Pem, pki.Policies.Find(policy.Id)!.RadiusCaPem);
+        var back = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, saved.Saved! with { RadiusCa = RadiusCaSource.Oadm });
+        Assert.Null(back.Saved!.RadiusCaPem);
     }
 
     [Fact]
@@ -355,8 +331,7 @@ public sealed class ServiceTests
         await using var pki = await PkiHarness.StartAsync();
         Assert.Equal(TimeSpan.FromDays(365), pki.Service.DeviceCertificateValidity());
         await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Short", null, 1, true));
-        await pki.InvokeAsync<PkiReply>(PkiMethods.SaveSettings, new SaveSettingsRequest(new PkiConfig { DeviceCertValidityDays = 3650 }));
-        Assert.InRange(pki.Service.DeviceCertificateValidity().TotalDays, 360, 367);
+        Assert.InRange(pki.Service.DeviceCertificateValidity(3650).TotalDays, 360, 367);
     }
 
     [Fact]

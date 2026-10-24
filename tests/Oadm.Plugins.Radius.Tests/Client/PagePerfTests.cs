@@ -70,7 +70,7 @@ public sealed class PagePerfTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_cards_and_the_policy_editor_with_30000_devices_and_a_full_log_page_stay_fast()
+    public async Task The_cards_with_30000_devices_and_a_full_log_page_stay_fast()
     {
         var server = new FakeRadiusBackend();
         var now = DateTime.UtcNow;
@@ -88,16 +88,6 @@ public sealed class PagePerfTests(ITestOutputHelper output)
         await vm.LoadServerAsync(CancellationToken.None);
         var serverTab = watch.Elapsed;
 
-        // The policy editor: the group picker over every device with the tags of the devices, the policies and the server.
-        watch.Restart();
-        var editor = vm.Policies.NewEditor(null);
-        editor.Picker.Tags.First(t => t.Name == "Outdoor").IsChecked = true;
-        var canSave = editor.SaveBlockedReason;
-        var policyEditor = watch.Elapsed;
-        Assert.Equal(44, editor.Picker.Tags.Count); // 40 buildings, Outdoor, Indoor, PTZ, Lobby
-        Assert.Equal(Devices / 2, editor.Picker.CoveredCount);
-        Assert.Equal(RadiusRules.EnterName, canSave);
-
         watch.Restart();
         await vm.Log.LoadAsync(CancellationToken.None);
         var logPage = watch.Elapsed;
@@ -112,9 +102,8 @@ public sealed class PagePerfTests(ITestOutputHelper output)
         var live = watch.Elapsed;
         Assert.Equal(500, vm.Log.Rows.Count);
 
-        output.WriteLine($"30,000 devices: cards {serverTab.TotalMilliseconds:F0} ms; policy editor with a tag {policyEditor.TotalMilliseconds:F0} ms; log page of 500 of 50,000 {logPage.TotalMilliseconds:F0} ms; 20 live batches of 50 {live.TotalMilliseconds:F0} ms");
+        output.WriteLine($"30,000 devices: cards {serverTab.TotalMilliseconds:F0} ms; log page of 500 of 50,000 {logPage.TotalMilliseconds:F0} ms; 20 live batches of 50 {live.TotalMilliseconds:F0} ms");
         Assert.True(serverTab < TimeSpan.FromSeconds(1), $"the cards took {serverTab.TotalMilliseconds:F0} ms");
-        Assert.True(policyEditor < TimeSpan.FromSeconds(3), $"the policy editor took {policyEditor.TotalMilliseconds:F0} ms");
         Assert.True(logPage < TimeSpan.FromSeconds(1), $"log page took {logPage.TotalMilliseconds:F0} ms");
         Assert.True(live < TimeSpan.FromSeconds(1), $"live rows took {live.TotalMilliseconds:F0} ms");
     }

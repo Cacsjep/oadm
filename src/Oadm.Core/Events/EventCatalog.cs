@@ -17,11 +17,15 @@ public static class BuiltInEvents
     public const string Unreachable = "oadm.device.unreachable";
     public const string CredentialsRequired = "oadm.device.credentials-required";
     public const string CertificateChanged = "oadm.device.certificate-changed";
-    public const string CertificateExpiresSoon = "oadm.device.certificate-expires-soon";
-    public const string CertificateExpired = "oadm.device.certificate-expired";
 
-    /// <summary>"Certificate expires soon": 30 days or less left (fixed, like the Devices grid).</summary>
-    public const int ExpiresSoonDays = 30;
+    /// <summary>
+    /// "Certificate expires soon": since OADM 4.5 an event of PKI (group "Certificates", the days of its Expiry warning
+    /// policies, docs/spec/pki.md); the id stays, so stored rules keep working.
+    /// </summary>
+    public const string CertificateExpiresSoon = "oadm.device.certificate-expires-soon";
+
+    /// <summary>"Certificate expired": since OADM 4.5 an event of PKI; the id stays.</summary>
+    public const string CertificateExpired = "oadm.device.certificate-expired";
 
     /// <summary>The group of the "Any device" events: one state for the server, on while any device has the condition.</summary>
     public const string AnyGroup = "Any device";
@@ -29,7 +33,11 @@ public static class BuiltInEvents
     public const string AnyUnreachable = "oadm.device.any-unreachable";
     public const string AnyCredentialsRequired = "oadm.device.any-credentials-required";
     public const string AnyCertificateChanged = "oadm.device.any-certificate-changed";
+
+    /// <summary>The Any device twin of <see cref="CertificateExpiresSoon"/> (PKI's since OADM 4.5, the id stays).</summary>
     public const string AnyCertificateExpiresSoon = "oadm.device.any-certificate-expires-soon";
+
+    /// <summary>The Any device twin of <see cref="CertificateExpired"/> (PKI's since OADM 4.5, the id stays).</summary>
     public const string AnyCertificateExpired = "oadm.device.any-certificate-expired";
 
     /// <summary>The value of an "Any device" event: how many devices have the condition.</summary>
@@ -41,8 +49,6 @@ public static class BuiltInEvents
         (Unreachable, AnyUnreachable),
         (CredentialsRequired, AnyCredentialsRequired),
         (CertificateChanged, AnyCertificateChanged),
-        (CertificateExpiresSoon, AnyCertificateExpiresSoon),
-        (CertificateExpired, AnyCertificateExpired),
     ];
 
     public static readonly IReadOnlyList<EventTypeInfo> Types =
@@ -50,13 +56,9 @@ public static class BuiltInEvents
         new(Unreachable, "Device unreachable", Group, EventKind.Stateful) { Description = "The device does not answer." },
         new(CredentialsRequired, "Credentials required", Group, EventKind.Stateful) { Description = "The device rejects the stored login." },
         new(CertificateChanged, "Certificate changed", Group, EventKind.Stateful) { Description = "The device presents another HTTPS certificate." },
-        new(CertificateExpiresSoon, "Certificate expires soon", Group, EventKind.Stateful) { Description = "30 days or less left." },
-        new(CertificateExpired, "Certificate expired", Group, EventKind.Stateful),
         Any(AnyUnreachable, "Any device: unreachable", "At least one device does not answer."),
         Any(AnyCredentialsRequired, "Any device: credentials required", "At least one device rejects the stored login."),
         Any(AnyCertificateChanged, "Any device: certificate changed", "At least one device presents another HTTPS certificate."),
-        Any(AnyCertificateExpiresSoon, "Any device: certificate expires soon", "At least one device certificate has 30 days or less left."),
-        Any(AnyCertificateExpired, "Any device: certificate expired", "At least one device certificate expired."),
     ];
 
     private static EventTypeInfo Any(string id, string name, string description) =>

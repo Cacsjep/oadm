@@ -8,6 +8,9 @@ UNIT=oadm-server.service
 if [ "$1" = configure ]; then
     mkdir -p /var/lib/oadm
     chmod 0700 /var/lib/oadm
+    # The EST and 802.1X servers are parts of PKI since OADM 4.5: dpkg removes the files of their 4.1 plugin folders,
+    # anything else left there goes too (the server would skip the folders anyway, "Merged into PKI").
+    rm -rf /opt/oadm/server/plugins/oadm.est /opt/oadm/server/plugins/oadm.radius
 fi
 
 if [ "$1" = configure ] || [ "$1" = abort-upgrade ] || [ "$1" = abort-deconfigure ] || [ "$1" = abort-remove ]; then

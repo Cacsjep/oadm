@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
 
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Client;
 using Oadm.Sdk.Certificates;
@@ -15,8 +16,8 @@ namespace Oadm.Plugins.Radius.Tests.Client;
 
 /// <summary>
 /// The page's server in the tests and for the screenshots: answers every plugin method of the contract from demo data
-/// (switches, trusted CAs, policies, sessions in every state, log rows with a warning and refusals)
-/// and records what the page sent.
+/// (switches, sessions in every state, log rows with a warning, refusals and the policies that matched) and records what the
+/// page sent.
 /// </summary>
 internal sealed class FakeRadiusBackend
 {
@@ -35,10 +36,8 @@ internal sealed class FakeRadiusBackend
             {
                 ListenOn = "eth0",
                 ListenOnName = "Ethernet",
-                CipherSuites = [.. Suites.Where(s => !s.Legacy).Select(s => s.Id)],
-                LargestFragment = RadiusLimits.DefaultFragment,
             },
-            CipherSuitesListed = Suites,
+            PoliciesApply = 6,
             ServerCertificate = new ServerCertificateInfo(now.AddDays(364), ["10.0.0.17", "oadm-server"]),
             Interfaces =
             [
@@ -53,39 +52,19 @@ internal sealed class FakeRadiusBackend
             new SwitchRow { Id = Guid.NewGuid(), Name = "Parking", SiteName = "This server", Address = "switch-parking.example.com", State = SwitchStates.NoRequests, RadiusServerAddress = "10.0.0.17" },
             new SwitchRow { Id = Guid.NewGuid(), Name = "Gate house", Address = "192.168.1.2", SiteId = BuildingB, SiteName = "Building B", State = SwitchStates.SiteOffline, LastRequestUtc = now.AddHours(-2), RadiusServerAddress = "192.168.1.5" },
         ];
-        Policies = new PolicySettings
-        {
-            Policies =
-            [
-                new RadiusPolicy { Id = Guid.NewGuid(), Name = "Building B cameras", Kind = PolicyKinds.Vlan, Vlan = 30, Devices = new PolicyDevices { SiteIds = [BuildingB] } },
-                new RadiusPolicy { Id = Guid.NewGuid(), Name = "PTZ", Kind = PolicyKinds.Vlan, Vlan = 20, Devices = new PolicyDevices { Tags = ["PTZ"], ExceptSerials = ["ACCC8E123499"] } },
-                new RadiusPolicy { Id = Guid.NewGuid(), Name = "Storage room", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Serials = ["ACCC8E123406", "ACCC8E123407"] } },
-            ],
-            DefaultVlan = 99,
-            TagChoices = [new TagChoice("PTZ", "PTZ"), new TagChoice("Lobby", "Lobby")],
-        };
-        TrustedCas = new TrustedCaList
-        {
-            Cas =
-            [
-                new TrustedCaRow { Id = CertificateAuthorityInfo.OadmId, Name = "OADM CA", Kind = CertificateAuthorityKind.Oadm, NotAfterUtc = now.AddYears(10), Trusted = true, PreviousCount = 1 },
-                new TrustedCaRow { Id = CertificateAuthorityInfo.AxisDeviceIdId, Name = "Axis device ID", Kind = CertificateAuthorityKind.AxisDeviceId, NotAfterUtc = now.AddYears(20), Trusted = true },
-                new TrustedCaRow { Id = "imported:AB12", Name = "Contoso Root", Kind = CertificateAuthorityKind.Imported, NotAfterUtc = now.AddYears(5), Trusted = false },
-            ],
-        };
         Sessions =
         [
             Session(now.AddSeconds(-2), "AC:CC:8E:12:34:01", "waitingForIdentity", "Waiting for identity", guess: true),
             Session(now.AddSeconds(-3), "AC:CC:8E:12:34:02", "sendingServerCertificate", "Sending server certificate: fragment 2 of 4", guess: true, fragment: new FragmentInfo(2, 4)),
             Session(now.AddSeconds(-4), "AC:CC:8E:12:34:03", "receivingClientCertificate", "Receiving client certificate: fragment 3 of 5", guess: true, fragment: new FragmentInfo(3, 5)),
             Session(now.AddSeconds(-5), "AC:CC:8E:12:34:04", "checkingClientCertificate", "Checking client certificate", guess: true),
-            Session(now.AddSeconds(-6), "AC:CC:8E:12:34:05", SessionStates.Authenticated, "Authenticated with VLAN 20", vlan: 20),
+            Session(now.AddSeconds(-6), "AC:CC:8E:12:34:05", SessionStates.Authenticated, "Authenticated with VLAN 20 by PTZ", vlan: 20) with { VlanPolicy = "PTZ" },
             Session(now.AddSeconds(-7), "AC:CC:8E:65:43:21", SessionStates.Failed, "Failed: The device does not trust the server certificate (TLS alert 48, unknown CA)"),
         ];
         Log =
         [
-            LogEntry(now.AddSeconds(-6), "AC:CC:8E:12:34:05", LogResults.Authenticated, null, null, 20, "10.0.0.45"),
-            LogEntry(now.AddSeconds(-30), "AC:CC:8E:65:43:21", LogResults.Authenticated, null, "MAC address AC:CC:8E:65:43:21 does not match the certificate of ACCC8E123406", 20, "10.0.0.46"),
+            LogEntry(now.AddSeconds(-6), "AC:CC:8E:12:34:05", LogResults.Authenticated, null, null, 20, "10.0.0.45") with { VlanPolicy = "PTZ" },
+            LogEntry(now.AddSeconds(-30), "AC:CC:8E:65:43:21", LogResults.Authenticated, null, "MAC address AC:CC:8E:65:43:21 does not match the certificate of ACCC8E123406", 30, "10.0.0.46") with { VlanPolicy = "Building B cameras" },
             LogEntry(now.AddMinutes(-2), "AC:CC:8E:12:34:07", LogResults.Failed, "Certificate of a device OADM does not manage (ACCC8E123407)", null, null, null),
             LogEntry(now.AddMinutes(-5), "AC:CC:8E:12:34:08", LogResults.Failed, "Client certificate expired on 2026-09-30", null, null, "10.0.0.48"),
             LogEntry(now.AddMinutes(-9), "AC:CC:8E:12:34:09", LogResults.Failed, "Certificate revoked on 2026-10-20 (Key compromised)", null, null, "10.0.0.49"),
@@ -94,33 +73,9 @@ internal sealed class FakeRadiusBackend
 
     public static readonly Guid BuildingB = Guid.Parse("6b1f0a0e-8a83-4a4f-9c84-6c3c3f7e2b10");
 
-    public static IReadOnlyList<CipherSuiteOption> Suites { get; } =
-    [
-        new(0x1301, "TLS_AES_128_GCM_SHA256", false, true),
-        new(0x1302, "TLS_AES_256_GCM_SHA384", false, true),
-        new(0x1303, "TLS_CHACHA20_POLY1305_SHA256", false, true),
-        new(0xC02B, "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", false, false),
-        new(0xC02C, "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", false, false),
-        new(0xCCA9, "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256", false, false),
-        new(0xC02F, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", false, false),
-        new(0xC030, "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", false, false),
-        new(0xCCA8, "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", false, false),
-        new(0xC009, "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA", true, false),
-        new(0xC00A, "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA", true, false),
-        new(0xC013, "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", true, false),
-        new(0xC014, "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA", true, false),
-    ];
-
     public RadiusState State { get; set; }
 
     public List<SwitchRow> Switches { get; }
-
-    public PolicySettings Policies { get; set; }
-
-    public TrustedCaList TrustedCas { get; set; }
-
-    /// <summary>The answer of countRevocations.</summary>
-    public int RevocationCount { get; set; } = 7;
 
     public List<SessionRow> Sessions { get; }
 
@@ -187,8 +142,21 @@ internal sealed class FakeRadiusBackend
         return Answer(method, payload);
     }
 
+    /// <summary>Turn on / Turn off of the server (PKI): running unless a test says otherwise.</summary>
+    public ServerSwitchState Switch { get; set; } = new(true, true, true, string.Empty);
+
     private string? Answer(string method, string? payload)
     {
+        if (ServerSwitchMethods.IsSwitchMethod(method))
+        {
+            Switch = method switch
+            {
+                ServerSwitchMethods.TurnOn => Switch with { On = true, Running = Switch.ProActive, StatusText = Switch.ProActive ? string.Empty : Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro },
+                ServerSwitchMethods.TurnOff => Switch with { On = false, Running = false, StatusText = ServerSwitchMethods.OffText },
+                _ => Switch,
+            };
+            return ServerSwitchMethods.Serialize(Switch);
+        }
 
         object? answer = method switch
         {
@@ -198,11 +166,6 @@ internal sealed class FakeRadiusBackend
             RadiusMethods.SaveSwitch => SaveSwitch(RadiusJson.Deserialize<SaveSwitchRequest>(payload)),
             RadiusMethods.GenerateSecret => new GeneratedSecret("k7Qw9zR2mX4pL8vN3bT6yH1cF5jD0sAe"),
             RadiusMethods.DeleteSwitch => DeleteSwitch(RadiusJson.Deserialize<SwitchRef>(payload)),
-            RadiusMethods.GetPolicies => Policies,
-            RadiusMethods.SavePolicies => SavePolicies(RadiusJson.Deserialize<PolicySettings>(payload)),
-            RadiusMethods.CountRevocations => new RevocationCount(RevocationCount),
-            RadiusMethods.GetTrustedCas => TrustedCas,
-            RadiusMethods.SaveTrustedCas => SaveTrustedCas(RadiusJson.Deserialize<TrustedCaSettings>(payload)),
             RadiusMethods.ListSessions => new SessionList(Sessions),
             RadiusMethods.ListLog => ListLog(RadiusJson.Deserialize<LogQuery>(payload)),
             RadiusMethods.DeleteLog => DeleteLog(),
@@ -211,32 +174,6 @@ internal sealed class FakeRadiusBackend
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
         return answer is null ? null : RadiusJson.Serialize(answer);
-    }
-
-    /// <summary>The server part: new policies get an id; the tag choices stay.</summary>
-    private PolicySettings SavePolicies(PolicySettings request)
-    {
-        if (RadiusRules.Validate(request) is { } error)
-        {
-            throw new ArgumentException(error.Message);
-        }
-
-        Policies = request with
-        {
-            Policies = [.. request.Policies.Select(p => p.Id == Guid.Empty ? p with { Id = Guid.NewGuid() } : p)],
-            TagChoices = Policies.TagChoices,
-        };
-        return Policies;
-    }
-
-    private TrustedCaList SaveTrustedCas(TrustedCaSettings request)
-    {
-        var chosen = request.Cas.ToDictionary(c => c.Id);
-        TrustedCas = new TrustedCaList
-        {
-            Cas = [.. TrustedCas.Cas.Select(c => c with { Trusted = chosen.ContainsKey(c.Id), OnlyManaged = chosen.TryGetValue(c.Id, out var choice) ? choice.OnlyManaged : c.OnlyManaged })],
-        };
-        return TrustedCas;
     }
 
     public void Publish(string topic, object payload) => Events.Writer.TryWrite(new PluginEvent(topic, RadiusJson.Serialize(payload)));
@@ -367,6 +304,15 @@ internal sealed class FakePageContext(FakeRadiusBackend backend) : ICorePluginCl
     public List<string> Confirms { get; } = [];
 
     public List<(string Title, string Message)> Messages { get; } = [];
+
+    /// <summary>The pages the page opened (Edit in PKI).</summary>
+    public List<string> Opened { get; } = [];
+
+    public Task OpenAsync(string hostPage)
+    {
+        Opened.Add(hostPage);
+        return Task.CompletedTask;
+    }
 
     public bool AllDevices { get; set; } = true;
 

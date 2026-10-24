@@ -481,16 +481,6 @@ public sealed class HeadlessDialogTests
                 Assert.Equal(5, caVm.Rows.Count);
                 Assert.Equal(2, caVm.Rows.Count(r => r.IsError));
                 caWindow.Close();
-
-                // The 802.1X confirmation (the shared popup).
-                var (title, message, confirm) = PkiConfirmations.Dot1xEnable(3);
-                var popup = new MessageWindow { Heading = title, Message = message, ConfirmText = confirm, CancelText = "Cancel", Width = 560, Height = 260 };
-                Oadm.Client.App.ApplyCrispText(popup);
-                popup.Show();
-                Pump();
-                Capture(popup, outDir, "pki-dot1x-confirm.png");
-                Assert.Contains(PkiTaskIds.Dot1xWarning, message, StringComparison.Ordinal);
-                popup.Close();
             }, CancellationToken.None);
         }
         finally

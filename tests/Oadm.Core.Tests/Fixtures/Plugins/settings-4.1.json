@@ -1,0 +1,9 @@
+{
+  "_comment": "Settings rows of an OADM 4.1 server with the EST server on and the 802.1X server off (key -> stored JSON).",
+  "Plugins.Enabled": "{\"oadm.est\":true,\"oadm.radius\":false,\"oadm.live-view\":true}",
+  "Plugin:oadm.est:config": "{\"port\":9455,\"interfaceId\":\"all\",\"enrollmentsKept\":500}",
+  "Plugin:oadm.est:enrollments": "[]",
+  "Plugin:oadm.radius:config": "{\"port\":1813,\"logKept\":5000}",
+  "Plugin:oadm.radius:switches": "[]",
+  "Plugin:oadm.pki:settings": "{\"validityDays\":365}"
+}

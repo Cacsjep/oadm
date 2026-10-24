@@ -73,10 +73,7 @@ public static class PkiMethods
     /// <summary>() -> <see cref="InstallReply"/>: the CA into the server's machine root store.</summary>
     public const string InstallServerTrust = "installServerTrust";
 
-    /// <summary><see cref="SaveSettingsRequest"/> -> <see cref="PkiReply"/>.</summary>
-    public const string SaveSettings = "saveSettings";
-
-    /// <summary><see cref="ImportRadiusCaRequest"/> -> <see cref="RadiusCaReply"/> (checked, not stored: Save stores it).</summary>
+    /// <summary><see cref="ImportRadiusCaRequest"/> -> <see cref="RadiusCaReply"/> (checked, not stored: saving the policy stores it).</summary>
     public const string ImportRadiusCa = "importRadiusCa";
 
     /// <summary>Event: <see cref="PkiState"/> after every change.</summary>
@@ -113,6 +110,9 @@ public sealed record CertificatesRequest
 
     public string? Source { get; init; }
 
+    /// <summary>Only certificates of this CA (<see cref="Oadm.Sdk.Certificates.CertificateIssuerChoice.Id"/>).</summary>
+    public string? IssuedBy { get; init; }
+
     public string? Search { get; init; }
 
     public int Offset { get; init; }
@@ -131,11 +131,17 @@ public sealed record CertificatesReply
     /// <summary>The first row's position (the request's, or the last page's when fewer match now).</summary>
     public int Offset { get; init; }
 
-    /// <summary>The days before the end that count as "Expires soon".</summary>
-    public int WarningDays { get; init; } = 30;
+    /// <summary>
+    /// The days before the end that count as "Expires soon"; null since each device follows its Expiry warning policy (the
+    /// certificate window then follows the row's state).
+    /// </summary>
+    public int? WarningDays { get; init; }
+
+    /// <summary>The choices of the "Issued by" filter: the CAs of PKI and "Other CA".</summary>
+    public IReadOnlyList<Oadm.Sdk.Certificates.CertificateIssuerChoice> Issuers { get; init; } = [];
 }
 
-/// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>.</summary>
+/// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>: a serial number, or the id of a row that is no device certificate.</summary>
 public sealed record CertificateDetailsRequest(string SerialNumber);
 
 /// <summary>One issued certificate; <see cref="Error"/> when it is not listed (or not one of the user's devices).</summary>
@@ -467,8 +473,6 @@ public sealed record ExportPreviousRequest(string? Id, string? Format);
 public sealed record RemovePreviousRequest(string? Id);
 
 public sealed record BackupRequest(string? Password);
-
-public sealed record SaveSettingsRequest(PkiConfig? Config);
 
 public sealed record ImportRadiusCaRequest(string? FileBase64);
 

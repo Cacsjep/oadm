@@ -76,6 +76,61 @@ public static class DeviceCertificatePurposes
     }
 }
 
+/// <summary>
+/// The uses of every certificate the PKI page lists (SDK 0.4.0): the device uses of <see cref="DeviceCertificatePurposes"/>
+/// and OADM's own server certificates, CAs and the rest.
+/// </summary>
+public static class ListedCertificateUses
+{
+    /// <summary>A certificate of an OADM server (802.1X server, EST server).</summary>
+    public const string Server = "server";
+
+    /// <summary>A certificate authority.</summary>
+    public const string Ca = "ca";
+
+    /// <summary>Any other use.</summary>
+    public const string Other = "other";
+
+    /// <summary>Every use, in the page's order.</summary>
+    public static IReadOnlyList<string> All { get; } = [.. DeviceCertificatePurposes.All, Server, Ca, Other];
+
+    /// <summary>"HTTPS", "IEEE 802.1X", "MQTT", "RTSPS", "Server", "CA", "Other".</summary>
+    public static string Text(string? use) => use switch
+    {
+        Server => "Server",
+        Ca => "CA",
+        Other => "Other",
+        _ => DeviceCertificatePurposes.Text(use),
+    };
+}
+
+/// <summary>What a row of the PKI page's certificate list is (SDK 0.4.0).</summary>
+public enum ListedCertificateKind
+{
+    /// <summary>A device certificate the OADM CA issued (a task or EST).</summary>
+    Device = 0,
+
+    /// <summary>A certificate authority of PKI's list.</summary>
+    Authority = 1,
+
+    /// <summary>The certificate of an OADM server (802.1X server, EST server).</summary>
+    Server = 2,
+
+    /// <summary>OADM made the key and the certificate (Create).</summary>
+    Created = 3,
+
+    /// <summary>The OADM CA signed a request of another system (Sign request); OADM holds no key.</summary>
+    SignedRequest = 4,
+
+    /// <summary>Imported, with or without its key.</summary>
+    Imported = 5,
+}
+
+/// <summary>A choice of the "Issued by" filter (SDK 0.4.0): the CA's id and its name.</summary>
+/// <param name="Id">The CA's id (<see cref="CertificateAuthorityInfo.Id"/>), or "other" for every CA PKI does not list.</param>
+/// <param name="Name">The CA's name.</param>
+public sealed record CertificateIssuerChoice(string Id, string Name);
+
 /// <summary>Who asked the OADM CA for a certificate (SDK 0.4.0).</summary>
 public static class IssuedCertificateSources
 {
@@ -199,6 +254,24 @@ public sealed record IssuedCertificateInfo
 
     /// <summary>The revocation, when it is revoked.</summary>
     public CertificateRevocation? Revocation { get; init; }
+
+    /// <summary>The row's id when it is no device certificate ("ca:...", "local:...", "server:..."); null = <see cref="SerialNumber"/>.</summary>
+    public string? Id { get; init; }
+
+    /// <summary>What the row is.</summary>
+    public ListedCertificateKind Kind { get; init; }
+
+    /// <summary>The certificate's name for rows that are no device certificate; null = the device.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>The name of the CA that issued it ("OADM Root CA SERVER01"); null = <see cref="Source"/>.</summary>
+    public string? IssuedBy { get; init; }
+
+    /// <summary>What uses it: the device it is installed on, "802.1X server", "EST server"; null = nothing.</summary>
+    public string? UsedBy { get; init; }
+
+    /// <summary>OADM holds its private key (created, imported with its key): it can be exported as PKCS#12.</summary>
+    public bool HasKey { get; init; }
 }
 
 /// <summary>A query of the list of issued certificates (SDK 0.4.0): filters, search and one page, newest first.</summary>
@@ -218,6 +291,9 @@ public sealed record IssuedCertificateQuery
 
     /// <summary>Text in the device's address, host name or serial, or in the certificate's serial number; case-insensitive.</summary>
     public string? Search { get; init; }
+
+    /// <summary>Only certificates the CA with this id issued (<see cref="CertificateIssuerChoice.Id"/>); null = every issuer.</summary>
+    public string? IssuedBy { get; init; }
 
     /// <summary>Only certificates of these devices (a user limited to a device group); null = every device.</summary>
     public IReadOnlySet<Guid>? DeviceIds { get; init; }

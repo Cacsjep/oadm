@@ -74,7 +74,7 @@ public sealed class BackupTests
         {
             // Server A: two certificates of one device, one revoked.
             var file = new MemoryStream();
-            string revoked, valid, caId;
+            string revoked, valid, caId, created;
             byte[] der;
             await using (var a = await Server.OpenAsync(source))
             {
@@ -88,6 +88,12 @@ public sealed class BackupTests
                     valid = (await RevocationTests.SignAsync(authority, device, use: DeviceCertificateUse.Client)).SerialNumber;
                     await authority.RevokeAsync([revoked], RevocationReason.DeviceReplaced, "admin", CancellationToken.None);
                     caId = pki.Service!.Ca!.Id;
+
+                    // A certificate created here: its key is encrypted with the master key, in the plugin records.
+                    var policy = pki.Service.Policies.FirstOf(Policies.PolicyKinds.HttpsCertificate)!.Id;
+                    var reply = PkiJson.Deserialize<Certificates.CertificateActionReply>(await pki.InvokeAsync(Certificates.CertificateMethods.Create,
+                        PkiJson.Serialize(new Certificates.CreateCertificateRequest(DeviceCertificatePurposes.Https, policy, "nvr.example.com", "nvr.example.com")), CancellationToken.None));
+                    created = reply.Id!;
                 } // stopping writes what waits
 
                 await new BackupArchive(a.Paths) { Iterations = 1000 }.CreateAsync(file, Password,
@@ -112,6 +118,15 @@ public sealed class BackupTests
             var page = await again.ListIssuedAsync(new IssuedCertificateQuery(), CancellationToken.None);
             Assert.Equal(2, page.Total);
             Assert.Equal(der, await again.GetIssuedCertificateAsync(revoked, CancellationToken.None));
+
+            // The created certificate and its key came along: the restored master key reads it.
+            await using var download = await restored.OpenDownloadAsync(Certificates.CertificateMethods.Download,
+                PkiJson.Serialize(new Certificates.DownloadCertificateRequest(created, Certificates.CertificateFormats.Pkcs12, Password)), CancellationToken.None);
+            using var buffer = new MemoryStream();
+            await download.Content.CopyToAsync(buffer);
+            using var withKey = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(buffer.ToArray(), Password,
+                OperatingSystem.IsMacOS() ? System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.DefaultKeySet : System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.EphemeralKeySet);
+            Assert.True(withKey.HasPrivateKey);
         }
         finally
         {

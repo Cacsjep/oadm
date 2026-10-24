@@ -99,8 +99,8 @@ an independent security review the same day). A user may be limited to part of t
 - **Tags:** users with a group tag devices of their group, but never add or remove a tag that any group uses (that would
   move devices between groups). The guard lives in `DeviceTagStore` (the only writer), also for file imports added later
   in the background (the waiting entry remembers who queued it). The same for the tags a plugin protects (decision
-  2026-10-24, 802.1X review round 2: the tags of the VLAN rules, else a group user would choose a device's VLAN; docs/spec/tags.md
-  "Protected tags").
+  2026-10-24, 802.1X review round 2: the tags of PKI's policies, else a group user would choose a device's VLAN; docs/spec/tags.md
+  "Protected tags"). PKI's policies are server-wide: changed only by users with all devices, a user with a group reads none.
 - **Shared objects** (device triggers, compliance checks, Live View views, dashboards): each object stores its owning
   group (or all devices); an administrator editing it keeps the owner; a duplicate gets the group of the user who
   duplicates and, for a user with a group, only the devices the user sees now. Saving refuses device ids and tags outside the owner's view (NOT_FOUND), and it runs only on devices of that

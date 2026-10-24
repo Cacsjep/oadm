@@ -1,0 +1,10 @@
+#!/bin/sh
+# oadm-client postinst: the EST and 802.1X servers are parts of PKI since OADM 4.5. dpkg removes the files of their 4.1
+# plugin folders on upgrade; anything else left there goes too (the client would skip the folders anyway).
+set -e
+
+if [ "$1" = configure ]; then
+    rm -rf /opt/oadm/client/plugins/oadm.est /opt/oadm/client/plugins/oadm.radius
+fi
+
+exit 0

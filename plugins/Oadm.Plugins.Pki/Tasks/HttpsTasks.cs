@@ -22,9 +22,9 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
     /// <summary>The dialog reads the camera clocks first and asks when one is behind (docs/spec/pki.md "Clock check").</summary>
     public override bool RequiresDialog => true;
 
-    /// <summary>The dialog's clock check (<see cref="CameraClock.QueryMethod"/>), read only.</summary>
+    /// <summary>The dialog's HTTPS certificate policies and its clock check (<see cref="CameraClock.QueryMethod"/>), read only.</summary>
     public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
-        ClockQuery.QueryAsync(ctx, device, method, Time, ct);
+        IssuingChoice.QueryAsync(ctx, device, method, Service, Policies.PolicyKinds.HttpsCertificate, Time, ct);
 
     public override string GetTaskName(string? payloadJson) => "Enable HTTPS";
 
@@ -36,7 +36,7 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             PkiSteps.CheckCompatibility, PkiSteps.CheckClock, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork, PkiSteps.InstallCa, PkiSteps.CreateKey,
             PkiSteps.GetCsr, PkiSteps.Sign, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps, PkiSteps.RemovePrevious);
 
-        var (service, ca, apis) = await CheckCertificateTaskAsync(ctx, device, ct).ConfigureAwait(false);
+        var (service, ca, apis, policy) = await CheckIssuingTaskAsync(ctx, device, Policies.PolicyKinds.HttpsCertificate, payloadJson, ct).ConfigureAwait(false);
         await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, CameraClock.Confirmed(payloadJson), ct).ConfigureAwait(false);
         var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
         var network = await ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
@@ -45,17 +45,17 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             ctx.Log(TaskLogLevel.Info, $"The device serves the OADM certificate \"{webServer.CertificateAlias}\"; it is replaced by a new one.");
         }
 
-        await DeployAsync(ctx, service, ca, device, webServer, network, stepPrefix: null, ct).ConfigureAwait(false);
+        await DeployAsync(ctx, service, ca, device, webServer, network, policy, stepPrefix: null, ct).ConfigureAwait(false);
     }
 
     /// <summary>Install CA certificate ... Remove previous OADM certificate (also used by renew and manual install).</summary>
     internal static async Task DeployAsync(
-        ITaskExecutionContext ctx, PkiService service, Ca.CaMaterial ca, IDeviceInfo device, WebServerTlsConfiguration webServer, DeviceNetworkInfo? network, string? stepPrefix, CancellationToken ct)
+        ITaskExecutionContext ctx, PkiService service, Ca.CaMaterial ca, IDeviceInfo device, WebServerTlsConfiguration webServer, DeviceNetworkInfo? network, Policies.PkiPolicy policy, string? stepPrefix, CancellationToken ct)
     {
         await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCa), CertificateDeployment.CaChain(ca), ct).ConfigureAwait(false);
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.HttpsAliasPrefix, service.Time);
         var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
-        var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, stepPrefix, ct).ConfigureAwait(false);
+        var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, policy, stepPrefix, ct).ConfigureAwait(false);
         await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
         await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), ct).ConfigureAwait(false);
         await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Https, [issued.Alias], PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);

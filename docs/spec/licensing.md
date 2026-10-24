@@ -2,9 +2,10 @@
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-OADM stays fully open source. An OADM PRO license only tells PRO plugins (the first: EST server) that PRO is active,
-which plan, how many devices and until when. **OADM itself is never limited by it**: before, during and after a license
-nothing in OADM changes, only PRO plugins read it.
+OADM stays fully open source. An OADM PRO license only tells PRO plugins and the PRO parts of PKI (the EST server and the
+802.1X server, `docs/spec/pki.md` "One plugin") that PRO is active, which plan, how many devices and until when. **OADM
+itself is never limited by it**: before, during and after a license nothing in OADM changes, only PRO plugins and the PRO
+parts of PKI read it (PKI's own parts, CAs, issuing, Revoke and Certificates, never need a key).
 
 ## The license key
 
@@ -40,7 +41,9 @@ nothing in OADM changes, only PRO plugins read it.
 - Plugins: `ICorePluginContext.Pro` and `ITaskExecutionContext.Pro` (`IProLicense`: `Current` (`ProLicenseInfo`),
   `IsActive`, `Changed`), default interface members (null on hosts without). Test fakes: `FakeProLicense`.
 - PRO plugins (`plugin.json` `"pro": true`) run only while the license is active: the host turns them on and off with it
-  (`docs/spec/plugins.md` "OADM PRO plugins"). Everything else in OADM stays the same with or without a license.
+  (`docs/spec/plugins.md` "OADM PRO plugins"). The PRO parts of PKI follow it themselves: the EST and 802.1X servers run
+  only while turned on on their page and the license is active (`docs/spec/plugins.md` "PRO parts of PKI"). Everything else
+  in OADM stays the same with or without a license.
 
 ## gRPC and client
 

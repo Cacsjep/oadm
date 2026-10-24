@@ -17,9 +17,9 @@ EST (Enrollment over Secure Transport) is the standard the cameras' own certific
 side, the cameras ask it for certificates.
 
 <Aside type="note" title="OADM PRO">
-The EST server is an OADM PRO plugin. It runs while an OADM PRO license or 30-day trial is active
-([Activate OADM PRO](../../activate/)). Without one, it stays off and the cameras keep the certificates they have
-until these expire. Everything else in OADM works the same with or without a license.
+The EST server is part of PKI and needs OADM PRO. It runs while you have turned it on and an OADM PRO license or 30-day
+trial is active ([Activate OADM PRO](../../activate/)). Without one, it stays off and the cameras keep the certificates
+they have until these expire. Everything else in OADM works the same with or without a license.
 </Aside>
 
 <Image src={shot} alt="The EST server page with General, the profiles and the enrollments" class="screen" />
@@ -40,12 +40,14 @@ until these expire. Everything else in OADM works the same with or without a lic
 
 <Steps>
 
-1. Open **Plugins** and turn on **EST server**. The License column shows **OADM PRO**; without an active license the
-   check box is locked and **Activate** opens Settings > License.
-2. Open the **EST server** page in the navigation (group Security). The status left of **Save** shows **Running on port
-   9454** when it is ready.
+1. Open the **EST server** page in the navigation (group Security).
+2. Click **Turn on**. Without an active OADM PRO license or trial the button is off and the page says so.
+3. The status left of **Save** shows **Running on port 9454** when it is ready.
 
 </Steps>
+
+**Turn off** next to **Save** stops the server; your settings and the enrollments stay. OADM 4.1 had the EST server on the
+**Plugins** page: if it was on there, it is on after the update.
 
 ## The page
 
@@ -57,6 +59,9 @@ until these expire. Everything else in OADM works the same with or without a lic
 - **Port**: the TCP port the cameras connect to, 1025 to 65535 (default 9454). After a change set up the cameras again,
   so they use the new port.
 - **Enrollments kept**: how many enrollments the list keeps, 100 to 5,000 (default 500).
+- **Issued by**: the OADM CA that signs the certificates.
+- **3 policies apply** with **Edit in PKI**: which cameras may enroll and which CAs they sign in with are policies on
+  the [PKI](../pki/) page (Enrollment and Sign-in CA). A warning below says when no camera can enroll.
 
 ### Profiles
 
@@ -70,8 +75,11 @@ A profile is one kind of certificate. The cameras ask for it by its name. Two pr
 You can add profiles for **MQTT** (client certificate) and **RTSPS** (server certificate); each use can have one profile.
 
 - **Profile**: the name, 1 to 32 letters, digits or `_`.
-- **Valid (days)**: how long each certificate is valid, 1 to 825 days (default 365). It never lasts longer than the CA.
-- **Key**: the key the camera creates, **ECC** or **RSA**. The camera signs in with the device ID of the same kind.
+- **Issuing policy**: the certificate policy of the [PKI](../pki/) page the certificates get their days and key from:
+  an HTTPS certificate policy for HTTPS and RTSPS, an IEEE 802.1X certificate policy for IEEE 802.1X and MQTT. A
+  certificate never lasts longer than the CA. The camera creates a key of the policy's kind and signs in with the device
+  ID of the same kind. After an update, each profile names the policy with its former validity and key ("HTTPS", or a
+  new one such as "EST dot1x").
 - **On**: a profile that is off answers like one that does not exist; cameras set up with it get nothing until you turn
   it on again.
 
@@ -179,9 +187,13 @@ issued it directly for this camera, and remembers it. Any other new certificate 
 
 The EST server only answers cameras that:
 
-- sign in with their **Axis device ID**, checked against the Axis device ID certificate authorities, or with a
-  certificate the OADM CA gave them (from the EST server or the PKI page), and
-- are **managed by OADM**: the serial number in the device ID must be a device in the device list.
+- sign in with a certificate of a CA a **Sign-in CA** policy names: by default their **Axis device ID** (checked
+  against the Axis device ID certificate authorities) for new certificates, and a certificate the OADM CA gave them
+  for renewals,
+- are **managed by OADM**: the serial number in the device ID must be a device in the device list, and
+- are in an **Enrollment** policy that allows the profile (by default "All devices", every profile). A camera no
+  Enrollment policy holds is refused; a profile its policy does not allow is answered like a profile that does not
+  exist, and the Enrollments list names the policy.
 
 A genuine Axis camera that OADM does not manage gets nothing. OADM sets the names in every certificate itself; what the
 camera asks for does not count. No password or code is needed.
@@ -208,6 +220,9 @@ For example, send an email when a certificate is not renewed: a certificate of 1
 | **The camera has no Axis device ID certificate.** | The camera has no AXIS Edge Vault device ID. It cannot use the EST server. |
 | **The camera supports none of the EST server's profiles.** | Turn on a profile whose use the camera supports. |
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
+| Refused: **No enrollment policy for this device.** | Add the camera to an Enrollment policy on the PKI page. |
+| Refused: **The enrollment policy ... does not allow the profile ...** | Allow the profile in that policy on the PKI page, or turn the profile off for the camera. |
+| **Cameras cannot sign in: there is no Sign-in CA policy.** | Add a Sign-in CA policy on the PKI page ("Axis device ID" for new certificates, "OADM CA" for renewals). |
 | **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server (at a site: to the site node) on TCP 9454 (or the port you chose). |
 | **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |
 | At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |

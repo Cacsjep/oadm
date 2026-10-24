@@ -1,9 +1,11 @@
 using System.Text.Json.Nodes;
 
 using Oadm.Core.Events;
+using Oadm.Core.Plugins;
 using Oadm.Sdk.Actions;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Core.Tests.Events;
 
@@ -309,18 +311,50 @@ public sealed class RuleEngineTests
     }
 
     [Fact]
-    public async Task CertificateExpiryEventsFollowTheClock()
+    public async Task TheCertificateExpiryEventsArePkisWithTheIdsOfTheBuiltInOnesAndAStoredRuleKeepsFiring()
     {
-        await using var rig = await EventRulesRig.StartAsync();
+        // OADM 4.5 (docs/spec/pki.md "Policies", Expiry warning): the events moved from the built-in events to PKI's group
+        // "Certificates" with the same ids, so a rule stored by OADM 4.1 finds them under PKI.
+        Assert.DoesNotContain(BuiltInEvents.Types, t => t.Id is BuiltInEvents.CertificateExpiresSoon or BuiltInEvents.CertificateExpired
+            or BuiltInEvents.AnyCertificateExpiresSoon or BuiltInEvents.AnyCertificateExpired);
+        var pki = new CertificateEventSource();
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r => r.Registry.RegisterCorePlugin(pki, new PluginOrigin("oadm.pki", "1.0", null) { DisplayName = "PKI" }));
         var camera = await rig.AddDeviceAsync("10.0.0.1");
-        await rig.Devices.UpdateAsync(camera.Id, d => d.CertNotAfterUtc = rig.Time.GetUtcNow().UtcDateTime.AddDays(31), CancellationToken.None);
         await rig.SaveAsync(EventRulesRig.Rule(BuiltInEvents.CertificateExpiresSoon, rig.OnEventDevice()));
-        Assert.Empty(rig.OnDevice.Edges);
+        var type = rig.Catalog.FindEventType(BuiltInEvents.CertificateExpiresSoon)!;
+        Assert.Equal("oadm.pki", type.SourceId);
+        Assert.Equal("Certificates", type.Info.Group);
 
-        rig.Time.Advance(TimeSpan.FromDays(2));
-        rig.Engine.Tick();
+        // The rule as stored, after a restart of the server: PKI's full report turns it on for the device.
+        await rig.StopEngineAsync();
+        await rig.StartEngineAsync();
+        rig.Engine.PublisherFor("oadm.pki").ReplaceStates(BuiltInEvents.CertificateExpiresSoon, [camera.Id]);
         await rig.SettleAsync();
         Assert.Equal([(ActionEdge.TurnedOn, (Guid?)camera.Id)], rig.OnDevice.Edges);
+    }
+
+    /// <summary>PKI's certificate events as the event rules see them (ids of OADM 4.1's built-in events).</summary>
+    private sealed class CertificateEventSource : ICorePlugin, IEventSource
+    {
+        public string Id => "oadm.pki";
+
+        public string DisplayName => "PKI";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+        public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
+        [
+            new(BuiltInEvents.CertificateExpiresSoon, "Certificate expires soon", "Certificates", EventKind.Stateful),
+            new(BuiltInEvents.CertificateExpired, "Certificate expired", "Certificates", EventKind.Stateful),
+        ];
+
+        public Task StartAsync(ICorePluginContext ctx, CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
     }
 
     [Fact]

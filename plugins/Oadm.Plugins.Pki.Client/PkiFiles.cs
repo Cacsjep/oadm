@@ -28,6 +28,15 @@ public enum PkiFileKind
 
     /// <summary>A CA certificate without key for the list of CAs: .crt, .cer, .pem.</summary>
     AuthorityCertificate = 6,
+
+    /// <summary>A certificate request of another system: .csr, .pem, .der, .p10.</summary>
+    CertificateRequest = 7,
+
+    /// <summary>A certificate to import: .crt, .cer, .pem, .der, .pfx, .p12.</summary>
+    CertificateImport = 8,
+
+    /// <summary>A certificate with its key (.p12).</summary>
+    Pkcs12 = 9,
 }
 
 /// <summary>A file the user picked (at most 1 MB + 1 byte is read, so "too large" can be told).</summary>
@@ -52,6 +61,9 @@ public sealed class PkiFilePicker(Func<TopLevel?> topLevel) : IPkiFiles
     private static readonly FilePickerFileType PemFiles = new("PEM certificate (*.crt)") { Patterns = ["*.crt"], MimeTypes = ["application/x-pem-file"] };
     private static readonly FilePickerFileType DerFiles = new("DER certificate (*.cer)") { Patterns = ["*.cer"], MimeTypes = ["application/pkix-cert"] };
     private static readonly FilePickerFileType PfxFiles = new("CA backup (*.pfx)") { Patterns = ["*.pfx"], MimeTypes = ["application/x-pkcs12"] };
+    private static readonly FilePickerFileType P12Files = new("Certificate with key (*.p12)") { Patterns = ["*.p12"], MimeTypes = ["application/x-pkcs12"] };
+    private static readonly FilePickerFileType RequestFiles = new("Certificate requests (*.csr, *.pem, *.der, *.p10)") { Patterns = ["*.csr", "*.pem", "*.der", "*.p10"] };
+    private static readonly FilePickerFileType ImportFiles = new("Certificates (*.crt, *.cer, *.pem, *.der, *.pfx, *.p12)") { Patterns = ["*.crt", "*.cer", "*.pem", "*.der", "*.pfx", "*.p12"] };
 
     public async Task<PickedFile?> OpenAsync(string title, PkiFileKind kind)
     {
@@ -64,6 +76,8 @@ public sealed class PkiFilePicker(Func<TopLevel?> topLevel) : IPkiFiles
         {
             PkiFileKind.PrivateKey => KeyFiles,
             PkiFileKind.RadiusCa or PkiFileKind.AuthorityCertificate => CertificateFiles,
+            PkiFileKind.CertificateRequest => RequestFiles,
+            PkiFileKind.CertificateImport => ImportFiles,
             _ => CaFiles,
         };
         var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = false, FileTypeFilter = [filter, FilePickerFileTypes.All] }).ConfigureAwait(true);
@@ -102,6 +116,7 @@ public sealed class PkiFilePicker(Func<TopLevel?> topLevel) : IPkiFiles
         {
             PkiFileKind.CertificateDer => (DerFiles, "cer"),
             PkiFileKind.Backup => (PfxFiles, "pfx"),
+            PkiFileKind.Pkcs12 => (P12Files, "p12"),
             _ => (PemFiles, "crt"),
         };
         var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions

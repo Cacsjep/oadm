@@ -12,10 +12,50 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Pki.Tests;
 
-/// <summary>The window and the confirmation the Certificates tab asks for, answered by the test.</summary>
+/// <summary>The window, the confirmations and the dialogs the Certificates card asks for, answered by the test.</summary>
 internal sealed class FakeCertificateDialogs : IIssuedCertificatesDialogs
 {
     public List<CertificateDetails> Shown { get; } = [];
+
+    /// <summary>The file pickers (opened files queued by the test, saved files recorded).</summary>
+    public FakeFiles Files { get; } = new();
+
+    public IPkiFiles? CertificateFiles => Files;
+
+    /// <summary>Runs a dialog's view model as the user would (null: the dialog is only opened).</summary>
+    public Func<PkiDialogViewModel, Task>? Drive { get; set; }
+
+    /// <summary>The dialogs opened, in order.</summary>
+    public List<PkiDialogViewModel> Opened { get; } = [];
+
+    /// <summary>The answer of the Delete confirmation.</summary>
+    public bool DeleteAnswer { get; set; } = true;
+
+    public List<(string Title, string Message)> DeleteAsked { get; } = [];
+
+    public Task<bool> ConfirmDeleteAsync(string title, string message)
+    {
+        DeleteAsked.Add((title, message));
+        return Task.FromResult(DeleteAnswer);
+    }
+
+    public Task ShowCreateAsync(CreateCertificateViewModel dialog) => RunAsync(dialog);
+
+    public Task ShowSignRequestAsync(SignRequestViewModel dialog) => RunAsync(dialog);
+
+    public Task ShowImportCertificateAsync(ImportCertificateViewModel dialog) => RunAsync(dialog);
+
+    public Task ShowExportKeyAsync(ExportKeyViewModel dialog) => RunAsync(dialog);
+
+    private async Task RunAsync(PkiDialogViewModel dialog)
+    {
+        Opened.Add(dialog);
+        dialog.Files = Files;
+        if (Drive is { } drive)
+        {
+            await drive(dialog);
+        }
+    }
 
     public List<(string Title, string Message)> Asked { get; } = [];
 
@@ -66,16 +106,18 @@ public sealed class CertificatesTabTests
         };
         using var page = new PkiViewModel(ctx, new FakeClientTrust());
         var tab = page.Certificates;
-        Assert.DoesNotContain(PkiMethods.GetCertificates, calls); // nothing read before the tab is opened
+        Assert.DoesNotContain(PkiMethods.GetCertificates, calls); // nothing read before the page is shown
 
-        await page.ShowCertificatesTabCommand.ExecuteAsync(null);
+        await page.Certificates.LoadAsync();
 
-        Assert.True(page.IsCertificatesTab);
-        Assert.Equal(2, tab.Total);
-        Assert.Equal("1-2 of 2", tab.PageText);
+        // The CAs first (the OADM CA, the Axis device ID roots and intermediates), then the two device certificates.
+        var cas = tab.Rows.Count(r => r.Source.Kind == ListedCertificateKind.Authority);
+        Assert.Equal(cas + 2, tab.Total);
+        Assert.Equal($"1-{cas + 2} of {cas + 2}", tab.PageText);
         Assert.False(tab.HasPages);
+        Assert.Equal(("OADM Root CA SERVER01", "CA", "OADM Root CA SERVER01", "-"), (tab.Rows[0].Name, tab.Rows[0].Use, tab.Rows[0].IssuedBy, tab.Rows[0].UsedBy));
         var row = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
-        Assert.Equal(("B8A44F631339 (removed)", "HTTPS", "Task", "Valid"), (row.Device, row.Use, row.IssuedBy, row.State)); // the harness manages no devices
+        Assert.Equal(("B8A44F631339 (removed)", "HTTPS", "OADM Root CA SERVER01", "Valid", "-"), (row.Name, row.Use, row.IssuedBy, row.State, row.UsedBy)); // the harness manages no devices
         Assert.True(row.IsOk);
 
         // A filter reads again with it (one call).
@@ -83,8 +125,13 @@ public sealed class CertificatesTabTests
         await Eventually.TrueAsync(() => tab.Rows.Count == 1 && !tab.IsReloading, "the filtered page");
         Assert.Equal("IEEE 802.1X", tab.Rows[0].Use);
         tab.UseFilter = tab.UseChoices[0];
-        tab.SourceFilter = tab.SourceChoices.Single(c => c.Value == IssuedCertificateSources.Est);
-        await Eventually.TrueAsync(() => tab.Rows.Count == 1 && tab.Rows[0].IssuedBy == "EST", "the source filter");
+
+        // Issued by: the CAs of PKI (and Other CA), read from the server.
+        Assert.Equal(["Issued by any", "OADM Root CA SERVER01", "Axis device ID", "Other CA"], tab.SourceChoices.Select(c => c.Label));
+        tab.SourceFilter = tab.SourceChoices.Single(c => c.Label == "Axis device ID");
+        await Eventually.TrueAsync(() => tab.Rows.Count > 0 && tab.Rows.All(r => r.Source.Kind == ListedCertificateKind.Authority) && !tab.IsReloading, "the issuer filter");
+        tab.SourceFilter = tab.SourceChoices.Single(c => c.Label == "OADM Root CA SERVER01");
+        await Eventually.TrueAsync(() => tab.Total == 3 && !tab.IsReloading, "the OADM CA and its two certificates");
         tab.SourceFilter = tab.SourceChoices[0];
         tab.StateFilter = tab.StateChoices.Single(c => c.Value == nameof(IssuedCertificateState.Revoked));
         await Eventually.TrueAsync(() => tab.Total == 0 && !tab.IsReloading, "no revoked one");
@@ -128,13 +175,14 @@ public sealed class CertificatesTabTests
         var tab = new IssuedCertificatesViewModel(ctx, time) { Dialogs = dialogs };
         await tab.LoadAsync();
         Assert.False(tab.RevokeCommand.CanExecute(null)); // nothing chosen
-        tab.SetSelection(tab.Rows.Where(r => r.Source.SerialNumber == CertificateSerials.Normalize(https)));
+        var httpsRow = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
+        tab.SetSelection([httpsRow]);
         Assert.True(tab.MayRevoke);
 
         await tab.RevokeCommand.ExecuteAsync(null); // Cancel
         var authority = new PkiCertificateAuthority(pki.Service);
         Assert.False(authority.IsRevoked(https));
-        Assert.Equal(("Revoke the certificate of " + tab.Rows[0].Device + "?", IssuedCertificatesViewModel.ConfirmMessageOne), dialogs.Asked[0]);
+        Assert.Equal(("Revoke the certificate of " + httpsRow.Device + "?", IssuedCertificatesViewModel.ConfirmMessageOne), dialogs.Asked[0]);
 
         dialogs.Answer = RevocationReason.DeviceReplaced;
         await tab.RevokeCommand.ExecuteAsync(null);
@@ -156,12 +204,14 @@ public sealed class CertificatesTabTests
         await tab.RevokeDeviceCommand.ExecuteAsync(tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(dot1x)));
         Assert.True(authority.IsRevoked(dot1x));
         Assert.StartsWith("Revoke all certificates of ", dialogs.Asked[^1].Title, StringComparison.Ordinal);
-        Assert.All(tab.Rows, r => Assert.Equal("Revoked", r.State));
+        var deviceRows = tab.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Device).ToList();
+        Assert.All(deviceRows, r => Assert.Equal("Revoked", r.State));
         Assert.Empty(ctx.Messages);
-        Assert.All(tab.Rows, r => Assert.Equal(device, r.Source.DeviceId));
+        Assert.All(deviceRows, r => Assert.Equal(device, r.Source.DeviceId));
+        Assert.All(tab.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Authority), r => Assert.False(r.CanRevoke)); // a CA is never revoked here
 
         // Again: nothing left, the user is told.
-        await tab.RevokeDeviceCommand.ExecuteAsync(tab.Rows[0]);
+        await tab.RevokeDeviceCommand.ExecuteAsync(deviceRows[0]);
         Assert.Equal("Nothing was revoked: these certificates are already revoked or expired.", Assert.Single(ctx.Messages).Message);
     }
 
@@ -176,6 +226,10 @@ public sealed class CertificatesTabTests
         tab.SetSelection(tab.Rows.Take(1));
 
         Assert.False(tab.MayRevoke);
+        Assert.False(tab.MayManage);
+        Assert.False(tab.CreateCommand.CanExecute(null));
+        Assert.False(tab.DeleteCommand.CanExecute(null));
+        Assert.False(tab.ExportPemCommand.CanExecute(tab.Rows[0]));
         Assert.False(tab.RevokeCommand.CanExecute(null));
         Assert.False(tab.RevokeDeviceCommand.CanExecute(tab.Rows[0]));
         Assert.True(tab.ViewCertificateCommand.CanExecute(null));
@@ -189,6 +243,7 @@ public sealed class CertificatesTabTests
         await pki.SetIssuedAsync(Enumerable.Range(0, 1100).Select(i => new IssuedCertificate
         {
             SerialNumber = "D" + i.ToString("X5", System.Globalization.CultureInfo.InvariantCulture),
+            Purpose = CertificatePurpose.Https,
             DeviceId = Guid.NewGuid(),
             IssuedUtc = now.AddMinutes(-i),
             NotAfterUtc = now.AddDays(10 + (i % 60)),
@@ -196,7 +251,8 @@ public sealed class CertificatesTabTests
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         using var page = new PkiViewModel(ctx, new FakeClientTrust());
         var tab = page.Certificates;
-        await page.ShowCertificatesTabCommand.ExecuteAsync(null);
+        tab.UseFilter = tab.UseChoices.Single(c => c.Value == DeviceCertificatePurposes.Https); // the device certificates only (no CAs)
+        await page.Certificates.LoadAsync();
         Assert.Equal((500, "1-500 of 1,100", true), (tab.Rows.Count, tab.PageText, tab.HasPages));
         Assert.False(tab.PreviousPageCommand.CanExecute(null));
         Assert.Contains(tab.Rows, r => r.IsWarning); // within the 30 warning days
@@ -209,16 +265,13 @@ public sealed class CertificatesTabTests
         Assert.Equal("501-1,000 of 1,100", tab.PageText);
 
         // A new certificate on the server: the shown page is read again.
-        await pki.SetIssuedAsync([new IssuedCertificate { SerialNumber = "E00001", DeviceId = Guid.NewGuid(), IssuedUtc = now, NotAfterUtc = now.AddDays(300) }]);
+        await pki.SetIssuedAsync([new IssuedCertificate { SerialNumber = "E00001", Purpose = CertificatePurpose.Https, DeviceId = Guid.NewGuid(), IssuedUtc = now, NotAfterUtc = now.AddDays(300) }]);
         await page.HandleEventAsync(new Oadm.Sdk.Plugins.PluginEvent(PkiMethods.CertificatesTopic, "{}"));
         Assert.Equal("501-1,000 of 1,101", tab.PageText);
 
-        // The other tab only notes it; opening the tab again reads.
-        page.ShowCaTabCommand.Execute(null);
-        await pki.SetIssuedAsync([new IssuedCertificate { SerialNumber = "E00002", DeviceId = Guid.NewGuid(), IssuedUtc = now, NotAfterUtc = now.AddDays(300) }]);
+        // One page without tabs: every change reads the shown page again.
+        await pki.SetIssuedAsync([new IssuedCertificate { SerialNumber = "E00002", Purpose = CertificatePurpose.Https, DeviceId = Guid.NewGuid(), IssuedUtc = now, NotAfterUtc = now.AddDays(300) }]);
         await page.HandleEventAsync(new Oadm.Sdk.Plugins.PluginEvent(PkiMethods.CertificatesTopic, "{}"));
-        Assert.Equal("501-1,000 of 1,101", tab.PageText);
-        await page.ShowCertificatesTabCommand.ExecuteAsync(null);
         Assert.Equal("501-1,000 of 1,102", tab.PageText);
     }
 }
@@ -257,8 +310,13 @@ public sealed class CertificatesTabHeadlessTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync();
-            await vm.ShowCertificatesTabCommand.ExecuteAsync(null);
+            await vm.Certificates.LoadAsync();
             vm.Certificates.SetSelection(vm.Certificates.Rows.Take(2));
+            HeadlessPageTests.Pump();
+            var list = view.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
+            list.BringIntoView(); // the card below the CAs and the policies
+            HeadlessPageTests.Pump();
+            list.GetVisualDescendants().OfType<DataGrid>().First().ScrollIntoView(vm.Certificates.Rows.First(r => r.State == "Revoked"), null);
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, "pki-certificates.png");
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
@@ -298,7 +356,9 @@ public sealed class CertificatesTabHeadlessTests
 
         Assert.Contains("Certificates", checks.texts);
         Assert.Contains("Revoked", checks.texts);
-        Assert.Contains("Serial number", checks.texts);
+        Assert.Contains("Used by", checks.texts);
+        Assert.Contains("Create", checks.texts);
+        Assert.Contains("Sign request", checks.texts);
         Assert.Equal(4, checks.reasons);
         Assert.True(checks.danger);
         Assert.Contains(checks.windowTexts, t => t?.StartsWith("Certificate revoked on ", StringComparison.Ordinal) == true);

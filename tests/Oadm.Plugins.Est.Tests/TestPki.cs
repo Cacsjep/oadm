@@ -93,7 +93,7 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
         CertificateRequest csr;
         try
         {
-            csr = CertificateRequest.LoadSigningRequest(request.Csr.ToArray(), HashAlgorithmName.SHA256);
+            csr = CertificateRequest.LoadSigningRequest(request.Csr.ToArray(), HashAlgorithmName.SHA256, CertificateRequestLoadOptions.Default, RSASignaturePadding.Pkcs1);
         }
         catch (CryptographicException ex)
         {
@@ -120,7 +120,8 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
         var serial = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
         serial[0] = (byte)((serial[0] & 0x7F) | 0x01);
         var notAfter = DateTimeOffset.UtcNow + (request.Validity ?? TimeSpan.FromDays(365));
-        using var signed = signing.Create(_ca, DateTimeOffset.UtcNow.AddMinutes(-5), notAfter, serial);
+        using var caKey = _ca.GetECDsaPrivateKey()!; // the generator: the request may hold an RSA key
+        using var signed = signing.Create(_ca.SubjectName, X509SignatureGenerator.CreateForECDsa(caKey), DateTimeOffset.UtcNow.AddMinutes(-5), notAfter, serial);
         return Task.FromResult(new IssuedDeviceCertificate(signed.RawData, Chain, signed.SerialNumber.ToUpperInvariant(), signed.NotAfter.ToUniversalTime()));
     }
 
@@ -163,6 +164,12 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
         Revoked[CertificateSerials.Normalize(serialNumber)] = new CertificateRevocation(CertificateSerials.Normalize(serialNumber), new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc), reason, "admin");
 
     public bool IsRevoked(string serialNumber) => Revoked.ContainsKey(CertificateSerials.Normalize(serialNumber));
+
+    /// <summary>Serials PKI lists as created, signed or imported on its page (no device's certificate).</summary>
+    public HashSet<string> NotDevice { get; } = new(StringComparer.Ordinal);
+
+    public string? PurposeOf(string serialNumber) =>
+        NotDevice.Contains(CertificateSerials.Normalize(serialNumber)) ? Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose : null;
 
     public CertificateRevocation? FindRevocation(string serialNumber) => Revoked.GetValueOrDefault(CertificateSerials.Normalize(serialNumber));
 

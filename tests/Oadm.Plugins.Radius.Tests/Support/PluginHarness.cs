@@ -6,12 +6,14 @@ using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.Time.Testing;
 using Oadm.Plugins.DeviceIds;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Eap;
 using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Protocol.Tls;
 using Oadm.Plugins.Radius.Server;
 using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
@@ -367,6 +369,45 @@ public sealed class PluginHarness : IAsyncDisposable
 
     public RecordingPublisher Publisher { get; } = new();
 
+    /// <summary>PKI's settings (the policies are stored there, not in the 802.1X server's).</summary>
+    public FakeSettings PkiSettings { get; } = new();
+
+    /// <summary>The protection of the policies' tags under PKI.</summary>
+    public FakeProtectedTags PkiTags { get; } = new();
+
+    /// <summary>PKI's policies.</summary>
+    public PolicyStore Policies { get; private set; } = null!;
+
+    /// <summary>Saves a policy as "admin" (the save must pass).</summary>
+    public async Task<PkiPolicy> SavePolicyAsync(PkiPolicy policy)
+    {
+        var result = await Policies.SaveAsync(policy, "admin", RadiusPolicies.CipherSuites, CancellationToken.None);
+        Assert.Null(result.Error);
+        return result.Saved!;
+    }
+
+    /// <summary>Deletes every policy of <paramref name="kind"/>.</summary>
+    public async Task DeletePoliciesAsync(string kind)
+    {
+        foreach (var policy in Policies.PoliciesOf(kind).ToList())
+        {
+            await Policies.DeleteAsync(policy.Id, "admin", CancellationToken.None);
+        }
+    }
+
+    /// <summary>The CAs of the Allow CA policies, in place of every Allow CA policy there was.</summary>
+    public async Task SetAllowCasAsync(params (string Id, bool OnlyManaged)[] cas)
+    {
+        await DeletePoliciesAsync(PolicyKinds.AllowCa);
+        foreach (var (id, onlyManaged) in cas)
+        {
+            await SavePolicyAsync(new PkiPolicy { Name = "Allow " + id, Kind = PolicyKinds.AllowCa, CaId = id, OnlyManaged = onlyManaged });
+        }
+    }
+
+    /// <summary>The 802.1X server policy changed (TLS, packet, reauthentication).</summary>
+    public Task<PkiPolicy> SetServerPolicyAsync(Func<PkiPolicy, PkiPolicy> change) => SavePolicyAsync(change(Policies.ServerPolicy ?? RadiusPolicies.DefaultServerPolicy()));
+
     public RadiusPlugin Plugin { get; private set; } = null!;
 
     public RadiusService Service => Plugin.Service!;
@@ -384,6 +425,12 @@ public sealed class PluginHarness : IAsyncDisposable
         var ca = authority ?? new TestAuthority();
         ctx.FakeServices.Offer<IDeviceCertificateAuthority>(ca);
         var harness = new PluginHarness(ctx, ca, new TestDeviceIds(), new FakeTimeProvider(DateTimeOffset.UtcNow), new FixedInterfaces(FixedInterfaces.Card("eth0", "10.0.0.17")));
+
+        // PKI's policies as PKI offers them (its own settings and tag protection): the 802.1X server reads its rules there.
+        harness.Policies = new PolicyStore(harness.PkiSettings, _ => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. ctx.DeviceList]), () => ctx.FakeSites.List,
+            () => CaTrust.AuthoritiesOf(ctx.FakeServices.Find<IDeviceCertificateAuthority>(), harness.DeviceIds.Verifier), harness.PkiTags);
+        await harness.Policies.LoadAsync(CancellationToken.None);
+        ctx.FakeServices.Offer(harness.Policies);
         beforeStart?.Invoke(harness);
         if (start)
         {
@@ -392,6 +439,9 @@ public sealed class PluginHarness : IAsyncDisposable
 
         return harness;
     }
+
+    /// <summary>The server is turned on before the plugin starts (default; false: the stored choice stays as it is).</summary>
+    public bool TurnedOn { get; set; } = true;
 
     public async Task StartAsync(int workers = 4)
     {
@@ -404,6 +454,11 @@ public sealed class PluginHarness : IAsyncDisposable
             Publisher = Publisher,
             Workers = workers,
         });
+        if (TurnedOn)
+        {
+            await Ctx.Settings.SetAsync(Oadm.Plugins.Pki.Servers.ServerSwitch<RadiusService>.SettingKey, "true", CancellationToken.None);
+        }
+
         await Plugin.StartAsync(Ctx, CancellationToken.None);
     }
 
@@ -481,6 +536,7 @@ public sealed class PluginHarness : IAsyncDisposable
 
         Ca.Dispose();
         DeviceIds.Dispose();
+        Policies?.Dispose();
         _cts.Dispose();
     }
 }

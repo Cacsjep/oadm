@@ -168,7 +168,7 @@ and the saved per-client order cover other preferences):
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
-| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than 30 days: plain text, warn chip <= 30 days, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
+| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than the device's days of PKI's Expiry warning policy (`Device.cert_warning_days`, 30 without PKI or without a policy for the device): plain text, warn chip within them, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 | Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |

@@ -62,6 +62,7 @@ public sealed partial class PkiService : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ITrustStoreInstaller _trustStore;
     private readonly IssuedRegistry _issued;
+    private readonly Certificates.LocalCertificates _local;
     private readonly IDeviceScopes? _scopes;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
@@ -84,8 +85,11 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <param name="scopes">The device groups (null: none known, fail closed).</param>
     /// <param name="records">The plugin records of the issued certificates and the revocation list; null = in memory only (a host without records).</param>
     /// <param name="systemDevices">Every managed device (background work and other plugins' list queries); null = none.</param>
+    /// <param name="sites">The bound sites (the policies' device choice); null = none.</param>
+    /// <param name="protectedTags">The host's protection of the policies' tags; null = the tag parts of VLAN policies match no device.</param>
     public PkiService(PkiOptions options, IPluginSettings settings, ISecretProtector? secrets, IPluginEvents? events, ITrustAnchors? anchors, ILogger logger,
-        IDeviceScopes? scopes = null, IPluginRecords? records = null, Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? systemDevices = null)
+        IDeviceScopes? scopes = null, IPluginRecords? records = null, Func<CancellationToken, Task<IReadOnlyList<IDeviceInfo>>>? systemDevices = null,
+        Oadm.Sdk.Sites.ISites? sites = null, IProtectedTags? protectedTags = null)
     {
         Viewers = new ViewerScopes(scopes);
         _scopes = scopes;
@@ -105,6 +109,10 @@ public sealed partial class PkiService : IAsyncDisposable
         _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
         _issued.UnknownNotAfter = LatestCaEnd;
         _issued.Changed += OnIssuedChanged;
+        _local = new Certificates.LocalCertificates(records ?? new MemoryPluginRecords(), secrets, options.Time, logger);
+        _local.Changed += OnIssuedChanged;
+        _sites = sites;
+        Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger);
     }
 
     /// <summary>The server offers no secret protection: no CA can be kept.</summary>
@@ -113,7 +121,11 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <summary>The active CA (key null when unreadable); null while none exists.</summary>
     public CaMaterial? Ca => _ca;
 
+    /// <summary>The settings of the page before the policies (stage 4: read only by the conversion).</summary>
     public PkiConfig Config => _config;
+
+    /// <summary>The valid days of the first HTTPS certificate policy (365 without one): a certificate asked for without its own validity.</summary>
+    public int DefaultValidDays => Policies.FirstOf(Pki.Policies.PolicyKinds.HttpsCertificate)?.ValidDays ?? Pki.Policies.PolicyLimits.DefaultValidDays;
 
     /// <summary>The registry of issued device certificates (written by the task plugins).</summary>
     public IssuedRegistry Issued => _issued;
@@ -151,7 +163,9 @@ public sealed partial class PkiService : IAsyncDisposable
     public async Task StartAsync(CancellationToken ct)
     {
         await _issued.LoadAsync(ct).ConfigureAwait(false); // the revocation list counts from the first request on
+        await _local.LoadAsync(ct).ConfigureAwait(false);
         _config = await _store.LoadConfigAsync(ct).ConfigureAwait(false);
+        await StartPoliciesAsync(ct).ConfigureAwait(false);
         _previous = await PrunePreviousAsync(await _store.LoadPreviousAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
         await LoadImportedAsync(ct).ConfigureAwait(false);
         if (_secrets is null)
@@ -192,6 +206,9 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _issued.Changed -= OnIssuedChanged;
+        _local.Changed -= OnIssuedChanged;
+        _local.Dispose();
+        await StopPoliciesAsync().ConfigureAwait(false);
         await _issued.DisposeAsync().ConfigureAwait(false);
         _stopping.Dispose();
         _gate.Dispose();
@@ -204,7 +221,7 @@ public sealed partial class PkiService : IAsyncDisposable
     /// The state for a user limited to a device group: the CA and the settings as they are, the counts of issued
     /// certificates only for the devices of <paramref name="view"/> (null: every device).
     /// </summary>
-    internal async Task<PkiState> GetStateAsync(ViewedSet? view, CancellationToken ct)
+    internal async Task<PkiState> GetStateAsync(ViewedSet? view, CancellationToken ct, IReadOnlyList<IDeviceInfo>? devices = null)
     {
         var ca = _ca;
         var stored = _stored;
@@ -217,7 +234,8 @@ public sealed partial class PkiService : IAsyncDisposable
             issued = [.. issued.Where(entry => view.Contains(entry.DeviceId))];
         }
 
-        var counts = IssuedCounts.From(issued, ca?.Id, now, config.ExpiryWarningDays, _issued.IsRevoked);
+        // The warning days of each device (its Expiry warning policy): the caller's devices in a group user's call.
+        var counts = IssuedCounts.From(issued, ca?.Id, now, WarningDaysFor(devices ?? await SystemDevicesAsync(ct).ConfigureAwait(false)), _issued.IsRevoked);
 
         bool? installed = null;
         var trustError = _serverTrustError;
@@ -237,7 +255,7 @@ public sealed partial class PkiService : IAsyncDisposable
 
         return new PkiState
         {
-            Status = StatusOf(Unavailable, _generating, _generationError, ca, now, config.ExpiryWarningDays),
+            Status = StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
             Ca = ca?.Describe(stored?.Source ?? CaSource.Generated),
             KeyUnreadable = ca is { HasKey: false },
             IsGenerating = _generating,
@@ -377,7 +395,7 @@ public sealed partial class PkiService : IAsyncDisposable
             return new PkiReply { Errors = One(PkiFields.KeyFile, "The key file cannot be read.") };
         }
 
-        var result = CaImporter.Import(new CaImportInput(file, request.FileName, request.Password, keyFile, request.KeyPassword), Now, _config.DeviceCertValidityDays);
+        var result = CaImporter.Import(new CaImportInput(file, request.FileName, request.Password, keyFile, request.KeyPassword), Now, DefaultValidDays);
         if (result.Ca is not { } material)
         {
             return new PkiReply { Errors = result.Errors };
@@ -586,42 +604,7 @@ public sealed partial class PkiService : IAsyncDisposable
         return new InstallReply(result.Installed, result.Error, await GetStateAsync(ct).ConfigureAwait(false));
     }
 
-    public async Task<PkiReply> SaveSettingsAsync(SaveSettingsRequest request, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Config is not { } config)
-        {
-            return await ErrorAsync("The settings are missing.", ct).ConfigureAwait(false);
-        }
-
-        var dot1x = config.Dot1x ?? new Dot1xConfig();
-        config = config with
-        {
-            Dot1x = dot1x with
-            {
-                CustomIdentity = dot1x.CustomIdentity?.Trim() ?? string.Empty,
-                RadiusCaPem = dot1x.RadiusCa == RadiusCaSource.Imported ? dot1x.RadiusCaPem : null,
-            },
-        };
-        var errors = PkiValidation.Config(config);
-        if (!errors.ContainsKey(PkiFields.RadiusCa) && config.Dot1x.RadiusCaPem is { } pem && RadiusSummary(pem) is null)
-        {
-            errors[PkiFields.RadiusCa] = "The CA certificate of the RADIUS server cannot be read. Import it again.";
-        }
-
-        if (errors.Count > 0)
-        {
-            return new PkiReply { Errors = errors };
-        }
-
-        await _store.SaveConfigAsync(config, ct).ConfigureAwait(false);
-        _config = config;
-        LogSettingsSaved();
-        await PublishAsync().ConfigureAwait(false);
-        return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
-    }
-
-    /// <summary>Checks a RADIUS server CA file (PEM or DER, public only); Save stores it with the settings.</summary>
+    /// <summary>Checks a RADIUS server CA file (PEM or DER, public only); saving the IEEE 802.1X certificate policy stores it.</summary>
     public static RadiusCaReply ImportRadiusCa(ImportRadiusCaRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -663,12 +646,13 @@ public sealed partial class PkiService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Device certificate validity for a certificate issued now: the setting, shortened to the CA's end of validity (logged).
-    /// Used by the issuing task plugins.
+    /// Device certificate validity for a certificate issued now: <paramref name="days"/> (an issuing policy's; null: the first
+    /// HTTPS certificate policy's, else 365), shortened to the CA's end of validity (logged).
     /// </summary>
-    public TimeSpan DeviceCertificateValidity()
+    public TimeSpan DeviceCertificateValidity(int? days = null)
     {
-        var wanted = TimeSpan.FromDays(_config.DeviceCertValidityDays);
+        var validDays = days ?? DefaultValidDays;
+        var wanted = TimeSpan.FromDays(validDays);
         if (_ca is not { } ca)
         {
             return wanted;
@@ -678,7 +662,7 @@ public sealed partial class PkiService : IAsyncDisposable
         if (left < wanted)
         {
             var leftDays = Math.Max(0, (int)left.TotalDays);
-            LogValidityShortened(_config.DeviceCertValidityDays, leftDays);
+            LogValidityShortened(validDays, leftDays);
             return left < TimeSpan.Zero ? TimeSpan.Zero : left;
         }
 
@@ -889,7 +873,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
-        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, _config.ExpiryWarningDays, _issued.IsRevoked).WithCurrentCa;
+        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, Policies.DefaultExpiryDays, _issued.IsRevoked).WithCurrentCa;
     }
 
     private async Task PublishAsync()
@@ -985,7 +969,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
     }
 
-    private static CertificateSummary? RadiusSummary(string? pem)
+    internal static CertificateSummary? RadiusSummary(string? pem)
     {
         if (string.IsNullOrWhiteSpace(pem))
         {
@@ -1073,9 +1057,6 @@ public sealed partial class PkiService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: installing the CA {Subject} into the server's trusted root store failed: {Error}")]
     private partial void LogTrustFailed(string subject, string error);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: settings saved")]
-    private partial void LogSettingsSaved();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: device certificate validity shortened from {Days} to {Left} days (end of the CA)")]
     private partial void LogValidityShortened(int days, int left);

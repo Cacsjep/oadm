@@ -42,6 +42,25 @@ public sealed class ComplianceServiceTests
     };
 
     [Fact]
+    public async Task ANewCertificateCheckStartsWithPkisExpiryWarningDaysAndTheDeviceRowsCarryTheirDays()
+    {
+        // docs/spec/pki.md "Policies", Expiry warning: the Compliance check's default days and the grid's chip follow PKI.
+        await using var host = await TestServerHost.StartAsync();
+        var device = await AddDeviceAsync(host, "10.0.0.48");
+        var client = Client(host.Invoker);
+        static string Days(Proto.ComplianceCatalog catalog) =>
+            catalog.Entries.Single(t => t.Id == BuiltInComplianceTypes.CertificateId).Fields.Single(f => f.Key == BuiltInComplianceTypes.CertificateDaysField).DefaultValue;
+        async Task<int> RowDaysAsync() => (await new Proto.DeviceService.DeviceServiceClient(host.Invoker).ListAsync(new Proto.Empty())).Devices.Single(d => d.Id == device.Id.ToString()).CertWarningDays;
+        Assert.Equal("30", Days(await client.GetCatalogAsync(new Proto.Empty())));
+        Assert.Equal(30, await RowDaysAsync());
+
+        host.Get<Oadm.Core.Vapix.TrustAnchorRegistry>().For("oadm.pki").SetExpiryWarning(d => d.Serial == device.Serial ? 60 : 45, 90);
+
+        Assert.Equal("90", Days(await client.GetCatalogAsync(new Proto.Empty()))); // a check with its own days keeps them
+        Assert.Equal(60, await RowDaysAsync());
+    }
+
+    [Fact]
     public async Task ChecksAreSavedListedAndStreamedWithTheirResults()
     {
         await using var host = await TestServerHost.StartAsync();

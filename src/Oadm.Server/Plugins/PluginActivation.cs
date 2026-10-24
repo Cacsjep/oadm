@@ -23,9 +23,14 @@ public sealed partial class PluginActivation(
 
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    /// <summary>Applies the stored choices to the registry (server start, before the core plugins start).</summary>
+    /// <summary>
+    /// Applies the stored choices to the registry (server start, before the core plugins start). The choices of packages
+    /// merged into PKI are taken over first (<see cref="MergedPlugins.TakeOverAsync"/>).
+    /// </summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        // OADM 4.1 had the EST and 802.1X servers as packages of their own: their choices become the servers' own (once).
+        await MergedPlugins.TakeOverAsync(settings, SettingKey, logger, ct).ConfigureAwait(false);
         var json = await settings.GetJsonAsync(SettingKey, ct).ConfigureAwait(false);
         Dictionary<string, bool>? states = null;
         if (!string.IsNullOrWhiteSpace(json))

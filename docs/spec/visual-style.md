@@ -119,9 +119,9 @@ select below the message, e.g. the Reason of Revoke, `danger` for a red confirm 
 issued certificates, the 802.1X log; validity chip or the revocation, issued to and by, key and signature, serial,
 fingerprint, uses, names, all selectable; the server describes the certificate with the SDK's `CertificateDescriber`, the
 802.1X log describes the DER it reads with it in the client),
-`IssuedCertificateList` + `IssuedCertificateListViewModel` (every list of the certificates the OADM CA issued: the PKI
-Certificates tab and the certificate choice of the 802.1X server's Revoke; the page's buttons left, the filters state,
-use, issued by and the search right (it waits 300 ms for the typing to stop), progress row, virtualized grid with several
+`IssuedCertificateList` + `IssuedCertificateListViewModel` (the PKI Certificates card: every certificate OADM knows; columns
+name or device, use, issued by, valid until, used by, state and the page's row buttons (`RowActions`, a fixed width); the
+page's buttons left, the filters state, use, issued by (the CAs the server lists, else Task and EST) and the search right (it waits 300 ms for the typing to stop), progress row, virtualized grid with several
 rows chosen in one step and a double click for View certificate, the empty line, the overlay of the first read, the error
 and the pages of 500 below; `WorkText` (set by the page) shows a write such as "Revoking the certificates" in the progress row and `IsWorking` keeps the page's buttons off; `IIssuedCertificateSource` says where it reads, `IssuedCertificateList.ConfirmRevokeAsync` is
 the revoke confirmation with the reason, `IssuedCertificateTexts` the texts (with the SDK's `IssuedCertificateMessages`);
@@ -152,7 +152,8 @@ counts, the devices a chosen site or tag covers checked and locked with "Site Bu
 single devices tickable, a row link **Except** / **Include** (an excepted device shows "Excepted from Site Building B"),
 the live count "412 of 4,812 devices", search also over the site name, result `DeviceGroupChoice` (serials of devices
 not listed are kept); the window's constructor takes a form shown on top of the card, `AcceptButton` and `Accept` (the
-window closes only when it returns true), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
+window closes only when it returns true), `IsPickerVisible` false shows the form alone (the window as high as the form: a
+PKI policy kind without devices), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
 list; 30,000 devices tested) and
 `PageDeviceChoice` (the device choice of every page that reads many devices: the purple "Selected devices" button text,
 All devices / tags / chosen devices resolved now, the Devices page selection to start with, the last choice kept on this

@@ -44,6 +44,11 @@ public sealed class PkiStore(IPluginSettings settings)
         PkiJson.TryDeserialize<PkiConfig>(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false)) ?? new PkiConfig();
 
     public Task SaveConfigAsync(PkiConfig config, CancellationToken ct) => _settings.SetAsync(ConfigKey, PkiJson.Serialize(config), ct);
+
+    /// <summary>An OADM before the issuing policies ran here: a CA or the settings of the page are stored.</summary>
+    public async Task<bool> UsedBeforeAsync(CancellationToken ct) =>
+        !string.IsNullOrWhiteSpace(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false))
+        || !string.IsNullOrWhiteSpace(await _settings.GetAsync(CaKey, ct).ConfigureAwait(false));
 }
 
 /// <summary>Counts of the issued registry for the page (O(n) over the registry).</summary>
@@ -56,8 +61,13 @@ public sealed record IssuedCounts(int Devices, int WithCurrentCa, int WithPrevio
     /// <paramref name="currentCaId"/>, "from a previous CA" when any comes from another CA, "expiring soon" when any ends within
     /// <paramref name="warningDays"/>.
     /// </summary>
-    public static IssuedCounts From(IReadOnlyList<IssuedCertificate> issued, string? currentCaId, DateTime nowUtc, int warningDays, Func<string, bool>? isRevoked = null)
+    public static IssuedCounts From(IReadOnlyList<IssuedCertificate> issued, string? currentCaId, DateTime nowUtc, int warningDays, Func<string, bool>? isRevoked = null) =>
+        From(issued, currentCaId, nowUtc, _ => warningDays, isRevoked);
+
+    /// <summary>The counts with the warning days of each device (its Expiry warning policy).</summary>
+    public static IssuedCounts From(IReadOnlyList<IssuedCertificate> issued, string? currentCaId, DateTime nowUtc, Func<Guid, int> warningDays, Func<string, bool>? isRevoked = null)
     {
+        ArgumentNullException.ThrowIfNull(warningDays);
         ArgumentNullException.ThrowIfNull(issued);
         var newest = new Dictionary<(Guid, string), IssuedCertificate>();
         foreach (var entry in issued)
@@ -79,7 +89,6 @@ public sealed record IssuedCounts(int Devices, int WithCurrentCa, int WithPrevio
         var previous = new HashSet<Guid>();
         var expiring = new HashSet<Guid>();
         var perCa = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
-        var limit = nowUtc.AddDays(warningDays);
         foreach (var entry in newest.Values)
         {
             devices.Add(entry.DeviceId);
@@ -92,7 +101,7 @@ public sealed record IssuedCounts(int Devices, int WithCurrentCa, int WithPrevio
                 previous.Add(entry.DeviceId);
             }
 
-            if (entry.NotAfterUtc <= limit)
+            if (entry.NotAfterUtc <= nowUtc.AddDays(warningDays(entry.DeviceId)))
             {
                 expiring.Add(entry.DeviceId);
             }

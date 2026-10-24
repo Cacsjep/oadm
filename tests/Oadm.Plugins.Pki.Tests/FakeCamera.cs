@@ -81,7 +81,7 @@ internal sealed record CameraRequest(string Method, string Path, string Body)
 /// </summary>
 internal sealed class FakeCamera : IVapixClient
 {
-    private readonly Dictionary<string, (string Pem, RSA? Key)> _certificates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Pem, AsymmetricAlgorithm? Key)> _certificates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _cas = new(StringComparer.Ordinal);
     private readonly JsonObject _networkInfo;
 
@@ -132,6 +132,12 @@ internal sealed class FakeCamera : IVapixClient
     public Dictionary<string, string> Parameters { get; }
 
     public List<CameraRequest> Requests { get; } = [];
+
+    /// <summary>The key types the keystore offers (GET cert/v1); null: the device does not say (404).</summary>
+    public IReadOnlyList<string>? KeyTypes { get; set; } = ["RSA-2048", "RSA-4096", "EC-P256", "EC-P384", "EC-P521"];
+
+    /// <summary>The key types of every create_certificate, in order.</summary>
+    public List<string> KeyTypesCreated { get; } = [];
 
     public IReadOnlyList<CameraRequest> Writes => [.. Requests.Where(r => r.IsWrite)];
 
@@ -238,6 +244,14 @@ internal sealed class FakeCamera : IVapixClient
         var data = string.IsNullOrEmpty(body) ? null : JsonNode.Parse(body)!["data"];
         switch (method, path)
         {
+            case ("GET", ""):
+                return KeyTypes is null
+                    ? Error(HttpStatusCode.NotFound, 1, "Resource not found")
+                    : Success(new JsonObject
+                    {
+                        ["keystores"] = new JsonArray(new JsonObject { ["id"] = "SE0", ["key_types"] = new JsonArray([.. KeyTypes.Select(t => (JsonNode)JsonValue.Create(t)!)]) }),
+                        ["settings"] = new JsonObject { ["keystore"] = "SE0" },
+                    });
             case ("GET", "/certificates"):
                 return Success(new JsonArray([.. _certificates.Select(c => (JsonNode)new JsonObject { ["alias"] = c.Key, ["certificate"] = c.Value.Pem, ["keystore"] = "SE0" })]));
             case ("GET", "/ca_certificates"):
@@ -250,9 +264,11 @@ internal sealed class FakeCamera : IVapixClient
                     return Error(HttpStatusCode.BadRequest, 2, "Alias already exists");
                 }
 
-                Assert.Equal("RSA-2048", data["key_type"]!.GetValue<string>());
-                var key = RSA.Create(2048);
-                var request = new CertificateRequest(data["subject"]!.GetValue<string>(), key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                var keyType = data["key_type"]!.GetValue<string>();
+                KeyTypesCreated.Add(keyType);
+                Assert.Contains(keyType, KeyTypes ?? ["RSA-2048"]);
+                AsymmetricAlgorithm key = keyType == "EC-P256" ? ECDsa.Create(ECCurve.NamedCurves.nistP256) : RSA.Create(2048);
+                var request = Request(data["subject"]!.GetValue<string>(), key);
                 using var self = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddYears(1));
                 _certificates[alias] = (self.ExportCertificatePem() + "\n", key);
                 return Success(null);
@@ -292,7 +308,7 @@ internal sealed class FakeCamera : IVapixClient
 
             if (csr && method == "POST")
             {
-                var request = new CertificateRequest(data!["subject"]!.GetValue<string>(), entry.Key!, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                var request = Request(data!["subject"]!.GetValue<string>(), entry.Key!);
                 return Success(JsonValue.Create(request.CreateSigningRequestPem()));
             }
 
@@ -300,8 +316,7 @@ internal sealed class FakeCamera : IVapixClient
             {
                 var pem = data!["certificate"]!.GetValue<string>();
                 using var certificate = X509Certificate2.CreateFromPem(pem);
-                using var publicKey = certificate.GetRSAPublicKey()!;
-                if (entry.Key is null || !publicKey.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(entry.Key.ExportSubjectPublicKeyInfo()))
+                if (entry.Key is null || !certificate.PublicKey.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(entry.Key.ExportSubjectPublicKeyInfo()))
                 {
                     return Error(HttpStatusCode.BadRequest, 5, "The certificate does not match the key");
                 }
@@ -400,6 +415,10 @@ internal sealed class FakeCamera : IVapixClient
         $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><SOAP-ENV:Envelope xmlns:SOAP-ENV=\"{WebServerTls.SoapNs}\" xmlns:aweb=\"{WebServerTls.WebNs}\" xmlns:acert=\"{WebServerTls.CertNs}\"><SOAP-ENV:Body>{body}</SOAP-ENV:Body></SOAP-ENV:Envelope>";
 
     private static (HttpStatusCode, string, string) Json(string text) => (HttpStatusCode.OK, text, "application/json");
+
+    private static CertificateRequest Request(string subject, AsymmetricAlgorithm key) => key is ECDsa ec
+        ? new CertificateRequest(subject, ec, HashAlgorithmName.SHA256)
+        : new CertificateRequest(subject, (RSA)key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
     private static (HttpStatusCode, string, string) Success(JsonNode? data)
     {

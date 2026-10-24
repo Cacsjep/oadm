@@ -71,6 +71,12 @@ foreach (var root in options.PluginRoots)
             ownLicenses.Add(Path.GetFileName(plugin));
         }
 
+        // Parts of a plugin with a license of their own (PKI: Est/LICENSE, Radius/LICENSE): "oadm.pki/Est".
+        foreach (var part in Directory.GetDirectories(plugin).Order(StringComparer.Ordinal).Where(d => File.Exists(Path.Combine(d, "LICENSE"))))
+        {
+            ownLicenses.Add(Path.GetFileName(plugin) + "/" + Path.GetFileName(part));
+        }
+
         foreach (var deps in Directory.GetFiles(plugin, "*.deps.json").Order(StringComparer.Ordinal))
         {
             uses.AddRange(DepsFile.Read(deps, "plugin " + Path.GetFileName(plugin)));

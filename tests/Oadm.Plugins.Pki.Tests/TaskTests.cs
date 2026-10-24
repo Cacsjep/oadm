@@ -6,6 +6,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Device;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Tasks;
 using Oadm.Sdk.Plugins;
 using StepRun = Oadm.Sdk.Testing.StepRun;
@@ -194,7 +195,9 @@ public sealed class HttpsTaskTests
         Assert.Equal([IPAddress.Parse("10.0.0.48")], san.EnumerateIPAddresses());
         Assert.Equal(["axis-b8a44f631339", "axis-b8a44f631339.local"], san.EnumerateDnsNames());
         Assert.Contains(served.Extensions.OfType<X509EnhancedKeyUsageExtension>().Single().EnhancedKeyUsages.Cast<Oid>(), o => o.Value == DeviceCertificateIssuer.ServerAuthOid);
-        Assert.Equal(2048, served.GetRSAPublicKey()!.KeySize);
+        // The default policy "HTTPS" of a new server: ECC P-256 on the device, 365 days.
+        Assert.Equal(["EC-P256"], h.Camera.KeyTypesCreated);
+        Assert.Equal(256, served.GetECDsaPublicKey()!.KeySize);
         Assert.True((served.NotAfter.ToUniversalTime() - h.Time.GetUtcNow().UtcDateTime).TotalDays is > 364 and < 366);
         Assert.Equal("https", h.Context.Scheme);
         Assert.Equal(CaCertificates.Fingerprint(served), h.Context.PinnedFingerprint);
@@ -345,14 +348,16 @@ public sealed class Dot1xTaskTests
     }
 
     [Fact]
-    public async Task Custom_identity_eapol_and_an_imported_radius_ca_from_the_page()
+    public async Task Custom_identity_eapol_and_an_imported_radius_ca_from_the_policy()
     {
         await using var h = await TaskHarness.StartAsync();
         using var radius = TestCa.Root("Corp RADIUS CA");
-        await h.Pki.InvokeAsync<PkiReply>(PkiMethods.SaveSettings, new SaveSettingsRequest(new PkiConfig
+        var policy = h.Pki.Service.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
+        var saved = await h.Pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, policy with
         {
-            Dot1x = new Dot1xConfig { EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{serial}@{hostName}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = CaCertificates.ToPem(radius) },
-        }));
+            EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{serial}@{hostName}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = CaCertificates.ToPem(radius),
+        });
+        Assert.Null(saved.Error);
 
         Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
 

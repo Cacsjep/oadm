@@ -15,6 +15,9 @@ public static class BuiltInComplianceTypes
     public const string ReachableId = "oadm.compliance.reachable";
     public const string LoginWorksId = "oadm.compliance.login-works";
     public const string CertificateId = "oadm.compliance.certificate";
+
+    /// <summary>The certificate check's "Days left at least" (a new check's default: PKI's Expiry warning days, else 30).</summary>
+    public const string CertificateDaysField = "days";
     public const string FirmwareId = "oadm.compliance.firmware";
 
     /// <summary>Fixed ids of the default checks, created at the first start.</summary>

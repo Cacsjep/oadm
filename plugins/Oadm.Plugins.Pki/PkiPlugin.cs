@@ -1,8 +1,11 @@
 using Oadm.Plugins.Pki.Ca;
+using Oadm.Plugins.Pki.Certificates;
 using Oadm.Plugins.Pki.Device;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Tasks;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Pki;
@@ -13,10 +16,11 @@ namespace Oadm.Plugins.Pki;
 /// server's trust store, trust anchors for the device grid's certificate rating, settings. Part 2: the contributed Security
 /// task plugins that deploy certificates (<see cref="TaskPlugins"/>). Page backend methods: <see cref="PkiMethods"/>; live event: state.
 /// </summary>
-public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
+public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource, IAsyncDisposable
 {
     private readonly PkiOptions _options;
     private volatile PkiService? _service;
+    private ExpiryEvents? _expiry;
     private CancellationTokenSource? _importStop;
     private Task _import = Task.CompletedTask;
 
@@ -59,13 +63,19 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     /// <summary>The running service (null while stopped).</summary>
     public PkiService? Service => _service;
 
+    /// <summary>"Certificate expires soon", "Certificate expired" and their Any device twins (group "Certificates"; the ids of 4.1's built-in events).</summary>
+    public IReadOnlyList<EventTypeInfo> EventTypes => ExpiryEvents.Types;
+
+    /// <summary>The certificate expiry events (null while stopped or without the host's event rules).</summary>
+    public ExpiryEvents? Expiry => _expiry;
+
     public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
         var system = ctx.System;
         var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger, ctx.DeviceScopes, ctx.Records,
-            token => system.Devices.ListAsync(token));
+            token => system.Devices.ListAsync(token), ctx.Sites, ctx.ProtectedTags);
         await service.StartAsync(ct).ConfigureAwait(false);
         service.DeviceCertificateReader = async (device, token) =>
         {
@@ -75,6 +85,13 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
         };
         _service = service;
         ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
+        ctx.Services?.Offer(service.Policies); // the policies for the 802.1X server inside PKI (in process, no SDK contract)
+        if (ctx.EventPublisher is { } publisher)
+        {
+            var expiry = new ExpiryEvents(service.Policies, service.SystemDevicesAsync, publisher, _options.Time, ctx.Logger);
+            await expiry.StartAsync(ct).ConfigureAwait(false);
+            _expiry = expiry;
+        }
 
         // Certificates of the OADM CAs from before the list of issued certificates: one pass over the devices, in the background.
         var stopping = new CancellationTokenSource();
@@ -85,6 +102,12 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
 
     public async Task StopAsync(CancellationToken ct)
     {
+        if (_expiry is { } expiry)
+        {
+            _expiry = null;
+            await expiry.DisposeAsync().ConfigureAwait(false);
+        }
+
         if (_importStop is { } stop)
         {
             _importStop = null;
@@ -110,7 +133,10 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     /// </summary>
     public UserRole RequiredRole(string method) => IsRead(method) ? UserRole.Operator : UserRole.Admin;
 
-    private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate;
+    private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate or PolicyMethods.GetPolicies;
+
+    /// <summary>Admin methods (the Certificates card's Create, Sign request, Import, Delete and Export too) are audited by the host; the count of a revoke policy only reads.</summary>
+    public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin && method != PolicyMethods.CountRevocations;
 
     /// <summary>The certificate authority ("manage") and the server's trust in it ("trustServer") are rights of their own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
@@ -145,8 +171,12 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
 
             return method switch
             {
+                PolicyMethods.SavePolicy => PkiJson.Serialize(await service.SavePolicyAsync(PkiJson.Deserialize<PkiPolicy>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
+                PolicyMethods.DeletePolicy => PkiJson.Serialize(await service.DeletePolicyAsync(PkiJson.Deserialize<PolicyRef>(payloadJson).Id, caller.UserName, ct).ConfigureAwait(false)),
                 PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
                 PkiMethods.RevokeDevice => PkiJson.Serialize(await service.RevokeDeviceAsync(PkiJson.Deserialize<RevokeDeviceRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
+                CertificateMethods.Create or CertificateMethods.Sign or CertificateMethods.Import or CertificateMethods.Delete =>
+                    await CertificateActionAsync(service, method, payloadJson, caller.UserName, ct).ConfigureAwait(false),
                 _ => await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false),
             };
         }
@@ -167,10 +197,16 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
                 return PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), view, ct).ConfigureAwait(false));
             }
 
+            case PolicyMethods.GetPolicies:
+                // Server-wide: a user limited to a device group gets none; changing needs "Manage the certificate authority".
+                return PkiJson.Serialize(await service.PolicyListAsync(caller.HasAllDevices, caller.HasAllDevices && caller.Has(PermissionKeys.Of(Id, PermissionKeys.Manage)), ct)
+                    .ConfigureAwait(false));
+
             default:
             {
                 var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
-                return PkiJson.Serialize(await service.GetStateAsync(view, ct).ConfigureAwait(false));
+                var devices = caller.HasAllDevices ? null : await caller.Devices.ListAsync(ct).ConfigureAwait(false);
+                return PkiJson.Serialize(await service.GetStateAsync(view, ct, devices).ConfigureAwait(false));
             }
         }
     }
@@ -182,6 +218,10 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
         return method switch
         {
             PkiMethods.GetState => PkiJson.Serialize(await service.GetStateAsync(ct).ConfigureAwait(false)),
+            PolicyMethods.GetPolicies => PkiJson.Serialize(await service.PolicyListAsync(hasAllDevices: true, mayManage: true, ct).ConfigureAwait(false)),
+            PolicyMethods.SavePolicy => PkiJson.Serialize(await service.SavePolicyAsync(PkiJson.Deserialize<PkiPolicy>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
+            PolicyMethods.DeletePolicy => PkiJson.Serialize(await service.DeletePolicyAsync(PkiJson.Deserialize<PolicyRef>(payloadJson).Id, InProcessUser, ct).ConfigureAwait(false)),
+            PolicyMethods.CountRevocations => PkiJson.Serialize(await service.CountRevocationsAsync(PkiJson.Deserialize<PolicyDevices>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.GetCertificates => PkiJson.Serialize(await service.GetCertificatesForEveryDeviceAsync(PkiJson.Deserialize<CertificatesRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.GetCertificate => PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), null, ct).ConfigureAwait(false)),
             PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
@@ -194,12 +234,45 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
             PkiMethods.RemovePrevious => PkiJson.Serialize(await service.RemovePreviousAsync(PkiJson.Deserialize<RemovePreviousRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.Backup => PkiJson.Serialize(service.Backup(PkiJson.Deserialize<BackupRequest>(payloadJson))),
             PkiMethods.InstallServerTrust => PkiJson.Serialize(await service.InstallServerTrustAsync(ct).ConfigureAwait(false)),
-            PkiMethods.SaveSettings => PkiJson.Serialize(await service.SaveSettingsAsync(PkiJson.Deserialize<SaveSettingsRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.ImportAuthority => PkiJson.Serialize(await service.ImportAuthorityAsync(PkiJson.Deserialize<ImportAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.RemoveAuthority => PkiJson.Serialize(await service.RemoveAuthorityAsync(PkiJson.Deserialize<RemoveAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.ImportRadiusCa => PkiJson.Serialize(PkiService.ImportRadiusCa(PkiJson.Deserialize<ImportRadiusCaRequest>(payloadJson))),
+            CertificateMethods.Create or CertificateMethods.Sign or CertificateMethods.Import or CertificateMethods.Delete =>
+                await CertificateActionAsync(service, method, payloadJson, InProcessUser, ct).ConfigureAwait(false),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
+    }
+
+    /// <summary>Create, Sign request, Import and Delete of the Certificates card in the name of <paramref name="userName"/>.</summary>
+    private static async Task<string?> CertificateActionAsync(PkiService service, string method, string? payloadJson, string userName, CancellationToken ct) => method switch
+    {
+        CertificateMethods.Create => PkiJson.Serialize(await service.CreateCertificateAsync(PkiJson.Deserialize<CreateCertificateRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+        CertificateMethods.Sign => PkiJson.Serialize(await service.SignCertificateAsync(PkiJson.Deserialize<SignCertificateRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+        CertificateMethods.Import => PkiJson.Serialize(await service.ImportCertificateAsync(PkiJson.Deserialize<ImportCertificateRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+        _ => PkiJson.Serialize(await service.DeleteCertificatesAsync(PkiJson.Deserialize<DeleteCertificatesRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+    };
+
+    /// <summary>Export of the Certificates card (users with all devices; the host checks "Manage the certificate authority" and audits).</summary>
+    public Task<PluginDownload> OpenDownloadAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        if (!caller.HasAllDevices)
+        {
+            throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices); fail closed
+        }
+
+        return OpenDownloadAsync(method, payloadJson, caller.UserName, ct);
+    }
+
+    /// <summary>In-process callers and tests: Export in the name of "OADM".</summary>
+    public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct) => OpenDownloadAsync(method, payloadJson, InProcessUser, ct);
+
+    private Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, string userName, CancellationToken ct)
+    {
+        var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");
+        return method == CertificateMethods.Download
+            ? service.OpenCertificateDownloadAsync(PkiJson.Deserialize<DownloadCertificateRequest>(payloadJson), userName, ct)
+            : throw new ArgumentException($"Unknown download '{method}'.", nameof(method));
     }
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);

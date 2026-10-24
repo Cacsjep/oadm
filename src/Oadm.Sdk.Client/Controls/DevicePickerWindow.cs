@@ -23,6 +23,8 @@ namespace Oadm.Sdk.Client.Controls;
 public sealed class DevicePickerWindow : Window
 {
     private readonly DialogTitleBar _title = new();
+    private readonly Control _picker;
+    private readonly double _pickerHeight;
 
     /// <summary>The window for <paramref name="viewModel"/>; usually opened through the static ShowAsync methods.</summary>
     public DevicePickerWindow(DevicePickerViewModel viewModel)
@@ -100,6 +102,9 @@ public sealed class DevicePickerWindow : Window
             content = split;
         }
 
+        _picker = content;
+        _pickerHeight = Height;
+
         if (form is not null)
         {
             var stack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 16 };
@@ -160,6 +165,29 @@ public sealed class DevicePickerWindow : Window
 
     /// <summary>Its view model.</summary>
     public DevicePickerViewModel ViewModel { get; }
+
+    /// <summary>
+    /// The device part shows (default). False: only the host's form above it (e.g. a policy kind without devices); the window
+    /// is then as high as the form. Changes while the window is open.
+    /// </summary>
+    public bool IsPickerVisible
+    {
+        get => _picker.IsVisible;
+        set
+        {
+            if (_picker.IsVisible == value)
+            {
+                return;
+            }
+
+            _picker.IsVisible = value;
+            SizeToContent = value ? SizeToContent.Manual : SizeToContent.Height;
+            if (value)
+            {
+                Height = _pickerHeight;
+            }
+        }
+    }
 
     /// <summary><see cref="Accept"/> runs (the host saves): the window cannot be cancelled or closed meanwhile.</summary>
     public bool IsAccepting { get; private set; }

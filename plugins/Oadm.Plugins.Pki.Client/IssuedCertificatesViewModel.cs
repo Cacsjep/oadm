@@ -1,16 +1,32 @@
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Pki.Certificates;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Pki.Client;
 
-/// <summary>What the Certificates tab asks of its view: the certificate window and the revoke confirmation.</summary>
+/// <summary>What the Certificates card asks of its view: the certificate window, the confirmations, its dialogs and file pickers.</summary>
 public interface IIssuedCertificatesDialogs : IIssuedCertificateListDialogs
 {
     /// <summary>The confirmation with the reason; null for Cancel.</summary>
     Task<RevocationReason?> ConfirmRevokeAsync(string title, string message);
+
+    /// <summary>The confirmation of Delete (red Delete); true when confirmed.</summary>
+    Task<bool> ConfirmDeleteAsync(string title, string message) => Task.FromResult(false);
+
+    Task ShowCreateAsync(CreateCertificateViewModel dialog) => Task.CompletedTask;
+
+    Task ShowSignRequestAsync(SignRequestViewModel dialog) => Task.CompletedTask;
+
+    Task ShowImportCertificateAsync(ImportCertificateViewModel dialog) => Task.CompletedTask;
+
+    Task ShowExportKeyAsync(ExportKeyViewModel dialog) => Task.CompletedTask;
+
+    /// <summary>File pickers of the page; null without.</summary>
+    IPkiFiles? CertificateFiles => null;
 }
 
 /// <summary>The list reads PKI's own page methods.</summary>
@@ -24,12 +40,13 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
             State = query.State,
             Purpose = query.Purpose,
             Source = query.Source,
+            IssuedBy = query.IssuedBy,
             Search = query.Search,
             Offset = query.Offset,
             Limit = query.Limit,
         };
         var reply = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(PkiMethods.GetCertificates, PkiJson.Serialize(request), ct).ConfigureAwait(true));
-        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset) { WarningDays = reply.WarningDays };
+        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset) { WarningDays = reply.WarningDays, Issuers = reply.Issuers.Count == 0 ? null : reply.Issuers };
     }
 
     public async Task<IssuedCertificateDetails> GetCertificateAsync(string serialNumber, CancellationToken ct)
@@ -40,10 +57,11 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
 }
 
 /// <summary>
-/// The Certificates tab of the PKI page (docs/spec/radius-server.md "Certificates and revocation"): the shared list of
-/// issued certificates (<see cref="IssuedCertificateListViewModel"/>: pages of 500, filters, search, View certificate) read
-/// from PKI, plus Revoke (several rows, the reason, confirmed) and Revoke all of this device for users with all devices who
-/// may manage the CA. A change on the server (topic <c>certificates</c>) reads the shown page again.
+/// The Certificates card of the PKI page (docs/spec/pki.md "Certificates"): the shared list (<see cref="IssuedCertificateListViewModel"/>:
+/// pages of 500, filters, search, View certificate) read from PKI, plus, for users with all devices who may manage the CA,
+/// Create, Sign request and Import (toolbar), Export, Revoke and Delete (row buttons and the row menu; Revoke and Delete
+/// also for several chosen rows) and Revoke all of this device. A change on the server (topic <c>certificates</c>) reads
+/// the shown page again.
 /// </summary>
 public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListViewModel
 {
@@ -55,50 +73,81 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
     /// <summary>The confirmation of one certificate.</summary>
     public const string ConfirmMessageOne = IssuedCertificateTexts.ConfirmMessageOne;
 
-    private readonly ICorePluginClientContext _ctx;
+    /// <summary>The progress row while Delete runs.</summary>
+    public const string Deleting = "Deleting the certificates";
 
-    public IssuedCertificatesViewModel(ICorePluginClientContext ctx, TimeProvider? time = null)
+    private readonly ICorePluginClientContext _ctx;
+    private readonly PkiClientSettingsStore _clientSettings;
+
+    public IssuedCertificatesViewModel(ICorePluginClientContext ctx, TimeProvider? time = null, PkiClientSettingsStore? clientSettings = null)
         : base(new PkiCertificateSource(ctx ?? throw new ArgumentNullException(nameof(ctx))), time)
     {
         _ctx = ctx;
+        _clientSettings = clientSettings ?? new PkiClientSettingsStore();
         PageSize = PkiPluginInfo.CertificatesPageSize;
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayRevoke));
-            RevokeCommand.NotifyCanExecuteChanged();
-            RevokeDeviceCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(MayManage));
+            NotifyCommands();
         };
     }
+
+    /// <summary>The policies of the page (the issuing policies of Create and Sign request); empty without.</summary>
+    public Func<IReadOnlyList<PkiPolicy>> PolicySource { get; set; } = () => [];
 
     /// <summary>Users with all devices whose role manages the CA (the server refuses others).</summary>
     public bool MayRevoke => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
+    /// <summary>Create, Sign request, Import, Export and Delete: the same users as Revoke.</summary>
+    public bool MayManage => MayRevoke;
+
     /// <summary>A live event of the page (the list changed on the server).</summary>
     public Task HandleEventAsync(string topic) => topic == PkiMethods.CertificatesTopic ? LoadAsync() : Task.CompletedTask;
 
-    protected override void OnSelectionChanged() => RevokeCommand.NotifyCanExecuteChanged();
+    protected override void OnSelectionChanged() => NotifyCommands();
 
-    protected override void OnWorkChanged()
-    {
-        RevokeCommand.NotifyCanExecuteChanged();
-        RevokeDeviceCommand.NotifyCanExecuteChanged();
-    }
+    protected override void OnWorkChanged() => NotifyCommands();
 
     protected override Task ShowMessageAsync(string title, string message) => _ctx.ShowMessageAsync(title, message);
 
+    private void NotifyCommands()
+    {
+        RevokeCommand.NotifyCanExecuteChanged();
+        RevokeDeviceCommand.NotifyCanExecuteChanged();
+        RevokeRowCommand.NotifyCanExecuteChanged();
+        DeleteCommand.NotifyCanExecuteChanged();
+        DeleteRowCommand.NotifyCanExecuteChanged();
+        CreateCommand.NotifyCanExecuteChanged();
+        SignRequestCommand.NotifyCanExecuteChanged();
+        ImportCommand.NotifyCanExecuteChanged();
+        ExportPemCommand.NotifyCanExecuteChanged();
+        ExportDerCommand.NotifyCanExecuteChanged();
+        ExportKeyCommand.NotifyCanExecuteChanged();
+    }
+
+    // ------------------------------------------------------------------ revoke
+
     private bool CanRevoke() => MayRevoke && !IsWorking && Selected.Any(r => r.CanRevoke);
 
-    /// <summary>Revoke (red): the chosen rows that can still be revoked, with a reason, confirmed.</summary>
+    /// <summary>Revoke (red, row menu): the chosen rows that can still be revoked, with a reason, confirmed.</summary>
     [RelayCommand(CanExecute = nameof(CanRevoke))]
-    private async Task RevokeAsync()
+    private Task RevokeAsync() => RevokeRowsAsync([.. Selected.Where(r => r.CanRevoke)]);
+
+    private bool CanRevokeRow(IssuedCertificateRow? row) => MayRevoke && !IsWorking && row is { CanRevoke: true };
+
+    /// <summary>Revoke (row button): this row.</summary>
+    [RelayCommand(CanExecute = nameof(CanRevokeRow))]
+    private Task RevokeRowAsync(IssuedCertificateRow? row) => row is { CanRevoke: true } ? RevokeRowsAsync([row]) : Task.CompletedTask;
+
+    private async Task RevokeRowsAsync(List<IssuedCertificateRow> rows)
     {
-        var rows = Selected.Where(r => r.CanRevoke).ToList();
         if (rows.Count == 0 || Dialogs is not IIssuedCertificatesDialogs dialogs)
         {
             return;
         }
 
-        if (await dialogs.ConfirmRevokeAsync(IssuedCertificateTexts.RevokeTitle(rows), rows.Count == 1 ? ConfirmMessageOne : ConfirmMessage).ConfigureAwait(true) is not { } reason)
+        if (await dialogs.ConfirmRevokeAsync(RevokeTitle(rows), rows.Count == 1 ? ConfirmMessageOne : ConfirmMessage).ConfigureAwait(true) is not { } reason)
         {
             return;
         }
@@ -106,14 +155,19 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         await SendRevokeAsync(PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([.. rows.Select(r => r.Source.SerialNumber)], reason))).ConfigureAwait(true);
     }
 
-    private bool CanRevokeDevice(IssuedCertificateRow? row) => MayRevoke && !IsWorking && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is not null;
+    /// <summary>"Revoke the certificate of 10.0.0.48?", "Revoke the certificate nvr.example.com?" or "Revoke 3 certificates?".</summary>
+    private static string RevokeTitle(List<IssuedCertificateRow> rows) =>
+        rows.Count == 1 && rows[0].Source.Kind != ListedCertificateKind.Device ? $"Revoke the certificate {rows[0].Name}?" : IssuedCertificateTexts.RevokeTitle(rows);
+
+    private bool CanRevokeDevice(IssuedCertificateRow? row) =>
+        MayRevoke && !IsWorking && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is { Source.Kind: ListedCertificateKind.Device };
 
     /// <summary>Revoke all of this device (row menu): every certificate of the row's device that is still valid.</summary>
     [RelayCommand(CanExecute = nameof(CanRevokeDevice))]
     private async Task RevokeDeviceAsync(IssuedCertificateRow? row)
     {
         row ??= Selected.Count == 1 ? Selected[0] : null;
-        if (row is null || Dialogs is not IIssuedCertificatesDialogs dialogs)
+        if (row is not { Source.Kind: ListedCertificateKind.Device } || Dialogs is not IIssuedCertificatesDialogs dialogs)
         {
             return;
         }
@@ -128,7 +182,7 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
 
     /// <summary>
     /// Sends Revoke or Revoke all of this device (a write: it runs to its end, no Cancel; Revoke all of this device reads the
-    /// device first, up to 20 s): the progress row above the grid meanwhile, both commands off; then the page again.
+    /// device first, up to 20 s): the progress row above the grid meanwhile, the commands off; then the page again.
     /// </summary>
     private async Task SendRevokeAsync(string method, string payload)
     {
@@ -156,5 +210,223 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         }
 
         await LoadAsync().ConfigureAwait(true);
+    }
+
+    // ------------------------------------------------------------------ delete
+
+    private bool CanDelete() => MayManage && !IsWorking && Selected.Count > 0 && Selected.All(r => r.CanDelete);
+
+    /// <summary>Delete (row menu): the chosen rows, all of which nothing uses; confirmed.</summary>
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private Task DeleteAsync() => DeleteRowsAsync([.. Selected]);
+
+    private bool CanDeleteRow(IssuedCertificateRow? row) => MayManage && !IsWorking && row is { CanDelete: true };
+
+    /// <summary>Delete (row button): this row.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteRow))]
+    private Task DeleteRowAsync(IssuedCertificateRow? row) => row is { CanDelete: true } ? DeleteRowsAsync([row]) : Task.CompletedTask;
+
+    private async Task DeleteRowsAsync(List<IssuedCertificateRow> rows)
+    {
+        if (rows.Count == 0 || Dialogs is not IIssuedCertificatesDialogs dialogs)
+        {
+            return;
+        }
+
+        if (!await dialogs.ConfirmDeleteAsync(IssuedCertificateTexts.DeleteTitle(rows), rows.Count == 1 ? IssuedCertificateTexts.DeleteMessageOne : IssuedCertificateTexts.DeleteMessage)
+                .ConfigureAwait(true))
+        {
+            return;
+        }
+
+        string? answer;
+        WorkText = Deleting;
+        try
+        {
+            var reply = PkiJson.Deserialize<DeleteCertificatesReply>(await _ctx.InvokeAsync(CertificateMethods.Delete,
+                PkiJson.Serialize(new DeleteCertificatesRequest([.. rows.Select(r => r.Key)])), CancellationToken.None).ConfigureAwait(true));
+            answer = reply.Error;
+        }
+#pragma warning disable CA1031 // Shown to the user.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            answer = ServerErrors.Message(ex);
+        }
+        finally
+        {
+            WorkText = null;
+        }
+
+        if (answer is not null)
+        {
+            await _ctx.ShowMessageAsync("Delete", answer).ConfigureAwait(true);
+        }
+
+        await LoadAsync().ConfigureAwait(true);
+    }
+
+    // ------------------------------------------------------------------ create, sign request, import
+
+    private bool CanAdd() => MayManage && !IsWorking;
+
+    /// <summary>Create (toolbar): OADM makes the key and the certificate; the user saves it as a PKCS#12 file.</summary>
+    [RelayCommand(CanExecute = nameof(CanAdd))]
+    private async Task CreateAsync()
+    {
+        if (Dialogs is IIssuedCertificatesDialogs dialogs)
+        {
+            await dialogs.ShowCreateAsync(new CreateCertificateViewModel(SubmitCreateAsync, PolicySource())).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Sign request (toolbar): the OADM CA signs a request of another system.</summary>
+    [RelayCommand(CanExecute = nameof(CanAdd))]
+    private async Task SignRequestAsync()
+    {
+        if (Dialogs is IIssuedCertificatesDialogs dialogs)
+        {
+            await dialogs.ShowSignRequestAsync(new SignRequestViewModel(SubmitSignAsync, PolicySource())).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Import (toolbar): a certificate, or a PKCS#12 file with its key.</summary>
+    [RelayCommand(CanExecute = nameof(CanAdd))]
+    private async Task ImportAsync()
+    {
+        if (Dialogs is IIssuedCertificatesDialogs dialogs)
+        {
+            await dialogs.ShowImportCertificateAsync(new ImportCertificateViewModel(SubmitImportAsync)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Create: the server makes it, then the PKCS#12 file with the dialog's password is saved where the user says.</summary>
+    internal async Task<bool> SubmitCreateAsync(CreateCertificateViewModel dialog, CreateCertificateRequest request, string password)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        var reply = PkiJson.Deserialize<CertificateActionReply>(await _ctx.InvokeAsync(CertificateMethods.Create, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
+        if (!reply.Ok)
+        {
+            dialog.SetServerErrors(reply.Errors, reply.Error, nameof(CreateCertificateViewModel.Name));
+            return false;
+        }
+
+        _ = LoadAsync();
+
+        // The certificate exists now: a cancelled save leaves it in the list (Export with key later).
+        await SaveDownloadAsync(dialog.Files, "Save the certificate with its key", new DownloadCertificateRequest(reply.Id!, CertificateFormats.Pkcs12, password), PkiFileKind.Pkcs12)
+            .ConfigureAwait(true);
+        return true;
+    }
+
+    internal async Task<bool> SubmitSignAsync(SignRequestViewModel dialog, SignCertificateRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        var reply = PkiJson.Deserialize<CertificateActionReply>(await _ctx.InvokeAsync(CertificateMethods.Sign, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
+        if (!reply.Ok)
+        {
+            dialog.SetServerErrors(reply.Errors, reply.Error, nameof(SignRequestViewModel.File));
+            return false;
+        }
+
+        _ = LoadAsync();
+        await SaveDownloadAsync(dialog.Files, "Save the signed certificate", new DownloadCertificateRequest(reply.Id!, CertificateFormats.Pem), PkiFileKind.CertificatePem).ConfigureAwait(true);
+        return true;
+    }
+
+    internal async Task<bool> SubmitImportAsync(ImportCertificateViewModel dialog, ImportCertificateRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        var reply = PkiJson.Deserialize<CertificateActionReply>(await _ctx.InvokeAsync(CertificateMethods.Import, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
+        if (!reply.Ok)
+        {
+            dialog.SetServerErrors(reply.Errors, reply.Error, nameof(ImportCertificateViewModel.File));
+            return false;
+        }
+
+        await LoadAsync().ConfigureAwait(true);
+        return true;
+    }
+
+    // ------------------------------------------------------------------ export
+
+    private bool CanExport(IssuedCertificateRow? row) => MayManage && !IsWorking && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is not null;
+
+    private bool CanExportKey(IssuedCertificateRow? row) => MayManage && !IsWorking && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is { HasKey: true };
+
+    /// <summary>Export, PEM (.crt).</summary>
+    [RelayCommand(CanExecute = nameof(CanExport))]
+    private Task ExportPemAsync(IssuedCertificateRow? row) => ExportAsync(row, CertificateFormats.Pem, PkiFileKind.CertificatePem);
+
+    /// <summary>Export, DER (.cer).</summary>
+    [RelayCommand(CanExecute = nameof(CanExport))]
+    private Task ExportDerAsync(IssuedCertificateRow? row) => ExportAsync(row, CertificateFormats.Der, PkiFileKind.CertificateDer);
+
+    /// <summary>Export with key (PKCS#12): only where OADM holds the key; the password dialog first.</summary>
+    [RelayCommand(CanExecute = nameof(CanExportKey))]
+    private async Task ExportKeyAsync(IssuedCertificateRow? row)
+    {
+        row ??= Selected.Count == 1 ? Selected[0] : null;
+        if (row is not { HasKey: true } || Dialogs is not IIssuedCertificatesDialogs dialogs)
+        {
+            return;
+        }
+
+        var key = row.Key;
+        await dialogs.ShowExportKeyAsync(new ExportKeyViewModel(row.Name, async (dialog, password) =>
+        {
+            await SaveDownloadAsync(dialog.Files, "Save the certificate with its key", new DownloadCertificateRequest(key, CertificateFormats.Pkcs12, password), PkiFileKind.Pkcs12, throwErrors: true)
+                .ConfigureAwait(true);
+            return true;
+        })).ConfigureAwait(true);
+    }
+
+    private async Task ExportAsync(IssuedCertificateRow? row, string format, PkiFileKind kind)
+    {
+        row ??= Selected.Count == 1 ? Selected[0] : null;
+        if (row is null || Dialogs is not IIssuedCertificatesDialogs dialogs)
+        {
+            return;
+        }
+
+        await SaveDownloadAsync(dialogs.CertificateFiles, "Export certificate", new DownloadCertificateRequest(row.Key, format), kind).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Downloads the file of <paramref name="request"/> and saves it where the user says (the folder of the last export first).
+    /// A refusal is a message, or thrown to the dialog (<paramref name="throwErrors"/>: shown below its password).
+    /// </summary>
+    private async Task SaveDownloadAsync(IPkiFiles? files, string title, DownloadCertificateRequest request, PkiFileKind kind, bool throwErrors = false)
+    {
+        files ??= (Dialogs as IIssuedCertificatesDialogs)?.CertificateFiles;
+        if (files is null)
+        {
+            return;
+        }
+
+        byte[] data;
+        string fileName;
+        try
+        {
+            await using var download = await _ctx.OpenDownloadAsync(CertificateMethods.Download, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
+            using var buffer = new MemoryStream();
+            await download.Content.CopyToAsync(buffer).ConfigureAwait(true);
+            (data, fileName) = (buffer.ToArray(), download.FileName);
+        }
+#pragma warning disable CA1031 // Shown to the user.
+        catch (Exception ex) when (!throwErrors)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(title, ServerErrors.Message(ex)).ConfigureAwait(true);
+            return;
+        }
+
+        var settings = _clientSettings.Load();
+        var folder = await files.SaveAsync(title, fileName, kind, data, settings.LastFolder).ConfigureAwait(true);
+        if (folder is { Length: > 0 })
+        {
+            settings.LastFolder = folder;
+            _clientSettings.Save(settings);
+        }
     }
 }

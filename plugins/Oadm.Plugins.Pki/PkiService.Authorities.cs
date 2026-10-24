@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Plugins.Pki.Ca;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Certificates;
 
 namespace Oadm.Plugins.Pki;
@@ -225,7 +226,7 @@ public sealed partial class PkiService
         static PkiReply Field(string message) => new() { Errors = One(PkiFields.AuthorityFile, message) };
     }
 
-    /// <summary>Removes an imported CA; refused while a service uses it ("Used by the 802.1X server. Remove it there first.").</summary>
+    /// <summary>Removes an imported CA; refused while a policy names it ("Used by the policy Contoso. Change or delete the policy first.") or a service uses it.</summary>
     public async Task<PkiReply> RemoveAuthorityAsync(RemoveAuthorityRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -238,6 +239,11 @@ public sealed partial class PkiService
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (Policies.UsingCa(id, CertificateAuthorityKind.Imported) is { Count: > 0 } naming)
+            {
+                return await ErrorAsync(PolicyTexts.UsedByPolicy(naming[0].Name), ct).ConfigureAwait(false);
+            }
+
             if (UsedByText(id) is { } used)
             {
                 return await ErrorAsync(used, ct).ConfigureAwait(false);
@@ -283,10 +289,19 @@ public sealed partial class PkiService
             Kind = a.Kind,
             NotAfterUtc = a.NotAfterUtc,
             Fingerprint = a.Certificates.Count > 0 ? CaCertificates.ColonFingerprint(Convert.ToHexString(SHA256.HashData(a.Certificates[0]))) : string.Empty,
-            UsedBy = UsedBy(a.Id),
+            // One prefix per group ("802.1X: ...", "Issuing: HTTPS, IEEE 802.1X"), then the services: fits the column in two lines.
+            UsedBy = [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)],
             CertificatesPem = [.. a.Certificates.Select(der => new string(PemEncoding.Write("CERTIFICATE", der)) + "\n")],
         }),
     ];
+
+    /// <summary>The names of the issuing policies that name the CA (only the OADM CA issues; its previous ones never do).</summary>
+    private IEnumerable<string> IssuingPoliciesOf(CertificateAuthorityInfo authority) =>
+        authority.Kind != CertificateAuthorityKind.Oadm
+            ? []
+            : PolicyKinds.All.Where(PolicyKinds.IsIssuing).SelectMany(Policies.PoliciesOf)
+                .Where(p => string.Equals(p.CaId ?? CertificateAuthorityInfo.OadmId, authority.Id, StringComparison.OrdinalIgnoreCase))
+                .Select(p => p.Name);
 
     private static DateTime LatestEnd(List<byte[]> certificates)
     {

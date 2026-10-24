@@ -1,0 +1,25 @@
+OADM PRO Source-Available License 1.0 (DRAFT, to be reviewed before the first release)
+
+Copyright (c) 2026 the OADM authors
+
+This license covers the files in plugins/Oadm.Plugins.Pki/Radius and plugins/Oadm.Plugins.Pki.Client/Radius of the OADM
+repository (the "802.1X server plugin", a part of the PKI plugin). The rest of OADM, the rest of the PKI plugin included,
+is licensed under the Apache License 2.0 (LICENSE at the repository root).
+
+1. Reading. You may read, study and share the source code of the 802.1X server plugin.
+
+2. Using. You may run the 802.1X server plugin only on an OADM server with an active OADM PRO license or trial license
+   for that server.
+
+3. Changing. You may change the source code for your own use under section 2. You may not change, remove or work around
+   the check of the OADM PRO license, and you may not distribute a changed version.
+
+4. No other rights. You may not sell, sublicense or offer the 802.1X server plugin as a service to others. Contributions
+   you send to the OADM project are licensed to the project under these terms and under the Apache License 2.0.
+
+5. Third-party parts. The Axis device ID CA certificates in DeviceId/ are published by Axis Communications AB.
+
+6. No warranty. The 802.1X server plugin is provided "as is", without warranty of any kind. The authors are not liable for
+   any damage arising from its use, to the extent the law allows.
+
+7. Ending. This license ends automatically when you break it. Sections 6 and 7 continue to apply.

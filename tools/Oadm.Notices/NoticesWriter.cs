@@ -15,7 +15,10 @@ namespace Oadm.Notices;
 public sealed record NoticesOptions(string ProductVersion, string? Rid, string BundledNotices, IReadOnlyList<string> AlwaysIncluded,
     string Product = "OADM", string Contents = "the OADM server, the OADM client and the bundled plugins", string BundledSummary = "FFmpeg, fonts, .NET")
 {
-    /// <summary>Plugins with a license of their own (a LICENSE file in the plugin folder, e.g. the OADM PRO plugins), by id.</summary>
+    /// <summary>
+    /// Plugins or parts of plugins with a license of their own (a LICENSE file in the plugin folder or in a folder of it), by
+    /// id or as "id/part": "oadm.pki/Est" and "oadm.pki/Radius" (the EST and 802.1X servers of PKI).
+    /// </summary>
     public IReadOnlyList<string> OwnLicensePlugins { get; init; } = [];
 }
 
@@ -144,7 +147,9 @@ public static partial class NoticesWriter
         sb.Append(CultureInfo.InvariantCulture, $"{options.Product} {options.ProductVersion}{(options.Rid is null ? string.Empty : $" ({options.Rid})")}. {options.Product} itself is licensed under the Apache License 2.0 (LICENSE.txt).\n");
         foreach (var plugin in options.OwnLicensePlugins)
         {
-            sb.Append(CultureInfo.InvariantCulture, $"Except the plugin {plugin}: it has its own license (plugins/{plugin}/LICENSE).\n");
+            var slash = plugin.IndexOf('/', StringComparison.Ordinal);
+            sb.Append(slash < 0 ? "Except the plugin " + plugin : "Except the part " + plugin[(slash + 1)..] + " of the plugin " + plugin[..slash])
+                .Append(": it has its own license (plugins/").Append(plugin).Append("/LICENSE).\n");
         }
         sb.Append(CultureInfo.InvariantCulture, $"This file lists the third-party software in {options.Contents}:\n");
         sb.Append(CultureInfo.InvariantCulture, $"  1. Bundled components ({options.BundledSummary})\n");

@@ -72,7 +72,9 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
   Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor, off by default)
-  Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
+  Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store); one package with
+                                          the core plugins EST server (Est/) and 802.1X server (Radius/), its OADM PRO parts
+                                          (off by default, Turn on on their pages, each with its own source-available LICENSE)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of the chosen cameras (off by default)
@@ -87,8 +89,6 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
   Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of the chosen cameras and their tools (format, check, encryption; off by default)
   Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
-  Oadm.Plugins.Est(.Client)/              OADM PRO core plugin: EST server, cameras enroll and renew certificates from the OADM CA
-                                          (off by default, own source-available LICENSE)
   Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows,
                                           ActionEngine: the devices' action rules over SOAP, DeviceEvents: a device's event list)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
@@ -179,21 +179,24 @@ must never break.
   pinned server certificate; users, roles and permissions, sessions, the audit log; limits on device answers; the
   service's firewall rules and folder checks.
 - **[OADM PRO license](docs/spec/licensing.md)**: a signed license key (the plugin license format, ECDSA P-256) for
-  this server's ID; the public keys in the repo, the private keys never; only PRO plugins read it, **OADM itself is never
-  limited**; Settings card License.
-- **[EST server](docs/spec/est-server.md)**: the first OADM PRO plugin (`oadm.est`, `"pro": true`, its own source-available
-  license): RFC 7030 on TCP 9454, cameras enroll with their Axis device ID and only if OADM manages them, the OADM CA of
-  PKI signs, cameras renew by themselves (renewals the OADM CA issued directly never show Certificate changed), also at
-  sites (a relay of the site node).
+  this server's ID; the public keys in the repo, the private keys never; only PRO plugins and the PRO parts of PKI (EST and
+  802.1X servers) read it, **OADM itself is never limited**; Settings card License.
+- **[EST server](docs/spec/est-server.md)**: a PRO part of PKI (core plugin `oadm.est` in the PKI package, off by default,
+  Turn on on its page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454, cameras enroll
+  with their Axis device ID and only if OADM manages them, the OADM CA of PKI signs, cameras renew by themselves (renewals
+  the OADM CA issued directly never show Certificate changed), also at sites (a relay of the site node).
 - **[Device groups](docs/spec/device-scope.md)** (OADM 4.5): a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
-- **[PKI, the certificate control center](docs/spec/pki.md)** (planned): PKI holds every CA (OADM, previous, Axis device ID,
-  imported) and certificate; services such as EST and 802.1X only select from it; certificates start 5 minutes early and
-  the install dialogs ask when the camera's clock is behind.
-- **[802.1X server](docs/spec/radius-server.md)** (OADM 4.5, OADM PRO `oadm.radius`): RADIUS on UDP 1812 with EAP-TLS for
-  the switch ports, only devices OADM manages with a certificate of the OADM CA pass, fragmentation both ways, a deep
-  session state and plain TLS alert texts, switches changed while it runs, VLANs per rule off by default.
+- **[PKI, the certificate control center](docs/spec/pki.md)** (stages 1 to 3 built, the rest planned): one package with
+  the EST and 802.1X servers (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); PKI holds every
+  CA (OADM, previous, Axis device ID, imported) and certificate; services such as EST and 802.1X only select from it;
+  certificates start 5 minutes early and the install dialogs ask when the camera's clock is behind.
+- **[802.1X server](docs/spec/radius-server.md)** (OADM 4.5, a PRO part of PKI: core plugin `oadm.radius`, off by default,
+  Turn on on its page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
+  manages with a certificate of a CA of an Allow CA policy pass, fragmentation both ways, a deep session state and plain
+  TLS alert texts, switches changed while it runs; its rules (TLS, trusted CAs, VLAN, Block, Revoke) are PKI's policies
+  (docs/spec/pki.md), never settings of its own.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

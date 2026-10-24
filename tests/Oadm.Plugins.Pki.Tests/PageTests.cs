@@ -147,9 +147,8 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.StartsWith("CA valid until ", vm.StatusText, StringComparison.Ordinal);
         Assert.Equal("Not installed on the server", vm.ServerTrustText);
         await Wait.UntilAsync(() => vm.ClientTrustText == "Not installed on this computer");
-        Assert.Equal("365", vm.DeviceCertValidityDays);
-        Assert.Equal("MAC address", vm.Identity.Label);
-        Assert.False(vm.HasPreviousCas);
+        Assert.Empty(vm.PreviousCas);
+        Assert.DoesNotContain(vm.Authorities, a => a.IsPrevious);
         Assert.False(vm.HasChain);
         Assert.False(vm.HasErrors);
         vm.Deactivate();
@@ -314,80 +313,38 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public async Task Settings_errors_stay_under_their_fields_and_save_persists()
-    {
-        using var vm = CreateViewModel();
-        await vm.LoadAsync();
-        Assert.False(vm.HasErrors);
-
-        vm.DeviceCertValidityDays = "abc";
-        Assert.Equal("Enter a whole number from 1 to 3650.", vm.ErrorOf(nameof(vm.DeviceCertValidityDays)));
-        Assert.False(vm.SaveCommand.CanExecute(null));
-        Assert.Equal("Enter a whole number from 1 to 3650.", vm.FormError);
-        vm.DeviceCertValidityDays = "730";
-
-        vm.Identity = vm.IdentityChoices.Single(c => c.Value == Dot1xIdentity.Custom);
-        Assert.True(vm.IsCustomIdentity);
-        vm.CustomIdentity = "cam-{mac}";
-        Assert.Equal("Unknown placeholder {mac}. Use {serial} or {hostName}.", vm.ErrorOf(nameof(vm.CustomIdentity)));
-        vm.CustomIdentity = "cam-{serial}";
-
-        vm.RadiusCa = vm.RadiusChoices.Single(c => c.Value == RadiusCaSource.Imported);
-        Assert.Equal("Import the CA certificate of the RADIUS server.", vm.ErrorOf(nameof(vm.RadiusCa)));
-        await vm.ApplyRadiusFileAsync(new PickedFile("x.crt", [1, 2, 3]));
-        Assert.Equal("The file is not a certificate (.crt or .cer, PEM or DER).", vm.ErrorOf(nameof(vm.RadiusCa)));
-        using var radius = TestCa.Root("Corp RADIUS CA");
-        await vm.ApplyRadiusFileAsync(new PickedFile("radius.cer", radius.RawData));
-        Assert.Null(vm.ErrorOf(nameof(vm.RadiusCa)));
-        Assert.StartsWith("Corp RADIUS CA, valid until ", vm.RadiusCaLine, StringComparison.Ordinal);
-
-        vm.EapolVersion = vm.EapolChoices[1];
-        await vm.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("Saved", vm.SaveResult);
-        Assert.False(vm.HasErrors);
-        var stored = PkiJson.Deserialize<PkiConfig>(await _pki.Settings.GetAsync(PkiStore.ConfigKey, CancellationToken.None));
-        Assert.Equal(730, stored.DeviceCertValidityDays);
-        Assert.Equal(2, stored.Dot1x.EapolVersion);
-        Assert.Equal("cam-{serial}", stored.Dot1x.CustomIdentity);
-        Assert.NotNull(stored.Dot1x.RadiusCaPem);
-
-        await vm.ViewRadiusCaCommand.ExecuteAsync(null);
-        Assert.Contains("Subject: CN=Corp RADIUS CA, O=Acme", Assert.Single(_ctx.Messages).Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Previous_cas_are_exported_and_removed_after_confirmation()
+    public async Task Previous_cas_are_rows_of_the_list_exported_and_removed_after_confirmation()
     {
         await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
         using var vm = CreateViewModel();
         await vm.LoadAsync();
-        var row = Assert.Single(vm.PreviousCas);
-        Assert.Equal("OADM Root CA SERVER01", row.Name);
+        Assert.Equal("OADM Root CA SERVER01", Assert.Single(vm.PreviousCas).Name);
+        var row = Assert.Single(vm.Authorities, a => a.IsPrevious); // once: a row of the list of CAs
+        Assert.Equal(("OADM Root CA SERVER01", true, true), (row.Name, row.IsExportable, row.IsRemovable));
+        Assert.False(vm.Authorities.Single(a => a.Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm).IsRemovable);
 
-        await vm.ExportPreviousCommand.ExecuteAsync(row);
+        await vm.ExportAuthorityCommand.ExecuteAsync(row);
         Assert.Equal("OADM Root CA SERVER01.crt", Assert.Single(_dialogs.FakeFiles.Saved).FileName);
 
         _ctx.ConfirmAnswer = false;
-        await vm.RemovePreviousCommand.ExecuteAsync(row);
+        await vm.RemoveAuthorityCommand.ExecuteAsync(row);
         Assert.Single(vm.PreviousCas);
         _ctx.ConfirmAnswer = true;
-        await vm.RemovePreviousCommand.ExecuteAsync(row);
+        await vm.RemoveAuthorityCommand.ExecuteAsync(row);
         Assert.Empty(vm.PreviousCas);
-        Assert.False(vm.HasPreviousCas);
+        Assert.DoesNotContain(vm.Authorities, a => a.IsPrevious);
         Assert.Equal(2, _ctx.Confirmations.Count);
     }
 
     [Fact]
-    public async Task Live_state_events_update_the_page_but_keep_what_the_user_typed()
+    public async Task Live_state_events_update_the_page()
     {
         using var vm = CreateViewModel();
         vm.Activate();
         await Wait.UntilAsync(() => vm.HasCa && _pki.Hub.WatcherCount(PkiPluginInfo.PluginId) == 1);
-        vm.DeviceCertValidityDays = "100";
 
         await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("From another client", null, 10, true));
         await Wait.UntilAsync(() => vm.CaName == "From another client");
-        Assert.Equal("100", vm.DeviceCertValidityDays);
         vm.Deactivate();
     }
 
@@ -474,10 +431,11 @@ public sealed class HeadlessPageTests
 
                 // Imported intermediate, previous CA, imported RADIUS CA with a custom identity.
                 await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null, true));
-                await pki.InvokeAsync<PkiReply>(PkiMethods.SaveSettings, new SaveSettingsRequest(new PkiConfig
+                var dot1x = pki.Policies.FirstOf(Policies.PolicyKinds.Dot1xCertificate)!;
+                await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, dot1x with
                 {
-                    Dot1x = new Dot1xConfig { EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "axis-{serial}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = radiusPem },
-                }));
+                    EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "axis-{serial}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = radiusPem,
+                });
                 using var vm2 = new PkiViewModel(ctx, new FakeClientTrust(), new PkiClientSettingsStore(settingsFile));
                 view.DataContext = vm2;
                 await vm2.LoadAsync();
@@ -523,7 +481,7 @@ public sealed class HeadlessPageTests
                 var backupError = backupVm.ErrorOf(nameof(BackupViewModel.ConfirmPassword));
                 backup.Close();
 
-                return (firstSummary, vm2.HasChain, vm2.ChainText, vm2.HasPreviousCas, keyPasswordError, backupError);
+                return (firstSummary, vm2.HasChain, vm2.ChainText, HasPreviousCas: vm2.PreviousCas.Count > 0, keyPasswordError, backupError);
             }, CancellationToken.None);
 
             Assert.False(checks.firstSummary);
@@ -539,6 +497,14 @@ public sealed class HeadlessPageTests
             GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
             File.Delete(settingsFile);
         }
+    }
+
+    internal static Window Host(Control view, int width, int height)
+    {
+        var window = Host(view);
+        window.Width = width;
+        window.Height = height;
+        return window;
     }
 
     internal static Window Host(Control view)

@@ -1,0 +1,175 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Est.Client"
+             xmlns:net="using:Oadm.Sdk.Network"
+             xmlns:srv="using:Oadm.Plugins.Pki.Client.Servers"
+             x:Class="Oadm.Plugins.Est.Client.EstView"
+             x:DataType="vm:EstViewModel"
+             ui:PageHeader.Subtitle="Cameras get and renew their certificates from the OADM CA by themselves.">
+  <!-- Own cards (ICorePluginPage.HasOwnCards): General and Profiles with Save and the status left of it in one card, the
+       enrollments and, only when there are any, the certificates the cameras did not renew in time in their own card below
+       (docs/spec/pki.md "Pages of the services after this"). Shared controls and theme classes only. -->
+  <Panel>
+    <!-- The server does not run (turned off, no OADM PRO, a start that failed): only General with Turn on (docs/spec/pki.md
+         "One plugin"). -->
+    <Border Classes="card" HorizontalAlignment="Left" MinWidth="360" VerticalAlignment="Top" IsVisible="{Binding Server.ShowOffState}">
+      <StackPanel Classes="form">
+        <TextBlock Classes="cardTitle" Text="General" />
+        <srv:ServerSwitchView DataContext="{Binding Server}" HorizontalAlignment="Left" />
+      </StackPanel>
+    </Border>
+
+  <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding Server.Running}">
+    <!-- Two columns: General (listen on, port, enrollments kept) left, the profiles right; Save with the status below, at
+         the right edge. -->
+    <Border Grid.Row="0" Classes="card">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
+      <!-- Side by side while they fit, Profiles below General on a narrow page; Save at the right edge of the two. -->
+      <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="48" LineSpacing="24">
+      <StackPanel Classes="form">
+        <TextBlock Classes="sectionTitle" Text="General" />
+        <!-- Same shared select as the NTP and DHCP server pages. -->
+        <ui:FormField Label="Listen on" InputWidth="320">
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
+                    ToolTip.Tip="The interface the cameras reach this server on.">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="net:InterfaceOption">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FormField>
+        <ui:FormField Label="Port">
+          <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+        </ui:FormField>
+        <ui:FormField Label="Enrollments kept">
+          <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
+        </ui:FormField>
+        <ui:FormField Label="Issued by">
+          <TextBlock Text="{Binding IssuingCa}" TextTrimming="CharacterEllipsis" />
+        </ui:FormField>
+        <!-- Who may enroll and which CAs sign in are PKI's policies (Enrollment, Sign-in CA): how many apply, and the way
+             there, like the 802.1X page. Not for users limited to a device group (the policies are server-wide). -->
+        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding ShowsPolicies}">
+          <TextBlock Classes="secondary" Text="{Binding PoliciesText}" VerticalAlignment="Center" />
+          <Button Classes="link" Content="Edit in PKI" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Classes="warning" Text="{Binding PolicyProblem}" TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"
+                   IsVisible="{Binding PolicyProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="sectionTitle" Text="Profiles" />
+        <Grid ColumnDefinitions="180,12,150,12,202,12,Auto,12,Auto">
+          <TextBlock Grid.Column="0" Classes="secondary" Text="Profile" />
+          <TextBlock Grid.Column="2" Classes="secondary" Text="Use" />
+          <TextBlock Grid.Column="4" Classes="secondary" Text="Issuing policy" />
+          <TextBlock Grid.Column="6" Classes="secondary" Text="On" />
+        </Grid>
+        <!-- At most four rows (one per use): no virtualization needed. Inputs stay at the top so an error below one does
+             not move the others; the check box and Remove sit centered in an input-high box. -->
+        <ItemsControl ItemsSource="{Binding Profiles}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ProfileRowViewModel">
+              <Grid ColumnDefinitions="180,12,150,12,202,12,Auto,12,Auto" Margin="0,0,0,6">
+                <TextBox Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Top" IsReadOnly="{Binding !MayManage}" />
+                <ComboBox Grid.Column="2" ItemsSource="{Binding UseChoices}" SelectedItem="{Binding Use}" HorizontalAlignment="Stretch"
+                          VerticalAlignment="Top" IsEnabled="{Binding MayManage}" />
+                <ComboBox Grid.Column="4" ItemsSource="{Binding PolicyChoices}" SelectedItem="{Binding Policy}" HorizontalAlignment="Stretch"
+                          VerticalAlignment="Top" IsEnabled="{Binding MayManage}" ToolTip.Tip="{Binding PolicySummary}" />
+                <Panel Grid.Column="6" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top">
+                  <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center" IsEnabled="{Binding MayManage}" />
+                </Panel>
+                <Panel Grid.Column="8" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top" IsVisible="{Binding MayManage}">
+                  <Button Classes="link danger" Content="Remove" VerticalAlignment="Center"
+                          Command="{Binding $parent[UserControl].((vm:EstViewModel)DataContext).RemoveProfileCommand}" CommandParameter="{Binding}" />
+                </Panel>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddProfileCommand}" IsVisible="{Binding MayManage}">
+          <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add profile" />
+        </Button>
+      </StackPanel>
+      </WrapPanel>
+
+      <DockPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
+                ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+        <!-- Turn off (for users who may change the server) between the status of the server and Save. -->
+        <srv:ServerSwitchView DockPanel.Dock="Right" DataContext="{Binding Server}" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <ui:StatusChip VerticalAlignment="Center" Margin="0,0,12,0"
+                       Text="{Binding StatusText}" IsOk="{Binding StatusOk}" IsError="{Binding !StatusOk}" />
+      </DockPanel>
+      <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding ListenersText}" TextWrapping="Wrap" HorizontalAlignment="Right"
+                 TextAlignment="Right" Margin="0,6,0,0" IsVisible="{Binding HasListenerProblems}" />
+      <TextBlock Grid.Row="3" Classes="error" Text="{Binding ActionError}" TextWrapping="Wrap" HorizontalAlignment="Right"
+                 IsVisible="{Binding ActionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </Grid>
+    </Border>
+
+    <!-- ============================== Enrollments ============================== -->
+    <Border Grid.Row="1" Classes="card">
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <!-- Like the event rule log: title, Delete all (red, confirmed), search at the right. -->
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
+        <TextBlock Classes="cardTitle" Text="Enrollments" VerticalAlignment="Center" />
+        <Button Classes="toolbar" Command="{Binding ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">
+          <ui:IconLabel Icon="{StaticResource Icon.details}" Text="View certificate" Spacing="8" />
+        </Button>
+        <Button Classes="toolbar danger" Command="{Binding ClearEnrollmentsCommand}" IsVisible="{Binding MayManage}">
+          <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
+        </Button>
+      </StackPanel>
+      <ui:SearchBox Grid.Column="2" Text="{Binding EnrollmentSearch}" Placeholder="Search device, profile, result, reason" Width="260" />
+    </Grid>
+    <Panel Grid.Row="1" Margin="0,8,0,0">
+      <DataGrid x:Name="EnrollmentsGrid" ItemsSource="{Binding Enrollments}" SelectedItem="{Binding SelectedEnrollment}" Classes="wrapRows" IsReadOnly="True"
+                CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single" MinHeight="140">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Time" Width="160" Binding="{Binding Time}" SortMemberPath="TimeSortKey" x:DataType="vm:EnrollmentRow" />
+          <DataGridTextColumn Header="Device" Width="160" Binding="{Binding Device}" x:DataType="vm:EnrollmentRow" />
+          <DataGridTextColumn Header="Profile" Width="110" Binding="{Binding Profile}" x:DataType="vm:EnrollmentRow" />
+          <DataGridTextColumn Header="Kind" Width="90" Binding="{Binding Kind}" x:DataType="vm:EnrollmentRow" />
+          <DataGridTemplateColumn Header="Result" Width="*" SortMemberPath="Result" x:DataType="vm:EnrollmentRow">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:EnrollmentRow">
+                <ui:StatusChip Margin="8,0" Text="{Binding Reason}" IsOk="{Binding Ok}" IsError="{Binding Refused}" MaxLines="2" ToolTip.Tip="{Binding Reason}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Classes="secondary" Text="{Binding EnrollmentsEmptyText}" IsVisible="{Binding EnrollmentsEmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+    </Panel>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="{DynamicResource Oadm.GapTop}" IsVisible="{Binding HasNotRenewed}">
+      <TextBlock Classes="sectionTitle" Text="Not renewed" VerticalAlignment="Center" />
+      <TextBlock Classes="secondary" Text="{Binding NotRenewedSummary}" VerticalAlignment="Center" />
+    </StackPanel>
+    <DataGrid Grid.Row="3" Margin="0,8,0,0" ItemsSource="{Binding NotRenewed}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+              SelectionMode="Single" MaxHeight="240" IsVisible="{Binding HasNotRenewed}">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:NotRenewedRow" />
+        <DataGridTextColumn Header="Profile" Width="110" Binding="{Binding Profile}" x:DataType="vm:NotRenewedRow" />
+        <DataGridTextColumn Header="Valid until" Width="150" Binding="{Binding ValidUntil}" SortMemberPath="ValidUntilSortKey" x:DataType="vm:NotRenewedRow" />
+        <DataGridTemplateColumn Header="State" Width="140" SortMemberPath="State" x:DataType="vm:NotRenewedRow">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:NotRenewedRow">
+              <ui:StatusChip Margin="8,0" Text="{Binding State}" IsError="True" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+    </Grid>
+    </Border>
+  </Grid>
+
+    <ui:LoadingOverlay Text="Reading the EST server" IsVisible="{Binding IsLoading}" />
+  </Panel>
+</UserControl>

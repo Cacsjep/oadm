@@ -27,6 +27,7 @@ public sealed class DeviceGroupTests : IAsyncLifetime
         _core.Add(_inside);
         _core.Add(_outside);
         _core.FakeServices.Offer<IDeviceCertificateAuthority>(_ca);
+        await _core.Settings.SetAsync(Oadm.Plugins.Pki.Servers.ServerSwitch<EstService>.SettingKey, "true", CancellationToken.None); // turned on
         await _plugin.StartAsync(_core, CancellationToken.None);
     }
 

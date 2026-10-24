@@ -105,42 +105,6 @@ public sealed partial class PkiService
     public Task<int> ImportFoundAsync(IDeviceInfo device, IEnumerable<(string Alias, string Pem)> certificates, CancellationToken ct) =>
         _issued.ImportFoundAsync(device, certificates, KnownCaCertificates(), ct);
 
-    /// <summary>
-    /// One page for the page: <paramref name="devices"/> are the caller's devices; <paramref name="onlyListed"/> for a user
-    /// limited to a group (certificates of other and of removed devices are left out).
-    /// </summary>
-    internal CertificatesReply GetCertificates(CertificatesRequest request, IReadOnlyList<IDeviceInfo> devices, bool onlyListed)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(devices);
-        var byId = new Dictionary<Guid, IDeviceInfo>(devices.Count);
-        foreach (var device in devices)
-        {
-            byId[device.Id] = device;
-        }
-
-        var limit = Math.Clamp(request.Limit, 1, PkiPluginInfo.CertificatesPageSize);
-        var query = new IssuedCertificateQuery
-        {
-            State = request.State is { } state && Enum.IsDefined(state) ? state : null,
-            Purpose = DeviceCertificatePurposes.All.Contains(request.Purpose ?? string.Empty, StringComparer.Ordinal) ? request.Purpose : null,
-            Source = IssuedCertificateSources.All.Contains(request.Source ?? string.Empty, StringComparer.Ordinal) ? request.Source : null,
-            Search = request.Search is { Length: > 100 } text ? text[..100] : request.Search,
-            Offset = Math.Max(0, request.Offset),
-            Limit = limit,
-        };
-        var warningDays = _config.ExpiryWarningDays;
-        var page = _issued.Query(query, byId, onlyListed, warningDays);
-        if (page.Rows.Count == 0 && page.Total > 0 && query.Offset > 0)
-        {
-            // Fewer rows than before (a filter, revoked rows): the last page.
-            query = query with { Offset = (page.Total - 1) / limit * limit };
-            page = _issued.Query(query, byId, onlyListed, warningDays);
-        }
-
-        return new CertificatesReply { Rows = page.Rows, Total = page.Total, Offset = query.Offset, WarningDays = warningDays };
-    }
-
     /// <summary>In-process callers: one page over every device.</summary>
     internal async Task<CertificatesReply> GetCertificatesForEveryDeviceAsync(CertificatesRequest request, CancellationToken ct) =>
         GetCertificates(request, await SystemDevicesAsync(ct).ConfigureAwait(false), onlyListed: false);
@@ -150,16 +114,34 @@ public sealed partial class PkiService
     {
         ArgumentNullException.ThrowIfNull(query);
         var devices = await SystemDevicesAsync(ct).ConfigureAwait(false);
-        return _issued.Query(query, devices.ToDictionary(d => d.Id), onlyListedDevices: false, _config.ExpiryWarningDays);
+        return _issued.Query(query, devices.ToDictionary(d => d.Id), onlyListedDevices: false, WarningDaysFor(devices));
     }
 
     /// <summary>
-    /// One listed certificate in plain names. A certificate of a device outside <paramref name="view"/> answers like one
-    /// that is not listed.
+    /// One listed certificate in plain names, by its serial number (a device certificate) or its row id (a CA, a server, a
+    /// certificate created, signed or imported here). A certificate of a device outside <paramref name="view"/>, and every row
+    /// that is no device certificate for a user limited to a group, answers like one that is not listed.
     /// </summary>
     internal async Task<CertificateDetailsReply> GetCertificateAsync(CertificateDetailsRequest request, ViewedSet? view, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (CertificateRowDer(request.SerialNumber) is { } rowDer)
+        {
+            if (view is not null || rowDer.Der is null)
+            {
+                return new CertificateDetailsReply { Error = PkiCertificateTexts.NotListed };
+            }
+
+            try
+            {
+                return new CertificateDetailsReply { Certificate = CertificateDescriber.Describe(rowDer.Der), Revocation = rowDer.Serial is { } serial ? _issued.FindRevocation(serial) : null };
+            }
+            catch (CryptographicException)
+            {
+                return new CertificateDetailsReply { Error = PkiCertificateTexts.NoCopy };
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(request.SerialNumber) || _issued.Find(request.SerialNumber) is not { } entry || (view is not null && !view.Contains(entry.DeviceId)))
         {
             return new CertificateDetailsReply { Error = PkiCertificateTexts.NotListed };
@@ -264,7 +246,8 @@ public sealed partial class PkiService
     private static RevokeReply Reply(RevokeResult result) =>
         new() { Revoked = result.Revoked, AlreadyRevoked = result.AlreadyRevoked, NotFound = result.NotFound };
 
-    private async Task<IReadOnlyList<IDeviceInfo>> SystemDevicesAsync(CancellationToken ct)
+    /// <summary>Every managed device; none for a host (or test) without a device list.</summary>
+    internal async Task<IReadOnlyList<IDeviceInfo>> SystemDevicesAsync(CancellationToken ct)
     {
         if (_systemDevices is null)
         {

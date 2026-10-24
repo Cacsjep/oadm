@@ -30,11 +30,11 @@
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <!-- Oadm.Client supplies the host theme and the host page view for the page tests. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
-    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Est\Oadm.Plugins.Est.csproj" />
-    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Est.Client\Oadm.Plugins.Est.Client.csproj" />
-    <!-- The hardware test: the real VAPIX client, the dev cameras and PKI's web server settings (to restore the camera). -->
-    <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
+    <!-- The EST server is part of the PKI package (Est/ in both projects). -->
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki\Oadm.Plugins.Pki.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki.Client\Oadm.Plugins.Pki.Client.csproj" />
+    <!-- The hardware test: the real VAPIX client and the dev cameras. -->
+    <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
     <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
   </ItemGroup>
 </Project>

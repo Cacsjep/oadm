@@ -96,6 +96,10 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
+- The **EST server** and the **802.1X server** are part of **PKI** now, with their own pages as before. Turn each on with
+  **Turn on** on its page (it needs OADM PRO; without it the button is off); **Turn off** next to Save stops it. A server
+  whose plugin was on before the update stays on, with its settings, switches, enrollments and log. The Plugins page no
+  longer lists them; the installers remove their old plugin folders.
 - PKI: the device counts of the page and of the Replace CA question count only certificates still in use, not ended,
   revoked or deleted ones.
 - The **Users** page is now **Permissions**: users and device groups side by side (on small screens one below the

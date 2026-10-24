@@ -65,6 +65,28 @@ public abstract class PkiTaskBase : ITaskPlugin
         }).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// "Check compatibility" of a task that issues with a policy of <paramref name="kind"/>: the CA, the policy of the run
+    /// with the dialog's values (<see cref="IssuingChoice.Resolve"/>), a fresh config/discover (cert v1), the API list and
+    /// the key type the device's keystore offers. Everything before the first write.
+    /// </summary>
+    protected async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, Policies.PkiPolicy Policy)> CheckIssuingTaskAsync(
+        ITaskExecutionContext ctx, IDeviceInfo device, string kind, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(device);
+        return await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
+        {
+            var (service, ca) = CertificateDeployment.RequireCa(Service);
+            var policy = IssuingChoice.Resolve(service, kind, payloadJson);
+            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
+            var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
+            await IssuingChoice.RequireKeyAsync(ctx.Vapix, policy, ct).ConfigureAwait(false);
+            step.Complete($"cert {support.Version} · {IssuingChoice.Describe(policy, Ca.CaCertificates.CommonName(ca.Certificate))}");
+            return (service, ca, apis, policy);
+        }).ConfigureAwait(false);
+    }
+
     /// <summary>The web server settings; a missing web server TLS service fails with "Nothing was changed".</summary>
     protected static async Task<WebServerTlsConfiguration> ReadWebServerAsync(ITaskExecutionContext ctx, CancellationToken ct)
     {

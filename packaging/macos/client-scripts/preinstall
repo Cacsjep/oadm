@@ -1,0 +1,5 @@
+#!/bin/sh
+# OADM client package preinstall: the EST and 802.1X servers are parts of PKI since OADM 4.5, so their plugin folders of
+# 4.1 go (an installer upgrade keeps files the new package no longer has). The client would skip them anyway.
+rm -rf /Applications/OADM.app/Contents/Resources/plugins/oadm.est /Applications/OADM.app/Contents/Resources/plugins/oadm.radius
+exit 0

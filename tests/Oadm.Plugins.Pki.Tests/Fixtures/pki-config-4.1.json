@@ -1,0 +1,1 @@
+{"deviceCertValidityDays":730,"expiryWarningDays":45,"dot1x":{"eapolVersion":2,"identity":"mac","customIdentity":"","radiusCa":"oadm","radiusCaPem":null}}

@@ -12,19 +12,23 @@ using Oadm.Sdk.Certificates;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The list of certificates the OADM CA issued (SDK 0.4.0), one control for the PKI Certificates tab and the certificate
-/// choice of the 802.1X server's Revoke: the page's buttons (<see cref="Toolbar"/>) left, the filters (state, use, issued
-/// by) and the search right, the progress row of a later read or a write of the page (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid (device, use, issued by, valid from,
-/// valid until, serial number, state chip with the revocation as tooltip; several rows can be chosen, a double click is
-/// View certificate), the empty line, the overlay of the first read, an error of the whole table directly below it and the
-/// pages (Previous / Next, "1-500 of 12,345"). The DataContext is an <see cref="IssuedCertificateListViewModel"/>; the
-/// grid's selection reaches it in one step.
+/// The list of certificates (SDK 0.4.0), the Certificates card of the PKI page: the page's buttons (<see cref="Toolbar"/>)
+/// left, the filters (state, use, issued by) and the search right, the progress row of a later read or a write of the page
+/// (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid (name or device, use, issued by, valid
+/// until, used by, state chip with the revocation as tooltip, the page's row buttons of <see cref="RowActions"/>; several
+/// rows can be chosen, a double click is View certificate), the empty line, the overlay of the first read, an error of the
+/// whole table directly below it and the pages (Previous / Next, "1-500 of 12,345"). The DataContext is an
+/// <see cref="IssuedCertificateListViewModel"/>; the grid's selection reaches it in one step.
 /// </summary>
 public sealed class IssuedCertificateList : UserControl
 {
     /// <summary>The page's buttons left of the filters (View certificate, Revoke).</summary>
     public static readonly StyledProperty<Control?> ToolbarProperty =
         AvaloniaProperty.Register<IssuedCertificateList, Control?>(nameof(Toolbar));
+
+    /// <summary>The row buttons of the page (the last column, e.g. View, Export, Revoke, Delete); null: no such column.</summary>
+    public static readonly StyledProperty<IDataTemplate?> RowActionsProperty =
+        AvaloniaProperty.Register<IssuedCertificateList, IDataTemplate?>(nameof(RowActions));
 
     /// <summary>The context menu of the grid's rows.</summary>
     public static readonly StyledProperty<ContextMenu?> RowContextMenuProperty =
@@ -33,6 +37,7 @@ public sealed class IssuedCertificateList : UserControl
     private readonly ContentControl _toolbar = new() { VerticalAlignment = VerticalAlignment.Center };
     private IssuedCertificateListViewModel? _vm;
     private bool _restoring;
+    private DataGridTemplateColumn? _actions;
 
     public IssuedCertificateList()
     {
@@ -44,12 +49,11 @@ public sealed class IssuedCertificateList : UserControl
             SelectionMode = DataGridSelectionMode.Extended,
             MinHeight = 200,
         };
-        Table.Columns.Add(TextColumn("Device", nameof(IssuedCertificateRow.Device), new DataGridLength(1, DataGridLengthUnitType.Star)));
-        Table.Columns.Add(TextColumn("Use", nameof(IssuedCertificateRow.Use), new DataGridLength(120)));
-        Table.Columns.Add(TextColumn("Issued by", nameof(IssuedCertificateRow.IssuedBy), new DataGridLength(100)));
-        Table.Columns.Add(TextColumn("Valid from", nameof(IssuedCertificateRow.ValidFrom), new DataGridLength(110)));
+        Table.Columns.Add(TextColumn("Name", nameof(IssuedCertificateRow.Name), new DataGridLength(1.4, DataGridLengthUnitType.Star)));
+        Table.Columns.Add(TextColumn("Use", nameof(IssuedCertificateRow.Use), new DataGridLength(110)));
+        Table.Columns.Add(TextColumn("Issued by", nameof(IssuedCertificateRow.IssuedBy), new DataGridLength(1, DataGridLengthUnitType.Star)));
         Table.Columns.Add(TextColumn("Valid until", nameof(IssuedCertificateRow.ValidUntil), new DataGridLength(110)));
-        Table.Columns.Add(TextColumn("Serial number", nameof(IssuedCertificateRow.SerialNumber), new DataGridLength(2, DataGridLengthUnitType.Star)));
+        Table.Columns.Add(TextColumn("Used by", nameof(IssuedCertificateRow.UsedBy), new DataGridLength(1, DataGridLengthUnitType.Star)));
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "State",
@@ -85,11 +89,12 @@ public sealed class IssuedCertificateList : UserControl
         filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.StateChoices), nameof(IssuedCertificateListViewModel.StateFilter)));
         filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.UseChoices), nameof(IssuedCertificateListViewModel.UseFilter)));
         filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.SourceChoices), nameof(IssuedCertificateListViewModel.SourceFilter)));
-        var search = new SearchBox { Placeholder = "Search device, serial number", Width = 260 };
+        var search = new SearchBox { Placeholder = "Search", Width = 260 };
         search.Bind(SearchBox.TextProperty, new Binding(nameof(IssuedCertificateListViewModel.Search)) { Mode = BindingMode.TwoWay });
         filters.Children.Add(search);
-        var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 16 };
-        Grid.SetColumn(filters, 2);
+        // The filters take the rest of the row (not Auto): on a narrow card they wrap, the search box below, never cut off.
+        var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 16 };
+        Grid.SetColumn(filters, 1);
         bar.Children.AddRange([_toolbar, filters]);
 
         var progress = new ProgressRow { Margin = new Thickness(0, 8, 0, 0) };
@@ -136,6 +141,13 @@ public sealed class IssuedCertificateList : UserControl
         set => SetValue(ToolbarProperty, value);
     }
 
+    /// <inheritdoc cref="RowActionsProperty"/>
+    public IDataTemplate? RowActions
+    {
+        get => GetValue(RowActionsProperty);
+        set => SetValue(RowActionsProperty, value);
+    }
+
     /// <inheritdoc cref="RowContextMenuProperty"/>
     public ContextMenu? RowContextMenu
     {
@@ -166,6 +178,21 @@ public sealed class IssuedCertificateList : UserControl
         else if (change.Property == RowContextMenuProperty)
         {
             Table.ContextMenu = RowContextMenu;
+        }
+        else if (change.Property == RowActionsProperty)
+        {
+            if (_actions is not null)
+            {
+                Table.Columns.Remove(_actions);
+                _actions = null;
+            }
+
+            if (RowActions is { } template)
+            {
+                // A fixed width: an Auto column takes the width of the first rows only and cuts off wider buttons further down.
+                _actions = new DataGridTemplateColumn { Width = new DataGridLength(250), CellTemplate = template };
+                Table.Columns.Add(_actions);
+            }
         }
     }
 

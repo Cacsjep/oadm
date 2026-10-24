@@ -137,6 +137,13 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
             try
             {
                 string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
+                if (packageId is not null && MergedPackages.Contains(packageId))
+                {
+                    // A folder of the EST or 802.1X server left from OADM 4.1: both are pages of PKI now.
+                    LogMerged(_logger, packageId, dll);
+                    continue;
+                }
+
                 if (packageId is not null && _loadedPackages.Contains(packageId))
                 {
                     // An earlier root (a --plugin-dir build output) has this package already: that copy wins.
@@ -216,6 +223,15 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
 
     /// <summary>Packages of the root being loaded (one package may have several client dlls).</summary>
     private readonly HashSet<string> _rootPackages = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Packages of OADM 4.1 that are parts of PKI now (docs/spec/pki.md "One plugin", the server's
+    /// <c>Oadm.Core.Plugins.MergedPlugins.Ids</c>): a folder of one is never loaded.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> MergedPackages = new HashSet<string>(["oadm.est", "oadm.radius"], StringComparer.OrdinalIgnoreCase);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client plugin {PackageId} in {Path} skipped: Merged into PKI")]
+    private static partial void LogMerged(ILogger logger, string packageId, string path);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Client plugin {PackageId} in {Path} skipped: an earlier folder (--plugin-dir) has it")]
     private static partial void LogSkipped(ILogger logger, string packageId, string path);

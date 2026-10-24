@@ -15,12 +15,6 @@ public static class PkiConfirmations
     public static (string Title, string Message, string Confirm) HttpsDisable(int devices) =>
         ("Disable HTTPS", $"Disable HTTPS on {DeviceCount(devices)}? {PkiTaskIds.HttpsDisableWarning} OADM connects to them over HTTP afterwards.", "Disable");
 
-    /// <summary>"Enable IEEE 802.1X on 3 devices?" + the warning and the settings it uses.</summary>
-    public static (string Title, string Message, string Confirm) Dot1xEnable(int devices) =>
-        ("Enable IEEE 802.1X",
-         $"Enable IEEE 802.1X on {DeviceCount(devices)}? {PkiTaskIds.Dot1xWarning} The devices get a client certificate from the OADM CA and the 802.1X settings of the PKI page.",
-         "Enable");
-
     public static string DeviceCount(int devices) =>
         devices == 1 ? "1 device" : string.Create(CultureInfo.InvariantCulture, $"{devices:N0} devices");
 }
@@ -38,33 +32,66 @@ public sealed class HttpsDisableDialog : ITaskPluginDialog
     }
 }
 
-/// <summary>"Enable IEEE 802.1X": the shared confirmation popup only; the settings come from the PKI page.</summary>
+/// <summary>"Enable IEEE 802.1X": the policy and its values (<see cref="IssueCertificateWindow"/>, with the warning), then the clock check.</summary>
 public sealed class Dot1xEnableDialog : ITaskPluginDialog
 {
     public string PluginId => PkiTaskIds.Dot1xEnable;
 
-    public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
-    {
-        ArgumentNullException.ThrowIfNull(devices);
-        var (title, message, confirm) = PkiConfirmations.Dot1xEnable(devices.Count);
-        if (devices.Count == 0 || !await MessageWindow.ConfirmAsync(owner, title, message, confirm).ConfigureAwait(true))
-        {
-            return null;
-        }
-
-        return await ClockCheck.RunAsync(ctx, devices, owner, title).ConfigureAwait(true);
-    }
+    public Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner) =>
+        IssueDialog.ShowAsync(ctx, devices, owner, Policies.PolicyKinds.Dot1xCertificate);
 }
 
-/// <summary>"Enable HTTPS": the clock check only (no window of its own); the payload carries the answer.</summary>
+/// <summary>"Enable HTTPS": the policy and its values (<see cref="IssueCertificateWindow"/>), then the clock check.</summary>
 public sealed class HttpsEnableDialog : ITaskPluginDialog
 {
     public string PluginId => PkiTaskIds.HttpsEnable;
 
-    public Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
+    public Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner) =>
+        IssueDialog.ShowAsync(ctx, devices, owner, Policies.PolicyKinds.HttpsCertificate);
+}
+
+/// <summary>
+/// The flow of Enable HTTPS and Enable IEEE 802.1X: the dialog reads the policies (Cancel stays usable), Enable closes it with
+/// the policy and the values, then the camera clocks are read and the question asked when one is behind. The payload:
+/// <see cref="IssuePayload"/> with the answer; null when the user cancelled anywhere.
+/// </summary>
+public static class IssueDialog
+{
+    public static async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner, string kind)
     {
         ArgumentNullException.ThrowIfNull(devices);
-        return devices.Count == 0 ? Task.FromResult<string?>(null) : ClockCheck.RunAsync(ctx, devices, owner, PkiTaskIds.HttpsEnableName);
+        if (devices.Count == 0)
+        {
+            return null;
+        }
+
+        var vm = new IssueCertificateViewModel(ctx, devices, kind);
+        var window = new IssueCertificateWindow();
+        PkiDialogs.Attach(window, vm);
+        using var cancel = new CancellationTokenSource();
+        window.Closed += (_, _) => cancel.Cancel();
+        var load = LoadAsync(vm, cancel.Token);
+        await window.ShowDialog(owner).ConfigureAwait(true);
+        await load.ConfigureAwait(true);
+        if (!vm.Completed || vm.Payload is not { } payload)
+        {
+            return null;
+        }
+
+        var clock = await ClockCheck.RunAsync(ctx, devices, owner, vm.Title).ConfigureAwait(true);
+        return clock is null ? null : PkiJson.Serialize(payload with { ClockConfirmed = Oadm.Plugins.DeviceClocks.CameraClock.Confirmed(clock) });
+    }
+
+    private static async Task LoadAsync(IssueCertificateViewModel vm, CancellationToken ct)
+    {
+        try
+        {
+            await vm.LoadAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // the dialog closed while reading
+        }
     }
 }
 
