@@ -280,6 +280,31 @@ public sealed class CorePluginHostTests : IAsyncLifetime
 
         Assert.Equal(CorePluginState.Faulted, _host.GetStatus("core.vlan").State);
         Assert.Equal("Vlan 20", protectedTags.RefusalFor(["Vlan 20"]));
+        Assert.Null(protectedTags.ChangeRefusalFor("Vlan 20")); // a faulted plugin's tags are renamed or deleted freely
+    }
+
+    [Fact]
+    public async Task AProPluginsTagsAreRenamedOrDeletedOnlyWhileItRunsButStayProtectedForGroupUsersWhenTheLicenseEnds()
+    {
+        var protectedTags = new Oadm.Core.Devices.ProtectedTagRegistry();
+        await _host.DisposeAsync();
+        _host = new CorePluginHost(_registry, _devices, _vapix, _engine, _settings, protectedTags: protectedTags);
+        var pro = Sdk.Testing.FakeProLicense.ActivePro();
+        _registry.Pro = pro;
+        var plugin = new TestCorePlugin("core.vlan", []);
+        Assert.True(_registry.RegisterCorePlugin(plugin, new PluginOrigin("vlan.pkg", "1.0.0", null) { Pro = true, EnabledByDefault = true }));
+
+        await _host.StartAllAsync(CancellationToken.None);
+        Assert.Equal(CorePluginState.Running, _host.GetStatus("core.vlan").State);
+        plugin.Context!.ProtectedTags!.Protect(["Vlan 20"], name => "add " + name, name => "change " + name);
+        Assert.Equal("change Vlan 20", protectedTags.ChangeRefusalFor("Vlan 20"));
+
+        // The license ends: the package stops; the tag is renamed or deleted freely, group users still never add or remove it.
+        pro.Current = Sdk.Licensing.ProLicenseInfo.None;
+        await _host.SyncEnabledAsync(CancellationToken.None);
+        Assert.Equal(CorePluginState.Stopped, _host.GetStatus("core.vlan").State);
+        Assert.Null(protectedTags.ChangeRefusalFor("Vlan 20"));
+        Assert.Equal("add Vlan 20", protectedTags.RefusalFor(["Vlan 20"]));
     }
 
     [Fact]

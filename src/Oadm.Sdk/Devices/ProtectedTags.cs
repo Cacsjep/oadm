@@ -21,9 +21,10 @@ public interface IProtectedTags
 
     /// <summary>
     /// <see cref="Protect(IReadOnlyCollection{string}, Func{string, string})"/> plus the refusal of a rename or delete of one
-    /// of the tags (SDK 0.4.0). The host refuses both for every user, administrators too, because the plugin's settings name
-    /// the tag ("The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing was changed."); without this text the host
-    /// uses its own. An older host ignores <paramref name="changeRefusal"/>.
+    /// of the tags (SDK 0.4.0). While the plugin runs, the host refuses both for every user, administrators too, because the
+    /// plugin's settings name the tag ("The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing was changed.");
+    /// without this text the host uses its own. While the plugin is stopped or off the tag can be renamed or deleted (the
+    /// settings match it by name, so it then matches nothing). An older host ignores <paramref name="changeRefusal"/>.
     /// </summary>
     void Protect(IReadOnlyCollection<string> names, Func<string, string> refusal, Func<string, string> changeRefusal) =>
         Protect(names, refusal);
