@@ -207,4 +207,28 @@ public sealed class PolicyTests
         Assert.Equal(99, plan.VlanFor(new FakeDevice { Serial = "ACCC8E000001" }));
         Assert.Equal(99, plan.VlanFor(new FakeDevice { Serial = "ACCC8E000002", SiteId = Guid.NewGuid() })); // a later site: the default VLAN
     }
+
+    [Fact]
+    public async Task APolicyIdTwiceIsRefusedAndStoredOnesNeverLockThePage()
+    {
+        var id = Guid.NewGuid();
+        var twice = new PolicySettings
+        {
+            Policies = [Vlan("A", 20, new PolicyDevices { ThisServer = true }) with { Id = id }, Vlan("B", 30, new PolicyDevices { Tags = ["PTZ"] }) with { Id = id }],
+        };
+        Assert.Equal(new RadiusFieldError("policies", RadiusRules.PolicyListedTwice), RadiusRules.Validate(twice));
+        Assert.Null(RadiusRules.Validate(twice with { Policies = [twice.Policies[0], twice.Policies[1] with { Id = Guid.Empty }] })); // new policies have none
+
+        await using var harness = await PluginHarness.CreateAsync(start: false);
+        await harness.Ctx.PluginSettings.SetAsync(RadiusStore.PoliciesKey, RadiusJson.Serialize(twice), CancellationToken.None);
+        await harness.StartAsync();
+
+        var loaded = await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies);
+        Assert.Equal(["A", "B"], loaded.Policies.Select(p => p.Name));
+        Assert.Equal(id, loaded.Policies[0].Id);
+        Assert.Equal(2, loaded.Policies.Select(p => p.Id).Distinct().Count());
+        var saved = await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, loaded with { Policies = [.. loaded.Policies, Vlan("C", 40, new PolicyDevices { Serials = ["ACCC8E000009"] })] });
+        Assert.Equal(["A", "B", "C"], saved.Policies.Select(p => p.Name));
+        Assert.Equal(id, saved.Policies[0].Id);
+    }
 }

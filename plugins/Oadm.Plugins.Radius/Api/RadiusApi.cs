@@ -612,6 +612,7 @@ public static class RadiusRules
     public const string ChoosePolicyKind = "Choose a kind.";
     public const string ChoosePolicyDevices = "Choose sites, tags or devices.";
     public const string TooManyPolicies = "Use at most 100 policies.";
+    public const string PolicyListedTwice = "A policy is in the list twice. Reload the page and change it again.";
 
     /// <summary>The first error of the policies (field "policies[2].vlan", "defaultVlan"); null when they are fine.</summary>
     public static RadiusFieldError? Validate(PolicySettings policies)
@@ -624,11 +625,17 @@ public static class RadiusRules
         }
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ids = new HashSet<Guid>();
         for (var i = 0; i < list.Count; i++)
         {
             if (Validate(list[i]) is { } error)
             {
                 return error with { Field = string.Create(CultureInfo.InvariantCulture, $"policies[{i}].{error.Field}") };
+            }
+
+            if (list[i].Id != Guid.Empty && !ids.Add(list[i].Id))
+            {
+                return new("policies", PolicyListedTwice); // an empty id is a new policy
             }
 
             if (!names.Add(list[i].Name.Trim()))

@@ -950,7 +950,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     {
         if (await _store.PoliciesAsync(ct).ConfigureAwait(false) is { } stored)
         {
-            return stored;
+            return WithUniqueIds(stored);
         }
 
         if (await _store.VlansAsync(ct).ConfigureAwait(false) is not { } vlans)
@@ -1010,6 +1010,23 @@ public sealed partial class RadiusService : IAsyncDisposable
         return migrated;
     }
 
+    /// <summary>
+    /// Stored policies with an id twice (or none) get new ids for the later ones, so the page can save them again (a save
+    /// refuses an id twice).
+    /// </summary>
+    internal static PolicySettings WithUniqueIds(PolicySettings stored)
+    {
+        var list = stored.Policies ?? [];
+        var seen = new HashSet<Guid>();
+        if (list.All(p => p.Id != Guid.Empty && seen.Add(p.Id)))
+        {
+            return stored;
+        }
+
+        seen.Clear();
+        return stored with { Policies = [.. list.Select(p => p.Id != Guid.Empty && seen.Add(p.Id) ? p : p with { Id = Guid.NewGuid() })] };
+    }
+
     /// <summary>The policies with the tag choices of the managed devices and the policies. A group user: empty settings.</summary>
     public PolicySettings GetPolicies(bool hasAllDevices)
     {
@@ -1060,7 +1077,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         try
         {
             var old = _policySettings;
-            var oldById = old.Policies.ToDictionary(p => p.Id);
+            var oldById = old.Policies.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First()); // stored duplicates never lock the page
             var knownSites = (_host.Sites?.List ?? []).Select(s => s.Id).Concat(old.Policies.SelectMany(p => p.Devices.SiteIds)).ToHashSet();
             for (var i = 0; i < policies.Count; i++)
             {
