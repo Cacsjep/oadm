@@ -298,7 +298,8 @@ answers is unchanged. Used by the System report for server reports.
   host and never copied into the plugin folder.
 - Plugin failures (load or execution) are logged and isolated; a broken plugin never
   prevents server or client from starting.
-- A package may hold several core plugins (PKI: EST server, PKI, 802.1X server, each with its rail page): the loader
+- A package may hold several core plugins (PKI: EST server, PKI, 802.1X server; the two servers' pages are tabs of PKI's,
+  "Pages shown as tabs"): the loader
   registers them by full type name, so the rail keeps one order inside a group; settings, records, data folder, events,
   permissions and services belong to the core plugin id, on/off and licenses to the package.
 - **Merged packages** (`Oadm.Core.Plugins.MergedPlugins`, the client's `ClientPluginLoader.MergedPackages`): a plugin folder

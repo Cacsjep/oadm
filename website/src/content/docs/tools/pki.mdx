@@ -11,33 +11,34 @@ The PKI page runs one certificate authority (CA) on the OADM server. OADM uses i
 IEEE 802.1X on your devices. Devices with a certificate from this CA show **Trusted** in the device list without any
 change to the operating system.
 
-<Image src={shot} alt="The PKI page with the certificate authorities, the policies and the certificates" class="screen" />
+<Image src={shot} alt="The PKI page with its tabs, the policies and the certificates" class="screen" />
 
-The page has the cards **Certificate authorities** and **Policies** (side by side on a wide window) and **Certificates**.
+The page has three tabs: **Certificates** (the policies and every certificate, the CAs among them),
+[**802.1X server**](../radius-server/) and [**EST server**](../est-server/). You see a server's tab when your role may see
+that server.
 
 ## Certificate authorities
 
-On the first start OADM creates a CA named "OADM Root CA" plus the server's name, valid for 10 years. Its chips show
-how long it is valid, warn when it expires soon and show whether it is in the trusted root store of the server and of
-this computer.
+On the first start OADM creates a CA named "OADM Root CA" plus the server's name, valid for 10 years. The CAs are rows
+of the certificate list: the OADM CA, previous OADM CAs, the Axis device ID roots and the CAs you imported. The OADM CA's
+row shows whether it is in the trusted root store of the server and of this computer. Open a row's actions with **⋯** (or
+a right click):
 
-The list shows every CA OADM knows: the OADM CA, previous OADM CAs, the Axis device ID roots and the CAs you imported.
-**Used by** names the policies that use a CA. **View** shows a CA's certificate.
-
-- **Install in trusted root store** adds the OADM CA to the operating system of the server or of this computer, so
-  browsers and other programs trust your devices.
-- **Export public certificate** saves the CA certificate as PEM or DER.
-- **Back up** saves the CA with its key as a password-protected file (at least 8 characters).
-- **Generate new CA** creates a new CA (1 to 30 years).
-- **Import CA** > **Own CA with its key** uses your own CA: a PKCS#12 file with its password, or a PEM certificate with
-  its key. **Import CA** > **CA certificate only** adds another CA, for example to let its devices onto the network.
+- **Install in trusted root store** (OADM CA) adds the OADM CA to the operating system of the server and of this
+  computer, so browsers and other programs trust your devices.
+- **Export** saves the CA certificate as PEM or DER.
+- **Back up** (OADM CA) saves the CA with its key as a password-protected file (at least 8 characters).
 - **Remove** (red, with a confirmation) removes an imported or previous CA. A CA that a policy uses cannot be removed.
+
+**Create** > **New OADM CA** creates a new CA (1 to 30 years). **Import** > **CA** > **Own CA with its key** uses your own
+CA: a PKCS#12 file with its password, or a PEM certificate with its key. **Import** > **CA** > **CA certificate only**
+adds another CA, for example to let its devices onto the network.
 
 ### Replace the CA
 
 <Steps>
 
-1. Click **Generate new CA** or **Import CA** > **Own CA with its key**.
+1. Click **Create** > **New OADM CA** or **Import** > **CA** > **Own CA with its key**.
 2. Fill in the dialog. Errors show below the fields.
 3. Confirm. OADM tells you how many devices have certificates from the current CA. They keep working until they are
    renewed.
@@ -92,18 +93,21 @@ with** becomes one Sign-in CA policy per ticked CA.
 ## Certificates
 
 Every certificate OADM knows: the CAs, the certificates of the 802.1X and EST servers, the ones created, signed or
-imported here and the device certificates the OADM CA issued. Each row shows the name or device, use, issued by, valid
-until, used by and state. **Search** finds text in every column; filter by state, use and issuing CA.
+imported here and the device certificates the OADM CA issued. Each row shows the name (with the key and the issuer
+below), its type as badges (for example Root CA, OADM CA, HTTPS, Imported), valid until (with Expires in 12 days, Expired
+or Revoked when it needs attention) and what uses it. **Group by** groups the rows by type, by the CA that issued them,
+or not at all. **Search** finds text in every column; filter by state, use and issuing CA.
 
-- **Create** makes a key and a certificate with an issuing policy (name, host names and IP addresses). You save it as a
-  .p12 file with a password of at least 8 characters. OADM keeps the key encrypted; it is part of the server backup.
+- **Create** > **Certificate** makes a key and a certificate with an issuing policy (name, host names and IP addresses).
+  You save it as a .p12 file with a password of at least 8 characters. OADM keeps the key encrypted; it is part of the
+  server backup.
 - **Sign request** signs a certificate request (.csr, PEM or DER) of another system. Its key stays there.
-- **Import** adds a certificate (.crt, .cer, .pem) or a .pfx / .p12 file with its password. CA certificates belong in
-  Certificate authorities.
-- Each row: **View**, **Export** (PEM, DER, or with its key as .p12 where OADM holds the key; never a CA key or a
-  device's key), **Revoke** and **Delete**. Revoke takes certificates out of use: they no longer get a camera onto the
-  network and are no longer renewed. Delete removes certificates nothing uses: revoked or expired ones, and the ones
-  created, signed or imported here. A revocation stays in force.
+- **Import** > **Certificate** adds a certificate (.crt, .cer, .pem) or a .pfx / .p12 file with its password.
+- Each row's **⋯**: **View**, **Export** (PEM, DER, or with its key as .p12 where OADM holds the key; never a CA key or a
+  device's key), then in red **Revoke** and **Delete**. Revoke takes certificates out of use: they no longer get a camera
+  onto the network and are no longer renewed. Delete removes certificates nothing uses: revoked or expired ones, and the
+  ones created, signed or imported here. A revocation stays in force. With several rows chosen, the menu revokes or
+  deletes all of them.
 
 Only administrators with "Manage the certificate authority" and access to all devices can change the list. Users
 limited to a device group see the certificates of their devices.

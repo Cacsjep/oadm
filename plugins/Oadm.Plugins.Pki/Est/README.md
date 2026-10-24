@@ -4,7 +4,7 @@ A PRO part of the PKI plugin (`../README.md`, `docs/spec/pki.md` "One plugin"; O
 Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-available, not Apache 2.0), also for
 `plugins/Oadm.Plugins.Pki.Client/Est`.
 
-- Core plugin `oadm.est` of the PKI package, rail page **EST server** (group Security, icon `lock`). The core plugin always
+- Core plugin `oadm.est` of the PKI package, its page the tab **EST server** of the PKI page (`EstPage.TabOf`). The core plugin always
   runs; the server (`EstService`) runs only while it is turned on (`ServerSwitch`, plugin setting `serverOn`, off by
   default) and OADM PRO is active; every request checks the license again (503 "OADM PRO is not active.").
   Page methods `getServer`, `turnOn`, `turnOff` (`../Servers/ServerSwitch.cs`) besides `EstMethods`.

@@ -532,6 +532,38 @@ fits the spec; to be confirmed by the maintainer).
   (the page line, Edit in PKI, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
   `EstPolicyPageTests` (filter, rows, both editors, headless editors).
 
+## Code (stage 7)
+
+Built 2026-10-24 (branch `feature/pki-tabs`). Rules the sections above leave open are marked "decision of stage 7".
+
+- **Tabs** (`docs/spec/plugins.md` "Pages shown as tabs"): `RadiusPage.TabOf` and `EstPage.TabOf` = `oadm.pki`; the host
+  (`MainWindowViewModel.TabPages`) creates their views with their own contexts and hands them to PKI's context
+  (`Tabs`, `TabsChanged`); `OpenAsync("plugin:oadm.radius" / "plugin:oadm.est")` and a role's start page open PKI on the tab
+  (`OpenTabRequested`), `plugin:oadm.pki` on Certificates. `PkiViewModel.Tabs` (`PkiViewModel.Tabs.cs`): Certificates, then
+  802.1X server, EST server, others in the host's order; only the shown tab's view is in the window (a server tab reads its
+  state when it opens, decision of stage 7). The server parts keep `HasPage`, so permissions and start page choices stay.
+  The page's subtitle: "Certificates, their policies, and the 802.1X and EST servers." (decision of stage 7).
+- **List** (`IssuedCertificateList`, `IssuedCertificateListViewModel`, SDK 0.4.0): `IssuedCertificateInfo` gains `IssuerId`,
+  `KeyText`, `AuthorityKind`, `AuthorityId`, `IsRootCa`, `UsedByBadges`; `IssuedCertificateQuery.GroupBy`
+  (`IssuedCertificateGrouping`), `IssuedCertificateGroups`, `IssuedCertificateGroup`; the page's `MenuOf` / `ActionsOf` /
+  `SelectionActions` (`IssuedCertificateAction`), `MoreStatesOf` (`IssuedCertificateStatus`), `Toolbar` and `Banner`. The
+  `RowActions` and `RowContextMenu` properties of stage 5 are gone (one menu). Server: `PkiService.GetCertificates` orders
+  the parts by the grouping; by issuer one pass over the issued registry per OADM CA (current, previous, Other CA), the
+  other CAs issue no device certificates. Measured at 30,000 devices x 2: first page by type 55 ms, by issuer 72 ms (also
+  at offset 59,500), the page's list of 500 grouped rows 59 ms (`CertificateListPerfTests`).
+- **CA rows**: Remove of a previous CA is `removePrevious`, of an imported one `removeAuthority` (`PkiViewModel.RemoveCa`);
+  Export of the OADM CA's row is `exportPublic` (as before), of other CA rows the row's download (PEM, DER; audited
+  "Export certificate"; decision of stage 7: a previous CA now also as DER). The OADM CA row shows both trust states
+  always ("Not installed on the server" neutral), decision of stage 7.
+- **Group by** is kept with `ICorePluginClientContext.SetLocalSetting("certificates.groupBy")`.
+- **Theme**: `Border.badge.neutral` (`Oadm.BadgeNeutralBrush`, both appearances), `MenuItem.danger`.
+- **Tests**: `Oadm.Client.Tests` `PluginTabTests`; `Oadm.Plugins.Pki.Tests` `PkiTabsTests` (+ headless
+  `pki-tab-certificates-1700.png` / `-1000.png`), `CertificateGroupTests`, `PolicySentenceTests`, `CertificateListPerfTests`
+  (Category=Perf); `Oadm.Plugins.Radius.Tests` `PkiTabHeadlessTests` (`pki-tab-802-1x-*.png`); `Oadm.Plugins.Est.Tests`
+  `PageTests.The_est_server_is_a_tab_of_the_pki_page` (`pki-tab-est-*.png`).
+- **Not built**: sorting by a column (the list never sorted; its order is the server's). The website's screenshots
+  (`pki-page.png`, `est-page.png`, `radius-page.png`) still show the pages before the tabs.
+
 ## Not planned
 
 - A limit of devices per switch port (decision 2026-10-24): OADM sees no logoff without RADIUS accounting; set the limit
