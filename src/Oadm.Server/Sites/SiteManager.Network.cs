@@ -233,17 +233,29 @@ public sealed partial class SiteManager
             using var call = start(ct);
             return await call.ResponseAsync.ConfigureAwait(false);
         }
+        catch (RpcException e) when (ct.IsCancellationRequested && e.StatusCode == StatusCode.Cancelled)
+        {
+            // Our own stop (a closed add page, an ended session, the server stopping): gRPC reports it as an RpcException;
+            // callers expect a plain cancellation, not a failure with a stack trace in the log.
+            throw new OperationCanceledException(e.Message, e, ct);
+        }
         catch (RpcException e) when (!ct.IsCancellationRequested)
         {
             throw ToSiteException(siteId, siteName, e);
         }
     }
 
-    private static async Task<bool> Next<T>(IAsyncStreamReader<T> stream, Guid siteId, string siteName, CancellationToken ct)
+    internal static async Task<bool> Next<T>(IAsyncStreamReader<T> stream, Guid siteId, string siteName, CancellationToken ct)
     {
         try
         {
             return await stream.MoveNext(ct).ConfigureAwait(false);
+        }
+        catch (RpcException e) when (ct.IsCancellationRequested && e.StatusCode == StatusCode.Cancelled)
+        {
+            // Our own stop (a closed add page, an ended session, the server stopping): gRPC reports it as an RpcException;
+            // callers expect a plain cancellation, not a failure with a stack trace in the log.
+            throw new OperationCanceledException(e.Message, e, ct);
         }
         catch (RpcException e) when (!ct.IsCancellationRequested)
         {
