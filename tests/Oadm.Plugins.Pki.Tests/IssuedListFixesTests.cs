@@ -144,7 +144,7 @@ public sealed class IssuedListFixesTests
     }
 
     [Fact]
-    public async Task A_certificate_deleted_from_the_device_stays_listed_as_replaced_and_leaves_the_counts()
+    public async Task A_certificate_deleted_from_the_device_stays_in_the_store_unlisted_and_leaves_the_counts()
     {
         var time = new FakeTimeProvider(Start);
         await using var registry = Registry(time);
@@ -155,8 +155,10 @@ public sealed class IssuedListFixesTests
 
         registry.MarkRemovedFromDevice("0a");
 
-        Assert.Equal(IssuedCertificateState.Replaced, registry.StateOf(registry.Find("0A")!, Start.UtcDateTime, 30));
+        Assert.Equal(IssuedCertificateState.Valid, registry.StateOf(registry.Find("0A")!, Start.UtcDateTime, 30)); // no Replaced state
         Assert.Equal(Start.UtcDateTime, registry.Find("0A")!.RemovedFromDeviceUtc);
+        var camera = new PkiFakeDevice(device);
+        Assert.Equal(0, registry.Query(new IssuedCertificateQuery(), new Dictionary<Guid, Oadm.Sdk.Devices.IDeviceInfo> { [device] = camera }, false, 30).Total); // not listed
         Assert.Equal(["A"], registry.RevocableOf(device)); // a copy could be in use: it can still be revoked
         Assert.Equal(0, IssuedCounts.From(registry.Snapshot(), "CA", Start.UtcDateTime, 30).Devices);
     }
@@ -170,7 +172,7 @@ public sealed class IssuedListFixesTests
         [
             Entry("01", a, now.AddDays(300)),
             Entry("02", b, now.AddDays(10)), // expires soon
-            Entry("03", c, now.AddDays(-200)), // ended long ago, still listed for a year
+            Entry("03", c, now.AddDays(-200)), // ended long ago (OADM before 4.5 kept them a year)
             Entry("04", d, now.AddDays(300)), // revoked
             Entry("05", a, now.AddDays(-1), CertificatePurpose.Dot1x, caId: "OLD"), // ended: not "from a previous CA"
         ];

@@ -347,8 +347,26 @@ public sealed record IssuedCertificate
     /// </summary>
     public bool NoCopy { get; init; }
 
-    /// <summary>When a PKI task deleted it from the device; null while it is there. Listed as Replaced (a copy could be in use).</summary>
+    /// <summary>When a PKI task deleted it from the device; null while it is there. No longer listed (a copy could be in use).</summary>
     public DateTime? RemovedFromDeviceUtc { get; init; }
+
+    /// <summary>
+    /// Issued, not yet confirmed on the camera (docs/spec/pki.md "Current and pending"): a task before its verify step, EST
+    /// before its answer was written (IEEE 802.1X: before the camera signed in with it). At most one per camera and use.
+    /// </summary>
+    public bool Pending { get; init; }
+
+    /// <summary>
+    /// A pending certificate the camera may use already: EST wrote its answer, or a task ran "Set 802.1X configuration" with
+    /// it. A pending one a task delivered is never put on the revocation list as unused (device safety, no lock-out).
+    /// </summary>
+    public bool Delivered { get; init; }
+
+    /// <summary>
+    /// Not the camera's current certificate any more although it stays in the store: an entry from before 4.5 whose current
+    /// one left the store (revoked or replaced), or a delivered pending one a newer pending one pushed out. Never listed.
+    /// </summary>
+    public bool NotCurrent { get; init; }
 }
 
 /// <summary>The active CA as the page shows it.</summary>

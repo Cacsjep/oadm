@@ -114,7 +114,8 @@ public sealed partial class PkiService
     {
         ArgumentNullException.ThrowIfNull(query);
         var devices = await SystemDevicesAsync(ct).ConfigureAwait(false);
-        return _issued.Query(query, devices.ToDictionary(d => d.Id), onlyListedDevices: false, WarningDaysFor(devices));
+        // Every stored certificate (also pending ones and those of cameras OADM no longer manages), not only the page's list.
+        return _issued.Query(query, devices.ToDictionary(d => d.Id), onlyListedDevices: false, WarningDaysFor(devices), currentOnly: false);
     }
 
     /// <summary>
@@ -199,25 +200,23 @@ public sealed partial class PkiService
             return new RevokeReply { Error = PkiCertificateTexts.UnknownReason };
         }
 
-        await ReadDeviceCertificatesAsync(request.DeviceId, ct).ConfigureAwait(false);
-        var serials = _issued.RevocableOf(request.DeviceId);
+        var device = await ReadDeviceCertificatesAsync(request.DeviceId, ct).ConfigureAwait(false);
+        var serials = device is null ? _issued.RevocableOf(request.DeviceId) : _issued.RevocableOf(device); // also a camera added again
         return serials.Count == 0
             ? new RevokeReply()
             : Reply(await _issued.RevokeAsync(serials, request.Reason, userName, ct).ConfigureAwait(false));
     }
 
-    /// <summary>Adds the OADM certificates on the device to the list (best effort: an offline or older device adds nothing).</summary>
-    private async Task ReadDeviceCertificatesAsync(Guid deviceId, CancellationToken ct)
+    /// <summary>
+    /// Adds the OADM certificates on the device to the list (best effort: an offline or older device adds nothing). Returns
+    /// the device when OADM manages it.
+    /// </summary>
+    private async Task<IDeviceInfo?> ReadDeviceCertificatesAsync(Guid deviceId, CancellationToken ct)
     {
-        if (DeviceCertificateReader is not { } read)
-        {
-            return;
-        }
-
         var device = (await SystemDevicesAsync(ct).ConfigureAwait(false)).FirstOrDefault(d => d.Id == deviceId);
-        if (device is not { Status: DeviceStatus.Ok } || !Tasks.PkiCompatibility.CanRunCertificateTask(device))
+        if (DeviceCertificateReader is not { } read || device is not { Status: DeviceStatus.Ok } || !Tasks.PkiCompatibility.CanRunCertificateTask(device))
         {
-            return;
+            return device;
         }
 
         using var limit = new CancellationTokenSource(_options.DeviceReadTimeout, _options.Time);
@@ -237,6 +236,8 @@ public sealed partial class PkiService
         {
             LogDeviceReadFailed(device.Address, ex.Message);
         }
+
+        return device;
     }
 
     /// <summary>The CA service's revoke.</summary>

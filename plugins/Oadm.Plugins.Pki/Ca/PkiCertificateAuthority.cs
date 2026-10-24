@@ -12,7 +12,7 @@ namespace Oadm.Plugins.Pki.Ca;
 /// runs): signs with <see cref="DeviceCertificateIssuer"/> like PKI's own tasks and lists device certificates in the issued
 /// registry. Refuses requests signed with SHA-1 or MD5.
 /// </summary>
-public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority
+public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery
 {
     /// <summary>Signature algorithms of a request that are refused (MD2, MD5, SHA-1 with RSA, DSA, ECDSA).</summary>
     private static readonly HashSet<string> WeakSignatures =
@@ -44,6 +44,42 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
     public IReadOnlyList<IReadOnlyList<byte[]>> PreviousChains => service.PreviousChains();
 
     public bool IsRevoked(string serialNumber) => service.Issued.IsRevoked(serialNumber);
+
+    /// <summary>
+    /// EST wrote its answer with the certificate (docs/spec/pki.md "Current and pending"): HTTPS, RTSPS and MQTT certificates
+    /// become current; an IEEE 802.1X one stays pending until the camera signs in to the 802.1X server with it.
+    /// </summary>
+    public async Task DeliveredAsync(string serialNumber, CancellationToken ct)
+    {
+        if (service.Issued.Find(serialNumber) is not { Pending: true } entry)
+        {
+            return;
+        }
+
+        if (string.Equals(entry.Purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
+        {
+            service.Issued.MarkDelivered(serialNumber);
+        }
+        else
+        {
+            await service.Issued.ConfirmAsync(serialNumber, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>The camera has the pending certificate (any use): it becomes current, the previous one is revoked.</summary>
+    public Task<bool> ConfirmAsync(string serialNumber, CancellationToken ct) => service.Issued.ConfirmAsync(serialNumber, ct);
+
+    /// <summary>EST could not write its answer: the camera never got the certificate (revoked as unused).</summary>
+    public Task NotDeliveredAsync(string serialNumber, CancellationToken ct) => service.Issued.DiscardAsync(serialNumber, evenDelivered: false, ct);
+
+    /// <summary>
+    /// The 802.1X server let a camera in with this certificate: a pending IEEE 802.1X certificate is confirmed (the previous
+    /// one is revoked). One lookup when nothing is pending.
+    /// </summary>
+    public Task SignedInAsync(string serialNumber, CancellationToken ct) =>
+        service.Issued.Find(serialNumber) is { Pending: true, Purpose: DeviceCertificatePurposes.Dot1x }
+            ? service.Issued.ConfirmAsync(serialNumber, ct)
+            : Task.CompletedTask;
 
     /// <summary>The 802.1X server read its stored certificate at its start: the Certificates list shows it as used by that server.</summary>
     public void NoteServerCertificate(byte[] leaf, byte[] caCertificate) =>
@@ -116,8 +152,10 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
             if (request.DeviceId is { } deviceId)
             {
                 // The list of issued certificates: every device certificate, with its use (MQTT and RTSPS too) and DER.
+                // EST certificates wait for the answer (DeliveredAsync); a caller that never confirms adds a current one.
                 var serials = IssuedRegistry.AxisSerials(signed);
-                await service.Issued.AddAsync(new IssuedCertificate
+                var est = string.Equals(request.Source, IssuedCertificateSources.Est, StringComparison.OrdinalIgnoreCase);
+                await service.Issued.AddPendingAsync(new IssuedCertificate
                 {
                     SerialNumber = serial,
                     DeviceId = deviceId,
@@ -129,6 +167,10 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
                     IssuedUtc = service.Time.GetUtcNow().UtcDateTime,
                     Source = request.Source,
                 }, signed.RawData, ct).ConfigureAwait(false);
+                if (!est)
+                {
+                    await service.Issued.ConfirmAsync(serial, ct).ConfigureAwait(false);
+                }
             }
             else if (request.Use == DeviceCertificateUse.Server)
             {

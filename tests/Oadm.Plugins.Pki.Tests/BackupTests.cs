@@ -116,8 +116,10 @@ public sealed class BackupTests
             Assert.False(again.IsRevoked(valid));
             Assert.Equal(("admin", RevocationReason.DeviceReplaced), (again.FindRevocation(revoked)!.UserName, again.FindRevocation(revoked)!.Reason));
             var page = await again.ListIssuedAsync(new IssuedCertificateQuery(), CancellationToken.None);
-            Assert.Equal(2, page.Total);
-            Assert.Equal(der, await again.GetIssuedCertificateAsync(revoked, CancellationToken.None));
+            Assert.Equal(1, page.Total); // the revoked one left the store; its revocation came along
+            Assert.Null(await again.GetIssuedCertificateAsync(revoked, CancellationToken.None));
+            Assert.NotNull(await again.GetIssuedCertificateAsync(valid, CancellationToken.None));
+            Assert.NotEmpty(der);
 
             // The created certificate and its key came along: the restored master key reads it.
             await using var download = await restored.OpenDownloadAsync(Certificates.CertificateMethods.Download,

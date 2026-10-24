@@ -230,7 +230,7 @@ public sealed partial class PkiService
                 continue;
             }
 
-            foreach (var serial in _issued.RevocableOf(device.Id))
+            foreach (var serial in _issued.RevocableOf(device)) // by device id and serial: also a camera added again
             {
                 if (string.Equals(_issued.Find(serial)?.Purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
                 {

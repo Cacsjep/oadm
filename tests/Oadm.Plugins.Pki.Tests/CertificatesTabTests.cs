@@ -83,6 +83,7 @@ public sealed class CertificatesTabTests
         var pki = await PkiHarness.StartAsync(time: time);
         IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
         var device = Guid.NewGuid();
+        pki.Manage(device, "B8A44F631339");
         var https = (await RevocationTests.SignAsync(authority, device, source: null)).SerialNumber;
         var dot1x = (await RevocationTests.SignAsync(authority, device, use: DeviceCertificateUse.Client)).SerialNumber;
         return (pki, device, https, dot1x);
@@ -125,7 +126,7 @@ public sealed class CertificatesTabTests
         Assert.True(tab.ShowsFilters);
         Assert.DoesNotContain(tab.Rows, r => r.Source.Kind == ListedCertificateKind.Authority);
         var row = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
-        Assert.Equal(("B8A44F631339 (removed)", "HTTPS", "OADM Root CA SERVER01", "Valid", "-"), (row.Name, row.Use, row.Issuer, row.State, row.UsedBy)); // the harness manages no devices
+        Assert.Equal(("10.1.0.1", "HTTPS", "OADM Root CA SERVER01", "Valid", "10.1.0.1"), (row.Name, row.Use, row.Issuer, row.State, row.UsedBy)); // the current one of a managed camera
         Assert.True(row.IsOk);
 
         // Issued by: the CAs of PKI (and Other CA), read from the server; a filter reads again with it.
@@ -190,30 +191,21 @@ public sealed class CertificatesTabTests
         await tab.RevokeCommand.ExecuteAsync(null);
         Assert.True(authority.IsRevoked(https));
         Assert.Equal(RevocationReason.DeviceReplaced, authority.FindRevocation(https)!.Reason);
-        var revokedRow = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
-        Assert.Equal(("Revoked", true), (revokedRow.State, revokedRow.IsError));
-        Assert.StartsWith("Certificate revoked on ", revokedRow.StateTip, StringComparison.Ordinal);
-        Assert.Single(tab.Selected); // the choice is kept over the new page
-        Assert.False(tab.RevokeCommand.CanExecute(null)); // already revoked
+        Assert.DoesNotContain(tab.Rows, r => r.Source.SerialNumber == CertificateSerials.Normalize(https)); // revoked: out of the list
+        Assert.Empty(tab.Selected);
 
-        // View certificate shows the revocation in the window.
-        await tab.ViewCertificateCommand.ExecuteAsync(null);
-        var shown = Assert.Single(dialogs.Shown);
-        Assert.True(shown.IsRevoked);
-        Assert.Equal("Certificate revoked on " + time.GetUtcNow().ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + " (Device replaced)", shown.ValidityText);
-
-        // Revoke all of this device: the IEEE 802.1X one too.
-        await tab.RevokeDeviceCommand.ExecuteAsync(tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(dot1x)));
+        // Revoke all of this device: the IEEE 802.1X one too; the camera has no row until it gets a new certificate.
+        var dot1xRow = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(dot1x));
+        Assert.Equal(device, dot1xRow.Source.DeviceId);
+        await tab.RevokeDeviceCommand.ExecuteAsync(dot1xRow);
         Assert.True(authority.IsRevoked(dot1x));
         Assert.StartsWith("Revoke all certificates of ", dialogs.Asked[^1].Title, StringComparison.Ordinal);
-        var deviceRows = tab.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Device).ToList();
-        Assert.All(deviceRows, r => Assert.Equal("Revoked", r.State));
+        Assert.DoesNotContain(tab.Rows, r => r.Source.Kind == ListedCertificateKind.Device);
         Assert.Empty(ctx.Messages);
-        Assert.All(deviceRows, r => Assert.Equal(device, r.Source.DeviceId));
         Assert.All(tab.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Authority), r => Assert.False(r.CanRevoke)); // a CA is never revoked here
 
         // Again: nothing left, the user is told.
-        await tab.RevokeDeviceCommand.ExecuteAsync(deviceRows[0]);
+        await tab.RevokeDeviceCommand.ExecuteAsync(dot1xRow);
         Assert.Equal("Nothing was revoked: these certificates are already revoked or expired.", Assert.Single(ctx.Messages).Message);
     }
 
@@ -301,7 +293,10 @@ public sealed class CertificatesTabHeadlessTests
             }
         }
 
-        await authority.RevokeAsync([serials[1]], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
+        // A revoked certificate created here keeps its row with the badge (a revoked device certificate leaves the list).
+        var created = (await CertificateListTests.CreateAsync(pki)).Id!;
+        var createdSerial = pki.Service.Local.Find(created[Oadm.Plugins.Pki.Certificates.LocalCertificates.RowPrefix.Length..])!.Serial;
+        await authority.RevokeAsync([createdSerial], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var session = HeadlessEntry.Session;
         var checks = await session.Dispatch(async () =>
@@ -344,7 +339,7 @@ public sealed class CertificatesTabHeadlessTests
             confirm.Close();
 
             // The shared certificate window of a revoked certificate.
-            var details = await ctx.InvokeAsync(PkiMethods.GetCertificate, PkiJson.Serialize(new CertificateDetailsRequest(serials[1])), CancellationToken.None);
+            var details = await ctx.InvokeAsync(PkiMethods.GetCertificate, PkiJson.Serialize(new CertificateDetailsRequest(created)), CancellationToken.None);
             var reply = PkiJson.Deserialize<CertificateDetailsReply>(details);
             var certificate = new CertificateWindow { DataContext = new CertificateDetails(reply.Certificate!, "Certificate · 10.0.0.48 · HTTPS", DateTime.UtcNow, reply.Revocation) };
             Oadm.Client.App.ApplyCrispText(certificate);

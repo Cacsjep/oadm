@@ -227,10 +227,11 @@ internal sealed class PkiHarness : IAsyncDisposable
         var anchors = new TrustAnchorRegistry();
         var trust = new FakeTrustStore();
         var plugin = new PkiPlugin(Options(trust, time));
+        var managed = new List<IDeviceInfo>(devices ?? []);
         var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId))
         {
             PluginRecords = records ?? new MemoryPluginRecords(),
-            DeviceList = devices,
+            DeviceList = managed,
             EventPublisher = publisher,
             FakeSites = sites ?? new FakeSites(),
         };
@@ -240,7 +241,7 @@ internal sealed class PkiHarness : IAsyncDisposable
             await plugin.Service!.Background;
         }
 
-        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes) { Records = core.PluginRecords, Core = core };
+        return new PkiHarness(plugin, settings, hub, anchors, trust, protector, core.Scopes) { Records = core.PluginRecords, Core = core, Managed = managed };
     }
 
     public async Task<T> InvokeAsync<T>(string method, object? payload = null) =>
@@ -257,13 +258,39 @@ internal sealed class PkiHarness : IAsyncDisposable
     /// <summary>PKI's policies.</summary>
     public Policies.PolicyStore Policies => Service.Policies;
 
-    /// <summary>Adds issued certificates as the tasks and the CA service do.</summary>
-    public async Task SetIssuedAsync(IEnumerable<IssuedCertificate> issued)
+    /// <summary>The managed devices (the host's device list); tests add and remove cameras.</summary>
+    public List<IDeviceInfo> Managed { get; init; } = [];
+
+    /// <summary>
+    /// Adds certificates to the store as current ones (as a confirmed install does). <paramref name="manage"/>: OADM manages
+    /// their cameras (the list shows only managed cameras); a camera not in the device list yet is added.
+    /// </summary>
+    public async Task SetIssuedAsync(IEnumerable<IssuedCertificate> issued, bool manage = true)
     {
         foreach (var entry in issued)
         {
+            if (manage)
+            {
+                Manage(entry.DeviceId, entry.DeviceSerial);
+            }
+
             await Service.Issued.AddAsync(entry, CancellationToken.None);
         }
+    }
+
+    /// <summary>OADM manages the camera (its id and serial; a serial made from the id when none is given).</summary>
+    public IDeviceInfo Manage(Guid id, string? serial = null)
+    {
+        if (Managed.FirstOrDefault(d => d.Id == id) is { } known)
+        {
+            return known;
+        }
+
+        var n = Managed.Count;
+        var device = new PkiFakeDevice(id, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"10.1.{n / 250}.{n % 250 + 1}"),
+            serial ?? Convert.ToHexString(id.ToByteArray())[..12]);
+        Managed.Add(device);
+        return device;
     }
 
     public async ValueTask DisposeAsync() => await Plugin.DisposeAsync();
