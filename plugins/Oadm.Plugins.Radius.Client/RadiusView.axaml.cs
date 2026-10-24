@@ -13,17 +13,17 @@ namespace Oadm.Plugins.Radius.Client;
 public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs, IRevokeDialogs
 {
     /// <summary>
-    /// From this width of the page the cards General, Switches and VLANs stand side by side: each card needs about 665 px for
-    /// its widest row (a VLAN rule; the Switches columns about 600), so 3 x 665 + 2 x 16. A QHD screen keeps three columns, a
-    /// Full HD screen at 100 % gets two.
+    /// From this width of the page the cards General, Switches and VLANs stand side by side: each card's widest row (the
+    /// Switches columns, a VLAN rule with its stretching site or tag) needs about 470 px plus the card padding (Switches gets
+    /// 1.25 parts of the width), so a Full HD screen at 100 % keeps three columns.
     /// </summary>
-    public const double ThreeColumnWidth = 2040;
+    public const double ThreeColumnWidth = 1660;
 
     /// <summary>
-    /// From this width two columns (2 x 665 + 16): General with VLANs below it on the left, Switches on the right; below it
-    /// one column (General, Switches, VLANs).
+    /// From this width two columns: General with VLANs below it on the left, Switches on the right; below it one column
+    /// (General, Switches, VLANs).
     /// </summary>
-    public const double TwoColumnWidth = 1350;
+    public const double TwoColumnWidth = 1100;
 
     private RadiusViewModel? _vm;
     private int _columns;
@@ -82,7 +82,7 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs, IRev
         var none = new GridLength(0);
         var definitions = ServerColumns.ColumnDefinitions;
         definitions[1].Width = columns >= 2 ? gap : none;
-        definitions[2].Width = columns >= 2 ? star : none;
+        definitions[2].Width = columns == 3 ? new GridLength(1.25, GridUnitType.Star) : columns == 2 ? star : none; // Switches has the widest table
         definitions[3].Width = columns == 3 ? gap : none;
         definitions[4].Width = columns == 3 ? star : none;
         var below = new Thickness(0, 16, 0, 0);

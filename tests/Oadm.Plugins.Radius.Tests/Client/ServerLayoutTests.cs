@@ -14,8 +14,8 @@ namespace Oadm.Plugins.Radius.Tests.Client;
 public sealed class ServerLayoutTests
 {
     [Theory]
-    [InlineData(2100, 3)]
-    [InlineData(1500, 2)]
+    [InlineData(1700, 3)]
+    [InlineData(1300, 2)]
     [InlineData(900, 1)]
     public async Task The_server_tab_uses_three_two_or_one_column_by_width_and_save_sits_below_the_cards(int width, int columns)
     {
@@ -136,5 +136,13 @@ public sealed class ServerLayoutTests
     private sealed class Dialogs(Func<SwitchDialogViewModel, Task<bool>> show) : ISwitchDialogs
     {
         public Task<bool> ShowSwitchAsync(SwitchDialogViewModel dialog) => show(dialog);
+    }
+
+    [Fact]
+    public void The_last_request_of_a_switch_shows_the_time_today_and_the_day_before()
+    {
+        var now = new DateTime(2026, 10, 24, 15, 0, 0, DateTimeKind.Local);
+        Assert.Equal("14:03:12", SwitchRowViewModel.ShortTime(new DateTime(2026, 10, 24, 14, 3, 12, DateTimeKind.Local).ToUniversalTime(), now));
+        Assert.Equal("2026-10-23", SwitchRowViewModel.ShortTime(new DateTime(2026, 10, 23, 23, 59, 0, DateTimeKind.Local).ToUniversalTime(), now));
     }
 }

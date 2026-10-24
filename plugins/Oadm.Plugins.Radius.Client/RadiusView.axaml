@@ -28,7 +28,7 @@
             <Border x:Name="GeneralCard" Grid.Column="0" Classes="card" VerticalAlignment="Top" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
               <StackPanel Classes="form">
                 <ui:CardHeader Title="General" />
-                <ui:FormField Label="Listen on" InputWidth="320">
+                <ui:FormField Label="Listen on" InputWidth="290">
                   <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
                             ToolTip.Tip="The interface the switches reach this server on.">
                     <ComboBox.ItemTemplate>
@@ -99,16 +99,16 @@
                             CanUserReorderColumns="False" SelectionMode="Single" MinHeight="180" MaxHeight="420">
                     <DataGrid.Columns>
                       <DataGridTextColumn Header="Name" Width="*" MinWidth="90" Binding="{Binding Name}" x:DataType="vm:SwitchRowViewModel" />
-                      <DataGridTextColumn Header="Address" Width="105" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
-                      <DataGridTextColumn Header="Site" Width="90" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
-                      <DataGridTemplateColumn Header="State" Width="140" SortMemberPath="State" x:DataType="vm:SwitchRowViewModel">
+                      <DataGridTextColumn Header="Address" Width="100" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
+                      <DataGridTextColumn Header="Site" Width="95" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
+                      <DataGridTemplateColumn Header="State" Width="138" SortMemberPath="State" x:DataType="vm:SwitchRowViewModel">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate x:DataType="vm:SwitchRowViewModel">
                             <ui:StatusChip Margin="10,0" Text="{Binding State}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" />
                           </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTextColumn Header="Last request" Width="135" Binding="{Binding LastRequest}" SortMemberPath="LastRequestSortKey" x:DataType="vm:SwitchRowViewModel" />
+                      <DataGridTextColumn Header="Last request" Width="112" Binding="{Binding LastRequest}" SortMemberPath="LastRequestSortKey" x:DataType="vm:SwitchRowViewModel" />
                     </DataGrid.Columns>
                   </DataGrid>
                   <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -123,9 +123,14 @@
                 <ui:CardHeader Title="VLANs" />
                 <StackPanel Classes="form" DataContext="{Binding Vlans}" x:DataType="vm:VlansViewModel">
                   <CheckBox Content="Assign VLANs" IsChecked="{Binding Enabled}" IsEnabled="{Binding MayManage}" />
-                  <StackPanel Classes="form" IsVisible="{Binding Enabled}">
+                  <StackPanel Classes="form" IsVisible="{Binding Enabled}" Grid.IsSharedSizeScope="True">
                     <TextBlock Classes="secondary" Text="The first rule that matches the device gives its VLAN, at its next authentication." TextWrapping="Wrap" />
-                    <Grid ColumnDefinitions="120,12,240,12,110" IsVisible="{Binding HasRules}">
+                    <Grid IsVisible="{Binding HasRules}">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="88" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" MinWidth="120" />
+                        <ColumnDefinition Width="8" /><ColumnDefinition Width="72" /><ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="VlanActions" />
+                      </Grid.ColumnDefinitions>
                       <TextBlock Grid.Column="0" Classes="secondary" Text="Match" />
                       <TextBlock Grid.Column="2" Classes="secondary" Text="Site or tag" />
                       <TextBlock Grid.Column="4" Classes="secondary" Text="VLAN ID" />
@@ -135,7 +140,12 @@
                     <ItemsControl ItemsSource="{Binding Rules}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:VlanRuleViewModel">
-                          <Grid ColumnDefinitions="120,12,240,12,110,12,Auto" Margin="0,0,0,6">
+                          <Grid Margin="0,0,0,6">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="88" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" MinWidth="120" />
+                            <ColumnDefinition Width="8" /><ColumnDefinition Width="72" /><ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="VlanActions" />
+                          </Grid.ColumnDefinitions>
                             <ComboBox Grid.Column="0" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
                                       IsEnabled="{Binding MayManage}" />
                             <ComboBox Grid.Column="2" ItemsSource="{Binding References}" SelectedItem="{Binding Reference}" HorizontalAlignment="Stretch" VerticalAlignment="Top"

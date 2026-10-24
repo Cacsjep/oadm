@@ -31,8 +31,8 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   - **Server** (tab): three cards side by side, each as high as it needs: **General** | **Switches** | **VLANs**; one
     row below them, right aligned, with the server certificate's end, the status chip and **Save** (decision 2026-10-24,
     the maintainer's screenshot). Narrower pages (small or scaled screens, `RadiusView.ThreeColumnWidth` /
-    `TwoColumnWidth`, like the Permissions page): from 2,040 px three columns (each card needs about 665 px for a VLAN
-    rule: a QHD screen), from 1,350 px two (General with VLANs below it | Switches), below that one (General, Switches,
+    `TwoColumnWidth`, like the Permissions page): from 1,660 px three columns (Switches 1.25 parts of the width) (each card about 470 px of content: the Switches columns, a VLAN rule
+    with its stretching site or tag; a Full HD screen keeps three), from 1,100 px two (General with VLANs below it | Switches), below that one (General, Switches,
     VLANs).
   - **General** (card): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Log entries
     kept** (1,000..50,000, default 5,000). **Advanced** (collapsed, the defaults fit almost every network):

@@ -30,8 +30,15 @@ public sealed class SwitchRowViewModel(SwitchRow source)
 
     public bool IsError => Source.State is SwitchStates.WrongSecret or SwitchStates.SiteOffline;
 
-    /// <summary>"2026-10-24 14:03:12"; empty before the first request.</summary>
-    public string LastRequest => Source.LastRequestUtc is { } utc ? RadiusTexts.Time(utc) : string.Empty;
+    /// <summary>"14:03:12" today, else the day "2026-10-23" (the card is narrow); empty before the first request.</summary>
+    public string LastRequest => Source.LastRequestUtc is { } utc ? ShortTime(utc, DateTime.Now) : string.Empty;
+
+    /// <summary>The time of <paramref name="utc"/> when it is the day of <paramref name="nowLocal"/>, else its day.</summary>
+    public static string ShortTime(DateTime utc, DateTime nowLocal)
+    {
+        var local = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+        return local.ToString(local.Date == nowLocal.Date ? "HH:mm:ss" : "yyyy-MM-dd", System.Globalization.CultureInfo.CurrentCulture);
+    }
 
     public DateTime LastRequestSortKey => Source.LastRequestUtc ?? DateTime.MinValue;
 
