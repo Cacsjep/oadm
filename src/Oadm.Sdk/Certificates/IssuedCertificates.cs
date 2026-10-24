@@ -127,6 +127,8 @@ public enum ListedCertificateKind
 }
 
 /// <summary>A choice of the "Issued by" filter (SDK 0.4.0): the CA's id and its name.</summary>
+/// <param name="Id">The CA's id (<see cref="CertificateAuthorityInfo.Id"/>), or "other" for every CA PKI does not list.</param>
+/// <param name="Name">The CA's name.</param>
 public sealed record CertificateIssuerChoice(string Id, string Name);
 
 /// <summary>Who asked the OADM CA for a certificate (SDK 0.4.0).</summary>
