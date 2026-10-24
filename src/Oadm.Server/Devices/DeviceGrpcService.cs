@@ -25,7 +25,8 @@ public sealed class DeviceGrpcService(
     CredentialListStore credentialList,
     AuditLog audit,
     IHostApplicationLifetime lifetime,
-    DeviceViewFactory views) : Proto.DeviceService.DeviceServiceBase
+    DeviceViewFactory views,
+    Core.Vapix.TrustAnchorRegistry anchors) : Proto.DeviceService.DeviceServiceBase
 {
     /// <summary>Devices read from the database at a time for a device list.</summary>
     public const int SnapshotPageSize = 1_000;
@@ -49,6 +50,7 @@ public sealed class DeviceGrpcService(
 
     private Proto.Device WithNote(Proto.Device proto, Device device)
     {
+        proto.CertWarningDays = anchors.ExpiryWarningDays(device); // PKI's Expiry warning policy of the device
         if (proto.Status == Proto.DeviceStatus.CredentialsRequired && actions.StatusNote(device) is { } note)
         {
             proto.StatusDetail = note;

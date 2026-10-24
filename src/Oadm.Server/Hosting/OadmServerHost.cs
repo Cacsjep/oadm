@@ -436,6 +436,11 @@ public static partial class OadmServerHost
             () => sp.GetRequiredService<RuleEngine>().PublisherFor(SiteEventSource.EventSourceId),
             sp.GetRequiredService<ILogger<SiteEventSource>>()));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<SiteEventSource>());
+        services.AddSingleton(sp => new ExpiryWarningPublisher(
+            sp.GetRequiredService<TrustAnchorRegistry>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<IDeviceChangeFeed>(),
+            sp.GetRequiredService<ILogger<ExpiryWarningPublisher>>()));
         services.AddSingleton(sp => new Core.Sites.SiteStatusPublisher(
             sp.GetRequiredService<Core.Sites.ISiteStates>(),
             sp.GetRequiredService<DeviceRepository>(),
@@ -648,6 +653,7 @@ public static partial class OadmServerHost
         siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.Start();
         sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().Start();
+        sp.GetRequiredService<ExpiryWarningPublisher>().Start(); // the grid's Certificate expires chip follows PKI's policies
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
         // 4c. Compliance checks after the core plugins: the plugins' check types read devices through them.
         await compliance.StartAsync(ct).ConfigureAwait(false);
@@ -687,6 +693,7 @@ public static partial class OadmServerHost
         await app.StopAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Compliance.ComplianceEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<ExpiryWarningPublisher>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().FlushAsync().ConfigureAwait(false);

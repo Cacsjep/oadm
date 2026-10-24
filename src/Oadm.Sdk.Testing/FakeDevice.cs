@@ -59,4 +59,7 @@ public sealed record FakeDevice : IDeviceInfo
 
     /// <summary>A user with all devices added it (host names may be trusted). Default true.</summary>
     public bool AddedByAllDevices { get; init; } = true;
+
+    /// <summary>End of validity (UTC) of the device's HTTPS certificate; null: HTTP only or not checked yet.</summary>
+    public DateTime? CertNotAfterUtc { get; init; }
 }

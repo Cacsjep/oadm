@@ -21,7 +21,10 @@ public sealed record ChipInfo(string Text, PillKind Kind)
 /// <summary>Formatting of the certificate columns ("Certificate expires", "Certificate").</summary>
 public static class CertificateDisplay
 {
-    /// <summary>Certificates expiring within this many days are shown as a warning.</summary>
+    /// <summary>
+    /// Certificates expiring within this many days are shown as a warning when the server does not say (a server without
+    /// PKI); else each device's days of PKI's Expiry warning policy (<c>cert_warning_days</c>).
+    /// </summary>
     public const int WarningDays = 30;
 
     /// <summary>
@@ -65,8 +68,8 @@ public static class CertificateDisplay
     /// <summary>RFC 5280 4.1.2.5: NotAfter 99991231235959Z means the certificate has no well-defined expiration date.</summary>
     public static bool NeverExpires(DateTime notAfterUtc) => notAfterUtc.Year >= 9999;
 
-    /// <summary>Ok when more than <see cref="WarningDays"/> days are left, warning up to that, error when expired.</summary>
-    public static PillKind ExpiryKind(DateTime? notAfterUtc, DateTime nowUtc)
+    /// <summary>Ok when more than <paramref name="warningDays"/> days are left, warning up to that, error when expired.</summary>
+    public static PillKind ExpiryKind(DateTime? notAfterUtc, DateTime nowUtc, int warningDays = WarningDays)
     {
         if (notAfterUtc is not { } notAfter)
         {
@@ -75,12 +78,12 @@ public static class CertificateDisplay
 
         TimeSpan left = notAfter - nowUtc;
         return left < TimeSpan.Zero ? PillKind.Error
-            : left.TotalDays <= WarningDays ? PillKind.Warning
+            : left.TotalDays <= (warningDays > 0 ? warningDays : WarningDays) ? PillKind.Warning
             : PillKind.Ok;
     }
 
-    public static ChipInfo Expiry(DateTime? notAfterUtc, DateTime nowUtc) =>
-        notAfterUtc is null ? ChipInfo.Empty : new ChipInfo(ExpiryText(notAfterUtc, nowUtc), ExpiryKind(notAfterUtc, nowUtc));
+    public static ChipInfo Expiry(DateTime? notAfterUtc, DateTime nowUtc, int warningDays = WarningDays) =>
+        notAfterUtc is null ? ChipInfo.Empty : new ChipInfo(ExpiryText(notAfterUtc, nowUtc), ExpiryKind(notAfterUtc, nowUtc, warningDays));
 
     public static string TrustText(CertificateTrust trust) => trust switch
     {

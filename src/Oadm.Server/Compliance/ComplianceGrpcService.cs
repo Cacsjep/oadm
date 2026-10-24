@@ -23,7 +23,8 @@ namespace Oadm.Server.Compliance;
 /// on the caller's view (docs/spec/device-scope.md): users of a device group see only the checks of their group and their
 /// results; Check now and the device of ListChoices come from the view.
 /// </summary>
-public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceViewFactory views, AuditLog audit, IHostApplicationLifetime lifetime)
+public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceViewFactory views, AuditLog audit, IHostApplicationLifetime lifetime,
+    Core.Vapix.TrustAnchorRegistry anchors)
     : Proto.ComplianceService.ComplianceServiceBase
 {
     /// <summary>Results per message of the snapshot.</summary>
@@ -68,7 +69,15 @@ public sealed class ComplianceGrpcService(ComplianceService compliance, DeviceVi
                 Available = type.Available,
                 SourceName = type.SourceName,
             };
-            entry.Fields.AddRange((EventGrpcService.Safe(() => type.Type.Fields) ?? []).Select(EventGrpcService.ToProto));
+            var fields = EventGrpcService.Safe(() => type.Type.Fields) ?? [];
+            if (type.Id == BuiltInComplianceTypes.CertificateId)
+            {
+                // A new certificate check starts with the days of PKI's Expiry warning policy; a stored check keeps its own.
+                var days = anchors.ExpiryDefaultDays.ToString(CultureInfo.InvariantCulture);
+                fields = [.. fields.Select(f => f.Key == BuiltInComplianceTypes.CertificateDaysField ? f with { Default = days } : f)];
+            }
+
+            entry.Fields.AddRange(fields.Select(EventGrpcService.ToProto));
             catalog.Entries.Add(entry);
         }
 

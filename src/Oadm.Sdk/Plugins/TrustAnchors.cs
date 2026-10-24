@@ -1,3 +1,5 @@
+using Oadm.Sdk.Devices;
+
 namespace Oadm.Sdk.Plugins;
 
 /// <summary>
@@ -23,6 +25,17 @@ public interface ITrustAnchors
     /// CA); other plugins' sets are ignored. Default: nothing.
     /// </summary>
     void SetRenewalIssuers(IReadOnlyList<byte[]> derCertificates)
+    {
+    }
+
+    /// <summary>
+    /// The days before its end that a device's certificate counts as "expires soon" (PKI's Expiry warning policies, SDK
+    /// 0.4.0): the device grid's Certificate expires chip of each device and <paramref name="defaultDays"/> for a new
+    /// Compliance certificate check. Called again after every change (the host then sends every device row again). The host
+    /// uses only the PKI plugin's; null (or none): 30 days. <paramref name="daysFor"/> must be fast (in memory) and thread-safe.
+    /// Default: nothing.
+    /// </summary>
+    void SetExpiryWarning(Func<IDeviceInfo, int>? daysFor, int defaultDays)
     {
     }
 }

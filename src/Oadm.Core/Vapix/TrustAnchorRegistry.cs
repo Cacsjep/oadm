@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Core.Vapix;
@@ -30,9 +31,59 @@ public sealed class TrustAnchorRegistry
     private readonly Dictionary<string, X509Certificate2[]> _sets = new(StringComparer.OrdinalIgnoreCase);
     private X509Certificate2[] _issuers = [];
     private volatile TrustAnchorSnapshot _current = TrustAnchorSnapshot.Empty;
+    private volatile ExpiryWarning? _expiry;
+
+    /// <summary>The days of "expires soon" without PKI's Expiry warning policies.</summary>
+    public const int DefaultExpiryWarningDays = 30;
 
     /// <summary>Raised after any set changed (outside the lock).</summary>
     public event EventHandler? Changed;
+
+    /// <summary>Raised after PKI handed new expiry warning days (<see cref="ITrustAnchors.SetExpiryWarning"/>).</summary>
+    public event EventHandler? ExpiryWarningChanged;
+
+    /// <summary>
+    /// The days before its end that <paramref name="device"/>'s certificate counts as "expires soon" (the device grid's chip):
+    /// PKI's Expiry warning policies, else <see cref="DefaultExpiryWarningDays"/>. A failing lookup counts as the default.
+    /// </summary>
+    public int ExpiryWarningDays(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        if (_expiry is not { } expiry)
+        {
+            return DefaultExpiryWarningDays;
+        }
+
+        try
+        {
+            return expiry.DaysFor(device) is var days and > 0 ? days : DefaultExpiryWarningDays;
+        }
+#pragma warning disable CA1031 // A plugin's lookup never breaks the device list.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return DefaultExpiryWarningDays;
+        }
+    }
+
+    /// <summary>The days of a new Compliance certificate check (PKI's, else <see cref="DefaultExpiryWarningDays"/>).</summary>
+    public int ExpiryDefaultDays => _expiry is { DefaultDays: > 0 } expiry ? expiry.DefaultDays : DefaultExpiryWarningDays;
+
+    /// <summary>
+    /// Replaces the expiry warning days of <paramref name="ownerId"/> (<see cref="ITrustAnchors.SetExpiryWarning"/>); only
+    /// <see cref="RenewalOwner"/>'s (PKI) are used.
+    /// </summary>
+    public void SetExpiryWarning(string ownerId, Func<IDeviceInfo, int>? daysFor, int defaultDays)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        if (!string.Equals(ownerId, RenewalOwner, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _expiry = daysFor is null ? null : new ExpiryWarning(daysFor, defaultDays);
+        ExpiryWarningChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>The current union of all sets.</summary>
     public TrustAnchorSnapshot Current => _current;
@@ -124,17 +175,25 @@ public sealed class TrustAnchorRegistry
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Removes the sets of <paramref name="ownerId"/> (plugin stopped): its anchors and its renewal issuers.</summary>
+    /// <summary>Removes the sets of <paramref name="ownerId"/> (plugin stopped): its anchors, its renewal issuers and its expiry warning days.</summary>
     public void Remove(string ownerId)
     {
         Set(ownerId, []);
         SetRenewalIssuers(ownerId, []);
+        if (string.Equals(ownerId, RenewalOwner, StringComparison.OrdinalIgnoreCase) && _expiry is not null)
+        {
+            SetExpiryWarning(ownerId, null, DefaultExpiryWarningDays);
+        }
     }
+
+    private sealed record ExpiryWarning(Func<IDeviceInfo, int> DaysFor, int DefaultDays);
 
     private sealed class OwnerAnchors(TrustAnchorRegistry registry, string ownerId) : ITrustAnchors
     {
         public void Set(IReadOnlyList<byte[]> derCertificates) => registry.Set(ownerId, derCertificates);
 
         public void SetRenewalIssuers(IReadOnlyList<byte[]> derCertificates) => registry.SetRenewalIssuers(ownerId, derCertificates);
+
+        public void SetExpiryWarning(Func<IDeviceInfo, int>? daysFor, int defaultDays) => registry.SetExpiryWarning(ownerId, daysFor, defaultDays);
     }
 }

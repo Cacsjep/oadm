@@ -17,11 +17,8 @@ public sealed class RuleEngineOptions
     /// <summary>A plugin event type whose source has not reported after this long counts as reported with nothing on.</summary>
     public TimeSpan SourceReadyTimeout { get; init; } = TimeSpan.FromMinutes(2);
 
-    /// <summary>Schedules, ready timeouts and certificate days are checked this often.</summary>
+    /// <summary>Schedules and ready timeouts are checked this often.</summary>
     public TimeSpan TickInterval { get; init; } = TimeSpan.FromSeconds(15);
-
-    /// <summary>Certificate expiry of the built-in events is recomputed this often.</summary>
-    public TimeSpan CertificateCheckInterval { get; init; } = TimeSpan.FromHours(1);
 
     /// <summary>
     /// Commands (events, device changes) waiting for the engine; beyond it new events are dropped and logged. Rule changes
@@ -81,7 +78,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
     // Pending state writes; the last change of a (rule, subject) wins. Dropped only after a successful write.
     private readonly Dictionary<(Guid Rule, Guid Subject), (bool Add, DateTime Since)> _stateOps = [];
     private readonly Dictionary<Guid, DateTime> _firedDirty = [];
-    private DateTime _lastCertificateCheck = DateTime.MinValue;
     private DateTime _startedUtc;
 
     private Task? _loop;
@@ -186,7 +182,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
         }
 
         RecomputeBuiltIn(_devices.Keys);
-        _lastCertificateCheck = _startedUtc;
         SyncSources(initial: true);
         RefreshWatched();
         EvaluateAllReady();
@@ -1006,7 +1001,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private void RecomputeBuiltIn(IEnumerable<Guid> deviceIds)
     {
-        var now = _time.GetUtcNow().UtcDateTime;
         foreach (var id in deviceIds.ToList())
         {
             if (!_devices.TryGetValue(id, out var device))
@@ -1038,10 +1032,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 SetBuiltIn(BuiltInEvents.CredentialsRequired, id, status == DeviceStatus.CredentialsRequired);
                 SetBuiltIn(BuiltInEvents.CertificateChanged, id, status == DeviceStatus.CertificateChanged);
             }
-
-            var notAfter = device.CertNotAfterUtc;
-            SetBuiltIn(BuiltInEvents.CertificateExpired, id, notAfter is { } end && end <= now);
-            SetBuiltIn(BuiltInEvents.CertificateExpiresSoon, id, notAfter is { } soon && soon > now && soon - now <= TimeSpan.FromDays(BuiltInEvents.ExpiresSoonDays));
         }
 
         RecomputeAny();
@@ -1089,12 +1079,6 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 LogSourceTimeout(typeId);
                 EvaluateAllReady();
             }
-        }
-
-        if (now - _lastCertificateCheck >= _options.CertificateCheckInterval)
-        {
-            _lastCertificateCheck = now;
-            RecomputeBuiltIn(_devices.Keys);
         }
 
         foreach (var runtime in _rules.Values.Where(r => r.Stateful && r.HasSchedule && IsEvaluable(r)))

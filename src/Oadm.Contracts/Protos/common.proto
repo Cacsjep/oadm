@@ -74,6 +74,9 @@ message Device {
   // is nothing more to say. Kept in server memory only (DeviceStatusNotes), e.g. DeviceMessages.BasicOnlyOverHttp.
   string status_detail = 32;
   string architecture = 33;                       // raw basicdeviceinfo Architecture, e.g. "aarch64"; empty until known
+  // The days before its end that the certificate counts as "expires soon" (the Certificate expires chip): PKI's Expiry
+  // warning policy of the device (docs/spec/pki.md); 0 = 30 (a server without PKI).
+  int32 cert_warning_days = 34;
 }
 
 // One entry of the device's VAPIX API discovery list (apidiscovery.cgi getApiList).
