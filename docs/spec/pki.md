@@ -78,7 +78,7 @@ One page, no tabs, cards like the 802.1X page:
 
 ## Policies
 
-One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a short summary
+One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a short summary
 ("OADM CA, 365 days, ECC", "VLAN 30", "Only devices OADM manages"), devices (where the kind has them); Edit and Delete as
 row buttons (like the Permissions page), **Add policy** in the card header. The editor is one dialog: name, kind, the
 kind's fields (each kind its own form, e.g. the 802.1X server policy: Minimum TLS version, Cipher suites with
@@ -86,15 +86,16 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 
 | Group | Kind | Fields | Devices | Default policy (there from the start, editable, can be deleted) |
 |---|---|---|---|---|
-| Issuing | **HTTPS certificate** | CA (issuing CAs), valid (days), key (RSA, ECC), warn before expiry (days) | no | "HTTPS" (OADM CA, 365 days, ECC, warn 30 days before) |
-| Issuing | **IEEE 802.1X certificate** | CA, valid (days), key, warn before expiry (days), EAPOL version, EAP identity, RADIUS server CA | no | "IEEE 802.1X" (OADM CA, 365 days, ECC, the identity and server CA as today) |
-| Issuing | **Server certificate** | CA, valid (days), key, warn before expiry (days), for (802.1X server, EST server) | no | "802.1X server", "EST server" (OADM CA, 365 days, renewed 30 days before the end, as today) |
+| Issuing | **HTTPS certificate** | CA (issuing CAs), valid (days), key (RSA, ECC) | no | "HTTPS" (OADM CA, 365 days, ECC) |
+| Issuing | **IEEE 802.1X certificate** | CA, valid (days), key, EAPOL version, EAP identity, RADIUS server CA | no | "IEEE 802.1X" (OADM CA, 365 days, ECC, the identity and server CA as today) |
+| Issuing | **Server certificate** | CA, valid (days), key, for (802.1X server, EST server) | no | "802.1X server", "EST server" (OADM CA, 365 days, renewed 30 days before the end, as today) |
 | 802.1X | **802.1X server** (one only) | Minimum TLS version (1.2, 1.3), cipher suites, largest EAP packet (bytes), reauthentication (Switch decides, or every N minutes: sent to the switch as the session timeout) | no | "802.1X server" (TLS 1.2, the default cipher suites, 1,020 bytes as RFC 3748 3.1, Switch decides) |
 | 802.1X | **Allow CA** | CA, Only devices OADM manages (on) or any device with a valid certificate of it | no | "OADM CA" (with its previous CAs) and "Axis device ID", both only managed |
 | 802.1X | **VLAN** | VLAN ID (1..4094) | yes | none |
 | 802.1X | **Block** | - | yes | none |
 | EST | **Enrollment** | profiles the devices may use (all, or chosen ones), or no enrollment | yes | "All devices" (every device OADM manages, all profiles) |
 | EST | **Sign-in CA** | CA, for new certificates or for renewals | no | "Axis device ID" (new), "OADM CA" (renewals) |
+| Certificates | **Expiry warning** | days before the end | yes | "All devices" (30 days) |
 | Revoke | **Revoke** | - | devices and sites only, never tags | none |
 
 - **Issuing policies have no devices.** The task dialogs (Enable HTTPS, Enable IEEE 802.1X) let the user pick the issuing
@@ -109,6 +110,12 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
   as a device OADM does not manage is today.
 - A device that no VLAN policy matches gets no VLAN from the server (the switch port keeps its own). There is no default
   VLAN.
+- **Expiry warning** (decision 2026-10-24) applies to every device certificate, whoever issued it (the HTTPS certificate
+  polling reads, as today). The events **Certificate expires soon** and **Certificate expired** move from the built-in
+  events (fixed 30 days, `docs/spec/event-rules.md`) to PKI's event group "Certificates" and use the policy's days; they
+  keep their ids and their Any device twins, so stored event rules keep working. The device grid's "Certificate
+  expires" chip and the Compliance check's default days follow the policy too (a Compliance check with its own days keeps
+  them).
 - **Revoke** works as today on the 802.1X page: on save it revokes the certificates of its devices, then every new
   certificate of them while it exists (no tags: a tag could revoke every device that gets it later, without undo).
 - Every change is audited; the 802.1X and EST servers apply a change at once (fail closed while a change is applied).
@@ -138,7 +145,8 @@ devices with two certificates each stay fast (today's list stops at 5,000).
 
 On the first start after the update, once, without asking:
 
-- PKI's Device certificates card (validity, warn before expiry) and IEEE 802.1X card (EAPOL version, EAP identity, RADIUS server CA): the
+- PKI's Device certificates card (validity; its warn before expiry becomes the Expiry warning policy "All devices") and
+  IEEE 802.1X card (EAPOL version, EAP identity, RADIUS server CA): the
   default issuing policies "HTTPS" and "IEEE 802.1X" with these values.
 - 802.1X Advanced (minimum TLS version, cipher suites, largest EAP packet): the 802.1X server policy.
 - 802.1X Trusted CAs: one Allow CA policy per ticked CA, with its "Only devices OADM manages".
@@ -191,8 +199,8 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 2. Built (2026-10-24, branch `feature/pki-policies`): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
    on per server, PRO for the two servers only, taking over the 4.1 data and choices, the site relay), without changing what
    they do.
-3. The page with CAs, Policies and Certificates (today's list); 802.1X server, Allow CA, VLAN, Block and Revoke policies
-   with the conversion; the 802.1X and EST page changes above.
+3. The page with CAs, Policies and Certificates (today's list); 802.1X server, Allow CA, VLAN, Block, Revoke and Expiry
+   warning policies (the expiry events move to PKI) with the conversion; the 802.1X and EST page changes above.
 4. Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the task dialogs pick a policy; EST profiles point to
    one.
 5. The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
