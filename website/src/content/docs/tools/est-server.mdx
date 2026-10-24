@@ -190,7 +190,8 @@ The EST server only answers cameras that:
 
 - sign in with a certificate of a CA an **EST sign-in CA** policy names: by default their **Axis device ID** (checked
   against the Axis device ID certificate authorities) for new certificates, and a certificate the OADM CA gave them
-  for renewals,
+  for renewals. To renew, a camera may also sign in with its current certificate from OADM, whichever CA of the PKI page
+  issued it (also a CA you imported with its key),
 - are **managed by OADM**: the serial number in the device ID must be a device in the device list, and
 - are in an **Enrollment** policy that allows the profile (by default "All devices", every profile). A camera no
   Enrollment policy holds is refused; a profile its policy does not allow is answered like a profile that does not

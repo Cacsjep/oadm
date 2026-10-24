@@ -12,8 +12,34 @@ namespace Oadm.Plugins.Pki.Ca;
 /// runs): signs with <see cref="DeviceCertificateIssuer"/> like PKI's own tasks and lists device certificates in the issued
 /// registry. Refuses requests signed with SHA-1 or MD5.
 /// </summary>
-public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery
+public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates
 {
+    /// <inheritdoc />
+    public async Task<string?> CurrentCameraAsync(byte[] certificateDer, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(certificateDer);
+        string serial;
+        try
+        {
+            using var certificate = X509CertificateLoader.LoadCertificate(certificateDer);
+            serial = certificate.SerialNumber;
+        }
+        catch (CryptographicException)
+        {
+            return null;
+        }
+
+        if (service.Local.HasSerial(serial) || service.Issued.IsRevoked(serial) || !service.Issued.IsCurrent(serial)
+            || service.Issued.Find(serial) is not { Pending: false, DeviceSerial: { Length: > 0 } camera })
+        {
+            return null;
+        }
+
+        // Exactly the certificate OADM issued: a certificate with the same serial from elsewhere (an imported CA's key used
+        // outside OADM) is refused.
+        return await service.Issued.GetDerAsync(serial, ct).ConfigureAwait(false) is { } stored && stored.AsSpan().SequenceEqual(certificateDer) ? camera : null;
+    }
+
     /// <summary>Signature algorithms of a request that are refused (MD2, MD5, SHA-1 with RSA, DSA, ECDSA).</summary>
     private static readonly HashSet<string> WeakSignatures =
     [

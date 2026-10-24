@@ -697,8 +697,11 @@ It supersedes "only the OADM CA issues" of stage 4 and the Server certificate an
   certificates under an imported CA that issues (Group by issuer, Issued by filter).
 - **EST sign-in** (decision 5, checked): the existing rules allow only the Axis device ID and OADM CAs (current and
   previous) as EST sign-in CAs (`PolicyStore.SignInCaChoices`); they stay. EST reads a camera's serial from a name in the
-  certificate only where OADM vouches for that name: an imported CA's key may be used outside OADM, so its certificates
-  never sign a camera in. A camera with a certificate of an imported CA renews by signing in with its Axis device ID.
+  certificate only where OADM vouches for that name: an imported CA's key may be used outside OADM. Renewals (maintainer
+  decision 2026-10-25): a camera also signs in with its **current** certificate when OADM issued exactly that one, whatever
+  CA of PKI issued it; the camera comes from the store entry, the certificate must match the stored DER, pending and
+  revoked ones do not count (`Ca/ICurrentCertificates`, `PkiCertificateAuthority.CurrentCameraAsync`;
+  docs/spec/est-server.md "Renewal with the current certificate"). Certificates of the same CA issued outside OADM stay refused.
 - **Removal**: `removeAuthority` and `removePrevious` are refused while a policy names the CA (`PolicyStore.NamingCa`:
   issuing, 802.1X trusted CA, EST sign-in CA; a previous OADM CA only when a policy names it itself).
 - **Kinds**: `PolicyKinds` Dot1xServer (with `CaId`, `ValidDays`, `Key`; ECC only), EstServer (new), AllowCa ("802.1X
@@ -710,16 +713,17 @@ It supersedes "only the OADM CA issues" of stage 4 and the Server certificate an
   (`ImportCaWindow`, "Import CA with its key"); the editor's Issued by, Block's check box (Revoke row label), no For of
   server certificates; the CA list's Used in; group headers only for groups with rows (`PkiView.PolicyGroupView`, no fixed
   group keys).
-- **Tests**: `Oadm.Plugins.Pki.Tests` `SeveralCasTests` (imports, key encryption and master key, signing by issuer with
+- **Tests**: `Oadm.Plugins.Pki.Tests` `SeveralCasTests` (imports, key encryption and master key, the current certificate
+  that names its camera for an EST renewal, signing by issuer with
   its chain and in the list, a used CA kept, previous CA named by an EST sign-in CA, the kind conversion and its start,
   Used in, no empty group headers), `ServiceTests`, `TaskTests` (an imported intermediate through the IEEE 802.1X
   policy), `PageTests` (import adds, headless), `PolicyPageTests` (+ `pki-policy-block.png`), `IssueDialogTests`
   (+ `pki-policy-est-server.png`, `pki-policy-dot1x-server.png`); `Oadm.Plugins.Est.Tests` `ServerTests` (a profile and the
-  EST server policy on an imported CA, `cacerts`); `Oadm.Plugins.Radius.Tests` `AllowCaTests` (revocation of an issuing
+  EST server policy on an imported CA, `cacerts`, a renewal with the current certificate of an imported CA: accepted;
+  the same CA's certificate issued elsewhere and one no longer current: refused); `Oadm.Plugins.Radius.Tests` `AllowCaTests` (revocation of an issuing
   imported CA), `ConversionTests`, `PolicyTests`.
 - **For the maintainer**: the CA backup no longer restores as this server's OADM CA (it is added as a CA that can issue);
-  the "Can issue" badge shows on imported CAs only (the OADM CA always can); a camera with an EST certificate of an
-  imported CA renews only through its Axis device ID; an EST or 802.1X server policy whose CA can no longer issue leaves
+  the "Can issue" badge shows on imported CAs only (the OADM CA always can); an EST or 802.1X server policy whose CA can no longer issue leaves
   that server without a certificate (fail closed).
 
 ## Not planned

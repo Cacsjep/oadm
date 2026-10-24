@@ -545,6 +545,31 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_renewal_with_the_current_certificate_oadm_issued_signs_in_whatever_ca_issued_it()
+    {
+        // Decision 2026-10-25: an imported CA (no EST sign-in CA policy names it) issued the camera's certificate in OADM.
+        _policies = await TestPolicies.EstStoreAsync();
+        using var importedCa = TestPki.Root("Contoso Issuing CA");
+        using var issuedByOadm = TestPki.DeviceId(importedCa, "ACCC8E999999"); // the name says another camera: the store decides
+        using var issuedElsewhere = TestPki.DeviceId(importedCa, Serial); // same CA, never issued by OADM
+        _ca.Current[Convert.ToHexString(issuedByOadm.RawData)] = Serial;
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+
+        var renewed = await SendAsync("POST", "/.well-known/est/https/simplereenroll", issuedByOadm, Body(csr));
+        Assert.Equal(200, renewed.Status);
+        Assert.Equal(_devices.List[0].Id, _ca.Requests[^1].DeviceId);
+
+        // Only for renewals; a certificate the store does not hold as current never signs in.
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", issuedByOadm, Body(csr))).Status);
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", issuedElsewhere, Body(csr))).Status);
+
+        // No longer current (a newer one replaced it): refused.
+        _ca.Current.Clear();
+        Assert.Equal(401, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", issuedByOadm, Body(csr))).Status);
+    }
+
+    [Fact]
     public async Task Sign_in_ca_policies_let_cameras_in_only_through_their_cas_for_new_certificates_or_renewals()
     {
         _ca.ListDefaults();

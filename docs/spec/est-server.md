@@ -89,6 +89,15 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   signs in), and an **Enrollment** policy must hold the device and allow the profile (default "All devices", every
   profile). None holds it: 403 "No enrollment policy for this device."; a profile not allowed: the 404 of an unknown
   profile (no probing), listed in Enrollments with the policy that refused it.
+- **Renewal with the current certificate** (maintainer decision 2026-10-25): for `simplereenroll` a camera also signs in
+  with its current certificate when OADM issued exactly that certificate, whatever CA of PKI issued it (OADM CA, previous
+  OADM CA, an imported CA with its key): valid now, its serial is the camera's **current** certificate in PKI's store (a
+  pending one does not count), the same DER, not on the revocation list, not one of the Certificates list made here
+  (`ICurrentCertificates.CurrentCameraAsync`, O(1) by serial). The camera comes from the store entry (serial -> camera),
+  never from a name in the certificate; a certificate of the same CA issued outside OADM stays refused (401). Order in
+  `EstEndpoint.SerialOfAsync`: the Axis device ID (an EST sign-in CA policy names it), then this rule (renewals only), then
+  the EST sign-in CA policies' OADM CAs by the axis name; then, as before, the managed device, its site, the Enrollment
+  policies, the revocation list and the record's device. New enrollments keep the EST sign-in CA policies alone.
 - **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate the OADM CA
   itself issued (chain element 1 is the OADM CA, never another CA below a root above an imported OADM CA) whose DNS
   names hold exactly one `axis-<serial>.local` serial, a managed device, and that PKI does not mark as not a device's
@@ -134,11 +143,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   profile's issuing policy cannot issue).
 - Issuing (decision 2026-10-25): a profile's certificates come from the CA its issuing policy names ("Issued by": the
   OADM CA or an imported CA with its key; `DeviceCertificateRequest.IssuerId`); `cacerts` and the answer carry that CA's
-  chain. Sign-in stays as it is: only the Axis device ID and OADM CAs (the current and previous ones) can be EST sign-in
-  CAs, because EST reads a camera's serial only from a certificate whose name OADM vouches for; an imported CA's key may
-  also be used outside OADM, so a name in its certificate proves nothing. A camera with a certificate of an imported CA
-  therefore renews by signing in with its Axis device ID (an EST sign-in CA "Axis device ID" for new certificates renews
-  too).
+  chain. The EST sign-in CAs stay as they are: only the Axis device ID and OADM CAs (the current and previous ones) can be
+  EST sign-in CAs, because EST reads a camera's serial from a certificate's name only where OADM vouches for it; an
+  imported CA's key may also be used outside OADM, so a name in its certificate proves nothing. A camera with a certificate
+  of an imported CA renews with that certificate when it is its current one in PKI's store ("Renewal with the current
+  certificate"), else with its Axis device ID.
 - The server's TLS certificate: made in memory (never stored) from the CA, days and key of PKI's EST server policy (the
   OADM CA, 90 days, ECC P-256 by default; RSA 2048), made again 30 days (at most a third of its time) before its end,
   when the addresses, the CA or the policy's key change; other days apply to the next one.

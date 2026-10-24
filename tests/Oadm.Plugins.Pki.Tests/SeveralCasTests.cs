@@ -125,6 +125,47 @@ public sealed class SeveralCasTests
     }
 
     [Fact]
+    public async Task Only_the_current_certificate_oadm_issued_names_its_camera_for_an_est_renewal()
+    {
+        // Decision 2026-10-25: EST renewals with the camera's current certificate, whatever CA of PKI issued it.
+        var camera = new Oadm.Sdk.Testing.FakeDevice { Serial = "B8A44F631339" };
+        await using var pki = await PkiHarness.StartAsync(devices: [camera]);
+        using var root = TestCa.Root("Acme Root CA");
+        using var intermediate = TestCa.Intermediate(root);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.Import, WithKey(intermediate, root))).Ok);
+        var authority = new PkiCertificateAuthority(pki.Service);
+        var current = authority; // the store EST asks (ICurrentCertificates)
+        var request = new DeviceCertificateRequest(RevocationTests.Csr(), "10.0.0.48", ["10.0.0.48"], ["axis-b8a44f631339.local"], DeviceCertificateUse.Server)
+        {
+            DeviceId = camera.Id,
+            Validity = TimeSpan.FromDays(30),
+            Source = IssuedCertificateSources.Est,
+            IssuerId = PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(intermediate)),
+        };
+
+        // Pending (the answer not written yet): not current.
+        var first = await authority.SignAsync(request, CancellationToken.None);
+        Assert.Null(await current.CurrentCameraAsync(first.Certificate, CancellationToken.None));
+        await authority.DeliveredAsync(first.SerialNumber, CancellationToken.None);
+        Assert.Equal("B8A44F631339", await current.CurrentCameraAsync(first.Certificate, CancellationToken.None));
+
+        // The same CA, a certificate issued outside OADM (naming the camera): never.
+        using var elsewhere = TestCa.Leaf(intermediate);
+        Assert.Null(await current.CurrentCameraAsync(elsewhere.RawData, CancellationToken.None));
+
+        // A newer one became current: the older one no longer names the camera (it is revoked as replaced).
+        var second = await authority.SignAsync(request, CancellationToken.None);
+        await authority.DeliveredAsync(second.SerialNumber, CancellationToken.None);
+        Assert.Null(await current.CurrentCameraAsync(first.Certificate, CancellationToken.None));
+        Assert.Equal("B8A44F631339", await current.CurrentCameraAsync(second.Certificate, CancellationToken.None));
+
+        // Revoked: no longer.
+        await authority.RevokeAsync([second.SerialNumber], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
+        Assert.Null(await current.CurrentCameraAsync(second.Certificate, CancellationToken.None));
+        Assert.Null(await current.CurrentCameraAsync([1, 2, 3], CancellationToken.None));
+    }
+
+    [Fact]
     public async Task An_issuing_policy_picks_any_ca_with_its_key_and_that_ca_cannot_be_removed_while_used()
     {
         await using var pki = await PkiHarness.StartAsync();
