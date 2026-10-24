@@ -31,6 +31,19 @@
         <ui:FormField Label="Enrollments kept">
           <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
         </ui:FormField>
+        <!-- PKI's CAs a camera may sign in with (a few check boxes: no virtualization needed). -->
+        <ui:FormField Label="Sign in with" Error="{Binding SignInError}">
+          <ItemsControl ItemsSource="{Binding SignIn}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:SignInRowViewModel">
+                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" IsEnabled="{Binding MayManage}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ui:FormField>
+        <ui:FormField Label="Issued by">
+          <TextBlock Text="{Binding IssuingCa}" TextTrimming="CharacterEllipsis" />
+        </ui:FormField>
       </StackPanel>
 
       <StackPanel Grid.Column="2" Spacing="6">
