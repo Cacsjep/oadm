@@ -67,6 +67,31 @@ public sealed class TrustedCaTests
     }
 
     [Fact]
+    public async Task ACaUntickedWhileAHandshakeRebuildsTheSetNeverPassesAfterwards()
+    {
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
+
+        // PKI offers a new CA object: the next handshake rebuilds the set from the selection it read, and the save that
+        // unticks the Axis device ID lands in the middle of that rebuild.
+        using var restarted = new TestAuthority("OADM CA after a restart");
+        var saved = false;
+        restarted.OnNextPreviousRead(() =>
+        {
+            Task.Run(() => harness.CallAsync<TrustedCaList>(RadiusMethods.SaveTrustedCas,
+                new TrustedCaSettings { Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId)] })).GetAwaiter().GetResult();
+            saved = true;
+        });
+        harness.Ctx.FakeServices.Offer<IDeviceCertificateAuthority>(restarted);
+        await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial))); // started before the save: either answer
+        Assert.True(saved);
+
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
+        Assert.Equal(CertificateRefusals.NotTrusted, (await LastLogRowAsync(harness)).Reason);
+    }
+
+    [Fact]
     public async Task AnImportedCaForAnyDeviceLetsANonManagedCertificateInWithItsSubjectAndDropsOutWhenPkiRemovesIt()
     {
         using var company = new TestAuthority("Contoso Root");

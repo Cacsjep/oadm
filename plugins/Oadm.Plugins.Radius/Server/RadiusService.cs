@@ -1718,13 +1718,14 @@ public sealed partial class RadiusService : IAsyncDisposable
     {
         var trust = _trust;
         var ca = _host.Authority();
-        if (ReferenceEquals(ca, trust.Authority) && trust.Version == Volatile.Read(ref _caVersion))
+        var selection = _trustedCas;
+        if (ReferenceEquals(ca, trust.Authority) && trust.Version == Volatile.Read(ref _caVersion) && (ca is null || ReferenceEquals(trust.Selection, selection)))
         {
-            return trust; // the same offer, no Changed since the build: two reads, no hashing per handshake
+            return trust; // the same offer and selection, no Changed since the build: a few reads, no hashing per handshake
         }
 
         Follow(); // a new offer: its Changed events count from now on
-        trust = CaTrust.Build(ca, _trustedCas, _deviceIds, Volatile.Read(ref _caVersion));
+        trust = CaTrust.Build(ca, selection, _deviceIds, Volatile.Read(ref _caVersion));
         _trust = trust;
         TellUsedBy(trust);
         return trust;

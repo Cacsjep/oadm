@@ -113,9 +113,15 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
         get
         {
             Interlocked.Increment(ref _previousReads);
+            Interlocked.Exchange(ref _onPreviousRead, null)?.Invoke();
             return Previous;
         }
     }
+
+    private Action? _onPreviousRead;
+
+    /// <summary>Runs once, on the next read of <see cref="PreviousChains"/> (a test saves in the middle of a rebuild with it).</summary>
+    public void OnNextPreviousRead(Action action) => Volatile.Write(ref _onPreviousRead, action);
 
     /// <summary>How often <see cref="PreviousChains"/> was read (the trusted set is built once per CA change, never per handshake).</summary>
     public int PreviousReads => Volatile.Read(ref _previousReads);

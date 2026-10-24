@@ -33,8 +33,10 @@ public sealed record TrustedIssuer(string Id, CertificateAuthorityKind Kind, boo
 public sealed class CaTrust
 {
     private CaTrust(string key, X509Certificate2Collection anchors, X509Certificate2Collection intermediates, IReadOnlyDictionary<string, TrustedIssuer> issuers,
-        AxisDeviceId? deviceIds, TrustedIssuer? deviceIdIssuer, IReadOnlyList<string> usedIds, IDeviceCertificateAuthority? authority = null, long version = 0)
+        AxisDeviceId? deviceIds, TrustedIssuer? deviceIdIssuer, IReadOnlyList<string> usedIds, IDeviceCertificateAuthority? authority = null, long version = 0,
+        TrustedCaSettings? selection = null)
     {
+        Selection = selection;
         Key = key;
         Anchors = anchors;
         Intermediates = intermediates;
@@ -78,6 +80,12 @@ public sealed class CaTrust
     /// compares <see cref="Key"/>.
     /// </summary>
     public long Version { get; }
+
+    /// <summary>
+    /// The Trusted CAs selection the set was built from (null: none): a handshake rebuilds when the 802.1X server's current
+    /// selection is another one, so a set built from an older selection during a save never stays.
+    /// </summary>
+    public TrustedCaSettings? Selection { get; }
 
     /// <summary>The default selection: the OADM CA (with its previous ones) and the Axis device ID, both only managed devices.</summary>
     public static TrustedCaSettings DefaultSelection { get; } = new()
@@ -215,7 +223,7 @@ public sealed class CaTrust
             }
         }
 
-        return new CaTrust(key, anchors, intermediates, issuers, deviceIds, deviceIdIssuer, [.. chosen.Keys.Order(StringComparer.Ordinal)], authority, version);
+        return new CaTrust(key, anchors, intermediates, issuers, deviceIds, deviceIdIssuer, [.. chosen.Keys.Order(StringComparer.Ordinal)], authority, version, selection);
     }
 
     private static List<X509Certificate2> Load(IReadOnlyList<byte[]> certificates)
