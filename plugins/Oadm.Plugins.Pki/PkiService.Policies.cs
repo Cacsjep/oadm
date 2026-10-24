@@ -96,9 +96,26 @@ public sealed partial class PkiService
         var config = _config;
         await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
         await Policies.ConvertOnceAsync(IssuingOwner, async token => ConvertIssuing(config, await _store.UsedBeforeAsync(token).ConfigureAwait(false)), ct).ConfigureAwait(false);
+        await RenameEstPoliciesAsync(ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
         _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);
+    }
+
+    /// <summary>
+    /// The names of the EST conversion before 2026-10-25 ("EST https", "EST dot1x": the profile as the cameras spell it)
+    /// become the names a new installation gives ("EST HTTPS", "EST 802.1X"); once, never over a name a user chose.
+    /// </summary>
+    private async Task RenameEstPoliciesAsync(CancellationToken ct)
+    {
+        foreach (var (old, renamed) in new[] { ("EST https", "EST HTTPS"), ("EST dot1x", "EST 802.1X") })
+        {
+            if (Policies.All.FirstOrDefault(p => string.Equals(p.Name, old, StringComparison.Ordinal)) is { } policy
+                && !Policies.All.Any(p => p.Id != policy.Id && string.Equals(p.Name, renamed, StringComparison.OrdinalIgnoreCase)))
+            {
+                await Policies.SaveAsync(policy with { Name = renamed }, PkiPluginInfo.DisplayName, CipherSuites, ct).ConfigureAwait(false);
+            }
+        }
     }
 
     private async ValueTask StopPoliciesAsync()

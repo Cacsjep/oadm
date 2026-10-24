@@ -17,10 +17,10 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>
 /// The list of certificates (SDK 0.4.0), the Certificates card of the PKI page: the page's buttons (<see cref="Toolbar"/>)
 /// left, Group by (when the source groups), the filters (state, use, issued by) and the search right, the progress row of a
-/// later read or a write of the page (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid (name or
-/// device with the key and issuer below it, the type as badges with the page's statuses below them, valid until with a
-/// state badge only when it needs attention, used by as badges or the device, one ⋯ button with the row's actions menu, the same as its right-click menu; rows grow
-/// to two lines, group headers with their counts over every page; several rows can be chosen, a double click is View
+/// later read or a write of the page (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid, one line per row (name or
+/// device, the type as badges with the page's statuses as accent badges next to them, issuer, key, valid until with a
+/// state badge next to it only when it needs attention, one ⋯ button with the row's
+/// actions menu, the same as its right-click menu; group headers with their counts over every page; several rows can be chosen, a double click is View
 /// certificate), the empty line, the overlay of the first read, an error of the whole table directly below it and the
 /// pages (Previous / Next, "1-500 of 12,345"). The DataContext is an <see cref="IssuedCertificateListViewModel"/>; the
 /// grid's selection reaches it in one step.
@@ -48,9 +48,10 @@ public sealed class IssuedCertificateList : UserControl
             CanUserSortColumns = false,
             CanUserReorderColumns = false,
             SelectionMode = DataGridSelectionMode.Extended,
-            MinHeight = 200,
+            MinHeight = 100, // the PKI page's cards can be made small with its splitter
         };
-        Table.Classes.Add("wrapRows"); // a second line of the name, badges and statuses that wrap
+        // One line per row (decision 2026-10-25): no second line of the name, badges side by side, the state badge next to
+        // the date.
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "Name",
@@ -58,83 +59,71 @@ public sealed class IssuedCertificateList : UserControl
             MinWidth = 160,
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
-                var name = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+                var name = new TextBlock { Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
                 name.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.Name)));
                 name.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.Name)));
-                var detail = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
-                detail.Classes.Add("secondary");
-                detail.Classes.Add("small");
-                detail.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.Detail)));
-                detail.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.Detail)));
-                detail.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.HasDetail)));
-                return new StackPanel { Margin = new Thickness(10, 4), Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { name, detail } };
+                return name;
             }, supportsRecycling: true),
         });
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "Type",
-            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            Width = new DataGridLength(1.2, DataGridLengthUnitType.Star),
             MinWidth = 130,
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
-                // The badges, then the page's statuses of the row (the OADM CA: where it is installed).
+                // The badges of what it is (neutral), then the page's statuses of the row as tinted badges (the OADM CA:
+                // trusted on the server, on this computer), one line.
                 var more = new ItemsControl
                 {
                     ItemTemplate = new FuncDataTemplate<IssuedCertificateStatus>((_, _) =>
                     {
-                        var status = new StatusChip { MaxLines = 1 };
-                        status.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateStatus.Text)));
-                        status.Bind(StatusChip.IsOkProperty, new Binding(nameof(IssuedCertificateStatus.IsOk)));
-                        status.Bind(StatusChip.IsWarningProperty, new Binding(nameof(IssuedCertificateStatus.IsWarning)));
-                        status.Bind(StatusChip.IsErrorProperty, new Binding(nameof(IssuedCertificateStatus.IsError)));
-                        status.Bind(StatusChip.IsAccentProperty, new Binding(nameof(IssuedCertificateStatus.IsAccent)));
-                        status.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateStatus.Tip)));
-                        return status;
+                        var text = new TextBlock();
+                        text.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateStatus.Text)));
+                        var badge = new Border { Child = text };
+                        badge.Classes.Add("badge");
+                        badge.Classes.Add("tinted"); // the device tags' look, colored text
+                        badge.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateStatus.Tip)));
+                        return badge;
                     }, supportsRecycling: true),
-                    // Side by side below the badges, wrapped only when the column is too narrow.
-                    ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 10, LineSpacing = 2 }),
+                    ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 }),
+                    VerticalAlignment = VerticalAlignment.Center,
                 };
                 more.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(IssuedCertificateRow.MoreStates)));
                 more.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.HasMoreStates)));
-                return new StackPanel { Margin = new Thickness(10, 4), Spacing = 4, VerticalAlignment = VerticalAlignment.Center, Children = { Badges(nameof(IssuedCertificateRow.Badges), wrap: true), more } };
+                return new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 4,
+                    Margin = new Thickness(10, 4),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ClipToBounds = true,
+                    Children = { Badges(nameof(IssuedCertificateRow.Badges), wrap: false), more },
+                };
             }, supportsRecycling: true),
         });
+        Table.Columns.Add(TextColumn("Issuer", nameof(IssuedCertificateRow.Issuer), new DataGridLength(1, DataGridLengthUnitType.Star), 130));
+        Table.Columns.Add(TextColumn("Key", nameof(IssuedCertificateRow.KeyType), new DataGridLength(110), 110));
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "Valid until",
-            Width = new DataGridLength(0.8, DataGridLengthUnitType.Star),
-            MinWidth = 150,
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            MinWidth = 230,
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
-                // The date; below it a badge only when the state needs attention (expires soon, expired, revoked, replaced).
-                var date = new TextBlock();
+                // The date; next to it a badge only when the state needs attention (expires soon, expired, revoked, replaced).
+                var date = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
                 date.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.ValidUntil)));
-                var chip = new StatusChip { MaxLines = 1 };
+                var chip = new StatusChip { MaxLines = 1, VerticalAlignment = VerticalAlignment.Center };
                 chip.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateRow.StateText)));
                 chip.Bind(StatusChip.IsWarningProperty, new Binding(nameof(IssuedCertificateRow.IsWarning)));
                 chip.Bind(StatusChip.IsErrorProperty, new Binding(nameof(IssuedCertificateRow.IsError)));
                 chip.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.StateTip)));
                 chip.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.HasStateBadge)));
-                return new StackPanel { Margin = new Thickness(10, 4), Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { date, chip } };
+                return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true, Children = { date, chip } };
             }, supportsRecycling: true),
         });
-        Table.Columns.Add(new DataGridTemplateColumn
-        {
-            Header = "Used by",
-            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-            MinWidth = 110,
-            CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
-            {
-                // One line: badges (a CA's groups, a server) or the device; every use in the tooltip.
-                var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-                text.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.UsedByText)));
-                text.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.UsedByText)) { Converter = StringConverters.IsNotNullOrEmpty });
-                var badges = Badges(nameof(IssuedCertificateRow.UsedByBadges), wrap: false);
-                var cell = new Panel { Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true, Background = Brushes.Transparent, Children = { text, badges } };
-                cell.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.UsedByTip)));
-                return cell;
-            }, supportsRecycling: true),
-        });
+        // No Used by column (decision 2026-10-25).
         Table.Columns.Add(new DataGridTemplateColumn
         {
             // One fixed narrow column: the ⋯ button opens the row's actions (IssuedCertificateListViewModel.MenuOf).
@@ -186,9 +175,16 @@ public sealed class IssuedCertificateList : UserControl
         groupBy.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(IssuedCertificateListViewModel.GroupBy)) { Mode = BindingMode.TwoWay });
         groupBy.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.CanGroup)));
         filters.Children.Add(groupBy);
-        filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.StateChoices), nameof(IssuedCertificateListViewModel.StateFilter)));
-        filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.UseChoices), nameof(IssuedCertificateListViewModel.UseFilter)));
-        filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.SourceChoices), nameof(IssuedCertificateListViewModel.SourceFilter)));
+        // No use filter (decision 2026-10-25): the Type badges say the use; the state and the issuer stay.
+        foreach (var filter in new[]
+        {
+            Filter(nameof(IssuedCertificateListViewModel.StateChoices), nameof(IssuedCertificateListViewModel.StateFilter)),
+            Filter(nameof(IssuedCertificateListViewModel.SourceChoices), nameof(IssuedCertificateListViewModel.SourceFilter)),
+        })
+        {
+            filter.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.ShowsFilters)));
+            filters.Children.Add(filter);
+        }
         var search = new SearchBox { Placeholder = "Search", Width = 260 };
         search.Bind(SearchBox.TextProperty, new Binding(nameof(IssuedCertificateListViewModel.Search)) { Mode = BindingMode.TwoWay });
         filters.Children.Add(search);
@@ -343,6 +339,21 @@ public sealed class IssuedCertificateList : UserControl
             _restoring = false;
         }
     }
+
+    /// <summary>A one-line text column with the whole text as tooltip.</summary>
+    private static DataGridTemplateColumn TextColumn(string header, string property, DataGridLength width, double minWidth) => new()
+    {
+        Header = header,
+        Width = width,
+        MinWidth = minWidth,
+        CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
+        {
+            var text = new TextBlock { Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            text.Bind(TextBlock.TextProperty, new Binding(property));
+            text.Bind(ToolTip.TipProperty, new Binding(property));
+            return text;
+        }, supportsRecycling: true),
+    };
 
     /// <summary>Neutral badges (<c>Border.badge.neutral</c>) of a row's list of texts; on one line or wrapping.</summary>
     private static ItemsControl Badges(string property, bool wrap)

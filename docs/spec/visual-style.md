@@ -60,7 +60,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   side subtitle, trailing content); host pages never repeat the page title in a card heading. A plugin page may leave the header row out
   (`ui:PageHeader.IsHidden`, Live View: every pixel for the video).
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
-  corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
+  corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page) (menus compact: entries padded 10,6, at least 160 px wide, separators 3 px apart; decision 2026-10-25), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
   the tasks pane; the split is persisted per client.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
@@ -76,7 +76,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
   show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and Used by: Root
-  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: a grey pill, normal text), never a status.
+  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. Who made a PKI policy is `Border.badge.system` (violet text: System) or `Border.badge.user` (blue text: User), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill).
   Menu entries that delete, revoke or remove are red (`MenuItem.danger`), last after a separator.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.
@@ -112,8 +112,9 @@ rail, dialogs), `ToolbarButton` (every toolbar button) and `ToolbarSeparator`, `
 toolbar buttons: what does not fit goes behind its own More button; the search box stays outside it), `SearchBox`
 (every search field), `OadmIcon`, and for
 dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
-`FileRow` (chosen file + "Choose file"; `IsSingleButton`: one wide button that shows the chosen file's name, the
-compliance check form), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
+`FileRow` (every file chooser, decision 2026-10-25: one wide button that shows "Choose file" until a file is chosen,
+then its name, the details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the older
+row with the button on the right), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
 `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
 inline "I understand" risk sections; line breaks start a new line, text between `**` is bold; `ConfirmWithChoiceAsync`: one
 select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
@@ -177,7 +178,7 @@ the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSourc
 frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a
 dragged item lands, `ShowSelectionArea` a selection rectangle, `TileLayout.PlaceSized` the first free place of a size,
 `ITileGridSource.CopyText` the copy icon's tooltip; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
-Live View, Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+Live View, Dashboards), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
 puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
 row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
 every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,

@@ -60,9 +60,9 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `importRadiusCa`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
   after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
 - Page (stage 7 of `docs/spec/pki.md`, `HasOwnCards`, subtitle "Certificates, their policies, and the 802.1X and EST
-  servers."): fixed tabs Certificates | 802.1X server | EST server (`PkiViewModel.Tabs`, the server pages from
-  `ICorePluginClientContext.Tabs`, `OpenTabRequested`). Certificates: Policies, then the Certificates card as high as the
-  rest of the page (`PkiView.FitList`): one toolbar row with the title, Create (Certificate, New OADM CA = the former
+  servers."): fixed tabs Certificates | Policies | 802.1X server | EST server (`PkiViewModel.Tabs`, the server pages from
+  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`). Policies: the policy table as
+  high as the tab. Certificates: the Certificates card as high as the tab (`PkiView.FitList`): one toolbar row with the title, Create (Certificate, New OADM CA = the former
   Generate new CA), Sign request, Import (Certificate; CA: "Own CA with its key" replaces the OADM CA, "CA certificate
   only" adds a row) and Group by, the filters and the search; the OADM CA's status below it only when it needs attention.
   The CAs are rows: the OADM CA's menu has View, Export (PEM / DER: Export public certificate), Install in trusted root

@@ -188,6 +188,9 @@ public sealed class TrustAnchorRegistry
 
     private sealed record ExpiryWarning(Func<IDeviceInfo, int> DaysFor, int DefaultDays);
 
+    /// <summary>The server's own TLS certificate (DER) for <see cref="ITrustAnchors.ServerCertificate"/>; set by the host.</summary>
+    public Func<byte[]?>? ServerCertificate { get; set; }
+
     private sealed class OwnerAnchors(TrustAnchorRegistry registry, string ownerId) : ITrustAnchors
     {
         public void Set(IReadOnlyList<byte[]> derCertificates) => registry.Set(ownerId, derCertificates);
@@ -195,5 +198,7 @@ public sealed class TrustAnchorRegistry
         public void SetRenewalIssuers(IReadOnlyList<byte[]> derCertificates) => registry.SetRenewalIssuers(ownerId, derCertificates);
 
         public void SetExpiryWarning(Func<IDeviceInfo, int>? daysFor, int defaultDays) => registry.SetExpiryWarning(ownerId, daysFor, defaultDays);
+
+        public byte[]? ServerCertificate => registry.ServerCertificate?.Invoke();
     }
 }

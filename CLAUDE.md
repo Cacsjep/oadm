@@ -47,7 +47,7 @@ src/
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon,
-                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
+                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
@@ -189,7 +189,7 @@ must never break.
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
 - **[PKI, the certificate control center](docs/spec/pki.md)** (OADM 4.5): one package with the EST and 802.1X servers
-  (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); one rail entry with the tabs Certificates,
+  (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); one rail entry with the tabs Certificates, Policies,
   802.1X server, EST server; every rule about certificates is a PKI policy (issuing, 802.1X, EST, Revoke, Expiry warning;
   no overlaps; converted once from the old settings), the servers keep no rules of their own; the certificate list holds
   every CA and certificate with create, sign request, import, export and delete; certificates start 5 minutes early and
@@ -343,7 +343,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   content (`SizeToContent="Height"`, fixed width). Cards only in dialogs with several sections or a list.
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
-  one); the flat `ui:ToolbarButton` is only for toolbars.
+  one); the flat `ui:ToolbarButton` is only for toolbars, also the header row of a card that holds a table (PKI's
+  Policies and certificate cards, like the device toolbar: the main one `IsPrimary`; decision 2026-10-25).
 - One accent button per view (exception, the purple device choice button: "Selected devices" of the event rule and
   trigger dialogs and of VAPIX Commander's target devices, "Selected cameras" of Edge Recording Export): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.

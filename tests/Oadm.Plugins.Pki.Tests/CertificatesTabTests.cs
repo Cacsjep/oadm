@@ -357,7 +357,7 @@ public sealed class CertificatesTabHeadlessTests
 
         Assert.Contains("Certificates", checks.texts);
         Assert.Contains("Revoked", checks.texts);
-        Assert.Contains("Used by", checks.texts);
+        Assert.DoesNotContain("Used by", checks.texts); // no Used by column (decision 2026-10-25)
         Assert.Contains("Create", checks.texts);
         Assert.Contains("Sign request", checks.texts);
         Assert.Equal(4, checks.reasons);

@@ -69,6 +69,13 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>The CA that issued it; "Task" or "EST" from a server that does not say.</summary>
     public string IssuedBy => Source.IssuedBy ?? Source.Source;
 
+    /// <summary>The Issuer column: the CA that issued it; "Self-signed" for a root CA; "-" when unknown.</summary>
+    public string Issuer => Source.Kind == ListedCertificateKind.Authority && Source.IsRootCa ? "Self-signed"
+        : string.IsNullOrEmpty(IssuedBy) ? "-" : IssuedBy;
+
+    /// <summary>The Key column: "RSA 4096", "ECC P-256"; "-" when unknown.</summary>
+    public string KeyType => string.IsNullOrEmpty(Source.KeyText) ? "-" : Source.KeyText;
+
     /// <summary>The device it is installed on, "802.1X server", "EST server"; "-" when nothing uses it.</summary>
     public string UsedBy => string.IsNullOrEmpty(Source.UsedBy) ? "-" : Source.UsedBy;
 
@@ -419,6 +426,9 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     /// the rows have no group headers.
     /// </summary>
     public bool CanGroup { get; init; }
+
+    /// <summary>The filters show (default); false for a short list such as the PKI page's CAs (the search always shows).</summary>
+    public bool ShowsFilters { get; init; } = true;
 
     /// <summary>The chosen grouping; a change reads the first page again.</summary>
     [ObservableProperty]

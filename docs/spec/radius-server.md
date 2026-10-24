@@ -41,14 +41,13 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   are PKI's policies (`docs/spec/pki.md` "Policies"); the page has no Trusted CAs, Policies or Advanced (decision
   2026-10-24, stage 3). Revocation is PKI's (its Certificates list).
   - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
-  - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the line
-    "6 policies apply" (802.1X server, Allow CA, VLAN, Block and Revoke policies) with **Edit policies** (opens the PKI page),
+  - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the link
+    "6 policies applied" (802.1X server, Allow CA, VLAN, Block and Revoke policies; left in the Save row, opens PKI's Policies tab),
     the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "Port 1812
     is used by another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
     certificate's end.
-  - **Switches** (card): name (flexes), address, site, state, last request, each column as wide as its longest text ("No
-    requests yet", "Wrong secret", "Last request" never cut off); Edit and Delete as row icon buttons; the dialog with the
-    shared secret and Generate.
+  - **Switches** (card): name (flexes), address, site, last request (no state column, decision 2026-10-25), each
+    column as wide as its longest text; Edit and Delete as row icon buttons; the dialog with the shared secret and Generate.
   - **Sessions** (full width, live) and **Log** (full width, without **Add switch**, decision 2026-10-24): every column as
     wide as its content (the full "2026-10-24 07:21:58", the port, MAC address, EAP identity, device, IP address, the VLAN
     with its policy "VLAN 30 by Building B"), the state or result flexes, Duration right-aligned; on a narrow page the grids
@@ -597,10 +596,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 data, also for the screenshots; the four, two and one column layout and the rows of dropped requests in
 `ServerLayoutTests`). One page since 2026-10-24.
 
-- **One page, no tabs** (`RadiusView`): Server | Switches (`RadiusView.Arrange` in `MeasureOverride`, before the cards are
-  measured: two columns from 1,000 px of page width with Switches 1.7 parts, else one), then Sessions and Log in pixel rows
-  (380 and 520 px) with a `GridSplitter.paneSplitter` between them, inside the page's scroll viewer, so the grids stay
-  virtualized. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
+- **One page, no tabs, two columns** (`RadiusView`, decision 2026-10-25): Server above Switches left, the **Sessions** card
+  right (the left column 680 px, the same as the EST tab: `ServerPageLayout`), the cards as high as the page (at least 480 px; `RadiusView.FitSessions`), so the grids stay bounded
+  and virtualized. Below 1,400 px of page width one column (`RadiusView.Arrange` in `MeasureOverride`, before the cards are
+  measured): Server, Switches, then Sessions in a 480 px row, the page scrolls. Users limited to a device group see Sessions
+  over the whole width. The Sessions card holds one table
+  (`AuthenticationsViewModel`, rows `IAuthenticationRow`) with the authentications in progress on top (ended ones leave
+  it, the log holds them) and the log's page below them, newest first; the log's search applies to both, View
+  certificate and Delete all are the log's, the pages (Previous, Next) page the log; one reset per change of either list. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
   over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
 - **Server**: Listen on, Port, Log entries kept, "6 policies apply" (`RadiusState.PoliciesApply`,
@@ -611,9 +614,10 @@ data, also for the screenshots; the four, two and one column layout and the rows
   site), Site (only with sites), Shared secret (8..128, **Generate** shows it once). A refusal goes below the field it
   names, else into a message. Columns: Name flexes, the others fixed at the width of their longest text (`MinWidth` =
   `Width`, never squeezed).
-- **Sessions and Log columns**: fixed widths for their content (time, switch, port, MAC, EAP identity, device, IP, the VLAN
-  "VLAN 30 by Building B" with a tooltip, Duration right-aligned), the state or result flexes; the grids scroll sideways on
-  narrow pages.
+- **Sessions columns** (decision 2026-10-25: no MAC address, Duration, Device or IP address): fixed widths for their
+  content (time, switch, port 70 px, EAP identity, the VLAN number only (80 px) with "VLAN 30 by Building B" as tooltip), Status
+  flexes; the grid
+  scrolls sideways on narrow pages. The search still finds the MAC address, the device and the IP address.
 - **Reads and events**: a list read while the page was away is stale (`MarkStale` on `Activate`) and read again (the
   progress row, the rows stay). Events during a read wait and apply after it: session batches in order, log rows once each.
 - **Sessions**: rows by id, a `sessions` batch updates rows in place and adds new ones on top in one step; an ended row

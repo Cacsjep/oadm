@@ -782,6 +782,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             StatusKind = kind,
             Settings = config,
             PoliciesApply = RadiusPolicies.CountApplying(_host.Policies()),
+            PolicyLines = _host.Policies()?.LinesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.IsDot1x) ?? [],
             Interfaces = ListInterfaces(),
             ServerCertificate = _identity.Info,
             SitesNotAllowed = notAllowed,

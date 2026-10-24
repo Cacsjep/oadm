@@ -67,7 +67,7 @@ public sealed class PkiTabHeadlessTests
         }, CancellationToken.None);
 
         Assert.Equal([("Certificates", false), ("802.1X server", true), ("EST server", false)], checks.tabs);
-        foreach (var title in new[] { "PKI", "Server", "Switches", "Sessions", "Log", "Edit policies" })
+        foreach (var title in new[] { "PKI", "Server", "Switches", "Sessions" })
         {
             Assert.Contains(title, checks.texts);
         }

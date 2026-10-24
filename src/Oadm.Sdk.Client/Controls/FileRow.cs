@@ -8,10 +8,11 @@ using Avalonia.Media;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// A chosen local file: file icon, file name, secondary details (size, what it is for), an error
-/// line when the file was rejected, and the "Choose file" button on the right. Used by every
-/// dialog that uploads a file (firmware, ACAP packages, ...). With <see cref="IsSingleButton"/> it is one wide button that
-/// shows the chosen file's name (short forms such as a compliance check).
+/// The file chooser of every dialog that uploads a file (firmware, ACAP packages, certificates, ...): one button as wide as
+/// the row that shows "Choose file" (<see cref="ButtonText"/>) until a file is chosen, then the file's name, and opens the
+/// picker; below it the secondary details (size, what it is for) and an error line when the file was rejected (decision
+/// 2026-10-25: the button alone, no "No file chosen" line). <see cref="IsSingleButton"/> false keeps the older row (icon,
+/// name, details, the button on the right) for plugins that ask for it.
 /// </summary>
 public sealed class FileRow : Grid
 {
@@ -28,7 +29,7 @@ public sealed class FileRow : Grid
         AvaloniaProperty.Register<FileRow, string?>(nameof(ButtonText), "Choose file");
 
     public static readonly StyledProperty<bool> IsSingleButtonProperty =
-        AvaloniaProperty.Register<FileRow, bool>(nameof(IsSingleButton));
+        AvaloniaProperty.Register<FileRow, bool>(nameof(IsSingleButton), defaultValue: true);
 
     public static readonly StyledProperty<ICommand?> CommandProperty =
         AvaloniaProperty.Register<FileRow, ICommand?>(nameof(Command));
@@ -93,9 +94,8 @@ public sealed class FileRow : Grid
     }
 
     /// <summary>
-    /// One button as wide as the row, on the left: it shows the chosen file's name (else <see cref="ButtonText"/>) and opens
-    /// the picker; no file line and no details, the error below the button. Default false (icon, name, details, button
-    /// right).
+    /// One button as wide as the row: it shows the chosen file's name (else <see cref="ButtonText"/>) and opens the picker;
+    /// the details and the error below the button. Default true; false: icon, name, details, the button on the right.
     /// </summary>
     public bool IsSingleButton
     {
@@ -132,13 +132,14 @@ public sealed class FileRow : Grid
         _name.IsVisible = !single;
         _icon.IsVisible = !single;
         _details.Text = Details;
-        _details.IsVisible = !single && !string.IsNullOrEmpty(Details);
+        _details.IsVisible = !string.IsNullOrEmpty(Details);
         _error.Text = Error;
         _error.IsVisible = !string.IsNullOrEmpty(Error);
         _buttonLabel.Text = single && hasFile ? FileName : ButtonText;
         _buttonLabel.Bind(IconLabel.IconProperty, this.GetResourceObservable(single && hasFile ? "Icon.file" : "Icon.folder", v => v as Geometry));
 
-        // Default: icon | name, details, error | button. Single: the button over the whole row, the error below it.
+        // Single (default): the button over the whole row, the details and the error below it. Else: icon | name, details,
+        // error | button.
         SetColumn(_button, single ? 0 : 2);
         SetColumnSpan(_button, single ? 3 : 1);
         _button.HorizontalAlignment = single ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
@@ -147,6 +148,6 @@ public sealed class FileRow : Grid
         SetRow(_text, single ? 1 : 0);
         SetColumn(_text, single ? 0 : 1);
         SetColumnSpan(_text, single ? 3 : 1);
-        _text.Margin = single && _error.IsVisible ? new Thickness(0, 4, 0, 0) : new Thickness(0);
+        _text.Margin = single && (_error.IsVisible || _details.IsVisible) ? new Thickness(0, 4, 0, 0) : new Thickness(0);
     }
 }

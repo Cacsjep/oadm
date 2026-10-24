@@ -185,9 +185,10 @@ public sealed partial class ImportCaViewModel : PkiDialogViewModel
 
     public string? KeyFileError => ErrorOf(nameof(KeyFile));
 
-    public string FileText => File ?? "No file chosen";
+    /// <summary>The chosen file's name for the file button; null until one is chosen.</summary>
+    public string? FileText => File;
 
-    public string KeyFileText => KeyFile ?? "No key file chosen";
+    public string? KeyFileText => KeyFile;
 
     /// <summary>Sets the chosen CA file (also used by tests).</summary>
     public void SetFile(PickedFile file)
@@ -380,7 +381,8 @@ public sealed partial class ImportAuthorityViewModel : PkiDialogViewModel
 
     public string? FileError => ErrorOf(nameof(File));
 
-    public string FileText => File ?? "No file chosen";
+    /// <summary>The chosen file's name for the file button; null until one is chosen.</summary>
+    public string? FileText => File;
 
     /// <summary>Sets the chosen file (also used by tests).</summary>
     public void SetFile(PickedFile file)

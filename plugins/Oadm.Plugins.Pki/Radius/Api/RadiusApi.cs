@@ -175,6 +175,9 @@ public sealed record RadiusState
     /// <summary>The policies of PKI the server applies (802.1X server, Allow CA, VLAN, Block, Revoke): "6 policies apply".</summary>
     public int PoliciesApply { get; init; }
 
+    /// <summary>Those policies' names and summaries: the tooltip of "6 policies applied".</summary>
+    public IReadOnlyList<Oadm.Plugins.Pki.Policies.PolicyLine> PolicyLines { get; init; } = [];
+
     /// <summary>"Listen on": All interfaces first, then the server's interfaces.</summary>
     public IReadOnlyList<InterfaceOption> Interfaces { get; init; } = [];
 

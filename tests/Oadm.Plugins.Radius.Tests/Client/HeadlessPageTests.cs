@@ -136,7 +136,7 @@ public sealed class HeadlessPageTests
         Assert.Contains("802.1X server", checks.texts);
         Assert.Contains(RadiusPluginInfo.Subtitle, checks.texts);
         Assert.Equal(0, checks.tabs); // one page, no tabs
-        foreach (var title in new[] { "Server", "Switches", "Sessions", "Log" })
+        foreach (var title in new[] { "Server", "Switches", "Sessions" })
         {
             Assert.Contains(title, checks.texts);
         }
@@ -149,8 +149,7 @@ public sealed class HeadlessPageTests
         Assert.Contains("Running on port 1812", checks.texts);
         Assert.Contains("Wrong secret", checks.texts);
         Assert.DoesNotContain("Advanced", checks.labels);
-        Assert.Contains("6 policies apply", checks.texts);
-        Assert.Contains("Edit policies", checks.texts);
+        Assert.Contains("6 policies applied", checks.texts); // the link to the policies, left in the Save row
         Assert.Contains("VLAN 20 by PTZ", checks.texts);
         Assert.Contains("Authenticated with VLAN 20 by PTZ", checks.texts);
         Assert.Contains("Add switch", checks.labels);
@@ -185,9 +184,8 @@ public sealed class HeadlessPageTests
         }, CancellationToken.None);
 
         Assert.Contains("Sessions", checks.texts);
-        Assert.Contains("Log", checks.texts);
         Assert.DoesNotContain("Switches", checks.texts);
-        Assert.DoesNotContain("Edit policies", checks.texts);
+        Assert.DoesNotContain("6 policies applied", checks.texts);
         Assert.False(checks.deleteAll);
     }
 
@@ -292,7 +290,7 @@ public sealed class HeadlessPageTests
 
             // The log's chosen row stays chosen in the grid when a live row pushes the full page.
             Pump();
-            var grid = window.GetVisualDescendants().OfType<DataGrid>().Single(g => g.Name == "LogGrid");
+            var grid = window.GetVisualDescendants().OfType<DataGrid>().Single(g => g.Name == "SessionsGrid");
             var chosen = vm.Log.Rows[3];
             grid.SelectedItem = chosen;
             Pump();

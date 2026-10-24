@@ -79,10 +79,18 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             OnPropertyChanged(nameof(MayManage));
             OnPropertyChanged(nameof(MayTrustServer));
             Policies.NotifyRole();
+            RebuildTabs(); // Policies only for users with all devices
         };
         _clientTrust = clientTrust ?? throw new ArgumentNullException(nameof(clientTrust));
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
-        Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings)
+        Authorities = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings, part: PkiListPart.Authorities)
+        {
+            PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)],
+            TrustStates = TrustStatesOf,
+            ExportOadmCa = ExportAsync,
+            CaActions = CaActionsOf,
+        };
+        Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings, part: PkiListPart.Certificates)
         {
             PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)],
             TrustStates = TrustStatesOf,
@@ -219,6 +227,9 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// <summary>The Certificates card: every certificate the OADM CA issued, revoke.</summary>
     public IssuedCertificatesViewModel Certificates { get; }
 
+    /// <summary>The Certificate authorities card: every CA of PKI's list with its actions (decision 2026-10-25).</summary>
+    public IssuedCertificatesViewModel Authorities { get; }
+
     /// <summary>The Policies card.</summary>
     public PoliciesViewModel Policies { get; }
 
@@ -278,7 +289,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         ArgumentNullException.ThrowIfNull(item);
         if (item.Topic == PkiMethods.CertificatesTopic)
         {
-            return Certificates.HandleEventAsync(item.Topic);
+            return Task.WhenAll(Authorities.HandleEventAsync(item.Topic), Certificates.HandleEventAsync(item.Topic));
         }
 
         if (item.Topic == PolicyMethods.Topic)
@@ -550,7 +561,14 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             }
         }
 
-        await Certificates.LoadAsync().ConfigureAwait(true);
+        await LoadListsAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Reads the CAs and the certificates again.</summary>
+    private async Task LoadListsAsync(CancellationToken ct = default)
+    {
+        await Authorities.LoadAsync(ct).ConfigureAwait(true);
+        await Certificates.LoadAsync(ct).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -590,16 +608,36 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return [];
         }
 
-        return [new IssuedCertificateStatus(ServerTrustText, ServerTrustKind, ServerTrustTip), new IssuedCertificateStatus(ClientTrustText, ClientTrustKind, ClientTrustTip)];
+        // Accent badges next to its type (decision 2026-10-25): "Trusted by server", "Trusted here" once installed; the work or
+        // a failure in its own words; nothing while it is not installed (the row menu has Install).
+        List<IssuedCertificateStatus> states = [];
+        if (TrustBadge(ServerTrustKind, ServerTrustText, "Trusted by server", ServerTrustTip) is { } server)
+        {
+            states.Add(server);
+        }
+
+        if (TrustBadge(ClientTrustKind, ClientTrustText, "Trusted here", ClientTrustTip) is { } client)
+        {
+            states.Add(client);
+        }
+
+        return states;
     }
 
-    partial void OnServerTrustTextChanged(string value) => Certificates?.RefreshTrust();
+    private static IssuedCertificateStatus? TrustBadge(string kind, string text, string installed, string? tip) => kind switch
+    {
+        ServiceStatus.Ok => new IssuedCertificateStatus(installed, kind, tip ?? text),
+        ServiceStatus.Neutral => null,
+        _ => new IssuedCertificateStatus(text, kind, tip),
+    };
 
-    partial void OnClientTrustTextChanged(string value) => Certificates?.RefreshTrust();
+    partial void OnServerTrustTextChanged(string value) => Authorities?.RefreshTrust();
 
-    partial void OnServerTrustTipChanged(string? value) => Certificates?.RefreshTrust();
+    partial void OnClientTrustTextChanged(string value) => Authorities?.RefreshTrust();
 
-    partial void OnClientTrustTipChanged(string? value) => Certificates?.RefreshTrust();
+    partial void OnServerTrustTipChanged(string? value) => Authorities?.RefreshTrust();
+
+    partial void OnClientTrustTipChanged(string? value) => Authorities?.RefreshTrust();
 
     // ---------------------------------------------------------------- dialog backends
 
@@ -740,7 +778,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
                     var next = events.MoveNextAsync();
                     await LoadAsync(ct).ConfigureAwait(true);
                     await Policies.LoadAsync(ct).ConfigureAwait(true);
-                    await Certificates.LoadAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
+                    await LoadListsAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
                     while (await next.ConfigureAwait(true))
                     {
                         await HandleEventAsync(events.Current).ConfigureAwait(true);

@@ -51,12 +51,20 @@ permissions, one policy list in PKI's own code.
 ## The PKI page
 
 Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fixed tabs (`ui:PageTab` without X):
-**Certificates** | **802.1X server** | **EST server**.
+**Certificates** | **Policies** | **802.1X server** | **EST server** (decision 2026-10-25: Policies has its own tab).
 
-- **Certificates** (PKI's own): the **Policies** card on top, full width; the **Certificates** card below it, full width
-  and as high as the rest of the page (at least 480 px, the page scrolls below that; `PkiView.FitList`):
-  every certificate OADM knows, the CAs among them, with all their actions (see "Certificates"). There is no Certificate
-  authorities card any more.
+- **Policies** (PKI's own, only for users with all devices): the policy table as high as the tab; the Name column narrow,
+  the summary sentence dimmed (`TextBlock.secondary`). Edit policies of a server tab opens it (`PkiTabRequest`).
+- **Certificates** (PKI's own; decision 2026-10-25: two tables that share the tab's height, a `paneSplitter` between
+  them): the **Certificate authorities** card (300 px at first, at least 250: every CA with its actions in the row menu,
+  New OADM CA and Import (Own CA with its key, CA certificate only) in its toolbar, the OADM CA's notice below that row;
+  search, no groups or filters: `PkiListPart.Authorities`, the list's use filter CA), then the **Certificates** card,
+  every other certificate (`PkiListPart.Certificates`: `CertificatesRequest.NoAuthorities`) with Create, Sign request and
+  Import (at least 300 px; filters State and Issued by, no use filter: the Type badges say the use). One line per row: Name, Type (badges; the OADM CA's trust as tinted badges (`Border.badge.tinted`) "Trusted by
+  server", "Trusted here"), Issuer, Key, Valid until (a state badge next to the date when it needs attention), ⋯; no Used
+  by column. The OADM server's own TLS certificate is a read-only row of the Servers group ("OADM server", self-signed,
+  View and Export only; `ITrustAnchors.ServerCertificate` from the host; never issued by a policy, the clients pin it).
+  See "Certificates" for the actions.
 - **802.1X server** and **EST server**: the pages of the core plugins `oadm.radius` and `oadm.est`, unchanged in content
   (Turn on / Turn off, the OADM PRO texts, their cards, permissions, events, tasks and audit names). They have no rail
   entry: their client pages say `ICorePluginPage.TabOf` = `oadm.pki` and the host hands their views to the PKI page
@@ -64,7 +72,10 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   "manage" permissions stay as they are.
 - A server's tab shows only for users whose role has that core plugin's "show" permission (the server lists only the
   pages the role may show, the host follows role changes). With no server tab the tab row is left out.
-- **Edit policies** on a server tab opens the Certificates tab. Everything that opens `plugin:oadm.radius` or
+- The link **"N policies applied"** on a server tab (decision 2026-10-25: left in its Save row) opens the Policies tab;
+  its tooltip lists each of those policies in two lines, the name bold and the summary sentence below it
+  (`Servers/PolicyLinesTip`, the state's `PolicyLines` from `PolicyStore.LinesOf`). The time column of the 802.1X sessions
+  and of the EST enrollments is dimmed (`DataGridCell.dimmed`). Removing an EST profile asks first (red Remove). Everything that opens `plugin:oadm.radius` or
   `plugin:oadm.est` (`OpenAsync`, a role's start page, links of the Plugins page) opens the PKI page on that tab;
   `plugin:oadm.pki` opens it on Certificates. A click on the rail entry keeps the tab that was open.
 - Only the open tab's view is in the window: a server tab reads its state when it is opened (like a page).
@@ -93,9 +104,16 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
 
 ## Policies
 
-One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a
-summary, devices (where the kind has them). The summary (decision 2026-10-24) is one plain sentence that says what the
-policy does with its values (one builder per kind, `PolicyStore.Summary`, also the editor's preview line below its fields;
+One table grouped by what the policies do (decision 2026-10-25: group headers, no filter): **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, a
+**System** or **User** badge, kind, a summary, devices (where the kind has them).
+
+System policies (decision 2026-10-25, `PolicyStore.IsSystem`): OADM needs them, so they have no Delete (the server refuses
+it: "OADM needs this policy. Change its values instead."); their values stay editable. They are every Server certificate
+policy and the first (oldest) policy of HTTPS certificate, IEEE 802.1X certificate, 802.1X server, Expiry warning and
+Enrollment. Add policy never offers a second 802.1X server policy or a Server certificate policy for a server that has
+one. Users add their own (User) policies: further issuing policies (picked in the task dialogs and the EST profiles),
+Allow CA, VLAN, Block, Revoke, Sign-in CA and Expiry warning or Enrollment for some devices. The summary (decision 2026-10-24) is one plain sentence that says what the
+policy does with its values (one builder per kind, `PolicyStore.Summary`, no preview line in the editor (decision 2026-10-25);
 "these devices" stands for the Devices column; up to two lines in the row, the whole sentence as tooltip): "Certificates
 with 30 days or less left show a warning and raise Certificate expires soon.", "Enable HTTPS issues certificates from OADM
 Root CA acs, valid 365 days, with an ECC key.", the IEEE 802.1X one adds "Cameras sign in with their MAC address." (host
@@ -246,14 +264,14 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 The two pages are tabs of the PKI page since stage 7 ("The PKI page").
 
 - **802.1X server:** Server (Listen on, Port, Log entries kept; no Advanced dialog: its settings are the 802.1X server
-  policy, with "6 policies apply" and Edit policies), Switches, Sessions and Log (a splitter between the two). No Trusted
+  policy; the link "6 policies applied" left in the Save row), Switches, one Sessions table (in progress on top, then the log). No Trusted
   CAs card, no Policies card, no Default VLAN.
-- **EST server:** General (with "3 policies apply" and Edit policies), Profiles (name, issuing policy, on), Enrollments in
+- **EST server:** General (with the link "3 policies applied" left in the Save row), Profiles (name, use, issuing policy; no On column, decision 2026-10-25: every listed profile is on, a profile not wanted is removed), Enrollments in
   its own card. No Sign in with (stage 6: Sign-in CA policies).
 
 ## Rules for the move (decisions 2026-10-24)
 
-- The 802.1X tab shows "4 policies apply" with **Edit policies** (opens the Certificates tab); Sessions and Log rows name the policy that matched
+- The 802.1X tab shows the link "4 policies applied" (opens the Policies tab); Sessions and Log rows name the policy that matched
   ("VLAN 30 by Building B", "Blocked by Storage room").
 - OADM PRO: see "One plugin"; PKI's own kinds (issuing, Revoke) always work.
 - The conversion is tested on a copy of real data (a backup of a 4.1 server and of the development server) before the
@@ -338,12 +356,13 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   validity (gone in stage 4); users limited to a device group still see the page with the Certificates of their devices (decision of stage 3:
   the Certificates list of stage 1 stays; the Policies card is hidden for them).
 - **802.1X page**: Server (with "6 policies apply" and Edit policies: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
-  and Switches side by side from 1,000 px of page width, Sessions and Log below with a `paneSplitter` between them (pixel
-  rows inside the page's scroll viewer); every column but the state or result is as wide as its longest text (`MinWidth` =
+  and Switches side by side from 1,000 px of page width, one Sessions table below (`AuthenticationsViewModel`: in progress on top, then
+  the log; one pixel row inside the page's scroll viewer); every column but the state or result is as wide as its longest text (`MinWidth` =
   `Width`, the grid scrolls sideways on narrow pages). The switch dialog no longer names the RADIUS server's address; the
   shared secret needs 8 characters or more.
-- **EST page**: its own cards (`EstPage.HasOwnCards`): General and Profiles (side by side while they fit) with Save, then
-  Enrollments with Not renewed.
+- **EST page**: its own cards (`EstPage.HasOwnCards`): two columns (decision 2026-10-25): the cards General (with Save) above
+  Profiles left (680 px, the same as the 802.1X tab: `ServerPageLayout`; Add profile a flat toolbar button), Enrollments with Not renewed right, as high as the page; below 1,400 px
+  of page width one column, Enrollments in a 480 px row below (`EstView.Arrange`).
 - **Tests**: `Oadm.Plugins.Pki.Tests` `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (+ headless at 1,700 and
   1,000 px), `PolicyPerfTests` (Category=Perf: 30,000 devices); `Oadm.Plugins.Radius.Tests` `PolicyTests`, `AllowCaTests`,
   `ConversionTests` (fixtures of every stored format in `Fixtures/Conversion`); `Oadm.Core.Tests` `ExpiryWarningTests` and
@@ -376,7 +395,8 @@ fits the spec; to be confirmed by the maintainer).
   OADM ran before** (a stored CA or page settings), because the tasks made RSA 2048 keys on the devices (decision of stage
   4: what the devices get does not change with the update). EST profiles (owner `oadm.est:profiles`, `EstPolicies.ConvertAsync`
   at the EST core plugin's start): a profile without a policy names one with its validity and key, the default when the
-  values match ("https" -> "HTTPS"), else one named after the profile ("EST dot1x"; an IEEE 802.1X one takes the 802.1X
+  values match ("https" -> "HTTPS"), else one named after the profile ("EST 802.1X"; the names "EST https" and "EST dot1x" of earlier builds are renamed
+  once on start, `PkiService.RenameEstPoliciesAsync`; an IEEE 802.1X one takes the 802.1X
   settings of the first of its kind). A run after a crash between the two writes finds the policy by its values. The old
   settings stay where they are, no longer read; the page method `saveSettings` is gone.
 - **Tasks**: Enable HTTPS and Enable IEEE 802.1X take the policy of the payload (`IssuePayload`: policy id and the values of

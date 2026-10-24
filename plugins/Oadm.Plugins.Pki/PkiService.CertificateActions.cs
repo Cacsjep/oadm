@@ -610,6 +610,11 @@ public sealed partial class PkiService
     /// <summary>A row by its id (<c>ca:</c>, <c>local:</c>, <c>server:</c>); null for a serial number.</summary>
     private RowRef? ResolveRow(string id)
     {
+        if (id == OadmServerRowId)
+        {
+            return new RowRef(ListedCertificateKind.Server, OadmServerName, OadmServerDer(), null, null); // read-only: View and Export
+        }
+
         if (id.StartsWith(AuthorityRowPrefix, StringComparison.Ordinal))
         {
             var der = AuthorityDer(id);

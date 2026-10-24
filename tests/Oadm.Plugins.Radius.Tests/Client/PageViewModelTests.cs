@@ -48,13 +48,13 @@ public sealed class PageViewModelTests
         Assert.Equal(["Core switch", "Floor 2", "Gate house", "Parking"], vm.Switches.Rows.Select(r => r.Name));
         Assert.Equal(("Wrong secret", true), (vm.Switches.Rows[1].State, vm.Switches.Rows[1].IsError));
         Assert.Equal("Building B", vm.Switches.Rows[2].Site);
-        Assert.Equal("6 policies apply", vm.PoliciesText); // the rules are PKI's policies
+        Assert.Equal("6 policies applied", vm.PoliciesText); // the rules are PKI's policies
         Assert.Null(vm.Settings.ErrorOf(nameof(SettingsViewModel.Port))); // an untouched form shows no error
         Assert.True(vm.SaveCommand.CanExecute(null));
 
         await vm.EditInPkiCommand.ExecuteAsync(null);
         Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
-        Assert.Equal(["No policies apply", "1 policy applies", "1,200 policies apply"], new[] { 0, 1, 1200 }.Select(RadiusViewModel.PoliciesApplyText));
+        Assert.Equal(["No policies applied", "1 policy applied", "1,200 policies applied"], new[] { 0, 1, 1200 }.Select(RadiusViewModel.PoliciesApplyText));
     }
 
     [Fact]

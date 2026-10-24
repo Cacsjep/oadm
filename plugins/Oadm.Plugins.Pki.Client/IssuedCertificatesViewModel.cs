@@ -29,8 +29,21 @@ public interface IIssuedCertificatesDialogs : IIssuedCertificateListDialogs
     IPkiFiles? CertificateFiles => null;
 }
 
+/// <summary>Which rows a list of the PKI page shows (decision 2026-10-25: the CAs in their own card).</summary>
+public enum PkiListPart
+{
+    /// <summary>Every row (the CAs among them).</summary>
+    All,
+
+    /// <summary>The CAs only (the Certificate authorities card).</summary>
+    Authorities,
+
+    /// <summary>Every row but the CAs (the Certificates card).</summary>
+    Certificates,
+}
+
 /// <summary>The list reads PKI's own page methods.</summary>
-internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssuedCertificateSource
+internal sealed class PkiCertificateSource(ICorePluginClientContext ctx, PkiListPart part = PkiListPart.All) : IIssuedCertificateSource
 {
     public async Task<IssuedCertificateListPage> ReadAsync(IssuedCertificateQuery query, CancellationToken ct)
     {
@@ -38,7 +51,8 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
         var request = new CertificatesRequest
         {
             State = query.State,
-            Purpose = query.Purpose,
+            Purpose = part == PkiListPart.Authorities ? Oadm.Sdk.Certificates.ListedCertificateUses.Ca : query.Purpose,
+            NoAuthorities = part == PkiListPart.Certificates,
             Source = query.Source,
             IssuedBy = query.IssuedBy,
             Search = query.Search,
@@ -86,14 +100,17 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
     private readonly ICorePluginClientContext _ctx;
     private readonly PkiClientSettingsStore _clientSettings;
 
-    public IssuedCertificatesViewModel(ICorePluginClientContext ctx, TimeProvider? time = null, PkiClientSettingsStore? clientSettings = null)
-        : base(new PkiCertificateSource(ctx ?? throw new ArgumentNullException(nameof(ctx))), time)
+    public IssuedCertificatesViewModel(ICorePluginClientContext ctx, TimeProvider? time = null, PkiClientSettingsStore? clientSettings = null, PkiListPart part = PkiListPart.All)
+        : base(new PkiCertificateSource(ctx ?? throw new ArgumentNullException(nameof(ctx)), part), time)
     {
         _ctx = ctx;
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
         PageSize = PkiPluginInfo.CertificatesPageSize;
-        CanGroup = true;
-        if (ctx.GetLocalSetting(GroupBySetting) is { } kept && GroupChoices.FirstOrDefault(c => c.Value.ToString() == kept) is { } choice)
+
+        // The CAs: a short list without groups, filters and search.
+        CanGroup = part != PkiListPart.Authorities;
+        ShowsFilters = part != PkiListPart.Authorities;
+        if (CanGroup && ctx.GetLocalSetting(GroupBySetting) is { } kept && GroupChoices.FirstOrDefault(c => c.Value.ToString() == kept) is { } choice)
         {
             GroupBy = choice;
         }

@@ -157,7 +157,7 @@
       <x:Double x:Key="Oadm.NavWidthCollapsed">40</x:Double>
       <x:Double x:Key="Oadm.NavWidthExpanded">204</x:Double>
       <!-- Context menus and submenus: wide enough for task names (TaskPluginNames.MaxDisplayNameLength) -->
-      <x:Double x:Key="Oadm.MenuMinWidth">240</x:Double>
+      <x:Double x:Key="Oadm.MenuMinWidth">160</x:Double>
       <Thickness x:Key="Oadm.NavMargin">8,4,8,16</Thickness>
       <x:Double x:Key="Oadm.TitleBarHeight">32</x:Double>
       <x:Double x:Key="Oadm.IconSize">16</x:Double>
@@ -372,6 +372,14 @@
     <Setter Property="LineHeight" Value="19" />
     <Setter Property="Margin" Value="0,0,12,0" />
   </Style>
+  <!-- A dimmed column (the time of a log-like table: 802.1X sessions, EST enrollments): CellStyleClasses="dimmed" -->
+  <Style Selector="DataGridCell.dimmed">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <!-- The bold first line of a line in a tooltip (the name of a policy above its summary) -->
+  <Style Selector="TextBlock.tipTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
   <Style Selector="TextBlock.secondary">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
   </Style>
@@ -557,12 +565,27 @@
   </Style>
   <!-- A neutral badge: what a row is (the PKI list's Type: Root CA, HTTPS, Imported), never a status (that is ui:StatusChip) -->
   <Style Selector="Border.badge.neutral">
-    <Setter Property="Background" Value="{StaticResource Oadm.BadgeNeutralBrush}" />
-    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.Tag.ChipBackgroundBrush}" />
+    <Setter Property="Padding" Value="8,2" />
   </Style>
   <Style Selector="Border.badge.neutral TextBlock, DataGridCell Border.badge.neutral TextBlock">
     <Setter Property="Margin" Value="0" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <!-- Who made a policy (PKI's Policies table), the look of the device tags (Border.tagChip): the name in its color on the
+       tags' subtle pill. System violet, User blue. -->
+  <Style Selector="Border.badge.system, Border.badge.user, Border.badge.tinted">
+    <Setter Property="Background" Value="{StaticResource Oadm.Tag.ChipBackgroundBrush}" />
+    <Setter Property="Padding" Value="8,2" />
+  </Style>
+  <!-- tinted: a status in a row's badges (the OADM CA's "Trusted by server") -->
+  <Style Selector="Border.badge.system TextBlock, DataGridCell Border.badge.system TextBlock, Border.badge.tinted TextBlock, DataGridCell Border.badge.tinted TextBlock">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.Tag.VioletBrush}" />
+  </Style>
+  <Style Selector="Border.badge.user TextBlock, DataGridCell Border.badge.user TextBlock">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.Tag.BlueBrush}" />
   </Style>
 
   <!-- Navigation rail -->
@@ -810,9 +833,7 @@
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
   </Style>
-  <Style Selector="Button.link:pointerover TextBlock">
-    <Setter Property="TextDecorations" Value="Underline" />
-  </Style>
+  <!-- No underline on hover (decision 2026-10-25): the hand cursor says it is a link -->
   <Style Selector="Button.link:pressed">
     <Setter Property="RenderTransform" Value="none" />
   </Style>
@@ -1048,6 +1069,10 @@
   <!-- Read-only values in a form row (also selectable ones such as a fingerprint) -->
   <Style Selector="ui|FormField > :is(TextBlock)">
     <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- A link as the field content ("Edit policies"): level with the label, which sits 3 px down -->
+  <Style Selector="ui|FormField > Button.link">
+    <Setter Property="Padding" Value="0,3,0,0" />
   </Style>
   <Style Selector="ui|FormField > CheckBox">
     <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
@@ -1773,8 +1798,13 @@
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.OverlayCornerRadius}" />
   </Style>
+  <!-- Compact entries (decision 2026-10-25): a row's ⋯ menu of two entries looked oversized with Fluent's padding -->
   <Style Selector="MenuItem">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+  <Style Selector="MenuFlyoutPresenter Separator, ContextMenu Separator">
+    <Setter Property="Margin" Value="8,3" />
   </Style>
   <!-- Submenu popups have no presenter of their own: their entries carry the minimum width -->
   <Style Selector="ContextMenu MenuItem, MenuFlyoutPresenter MenuItem">

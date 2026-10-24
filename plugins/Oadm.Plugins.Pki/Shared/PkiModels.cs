@@ -104,6 +104,9 @@ public static class PkiMethods
 /// <summary>The payload of <see cref="PkiMethods.GetCertificates"/>; filters as in <see cref="Oadm.Sdk.Certificates.IssuedCertificateQuery"/>.</summary>
 public sealed record CertificatesRequest
 {
+    /// <summary>The CA rows are left out (the Certificates card; the CAs have their own card).</summary>
+    public bool NoAuthorities { get; init; }
+
     public Oadm.Sdk.Certificates.IssuedCertificateState? State { get; init; }
 
     public string? Purpose { get; init; }

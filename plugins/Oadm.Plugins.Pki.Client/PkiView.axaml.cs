@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls;
 
 using Oadm.Sdk.Certificates;
@@ -13,27 +14,9 @@ namespace Oadm.Plugins.Pki.Client;
 /// </summary>
 public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDialogs, IPolicyDialogs
 {
-    /// <summary>The lowest the Certificates card gets; on a lower page the page scrolls.</summary>
-    public const double MinListHeight = 480;
-
     public PkiView()
     {
         InitializeComponent();
-        CertificatesPage.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == ScrollViewer.ViewportProperty)
-            {
-                FitList();
-            }
-        };
-        PoliciesCard.SizeChanged += (_, _) => FitList();
-        PoliciesCard.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == IsVisibleProperty)
-            {
-                FitList();
-            }
-        };
         Files = new PkiFilePicker(() => TopLevel.GetTopLevel(this));
         PoliciesGrid.DoubleTapped += (_, _) =>
         {
@@ -45,23 +28,44 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
     }
 
     /// <summary>
-    /// The Certificates card takes the height the page has left below Policies, like the 802.1X Log, never less than
-    /// <see cref="MinListHeight"/> (its grid needs a bounded height to stay virtualized). Layout only.
+    /// A policy row's ⋯ button: its menu, like the certificate tables (Edit; Delete in red, not for a system policy). View
+    /// only: the entries run the view model's commands.
     /// </summary>
-    private void FitList()
+    private void OnPolicyActions(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var viewport = CertificatesPage.Viewport.Height;
-        if (!double.IsFinite(viewport) || viewport <= 0)
+        if (sender is not Button { DataContext: PolicyRowViewModel row } button || DataContext is not PkiViewModel vm)
         {
             return;
         }
 
-        var above = PoliciesCard.IsVisible ? PoliciesCard.Bounds.Height + 16 : 0;
-        var height = Math.Max(MinListHeight, Math.Floor(viewport - above));
-        if (Math.Abs(CertificatesCard.Height - height) >= 1)
+        List<IssuedCertificateAction> actions = [new("Edit", vm.Policies.EditRowCommand, row)];
+        if (row.CanDelete)
         {
-            CertificatesCard.Height = height;
+            actions.Add(IssuedCertificateAction.Separator);
+            actions.Add(new("Delete", vm.Policies.DeleteRowCommand, row, IsDanger: true));
         }
+
+        RowActions.Show(button, actions);
+    }
+
+    /// <summary>The policy table grouped by what the policies do, the groups in their order (view only).</summary>
+    private void GroupPolicies(PkiViewModel? vm)
+    {
+        if (vm is null)
+        {
+            PoliciesGrid.ItemsSource = null;
+            return;
+        }
+
+        var view = new DataGridCollectionView(vm.Policies.Rows);
+        var byGroup = new DataGridPathGroupDescription(nameof(PolicyRowViewModel.GroupLabel));
+        foreach (var label in PoliciesViewModel.GroupLabels)
+        {
+            byGroup.GroupKeys.Add(label);
+        }
+
+        view.GroupDescriptions.Add(byGroup);
+        PoliciesGrid.ItemsSource = view;
     }
 
     public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)
@@ -113,8 +117,11 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
         {
             vm.Dialogs = this;
             vm.Certificates.Dialogs = this;
+            vm.Authorities.Dialogs = this;
             vm.Policies.Dialogs = this;
         }
+
+        GroupPolicies(DataContext as PkiViewModel);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

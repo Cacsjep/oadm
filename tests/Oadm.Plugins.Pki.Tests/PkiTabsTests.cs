@@ -8,21 +8,21 @@ using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Pki.Tests;
 
-/// <summary>The tabs of the PKI page (docs/spec/pki.md "The PKI page"): Certificates, then the server pages the host hands over.</summary>
+/// <summary>The tabs of the PKI page (docs/spec/pki.md "The PKI page"): Certificates, Policies, then the server pages the host hands over.</summary>
 [Collection(HeadlessSessions.Name)]
 public sealed class PkiTabsTests
 {
     private static Task<T> OnUi<T>(Func<T> work) => HeadlessEntry.Session.Dispatch(() => Task.FromResult(work()), CancellationToken.None);
 
     [Fact]
-    public async Task Without_server_tabs_there_is_no_tab_row_and_the_certificates_show()
+    public async Task Without_server_tabs_certificates_and_policies_show()
     {
         await using var pki = await PkiHarness.StartAsync();
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         using var vm = new PkiViewModel(ctx, new FakeClientTrust());
 
-        Assert.False(vm.HasTabs);
-        Assert.Equal(["Certificates"], vm.Tabs.Select(t => t.Title).ToArray());
+        Assert.True(vm.HasTabs);
+        Assert.Equal(["Certificates", "Policies"], vm.Tabs.Select(t => t.Title).ToArray());
         Assert.True(vm.IsCertificatesTab);
         Assert.Null(vm.ActiveTabView);
     }
@@ -37,21 +37,26 @@ public sealed class PkiTabsTests
         using var vm = new PkiViewModel(ctx, new FakeClientTrust());
 
         Assert.True(vm.HasTabs);
-        Assert.Equal(["Certificates", "802.1X server", "EST server"], vm.Tabs.Select(t => t.Title).ToArray());
+        Assert.Equal(["Certificates", "Policies", "802.1X server", "EST server"], vm.Tabs.Select(t => t.Title).ToArray());
         Assert.True(vm.Tabs[0].IsActive);
 
         ctx.RequestTab("oadm.est"); // OpenAsync("plugin:oadm.est")
         Assert.False(vm.IsCertificatesTab);
         Assert.Same(est, vm.ActiveTabView);
-        Assert.Equal([false, false, true], vm.Tabs.Select(t => t.IsActive).ToArray());
+        Assert.Equal([false, false, false, true], vm.Tabs.Select(t => t.IsActive).ToArray());
 
-        vm.Tabs[1].ActivateCommand.Execute(null); // a click on the tab
+        vm.Tabs[2].ActivateCommand.Execute(null); // a click on the tab
         Assert.Same(radius, vm.ActiveTabView);
 
         ctx.RequestTab("made.up"); // unknown: nothing changes
         Assert.Same(radius, vm.ActiveTabView);
 
-        ctx.RequestTab(PkiPluginInfo.PluginId); // Edit policies: Certificates
+        PkiTabRequest.Set(PkiViewModel.PoliciesTabId); // Edit policies of a server tab
+        ctx.RequestTab(PkiPluginInfo.PluginId);
+        Assert.True(vm.IsPoliciesTab);
+        Assert.Null(vm.ActiveTabView);
+
+        ctx.RequestTab(PkiPluginInfo.PluginId); // PKI's page without a request: Certificates
         Assert.True(vm.IsCertificatesTab);
         Assert.Null(vm.ActiveTabView);
     }
@@ -68,11 +73,11 @@ public sealed class PkiTabsTests
 
         ctx.Tabs = [new CorePluginTab("oadm.est", "EST server", est)]; // the role lost "show" of the 802.1X server
         Assert.Same(est, vm.ActiveTabView);
-        Assert.Equal(["Certificates", "EST server"], vm.Tabs.Select(t => t.Title).ToArray());
+        Assert.Equal(["Certificates", "Policies", "EST server"], vm.Tabs.Select(t => t.Title).ToArray());
 
         ctx.Tabs = []; // and of the EST server
         Assert.True(vm.IsCertificatesTab);
-        Assert.False(vm.HasTabs);
+        Assert.Equal(["Certificates", "Policies"], vm.Tabs.Select(t => t.Title).ToArray());
     }
 
     [Theory]

@@ -6,10 +6,10 @@
              x:DataType="vm:PkiViewModel"
              ui:PageHeader.Subtitle="Certificates, their policies, and the 802.1X and EST servers.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only (docs/spec/pki.md "The PKI page"):
-       fixed tabs Certificates | 802.1X server | EST server. Certificates: Policies full width, then the certificate list
-       full width with the CAs and their actions in it (no card of the CAs). -->
+       fixed tabs Certificates | Policies | 802.1X server | EST server. Certificates: the certificate list with the CAs and
+       their actions in it (no card of the CAs). Policies: the policy table, as high as the page. -->
   <Grid RowDefinitions="Auto,*">
-  <!-- The fixed tabs (docs/spec/pki.md "The PKI page"): Certificates, then the server pages the host hands over (only those
+  <!-- The fixed tabs (docs/spec/pki.md "The PKI page"): Certificates, Policies, then the server pages the host hands over (only those
        the role may show); no row without a server tab. -->
   <ItemsControl Grid.Row="0" ItemsSource="{Binding Tabs}" IsVisible="{Binding HasTabs}" Margin="0,0,0,8">
     <ItemsControl.ItemsPanel>
@@ -23,55 +23,57 @@
   </ItemsControl>
 
   <!-- A server tab: its page's own view (only the shown tab's view is in the window). -->
-  <ContentControl Grid.Row="1" Content="{Binding ActiveTabView}" IsVisible="{Binding !IsCertificatesTab}" />
+  <ContentControl Grid.Row="1" Content="{Binding ActiveTabView}" IsVisible="{Binding IsServerTab}" />
 
-  <ScrollViewer x:Name="CertificatesPage" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsCertificatesTab}">
-    <StackPanel Spacing="{DynamicResource Oadm.Gap}">
-      <!-- ============================== Policies ============================== -->
-      <Border x:Name="PoliciesCard" Classes="card" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel"
-              IsVisible="{Binding IsShown}">
+  <!-- ============================== Policies ============================== -->
+  <Border x:Name="PoliciesCard" Grid.Row="1" Classes="card" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel"
+          IsVisible="{Binding $parent[vm:PkiView].((vm:PkiViewModel)DataContext).IsPoliciesTab}">
         <Panel>
-          <StackPanel Spacing="12">
-            <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
+          <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+            <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
               <TextBlock Classes="cardTitle" Text="Policies" VerticalAlignment="Center" Margin="0,0,12,0" />
-              <Button Classes="secondary" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True">
-                <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add policy" />
-              </Button>
+              <!-- Flat toolbar buttons like the device toolbar (decision 2026-10-25); Add policy is the accent one. -->
+              <ui:ToolbarButton Text="Add policy" IconKey="add" IsPrimary="True" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}"
+                                ToolTip.Tip="{Binding AddTip}" ToolTip.ShowOnDisabled="True" />
             </WrapPanel>
-            <!-- The filter: one segment per group with kinds. -->
-            <Border Classes="segmented" HorizontalAlignment="Left">
-              <ItemsControl ItemsSource="{Binding Filters}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="2" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:PolicyFilterViewModel">
-                    <Button Classes="segment" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
-                            Command="{Binding $parent[ItemsControl].((vm:PoliciesViewModel)DataContext).SelectFilterCommand}" CommandParameter="{Binding Group}" />
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </Border>
-            <ui:ProgressRow Text="Reading the policies" IsVisible="{Binding IsReloading}" />
-            <Panel>
-              <DataGrid x:Name="PoliciesGrid" ItemsSource="{Binding Rows}" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
-                        SelectionMode="Single" MaxHeight="360">
+            <!-- No filter (decision 2026-10-25): the table groups by what the policies do (PkiView.GroupPolicies). -->
+            <ui:ProgressRow Grid.Row="1" Text="Reading the policies" IsVisible="{Binding IsReloading}" />
+            <Panel Grid.Row="2">
+              <DataGrid x:Name="PoliciesGrid" Classes="wrapRows" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                        SelectionMode="Single">
                 <DataGrid.Columns>
-                  <DataGridTemplateColumn Header="Name" Width="*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
+                  <DataGridTemplateColumn Header="Name" Width="0.6*" MinWidth="110" x:DataType="vm:PolicyRowViewModel">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate x:DataType="vm:PolicyRowViewModel">
                         <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Name}" Margin="10,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
                       </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                   </DataGridTemplateColumn>
-                  <DataGridTextColumn Header="Kind" Width="Auto" MinWidth="100" Binding="{Binding Kind}" x:DataType="vm:PolicyRowViewModel" />
-                  <DataGridTemplateColumn Header="Summary" Width="2.6*" MinWidth="160" x:DataType="vm:PolicyRowViewModel">
+                  <!-- System (OADM needs it, no Delete; purple) or User (blue). -->
+                  <DataGridTemplateColumn Header="Type" Width="Auto" MinWidth="90" x:DataType="vm:PolicyRowViewModel">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                        <Border Classes="badge" Classes.system="{Binding IsSystem}" Classes.user="{Binding !IsSystem}" Margin="10,4"
+                                HorizontalAlignment="Left" VerticalAlignment="Center" ToolTip.Tip="{Binding OriginTip}">
+                          <TextBlock Text="{Binding Origin}" />
+                        </Border>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="Kind" Width="Auto" MinWidth="100" x:DataType="vm:PolicyRowViewModel">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="vm:PolicyRowViewModel">
+                        <Border Classes="badge neutral" Margin="10,4" HorizontalAlignment="Left" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Kind}" />
+                        </Border>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="Summary" Width="3.4*" MinWidth="160" x:DataType="vm:PolicyRowViewModel">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate x:DataType="vm:PolicyRowViewModel">
                         <StackPanel Margin="10,4" Spacing="4" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding Summary}" ToolTip.Tip="{Binding Summary}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="secondary" Text="{Binding Summary}" ToolTip.Tip="{Binding Summary}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
                           <!-- An overlap a tag or site change made later: the warning in the row. -->
                           <ui:StatusChip Text="{Binding Warning}" IsWarning="True" MaxLines="2" ToolTip.Tip="{Binding Warning}" HorizontalAlignment="Left"
                                          IsVisible="{Binding HasWarning}" />
@@ -87,21 +89,15 @@
                       </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                   </DataGridTemplateColumn>
-                  <DataGridTemplateColumn Width="76" x:DataType="vm:PolicyRowViewModel">
+                  <DataGridTemplateColumn Width="52" x:DataType="vm:PolicyRowViewModel">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate x:DataType="vm:PolicyRowViewModel">
-                        <!-- Row actions like the Permissions page: icon buttons in fixed places, Delete in red -->
-                        <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0"
-                                    IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.MayManage}">
-                          <Button Classes="toolbar iconOnly" ToolTip.Tip="Edit policy"
-                                  Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.EditRowCommand}" CommandParameter="{Binding}">
-                            <ui:OadmIcon Data="{StaticResource Icon.edit}" />
-                          </Button>
-                          <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
-                                  Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.DeleteRowCommand}" CommandParameter="{Binding}">
-                            <ui:OadmIcon Data="{StaticResource Icon.remove}" />
-                          </Button>
-                        </StackPanel>
+                        <!-- One ⋯ button with the row's actions, like the certificate tables: Edit, then Delete in red (not for
+                             system policies). -->
+                        <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="Actions"
+                                Click="OnPolicyActions" IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).Policies.MayManage}">
+                          <ui:OadmIcon Data="{StaticResource Icon.more}" />
+                        </Button>
                       </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                   </DataGridTemplateColumn>
@@ -110,48 +106,40 @@
               <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                          TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,40,16,0" />
             </Panel>
-            <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
-          </StackPanel>
+            <TextBlock Grid.Row="3" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+          </Grid>
           <ui:LoadingOverlay Text="Reading the policies" IsVisible="{Binding IsLoading}" />
         </Panel>
-      </Border>
+  </Border>
 
-      <!-- ============================== Certificates ============================== -->
-      <!-- The shared certificate list (Group by, filters, search, pages, View certificate) with the CAs as rows; the page
-           adds the title with Create, Sign request and Import in its toolbar row and the actions of each kind of row. -->
-      <!-- As high as the rest of the page (PkiView.FitList), at least MinListHeight: the page scrolls below that. -->
-      <Border x:Name="CertificatesCard" Classes="card" Height="680">
-          <!-- Each row's actions: its ⋯ button and its right-click menu, one menu (IssuedCertificatesViewModel.ActionsOf). -->
-          <!-- One row: the title and Create, Sign request, Import left; Group by, the filters and Search right (below as a whole
-               on a narrow card). The OADM CA when it needs attention below that row. -->
-          <ui:IssuedCertificateList x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
+  <!-- The two cards share the tab's height; the splitter between them gives one more room (like the tasks pane). -->
+  <Grid x:Name="CertificatesPage" Grid.Row="1" IsVisible="{Binding IsCertificatesTab}">
+    <Grid.RowDefinitions>
+      <!-- At least the toolbar row, the header, a few rows and the pages: the cards never get smaller than their content. -->
+      <RowDefinition Height="300" MinHeight="250" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" MinHeight="300" />
+    </Grid.RowDefinitions>
+
+      <!-- ============================== Certificate authorities ============================== -->
+      <!-- The CAs in their own table (decision 2026-10-25): the shared list without groups and filters (search stays), the CA
+           rows' actions in the ⋯ menu; New OADM CA and the CA imports in its toolbar row. The OADM CA when it needs attention
+           below that row. -->
+      <Border x:Name="AuthoritiesCard" Grid.Row="0" Classes="card" ClipToBounds="True">
+          <ui:IssuedCertificateList x:Name="AuthoritiesList" DataContext="{Binding Authorities}" x:DataType="vm:IssuedCertificatesViewModel">
             <ui:IssuedCertificateList.Toolbar>
                 <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8" x:DataType="vm:PkiViewModel" DataContext="{Binding $parent[vm:PkiView].DataContext}">
-                  <TextBlock Classes="cardTitle" Text="Certificates" VerticalAlignment="Center" Margin="0,0,12,0" />
-                  <Button Classes="secondary" IsVisible="{Binding MayManage}">
-                    <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Create" />
-                    <Button.Flyout>
+                  <TextBlock Classes="cardTitle" Text="Certificate authorities" VerticalAlignment="Center" Margin="0,0,12,0" />
+                  <!-- Flat toolbar buttons like the device toolbar; the tab's accent button is the certificates' Create. -->
+                  <ui:ToolbarButton Text="New OADM CA" IconKey="add" Command="{Binding GenerateCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="It replaces the OADM CA" />
+                  <ui:ToolbarButton Text="Import" IconKey="upload" IsVisible="{Binding MayManage}">
+                    <ui:ToolbarButton.Flyout>
                       <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <MenuItem Header="Certificate" Command="{Binding Certificates.CreateCommand}" ToolTip.Tip="OADM makes the key and the certificate" />
-                        <MenuItem Header="New OADM CA" Command="{Binding GenerateCommand}" ToolTip.Tip="It replaces the OADM CA" />
+                        <MenuItem Header="Own CA with its key" Command="{Binding ImportCommand}" ToolTip.Tip="It replaces the OADM CA (.pfx, .p12 or PEM files)" />
+                        <MenuItem Header="CA certificate only" Command="{Binding ImportAuthorityCommand}" ToolTip.Tip="A root or intermediate certificate for the policies" />
                       </MenuFlyout>
-                    </Button.Flyout>
-                  </Button>
-                  <Button Classes="secondary" Command="{Binding Certificates.SignRequestCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="A request of another system; its key stays there">
-                    <ui:IconLabel Icon="{DynamicResource Icon.edit}" Text="Sign request" />
-                  </Button>
-                  <Button Classes="secondary" IsVisible="{Binding MayManage}">
-                    <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import" />
-                    <Button.Flyout>
-                      <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <MenuItem Header="Certificate" Command="{Binding Certificates.ImportCommand}" ToolTip.Tip="A certificate, or a .p12 file with its key" />
-                        <MenuItem Header="CA">
-                          <MenuItem Header="Own CA with its key" Command="{Binding ImportCommand}" ToolTip.Tip="It replaces the OADM CA (.pfx, .p12 or PEM files)" />
-                          <MenuItem Header="CA certificate only" Command="{Binding ImportAuthorityCommand}" ToolTip.Tip="A root or intermediate certificate for the policies" />
-                        </MenuItem>
-                      </MenuFlyout>
-                    </Button.Flyout>
-                  </Button>
+                    </ui:ToolbarButton.Flyout>
+                  </ui:ToolbarButton>
                 </WrapPanel>
             </ui:IssuedCertificateList.Toolbar>
             <ui:IssuedCertificateList.Banner>
@@ -165,7 +153,28 @@
             </ui:IssuedCertificateList.Banner>
           </ui:IssuedCertificateList>
       </Border>
-    </StackPanel>
-  </ScrollViewer>
+
+      <!-- ============================== Certificates ============================== -->
+      <!-- The shared certificate list (Group by, filters, search, pages, View certificate) without the CAs; the page adds
+           the title with Create, Sign request and Import in its toolbar row and the actions of each kind of row. -->
+      <GridSplitter x:Name="CertificatesSplitter" Grid.Row="1" Classes="paneSplitter" />
+
+      <Border x:Name="CertificatesCard" Grid.Row="2" Classes="card" ClipToBounds="True">
+          <!-- Each row's actions: its ⋯ button and its right-click menu, one menu (IssuedCertificatesViewModel.ActionsOf). -->
+          <ui:IssuedCertificateList x:Name="CertificatesList" DataContext="{Binding Certificates}" x:DataType="vm:IssuedCertificatesViewModel">
+            <ui:IssuedCertificateList.Toolbar>
+                <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8" x:DataType="vm:PkiViewModel" DataContext="{Binding $parent[vm:PkiView].DataContext}">
+                  <TextBlock Classes="cardTitle" Text="Certificates" VerticalAlignment="Center" Margin="0,0,12,0" />
+                  <ui:ToolbarButton Text="Create" IconKey="add" IsPrimary="True" Command="{Binding Certificates.CreateCommand}" IsVisible="{Binding MayManage}"
+                                    ToolTip.Tip="OADM makes the key and the certificate" />
+                  <ui:ToolbarButton Text="Sign request" IconKey="edit" Command="{Binding Certificates.SignRequestCommand}" IsVisible="{Binding MayManage}"
+                                    ToolTip.Tip="A request of another system; its key stays there" />
+                  <ui:ToolbarButton Text="Import" IconKey="upload" Command="{Binding Certificates.ImportCommand}" IsVisible="{Binding MayManage}"
+                                    ToolTip.Tip="A certificate, or a .p12 file with its key" />
+                </WrapPanel>
+            </ui:IssuedCertificateList.Toolbar>
+          </ui:IssuedCertificateList>
+      </Border>
+  </Grid>
   </Grid>
 </UserControl>

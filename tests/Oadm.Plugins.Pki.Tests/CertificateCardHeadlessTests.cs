@@ -80,7 +80,7 @@ public sealed class CertificateCardHeadlessTests
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
-        Assert.Contains("Used by", checks.texts);
+        Assert.DoesNotContain("Used by", checks.texts); // no Used by column (decision 2026-10-25)
         Assert.Contains("802.1X server", checks.texts);
         Assert.Contains("nvr.example.com", checks.texts);
         Assert.Contains("OADM Root CA SERVER01", checks.texts);

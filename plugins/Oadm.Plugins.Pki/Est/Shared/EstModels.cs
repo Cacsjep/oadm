@@ -248,6 +248,9 @@ public sealed record EstState
     /// <summary>PKI's EST policies the server applies (Enrollment, Sign-in CA): "2 policies apply". Null for a user limited to a device group.</summary>
     public int? PoliciesApply { get; init; }
 
+    /// <summary>Those policies' names and summaries: the tooltip of "2 policies applied". Null for a user limited to a device group.</summary>
+    public IReadOnlyList<Oadm.Plugins.Pki.Policies.PolicyLine>? PolicyLines { get; init; }
+
     /// <summary>Why no camera can enroll ("There is no Sign-in CA policy..."); null when none. Null for a user limited to a device group.</summary>
     public string? PolicyProblem { get; init; }
 

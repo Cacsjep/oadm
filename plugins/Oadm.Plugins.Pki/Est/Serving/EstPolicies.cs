@@ -225,11 +225,17 @@ public static class EstPolicies
         var defaultName = kind == PolicyKinds.Dot1xCertificate ? PolicyLimits.Dot1xName : PolicyLimits.HttpsName;
         return same.FirstOrDefault(p => string.Equals(p.Name, defaultName, StringComparison.OrdinalIgnoreCase))
             ?? same.FirstOrDefault(p => string.Equals(p.Name, NameFor(profile), StringComparison.OrdinalIgnoreCase))
+            ?? same.FirstOrDefault(p => string.Equals(p.Name, "EST " + profile.Name, StringComparison.OrdinalIgnoreCase))
             ?? same.FirstOrDefault();
     }
 
-    /// <summary>"EST https".</summary>
-    public static string NameFor(EstProfile profile) => "EST " + profile.Name;
+    /// <summary>"EST HTTPS", "EST 802.1X" for the two default profiles, "EST " + the name for the others.</summary>
+    public static string NameFor(EstProfile profile) => "EST " + profile.Name.ToLowerInvariant() switch
+    {
+        "https" => "HTTPS",
+        "dot1x" => "802.1X",
+        _ => profile.Name,
+    };
 
     /// <summary>A new policy with the profile's validity and key; an IEEE 802.1X one takes the 802.1X settings of the first of its kind (EST does not use them).</summary>
     private static PkiPolicy NewPolicy(EstProfile profile, PolicyStore store)
