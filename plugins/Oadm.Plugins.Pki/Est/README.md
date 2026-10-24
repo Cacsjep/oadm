@@ -29,13 +29,16 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     the CA), 503 (no PRO, no CA). Every request names its use (`DeviceCertificateRequest.Purpose`) for PKI's list.
   - `AxisDeviceId` (`plugins/Shared/DeviceId`, linked, shared with the 802.1X server): the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
-  - "Sign in with" (`config.signInWith`, docs/spec/pki.md; `Serving/EstService.Authorities`): ids of PKI's CAs a camera may
-    sign in with, default `axis-device-id` + `oadm` (renewals; today's behaviour); previous OADM CAs can be chosen. Only
-    the chosen CAs PKI still lists count (fail closed; a PKI without the list: the two defaults). Choices and "Issued by"
-    (the OADM CA by its name in PKI, else the name in its certificate: "OADM Root CA SERVER01", "OADM Root CA SERVER01, for
-    renewals") in `EstState`; at least one ("Choose at least one." below the check boxes). EST reports
-    `SetUsedBy("oadm.est", "EST server", chosen ∩ listed + oadm)` at the start, after Save and on PKI's `Changed`, and
-    clears it when it stops.
+  - PKI's EST policies (docs/spec/pki.md "Code (stage 6)"; `Serving/EstRules`, built from PKI's `PolicyStore` again when
+    its version moves): Sign-in CA policies name the CAs a camera may sign in with (`SignInCas(kind)`: for new
+    certificates also renews, for renewals only `simplereenroll`; only those PKI still lists count; no store, an unreadable
+    one or none: nothing signs in); Enrollment policies hold the devices and their profiles (`Check(device, profile)`: none
+    holds it 403 "No enrollment policy for this device.", a profile not allowed the 404 of an unknown profile, listed with
+    the policy). `EstState.PoliciesApply` ("3 policies apply", Edit in PKI) and `PolicyProblem` (null for group users);
+    "Issued by" (the OADM CA by its name in PKI, else the name in its certificate). EST reports
+    `SetUsedBy("oadm.est", "EST server", sign-in CAs ∩ listed + oadm)` at the start, on a policy change and on PKI's
+    `Changed`, and clears it when it stops. `config.signInWith` ("Sign in with" of before) is read only by the conversion
+    (`EstPolicies.ConvertRulesAsync`, owner `oadm.est`) and kept by a save; the store gets `ProfileNames` for the editor.
   - Set up reads the camera clocks first (`CameraClock`, query `readClock` of the Set up task; the run line shows the
     reading) and asks Yes / No when one is behind the certificate's start; Yes sets `SetupPayload.ClockConfirmed` (logged).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
