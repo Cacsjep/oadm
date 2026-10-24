@@ -102,8 +102,10 @@ public sealed class PkiTabsTests
             await vm.LoadAsync();
             await vm.Policies.LoadAsync(CancellationToken.None);
             await vm.Certificates.LoadAsync();
+            await vm.InstallTrustCommand.ExecuteAsync(null); // the OADM CA's row says where it is trusted
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, $"pki-tab-certificates-{width}.png");
+            var installed = window.GetVisualDescendants().OfType<StatusChip>().Where(c => c.IsEffectivelyVisible).Select(c => c.Text).ToList();
 
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Where(t => t.IsEffectivelyVisible).Select(t => (t.Title, t.IsActive)).ToList();
             Button Labeled(string text) => window.GetVisualDescendants().OfType<Button>()
@@ -144,7 +146,7 @@ public sealed class PkiTabsTests
             var red = rows.SelectMany(r => r.GetVisualDescendants().OfType<Button>()).Where(b => b.IsEffectivelyVisible && b.Content as string is "Remove" or "Revoke")
                 .All(b => b.Classes.Contains("danger"));
             window.Close();
-            return (tabs, menus, links, enabled, red, vm.GenerateCommand, vm.ImportCommand, vm.ImportAuthorityCommand, vm.Certificates.CreateCommand);
+            return (tabs, menus, links, enabled, red, installed, vm.GenerateCommand, vm.ImportCommand, vm.ImportAuthorityCommand, vm.Certificates.CreateCommand);
         }, CancellationToken.None);
 
         Assert.Equal([("Certificates", true), ("802.1X server", false), ("EST server", false)], checks.tabs);
@@ -158,5 +160,6 @@ public sealed class PkiTabsTests
         Assert.Equal(["View", "Export"], checks.links.Axis);
         Assert.True(checks.enabled);
         Assert.True(checks.red);
+        Assert.Contains("Installed on this computer", checks.installed);
     }
 }

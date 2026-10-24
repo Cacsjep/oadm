@@ -552,7 +552,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// <summary>The line without a CA: what to do first.</summary>
     public const string NoCaYet = "There is no OADM CA yet. Choose New OADM CA under Create, or import one under Import.";
 
-    /// <summary>The OADM CA row's statuses: where it is trusted, once it is installed there (or an install failed or runs).</summary>
+    /// <summary>The OADM CA row's statuses: whether it is in the trusted root store of the server and of this computer.</summary>
     private List<IssuedCertificateStatus> TrustStatesOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row)
     {
         if (row is not { Kind: Oadm.Sdk.Certificates.ListedCertificateKind.Authority, AuthorityKind: Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm })
@@ -560,18 +560,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return [];
         }
 
-        List<IssuedCertificateStatus> states = [];
-        if (ServerTrustKind != ServiceStatus.Neutral)
-        {
-            states.Add(new IssuedCertificateStatus(ServerTrustText, ServerTrustKind, ServerTrustTip));
-        }
-
-        if (ClientTrustKind != ServiceStatus.Neutral)
-        {
-            states.Add(new IssuedCertificateStatus(ClientTrustText, ClientTrustKind, ClientTrustTip));
-        }
-
-        return states;
+        return [new IssuedCertificateStatus(ServerTrustText, ServerTrustKind, ServerTrustTip), new IssuedCertificateStatus(ClientTrustText, ClientTrustKind, ClientTrustTip)];
     }
 
     partial void OnServerTrustTextChanged(string value) => Certificates?.RefreshTrust();

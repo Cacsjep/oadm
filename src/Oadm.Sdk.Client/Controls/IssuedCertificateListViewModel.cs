@@ -73,16 +73,19 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>The time the row was read (the days left of <see cref="StateText"/>); null: the state alone.</summary>
     public DateTime? NowUtc { get; init; }
 
-    /// <summary>The State column: "Valid for 245 days" while valid, else <see cref="State"/>.</summary>
-    public string StateText => Source.State == IssuedCertificateState.Valid && DaysLeft is { } days ? IssuedCertificateTexts.ValidFor(days) : State;
+    /// <summary>The State column, one line: "245 days" while valid, "Expires in 12 days" when it ends soon, else <see cref="State"/>.</summary>
+    public string StateText => (Source.State, DaysLeft) switch
+    {
+        (IssuedCertificateState.Valid, { } days) => IssuedCertificateTexts.ValidFor(days),
+        (IssuedCertificateState.ExpiresSoon, { } days) => IssuedCertificateTexts.ExpiresIn(days),
+        _ => State,
+    };
 
     /// <summary>Whole days until the end (0 on the last day); null without <see cref="NowUtc"/> or after the end.</summary>
     public int? DaysLeft => NowUtc is { } now && Source.NotAfterUtc > now ? (int)Math.Floor((Source.NotAfterUtc - now).TotalDays) : null;
 
-    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one, "12 days left" when it expires soon; null otherwise.</summary>
-    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName
-        : Source.State == IssuedCertificateState.ExpiresSoon && DaysLeft is { } days ? IssuedCertificateTexts.DaysLeft(days)
-        : null;
+    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one, else "Valid until 2027-10-24".</summary>
+    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName : "Valid until " + ValidUntil;
 
     /// <summary>Statuses the page adds below the state (the OADM CA: where it is trusted); empty for most rows.</summary>
     public IReadOnlyList<IssuedCertificateStatus> MoreStates { get; init; } = [];
@@ -207,11 +210,16 @@ public static class IssuedCertificateTexts
     /// <summary>A device OADM no longer manages: "B8A44F631339 (removed)", or "Device (removed)" without its serial.</summary>
     public static string RemovedDevice(string? deviceSerial) => (string.IsNullOrEmpty(deviceSerial) ? "Device" : deviceSerial) + " (removed)";
 
-    /// <summary>"Valid for 245 days", "Valid for 1 day".</summary>
-    public static string ValidFor(int days) => days == 1 ? "Valid for 1 day" : string.Create(CultureInfo.CurrentCulture, $"Valid for {days:N0} days");
+    /// <summary>A valid certificate's days left: "245 days", "1 day".</summary>
+    public static string ValidFor(int days) => days == 1 ? "1 day" : string.Create(CultureInfo.CurrentCulture, $"{days:N0} days");
 
-    /// <summary>"12 days left", "1 day left".</summary>
-    public static string DaysLeft(int days) => days == 1 ? "1 day left" : string.Create(CultureInfo.CurrentCulture, $"{days:N0} days left");
+    /// <summary>"Expires in 12 days", "Expires in 1 day", "Expires today".</summary>
+    public static string ExpiresIn(int days) => days switch
+    {
+        0 => "Expires today",
+        1 => "Expires in 1 day",
+        _ => string.Create(CultureInfo.CurrentCulture, $"Expires in {days:N0} days"),
+    };
 
     /// <summary>"Device certificates · 60,000": a group header.</summary>
     public static string GroupHeader(string title, int count) => string.Create(CultureInfo.CurrentCulture, $"{title} · {count:N0}");

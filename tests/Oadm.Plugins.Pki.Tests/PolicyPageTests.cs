@@ -285,6 +285,8 @@ public sealed class PolicyHeadlessTests
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var checks = await HeadlessEntry.Session.Dispatch(async () =>
         {
+            // The page as the user sees it: with the server tabs (stand-ins; their tests render them on their tab).
+            ctx.Tabs = [new Oadm.Sdk.Client.CorePluginTab("oadm.radius", "802.1X server", new TextBlock()), new Oadm.Sdk.Client.CorePluginTab("oadm.est", "EST server", new TextBlock())];
             var view = new PkiView();
             using var vm = new PkiViewModel(ctx, new FakeClientTrust());
             var window = HeadlessPageTests.Host(view, width, 1500);
@@ -310,7 +312,7 @@ public sealed class PolicyHeadlessTests
         }, CancellationToken.None);
 
         Assert.True(checks.searchFits);
-        Assert.Equal(0, checks.tabs); // one page, no tabs
+        Assert.Equal(3, checks.tabs); // Certificates, 802.1X server, EST server
         foreach (var title in new[] { "Policies", "Certificates", "Add policy", "Create", "Sign request", "Import", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server", "Root CA", "OADM CA" })
         {
             Assert.Contains(title, checks.texts);

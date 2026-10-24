@@ -116,10 +116,10 @@ public sealed class IssuedCertificateList : UserControl
         {
             Header = "State",
             Width = new DataGridLength(0.9, DataGridLengthUnitType.Star),
-            MinWidth = 175,
+            MinWidth = 190,
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
-                var chip = new StatusChip();
+                var chip = new StatusChip { MaxLines = 1 }; // one line, also in the grid's wrapping rows
                 chip.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateRow.StateText)));
                 chip.Bind(StatusChip.IsOkProperty, new Binding(nameof(IssuedCertificateRow.IsOk)));
                 chip.Bind(StatusChip.IsWarningProperty, new Binding(nameof(IssuedCertificateRow.IsWarning)));
@@ -129,7 +129,7 @@ public sealed class IssuedCertificateList : UserControl
                 {
                     ItemTemplate = new FuncDataTemplate<IssuedCertificateStatus>((_, _) =>
                     {
-                        var status = new StatusChip();
+                        var status = new StatusChip { MaxLines = 1 };
                         status.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateStatus.Text)));
                         status.Bind(StatusChip.IsOkProperty, new Binding(nameof(IssuedCertificateStatus.IsOk)));
                         status.Bind(StatusChip.IsWarningProperty, new Binding(nameof(IssuedCertificateStatus.IsWarning)));

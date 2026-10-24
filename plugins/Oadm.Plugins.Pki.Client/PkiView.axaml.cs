@@ -13,9 +13,27 @@ namespace Oadm.Plugins.Pki.Client;
 /// </summary>
 public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDialogs, IPolicyDialogs
 {
+    /// <summary>The lowest the Certificates card gets; on a lower page the page scrolls.</summary>
+    public const double MinListHeight = 480;
+
     public PkiView()
     {
         InitializeComponent();
+        CertificatesPage.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ViewportProperty)
+            {
+                FitList();
+            }
+        };
+        PoliciesCard.SizeChanged += (_, _) => FitList();
+        PoliciesCard.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty)
+            {
+                FitList();
+            }
+        };
         Files = new PkiFilePicker(() => TopLevel.GetTopLevel(this));
         PoliciesGrid.DoubleTapped += (_, _) =>
         {
@@ -24,6 +42,26 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
                 vm.Policies.EditRowCommand.Execute(row);
             }
         };
+    }
+
+    /// <summary>
+    /// The Certificates card takes the height the page has left below Policies, like the 802.1X Log, never less than
+    /// <see cref="MinListHeight"/> (its grid needs a bounded height to stay virtualized). Layout only.
+    /// </summary>
+    private void FitList()
+    {
+        var viewport = CertificatesPage.Viewport.Height;
+        if (!double.IsFinite(viewport) || viewport <= 0)
+        {
+            return;
+        }
+
+        var above = PoliciesCard.IsVisible ? PoliciesCard.Bounds.Height + 16 : 0;
+        var height = Math.Max(MinListHeight, Math.Floor(viewport - above));
+        if (Math.Abs(CertificatesCard.Height - height) >= 1)
+        {
+            CertificatesCard.Height = height;
+        }
     }
 
     public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)

@@ -25,7 +25,7 @@
   <!-- A server tab: its page's own view (only the shown tab's view is in the window). -->
   <ContentControl Grid.Row="1" Content="{Binding ActiveTabView}" IsVisible="{Binding !IsCertificatesTab}" />
 
-  <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsCertificatesTab}">
+  <ScrollViewer x:Name="CertificatesPage" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsCertificatesTab}">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
       <!-- ============================== Policies ============================== -->
       <Border x:Name="PoliciesCard" Classes="card" DataContext="{Binding Policies}" x:DataType="vm:PoliciesViewModel"
@@ -119,7 +119,8 @@
       <!-- ============================== Certificates ============================== -->
       <!-- The shared certificate list (Group by, filters, search, pages, View certificate) with the CAs as rows; the page
            adds Create, Sign request and Import in the card header and the row buttons of each kind of row. -->
-      <Border Classes="card" Height="680">
+      <!-- As high as the rest of the page (PkiView.FitList), at least MinListHeight: the page scrolls below that. -->
+      <Border x:Name="CertificatesCard" Classes="card" Height="680">
         <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
           <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
             <TextBlock Classes="cardTitle" Text="Certificates" VerticalAlignment="Center" Margin="0,0,12,0" />

@@ -116,7 +116,7 @@ public sealed class CertificateGroupTests
             Name = "OADM Root CA SERVER01", IssuedBy = "OADM Root CA SERVER01", Purpose = ListedCertificateUses.Ca, NotAfterUtc = now.AddDays(245.5) });
         Assert.Equal(["Root CA", "OADM CA"], root.Badges);
         Assert.Equal("RSA 4096", root.Detail);
-        Assert.Equal("Valid for 245 days", root.StateText);
+        Assert.Equal(("245 days", "Valid until 2027-06-27"), (root.StateText, root.StateTip));
         Assert.True(root.IsOadmCa);
         Assert.False(root.IsRemovableCa);
 
@@ -124,7 +124,7 @@ public sealed class CertificateGroupTests
             IssuedBy = "Axis device ID", Purpose = ListedCertificateUses.Ca, NotAfterUtc = now.AddDays(1.2) });
         Assert.Equal(["Intermediate CA", "Axis device ID"], intermediate.Badges);
         Assert.Equal("ECDSA P-256 · issued by Axis device ID", intermediate.Detail);
-        Assert.Equal("Valid for 1 day", intermediate.StateText);
+        Assert.Equal("1 day", intermediate.StateText);
 
         var imported = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.Imported, IsRootCa = true, Purpose = ListedCertificateUses.Ca });
         Assert.Equal(["Root CA", "Imported"], imported.Badges);
@@ -134,7 +134,7 @@ public sealed class CertificateGroupTests
             State = IssuedCertificateState.ExpiresSoon, NotAfterUtc = now.AddDays(12.5), Device = "10.0.0.48", DeviceManaged = true });
         Assert.Equal(["IEEE 802.1X"], device.Badges);
         Assert.Equal("Issued by OADM Root CA SERVER01", device.Detail);
-        Assert.Equal(("Expires soon", "12 days left"), (device.StateText, device.StateTip));
+        Assert.Equal("Expires in 12 days", device.StateText);
 
         Assert.Equal(["Server"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Server, Purpose = ListedCertificateUses.Server }).Badges);
         Assert.Equal(["HTTPS", "Created"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Created, Purpose = DeviceCertificatePurposes.Https }).Badges);
@@ -156,7 +156,7 @@ public sealed class CertificateGroupTests
         Assert.True(vm.Certificates.IsGrouped);
         Assert.Equal(["Certificate authorities", "Created, signed and imported", "Device certificates"], vm.Certificates.GroupTitles.Select(t => t[..t.IndexOf(" · ", StringComparison.Ordinal)]));
         Assert.Equal("Device certificates · 5", vm.Certificates.Rows[^1].GroupTitle);
-        Assert.Empty(vm.Certificates.Rows.Single(r => r.IsOadmCa).MoreStates); // not installed anywhere: nothing to say
+        Assert.Equal(["Not installed on the server", "Not installed on this computer"], vm.Certificates.Rows.Single(r => r.IsOadmCa).MoreStates.Select(s => s.Text));
 
         vm.Certificates.GroupBy = vm.Certificates.GroupChoices.Single(c => c.Value == IssuedCertificateGrouping.Issuer);
         await Wait.UntilAsync(() => vm.Certificates.GroupTitles.Count > 0 && vm.Certificates.GroupTitles[0].StartsWith("OADM Root CA NEW · ", StringComparison.Ordinal));
