@@ -311,7 +311,7 @@ public sealed record SessionRow
 
     public Guid? DeviceId { get; init; }
 
-    /// <summary>The device's address; empty for an unknown device.</summary>
+    /// <summary>The device's host name, else its serial number; empty for an unknown device.</summary>
     public string DeviceName { get; init; } = string.Empty;
 
     /// <summary>The device is a guess from the MAC address (italics) until the certificate named it.</summary>
@@ -363,6 +363,7 @@ public sealed record LogRow
 
     public Guid? DeviceId { get; init; }
 
+    /// <summary>The device's host name, else its serial number; empty for an unknown device.</summary>
     public string DeviceName { get; init; } = string.Empty;
 
     /// <summary>The device is only a guess from the MAC address (the certificate named none).</summary>
@@ -410,7 +411,7 @@ public sealed record RevokedRow
 
     public Guid? DeviceId { get; init; }
 
-    /// <summary>The device's address; empty when OADM no longer manages it.</summary>
+    /// <summary>The device's host name, else its serial number; empty when OADM no longer manages it.</summary>
     public string DeviceName { get; init; } = string.Empty;
 
     public DateTime NotAfterUtc { get; init; }

@@ -27,6 +27,13 @@
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Axis device ID CA certificates (roots and intermediates), as Axis publishes them (shared with EST). -->
+    <EmbeddedResource Include="..\Shared\DeviceId\*.pem" LogicalName="Oadm.Plugins.Shared.DeviceId.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
+    <Compile Include="..\Shared\DeviceId\AxisDeviceId.cs" Link="Common\AxisDeviceId.cs" />
   </ItemGroup>
 
   <ItemGroup>
