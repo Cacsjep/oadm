@@ -1,4 +1,7 @@
 #!/bin/sh
 # OADM server package preinstall: stop a running server before its files are replaced (upgrade).
 launchctl bootout system/com.oadm.server >/dev/null 2>&1 || true
+# The EST and 802.1X servers are parts of PKI since OADM 4.5: their plugin folders of 4.1 go (an installer upgrade keeps
+# files the new package no longer has). The server would skip them anyway ("Merged into PKI").
+rm -rf "/Library/Application Support/OADM/server/plugins/oadm.est" "/Library/Application Support/OADM/server/plugins/oadm.radius"
 exit 0

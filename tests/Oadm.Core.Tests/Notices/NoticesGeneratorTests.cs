@@ -199,11 +199,22 @@ public sealed class NoticesGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void PartsOfAPluginWithTheirOwnLicenseAreNamedAtTheTop()
+    {
+        // PKI with the EST and 802.1X servers (docs/spec/pki.md "One plugin"): each part keeps its source-available license.
+        var text = NoticesWriter.Build(Options() with { OwnLicensePlugins = ["oadm.pki/Est", "oadm.pki/Radius"] }, [], (id, _) => throw new KeyNotFoundException(id), Templates()).Text;
+
+        Assert.Contains("Apache License 2.0 (LICENSE.txt).\n"
+            + "Except the part Est of the plugin oadm.pki: it has its own license (plugins/oadm.pki/Est/LICENSE).\n"
+            + "Except the part Radius of the plugin oadm.pki: it has its own license (plugins/oadm.pki/Radius/LICENSE).\n", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PluginsWithTheirOwnLicenseAreNamedAtTheTop()
     {
-        var text = NoticesWriter.Build(Options() with { OwnLicensePlugins = ["oadm.est"] }, [], (id, _) => throw new KeyNotFoundException(id), Templates()).Text;
+        var text = NoticesWriter.Build(Options() with { OwnLicensePlugins = ["acme.pro"] }, [], (id, _) => throw new KeyNotFoundException(id), Templates()).Text;
 
-        Assert.Contains("Apache License 2.0 (LICENSE.txt).\nExcept the plugin oadm.est: it has its own license (plugins/oadm.est/LICENSE).\n", text, StringComparison.Ordinal);
+        Assert.Contains("Apache License 2.0 (LICENSE.txt).\nExcept the plugin acme.pro: it has its own license (plugins/acme.pro/LICENSE).\n", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Except the plugin", NoticesWriter.Build(Options(), [], (id, _) => throw new KeyNotFoundException(id), Templates()).Text, StringComparison.Ordinal);
     }
 
