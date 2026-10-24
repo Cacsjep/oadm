@@ -102,6 +102,9 @@ public sealed partial class LogViewModel : ObservableObject
     /// <summary>Wait after typing in the search before the server is asked.</summary>
     public TimeSpan SearchDelay { get; init; } = TimeSpan.FromMilliseconds(300);
 
+    /// <summary>The time zone the page shows the times in (sent with every read so the search matches them).</summary>
+    public string TimeZoneId { get; init; } = TimeZoneInfo.Local.Id;
+
     /// <summary>The entries the server keeps (the saved setting): the live rows never count beyond it.</summary>
     public int Kept { get; set; } = RadiusLimits.DefaultLogKept;
 
@@ -173,7 +176,8 @@ public sealed partial class LogViewModel : ObservableObject
         _pending ??= [];
         try
         {
-            var query = new LogQuery(string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(), Offset, RadiusLimits.MaxLogPage);
+            // The server searches the time also as this page shows it (local time).
+            var query = new LogQuery(string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(), Offset, RadiusLimits.MaxLogPage) { TimeZoneId = TimeZoneId };
             var page = RadiusJson.Deserialize<LogPage>(await _ctx.InvokeAsync(RadiusMethods.ListLog, RadiusJson.Serialize(query), ct).ConfigureAwait(true));
             if (version != Volatile.Read(ref _readVersion))
             {
@@ -273,14 +277,25 @@ public sealed partial class LogViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyText));
     }
 
-    /// <summary>The <c>logCleared</c> event: every page is empty.</summary>
+    /// <summary>
+    /// The <c>logCleared</c> event: every page is empty. A read still running is dropped (its answer may hold the deleted
+    /// rows) and so are the live rows that waited for it.
+    /// </summary>
     public void Cleared()
     {
+        Interlocked.Increment(ref _readVersion);
+        _pending = null;
+        IsLoading = false;
+        IsReloading = false;
+        _loadedOnce = true;
+        _stale = false;
+        Error = null;
         Rows.ReplaceAll([]);
         Offset = 0;
         Total = 0;
         Selected = null;
         OnPropertyChanged(nameof(EmptyText));
+        OnPropertyChanged(nameof(IsLoaded));
     }
 
     internal void NotifyRole()

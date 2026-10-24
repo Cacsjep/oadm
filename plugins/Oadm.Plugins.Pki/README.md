@@ -208,7 +208,8 @@ the CA service.
   page, View certificate (`ui:CertificateWindow`, a double click too; its "ends soon" uses `CertificatesReply.WarningDays`,
   the same days as the list); the page adds Revoke and Revoke all of
   this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
-  "manage". The tab reads only when shown; an event while the other tab is shown marks it to read when opened.
+  "manage"; while either runs (Revoke all of this device reads the device first, up to 20 s) the list's progress row says
+  "Revoking the certificates" and both are off (`WorkText`; a write runs to its end, no Cancel). The tab reads only when shown; an event while the other tab is shown marks it to read when opened.
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
   View certificate describes a certificate the fake CA signs; Revoke changes the rows.
 

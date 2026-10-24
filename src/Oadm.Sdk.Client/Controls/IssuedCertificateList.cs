@@ -14,7 +14,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>
 /// The list of certificates the OADM CA issued (SDK 0.4.0), one control for the PKI Certificates tab and the certificate
 /// choice of the 802.1X server's Revoke: the page's buttons (<see cref="Toolbar"/>) left, the filters (state, use, issued
-/// by) and the search right, the progress row of a later read, the virtualized grid (device, use, issued by, valid from,
+/// by) and the search right, the progress row of a later read or a write of the page (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid (device, use, issued by, valid from,
 /// valid until, serial number, state chip with the revocation as tooltip; several rows can be chosen, a double click is
 /// View certificate), the empty line, the overlay of the first read, an error of the whole table directly below it and the
 /// pages (Previous / Next, "1-500 of 12,345"). The DataContext is an <see cref="IssuedCertificateListViewModel"/>; the
@@ -92,14 +92,15 @@ public sealed class IssuedCertificateList : UserControl
         Grid.SetColumn(filters, 2);
         bar.Children.AddRange([_toolbar, filters]);
 
-        var progress = new ProgressRow { Margin = new Thickness(0, 8, 0, 0), Text = "Reading the certificates" };
-        progress.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.IsReloading)));
+        var progress = new ProgressRow { Margin = new Thickness(0, 8, 0, 0) };
+        progress.Bind(ProgressRow.TextProperty, new Binding(nameof(IssuedCertificateListViewModel.ProgressText)));
+        progress.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.ShowsProgress)));
 
         var empty = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 40, 0, 0) };
         empty.Classes.Add("secondary");
         empty.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateListViewModel.EmptyText)));
         empty.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.EmptyText)) { Converter = StringConverters.IsNotNullOrEmpty });
-        var overlay = new LoadingOverlay { Text = "Reading the certificates" };
+        var overlay = new LoadingOverlay { Text = IssuedCertificateTexts.Reading };
         overlay.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.IsLoading)));
         var table = new Panel { Margin = new Thickness(0, 8, 0, 0), Children = { Table, empty, overlay } };
 

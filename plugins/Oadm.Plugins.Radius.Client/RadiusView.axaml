@@ -56,7 +56,10 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:CipherSuiteViewModel">
                             <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding IsListed}" IsEnabled="{Binding MayManage}">
-                              <TextBlock Text="{Binding Name}" />
+                              <StackPanel>
+                                <TextBlock Text="{Binding Name}" />
+                                <TextBlock Classes="secondary small" Text="{Binding KeyHint}" IsVisible="{Binding HasKeyHint}" />
+                              </StackPanel>
                             </CheckBox>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -116,46 +119,49 @@
           <!-- ========== VLANs (collapsed while off) and the one Save ========== -->
           <Border Classes="card">
             <StackPanel Classes="form">
-              <ui:CardHeader Title="VLANs" />
-              <StackPanel Classes="form" DataContext="{Binding Vlans}" x:DataType="vm:VlansViewModel">
-                <CheckBox Content="Assign VLANs" IsChecked="{Binding Enabled}" IsEnabled="{Binding MayManage}" />
-                <StackPanel Classes="form" IsVisible="{Binding Enabled}">
-                  <TextBlock Classes="secondary" Text="The first rule that matches the device gives its VLAN, at its next authentication." TextWrapping="Wrap" />
-                  <Grid ColumnDefinitions="120,12,240,12,110" IsVisible="{Binding HasRules}">
-                    <TextBlock Grid.Column="0" Classes="secondary" Text="Match" />
-                    <TextBlock Grid.Column="2" Classes="secondary" Text="Site or tag" />
-                    <TextBlock Grid.Column="4" Classes="secondary" Text="VLAN ID" />
-                  </Grid>
-                  <!-- Rules are few (one per site or tag): no virtualization needed. Inputs stay at the top so an error below
-                       one moves nothing else. -->
-                  <ItemsControl ItemsSource="{Binding Rules}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:VlanRuleViewModel">
-                        <Grid ColumnDefinitions="120,12,240,12,110,12,Auto" Margin="0,0,0,6">
-                          <ComboBox Grid.Column="0" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                    IsEnabled="{Binding MayManage}" />
-                          <ComboBox Grid.Column="2" ItemsSource="{Binding References}" SelectedItem="{Binding Reference}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                    IsEnabled="{Binding MayManage}" />
-                          <TextBox Grid.Column="4" Text="{Binding Vlan}" VerticalAlignment="Top" PlaceholderText="1 to 4094" IsReadOnly="{Binding !MayManage}" />
-                          <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top"
-                                      IsVisible="{Binding MayManage}">
-                            <ui:ToolbarButton IsIconOnly="True" IconKey="chevronUp" Text="Move up" VerticalAlignment="Center"
-                                              Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}" />
-                            <ui:ToolbarButton IsIconOnly="True" IconKey="chevronDown" Text="Move down" VerticalAlignment="Center"
-                                              Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}" />
-                            <Button Classes="link danger" Content="Remove" VerticalAlignment="Center" Margin="8,0,0,0"
-                                    Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).RemoveRuleCommand}" CommandParameter="{Binding}" />
-                          </StackPanel>
-                        </Grid>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                  <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddRuleCommand}" IsVisible="{Binding MayManage}">
-                    <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add rule" />
-                  </Button>
-                  <ui:FormField Label="Default VLAN" Hint="For devices no rule matches. Empty: no VLAN.">
-                    <TextBox Text="{Binding DefaultVlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="Optional" IsReadOnly="{Binding !MayManage}" />
-                  </ui:FormField>
+              <!-- Users limited to a group: no VLAN rules (the server sends none). -->
+              <StackPanel Classes="form" IsVisible="{Binding SeesVlans}">
+                <ui:CardHeader Title="VLANs" />
+                <StackPanel Classes="form" DataContext="{Binding Vlans}" x:DataType="vm:VlansViewModel">
+                  <CheckBox Content="Assign VLANs" IsChecked="{Binding Enabled}" IsEnabled="{Binding MayManage}" />
+                  <StackPanel Classes="form" IsVisible="{Binding Enabled}">
+                    <TextBlock Classes="secondary" Text="The first rule that matches the device gives its VLAN, at its next authentication." TextWrapping="Wrap" />
+                    <Grid ColumnDefinitions="120,12,240,12,110" IsVisible="{Binding HasRules}">
+                      <TextBlock Grid.Column="0" Classes="secondary" Text="Match" />
+                      <TextBlock Grid.Column="2" Classes="secondary" Text="Site or tag" />
+                      <TextBlock Grid.Column="4" Classes="secondary" Text="VLAN ID" />
+                    </Grid>
+                    <!-- Rules are few (one per site or tag): no virtualization needed. Inputs stay at the top so an error below
+                         one moves nothing else. -->
+                    <ItemsControl ItemsSource="{Binding Rules}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:VlanRuleViewModel">
+                          <Grid ColumnDefinitions="120,12,240,12,110,12,Auto" Margin="0,0,0,6">
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                                      IsEnabled="{Binding MayManage}" />
+                            <ComboBox Grid.Column="2" ItemsSource="{Binding References}" SelectedItem="{Binding Reference}" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                                      IsEnabled="{Binding MayManage}" />
+                            <TextBox Grid.Column="4" Text="{Binding Vlan}" VerticalAlignment="Top" PlaceholderText="1 to 4094" IsReadOnly="{Binding !MayManage}" />
+                            <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4" Height="{DynamicResource Oadm.ControlHeight}" VerticalAlignment="Top"
+                                        IsVisible="{Binding MayManage}">
+                              <ui:ToolbarButton IsIconOnly="True" IconKey="chevronUp" Text="Move up" VerticalAlignment="Center"
+                                                Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}" />
+                              <ui:ToolbarButton IsIconOnly="True" IconKey="chevronDown" Text="Move down" VerticalAlignment="Center"
+                                                Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}" />
+                              <Button Classes="link danger" Content="Remove" VerticalAlignment="Center" Margin="8,0,0,0"
+                                      Command="{Binding $parent[ItemsControl].((vm:VlansViewModel)DataContext).RemoveRuleCommand}" CommandParameter="{Binding}" />
+                            </StackPanel>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddRuleCommand}" IsVisible="{Binding MayManage}">
+                      <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add rule" />
+                    </Button>
+                    <ui:FormField Label="Default VLAN" Hint="For devices no rule matches. Empty: no VLAN.">
+                      <TextBox Text="{Binding DefaultVlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="Optional" IsReadOnly="{Binding !MayManage}" />
+                    </ui:FormField>
+                  </StackPanel>
                 </StackPanel>
               </StackPanel>
 
@@ -295,7 +301,7 @@
           </StackPanel>
           <ui:SearchBox Grid.Column="2" Text="{Binding Search}" Placeholder="Search device, serial number" Width="260" />
         </Grid>
-        <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="Reading the revoked certificates" IsVisible="{Binding IsReloading}" />
+        <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="{Binding ProgressText}" IsVisible="{Binding ShowsProgress}" />
         <Panel Grid.Row="2" Margin="0,8,0,0">
           <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single" MinHeight="200">
             <DataGrid.Columns>
@@ -309,7 +315,7 @@
           </DataGrid>
           <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding EmptyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-          <ui:LoadingOverlay Text="Reading the revoked certificates" IsVisible="{Binding IsLoading}" />
+          <ui:LoadingOverlay Text="{x:Static vm:RevokedViewModel.ReadingText}" IsVisible="{Binding IsLoading}" />
         </Panel>
         <!-- A whole-table error directly below the table; the pages at the right (like the log). -->
         <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,8,0,0">

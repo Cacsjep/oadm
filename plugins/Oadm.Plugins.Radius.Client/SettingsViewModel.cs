@@ -20,8 +20,16 @@ public sealed partial class CipherSuiteViewModel(CipherSuiteOption suite, Settin
     /// <summary>An old CBC suite: listed only while the minimum is TLS 1.0 or 1.1.</summary>
     public bool IsLegacy => suite.Legacy;
 
-    /// <summary>Can be negotiated with the minimum version (TLS 1.3 is always offered; the TLS 1.2 suites need a minimum of 1.2 or lower).</summary>
-    public bool IsUsable(string? minimumTls) => suite.Tls13 || (RadiusRules.MinimumIndex(minimumTls) is { } min && (suite.Legacy ? min < 2 : min <= 2));
+    /// <summary>
+    /// Can be negotiated: the server's certificate can use it (<see cref="CipherSuiteOption.Usable"/>) and the minimum version
+    /// allows it (TLS 1.3 is always offered; the TLS 1.2 suites need a minimum of 1.2 or lower).
+    /// </summary>
+    public bool IsUsable(string? minimumTls) => suite.Usable && (suite.Tls13 || (RadiusRules.MinimumIndex(minimumTls) is { } min && (suite.Legacy ? min < 2 : min <= 2)));
+
+    /// <summary>The server's certificate cannot use it: the hint below the suite's name; null otherwise.</summary>
+    public string? KeyHint => suite.Usable ? null : SettingsViewModel.UnusableSuiteHint;
+
+    public bool HasKeyHint => !suite.Usable;
 
     [ObservableProperty]
     public partial bool IsChecked { get; set; }
@@ -46,6 +54,9 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 {
     /// <summary>The hint below "Minimum TLS version" for TLS 1.0 and 1.1.</summary>
     public const string OldTlsHint = "Only for old devices: TLS 1.0 and 1.1 are no longer considered secure.";
+
+    /// <summary>The hint below a cipher suite the server's certificate cannot use (an RSA suite with the ECDSA key).</summary>
+    public const string UnusableSuiteHint = "Not usable with the server certificate.";
 
     public static IReadOnlyList<Choice<string>> TlsVersions { get; } = [.. RadiusLimits.TlsVersions.Select(v => new Choice<string>(v, "TLS " + v))];
 

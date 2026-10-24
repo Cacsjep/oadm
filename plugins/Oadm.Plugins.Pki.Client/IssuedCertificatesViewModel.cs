@@ -78,9 +78,15 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
 
     protected override void OnSelectionChanged() => RevokeCommand.NotifyCanExecuteChanged();
 
+    protected override void OnWorkChanged()
+    {
+        RevokeCommand.NotifyCanExecuteChanged();
+        RevokeDeviceCommand.NotifyCanExecuteChanged();
+    }
+
     protected override Task ShowMessageAsync(string title, string message) => _ctx.ShowMessageAsync(title, message);
 
-    private bool CanRevoke() => MayRevoke && Selected.Any(r => r.CanRevoke);
+    private bool CanRevoke() => MayRevoke && !IsWorking && Selected.Any(r => r.CanRevoke);
 
     /// <summary>Revoke (red): the chosen rows that can still be revoked, with a reason, confirmed.</summary>
     [RelayCommand(CanExecute = nameof(CanRevoke))]
@@ -100,7 +106,7 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         await SendRevokeAsync(PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([.. rows.Select(r => r.Source.SerialNumber)], reason))).ConfigureAwait(true);
     }
 
-    private bool CanRevokeDevice(IssuedCertificateRow? row) => MayRevoke && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is not null;
+    private bool CanRevokeDevice(IssuedCertificateRow? row) => MayRevoke && !IsWorking && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is not null;
 
     /// <summary>Revoke all of this device (row menu): every certificate of the row's device that is still valid.</summary>
     [RelayCommand(CanExecute = nameof(CanRevokeDevice))]
@@ -120,25 +126,33 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         await SendRevokeAsync(PkiMethods.RevokeDevice, PkiJson.Serialize(new RevokeDeviceRequest(row.Source.DeviceId, reason))).ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// Sends Revoke or Revoke all of this device (a write: it runs to its end, no Cancel; Revoke all of this device reads the
+    /// device first, up to 20 s): the progress row above the grid meanwhile, both commands off; then the page again.
+    /// </summary>
     private async Task SendRevokeAsync(string method, string payload)
     {
+        string? answer;
+        WorkText = IssuedCertificateTexts.Revoking;
         try
         {
             var reply = PkiJson.Deserialize<RevokeReply>(await _ctx.InvokeAsync(method, payload, CancellationToken.None).ConfigureAwait(true));
-            if (reply.Error is { } error)
-            {
-                await _ctx.ShowMessageAsync("Revoke", error).ConfigureAwait(true);
-            }
-            else if (reply.Revoked == 0)
-            {
-                await _ctx.ShowMessageAsync("Revoke", IssuedCertificateTexts.NothingRevoked).ConfigureAwait(true);
-            }
+            answer = reply.Error ?? (reply.Revoked == 0 ? IssuedCertificateTexts.NothingRevoked : null);
         }
 #pragma warning disable CA1031 // Shown to the user.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            await _ctx.ShowMessageAsync("Revoke", ServerErrors.Message(ex)).ConfigureAwait(true);
+            answer = ServerErrors.Message(ex);
+        }
+        finally
+        {
+            WorkText = null;
+        }
+
+        if (answer is not null)
+        {
+            await _ctx.ShowMessageAsync("Revoke", answer).ConfigureAwait(true);
         }
 
         await LoadAsync().ConfigureAwait(true);
