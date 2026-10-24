@@ -182,6 +182,12 @@ public enum CertificateAuthorityKind
 /// One CA of PKI's list: a stable id, the name shown, its kind, its certificates (DER; the Axis device ID has its roots and
 /// intermediates), the end of the latest of them, and whether it issues certificates now.
 /// </summary>
+/// <param name="Id">Stable id ("oadm", "oadm-previous:&lt;sha256&gt;", "axis-device-id", "imported:&lt;sha256&gt;").</param>
+/// <param name="Name">The name shown ("OADM CA", "Axis device ID").</param>
+/// <param name="Kind">The kind of CA.</param>
+/// <param name="Certificates">The CA's certificates as DER, the CA certificate first.</param>
+/// <param name="NotAfterUtc">The end of the latest of them (UTC).</param>
+/// <param name="Issues">True for the CA that issues certificates now.</param>
 public sealed record CertificateAuthorityInfo(
     string Id,
     string Name,
