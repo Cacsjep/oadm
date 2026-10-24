@@ -277,8 +277,11 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 - **Existing certificates** (decision 2026-10-24, the cheapest robust way without a new hook in the host's full refresh):
   (1) whenever PKI reads a device's certificate list (View / Delete certificates, Renew certificates), every certificate
   there that one of the OADM CAs (active or previous) signed (checked by a chain build to that CA) and that names this
-  device's `axis-<serial>.local` is added once (use: IEEE 802.1X for clientAuth, else HTTPS; issued by EST for the
-  `oadm_` / `oadm2_` EST profile names, else Task; issued = its valid-from); (2) once per server, 5 minutes after the
+  device's `axis-<serial>.local` is added once (use: the one the EST profile name behind `oadm_` / `oadm2_` names when it
+  fits the certificate (`oadm_mqtt`, `oadm2_mqtt_cameras` -> MQTT, `oadm_rtsps` -> RTSPS; MQTT and IEEE 802.1X only for
+  clientAuth, HTTPS and RTSPS only without), else IEEE 802.1X for clientAuth and HTTPS for the others,
+  `IssuedRegistry.PurposeOfFound`; issued by EST for the `oadm_` / `oadm2_` EST profile names, else Task; issued = its
+  valid-from); (2) once per server, 5 minutes after the
   start, one background pass reads the certificate list (REST `cert` v1, read only) of every device that answers and has
   AXIS OS 11.11 or later, 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
   read, or nothing to read; a round that read no device runs again an hour later, a stop at the next start). Devices that
@@ -462,7 +465,10 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   check (RFC 2865 3, RFC 5080 2.2.1), plus the loopback addresses (a test on the server itself); no card with an address:
   every address). Every 5 s a cheap check of the addresses (the list of the interfaces; the host passes on no address change
   event of the OS) listens on a new set at once (a card or an address came or went; one interface: its addresses moved or
-  it is gone); a listener that could not open is tried again every 30 s. One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
+  it is gone); a listener that could not open is tried again every 30 s. The host leaves out an address that is not ready
+  yet (an IPv6 address still checked) while the others serve; the listener's `IRelay.BoundAddresses` (SDK 0.4.0; null from
+  an older host = the requested ones) shows it missing: the next 5 s check listens again once, and while the same
+  addresses stay missing the 30 s retry does, so an address a card never takes does not reopen the listener every 5 s. One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
   released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
 - **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
   addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th),

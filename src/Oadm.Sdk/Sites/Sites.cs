@@ -121,6 +121,15 @@ public interface IRelay : IAsyncDisposable
     event EventHandler? StateChanged;
 
     /// <summary>
+    /// The addresses a listener on the server's own network has bound now: the chosen addresses that were ready (an address
+    /// of the interface that is not ready yet, such as an IPv6 address still checked, is left out while the others serve),
+    /// or the wildcard addresses of a listener on every address; empty while it does not listen. Null when the host does not
+    /// tell (a relay at a site, a host before SDK 0.4.0, OADM 4.2): then assume the requested addresses. A plugin that wants
+    /// every chosen address listens again on its own later when one is missing.
+    /// </summary>
+    IReadOnlyList<IPAddress>? BoundAddresses => null;
+
+    /// <summary>
     /// Closes the relay for good because the plugin no longer serves there (a setting changed): the site node gives the
     /// port back (it drops the port it allowed from the plugin's request; a port its administrator added stays). Dispose
     /// instead when the plugin only stops (the server shuts down, the plugin is turned off): the port stays allowed for the

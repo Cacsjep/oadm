@@ -62,8 +62,10 @@ returns null or throws `NotSupportedException`.
   shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `EventSubscriptions` (every event the server
   handles, see "Event rules"), `AutoAdd` (add or follow an Axis device like
   the add page), `Network` (`IPluginNetwork`: routes, `ListenUdpAsync` / `ListenTcpAsync` on the server's own network,
-  both also on the addresses of one interface, UDP with SDK 0.4.0; `FakePluginNetwork.LastUdpAddresses` /
-  `LastTcpAddresses` in tests).
+  both also on the addresses of one interface, UDP with SDK 0.4.0; an address of the interface that is not ready is left
+  out while the others serve, `IRelay.BoundAddresses` (SDK 0.4.0 default member, null = the host does not tell: a relay at
+  a site, an older host) lists the addresses bound now, empty while not listening; `FakePluginNetwork.LastUdpAddresses` /
+  `LastTcpAddresses` and `RefuseAddress` (leave an address out, as the host does) in tests).
 - **SDK 0.4.0 (OADM 4.2), device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`):
   `ICallContext` (UserName, SessionId, DeviceScopeKey "all" or the group id, `Has`, `HasAllDevices`, `Devices`, `Vapix`,
   `Tasks`, `EventStreams` scoped to the user's view: outside ids answer null or throw

@@ -156,6 +156,8 @@ public sealed class PluginNetworkScope : IPluginNetwork, IAsyncDisposable
 
         public string StateText => Inner.StateText;
 
+        public IReadOnlyList<IPAddress>? BoundAddresses => Inner.BoundAddresses;
+
         public event EventHandler? StateChanged
         {
             add => Inner.StateChanged += value;

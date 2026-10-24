@@ -132,7 +132,7 @@ public sealed class LocalDeviceNetwork : IDeviceNetwork
 /// <summary>
 /// Listeners on the server's own network for plugins (<see cref="IPluginNetwork.ListenUdpAsync"/>,
 /// <see cref="IPluginNetwork.ListenTcpAsync"/>): bound on every address (IPv4 and IPv6), or on the addresses of one
-/// interface (an address that is not available is left out while the others serve), by the host, with the firewall rule
+/// interface (an address that is not available is left out while the others serve, <see cref="BoundAddresses"/>), by the host, with the firewall rule
 /// of the Windows service open while it listens. A port another program holds is <see cref="RelayState.PortInUse"/>
 /// and tried again every <see cref="LocalListener.RetryInterval"/>.
 /// </summary>
@@ -149,6 +149,7 @@ public abstract class LocalListener : IRelay
     private readonly string _reason;
     private readonly IReadOnlyList<IPAddress> _addresses;
     private List<Socket> _sockets = [];
+    private IReadOnlyList<IPAddress> _bound = [];
     private ITimer? _retry;
     private RelayState _state = RelayState.PortInUse;
     private int _disposed;
@@ -193,6 +194,18 @@ public abstract class LocalListener : IRelay
     public string StateText => SiteTexts.RelayStateText(_reason, SiteTexts.ThisServer, State, Protocol, Port);
 
     public event EventHandler? StateChanged;
+
+    /// <summary>The addresses bound now (an address of the chosen interface that was not ready is missing); empty while not listening.</summary>
+    public IReadOnlyList<IPAddress> BoundAddresses
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _bound;
+            }
+        }
+    }
 
     /// <summary>The bound sockets (one per address family).</summary>
     private protected IReadOnlyList<Socket> Sockets
@@ -288,6 +301,7 @@ public abstract class LocalListener : IRelay
             }
 
             _sockets = sockets;
+            _bound = [.. sockets.Select(s => ((IPEndPoint)s.LocalEndPoint!).Address)];
             changed = _state != state || state == RelayState.Running;
             _state = state;
             if (state != RelayState.Running)
@@ -368,6 +382,7 @@ public abstract class LocalListener : IRelay
             }
 
             _sockets = [];
+            _bound = [];
             _state = RelayState.PortInUse;
             _retry ??= Auth.CallerContext.Detached(() => _time.CreateTimer(_ => Retry(), null, RetryInterval, RetryInterval));
         }
@@ -387,6 +402,7 @@ public abstract class LocalListener : IRelay
         {
             sockets = _sockets;
             _sockets = [];
+            _bound = [];
             _retry?.Dispose();
             _retry = null;
         }
