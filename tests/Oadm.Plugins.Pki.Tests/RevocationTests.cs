@@ -22,8 +22,11 @@ public sealed class RevocationTests
         return new CertificateRequest("CN=camera", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).CreateSigningRequest();
     }
 
-    internal static Task<IssuedDeviceCertificate> SignAsync(IDeviceCertificateAuthority authority, Guid device, string serial = "B8A44F631339", DeviceCertificateUse use = DeviceCertificateUse.Server, string? purpose = null, string? source = "EST") =>
-        authority.SignAsync(
+    /// <summary>Signs as EST does; <paramref name="confirm"/>: the camera got it too (it becomes current, as after EST's answer).</summary>
+    internal static async Task<IssuedDeviceCertificate> SignAsync(IDeviceCertificateAuthority authority, Guid device, string serial = "B8A44F631339", DeviceCertificateUse use = DeviceCertificateUse.Server,
+        string? purpose = null, string? source = "EST", bool confirm = true)
+    {
+        var issued = await authority.SignAsync(
             new DeviceCertificateRequest(Csr(), "10.0.0.48", ["10.0.0.48"], ["axis-" + serial.ToLowerInvariant() + ".local"], use)
             {
                 DeviceId = device,
@@ -32,6 +35,13 @@ public sealed class RevocationTests
                 Validity = TimeSpan.FromDays(365),
             },
             CancellationToken.None);
+        if (confirm && authority is PkiCertificateAuthority pki)
+        {
+            await pki.ConfirmAsync(issued.SerialNumber, CancellationToken.None);
+        }
+
+        return issued;
+    }
 
     [Fact]
     public async Task Every_certificate_the_ca_service_signs_is_listed_with_its_use_and_kept_for_view_certificate()
@@ -91,10 +101,12 @@ public sealed class RevocationTests
             Assert.Equal(PkiMethods.CertificatesTopic, events.Current.Topic); // the pages read their page again
             await events.DisposeAsync();
 
+            // A revoked certificate leaves the store (decision 2026-10-25): no row, no View; the revocation list keeps it.
             var details = await pki.InvokeAsync<CertificateDetailsReply>(PkiMethods.GetCertificate, new CertificateDetailsRequest(serial));
-            Assert.Equal(revocation, details.Revocation);
+            Assert.Equal(PkiCertificateTexts.NotListed, details.Error);
+            Assert.Null(pki.Service.Issued.Find(serial));
             var revokedRows = await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { State = IssuedCertificateState.Revoked });
-            Assert.Equal(CertificateSerials.Normalize(serial), Assert.Single(revokedRows.Rows).SerialNumber);
+            Assert.Empty(revokedRows.Rows);
 
             // Revoke all of this device: the other one; nothing left the second time.
             Assert.Equal(1, (await pki.InvokeAsync<RevokeReply>(PkiMethods.RevokeDevice, new RevokeDeviceRequest(device, RevocationReason.DeviceReplaced))).Revoked);
@@ -106,7 +118,7 @@ public sealed class RevocationTests
         IDeviceCertificateAuthority restarted = new PkiCertificateAuthority(again.Service);
         Assert.True(restarted.IsRevoked(serial));
         Assert.Equal(2, restarted.Revocations.Count);
-        Assert.Equal(2, (await restarted.ListIssuedAsync(new IssuedCertificateQuery(), CancellationToken.None)).Total);
+        Assert.Equal(0, (await restarted.ListIssuedAsync(new IssuedCertificateQuery(), CancellationToken.None)).Total); // both revoked: out of the store
     }
 
     [Fact]

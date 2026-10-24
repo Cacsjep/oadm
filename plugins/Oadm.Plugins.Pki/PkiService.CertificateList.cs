@@ -10,11 +10,11 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Plugins.Pki;
 
 /// <summary>
-/// The Certificates card (docs/spec/pki.md "Certificates"): every certificate OADM knows in one paged list. First the CAs
+/// The Certificates card (docs/spec/pki.md "Certificates"): every certificate OADM uses now in one paged list. First the CAs
 /// (in the order of the Certificate authorities card), then the certificates of the 802.1X and EST servers, then the ones
-/// created, signed or imported here (newest first), then the device certificates the OADM CA issued (newest first). The
-/// first three are a few hundred rows at most and built per request; the device certificates are one pass over the issued
-/// registry (60,000 rows at 30,000 devices). Users limited to a device group see only their devices' certificates.
+/// created, signed or imported here (newest first), then each managed camera's current certificate per use (newest
+/// first). The first three are a few hundred rows at most and built per request; the device certificates are one pass over
+/// the store (60,000 rows at 30,000 devices). Users limited to a device group see only their devices' certificates.
 /// </summary>
 public sealed partial class PkiService
 {
@@ -193,7 +193,6 @@ public sealed partial class PkiService
     {
         IssuedCertificateState.ExpiresSoon => "Expires soon",
         IssuedCertificateState.Expired => "Expired",
-        IssuedCertificateState.Replaced => "Replaced",
         IssuedCertificateState.Revoked => "Revoked",
         _ => "Valid",
     };

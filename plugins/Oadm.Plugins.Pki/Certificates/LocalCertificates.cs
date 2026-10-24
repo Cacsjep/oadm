@@ -259,7 +259,7 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
 
     /// <summary>
     /// A server made a new certificate (or read its stored one at its start): it replaces the one of the same server and
-    /// name. Server certificates that ended more than a year ago leave.
+    /// name. Server certificates that ended more than 30 days ago leave (<see cref="IssuedRegistry.KeptAfterEnd"/>).
     /// </summary>
     public void NoteServer(string source, byte[] der, string? issuerFingerprint)
     {

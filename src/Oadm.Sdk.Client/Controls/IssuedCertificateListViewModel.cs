@@ -107,7 +107,7 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>"7D FD 05 ..." (pairs, like the certificate window).</summary>
     public string SerialNumber => IssuedCertificateTexts.Pairs(Source.SerialNumber);
 
-    /// <summary>"Valid", "Expires soon", "Expired", "Replaced", "Revoked".</summary>
+    /// <summary>"Valid", "Expires soon", "Expired", "Revoked" ("Replaced" only from a server before OADM 4.5).</summary>
     public string State => IssuedCertificateTexts.State(Source.State);
 
     /// <summary>The time the row was read (the days left of <see cref="StateText"/>); null: the state alone.</summary>
@@ -115,7 +115,7 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
 
     /// <summary>
     /// The badge below the date of Valid until, one line: "Expires in 12 days" when it ends within its Expiry warning days,
-    /// "Expired", "Revoked", "Replaced"; a valid certificate has none (<see cref="HasStateBadge"/>).
+    /// "Expired", "Revoked"; a valid certificate has none (<see cref="HasStateBadge"/>).
     /// </summary>
     public string StateText => Source.State == IssuedCertificateState.ExpiresSoon && DaysLeft is { } days ? IssuedCertificateTexts.ExpiresIn(days) : State;
 
@@ -169,7 +169,7 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>Expired or revoked: red.</summary>
     public bool IsError => Source.State is IssuedCertificateState.Expired or IssuedCertificateState.Revoked;
 
-    /// <summary>Replaced: grey.</summary>
+    /// <summary>Replaced (a server before OADM 4.5): grey.</summary>
     public bool IsNeutral => Source.State == IssuedCertificateState.Replaced;
 
     /// <summary>A CA row of the OADM CA that issues now.</summary>
@@ -540,11 +540,15 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     /// <summary>The rows of the shown page, newest first (bound to the grid).</summary>
     public Collections.RangeObservableCollection<IssuedCertificateRow> Rows { get; } = [];
 
-    /// <summary>"All states" and every state.</summary>
+    /// <summary>
+    /// "All states" and every state a row can have: Valid, Expires soon, Expired, Revoked (decision 2026-10-25: no Replaced,
+    /// the list holds only each camera's current certificates).
+    /// </summary>
     public IReadOnlyList<IssuedCertificateFilter> StateChoices { get; } =
     [
         new(string.Empty, "All states"),
-        .. Enum.GetValues<IssuedCertificateState>().Select(s => new IssuedCertificateFilter(s.ToString(), IssuedCertificateTexts.State(s))),
+        .. Enum.GetValues<IssuedCertificateState>().Where(s => s != IssuedCertificateState.Replaced)
+            .Select(s => new IssuedCertificateFilter(s.ToString(), IssuedCertificateTexts.State(s))),
     ];
 
     /// <summary>"All uses" and every use.</summary>

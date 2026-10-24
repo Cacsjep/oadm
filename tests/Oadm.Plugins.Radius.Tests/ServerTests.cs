@@ -52,6 +52,7 @@ public sealed class ServerTests
         Assert.False(row.DeviceGuess);
         Assert.Null(row.Warning);
         Assert.Equal(TestAuthority.SerialOf(certificate), row.CertificateSerial);
+        Assert.Equal([TestAuthority.SerialOf(certificate)], harness.Ca.SignedIn); // PKI confirms a pending IEEE 802.1X certificate (EST)
         Assert.True(row.HasCertificate);
         var der = await harness.CallAsync<LogCertificate>(RadiusMethods.GetLogCertificate, new LogEntryRef(row.Id));
         Assert.Equal(certificate.Leaf, Convert.FromBase64String(der.Der));

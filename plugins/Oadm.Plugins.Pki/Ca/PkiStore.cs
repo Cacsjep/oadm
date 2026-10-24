@@ -55,8 +55,9 @@ public sealed class PkiStore(IPluginSettings settings)
 public sealed record IssuedCounts(int Devices, int WithCurrentCa, int WithPreviousCa, int ExpiringSoon, IReadOnlyDictionary<string, int> DevicesPerCa)
 {
     /// <summary>
-    /// Only certificates still in use count: not ended, not revoked (<paramref name="isRevoked"/>) and not deleted from the
-    /// device (the list keeps those a year after their end, which would inflate the counts). Per device and purpose only the
+    /// Only certificates still in use count: not ended, not revoked (<paramref name="isRevoked"/>), not pending (not confirmed on
+    /// the camera yet), not pushed out of their camera's current place and not deleted from the
+    /// device (the store keeps those 30 days after their end, which would inflate the counts). Per device and purpose only the
     /// newest of them counts. A device counts once: "with the current CA" when any of its newest certificates comes from
     /// <paramref name="currentCaId"/>, "from a previous CA" when any comes from another CA, "expiring soon" when any ends within
     /// <paramref name="warningDays"/>.
@@ -72,7 +73,7 @@ public sealed record IssuedCounts(int Devices, int WithCurrentCa, int WithPrevio
         var newest = new Dictionary<(Guid, string), IssuedCertificate>();
         foreach (var entry in issued)
         {
-            if (entry.NotAfterUtc <= nowUtc || entry.RemovedFromDeviceUtc is not null || (isRevoked?.Invoke(entry.SerialNumber) ?? false))
+            if (entry.NotAfterUtc <= nowUtc || entry.RemovedFromDeviceUtc is not null || entry.Pending || entry.NotCurrent || (isRevoked?.Invoke(entry.SerialNumber) ?? false))
             {
                 continue;
             }

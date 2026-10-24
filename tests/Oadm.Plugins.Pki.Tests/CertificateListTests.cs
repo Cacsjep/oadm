@@ -298,6 +298,8 @@ public sealed class CertificateListTests
         var valid = (await RevocationTests.SignAsync(authority, device)).SerialNumber;
         var revoked = (await RevocationTests.SignAsync(authority, device, use: DeviceCertificateUse.Client)).SerialNumber;
         await authority.RevokeAsync([revoked], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
+        Assert.Null(pki.Service.Issued.Find(revoked)); // a revoked device certificate leaves the store at once (nothing to delete)
+        Assert.True(authority.IsRevoked(revoked));
         var created = (await CreateAsync(pki)).Id!;
         var ca = (await PageAsync(pki)).Rows.First(r => r.Kind == ListedCertificateKind.Authority).Id!;
         Task<DeleteCertificatesReply> DeleteAsync(params string[] ids) => pki.InvokeAsync<DeleteCertificatesReply>(CertificateMethods.Delete, new DeleteCertificatesRequest(ids));
@@ -309,8 +311,7 @@ public sealed class CertificateListTests
         Assert.NotNull(pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..]));
 
         // A created certificate that is still valid neither (the OADM CA issued it); an imported one goes at once.
-        Assert.Equal("The certificate of nvr.example.com is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(revoked, created)).Error);
-        Assert.NotNull(pki.Service.Issued.Find(revoked));
+        Assert.Equal("The certificate of nvr.example.com is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(created)).Error);
         using var root = TestCa.Root("Contoso Root");
         using var leaf = TestCa.Leaf(root, "10.0.0.30");
         var imported = await pki.InvokeAsync<CertificateActionReply>(CertificateMethods.Import, new ImportCertificateRequest(Convert.ToBase64String(TestCa.Pem(leaf)), "leaf.crt", null));
@@ -318,11 +319,10 @@ public sealed class CertificateListTests
         var createdSerial = pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..])!.Serial;
         await authority.RevokeAsync([createdSerial], RevocationReason.Other, "admin", CancellationToken.None);
 
-        // The revoked device certificate and the revoked created one go; the revocations stay in force.
-        var deleted = await DeleteAsync(created, revoked);
-        Assert.Equal((2, (string?)null), (deleted.Deleted, deleted.Error));
+        // The revoked created one goes; the revocations stay in force.
+        var deleted = await DeleteAsync(created);
+        Assert.Equal((1, (string?)null), (deleted.Deleted, deleted.Error));
         Assert.True(authority.IsRevoked(createdSerial));
-        Assert.Null(pki.Service.Issued.Find(revoked));
         Assert.True(authority.IsRevoked(revoked));
         Assert.Empty(pki.Service.Local.List);
         Assert.Empty(await pki.Records.ListAsync(LocalCertificates.Collection, CancellationToken.None));

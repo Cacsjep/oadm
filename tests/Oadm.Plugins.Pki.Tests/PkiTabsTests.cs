@@ -91,7 +91,9 @@ public sealed class PkiTabsTests
         IDeviceCertificateAuthority authority = new Ca.PkiCertificateAuthority(pki.Service);
         for (var i = 0; i < 4; i++)
         {
-            await RevocationTests.SignAsync(authority, Guid.NewGuid(), "ACCC8E00020" + i.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            var serial = "ACCC8E00020" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var device = pki.Manage(Guid.NewGuid(), serial); // the list shows the cameras OADM manages
+            await RevocationTests.SignAsync(authority, device.Id, serial);
         }
 
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);

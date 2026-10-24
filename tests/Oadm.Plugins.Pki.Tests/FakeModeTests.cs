@@ -59,7 +59,7 @@ public sealed class FakeModeTests : IDisposable
         var page = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest()));
         Assert.True(page.Total > 20);
         Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Revoked && r.Revocation is not null);
-        Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Replaced);
+        Assert.DoesNotContain(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Replaced); // only current certificates
         Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Expired);
         Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.ExpiresSoon);
         var dot1x = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = "dot1x" }));

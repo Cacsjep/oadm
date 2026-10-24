@@ -120,57 +120,66 @@ public sealed class IssuedRegistryTests
         Assert.Equal(new RevokeResult(0, 1, 0), await registry.RevokeAsync(["7DFD05"], RevocationReason.Other, "other", CancellationToken.None));
         Assert.Equal((RevocationReason.KeyCompromised, "admin"), (registry.FindRevocation("7DFD05")!.Reason, registry.FindRevocation("7DFD05")!.UserName));
         Assert.Equal(1, changes);
-        Assert.Equal(IssuedCertificateState.Revoked, registry.StateOf(registry.Find("7DFD05")!, time.GetUtcNow().UtcDateTime, 30));
+        Assert.Null(registry.Find("7DFD05")); // a revoked certificate leaves the store; its revocation stays
+        Assert.NotNull(registry.Find("1234")); // the expired one was not revoked
         await registry.DisposeAsync();
     }
 
     [Fact]
-    public async Task A_certificate_stays_a_year_after_it_ended_and_a_revocation_while_it_could_be_valid()
+    public async Task A_certificate_stays_30_days_after_it_ended_and_a_revocation_while_it_could_be_valid()
     {
         var time = new FakeTimeProvider(Start);
         var (registry, records, _, _) = Create(time);
         await registry.LoadAsync(CancellationToken.None);
         var device = Guid.NewGuid();
         await registry.AddAsync(Entry("01", device, Start.UtcDateTime.AddDays(10)), [1], CancellationToken.None);
-        await registry.AddAsync(Entry("02", device, Start.UtcDateTime.AddDays(500)), CancellationToken.None);
-        await registry.RevokeAsync(["01"], RevocationReason.DeviceRemoved, "admin", CancellationToken.None);
+        await registry.AddAsync(Entry("02", device, Start.UtcDateTime.AddDays(500), CertificatePurpose.Dot1x), CancellationToken.None);
+        await registry.AddAsync(Entry("03", device, Start.UtcDateTime.AddDays(10), CertificatePurpose.Mqtt), CancellationToken.None);
+        await registry.RevokeAsync(["03"], RevocationReason.DeviceRemoved, "admin", CancellationToken.None);
+        Assert.Null(registry.Find("03")); // revoked: out of the store at once
         var revocationChanges = 0;
         registry.RevocationChanged += (_, _) => revocationChanges++;
 
-        time.Advance(TimeSpan.FromDays(11)); // 01 ended: not valid any more, so it leaves the revocation list
+        time.Advance(TimeSpan.FromDays(11)); // 03 ended: not valid any more, so it leaves the revocation list
         await registry.PruneAsync(CancellationToken.None);
-        Assert.False(registry.IsRevoked("01"));
+        Assert.False(registry.IsRevoked("03"));
         Assert.Equal(1, revocationChanges);
-        Assert.NotNull(registry.Find("01")); // listed as Expired for a year
+        Assert.NotNull(registry.Find("01")); // listed as Expired for 30 days
         Assert.Empty(await records.ListAsync(IssuedRegistry.RevokedCollection, CancellationToken.None));
 
-        time.Advance(TimeSpan.FromDays(366));
+        time.Advance(TimeSpan.FromDays(29));
+        await registry.PruneAsync(CancellationToken.None);
+        Assert.NotNull(registry.Find("01")); // 29 days after its end
+
+        time.Advance(TimeSpan.FromDays(2));
         await registry.PruneAsync(CancellationToken.None);
         Assert.Null(registry.Find("01"));
         Assert.NotNull(registry.Find("02"));
+        Assert.Equal(TimeSpan.FromDays(30), IssuedRegistry.KeptAfterEnd);
         Assert.False((await records.ListAsync(IssuedRegistry.IssuedCollection, CancellationToken.None)).ContainsKey("1"));
         Assert.Empty(await records.ListAsync(IssuedRegistry.DerCollection, CancellationToken.None));
         await registry.DisposeAsync();
     }
 
     [Fact]
-    public async Task States_replaced_by_a_newer_one_of_the_same_device_and_use_expires_soon_and_expired()
+    public async Task States_expires_soon_and_expired_and_only_the_newest_of_a_camera_and_use_is_current()
     {
         var (registry, _, _, time) = Create();
         await registry.LoadAsync(CancellationToken.None);
         var device = Guid.NewGuid();
         var now = Start.UtcDateTime;
-        await registry.AddAsync(Entry("01", device, now.AddDays(200), issued: now.AddDays(-30)), CancellationToken.None);
+        await registry.AddAsync(Entry("01", device, now.AddDays(200), issued: now.AddDays(-30)), CancellationToken.None); // from before 4.5
         await registry.AddAsync(Entry("02", device, now.AddDays(365), issued: now), CancellationToken.None);
         await registry.AddAsync(Entry("03", device, now.AddDays(20), CertificatePurpose.Dot1x, now), CancellationToken.None);
         await registry.AddAsync(Entry("04", device, now.AddDays(-2), CertificatePurpose.Mqtt, now.AddDays(-400)), CancellationToken.None);
 
         IssuedCertificateState State(string serial) => registry.StateOf(registry.Find(serial)!, now, 30);
-        Assert.Equal(IssuedCertificateState.Replaced, State("01"));
+        Assert.Equal(IssuedCertificateState.Valid, State("01")); // no Replaced state any more
         Assert.Equal(IssuedCertificateState.Valid, State("02"));
         Assert.Equal(IssuedCertificateState.ExpiresSoon, State("03"));
         Assert.Equal(IssuedCertificateState.Expired, State("04"));
-        Assert.Equal(["1", "2", "3"], registry.RevocableOf(device).Order(StringComparer.Ordinal)); // 01 (replaced, still valid), 02, 03; not the expired 04
+        Assert.Equal((false, true, true, true), (registry.IsCurrent("01"), registry.IsCurrent("02"), registry.IsCurrent("03"), registry.IsCurrent("04")));
+        Assert.Equal(["1", "2", "3"], registry.RevocableOf(device).Order(StringComparer.Ordinal)); // 01 (not current, still valid), 02, 03; not the expired 04
         _ = time;
         await registry.DisposeAsync();
     }
@@ -192,32 +201,36 @@ public sealed class IssuedRegistryTests
         await registry.AddAsync(Entry("FF01", Guid.NewGuid(), now.AddDays(100)), CancellationToken.None); // a device OADM no longer manages
         var devices = new Dictionary<Guid, Oadm.Sdk.Devices.IDeviceInfo> { [a.Id] = a, [b.Id] = b };
 
-        var all = registry.Query(new IssuedCertificateQuery { Limit = 10 }, devices, onlyListedDevices: false, 30);
+        // Every stored certificate (the CA service's list), not only the current ones of the PKI page.
+        IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, Oadm.Sdk.Devices.IDeviceInfo> of, bool onlyListed) =>
+            registry.Query(query, of, onlyListed, _ => 30, currentOnly: false);
+        var all = Query(new IssuedCertificateQuery { Limit = 10 }, devices, false);
         Assert.Equal(31, all.Total);
         Assert.Equal(10, all.Rows.Count);
         Assert.Equal("A01D", all.Rows[0].SerialNumber); // newest first
-        var removed = Assert.Single(registry.Query(new IssuedCertificateQuery { Limit = 500 }, devices, onlyListedDevices: false, 30).Rows, r => !r.DeviceManaged);
+        var removed = Assert.Single(Query(new IssuedCertificateQuery { Limit = 500 }, devices, false).Rows, r => !r.DeviceManaged);
         Assert.Equal(string.Empty, removed.Device);
 
-        var group = registry.Query(new IssuedCertificateQuery { Limit = 500 }, new Dictionary<Guid, Oadm.Sdk.Devices.IDeviceInfo> { [a.Id] = a }, onlyListedDevices: true, 30);
+        var group = Query(new IssuedCertificateQuery { Limit = 500 }, new Dictionary<Guid, Oadm.Sdk.Devices.IDeviceInfo> { [a.Id] = a }, true);
         Assert.Equal(15, group.Total);
         Assert.All(group.Rows, r => Assert.Equal(a.Id, r.DeviceId));
 
-        Assert.Equal(10, registry.Query(new IssuedCertificateQuery { Purpose = CertificatePurpose.Dot1x }, devices, false, 30).Total);
-        Assert.Equal(6, registry.Query(new IssuedCertificateQuery { Source = IssuedCertificateSources.Est }, devices, false, 30).Total);
-        Assert.Equal(15, registry.Query(new IssuedCertificateQuery { Search = "10.0.0.49" }, devices, false, 30).Total);
-        Assert.Equal(15, registry.Query(new IssuedCertificateQuery { Search = "b8a44f" }, devices, false, 30).Total);
-        Assert.Equal(1, registry.Query(new IssuedCertificateQuery { Search = "a0:0a" }, devices, false, 30).Total);
-        Assert.Equal(15, registry.Query(new IssuedCertificateQuery { DeviceIds = new HashSet<Guid> { b.Id } }, devices, false, 30).Total);
+        Assert.Equal(10, Query(new IssuedCertificateQuery { Purpose = CertificatePurpose.Dot1x }, devices, false).Total);
+        Assert.Equal(6, Query(new IssuedCertificateQuery { Source = IssuedCertificateSources.Est }, devices, false).Total);
+        Assert.Equal(15, Query(new IssuedCertificateQuery { Search = "10.0.0.49" }, devices, false).Total);
+        Assert.Equal(15, Query(new IssuedCertificateQuery { Search = "b8a44f" }, devices, false).Total);
+        Assert.Equal(1, Query(new IssuedCertificateQuery { Search = "a0:0a" }, devices, false).Total);
+        Assert.Equal(15, Query(new IssuedCertificateQuery { DeviceIds = new HashSet<Guid> { b.Id } }, devices, false).Total);
 
-        await registry.RevokeAsync(["A000", "A001"], RevocationReason.Other, "admin", CancellationToken.None);
-        var revoked = registry.Query(new IssuedCertificateQuery { State = IssuedCertificateState.Revoked }, devices, false, 30);
-        Assert.Equal(2, revoked.Total);
-        Assert.All(revoked.Rows, r => Assert.NotNull(r.Revocation));
-
-        var page2 = registry.Query(new IssuedCertificateQuery { Offset = 10, Limit = 10 }, devices, false, 30);
+        var page2 = Query(new IssuedCertificateQuery { Offset = 10, Limit = 10 }, devices, false);
         Assert.Equal(31, page2.Total);
         Assert.Empty(page2.Rows.Select(r => r.SerialNumber).Intersect(all.Rows.Select(r => r.SerialNumber)));
+
+        // Revoked: out of the store, so out of every page; the revocation list keeps them.
+        await registry.RevokeAsync(["A000", "A001"], RevocationReason.Other, "admin", CancellationToken.None);
+        Assert.Equal(0, Query(new IssuedCertificateQuery { State = IssuedCertificateState.Revoked }, devices, false).Total);
+        Assert.Equal(29, Query(new IssuedCertificateQuery(), devices, false).Total);
+        Assert.Equal(2, registry.Revocations.Count);
         await registry.DisposeAsync();
     }
 }

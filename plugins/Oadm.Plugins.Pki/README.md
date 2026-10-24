@@ -236,23 +236,36 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
 
 Spec: `docs/spec/radius-server.md` "Certificates and revocation (PKI)". EST and the coming 802.1X server read it through
 the CA service.
-- `Ca/IssuedRegistry` (`PkiService.Issued`): every device certificate the OADM CA issued, in memory and in the plugin
+- `Ca/IssuedRegistry` (`PkiService.Issued`): the store of device certificates the OADM CA issued (per camera and use the
+  current one and at most one pending one, `docs/spec/pki.md` "Current and pending"), in memory and in the plugin
   records `issued` (one row per serial: `IssuedCertificate` without DER), `issuedDer` (`{"der": base64}`, read one at a
   time by `GetDerAsync`) and `revoked` (`CertificateRevocation`). Indexes by normalized serial
-  (`CertificateSerials.Normalize`), by device and the newest per device and use (state Replaced); an ordered list for the
-  pages (newest first, one pass per query with filters and search). New entries are written every `FlushDelay` (2 s)
+  (`CertificateSerials.Normalize`), by device id, by camera (the serial, else the device id) and the current and pending
+  one per camera and use; an ordered list for the pages (newest first, one pass per query with filters and search; keys
+  that left the store are skipped and dropped at the next query). `Query(..., currentOnly: true)` (the page) lists the
+  current ones of managed cameras by serial; the CA service lists every stored one. Transitions: `AddPendingAsync` (an
+  older pending one is revoked, Superseded, except one a task delivered), `ConfirmAsync` (the previous current one is
+  revoked, Superseded, user `OadmUser` "OADM", and leaves the store), `DiscardAsync` (an unused pending one, reason Other),
+  `MarkDelivered` (a task ran "Set 802.1X configuration", EST wrote an IEEE 802.1X answer), `ReplacedOnCameraAsync`
+  (Install certificates). `RevokeAsync` removes what it revokes from the store; older entries of that camera and use become
+  `NotCurrent`. `ICertificateDelivery` (`PkiCertificateAuthority`): EST's `DeliveredAsync` / `NotDeliveredAsync` and the
+  802.1X server's `SignedInAsync`. New entries are written every `FlushDelay` (2 s)
   and on stop, only changed rows, in batches of 2,000; `RevokeAsync` writes before it returns and raises
   `RevocationChanged` once; `IsRevoked` / `FindRevocation` read an immutable dictionary replaced on change (no lock).
-  `PruneAsync` at the start and every hour: certificates ended more than a year ago, revocations of ended certificates.
+  `PruneAsync` at the start and every hour: certificates ended more than `KeptAfterEnd` (30 days) ago, revocations of ended
+  certificates, EST certificates pending longer than `PendingTimeout` (1 hour) without their answer (revoked as unused).
   `LoadAsync` (in `PkiService.StartAsync`, before anything is answered) moves the settings value `issued` of OADM 4.1
   (entries marked `NoCopy`; `ImportFoundAsync` stores their DER, start and device serial when a read finds them).
   `RevokeAsync` also revokes a serial the list does not hold (hex, at most 20 bytes; no device; kept until
   `UnknownNotAfter` = `PkiService.LatestCaEnd`, the latest end of the active and previous CAs). `MarkRemovedFromDevice`
-  (the Delete certificates task, after the delete) sets `RemovedFromDeviceUtc`: state Replaced, still revocable.
-  `IssuedCounts.From` (the page's counts) skips ended, revoked and deleted certificates.
-- Writers: `CertificateDeployment.IssueAsync` (the tasks, with DER and the device's serial) and
+  (the Delete certificates task, after the delete) sets `RemovedFromDeviceUtc`: no longer listed, still revocable.
+  `IssuedCounts.From` (the page's counts) skips ended, revoked, deleted, pending and not current certificates.
+  `ImportFoundAsync` never adds a revoked serial.
+- Writers: `CertificateDeployment.IssueAsync` (the tasks: pending after Sign certificate, with DER and the device's serial;
+  `CertificateDeployment.ConfirmAsync` after the verify step, `NotUsedAsync` when the install or verify failed) and
   `PkiCertificateAuthority.SignAsync` (the service: use from `DeviceCertificateRequest.Purpose`, DER, the serial of the
-  `axis-<serial>.local` name); certificates a task deletes from the device stay listed. `ImportFoundAsync` adds OADM
+  `axis-<serial>.local` name; pending for EST, current at once for other callers); certificates a task deletes from the
+  device stay in the store, not listed. `ImportFoundAsync` adds OADM
   certificates found in a device's certificate list (signed by the active or a previous CA, checked by a chain build;
   naming this device): `CertificateInventory.ReadAsync` with the device (View / Delete certificates), Renew certificates,
   and `Ca/ExistingCertificateImport` (once per server, 5 minutes after the start, every device that answers with AXIS OS

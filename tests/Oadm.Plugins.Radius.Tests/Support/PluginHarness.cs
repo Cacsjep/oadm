@@ -75,9 +75,22 @@ public sealed class RecordingPublisher : IEventPublisher
 /// The OADM CA as PKI offers it, for the plugin tests: its own CA (a unique name: Windows caches chains by name), signs the
 /// server certificate, issues camera certificates with <c>axis-&lt;serial&gt;.local</c>, keeps a revocation list.
 /// </summary>
-public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
+public sealed class TestAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, IDisposable
 {
     private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+    /// <summary>The serials the 802.1X server reported as signed in (PKI confirms a pending IEEE 802.1X certificate).</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<string> SignedIn { get; } = new();
+
+    public Task DeliveredAsync(string serialNumber, CancellationToken ct) => Task.CompletedTask;
+
+    public Task NotDeliveredAsync(string serialNumber, CancellationToken ct) => Task.CompletedTask;
+
+    public Task SignedInAsync(string serialNumber, CancellationToken ct)
+    {
+        SignedIn.Enqueue(serialNumber);
+        return Task.CompletedTask;
+    }
     private readonly X509Certificate2 _ca;
     private readonly TestAuthority? _parent;
     private readonly Dictionary<string, CertificateRevocation> _revoked = new(StringComparer.Ordinal);

@@ -20,6 +20,7 @@ public sealed class RevokeProgressTests
         var pki = await PkiHarness.StartAsync();
         IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
         var device = Guid.NewGuid();
+        pki.Manage(device, "B8A44F631339");
         await RevocationTests.SignAsync(authority, device, source: null);
         await RevocationTests.SignAsync(authority, device, use: DeviceCertificateUse.Client);
         return (pki, device);
@@ -72,9 +73,8 @@ public sealed class RevokeProgressTests
         Assert.False(tab.IsWorking);
         Assert.False(tab.ShowsProgress);
         Assert.Null(tab.WorkText);
-        Assert.All(DeviceRows(tab), r => Assert.Equal("Revoked", r.State)); // the page was read again
-        Assert.All(DeviceRows(tab), r => Assert.Equal(device, r.Source.DeviceId));
-        Assert.True(tab.RevokeDeviceCommand.CanExecute(DeviceRows(tab)[0]));
+        Assert.Empty(DeviceRows(tab)); // the page was read again: revoked certificates leave the list
+        Assert.Equal(2, pki.Service.Issued.Revocations.Count(r => r.DeviceId == device));
         Assert.Empty(ctx.Messages);
     }
 

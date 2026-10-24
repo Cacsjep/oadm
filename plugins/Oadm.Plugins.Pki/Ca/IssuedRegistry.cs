@@ -13,13 +13,18 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.Pki.Ca;
 
 /// <summary>
-/// The list of every device certificate the OADM CA issued and the revocation list (docs/spec/radius-server.md
-/// "Certificates and revocation"). Both live in memory, indexed by serial number and by device, and in the plugin records:
-/// <c>issued</c> (one row per certificate, no DER), <c>issuedDer</c> (the certificate, read one at a time) and <c>revoked</c>.
-/// Tasks of thousands of devices add in parallel, so new certificates are written at most every <see cref="FlushDelay"/>
-/// (and on stop), only the changed rows; a revocation is written before <see cref="RevokeAsync"/> returns. Kept: a
-/// certificate until a year after it ended (<see cref="KeptAfterEnd"/>), a revocation while its certificate could still be
-/// valid. <see cref="IsRevoked"/> is one lookup in an immutable set that a change replaces.
+/// The store of device certificates the OADM CA issued and the revocation list (docs/spec/pki.md "Current and pending",
+/// docs/spec/radius-server.md "Certificates and revocation"). Per camera (by its serial; the device id for entries without
+/// one) and use the store holds the current certificate, the one confirmed on the camera, and at most one pending one
+/// (issued, not confirmed yet). Confirming a pending one puts the previous current one on the revocation list and removes it
+/// from the store; an unused pending one goes the same way; Revoke removes the certificate from the store too. Entries of
+/// OADM before 4.5 stay as they were (no conversion): the newest one of each camera and use counts as current.
+/// Everything lives in memory, indexed by serial number, device and camera, and in the plugin records: <c>issued</c> (one
+/// row per certificate, no DER), <c>issuedDer</c> (the certificate, read one at a time) and <c>revoked</c>. Tasks of
+/// thousands of devices add in parallel, so new certificates are written at most every <see cref="FlushDelay"/> (and on
+/// stop), only the changed rows; a revocation is written before <see cref="RevokeAsync"/> returns. Kept: a certificate
+/// until <see cref="KeptAfterEnd"/> after it ended, a revocation while its certificate could still be valid.
+/// <see cref="IsRevoked"/> is one lookup in an immutable set that a change replaces.
 /// </summary>
 public sealed partial class IssuedRegistry : IAsyncDisposable
 {
@@ -27,11 +32,14 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     public const string DerCollection = "issuedDer";
     public const string RevokedCollection = "revoked";
 
+    /// <summary>The user of the revocations OADM makes by itself (a replaced or unused certificate).</summary>
+    public const string OadmUser = "OADM";
+
     /// <summary>Rows per write: one transaction each.</summary>
     private const int WriteBatch = 2000;
 
-    /// <summary>A certificate leaves the list this long after it ended.</summary>
-    public static readonly TimeSpan KeptAfterEnd = TimeSpan.FromDays(365);
+    /// <summary>A certificate leaves the store this long after it ended (decision 2026-10-25: 30 days, before 365).</summary>
+    public static readonly TimeSpan KeptAfterEnd = TimeSpan.FromDays(30);
 
     private static readonly IReadOnlyDictionary<string, CertificateRevocation> NoRevocations = new Dictionary<string, CertificateRevocation>(StringComparer.Ordinal);
 
@@ -45,17 +53,21 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     // Everything below under _gate. Keys: CertificateSerials.Normalize.
     private readonly Dictionary<string, IssuedCertificate> _bySerial = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, List<string>> _byDevice = [];
-    private readonly Dictionary<(Guid Device, string Purpose), IssuedCertificate> _newest = [];
+    private readonly Dictionary<string, List<string>> _byCamera = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Camera, string Purpose), string> _current = [];
+    private readonly Dictionary<(string Camera, string Purpose), string> _pending = [];
     private readonly Dictionary<string, CertificateRevocation> _revoked = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dirtyIssued = new(StringComparer.Ordinal);
     private readonly Dictionary<string, byte[]?> _pendingDer = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dirtyRevoked = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _deadOrdered = new(StringComparer.Ordinal); // keys still in _ordered that left the store
     private List<string> _ordered = []; // keys; the entries are in _bySerial (an entry can be replaced in place)
     private bool _orderDirty;
     private bool _flushScheduled;
     private bool _loaded;
     private bool _disposed;
     private ITimer? _pruneTimer;
+    private (IReadOnlyDictionary<Guid, IDeviceInfo> Source, Dictionary<string, IDeviceInfo> BySerial)? _devicesBySerial;
 
     // Read without the gate.
     private volatile IReadOnlyDictionary<string, CertificateRevocation> _revokedView = NoRevocations;
@@ -74,6 +86,12 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     public TimeSpan PruneInterval { get; init; } = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// How long an EST certificate may stay pending without its answer written (the server stopped between signing and
+    /// answering): then it goes on the revocation list as unused at the next prune.
+    /// </summary>
+    public TimeSpan PendingTimeout { get; init; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// The end of validity kept for a revoked serial the list does not hold (a certificate of the OADM CA from before the list
     /// that no read found): the latest end any OADM CA allows. Null or unset: kept until the list is cleared.
     /// </summary>
@@ -85,7 +103,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     /// <summary>Raised after the revocation list changed (revoked, or ended revocations dropped).</summary>
     public event EventHandler? RevocationChanged;
 
-    /// <summary>How many certificates the list holds.</summary>
+    /// <summary>How many certificates the store holds.</summary>
     public int Count
     {
         get
@@ -163,7 +181,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         _pruneTimer = _time.CreateTimer(_ => _ = PruneQuietlyAsync(), null, PruneInterval, PruneInterval);
     }
 
-    // ------------------------------------------------------------------ the list
+    // ------------------------------------------------------------------ the store
 
     /// <summary>All certificates (a copy).</summary>
     public IReadOnlyList<IssuedCertificate> Snapshot()
@@ -177,7 +195,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     /// <summary>All certificates (a copy); kept for the callers of the settings registry.</summary>
     public Task<IReadOnlyList<IssuedCertificate>> SnapshotAsync(CancellationToken ct) => Task.FromResult(Snapshot());
 
-    /// <summary>The certificates of one device (an index: no pass over the list).</summary>
+    /// <summary>The certificates stored under one device id (an index: no pass over the list).</summary>
     public IReadOnlyList<IssuedCertificate> ForDevice(Guid deviceId)
     {
         lock (_gate)
@@ -186,9 +204,24 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The certificates of one camera: those stored under its device id and those naming its serial (a camera removed and
+    /// added again has a new device id). Two index lookups.
+    /// </summary>
+    public IReadOnlyList<IssuedCertificate> ForDevice(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        lock (_gate)
+        {
+            return [.. KeysOfLocked(device).Select(s => _bySerial[s])];
+        }
+    }
+
     public Task<IReadOnlyList<IssuedCertificate>> ForDeviceAsync(Guid deviceId, CancellationToken ct) => Task.FromResult(ForDevice(deviceId));
 
-    /// <summary>The certificate with <paramref name="serialNumber"/> (any notation); null when the list does not hold it.</summary>
+    public Task<IReadOnlyList<IssuedCertificate>> ForDeviceAsync(IDeviceInfo device, CancellationToken ct) => Task.FromResult(ForDevice(device));
+
+    /// <summary>The certificate with <paramref name="serialNumber"/> (any notation); null when the store does not hold it.</summary>
     public IssuedCertificate? Find(string serialNumber)
     {
         lock (_gate)
@@ -197,13 +230,22 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         }
     }
 
-    /// <summary>Adds a certificate the OADM CA issued (with its DER when known); a serial already listed keeps its entry.</summary>
+    /// <summary>
+    /// Adds a certificate (with its DER when known) as the store gets it: a found one (<see cref="ImportFoundAsync"/>) or one
+    /// of OADM before 4.5. A pending one (<see cref="IssuedCertificate.Pending"/>) goes through <see cref="AddPendingAsync"/>.
+    /// A serial already stored keeps its entry.
+    /// </summary>
     public Task AddAsync(IssuedCertificate entry, CancellationToken ct) => AddAsync(entry, null, ct);
 
     /// <inheritdoc cref="AddAsync(IssuedCertificate, CancellationToken)"/>
     public Task AddAsync(IssuedCertificate entry, byte[]? der, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(entry);
+        if (entry.Pending)
+        {
+            return AddPendingAsync(entry, der, ct);
+        }
+
         if (entry.SerialNumber.Length == 0)
         {
             throw new ArgumentException("A certificate without a serial number.", nameof(entry));
@@ -236,7 +278,161 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>The certificate (DER) with <paramref name="serialNumber"/>: waiting for its write, or one record read.</summary>
+    /// <summary>
+    /// Adds a certificate the OADM CA just issued and the camera has not confirmed yet (a task before its verify step, EST
+    /// before its answer). An older pending one of the same camera and use goes on the revocation list (Superseded) and
+    /// leaves the store, except one a task delivered (it may be in use: kept, not current).
+    /// </summary>
+    public async Task AddPendingAsync(IssuedCertificate entry, byte[]? der, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (entry.SerialNumber.Length == 0)
+        {
+            throw new ArgumentException("A certificate without a serial number.", nameof(entry));
+        }
+
+        string? pushedOut = null;
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(entry.SerialNumber);
+            if (_bySerial.ContainsKey(key))
+            {
+                return;
+            }
+
+            var pending = entry with { Pending = true, NotCurrent = false };
+            if (_pending.TryGetValue(SlotOf(pending), out var older))
+            {
+                var old = _bySerial[older];
+                if (old.Delivered && SourceOf(old) == IssuedCertificateSources.Task)
+                {
+                    ReplaceLocked(older, old with { Pending = false, Delivered = false, NotCurrent = true });
+                }
+                else
+                {
+                    pushedOut = older;
+                }
+            }
+
+            Index(pending);
+            _dirtyIssued.Add(key);
+            if (der is not null)
+            {
+                _pendingDer[key] = der;
+            }
+
+            ScheduleFlush();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        if (pushedOut is not null)
+        {
+            await RetireAsync([pushedOut], RevocationReason.Superseded, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The camera has the pending certificate (a task's verify step passed, EST wrote its answer, the camera signed in to the
+    /// 802.1X server with it): it becomes current; the previous current one goes on the revocation list (Superseded) and
+    /// leaves the store. False when the serial is not pending.
+    /// </summary>
+    public async Task<bool> ConfirmAsync(string serialNumber, CancellationToken ct)
+    {
+        string? previous;
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(serialNumber);
+            if (!_bySerial.TryGetValue(key, out var entry) || !entry.Pending)
+            {
+                return false;
+            }
+
+            previous = _current.GetValueOrDefault(SlotOf(entry));
+            ReplaceLocked(key, entry with { Pending = false, Delivered = false, NotCurrent = false });
+            if (previous == key)
+            {
+                previous = null;
+            }
+
+            ScheduleFlush();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        if (previous is not null)
+        {
+            await RetireAsync([previous], RevocationReason.Superseded, ct).ConfigureAwait(false);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The pending certificate never reached the camera (a failed install, an EST answer that could not be written, a task
+    /// that found the camera using another one): it goes on the revocation list (Other) and leaves the store. One a task
+    /// delivered (<see cref="IssuedCertificate.Delivered"/>) stays unless <paramref name="evenDelivered"/> (the camera reports
+    /// another client certificate). False when nothing was done.
+    /// </summary>
+    public async Task<bool> DiscardAsync(string serialNumber, bool evenDelivered, CancellationToken ct)
+    {
+        string key;
+        lock (_gate)
+        {
+            key = CertificateSerials.Normalize(serialNumber);
+            if (!_bySerial.TryGetValue(key, out var entry) || !entry.Pending
+                || (entry.Delivered && SourceOf(entry) == IssuedCertificateSources.Task && !evenDelivered))
+            {
+                return false;
+            }
+        }
+
+        await RetireAsync([key], RevocationReason.Other, ct).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>The camera may use the pending certificate already (see <see cref="IssuedCertificate.Delivered"/>).</summary>
+    public void MarkDelivered(string serialNumber)
+    {
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(serialNumber);
+            if (_bySerial.TryGetValue(key, out var entry) && entry.Pending && !entry.Delivered)
+            {
+                ReplaceLocked(key, entry with { Delivered = true });
+                ScheduleFlush();
+            }
+        }
+    }
+
+    /// <summary>
+    /// A certificate OADM did not issue replaced the camera's current one of <paramref name="purpose"/> (Install certificates,
+    /// verified): the current one goes on the revocation list (Superseded) and leaves the store. Returns its serial, or null.
+    /// </summary>
+    public async Task<string?> ReplacedOnCameraAsync(IDeviceInfo device, string purpose, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        string? current = null;
+        lock (_gate)
+        {
+            foreach (var key in KeysOfLocked(device))
+            {
+                var entry = _bySerial[key];
+                if (string.Equals(entry.Purpose, purpose, StringComparison.Ordinal) && IsCurrentLocked(key, entry))
+                {
+                    current = key;
+                    break;
+                }
+            }
+        }
+
+        if (current is not null)
+        {
+            await RetireAsync([current], RevocationReason.Superseded, ct).ConfigureAwait(false);
+        }
+
+        return current;
+    }
+
+    /// <summary>The DER of a stored certificate: waiting for its write, or one record read; null when not stored.</summary>
     public async Task<byte[]?> GetDerAsync(string serialNumber, CancellationToken ct)
     {
         var key = CertificateSerials.Normalize(serialNumber);
@@ -266,9 +462,9 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
     /// <summary>
     /// The certificates of the OADM CAs found in a device's certificate list (OADM before the list existed, or an answer that
-    /// got lost): each one signed by one of <paramref name="cas"/> and naming this device (<c>axis-&lt;serial&gt;.local</c>)
-    /// is added once. Use: <see cref="PurposeOfFound"/>; source EST for the EST profile names (<c>oadm_</c>, <c>oadm2_</c>),
-    /// else Task. Returns how many were added.
+    /// got lost): each one signed by one of <paramref name="cas"/>, naming this device (<c>axis-&lt;serial&gt;.local</c>) and
+    /// not on the revocation list is added once. Use: <see cref="PurposeOfFound"/>; source EST for the EST profile names
+    /// (<c>oadm_</c>, <c>oadm2_</c>), else Task. Returns how many were added.
     /// </summary>
     public async Task<int> ImportFoundAsync(IDeviceInfo device, IEnumerable<(string Alias, string Pem)> certificates, IReadOnlyList<X509Certificate2> cas, CancellationToken ct)
     {
@@ -295,6 +491,11 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
             using (certificate)
             {
+                if (IsRevoked(certificate.SerialNumber))
+                {
+                    continue; // revoked (also replaced or unused): never back in the store
+                }
+
                 var listed = Find(certificate.SerialNumber);
                 if ((listed is not null && !listed.NoCopy) || SignedBy(certificate, cas) is not { } ca)
                 {
@@ -377,8 +578,8 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// A PKI task deleted the certificate from the device: it stays listed (a copy could still be in use) and shows as Replaced.
-    /// Unknown serials are ignored.
+    /// A PKI task deleted the certificate from the device: it stays in the store (a copy could still be in use, Revoke can
+    /// take it) but is no longer listed. Unknown serials are ignored.
     /// </summary>
     public void MarkRemovedFromDevice(string serialNumber)
     {
@@ -436,9 +637,10 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
     /// <summary>
     /// Revokes certificates that are still valid (no undo, a revocation is never changed) and writes the list before it returns.
-    /// A serial the list does not hold is revoked too (a certificate of the OADM CA from before the list that no read found),
-    /// kept until <see cref="UnknownNotAfter"/>. Listed ones that ended, and text that is no serial number (not hex, longer
-    /// than 20 bytes), are counted as not found.
+    /// A revoked certificate leaves the store (its camera has no row until it gets a new certificate). A serial the store
+    /// does not hold is revoked too (a certificate of the OADM CA from before the list that no read found, created or signed
+    /// ones, server certificates), kept until <see cref="UnknownNotAfter"/>. Stored ones that ended, and text that is no
+    /// serial number (not hex, longer than 20 bytes), are counted as not found.
     /// </summary>
     public async Task<RevokeResult> RevokeAsync(IEnumerable<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct)
     {
@@ -465,6 +667,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     {
                         _revoked[key] = new CertificateRevocation(key, now, reason, userName) { DeviceId = entry.DeviceId, NotAfterUtc = entry.NotAfterUtc };
                         _dirtyRevoked.Add(key);
+                        DropLocked(key);
                         revoked++;
                     }
                 }
@@ -510,15 +713,66 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The serials of a camera's certificates (by its device id and its serial) that are still valid and not revoked: Revoke
+    /// all of this device and the Revoke policies, also for a camera added again.
+    /// </summary>
+    public IReadOnlyList<string> RevocableOf(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        var now = Now;
+        lock (_gate)
+        {
+            return [.. KeysOfLocked(device).Where(s => !_revoked.ContainsKey(s) && _bySerial[s].NotAfterUtc > now)];
+        }
+    }
+
+    /// <summary>
+    /// Puts certificates OADM no longer needs on the revocation list by the user "OADM" (written first) and removes them from
+    /// the store, also when they ended already.
+    /// </summary>
+    private async Task RetireAsync(IReadOnlyList<string> keys, RevocationReason reason, CancellationToken ct)
+    {
+        await RevokeAsync(keys, reason, OadmUser, ct).ConfigureAwait(false);
+        var dropped = false;
+        lock (_gate)
+        {
+            foreach (var key in keys)
+            {
+                if (_bySerial.ContainsKey(key))
+                {
+                    DropLocked(key);
+                    dropped = true;
+                }
+            }
+        }
+
+        if (dropped)
+        {
+            await FlushAsync(ct).ConfigureAwait(false);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     // ------------------------------------------------------------------ the page
 
-    /// <summary>The state of a certificate now (revoked, expired, replaced, expires soon, valid; in that order).</summary>
+    /// <summary>The state of a certificate now (revoked, expired, expires soon, valid; in that order).</summary>
     public IssuedCertificateState StateOf(IssuedCertificate entry, DateTime nowUtc, int warningDays)
     {
         ArgumentNullException.ThrowIfNull(entry);
         lock (_gate)
         {
             return StateLocked(CertificateSerials.Normalize(entry.SerialNumber), entry, nowUtc, warningDays);
+        }
+    }
+
+    /// <summary>True when the certificate is its camera's current one of its use (not pending, not pushed out).</summary>
+    public bool IsCurrent(string serialNumber)
+    {
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(serialNumber);
+            return _bySerial.TryGetValue(key, out var entry) && IsCurrentLocked(key, entry);
         }
     }
 
@@ -533,10 +787,12 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     /// <summary>
     /// The page with the warning days of each device (its Expiry warning policy). <paramref name="filter"/> leaves out more
     /// (the "Issued by" filter); <paramref name="searchMore"/> matches the search in more columns (use, issuer, valid until,
-    /// state) for an entry the address, serial and device serial did not match.
+    /// state) for an entry the address, serial and device serial did not match. <paramref name="currentOnly"/> (the PKI
+    /// page, decision 2026-10-25): only each managed camera's current certificate of each use, found by the camera's
+    /// serial (the device id for entries without one), not deleted from the camera; false: every stored certificate.
     /// </summary>
     public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, Func<Guid, int> warningDays,
-        Func<IssuedCertificate, bool>? filter = null, Func<IssuedCertificate, IssuedCertificateState, bool>? searchMore = null)
+        Func<IssuedCertificate, bool>? filter = null, Func<IssuedCertificate, IssuedCertificateState, bool>? searchMore = null, bool currentOnly = true)
     {
         ArgumentNullException.ThrowIfNull(warningDays);
         ArgumentNullException.ThrowIfNull(query);
@@ -550,6 +806,13 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         var total = 0;
         lock (_gate)
         {
+            var bySerial = DevicesBySerialLocked(devices);
+            if (_deadOrdered.Count > 0)
+            {
+                _ordered.RemoveAll(_deadOrdered.Contains);
+                _deadOrdered.Clear();
+            }
+
             if (_orderDirty)
             {
                 _ordered.Sort((a, b) => Compare(_bySerial[a], _bySerial[b]));
@@ -560,9 +823,12 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             {
                 var key = _ordered[i];
                 var entry = _bySerial[key];
-                var device = devices.GetValueOrDefault(entry.DeviceId);
-                if ((onlyListedDevices && device is null)
-                    || (query.DeviceIds is { } ids && !ids.Contains(entry.DeviceId))
+                var device = entry.DeviceSerial is { Length: > 0 } cameraSerial ? bySerial.GetValueOrDefault(cameraSerial) : devices.GetValueOrDefault(entry.DeviceId);
+                var listed = device is not null && IsListedLocked(key, entry, device);
+                var deviceId = device?.Id ?? entry.DeviceId;
+                if ((currentOnly && !listed)
+                    || (onlyListedDevices && device is null)
+                    || (query.DeviceIds is { } ids && !ids.Contains(deviceId))
                     || (query.Purpose is { } purpose && !string.Equals(entry.Purpose, purpose, StringComparison.Ordinal))
                     || (query.Source is { } source && !string.Equals(SourceOf(entry), source, StringComparison.Ordinal))
                     || (filter is not null && !filter(entry)))
@@ -570,7 +836,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     continue;
                 }
 
-                var state = StateLocked(key, entry, now, warningDays(entry.DeviceId));
+                var state = StateLocked(key, entry, now, warningDays(deviceId));
                 if (query.State is { } wanted && wanted != state)
                 {
                     continue;
@@ -594,7 +860,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                 rows.Add(new IssuedCertificateInfo
                 {
                     SerialNumber = key,
-                    DeviceId = entry.DeviceId,
+                    DeviceId = deviceId,
                     DeviceSerial = deviceSerial,
                     Device = device?.Address ?? string.Empty,
                     DeviceManaged = device is not null,
@@ -606,7 +872,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     State = state,
                     Revocation = _revoked.GetValueOrDefault(key),
                     Kind = ListedCertificateKind.Device,
-                    UsedBy = device is not null && IsOnDeviceLocked(key, entry) ? device.Address : null,
+                    UsedBy = listed ? device!.Address : null,
                 });
             }
         }
@@ -615,10 +881,10 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Deletes certificates that ended or are revoked from the list (Delete on the page); their revocations stay. Serials that
-    /// are not listed or still valid are left. Written before it returns.
+    /// Deletes certificates that ended or are revoked from the store (Delete on the page); their revocations stay. Serials that
+    /// are not stored or still valid are left. Written before it returns.
     /// </summary>
-    /// <returns>How many left the list.</returns>
+    /// <returns>How many left the store.</returns>
     public async Task<int> DeleteEndedAsync(IReadOnlyCollection<string> serialNumbers, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(serialNumbers);
@@ -626,22 +892,13 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         var removed = 0;
         lock (_gate)
         {
-            var gone = new HashSet<string>(StringComparer.Ordinal);
             foreach (var key in serialNumbers.Select(CertificateSerials.Normalize).Distinct(StringComparer.Ordinal))
             {
                 if (_bySerial.TryGetValue(key, out var entry) && (_revoked.ContainsKey(key) || entry.NotAfterUtc <= now))
                 {
-                    Unindex(key);
-                    _dirtyIssued.Add(key);
-                    _pendingDer[key] = null;
-                    gone.Add(key);
+                    DropLocked(key);
+                    removed++;
                 }
-            }
-
-            removed = gone.Count;
-            if (removed > 0)
-            {
-                _ordered = [.. _ordered.Where(k => !gone.Contains(k))];
             }
         }
 
@@ -663,27 +920,25 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
     // ------------------------------------------------------------------ keeping and writing
 
-    /// <summary>Drops certificates that ended more than <see cref="KeptAfterEnd"/> ago and revocations of ended certificates.</summary>
+    /// <summary>
+    /// Drops certificates that ended more than <see cref="KeptAfterEnd"/> ago and revocations of ended certificates; EST
+    /// certificates pending longer than <see cref="PendingTimeout"/> without their answer go on the revocation list.
+    /// </summary>
     public async Task PruneAsync(CancellationToken ct)
     {
         var now = Now;
         var limit = now - KeptAfterEnd;
         bool changed, revocations;
+        List<string> stale;
         lock (_gate)
         {
             var old = _bySerial.Where(p => p.Value.NotAfterUtc < limit).Select(p => p.Key).ToList();
             foreach (var key in old)
             {
-                Unindex(key);
-                _dirtyIssued.Add(key);
-                _pendingDer[key] = null; // delete the DER too
+                DropLocked(key);
             }
 
-            if (old.Count > 0)
-            {
-                var gone = old.ToHashSet(StringComparer.Ordinal);
-                _ordered = [.. _ordered.Where(k => !gone.Contains(k))];
-            }
+            stale = [.. _pending.Values.Where(k => _bySerial[k] is { Delivered: false } e && SourceOf(e) == IssuedCertificateSources.Est && e.IssuedUtc < now - PendingTimeout)];
 
             var ended = _revoked.Where(p => p.Value.NotAfterUtc <= now).Select(p => p.Key).ToList();
             foreach (var key in ended)
@@ -698,6 +953,12 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             {
                 _revokedView = new Dictionary<string, CertificateRevocation>(_revoked, StringComparer.Ordinal);
             }
+        }
+
+        if (stale.Count > 0)
+        {
+            LogStalePending(stale.Count);
+            await RetireAsync(stale, RevocationReason.Other, ct).ConfigureAwait(false);
         }
 
         if (!changed)
@@ -885,67 +1146,110 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             return IssuedCertificateState.Expired;
         }
 
-        if (entry.RemovedFromDeviceUtc is not null
-            || (_newest.TryGetValue((entry.DeviceId, entry.Purpose ?? string.Empty), out var newest)
-                && !string.Equals(CertificateSerials.Normalize(newest.SerialNumber), key, StringComparison.Ordinal)))
-        {
-            return IssuedCertificateState.Replaced; // a newer one exists, or a task deleted it from the device
-        }
-
         return entry.NotAfterUtc <= nowUtc.AddDays(warningDays) ? IssuedCertificateState.ExpiresSoon : IssuedCertificateState.Valid;
     }
 
-    /// <summary>Still on its device as far as OADM knows: not deleted there and no newer one of the device and use (inside the gate).</summary>
-    private bool IsOnDeviceLocked(string key, IssuedCertificate entry) =>
-        entry.RemovedFromDeviceUtc is null
-        && (!_newest.TryGetValue((entry.DeviceId, entry.Purpose ?? string.Empty), out var newest)
-            || string.Equals(CertificateSerials.Normalize(newest.SerialNumber), key, StringComparison.Ordinal));
+    /// <summary>The camera of an entry: its serial (upper case), or its device id for entries without one.</summary>
+    private static string CameraOf(IssuedCertificate entry) =>
+        entry.DeviceSerial is { Length: > 0 } serial ? serial.ToUpperInvariant() : "#" + entry.DeviceId.ToString("N", CultureInfo.InvariantCulture);
 
-    /// <summary>Adds to the indexes (inside the gate; not to the ordered list).</summary>
+    private static (string Camera, string Purpose) SlotOf(IssuedCertificate entry) => (CameraOf(entry), entry.Purpose ?? string.Empty);
+
+    /// <summary>The camera's current one of its use (inside the gate).</summary>
+    private bool IsCurrentLocked(string key, IssuedCertificate entry) =>
+        !entry.Pending && _current.TryGetValue(SlotOf(entry), out var current) && current == key;
+
+    /// <summary>
+    /// A row of the current list (inside the gate): the current one, not deleted from the camera, and for an entry without
+    /// a serial (OADM before 4.2) only while the camera has no newer current one under its serial.
+    /// </summary>
+    private bool IsListedLocked(string key, IssuedCertificate entry, IDeviceInfo device)
+    {
+        if (entry.RemovedFromDeviceUtc is not null || !IsCurrentLocked(key, entry))
+        {
+            return false;
+        }
+
+        return entry.DeviceSerial is { Length: > 0 }
+            || !_current.TryGetValue((device.Serial.ToUpperInvariant(), entry.Purpose ?? string.Empty), out var other)
+            || Compare(_bySerial[other], entry) <= 0;
+    }
+
+    /// <summary>The keys of a camera: by its device id and by its serial (inside the gate).</summary>
+    private List<string> KeysOfLocked(IDeviceInfo device)
+    {
+        var byId = _byDevice.TryGetValue(device.Id, out var ids) ? ids : [];
+        var bySerial = device.Serial is { Length: > 0 } serial && _byCamera.TryGetValue(serial.ToUpperInvariant(), out var keys) ? keys : [];
+        return byId.Concat(bySerial).Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>The devices by serial (upper case), built once per device list (inside the gate).</summary>
+    private Dictionary<string, IDeviceInfo> DevicesBySerialLocked(IReadOnlyDictionary<Guid, IDeviceInfo> devices)
+    {
+        if (_devicesBySerial is { } cached && ReferenceEquals(cached.Source, devices))
+        {
+            return cached.BySerial;
+        }
+
+        var bySerial = new Dictionary<string, IDeviceInfo>(devices.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var device in devices.Values)
+        {
+            if (device.Serial is { Length: > 0 } serial)
+            {
+                bySerial[serial] = device;
+            }
+        }
+
+        _devicesBySerial = (devices, bySerial);
+        return bySerial;
+    }
+
+    /// <summary>Adds to the indexes and the ordered list (inside the gate).</summary>
     private void Index(IssuedCertificate entry)
     {
         var key = CertificateSerials.Normalize(entry.SerialNumber);
         _bySerial[key] = entry;
+        AddIndexes(key, entry);
+        if (_deadOrdered.Remove(key))
+        {
+            return; // still in the ordered list at its place (same serial, same issue time)
+        }
+
+        _ordered.Add(key);
+        _orderDirty |= _ordered.Count > 1 && (!_bySerial.TryGetValue(_ordered[^2], out var before) || Compare(before, entry) > 0); // a key that left: sort to be sure
+    }
+
+    private void AddIndexes(string key, IssuedCertificate entry)
+    {
         if (!_byDevice.TryGetValue(entry.DeviceId, out var serials))
         {
             _byDevice[entry.DeviceId] = serials = [];
         }
 
         serials.Add(key);
-        var newestKey = (entry.DeviceId, entry.Purpose ?? string.Empty);
-        if (!_newest.TryGetValue(newestKey, out var known) || Compare(known, entry) <= 0)
+        var camera = CameraOf(entry);
+        if (!_byCamera.TryGetValue(camera, out var ofCamera))
         {
-            _newest[newestKey] = entry;
+            _byCamera[camera] = ofCamera = [];
         }
 
-        _ordered.Add(key);
-        _orderDirty |= _ordered.Count > 1 && Compare(_bySerial[_ordered[^2]], entry) > 0;
+        ofCamera.Add(key);
+        var slot = (camera, entry.Purpose ?? string.Empty);
+        if (entry.Pending)
+        {
+            if (!_pending.TryGetValue(slot, out var known) || Compare(_bySerial[known], entry) <= 0)
+            {
+                _pending[slot] = key;
+            }
+        }
+        else if (!entry.NotCurrent && (!_current.TryGetValue(slot, out var current) || Compare(_bySerial[current], entry) <= 0))
+        {
+            _current[slot] = key;
+        }
     }
 
-    /// <summary>Replaces an entry in place (same serial, device, use and issue time; inside the gate) and marks it for writing.</summary>
-    private void ReplaceLocked(string key, IssuedCertificate updated)
+    private void RemoveIndexes(string key, IssuedCertificate entry)
     {
-        var old = _bySerial[key];
-        _bySerial[key] = updated;
-        var newestKey = (old.DeviceId, old.Purpose ?? string.Empty);
-        if (_newest.TryGetValue(newestKey, out var newest) && ReferenceEquals(newest, old))
-        {
-            _newest[newestKey] = updated;
-        }
-
-        _dirtyIssued.Add(key);
-    }
-
-    /// <summary>A normalized serial number: hex digits, at most 20 bytes (RFC 5280 4.1.2.2).</summary>
-    private static bool IsSerialNumber(string key) => key.Length is > 0 and <= 40 && key.All(Uri.IsHexDigit);
-
-    private void Unindex(string key)
-    {
-        if (!_bySerial.Remove(key, out var entry))
-        {
-            return;
-        }
-
         if (_byDevice.TryGetValue(entry.DeviceId, out var serials))
         {
             serials.Remove(key);
@@ -955,21 +1259,98 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             }
         }
 
-        var newestKey = (entry.DeviceId, entry.Purpose ?? string.Empty);
-        if (_newest.TryGetValue(newestKey, out var newest) && ReferenceEquals(newest, entry))
+        var camera = CameraOf(entry);
+        if (_byCamera.TryGetValue(camera, out var ofCamera))
         {
-            _newest.Remove(newestKey);
-            foreach (var other in serials ?? [])
+            ofCamera.Remove(key);
+            if (ofCamera.Count == 0)
+            {
+                _byCamera.Remove(camera);
+            }
+        }
+
+        var slot = (camera, entry.Purpose ?? string.Empty);
+        if (_current.TryGetValue(slot, out var current) && current == key)
+        {
+            _current.Remove(slot);
+            foreach (var other in ofCamera ?? [])
             {
                 var candidate = _bySerial[other];
-                if (string.Equals(candidate.Purpose ?? string.Empty, newestKey.Item2, StringComparison.Ordinal)
-                    && (!_newest.TryGetValue(newestKey, out var best) || Compare(best, candidate) <= 0))
+                if (!candidate.Pending && !candidate.NotCurrent && string.Equals(candidate.Purpose ?? string.Empty, slot.Item2, StringComparison.Ordinal)
+                    && (!_current.TryGetValue(slot, out var best) || Compare(_bySerial[best], candidate) <= 0))
                 {
-                    _newest[newestKey] = candidate;
+                    _current[slot] = other;
+                }
+            }
+        }
+
+        if (_pending.TryGetValue(slot, out var pending) && pending == key)
+        {
+            _pending.Remove(slot);
+            foreach (var other in ofCamera ?? [])
+            {
+                var candidate = _bySerial[other];
+                if (candidate.Pending && string.Equals(candidate.Purpose ?? string.Empty, slot.Item2, StringComparison.Ordinal)
+                    && (!_pending.TryGetValue(slot, out var best) || Compare(_bySerial[best], candidate) <= 0))
+                {
+                    _pending[slot] = other;
                 }
             }
         }
     }
+
+    /// <summary>Replaces an entry in place (same serial and issue time; inside the gate) and marks it for writing.</summary>
+    private void ReplaceLocked(string key, IssuedCertificate updated)
+    {
+        RemoveIndexes(key, _bySerial[key]);
+        _bySerial[key] = updated;
+        AddIndexes(key, updated);
+        _dirtyIssued.Add(key);
+    }
+
+    /// <summary>
+    /// Removes an entry from the store and the records (inside the gate). When it was its camera's current one, the older
+    /// entries of that camera and use (OADM before 4.5) are no longer current either: the camera has no row until it gets
+    /// a new certificate.
+    /// </summary>
+    private void DropLocked(string key)
+    {
+        if (!_bySerial.TryGetValue(key, out var entry))
+        {
+            return;
+        }
+
+        var wasCurrent = IsCurrentLocked(key, entry);
+        RemoveIndexes(key, entry);
+        _bySerial.Remove(key);
+        _deadOrdered.Add(key);
+        _dirtyIssued.Add(key);
+        _pendingDer[key] = null; // delete the DER too
+        if (!wasCurrent)
+        {
+            return;
+        }
+
+        var slot = SlotOf(entry);
+        if (!_byCamera.TryGetValue(slot.Camera, out var ofCamera))
+        {
+            return;
+        }
+
+        foreach (var other in ofCamera.ToList())
+        {
+            var older = _bySerial[other];
+            if (!older.Pending && !older.NotCurrent && string.Equals(older.Purpose ?? string.Empty, slot.Purpose, StringComparison.Ordinal))
+            {
+                ReplaceLocked(other, older with { NotCurrent = true });
+            }
+        }
+
+        ScheduleFlush();
+    }
+
+    /// <summary>A normalized serial number: hex digits, at most 20 bytes (RFC 5280 4.1.2.2).</summary>
+    private static bool IsSerialNumber(string key) => key.Length is > 0 and <= 40 && key.All(Uri.IsHexDigit);
 
     /// <summary>Older first: by the time it was issued, then by serial (a stable order for the pages).</summary>
     private static int Compare(IssuedCertificate a, IssuedCertificate b)
@@ -1026,6 +1407,9 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: revoked {Count} certificates ({Reason}) for {User}")]
     private partial void LogRevoked(int count, string reason, string user);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} EST certificates were issued but their answer never written; revoked as unused")]
+    private partial void LogStalePending(int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: writing the issued certificates failed; tried again with the next change")]
     private partial void LogWriteFailed(Exception ex);

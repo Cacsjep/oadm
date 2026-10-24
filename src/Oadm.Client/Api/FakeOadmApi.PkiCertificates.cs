@@ -34,8 +34,6 @@ public sealed partial class FakeOadmApi
 
         public DateTime NotAfter { get; init; }
 
-        public bool Replaced { get; init; }
-
         public (DateTime At, int Reason, string User)? Revoked { get; set; }
     }
 
@@ -143,8 +141,8 @@ public sealed partial class FakeOadmApi
             {
                 list.Add(new FakeIssued
                 {
-                    Serial = FakeSerial(i, 2), DeviceId = id, DeviceSerial = serial, Device = device, Purpose = "https", Source = "Task",
-                    NotBefore = now.AddDays(-380 - i), NotAfter = i == 0 ? now.AddDays(-15) : now.AddDays(15 + i), Replaced = i != 0,
+                    Serial = FakeSerial(i, 2), DeviceId = id, DeviceSerial = serial, Device = device, Purpose = "rtsps", Source = "EST",
+                    NotBefore = now.AddDays(-380 - i), NotAfter = i == 0 ? now.AddDays(-15) : now.AddDays(15 + i),
                 });
             }
         }
@@ -158,7 +156,6 @@ public sealed partial class FakeOadmApi
     private static IssuedCertificateState FakeIssuedState(FakeIssued c, DateTime now) =>
         c.Revoked is not null ? IssuedCertificateState.Revoked
         : c.NotAfter <= now ? IssuedCertificateState.Expired
-        : c.Replaced ? IssuedCertificateState.Replaced
         : c.NotAfter <= now.AddDays(30) ? IssuedCertificateState.ExpiresSoon
         : IssuedCertificateState.Valid;
 

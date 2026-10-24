@@ -222,6 +222,7 @@ public static class CertificateDeployment
         }).ConfigureAwait(false);
 
         var installed = false;
+        string? pendingSerial = null;
         try
         {
             var csr = await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.GetCsr), async step =>
@@ -239,14 +240,9 @@ public static class CertificateDeployment
             }).ConfigureAwait(false);
 
             var (fingerprint, serial, notAfter) = DeviceCertificateIssuer.Describe(signed);
-            await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCertificate), async step =>
-            {
-                await CertApi.PatchCertificateAsync(ctx.Vapix, alias, CaCertificates.ToPem(signed), ct).ConfigureAwait(false);
-                installed = true;
-                step.Complete(alias);
-            }).ConfigureAwait(false);
 
-            await service.Issued.AddAsync(new IssuedCertificate
+            // Pending until the task's verify step confirms it (docs/spec/pki.md "Current and pending").
+            await service.Issued.AddPendingAsync(new IssuedCertificate
             {
                 SerialNumber = serial,
                 DeviceId = device.Id,
@@ -258,11 +254,24 @@ public static class CertificateDeployment
                 IssuedUtc = service.Time.GetUtcNow().UtcDateTime,
                 Alias = alias,
             }, signed.RawData, ct).ConfigureAwait(false);
+            pendingSerial = serial;
+            await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCertificate), async step =>
+            {
+                await CertApi.PatchCertificateAsync(ctx.Vapix, alias, CaCertificates.ToPem(signed), ct).ConfigureAwait(false);
+                installed = true;
+                step.Complete(alias);
+            }).ConfigureAwait(false);
+
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" issued by {CaCertificates.CommonName(ca.Certificate)} with the policy {policy.Name} (serial {serial}, valid until {notAfter:yyyy-MM-dd}).");
             return new IssuedOnDevice(alias, fingerprint, serial, notAfter);
         }
         catch (Exception) when (!installed)
         {
+            if (pendingSerial is not null)
+            {
+                await NotUsedAsync(ctx, service, pendingSerial, evenDelivered: false).ConfigureAwait(false);
+            }
+
             try
             {
                 await CertApi.DeleteCertificateAsync(ctx.Vapix, alias, CancellationToken.None).ConfigureAwait(false);
@@ -276,6 +285,49 @@ public static class CertificateDeployment
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// The verify step passed: the new certificate becomes the camera's current one; the previous one of the same use is
+    /// revoked (replaced) and leaves the store. Written to the task log.
+    /// </summary>
+    public static async Task ConfirmAsync(ITaskExecutionContext ctx, PkiService service, IDeviceInfo device, IssuedOnDevice issued, string purpose)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(service);
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(issued);
+        var previous = service.Issued.ForDevice(device)
+            .Where(e => !e.Pending && string.Equals(e.Purpose, purpose, StringComparison.Ordinal) && service.Issued.IsCurrent(e.SerialNumber))
+            .Select(e => e.SerialNumber).FirstOrDefault();
+        await service.Issued.ConfirmAsync(issued.SerialNumber, CancellationToken.None).ConfigureAwait(false);
+        if (previous is not null && service.Issued.IsRevoked(previous))
+        {
+            ctx.Log(TaskLogLevel.Info, $"The previous certificate (serial {previous}) was revoked: replaced by \"{issued.Alias}\".");
+        }
+    }
+
+    /// <summary>
+    /// The new certificate is not in use (an install or verify failed): revoked as unused and removed from the store. An IEEE
+    /// 802.1X certificate a task configured stays unless <paramref name="evenDelivered"/> (device safety: no lock-out).
+    /// </summary>
+    public static async Task NotUsedAsync(ITaskExecutionContext ctx, PkiService service, string serialNumber, bool evenDelivered)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(service);
+        try
+        {
+            if (await service.Issued.DiscardAsync(serialNumber, evenDelivered, CancellationToken.None).ConfigureAwait(false))
+            {
+                ctx.Log(TaskLogLevel.Info, $"The new certificate (serial {serialNumber}) is not in use and was revoked.");
+            }
+        }
+#pragma warning disable CA1031 // The task's own error is what the user sees; an unused pending certificate is never accepted as current.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            ctx.Log(TaskLogLevel.Warning, "The unused certificate could not be revoked: " + ex.Message);
         }
     }
 
@@ -349,7 +401,7 @@ public static class CertificateDeployment
         ArgumentNullException.ThrowIfNull(device);
         using var step = ctx.BeginStep(stepName);
         var certificates = await CertApi.ListCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
-        var registry = await service.Issued.ForDeviceAsync(device.Id, ct).ConfigureAwait(false);
+        var registry = await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         var prefix = string.Equals(purpose, CertificatePurpose.Dot1x, StringComparison.Ordinal) ? Dot1xAliasPrefix : HttpsAliasPrefix;
         var removed = new List<string>();
         foreach (var certificate in certificates)
@@ -365,8 +417,8 @@ public static class CertificateDeployment
                 continue;
             }
 
-            // Deleted from the device, still in the list of issued certificates (as Replaced): a copy could still be in use,
-            // so it can be revoked until it ends.
+            // Deleted from the device: a replaced one is revoked already; any other stays in the store (not listed) until it
+            // ends, so it can still be revoked.
             await CertApi.DeleteCertificateAsync(ctx.Vapix, certificate.Alias, ct).ConfigureAwait(false);
             removed.Add(certificate.Alias);
         }
@@ -388,6 +440,13 @@ public static class CertificateDeployment
         ArgumentNullException.ThrowIfNull(certificate);
         ArgumentNullException.ThrowIfNull(registry);
         if (serial is not null && registry.Any(e => string.Equals(Oadm.Sdk.Certificates.CertificateSerials.Normalize(e.SerialNumber), Oadm.Sdk.Certificates.CertificateSerials.Normalize(serial), StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        // A replaced one left the store but stays on the revocation list until it ends.
+        if (serial is not null && service is not null && service.Issued.IsRevoked(serial)
+            && (certificate.Alias.StartsWith(HttpsAliasPrefix, StringComparison.Ordinal) || certificate.Alias.StartsWith(Dot1xAliasPrefix, StringComparison.Ordinal)))
         {
             return true;
         }

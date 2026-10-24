@@ -101,19 +101,62 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.Dot1xAliasPrefix, service.Time);
         var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
         var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Dot1x, alias, policy, stepPrefix, ct).ConfigureAwait(false);
-        await ConfigureAsync(ctx, policy, device, apis, network, issued.Alias, certsCa, stepPrefix, ct).ConfigureAwait(false);
+        var configured = false;
+        Dot1xCheck check;
+        try
+        {
+            check = await ConfigureAsync(ctx, policy, device, apis, network, issued.Alias, certsCa, stepPrefix, ct, () =>
+            {
+                // From here on the camera may use it: never revoked as unused (device safety, no lock-out).
+                configured = true;
+                service.Issued.MarkDelivered(issued.SerialNumber);
+            }).ConfigureAwait(false);
+        }
+        catch (Exception) when (!configured)
+        {
+            await CertificateDeployment.NotUsedAsync(ctx, service, issued.SerialNumber, evenDelivered: false).ConfigureAwait(false);
+            throw;
+        }
+
+        switch (check)
+        {
+            case Dot1xCheck.Confirmed:
+                await CertificateDeployment.ConfirmAsync(ctx, service, device, issued, CertificatePurpose.Dot1x).ConfigureAwait(false);
+                break;
+            case Dot1xCheck.OtherCertificate:
+                await CertificateDeployment.NotUsedAsync(ctx, service, issued.SerialNumber, evenDelivered: true).ConfigureAwait(false);
+                break;
+            default:
+                ctx.Log(TaskLogLevel.Info, $"The new certificate \"{issued.Alias}\" stays pending: the camera's 802.1X settings could not confirm it. The previous certificate stays valid.");
+                break;
+        }
+
+        if (check != Dot1xCheck.Confirmed)
+        {
+            // The camera may still use a previous certificate for network access: none is deleted (no lock-out).
+            ctx.SkipStep(PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), "Kept: the camera does not use the new certificate yet");
+            return;
+        }
+
         await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Dot1x, [issued.Alias], PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);
     }
 
-    /// <summary>Set 802.1X configuration + Verify 802.1X settings (read back; a mismatch is a warning).</summary>
-    internal static async Task ConfigureAsync(
-        ITaskExecutionContext ctx, Policies.PkiPolicy policy, IDeviceInfo device, IReadOnlyList<DeviceApi> apis, DeviceNetworkInfo network, string certClient, IReadOnlyList<string> certsCa, string? stepPrefix, CancellationToken ct)
+    /// <summary>
+    /// Set 802.1X configuration + Verify 802.1X settings (read back; a mismatch is a warning). <paramref name="configuring"/>
+    /// runs right before the configuration is written. The answer: the read-back confirms the certificate, names another
+    /// client certificate, or says something else is off.
+    /// </summary>
+    internal static async Task<Dot1xCheck> ConfigureAsync(
+        ITaskExecutionContext ctx, Policies.PkiPolicy policy, IDeviceInfo device, IReadOnlyList<DeviceApi> apis, DeviceNetworkInfo network, string certClient, IReadOnlyList<string> certsCa, string? stepPrefix, CancellationToken ct,
+        Action? configuring = null)
     {
         var identity = CertificateDeployment.Identity(policy, device, network);
         var eapol = policy.EapolVersion ?? 1;
         var deviceName = network.Dot1x?.DeviceName ?? "eth0";
+        var check = Dot1xCheck.Unclear;
         await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.SetDot1x), async step =>
         {
+            configuring?.Invoke();
             await NetworkInfoApi.EnableEapTlsAsync(ctx.Vapix, apis, deviceName, identity, eapol, certClient, certsCa, ct).ConfigureAwait(false);
             step.Complete($"EAP-TLS · identity {identity} · {NetworkInfoApi.EapolName(eapol)}");
         }).ConfigureAwait(false);
@@ -145,14 +188,30 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
 
             if (problems.Count == 0)
             {
+                check = Dot1xCheck.Confirmed;
                 step.Complete($"Enabled · status {after!.Status ?? "unknown"}");
             }
             else
             {
+                check = after is not null && !string.Equals(after.CertClient, certClient, StringComparison.Ordinal) ? Dot1xCheck.OtherCertificate : Dot1xCheck.Unclear;
                 step.Warn("The device reports " + string.Join(", ", problems) + ".");
             }
         }).ConfigureAwait(false);
+        return check;
     }
+}
+
+/// <summary>What the read-back of "Verify 802.1X settings" says about the new client certificate.</summary>
+internal enum Dot1xCheck
+{
+    /// <summary>Something else is off (or nothing could be read): the certificate may be in use.</summary>
+    Unclear,
+
+    /// <summary>802.1X is on with the new certificate and the CA certificates.</summary>
+    Confirmed,
+
+    /// <summary>The camera reports another client certificate: the new one is not in use.</summary>
+    OtherCertificate,
 }
 
 /// <summary>"Disable IEEE 802.1X": 802.1X off, certificates stay. Steps: Check compatibility, Set 802.1X off, Verify.</summary>

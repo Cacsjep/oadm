@@ -248,15 +248,15 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
   EST: device (its address; a device OADM no longer manages shows its serial with "(removed)"), use (HTTPS, IEEE 802.1X,
   MQTT, RTSPS), issued by (Task, EST), valid from, valid until, serial number, state chip (Valid, Expires soon (the
-  settings' warning days, 30 by default), Expired, Replaced (a newer one of the same device and use exists), Revoked
-  (tooltip: date, reason, user)). Filters (state, use, issued by) and search (device address, host name, device serial,
+  settings' warning days, 30 by default), Expired, Revoked (tooltip: date, reason, user)); since 2026-10-25 only each
+  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, use, issued by) and search (device address, host name, device serial,
   certificate serial in any notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of
   12,345"), virtualized grid, `RangeObservableCollection`, overlay on the first read and a progress row on later ones;
   **View certificate** (toolbar, row menu, double click: the shared `ui:CertificateWindow`, a revoked one says "Certificate
   revoked on ..."). An event `certificates` (at most one per second) makes every open tab read its page again.
 - **Revoke** (red toolbar button and row menu; one or several rows, at most 5,000 at once; the confirmation
   `ui:MessageWindow` with the choice **Reason**: Key compromised, Device replaced, Device removed, Other; red Revoke):
-  the serials go into the revocation list with time, reason and user; **Revoke all of this device** (row menu, last):
+  the serials go into the revocation list with time, reason and user and leave the store (decision 2026-10-25); **Revoke all of this device** (row menu, last):
   every certificate of the row's device that is still valid; a device that answers has its certificate list read first
   (read only, at most 20 s), so OADM certificates on it from before the list are revoked too. While either runs the
   list's progress row says "Revoking the certificates" and both are off (a write runs to its end: no Cancel). Expired serials (and text
@@ -271,12 +271,12 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 - **Kept** (plugin records, one row each, only changed rows written, new certificates batched every 2 s, a revocation
   written before the call returns): `issued` (serial, device id, device serial from the `axis-<serial>.local` name, use,
   source, CA id, valid from, valid until, issued, alias), `issuedDer` (the DER, read one at a time) and `revoked`
-  (serial, time, reason, user, device, valid until). A certificate leaves the list a year after it ended; a revocation
-  when its certificate ended (it can no longer be used). Checked at the start and every hour. The plugin setting `issued`
+  (serial, time, reason, user, device, valid until). A certificate leaves the store 30 days after it ended (decision
+  2026-10-25, before a year); a revocation when its certificate ended (it can no longer be used). Checked at the start and every hour. The plugin setting `issued`
   of OADM 4.1 moves into the records at the first start and is deleted (those entries have no DER, `noCopy`: View
   certificate says "OADM keeps no copy of this certificate." until a read of the device's certificate list finds the
-  certificate, which stores its copy). A certificate a task deletes from the device stays listed as Replaced
-  (`removedFromDeviceUtc`): a copy could still be in use. The PKI page's device counts (and the Replace CA question) count
+  certificate, which stores its copy). A certificate a task deletes from the device stays in the store, not
+  listed (`removedFromDeviceUtc`): a copy could still be in use, Revoke can take it. The PKI page's device counts (and the Replace CA question) count
   only certificates still in use: not ended, not revoked, not deleted.
 - **Existing certificates** (decision 2026-10-24, the cheapest robust way without a new hook in the host's full refresh):
   (1) whenever PKI reads a device's certificate list (View / Delete certificates, Renew certificates), every certificate

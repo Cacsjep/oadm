@@ -14,9 +14,9 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// 30,000 devices with four certificates each (HTTPS and IEEE 802.1X, each renewed once): the list loads, pages, filters
-/// and searches in one pass, a revocation of 5,000 is one write, and the 802.1X server's revocation check stays a hash
-/// lookup. Budgets about ten times the measured times; the times go to the test output.
+/// 30,000 devices with four certificates each (HTTPS and IEEE 802.1X, each renewed once, as OADM before 4.5 kept them): the
+/// list of current certificates loads, pages, filters and searches in one pass, a revocation of 5,000 is one write, and the
+/// 802.1X server's revocation check stays a hash lookup. Budgets about ten times the measured times; the times go to the test output.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class IssuedScaleTests(ITestOutputHelper output)
@@ -66,21 +66,22 @@ public sealed class IssuedScaleTests(ITestOutputHelper output)
         watch.Restart();
         var first = registry.Query(new IssuedCertificateQuery { Limit = 500 }, devices, onlyListedDevices: false, 30);
         var page = watch.Elapsed;
-        Assert.Equal((Devices * 4, 500), (first.Total, first.Rows.Count));
+        Assert.Equal((Devices * 2, 500), (first.Total, first.Rows.Count)); // the current HTTPS and IEEE 802.1X ones
 
         watch.Restart();
-        var replaced = registry.Query(new IssuedCertificateQuery { State = IssuedCertificateState.Replaced, Purpose = CertificatePurpose.Dot1x, Limit = 500 }, devices, false, 30);
+        var dot1x = registry.Query(new IssuedCertificateQuery { State = IssuedCertificateState.Valid, Purpose = CertificatePurpose.Dot1x, Limit = 500 }, devices, false, 30);
         var search = registry.Query(new IssuedCertificateQuery { Search = "10.0.100.", Limit = 500 }, devices, false, 30);
         var filters = watch.Elapsed;
-        Assert.Equal(Devices, replaced.Total);
-        Assert.Equal(256 * 4, search.Total);
+        Assert.Equal(Devices, dot1x.Total);
+        Assert.Equal(256 * 2, search.Total);
+        Assert.Equal(Devices * 4, registry.Query(new IssuedCertificateQuery { Limit = 1 }, devices, false, _ => 30, currentOnly: false).Total); // the whole store
 
         // A user limited to a group of 3,000 devices.
         var group = devices.Take(3000).ToDictionary(p => p.Key, p => p.Value);
         watch.Restart();
-        var groupPage = registry.Query(new IssuedCertificateQuery { Offset = 11_500, Limit = 500 }, group, onlyListedDevices: true, 30);
+        var groupPage = registry.Query(new IssuedCertificateQuery { Offset = 5_500, Limit = 500 }, group, onlyListedDevices: true, 30);
         var groupTime = watch.Elapsed;
-        Assert.Equal((12_000, 500), (groupPage.Total, groupPage.Rows.Count));
+        Assert.Equal((6_000, 500), (groupPage.Total, groupPage.Rows.Count));
 
         // Revoke 5,000 at once: one write of the revocations.
         var chosen = first.Rows.Select(r => r.SerialNumber).Concat(registry.Query(new IssuedCertificateQuery { Offset = 500, Limit = 500 }, devices, false, 30).Rows.Select(r => r.SerialNumber)).ToList();
@@ -90,7 +91,8 @@ public sealed class IssuedScaleTests(ITestOutputHelper output)
         var result = await registry.RevokeAsync(chosen, RevocationReason.KeyCompromised, "admin", CancellationToken.None);
         var revoke = watch.Elapsed;
         Assert.Equal(chosen.Distinct().Count(), result.Revoked);
-        Assert.Equal(written + result.Revoked, records.WrittenRecords);
+        Assert.True(records.WrittenRecords > written); // the revocations, and the revoked ones leave the store
+        Assert.Equal(Devices * 2 - 1000, registry.Query(new IssuedCertificateQuery { Limit = 1 }, devices, false, 30).Total); // the 1,000 listed ones; the other 4,000 were not current
 
         // The 802.1X server asks for every authentication: a million lookups.
         watch.Restart();
