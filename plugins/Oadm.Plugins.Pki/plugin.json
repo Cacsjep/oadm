@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "minSdkVersion": "0.4.0",
   "displayName": "PKI",
-  "description": "Issues device certificates for HTTPS and IEEE 802.1X.",
+  "description": "Issues device certificates for HTTPS and IEEE 802.1X. 802.1X and EST servers need OADM PRO.",
   "alwaysOn": true,
-  "siteSupport": "full"
+  "siteSupport": "full",
+  "sitePorts": [
+    { "protocol": "udp", "port": 1812, "reason": "802.1X server" },
+    { "protocol": "tcp", "port": 9454, "reason": "EST server" }
+  ]
 }

@@ -43,7 +43,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public CorePluginGroup Group => CorePluginGroup.Security;
 
-    /// <summary>The page is the client part (<c>Oadm.Plugins.Radius.Client</c>).</summary>
+    /// <summary>The page is in the client part of PKI (<c>Oadm.Plugins.Pki.Client</c>, <c>Radius/</c>).</summary>
     public bool HasPage => true;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [];

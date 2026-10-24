@@ -276,7 +276,9 @@ public sealed partial class PluginLoader
         var count = 0;
         var contributedTypes = new HashSet<Type>();
 
-        foreach (var type in types.Where(t => typeof(ICorePlugin).IsAssignableFrom(t)))
+        // By full type name: a package with several core plugins (PKI with the EST and 802.1X servers) registers them in the
+        // same order on every start, and the rail keeps the server's order inside a group.
+        foreach (var type in types.Where(t => typeof(ICorePlugin).IsAssignableFrom(t)).OrderBy(t => t.FullName, StringComparer.Ordinal))
         {
             if (TryCreate(type, origin) is not ICorePlugin core)
             {

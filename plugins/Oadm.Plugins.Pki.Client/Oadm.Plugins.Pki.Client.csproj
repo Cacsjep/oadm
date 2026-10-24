@@ -30,6 +30,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Pki.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Est.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Radius.Tests" />
   </ItemGroup>
 
   <!-- Development deployment next to the server part in artifacts/plugins/oadm.pki/. -->

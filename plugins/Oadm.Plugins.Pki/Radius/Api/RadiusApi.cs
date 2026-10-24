@@ -9,7 +9,7 @@ using Oadm.Sdk.Network;
 namespace Oadm.Plugins.Radius.Api;
 
 // The page contract of the 802.1X server (docs/spec/radius-server.md): method names, event topics, the DTOs and the input
-// rules. Shared by the server part and the page (linked as source into Oadm.Plugins.Radius.Client): only the BCL and the
+// rules. Shared by the server part and the page (Oadm.Plugins.Pki.Client references the server assembly): only the BCL and the
 // SDK, never the protocol layer or BouncyCastle. JSON: camelCase (RadiusJson), enums as camelCase strings.
 
 /// <summary>The page methods (<c>InvokeAsync</c>).</summary>

@@ -25,10 +25,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
-    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Radius\Oadm.Plugins.Radius.csproj" />
+    <!-- The 802.1X server is part of the PKI package (Radius/ in both projects). -->
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki\Oadm.Plugins.Pki.csproj" />
     <!-- The page tests (Client/): Oadm.Client supplies the host theme and the host page view. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
-    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Radius.Client\Oadm.Plugins.Radius.Client.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki.Client\Oadm.Plugins.Pki.Client.csproj" />
   </ItemGroup>
 
 </Project>

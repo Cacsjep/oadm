@@ -13,26 +13,30 @@ namespace Oadm.Plugins.Radius.Tests;
 public sealed class PluginTests
 {
     [Fact]
-    public void TheManifestDescribesAnOadmProPluginOffByDefault()
+    public void ThePkiPackageCarriesTheServerWithItsPortAndIds()
     {
-        using var manifest = JsonDocument.Parse(File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path("plugins", "Oadm.Plugins.Radius", "plugin.json")));
+        // The 802.1X server is part of the PKI package (docs/spec/pki.md "One plugin"): PKI's manifest lists its site port;
+        // the core plugin keeps its id, so its permissions, events and stored data keep their keys.
+        using var manifest = JsonDocument.Parse(File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path("plugins", "Oadm.Plugins.Pki", "plugin.json")));
         var root = manifest.RootElement;
 
-        Assert.Equal(RadiusPlugin.PluginId, root.GetProperty("id").GetString());
-        Assert.Equal("802.1X server", root.GetProperty("displayName").GetString());
-        Assert.True(root.GetProperty("pro").GetBoolean());
-        Assert.False(root.GetProperty("enabledByDefault").GetBoolean());
-        Assert.Equal("0.4.0", root.GetProperty("minSdkVersion").GetString());
+        Assert.Equal("oadm.pki", root.GetProperty("id").GetString());
+        Assert.True(root.GetProperty("alwaysOn").GetBoolean());
+        Assert.False(root.TryGetProperty("pro", out _));
         Assert.Equal("full", root.GetProperty("siteSupport").GetString());
-        var port = Assert.Single(root.GetProperty("sitePorts").EnumerateArray());
+        var port = Assert.Single(root.GetProperty("sitePorts").EnumerateArray(), p => p.GetProperty("reason").GetString() == "802.1X server");
         Assert.Equal("udp", port.GetProperty("protocol").GetString());
         Assert.Equal(1812, port.GetProperty("port").GetInt32());
 
         var plugin = new RadiusPlugin();
+        Assert.Equal("oadm.radius", plugin.Id);
         Assert.Equal("802.1X server", plugin.DisplayName);
+        Assert.Equal("lock", plugin.IconKey);
         Assert.Equal(CorePluginGroup.Security, plugin.Group);
         Assert.True(plugin.HasPage);
         Assert.Equal(["oadm.radius.authenticated", "oadm.radius.failed"], plugin.EventTypes.Select(t => t.Id));
+        Assert.Equal([PermissionKeys.Manage], plugin.Permissions.Select(p => p.Key));
+        Assert.Equal(typeof(Oadm.Plugins.Pki.PkiPlugin).Assembly, typeof(RadiusPlugin).Assembly);
     }
 
     [Fact]

@@ -19,8 +19,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- TLS of EAP-TLS for the 802.1X server (non-blocking TlsServerProtocol, alerts, key export). The server ships the same
+         version (Oadm.Sites): compiled against it, never copied into the plugin folder; the plugin load context falls back to
+         the host's copy. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
-    <!-- The Axis device ID CA certificates for the list of CAs (shared with the EST and 802.1X servers). -->
+    <!-- The source-available licenses of the EST server (Est/) and the 802.1X server (Radius/), next to their parts. -->
+    <None Update="Est\LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Radius\LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Axis device ID CA certificates (roots and intermediates) as Axis publishes them: the list of CAs, EST and 802.1X. -->
     <EmbeddedResource Include="..\Shared\DeviceId\*.pem" LogicalName="Oadm.Plugins.Shared.DeviceId.%(Filename)%(Extension)" />
   </ItemGroup>
 
@@ -28,15 +38,19 @@
     <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
     <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
     <Compile Include="..\Shared\DeviceClock\CameraClock.cs" Link="Common\CameraClock.cs" />
+    <Compile Include="..\Shared\DeviceId\AxisDeviceId.cs" Link="Common\AxisDeviceId.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Pki.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Est.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Radius.Tests" />
     <InternalsVisibleTo Include="Oadm.Plugins.Pki.Client" />
   </ItemGroup>
 
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.pki/.
-       The client part (Oadm.Plugins.Pki.Client) deploys into the same folder. -->
+       The client part (Oadm.Plugins.Pki.Client) deploys into the same folder. The EST server (Est/) and the 802.1X server
+       (Radius/) are part of this package (docs/spec/pki.md "One plugin"). -->
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
