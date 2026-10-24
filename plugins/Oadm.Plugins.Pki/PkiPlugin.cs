@@ -195,6 +195,8 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
             PkiMethods.Backup => PkiJson.Serialize(service.Backup(PkiJson.Deserialize<BackupRequest>(payloadJson))),
             PkiMethods.InstallServerTrust => PkiJson.Serialize(await service.InstallServerTrustAsync(ct).ConfigureAwait(false)),
             PkiMethods.SaveSettings => PkiJson.Serialize(await service.SaveSettingsAsync(PkiJson.Deserialize<SaveSettingsRequest>(payloadJson), ct).ConfigureAwait(false)),
+            PkiMethods.ImportAuthority => PkiJson.Serialize(await service.ImportAuthorityAsync(PkiJson.Deserialize<ImportAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
+            PkiMethods.RemoveAuthority => PkiJson.Serialize(await service.RemoveAuthorityAsync(PkiJson.Deserialize<RemoveAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.ImportRadiusCa => PkiJson.Serialize(PkiService.ImportRadiusCa(PkiJson.Deserialize<ImportRadiusCaRequest>(payloadJson))),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };

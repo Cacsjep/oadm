@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Axis device ID CA certificates for the list of CAs (shared with the EST and 802.1X servers). -->
+    <EmbeddedResource Include="..\Shared\DeviceId\*.pem" LogicalName="Oadm.Plugins.Shared.DeviceId.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

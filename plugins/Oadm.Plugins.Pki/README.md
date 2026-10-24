@@ -72,6 +72,23 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
   lazy re-rating in `CertificatePinning`, host context).
 
+## Certificate authorities (docs/spec/pki.md)
+
+- `PkiService.Authorities()` (the CA service's `Authorities`): the OADM CA (`oadm`, `Issues` while its key is readable),
+  the previous OADM CAs not ended (`oadm-previous:<sha256>`, CA certificate then its chain), the Axis device ID (`axis-device-id`,
+  the PEMs of `plugins/Shared/DeviceId` embedded, roots first) and the imported CAs (`imported:<sha256>`, oldest first).
+  Built once per change of the lists (reference check, and again when a previous CA ends). `CaChanged` (the service's
+  `Changed`) after a replace, a removed previous CA, Import CA and Remove.
+- `SetUsedBy(serviceId, serviceName, ids)`: in memory per service (each service tells it again after a start), an empty
+  list clears it; a change publishes the state (no `Changed`). Shown as "Used by" (names in order, "-" for none).
+- Imported CAs: setting `importedCas` (public PEM only, at most 50, part of the backup). `importAuthority` (PEM or DER,
+  one certificate; errors under the file `AuthorityFile`: not a certificate, larger than 1 MB, contains a private key, not
+  a CA, expired, already in the list) and `removeAuthority` (imported only; refused while used: "Used by the 802.1X
+  server. Remove it there first."). Both Admin ("manage", all devices, audited).
+- Page: card **Certificate authorities** after the CA card (Name, Kind, Valid until, Used by; View in `ui:CertificateWindow`,
+  Remove red for imported CAs; **Import CA** opens `ImportAuthorityWindow`). The Previous certificate authorities card stays.
+  Tests: `AuthorityTests`.
+
 ## PKI Security tasks (part 2, contributed by `oadm.pki`)
 
 Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 11.11 from the firmware

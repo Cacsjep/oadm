@@ -2,13 +2,14 @@ using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Pki.Ca;
 
-/// <summary>The plugin settings of the PKI: <c>ca</c>, <c>previousCas</c>, <c>config</c> (and <c>issued</c> of OADM before 4.2, moved to the records).</summary>
+/// <summary>The plugin settings of the PKI: <c>ca</c>, <c>previousCas</c>, <c>importedCas</c>, <c>config</c> (and <c>issued</c> of OADM before 4.2, moved to the records).</summary>
 public sealed class PkiStore(IPluginSettings settings)
 {
     public const string CaKey = "ca";
     public const string PreviousCasKey = "previousCas";
     public const string IssuedKey = "issued";
     public const string ConfigKey = "config";
+    public const string ImportedCasKey = "importedCas";
 
     private readonly IPluginSettings _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
@@ -32,6 +33,12 @@ public sealed class PkiStore(IPluginSettings settings)
 
     /// <summary>Deletes the settings value of OADM before 4.2 (after the move).</summary>
     public Task DeleteIssuedSettingAsync(CancellationToken ct) => _settings.SetAsync(IssuedKey, null, ct);
+
+    public async Task<List<StoredImportedCa>> LoadImportedAsync(CancellationToken ct) =>
+        PkiJson.TryDeserialize<List<StoredImportedCa>>(await _settings.GetAsync(ImportedCasKey, ct).ConfigureAwait(false)) ?? [];
+
+    public Task SaveImportedAsync(IReadOnlyList<StoredImportedCa> imported, CancellationToken ct) =>
+        _settings.SetAsync(ImportedCasKey, PkiJson.Serialize(imported), ct);
 
     public async Task<PkiConfig> LoadConfigAsync(CancellationToken ct) =>
         PkiJson.TryDeserialize<PkiConfig>(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false)) ?? new PkiConfig();
