@@ -19,8 +19,11 @@ public sealed record WebPagePreset(string Name, string Path)
     public static IReadOnlyList<WebPagePreset> All { get; } =
     [
         new("Web interface", "/"),
+        new("Apps", "/camera/index.html#/apps"),
         new("Overlays", "/camera/index.html#/video/overlays"),
         new("Privacy masks", "/camera/index.html#/video/privacymasks"),
+        new("Recordings", "/camera/index.html#/recordings"),
+        new("Security", "/camera/index.html#/system/security"),
         new("Image Health Analytics", "/local/AXISImageHealthAnalytics/index.html"),
         new("Object Analytics", "/local/objectanalytics/index.html#/"),
         new("License Plate Verifier", "/local/fflprapp/setup.html#/home"),

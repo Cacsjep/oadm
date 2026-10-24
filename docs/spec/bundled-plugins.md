@@ -319,7 +319,7 @@ login. Decisions, the relay and tests: plugin `README.md`.
 - Device groups (SDK 0.4.0): no page methods; the tree lists only the user's devices and `DeviceWebService` takes the
   device from the user's view, so a tab's requests end when its device leaves the view (its tab closes like a removed
   device's). Canary: `tests/Oadm.Plugins.WebView.Tests/CanaryTests`.
-- Page: left card: the page select (Web interface, Overlays, Privacy masks, Image Health Analytics, Object Analytics, License Plate Verifier,
+- Page: left card: the page select (Web interface, Apps, Overlays, Privacy masks, Recordings, Security, Image Health Analytics, Object Analytics, License Plate Verifier,
   Custom with a path field, error below it; it shows the active tab's page, changing it opens the page in the active tab,
   new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no
   counts; `ui:DeviceIcon` + address). Right card: one row Close all tabs, Reload, Back (browser history), the tabs (one per
