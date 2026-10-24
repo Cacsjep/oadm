@@ -135,6 +135,13 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     }
 
     /// <summary>Starts every registered core plugin that is not running yet, in registration order.</summary>
+    /// <summary>
+    /// The order core plugins start in: a package's main plugin (its id is the package id, e.g. PKI) before the other plugins
+    /// of a package (the EST and 802.1X servers read PKI's policy store at their start). Otherwise the registry's order.
+    /// </summary>
+    internal static IEnumerable<RegisteredCorePlugin> StartOrder(IEnumerable<RegisteredCorePlugin> plugins) =>
+        plugins.OrderBy(p => string.Equals(p.Id, p.Origin.PackageId, StringComparison.OrdinalIgnoreCase) ? 0 : 1);
+
     public async Task StartAllAsync(CancellationToken ct)
     {
         if (_deviceScopes is not null)
@@ -145,7 +152,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         await _lifecycle.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            foreach (var registered in _registry.CorePlugins)
+            foreach (var registered in StartOrder(_registry.CorePlugins))
             {
                 ct.ThrowIfCancellationRequested();
                 var entry = _entries.GetOrAdd(registered.Id, _ => new Entry(registered.Plugin));

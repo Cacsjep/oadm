@@ -55,6 +55,21 @@ public sealed class CorePluginHostTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task APackagesMainPluginStartsBeforeTheOthersOfItsPackage()
+    {
+        // PKI's package registers the EST server first (its rail order); the servers read PKI's policy store at their start.
+        var calls = new List<string>();
+        Assert.True(_registry.RegisterCorePlugin(new TestCorePlugin("oadm.est", calls), new PluginOrigin("oadm.pki", "1.0.0", null)));
+        Assert.True(_registry.RegisterCorePlugin(new TestCorePlugin("oadm.pki", calls), new PluginOrigin("oadm.pki", "1.0.0", null)));
+        Assert.True(_registry.RegisterCorePlugin(new TestCorePlugin("oadm.radius", calls), new PluginOrigin("oadm.pki", "1.0.0", null)));
+
+        await _host.StartAllAsync(CancellationToken.None);
+
+        Assert.Equal(["start oadm.pki", "start oadm.est", "start oadm.radius"], calls);
+        Assert.Equal(["oadm.est", "oadm.pki", "oadm.radius"], _registry.CorePlugins.Select(p => p.Id)); // the rail keeps its order
+    }
+
+    [Fact]
     public async Task FaultingPluginIsIsolated()
     {
         var calls = new List<string>();

@@ -103,8 +103,8 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     /// The profiles name PKI's issuing policies: converts the profiles of OADM 4.1 once (<see cref="EstPolicies.ConvertAsync"/>)
     /// and tells PKI's store which policies they name (never deleted while named) and the profiles' names (Enrollment
     /// policies choose among them), also while the server is off; converts "Sign in with" and today's enrollment into Sign-in
-    /// CA and Enrollment policies once (<see cref="EstPolicies.ConvertRulesAsync"/>). PKI starts first (the core plugins of a
-    /// package start in name order); without its store nothing happens now.
+    /// CA and Enrollment policies once (<see cref="EstPolicies.ConvertRulesAsync"/>). PKI starts first (a package's main plugin starts before the others of
+    /// its package, CorePluginHost.StartOrder); without its store nothing happens now.
     /// </summary>
     internal static async Task FollowPoliciesAsync(ICorePluginContext ctx, CancellationToken ct)
     {
