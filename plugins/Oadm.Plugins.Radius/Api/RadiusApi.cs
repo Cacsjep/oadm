@@ -77,6 +77,25 @@ public static class RadiusMethods
     /// none). A certificate of a device outside a group user's devices answers like an unknown one.
     /// </summary>
     public const string GetIssuedCertificate = "getIssuedCertificate";
+
+    /// <summary>() -> <see cref="TrustedCaList"/>: PKI's CAs with this server's choice. A group user: an empty list.</summary>
+    public const string GetTrustedCas = "getTrustedCas";
+
+    /// <summary><see cref="TrustedCaSettings"/> -> <see cref="TrustedCaList"/>. Users with all devices.</summary>
+    public const string SaveTrustedCas = "saveTrustedCas";
+
+    /// <summary>() -> <see cref="PolicySettings"/>. A group user: empty settings.</summary>
+    public const string GetPolicies = "getPolicies";
+
+    /// <summary>
+    /// <see cref="PolicySettings"/> -> <see cref="PolicySettings"/>: the whole ordered list. Users with all devices; a new or
+    /// changed revoke policy also needs PKI's "Manage the certificate authority". Revoke policies revoke the current IEEE
+    /// 802.1X certificates of their devices with the save.
+    /// </summary>
+    public const string SavePolicies = "savePolicies";
+
+    /// <summary><see cref="PolicyDevices"/> -> <see cref="RevocationCount"/>: the IEEE 802.1X certificates a revoke policy would revoke now. Users with all devices.</summary>
+    public const string CountRevocations = "countRevocations";
 }
 
 /// <summary>The page's names of the methods beyond the first contract (the same values as <see cref="RadiusMethods"/>).</summary>
@@ -175,11 +194,12 @@ public static class RadiusLimits
     public const int MaxLogKept = 50_000;
     public const int MinFragment = 500;
     public const int MaxFragment = 1_400;
-    public const int DefaultFragment = 1_000;
+    public const int DefaultFragment = 1_020; // RFC 3748 3.1: the EAP MTU every link guarantees
     public const int MinVlan = 1;
     public const int MaxVlan = 4094;
     public const int MaxSwitches = 500;
     public const int MaxVlanRules = 100;
+    public const int MaxPolicies = 100;
     public const int MinSecretLength = 16;
     public const int MaxSecretLength = 128;
     public const int MaxNameLength = 64;
@@ -216,6 +236,114 @@ public static class VlanRuleKinds
 {
     public const string Site = "site";
     public const string Tag = "tag";
+}
+
+/// <summary>Kinds of <see cref="RadiusPolicy.Kind"/>.</summary>
+public static class PolicyKinds
+{
+    /// <summary>The devices get <see cref="RadiusPolicy.Vlan"/>; the first matching VLAN policy wins.</summary>
+    public const string Vlan = "vlan";
+
+    /// <summary>The devices are refused ("Blocked by policy Building C"); nothing is revoked.</summary>
+    public const string Block = "block";
+
+    /// <summary>The IEEE 802.1X certificates of the devices are revoked in PKI (on save and new ones while it exists).</summary>
+    public const string Revoke = "revoke";
+}
+
+/// <summary>
+/// The devices of a policy, chosen like a device group (the shared device picker's group mode): every device without a site
+/// (<see cref="ThisServer"/>), the devices of <see cref="SiteIds"/>, the devices with one of <see cref="Tags"/> (by name),
+/// single devices by serial, minus <see cref="ExceptSerials"/>.
+/// </summary>
+public sealed record PolicyDevices
+{
+    public bool ThisServer { get; init; }
+
+    public IReadOnlyList<Guid> SiteIds { get; init; } = [];
+
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>Serial numbers (12 hex digits, upper case).</summary>
+    public IReadOnlyList<string> Serials { get; init; } = [];
+
+    public IReadOnlyList<string> ExceptSerials { get; init; } = [];
+
+    /// <summary>No site, tag or device is chosen.</summary>
+    [JsonIgnore]
+    public bool IsEmpty => !ThisServer && (SiteIds?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && (Serials?.Count ?? 0) == 0;
+}
+
+/// <summary>One policy of the Policies card, in order.</summary>
+public sealed record RadiusPolicy
+{
+    /// <summary>Empty for a new policy (the server gives it an id).</summary>
+    public Guid Id { get; init; }
+
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>One of <see cref="PolicyKinds"/>.</summary>
+    public string Kind { get; init; } = PolicyKinds.Vlan;
+
+    /// <summary>The VLAN of a VLAN policy (1..4094); null for the other kinds.</summary>
+    public int? Vlan { get; init; }
+
+    public PolicyDevices Devices { get; init; } = new();
+
+    /// <summary>Set by the server: who saved a revoke policy (the user of its later revocations).</summary>
+    public string? SavedBy { get; init; }
+}
+
+/// <summary>The policies (<see cref="RadiusMethods.GetPolicies"/>, <see cref="RadiusMethods.SavePolicies"/>).</summary>
+public sealed record PolicySettings
+{
+    public IReadOnlyList<RadiusPolicy> Policies { get; init; } = [];
+
+    /// <summary>The VLAN of devices no VLAN policy matches; null = none. Applies only while a VLAN policy exists.</summary>
+    public int? DefaultVlan { get; init; }
+
+    /// <summary>Answers only (ignored on save): the tags a policy can name (those of the managed devices and of the policies).</summary>
+    public IReadOnlyList<TagChoice> TagChoices { get; init; } = [];
+}
+
+/// <summary>The answer of <see cref="RadiusMethods.CountRevocations"/>.</summary>
+public sealed record RevocationCount(int Count);
+
+/// <summary>One CA of the Trusted CAs card: PKI's CA and this server's choice. Previous OADM CAs follow the OADM CA (no rows).</summary>
+public sealed record TrustedCaRow
+{
+    /// <summary>PKI's id (<see cref="CertificateAuthorityInfo.Id"/>).</summary>
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
+
+    public CertificateAuthorityKind Kind { get; init; }
+
+    public DateTime NotAfterUtc { get; init; }
+
+    /// <summary>Checked: certificates it issued may pass.</summary>
+    public bool Trusted { get; init; }
+
+    /// <summary>"Only devices OADM manages" (default on).</summary>
+    public bool OnlyManaged { get; init; } = true;
+
+    /// <summary>The OADM CA: how many previous OADM CAs it covers.</summary>
+    public int PreviousCount { get; init; }
+}
+
+/// <summary>The answer of <see cref="RadiusMethods.GetTrustedCas"/>.</summary>
+public sealed record TrustedCaList
+{
+    public IReadOnlyList<TrustedCaRow> Cas { get; init; } = [];
+}
+
+/// <summary>A checked CA of <see cref="TrustedCaSettings"/>.</summary>
+public sealed record TrustedCaChoice(string Id, bool OnlyManaged = true);
+
+/// <summary>The checked CAs (<see cref="RadiusMethods.SaveTrustedCas"/>); a CA left out is not trusted.</summary>
+public sealed record TrustedCaSettings
+{
+    public IReadOnlyList<TrustedCaChoice> Cas { get; init; } = [];
 }
 
 /// <summary>Reasons of <see cref="RevokeRequest.Reason"/> (PKI's choices).</summary>
@@ -600,6 +728,65 @@ public static class RadiusRules
     public const string TooManyRules = "Use at most 100 rules.";
     public const string RuleTwice = "Another rule has this site or tag.";
     public const string TooManySwitches = "At most 500 switches.";
+    public const string PolicyNameTaken = "Another policy has this name.";
+    public const string ChoosePolicyKind = "Choose a kind.";
+    public const string ChoosePolicyDevices = "Choose sites, tags or devices.";
+    public const string TooManyPolicies = "Use at most 100 policies.";
+
+    /// <summary>The first error of the policies (field "policies[2].vlan", "defaultVlan"); null when they are fine.</summary>
+    public static RadiusFieldError? Validate(PolicySettings policies)
+    {
+        ArgumentNullException.ThrowIfNull(policies);
+        var list = policies.Policies ?? [];
+        if (list.Count > RadiusLimits.MaxPolicies)
+        {
+            return new("policies", TooManyPolicies);
+        }
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < list.Count; i++)
+        {
+            if (Validate(list[i]) is { } error)
+            {
+                return error with { Field = string.Create(CultureInfo.InvariantCulture, $"policies[{i}].{error.Field}") };
+            }
+
+            if (!names.Add(list[i].Name.Trim()))
+            {
+                return new(string.Create(CultureInfo.InvariantCulture, $"policies[{i}].name"), PolicyNameTaken);
+            }
+        }
+
+        return policies.DefaultVlan is < RadiusLimits.MinVlan or > RadiusLimits.MaxVlan ? new("defaultVlan", VlanRange) : null;
+    }
+
+    /// <summary>The first error of one policy (field name, kind, vlan or devices); null when it is fine.</summary>
+    public static RadiusFieldError? Validate(RadiusPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        var name = policy.Name?.Trim() ?? string.Empty;
+        if (name.Length == 0)
+        {
+            return new("name", EnterName);
+        }
+
+        if (name.Length > RadiusLimits.MaxNameLength)
+        {
+            return new("name", NameTooLong);
+        }
+
+        if (policy.Kind is not (PolicyKinds.Vlan or PolicyKinds.Block or PolicyKinds.Revoke))
+        {
+            return new("kind", ChoosePolicyKind);
+        }
+
+        if (policy.Kind == PolicyKinds.Vlan && policy.Vlan is not (>= RadiusLimits.MinVlan and <= RadiusLimits.MaxVlan))
+        {
+            return new("vlan", VlanRange);
+        }
+
+        return policy.Devices is null || policy.Devices.IsEmpty ? new("devices", ChoosePolicyDevices) : null;
+    }
 
     /// <summary>The first error of the settings; null when they are fine. <paramref name="listed"/>: the state's cipher suites.</summary>
     public static RadiusFieldError? Validate(RadiusSettings settings, IReadOnlyList<CipherSuiteOption> listed)
