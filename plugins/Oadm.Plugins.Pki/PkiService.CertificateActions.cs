@@ -729,6 +729,30 @@ public sealed partial class PkiService
         }
     }
 
+    /// <summary>
+    /// The outer structure of a PKCS#12 file (RFC 7292 PFX: version 3, then the content as data or signed data), read
+    /// without the password: tells a wrong password from a file that is no PKCS#12 file.
+    /// </summary>
+    internal static bool LooksLikePkcs12(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        try
+        {
+            var pfx = new AsnReader(bytes, AsnEncodingRules.BER).ReadSequence();
+            if (!pfx.TryReadInt32(out var version) || version != 3)
+            {
+                return false;
+            }
+
+            var contentType = pfx.ReadSequence().ReadObjectIdentifier();
+            return contentType is "1.2.840.113549.1.7.1" or "1.2.840.113549.1.7.2"; // data (password integrity), signedData
+        }
+        catch (AsnContentException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The one certificate with a key of a PKCS#12 file and its key (PKCS#8; the caller clears it), or the problem.</summary>
     private static (X509Certificate2? Leaf, byte[]? Key, string? Error) ReadPkcs12(byte[] bytes, string? password)
     {
@@ -741,7 +765,8 @@ public sealed partial class PkiService
         }
         catch (CryptographicException)
         {
-            return (null, null, CertificateFiles.WrongPassword);
+            // Only a file that is a PKCS#12 file asks for another password; anything else cannot be read.
+            return (null, null, LooksLikePkcs12(bytes) ? CertificateFiles.WrongPassword : CertificateRules.Unreadable);
         }
 
         try

@@ -140,6 +140,9 @@ public static class CertificateRules
 
     public const string NeedsAddress = "Enter at least one address.";
 
+    /// <summary>A file of Import that is no certificate and no PKCS#12 file (below File).</summary>
+    public const string Unreadable = "The file cannot be read.";
+
     /// <summary>The uses of Create and Sign request (an issuing policy of each).</summary>
     public static IReadOnlyList<string> Uses { get; } = [DeviceCertificatePurposes.Https, DeviceCertificatePurposes.Dot1x];
 

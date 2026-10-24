@@ -257,7 +257,16 @@ public sealed class CertificateListTests
         using var withKey = other.CopyWithPrivateKey(rsa);
         using var publicRoot = X509CertificateLoader.LoadCertificate(root.RawData);
         var pfx = TestCa.Pfx(FilePassword, withKey, publicRoot); // with its chain
-        Assert.Equal(CertificateFiles.WrongPassword, (await ImportAsync(pfx, "wrong password")).Errors![CertificateFields.Password]);
+        // Only a PKCS#12 file asks for another password (below Password); a file that is none cannot be read (below File).
+        var wrong = await ImportAsync(pfx, "wrong password");
+        Assert.Equal(new KeyValuePair<string, string>(CertificateFields.Password, CertificateFiles.WrongPassword), Assert.Single(wrong.Errors!));
+        foreach (var unreadable in new[] { TestCa.Ascii("nonsense"), [0x30, 0x03, 0x02, 0x01, 0x05], pfx[..(pfx.Length / 2)] })
+        {
+            var refused = await ImportAsync(unreadable, FilePassword);
+            Assert.Equal(new KeyValuePair<string, string>(CertificateFields.File, CertificateRules.Unreadable), Assert.Single(refused.Errors!));
+        }
+
+        Assert.True(PkiService.LooksLikePkcs12(pfx));
         var imported = await ImportAsync(pfx, FilePassword);
         Assert.True(imported.Ok, imported.Error ?? string.Join(", ", imported.Errors?.Values ?? []));
         Assert.True((await PageAsync(pki)).Rows.Single(r => r.Id == imported.Id).HasKey);

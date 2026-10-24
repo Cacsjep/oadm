@@ -385,7 +385,9 @@ fits the spec; to be confirmed by the maintainer).
   device certificate"). Fail closed: also when such a certificate was found on a device and listed in the registry.
 - **Import** (`importCertificate`): one PEM or DER certificate, or a PKCS#12 file with exactly one certificate with its key
   (RSA or ECC; the chain in it is not kept). Refused (decision of stage 5): CA certificates ("Use Import CA"), expired ones,
-  a PEM with a private key, several certificates in one PEM, one already listed. Use from the extended key usage: server ->
+  a PEM with a private key, several certificates in one PEM, one already listed. A wrong password shows below Password only
+  for a PKCS#12 file (its outer structure read without the password, `LooksLikePkcs12`); any other file "The file cannot be
+  read." below File. Use from the extended key usage: server ->
   HTTPS, client -> IEEE 802.1X, else Other.
 - **Export** (download `downloadCertificate`, audited with "Export certificate <name> (<format>)"): PEM or DER of the
   certificate only (no chain); PKCS#12 only of certificates created or imported with a key, with the issuing CA, AES-256,
