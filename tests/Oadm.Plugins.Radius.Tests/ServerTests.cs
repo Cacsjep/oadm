@@ -343,7 +343,8 @@ public sealed class ServerTests
     [Fact]
     public async Task TheServerCertificateIsKeptAcrossRestartsAndRenewed30DaysBeforeItEnds()
     {
-        await using var harness = await PluginHarness.CreateAsync();
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         var first = (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).ServerCertificate!;
         Assert.Equal(1, harness.Ca.SignCount);
         var stored = harness.Ctx.PluginSettings.Values[RadiusStore.ServerCertificateKey];
@@ -355,6 +356,10 @@ public sealed class ServerTests
         Assert.Equal(first.NotAfterUtc, again.NotAfterUtc);
         Assert.Equal(first.Names, again.Names);
         Assert.Equal(1, harness.Ca.SignCount);
+
+        // The stored certificate also reaches the handshakes after the restart (it once showed on the page while every
+        // camera got "The 802.1X server has no certificate").
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final);
 
         // 29 days before its end (stopped meanwhile: the clock jumps without running a year of ticks).
         await harness.Plugin.StopAsync(CancellationToken.None);

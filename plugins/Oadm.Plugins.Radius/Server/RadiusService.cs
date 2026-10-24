@@ -1571,7 +1571,10 @@ public sealed partial class RadiusService : IAsyncDisposable
 
             try
             {
-                if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false))
+                // Also when nothing new was made: after a start the keeper loads the stored certificate, which the
+                // handshakes must get too (they started without one).
+                if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false)
+                    || !ReferenceEquals(_processor.Options.ServerIdentity, _identity.Identity))
                 {
                     _processor.Options = OptionsOf(_config, _identity.Identity);
                     PublishState();
@@ -2166,14 +2169,14 @@ public sealed partial class RadiusService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "802.1X server: request from {Remote} ({Where}) dropped, no switch has this address ({Count} so far)")]
     private partial void LogUnknownSwitch(IPEndPoint remote, string where, long count);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "802.1X server: request of switch {Switch} from {Remote} dropped: {Drop} {Detail}")]
-    private partial void LogDropped(string @switch, IPEndPoint remote, RadiusDropReason drop, string detail);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "802.1X server: request of switch {SwitchName} from {Remote} dropped: {Drop} {Detail}")]
+    private partial void LogDropped(string switchName, IPEndPoint remote, RadiusDropReason drop, string detail);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X: {Device} authenticated on {Switch} port {Port}, VLAN {Vlan} {Warning}")]
-    private partial void LogAuthenticated(string @switch, string port, string device, string vlan, string warning);
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X: {Device} authenticated on {SwitchName} port {Port}, VLAN {Vlan} {Warning}")]
+    private partial void LogAuthenticated(string switchName, string port, string device, string vlan, string warning);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X: {Device} failed on {Switch} port {Port}: {Reason}")]
-    private partial void LogFailed(string @switch, string port, string device, string reason);
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X: {Device} failed on {SwitchName} port {Port}: {Reason}")]
+    private partial void LogFailed(string switchName, string port, string device, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: a request failed")]
     private partial void LogHandleFailed(Exception ex);
@@ -2184,11 +2187,11 @@ public sealed partial class RadiusService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: the session tick failed")]
     private partial void LogTickFailed(Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: the shared secret of switch {Switch} cannot be read; save the switch again")]
-    private partial void LogSecretUnreadable(string @switch);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: the shared secret of switch {SwitchName} cannot be read; save the switch again")]
+    private partial void LogSecretUnreadable(string switchName);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: switch {Switch} ({Address}, {Site}) {Change}")]
-    private partial void LogSwitchSaved(string change, string @switch, string address, string site);
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: switch {SwitchName} ({Address}, {Site}) {Change}")]
+    private partial void LogSwitchSaved(string change, string switchName, string address, string site);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server settings saved: port {Port}, minimum TLS {MinimumTls}, {Suites} cipher suites")]
     private partial void LogSettingsSaved(int port, string minimumTls, int suites);
