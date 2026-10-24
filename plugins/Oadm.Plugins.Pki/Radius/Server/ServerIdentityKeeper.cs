@@ -57,6 +57,10 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             {
                 _loaded = true;
                 _current = Load(await store.ServerCertificateAsync(ct).ConfigureAwait(false));
+                if (_current is { } loaded && authority() is Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki)
+                {
+                    pki.NoteServerCertificate(loaded.Leaf, loaded.CaCertificate); // PKI's Certificates list shows it as used by this server
+                }
             }
 
             if (authority() is not { IsReady: true } ca || ca.Chain.Count == 0)
@@ -101,7 +105,8 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
         var commonName = dns.FirstOrDefault() ?? ips.FirstOrDefault() ?? "OADM 802.1X server";
         var csr = new CertificateRequest("CN=" + commonName, key, HashAlgorithmName.SHA256).CreateSigningRequest();
         var validity = Policy() is { ValidDays: > 0 and var days } ? TimeSpan.FromDays(days) : Validity;
-        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, ips, dns, DeviceCertificateUse.Server) { Validity = validity }, ct)
+        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, ips, dns, DeviceCertificateUse.Server)
+            { Validity = validity, Source = Oadm.Plugins.Pki.Certificates.ServerCertificateSources.Dot1x }, ct)
             .ConfigureAwait(false);
         var pkcs8 = key.ExportPkcs8PrivateKey();
         try
@@ -109,7 +114,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             List<byte[]> chain = [issued.Certificate, .. issued.Chain];
             var identity = TlsServerIdentity.Create(chain, pkcs8);
             using var leaf = X509CertificateLoader.LoadCertificate(issued.Certificate);
-            var current = new Current(identity, issued.NotAfterUtc, names, issued.Chain.Count > 0 ? issued.Chain[0] : [], leaf.NotAfter.ToUniversalTime() - leaf.NotBefore.ToUniversalTime());
+            var current = new Current(identity, issued.NotAfterUtc, names, issued.Chain.Count > 0 ? issued.Chain[0] : [], leaf.NotAfter.ToUniversalTime() - leaf.NotBefore.ToUniversalTime(), issued.Certificate);
             var stored = secrets is null ? null : new StoredServerCertificate
             {
                 Chain = [.. chain.Select(Convert.ToBase64String)],
@@ -138,7 +143,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
             var chain = stored.Chain.Select(Convert.FromBase64String).ToList();
             pkcs8 = Convert.FromBase64String(secrets.Unprotect(stored.KeyProtected, KeyPurpose));
             using var leaf = X509CertificateLoader.LoadCertificate(chain[0]);
-            return new Current(TlsServerIdentity.Create(chain, pkcs8), leaf.NotAfter.ToUniversalTime(), [.. stored.Names], chain[1], leaf.NotAfter.ToUniversalTime() - leaf.NotBefore.ToUniversalTime());
+            return new Current(TlsServerIdentity.Create(chain, pkcs8), leaf.NotAfter.ToUniversalTime(), [.. stored.Names], chain[1], leaf.NotAfter.ToUniversalTime() - leaf.NotBefore.ToUniversalTime(), chain[0]);
         }
 #pragma warning disable CA1031 // A damaged or foreign value (another master key after a restore) only means a new certificate.
         catch (Exception)
@@ -160,5 +165,5 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: new server certificate from the OADM CA, valid until {NotAfter:yyyy-MM-dd} ({Names})")]
     private partial void LogIssued(DateTime notAfter, string names);
 
-    private sealed record Current(TlsServerIdentity Identity, DateTime NotAfterUtc, IReadOnlyList<string> Names, byte[] CaCertificate, TimeSpan Lifetime);
+    private sealed record Current(TlsServerIdentity Identity, DateTime NotAfterUtc, IReadOnlyList<string> Names, byte[] CaCertificate, TimeSpan Lifetime, byte[] Leaf);
 }

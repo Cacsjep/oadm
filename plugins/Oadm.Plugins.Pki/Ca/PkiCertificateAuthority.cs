@@ -45,6 +45,10 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
 
     public bool IsRevoked(string serialNumber) => service.Issued.IsRevoked(serialNumber);
 
+    /// <summary>The 802.1X server read its stored certificate at its start: the Certificates list shows it as used by that server.</summary>
+    public void NoteServerCertificate(byte[] leaf, byte[] caCertificate) =>
+        service.NoteServerCertificate(Certificates.ServerCertificateSources.Dot1x, leaf, Convert.ToHexString(SHA256.HashData(caCertificate)));
+
     public string? PurposeOf(string serialNumber) => service.Issued.Find(serialNumber)?.Purpose;
 
     public CertificateRevocation? FindRevocation(string serialNumber) => service.Issued.FindRevocation(serialNumber);
@@ -117,6 +121,11 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
                     IssuedUtc = service.Time.GetUtcNow().UtcDateTime,
                     Source = request.Source,
                 }, signed.RawData, ct).ConfigureAwait(false);
+            }
+            else if (request.Use == DeviceCertificateUse.Server)
+            {
+                // A certificate of an OADM server (802.1X, EST): listed as used by it.
+                service.NoteServerCertificate(request.Source, signed.RawData, ca.Id);
             }
 
             return new IssuedDeviceCertificate(signed.RawData, [ca.Certificate.RawData, .. ca.Chain.Select(c => c.RawData)], serial, notAfter);
