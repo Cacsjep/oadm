@@ -78,7 +78,7 @@ public sealed class RevocationTests
             var next = events.MoveNextAsync();
             await Wait.UntilAsync(() => pki.Hub.WatcherCount(PkiPluginInfo.PluginId) == 1);
 
-            var reply = await pki.InvokeAsync<RevokeReply>(PkiMethods.Revoke, new RevokeRequest([serial, "0BAD"], RevocationReason.KeyCompromised));
+            var reply = await pki.InvokeAsync<RevokeReply>(PkiMethods.Revoke, new RevokeRequest([serial, "no serial"], RevocationReason.KeyCompromised));
 
             Assert.Equal((1, 0, 1), (reply.Revoked, reply.AlreadyRevoked, reply.NotFound));
             Assert.True(authority.IsRevoked(serial));
@@ -210,6 +210,49 @@ public sealed class ExistingCertificateImportTests
 
         await import.RunAsync(CancellationToken.None);
         Assert.Single(system.Asked); // done once per server
+    }
+
+    [Fact]
+    public async Task A_round_that_reached_no_device_is_not_done_and_runs_again_later()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var settings = pki.Settings;
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var device = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.48", "B8A44F631339");
+        var cameras = new Dictionary<Guid, FakeCamera>(); // offline at first
+        var system = new FakeSystem([device], cameras);
+        var import = new ExistingCertificateImport(pki.Service, system, settings, time, TimeSpan.Zero, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
+        {
+            RetryInterval = TimeSpan.FromHours(1),
+        };
+
+        var run = import.RunAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => system.Asked.Count == 1, "the first round");
+        Assert.Null(await settings.GetAsync(ExistingCertificateImport.DoneKey, CancellationToken.None)); // not done: nothing was read
+
+        var camera = new FakeCamera();
+        using var issued = RevocationTests.Issue(pki.Service.Ca!, "B8A44F631339", client: true);
+        camera.AddCertificate("oadm_dot1x", CaCertificates.ToPem(issued));
+        cameras[device.Id] = camera;
+        await Eventually.TrueAsync(() =>
+        {
+            time.Advance(TimeSpan.FromHours(1)); // the next round, an hour later
+            return run.IsCompleted;
+        }, "the second round");
+        await run;
+
+        Assert.Equal(2, system.Asked.Count);
+        Assert.Single(pki.Service.Issued.ForDevice(device.Id));
+        Assert.NotNull(await settings.GetAsync(ExistingCertificateImport.DoneKey, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_server_without_devices_is_done_at_once()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var import = new ExistingCertificateImport(pki.Service, new FakeSystem([], []), pki.Settings, TimeProvider.System, TimeSpan.Zero, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        await import.RunAsync(CancellationToken.None);
+        Assert.NotNull(await pki.Settings.GetAsync(ExistingCertificateImport.DoneKey, CancellationToken.None));
     }
 
     private sealed class FakeSystem(IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> devices, Dictionary<Guid, FakeCamera> cameras) : ISystemAccess, Oadm.Sdk.Devices.IDeviceRepository, Oadm.Sdk.Vapix.IVapixClientFactory

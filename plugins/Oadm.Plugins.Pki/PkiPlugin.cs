@@ -1,4 +1,5 @@
 using Oadm.Plugins.Pki.Ca;
+using Oadm.Plugins.Pki.Device;
 using Oadm.Plugins.Pki.Tasks;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Certificates;
@@ -66,13 +67,19 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
         var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger, ctx.DeviceScopes, ctx.Records,
             token => system.Devices.ListAsync(token));
         await service.StartAsync(ct).ConfigureAwait(false);
+        service.DeviceCertificateReader = async (device, token) =>
+        {
+            var vapix = await system.Vapix.CreateAsync(device.Id, token).ConfigureAwait(false);
+            var list = await CertApi.ListCertificatesAsync(vapix, token).ConfigureAwait(false);
+            return [.. list.Select(c => (c.Alias, c.Pem))];
+        };
         _service = service;
         ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
 
         // Certificates of the OADM CAs from before the list of issued certificates: one pass over the devices, in the background.
         var stopping = new CancellationTokenSource();
         _importStop = stopping;
-        var import = new ExistingCertificateImport(service, system, ctx.Settings, _options.Time, _options.ExistingImportDelay, ctx.Logger);
+        var import = new ExistingCertificateImport(service, system, ctx.Settings, _options.Time, _options.ExistingImportDelay, ctx.Logger) { RetryInterval = _options.ExistingImportRetry };
         _import = Task.Run(() => import.RunAsync(stopping.Token), CancellationToken.None);
     }
 

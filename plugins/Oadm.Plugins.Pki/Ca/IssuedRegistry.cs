@@ -50,7 +50,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     private readonly HashSet<string> _dirtyIssued = new(StringComparer.Ordinal);
     private readonly Dictionary<string, byte[]?> _pendingDer = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dirtyRevoked = new(StringComparer.Ordinal);
-    private List<(string Key, IssuedCertificate Entry)> _ordered = [];
+    private List<string> _ordered = []; // keys; the entries are in _bySerial (an entry can be replaced in place)
     private bool _orderDirty;
     private bool _flushScheduled;
     private bool _loaded;
@@ -72,6 +72,12 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
     /// <summary>How often old certificates and revocations are dropped (also at the start).</summary>
     public TimeSpan PruneInterval { get; init; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// The end of validity kept for a revoked serial the list does not hold (a certificate of the OADM CA from before the list
+    /// that no read found): the latest end any OADM CA allows. Null or unset: kept until the list is cleared.
+    /// </summary>
+    public Func<DateTime?>? UnknownNotAfter { get; set; }
 
     /// <summary>Raised (outside the lock, on the caller's thread) after certificates were added, revoked or dropped.</summary>
     public event EventHandler? Changed;
@@ -131,7 +137,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     var key = CertificateSerials.Normalize(entry.SerialNumber);
                     if (!_bySerial.ContainsKey(key))
                     {
-                        Index(entry);
+                        Index(entry with { NoCopy = true }); // OADM 4.1 kept no DER: the next read of the device fills it
                         _dirtyIssued.Add(key);
                     }
                 }
@@ -289,8 +295,15 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
             using (certificate)
             {
-                if (Find(certificate.SerialNumber) is not null || SignedBy(certificate, cas) is not { } ca)
+                var listed = Find(certificate.SerialNumber);
+                if ((listed is not null && !listed.NoCopy) || SignedBy(certificate, cas) is not { } ca)
                 {
+                    continue;
+                }
+
+                if (listed is not null)
+                {
+                    FillCopy(listed, certificate); // an entry of OADM 4.1: its certificate copy from the device
                     continue;
                 }
 
@@ -335,6 +348,53 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             .Distinct(StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// A PKI task deleted the certificate from the device: it stays listed (a copy could still be in use) and shows as Replaced.
+    /// Unknown serials are ignored.
+    /// </summary>
+    public void MarkRemovedFromDevice(string serialNumber)
+    {
+        var changed = false;
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(serialNumber);
+            if (_bySerial.TryGetValue(key, out var entry) && entry.RemovedFromDeviceUtc is null)
+            {
+                ReplaceLocked(key, entry with { RemovedFromDeviceUtc = Now });
+                changed = true;
+                ScheduleFlush();
+            }
+        }
+
+        if (changed)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Stores the certificate copy (and the start and device serial it lacked) of an entry moved from OADM 4.1.</summary>
+    private void FillCopy(IssuedCertificate listed, X509Certificate2 certificate)
+    {
+        var names = AxisSerials(certificate);
+        lock (_gate)
+        {
+            var key = CertificateSerials.Normalize(listed.SerialNumber);
+            if (!_bySerial.TryGetValue(key, out var entry) || !entry.NoCopy)
+            {
+                return;
+            }
+
+            ReplaceLocked(key, entry with
+            {
+                NoCopy = false,
+                NotBeforeUtc = entry.NotBeforeUtc ?? certificate.NotBefore.ToUniversalTime(),
+                DeviceSerial = entry.DeviceSerial ?? (names.Count == 1 ? names[0] : null),
+            });
+            _pendingDer[key] = certificate.RawData;
+            ScheduleFlush();
+        }
+    }
+
     // ------------------------------------------------------------------ revocation
 
     /// <summary>True when the certificate is on the revocation list (any notation of the serial). Lock-free.</summary>
@@ -347,14 +407,17 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     public IReadOnlyList<CertificateRevocation> Revocations => [.. _revokedView.Values.OrderByDescending(r => r.RevokedUtc).ThenBy(r => r.SerialNumber, StringComparer.Ordinal)];
 
     /// <summary>
-    /// Revokes listed certificates that are still valid (no undo, a revocation is never changed) and writes the list before
-    /// it returns. Unknown and expired ones are counted as not found.
+    /// Revokes certificates that are still valid (no undo, a revocation is never changed) and writes the list before it returns.
+    /// A serial the list does not hold is revoked too (a certificate of the OADM CA from before the list that no read found),
+    /// kept until <see cref="UnknownNotAfter"/>. Listed ones that ended, and text that is no serial number (not hex, longer
+    /// than 20 bytes), are counted as not found.
     /// </summary>
     public async Task<RevokeResult> RevokeAsync(IEnumerable<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(serialNumbers);
         ArgumentException.ThrowIfNullOrWhiteSpace(userName);
         var now = Now;
+        var unknownUntil = UnknownNotAfter?.Invoke() is { } end && end > now ? end : DateTime.MaxValue;
         int revoked = 0, already = 0, missing = 0;
         lock (_gate)
         {
@@ -364,15 +427,28 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                 {
                     already++;
                 }
-                else if (!_bySerial.TryGetValue(key, out var entry) || entry.NotAfterUtc <= now)
+                else if (_bySerial.TryGetValue(key, out var entry))
                 {
-                    missing++;
+                    if (entry.NotAfterUtc <= now)
+                    {
+                        missing++;
+                    }
+                    else
+                    {
+                        _revoked[key] = new CertificateRevocation(key, now, reason, userName) { DeviceId = entry.DeviceId, NotAfterUtc = entry.NotAfterUtc };
+                        _dirtyRevoked.Add(key);
+                        revoked++;
+                    }
+                }
+                else if (IsSerialNumber(key))
+                {
+                    _revoked[key] = new CertificateRevocation(key, now, reason, userName) { NotAfterUtc = unknownUntil };
+                    _dirtyRevoked.Add(key);
+                    revoked++;
                 }
                 else
                 {
-                    _revoked[key] = new CertificateRevocation(key, now, reason, userName) { DeviceId = entry.DeviceId, NotAfterUtc = entry.NotAfterUtc };
-                    _dirtyRevoked.Add(key);
-                    revoked++;
+                    missing++;
                 }
             }
 
@@ -438,13 +514,14 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         {
             if (_orderDirty)
             {
-                _ordered.Sort((a, b) => Compare(a.Entry, b.Entry));
+                _ordered.Sort((a, b) => Compare(_bySerial[a], _bySerial[b]));
                 _orderDirty = false;
             }
 
             for (var i = _ordered.Count - 1; i >= 0; i--)
             {
-                var (key, entry) = _ordered[i];
+                var key = _ordered[i];
+                var entry = _bySerial[key];
                 var device = devices.GetValueOrDefault(entry.DeviceId);
                 if ((onlyListedDevices && device is null)
                     || (query.DeviceIds is { } ids && !ids.Contains(entry.DeviceId))
@@ -523,7 +600,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             if (old.Count > 0)
             {
                 var gone = old.ToHashSet(StringComparer.Ordinal);
-                _ordered = [.. _ordered.Where(e => !gone.Contains(e.Key))];
+                _ordered = [.. _ordered.Where(k => !gone.Contains(k))];
             }
 
             var ended = _revoked.Where(p => p.Value.NotAfterUtc <= now).Select(p => p.Key).ToList();
@@ -726,10 +803,11 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             return IssuedCertificateState.Expired;
         }
 
-        if (_newest.TryGetValue((entry.DeviceId, entry.Purpose ?? string.Empty), out var newest)
-            && !string.Equals(CertificateSerials.Normalize(newest.SerialNumber), key, StringComparison.Ordinal))
+        if (entry.RemovedFromDeviceUtc is not null
+            || (_newest.TryGetValue((entry.DeviceId, entry.Purpose ?? string.Empty), out var newest)
+                && !string.Equals(CertificateSerials.Normalize(newest.SerialNumber), key, StringComparison.Ordinal)))
         {
-            return IssuedCertificateState.Replaced;
+            return IssuedCertificateState.Replaced; // a newer one exists, or a task deleted it from the device
         }
 
         return entry.NotAfterUtc <= nowUtc.AddDays(warningDays) ? IssuedCertificateState.ExpiresSoon : IssuedCertificateState.Valid;
@@ -752,9 +830,26 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
             _newest[newestKey] = entry;
         }
 
-        _ordered.Add((key, entry));
-        _orderDirty |= _ordered.Count > 1 && Compare(_ordered[^2].Entry, entry) > 0;
+        _ordered.Add(key);
+        _orderDirty |= _ordered.Count > 1 && Compare(_bySerial[_ordered[^2]], entry) > 0;
     }
+
+    /// <summary>Replaces an entry in place (same serial, device, use and issue time; inside the gate) and marks it for writing.</summary>
+    private void ReplaceLocked(string key, IssuedCertificate updated)
+    {
+        var old = _bySerial[key];
+        _bySerial[key] = updated;
+        var newestKey = (old.DeviceId, old.Purpose ?? string.Empty);
+        if (_newest.TryGetValue(newestKey, out var newest) && ReferenceEquals(newest, old))
+        {
+            _newest[newestKey] = updated;
+        }
+
+        _dirtyIssued.Add(key);
+    }
+
+    /// <summary>A normalized serial number: hex digits, at most 20 bytes (RFC 5280 4.1.2.2).</summary>
+    private static bool IsSerialNumber(string key) => key.Length is > 0 and <= 40 && key.All(Uri.IsHexDigit);
 
     private void Unindex(string key)
     {

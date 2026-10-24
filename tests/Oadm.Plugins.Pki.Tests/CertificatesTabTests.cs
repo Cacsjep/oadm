@@ -38,9 +38,9 @@ internal sealed class FakeCertificateDialogs : IIssuedCertificatesDialogs
 /// <summary>The Certificates tab of the PKI page (view model against the running plugin).</summary>
 public sealed class CertificatesTabTests
 {
-    private static async Task<(PkiHarness Pki, Guid Device, string Https, string Dot1x)> StartWithCertificatesAsync()
+    private static async Task<(PkiHarness Pki, Guid Device, string Https, string Dot1x)> StartWithCertificatesAsync(TimeProvider? time = null)
     {
-        var pki = await PkiHarness.StartAsync();
+        var pki = await PkiHarness.StartAsync(time: time);
         IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
         var device = Guid.NewGuid();
         var https = (await RevocationTests.SignAsync(authority, device, source: null)).SerialNumber;
@@ -120,11 +120,12 @@ public sealed class CertificatesTabTests
     [Fact]
     public async Task Revoke_asks_with_the_reason_revokes_the_chosen_rows_and_reads_the_page_again()
     {
-        var (pki, device, https, dot1x) = await StartWithCertificatesAsync();
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow); // the server's and the window's clock: no midnight in between
+        var (pki, device, https, dot1x) = await StartWithCertificatesAsync(time);
         await using var _ = pki;
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var dialogs = new FakeCertificateDialogs { Answer = null };
-        var tab = new IssuedCertificatesViewModel(ctx) { Dialogs = dialogs };
+        var tab = new IssuedCertificatesViewModel(ctx, time) { Dialogs = dialogs };
         await tab.LoadAsync();
         Assert.False(tab.RevokeCommand.CanExecute(null)); // nothing chosen
         tab.SetSelection(tab.Rows.Where(r => r.Source.SerialNumber == CertificateSerials.Normalize(https)));
@@ -149,7 +150,7 @@ public sealed class CertificatesTabTests
         await tab.ViewCertificateCommand.ExecuteAsync(null);
         var shown = Assert.Single(dialogs.Shown);
         Assert.True(shown.IsRevoked);
-        Assert.Equal("Certificate revoked on " + DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + " (Device replaced)", shown.ValidityText);
+        Assert.Equal("Certificate revoked on " + time.GetUtcNow().ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + " (Device replaced)", shown.ValidityText);
 
         // Revoke all of this device: the IEEE 802.1X one too.
         await tab.RevokeDeviceCommand.ExecuteAsync(tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(dot1x)));

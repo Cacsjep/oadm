@@ -17,7 +17,7 @@ public sealed class RevokedRowViewModel(RevokedRow source)
     public RevokedRow Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
 
     /// <summary>The device's address, "(removed)" for a device OADM no longer manages.</summary>
-    public string Device => Source.DeviceName.Length > 0 ? Source.DeviceName : "Device (removed)";
+    public string Device => Source.DeviceName.Length > 0 ? Source.DeviceName : Source.DeviceId is null ? IssuedCertificateTexts.UnknownDevice : IssuedCertificateTexts.RemovedDevice(null);
 
     /// <summary>"7D FD 05 ..." like the certificate window.</summary>
     public string SerialNumber => IssuedCertificateTexts.Pairs(Source.SerialNumber);
@@ -73,7 +73,7 @@ internal sealed class RadiusCertificateSource(ICorePluginClientContext ctx) : II
     {
         var reply = RadiusJson.Deserialize<LogCertificate>(await ctx.InvokeAsync(RadiusPageMethods.GetIssuedCertificate, RadiusJson.Serialize(new SerialRequest(serialNumber)), ct).ConfigureAwait(true));
         return string.IsNullOrEmpty(reply.Der)
-            ? new IssuedCertificateDetails(null, null, "OADM keeps no copy of this certificate.")
+            ? new IssuedCertificateDetails(null, null, IssuedCertificateTexts.NoCopy)
             : new IssuedCertificateDetails(CertificateDescriber.Describe(Convert.FromBase64String(reply.Der)), null, null);
     }
 }
@@ -130,15 +130,19 @@ public sealed partial class RevokePickerViewModel : IssuedCertificateListViewMod
 
 /// <summary>
 /// The Revoked tab (docs/spec/radius-server.md "Certificates and revocation"): the revoked certificates of PKI's list
-/// (a second door to it) with a search, and Revoke, which opens the certificate choice and revokes the chosen ones with a
-/// reason (users with all devices).
+/// (a second door to it), 500 per page from the server with the search (300 ms after the last key), and Revoke, which opens
+/// the certificate choice and revokes the chosen ones with a reason (users with all devices).
 /// </summary>
 public sealed partial class RevokedViewModel : ObservableObject
 {
+    /// <summary>Rows per page (the server answers at most 500).</summary>
+    public const int PageSize = 500;
+
     private readonly ICorePluginClientContext _ctx;
     private readonly Func<bool> _mayManage;
     private readonly TimeProvider? _time;
-    private List<RevokedRowViewModel> _all = [];
+    private CancellationTokenSource? _searchDelay;
+    private int _readVersion;
     private bool _loadedOnce;
 
     public RevokedViewModel(ICorePluginClientContext ctx, Func<bool> mayManage, TimeProvider? time = null)
@@ -150,13 +154,34 @@ public sealed partial class RevokedViewModel : ObservableObject
 
     public IRevokeDialogs? Dialogs { get; set; }
 
-    /// <summary>Newest revocation first, filtered by <see cref="Search"/>.</summary>
+    /// <summary>The shown page, newest revocation first.</summary>
     public RangeObservableCollection<RevokedRowViewModel> Rows { get; } = [];
 
     public bool IsLoaded => _loadedOnce;
 
+    /// <summary>Wait after typing in the search before the server is asked.</summary>
+    public TimeSpan SearchDelay { get; init; } = TimeSpan.FromMilliseconds(300);
+
     [ObservableProperty]
     public partial string Search { get; set; } = string.Empty;
+
+    /// <summary>How many match the search.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageText), nameof(HasPages), nameof(CountText), nameof(EmptyText))]
+    [NotifyCanExecuteChangedFor(nameof(PreviousPageCommand), nameof(NextPageCommand))]
+    public partial int Total { get; set; }
+
+    /// <summary>The first row of the shown page.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageText))]
+    [NotifyCanExecuteChangedFor(nameof(PreviousPageCommand), nameof(NextPageCommand))]
+    public partial int Offset { get; set; }
+
+    /// <summary>"1-500 of 12,345"; empty without rows.</summary>
+    public string PageText => Total == 0 ? string.Empty
+        : string.Create(CultureInfo.CurrentCulture, $"{Offset + 1:N0}-{Math.Min(Offset + PageSize, Total):N0} of {Total:N0}");
+
+    public bool HasPages => Total > PageSize;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -172,15 +197,19 @@ public sealed partial class RevokedViewModel : ObservableObject
 
     public bool MayManage => _mayManage();
 
-    /// <summary>"3 certificates revoked".</summary>
-    public string CountText => RadiusTexts.Count(_all.Count, "certificate revoked", "certificates revoked");
+    /// <summary>"3 certificates revoked", with a search "2 certificates match".</summary>
+    public string CountText => string.IsNullOrWhiteSpace(Search)
+        ? RadiusTexts.Count(Total, "certificate revoked", "certificates revoked")
+        : RadiusTexts.Count(Total, "certificate matches", "certificates match");
 
     public string? EmptyText => Rows.Count > 0 || !_loadedOnce ? null
-        : _all.Count > 0 ? "No certificate matches the search."
+        : !string.IsNullOrWhiteSpace(Search) ? "No certificate matches the search."
         : "No certificate is revoked.";
 
+    /// <summary>Reads the page at <see cref="Offset"/> with the search (the overlay the first time, then the progress row).</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
+        var version = ++_readVersion;
         if (_loadedOnce)
         {
             IsReloading = true;
@@ -192,11 +221,31 @@ public sealed partial class RevokedViewModel : ObservableObject
 
         try
         {
-            var list = RadiusJson.Deserialize<RevokedPage>(await _ctx.InvokeAsync(RadiusMethods.ListRevoked, null, ct).ConfigureAwait(true));
-            _all = [.. list.Rows.OrderByDescending(r => r.RevokedUtc).Select(r => new RevokedRowViewModel(r))];
+            var search = string.IsNullOrWhiteSpace(Search) ? null : Search.Trim();
+            var query = new RevokedQuery(search, Offset, PageSize);
+            var page = RadiusJson.Deserialize<RevokedPage>(await _ctx.InvokeAsync(RadiusMethods.ListRevoked, RadiusJson.Serialize(query), ct).ConfigureAwait(true));
+            if (version != _readVersion)
+            {
+                return; // a newer read (search, page) answers
+            }
+
+            var rows = page.Rows.Select(r => new RevokedRowViewModel(r)).ToList();
+            var total = page.Total;
+            if (total == 0 && rows.Count > 0)
+            {
+                // A server part without pages sends every row: the search and the page are applied here.
+                rows = [.. rows.Where(r => search is null || r.Matches(search)).OrderByDescending(r => r.RevokedSortKey)];
+                total = rows.Count;
+                rows = [.. rows.Skip(Offset).Take(PageSize)];
+            }
+
+            Rows.ReplaceAll(rows); // one grid reset
             _loadedOnce = true;
             Error = null;
-            Filter();
+            Total = total;
+            OnPropertyChanged(nameof(EmptyText));
+            OnPropertyChanged(nameof(CountText));
+            OnPropertyChanged(nameof(IsLoaded));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -205,13 +254,37 @@ public sealed partial class RevokedViewModel : ObservableObject
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            Error = "Cannot read the revoked certificates: " + ServerErrors.Message(ex);
+            if (version == _readVersion)
+            {
+                Error = "Cannot read the revoked certificates: " + ServerErrors.Message(ex);
+            }
         }
         finally
         {
-            IsLoading = false;
-            IsReloading = false;
+            if (version == _readVersion)
+            {
+                IsLoading = false;
+                IsReloading = false;
+            }
         }
+    }
+
+    private bool CanPrevious() => Offset > 0;
+
+    [RelayCommand(CanExecute = nameof(CanPrevious))]
+    private Task PreviousPageAsync()
+    {
+        Offset = Math.Max(0, Offset - PageSize);
+        return LoadAsync();
+    }
+
+    private bool CanNext() => Offset + PageSize < Total;
+
+    [RelayCommand(CanExecute = nameof(CanNext))]
+    private Task NextPageAsync()
+    {
+        Offset += PageSize;
+        return LoadAsync();
     }
 
     internal void NotifyRole()
@@ -220,16 +293,30 @@ public sealed partial class RevokedViewModel : ObservableObject
         RevokeCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnSearchChanged(string value) => Filter();
-
-    /// <summary>One pass and one grid reset.</summary>
-    private void Filter()
+    partial void OnSearchChanged(string value)
     {
-        var search = Search.Trim();
-        Rows.ReplaceAll(search.Length == 0 ? _all : _all.Where(r => r.Matches(search)));
-        OnPropertyChanged(nameof(EmptyText));
-        OnPropertyChanged(nameof(CountText));
-        OnPropertyChanged(nameof(IsLoaded));
+        _searchDelay?.Cancel();
+        _searchDelay?.Dispose();
+        var delay = _searchDelay = new CancellationTokenSource();
+        _ = SearchLaterAsync(delay.Token);
+    }
+
+    private async Task SearchLaterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDelay, _time ?? TimeProvider.System, ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // typed again
+        }
+
+        if (_loadedOnce || IsLoading)
+        {
+            Offset = 0;
+            await LoadAsync(CancellationToken.None).ConfigureAwait(true);
+        }
     }
 
     /// <summary>The reason as the contract names it ("keyCompromised", ...).</summary>

@@ -486,6 +486,22 @@ public sealed class RenewDeleteInstallTests
     }
 
     [Fact]
+    public async Task A_deleted_oadm_certificate_stays_listed_as_replaced()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        using var issued = RevocationTests.Issue(h.Pki.Service.Ca!, h.Device.Serial, client: false);
+        h.Camera.AddCertificate("OADM HTTPS 20240101-120000", Oadm.Plugins.Pki.Ca.CaCertificates.ToPem(issued));
+        var payload = PkiJson.Serialize(new DeletePayload { Devices = new Dictionary<Guid, IReadOnlyList<CertificateRef>> { [h.Device.Id] = [new CertificateRef("OADM HTTPS 20240101-120000", false)] } });
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.Delete, payload));
+
+        var entry = h.Pki.Service.Issued.Find(issued.SerialNumber)!; // found by the read before the delete
+        Assert.NotNull(entry.RemovedFromDeviceUtc);
+        var row = (await h.Pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest())).Rows.Single(r => r.SerialNumber == Oadm.Sdk.Certificates.CertificateSerials.Normalize(issued.SerialNumber));
+        Assert.Equal(Oadm.Sdk.Certificates.IssuedCertificateState.Replaced, row.State);
+    }
+
+    [Fact]
     public async Task Query_lists_the_certificates_read_only()
     {
         await using var h = await TaskHarness.StartAsync();

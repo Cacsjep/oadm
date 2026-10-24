@@ -93,7 +93,7 @@ public sealed class IssuedRegistryTests
     }
 
     [Fact]
-    public async Task A_revocation_is_written_at_once_counts_unknown_and_expired_ones_and_is_never_changed()
+    public async Task A_revocation_is_written_at_once_counts_expired_ones_and_text_that_is_no_serial_and_is_never_changed()
     {
         var (registry, records, _, time) = Create();
         await registry.LoadAsync(CancellationToken.None);
@@ -103,7 +103,7 @@ public sealed class IssuedRegistryTests
         var changes = 0;
         registry.RevocationChanged += (_, _) => changes++;
 
-        var result = await registry.RevokeAsync(["7d:fd:05", "1234", "ABCD"], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
+        var result = await registry.RevokeAsync(["7d:fd:05", "1234", "XYZ"], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
 
         Assert.Equal(new RevokeResult(1, 0, 2), result);
         Assert.Equal(1, changes);

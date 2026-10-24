@@ -72,6 +72,9 @@ public sealed record InstalledCertificate
 
     /// <summary>SHA-256 (upper hex).</summary>
     public string Fingerprint { get; init; } = string.Empty;
+
+    /// <summary>The certificate's serial number (upper hex); empty when it could not be read.</summary>
+    public string SerialNumber { get; init; } = string.Empty;
 }
 
 /// <summary>Answer of <see cref="PkiQueries.ListCertificates"/>.</summary>

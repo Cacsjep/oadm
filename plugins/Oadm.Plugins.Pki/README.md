@@ -177,28 +177,36 @@ the CA service.
   and on stop, only changed rows, in batches of 2,000; `RevokeAsync` writes before it returns and raises
   `RevocationChanged` once; `IsRevoked` / `FindRevocation` read an immutable dictionary replaced on change (no lock).
   `PruneAsync` at the start and every hour: certificates ended more than a year ago, revocations of ended certificates.
-  `LoadAsync` (in `PkiService.StartAsync`, before anything is answered) moves the settings value `issued` of OADM 4.1.
+  `LoadAsync` (in `PkiService.StartAsync`, before anything is answered) moves the settings value `issued` of OADM 4.1
+  (entries marked `NoCopy`; `ImportFoundAsync` stores their DER, start and device serial when a read finds them).
+  `RevokeAsync` also revokes a serial the list does not hold (hex, at most 20 bytes; no device; kept until
+  `UnknownNotAfter` = `PkiService.LatestCaEnd`, the latest end of the active and previous CAs). `MarkRemovedFromDevice`
+  (the Delete certificates task, after the delete) sets `RemovedFromDeviceUtc`: state Replaced, still revocable.
+  `IssuedCounts.From` (the page's counts) skips ended, revoked and deleted certificates.
 - Writers: `CertificateDeployment.IssueAsync` (the tasks, with DER and the device's serial) and
   `PkiCertificateAuthority.SignAsync` (the service: use from `DeviceCertificateRequest.Purpose`, DER, the serial of the
   `axis-<serial>.local` name); certificates a task deletes from the device stay listed. `ImportFoundAsync` adds OADM
   certificates found in a device's certificate list (signed by the active or a previous CA, checked by a chain build;
   naming this device): `CertificateInventory.ReadAsync` with the device (View / Delete certificates), Renew certificates,
   and `Ca/ExistingCertificateImport` (once per server, 5 minutes after the start, every device that answers with AXIS OS
-  11.11+, 4 at a time, read only; setting `existingImported`).
+  11.11+, 4 at a time, read only; setting `existingImported` only when a round reached the devices: one read, no devices,
+  or none with the certificate API; else again after `PkiOptions.ExistingImportRetry`, 1 hour).
 - Methods: `getCertificates` (`CertificatesRequest`: state, purpose, source, search, offset, limit 500 ->
   `CertificatesReply`; the caller's devices from `call.Devices`; a user with a group: only those, else every row and
   removed devices with `DeviceManaged` false; an offset past the end answers the last page), `getCertificate`
   (`CertificateDetailsRequest` -> `CertificateDetailsReply` with the SDK's `CertificateDescription` and the revocation;
   not listed or another group's: "This certificate is not in the list."; no DER: "OADM keeps no copy of this
   certificate."), `revoke` (`RevokeRequest`: serials, at most 5,000, and `RevocationReason`) and `revokeDevice`
-  (`RevokeDeviceRequest`: every certificate of the device that is still valid) -> `RevokeReply` (revoked, already
-  revoked, not found or expired); the revoking user is the caller. Event `certificates` at most once per
+  (`RevokeDeviceRequest`: every certificate of the device that is still valid, after `PkiService.DeviceCertificateReader`
+  read the device's list for at most `PkiOptions.DeviceReadTimeout`, 20 s; a device that does not answer revokes what the
+  list holds) -> `RevokeReply` (revoked, already revoked, expired or no serial); the revoking user is the caller. Event `certificates` at most once per
   `PkiOptions.CertificatesEventDelay` (1 s) to `AllDevices` and to each group that read the page.
 - Client (`IssuedCertificatesViewModel`, in `PkiView.axaml`): the client SDK's shared list of issued certificates
   (`ui:IssuedCertificateList` with `IssuedCertificateListViewModel`, also the 802.1X server's certificate choice; PKI reads
   through `PkiCertificateSource`): filters (state, use, issued by), search (300 ms after the last key), Previous / Next,
   `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one step and kept over a new
-  page, View certificate (`ui:CertificateWindow`, a double click too); the page adds Revoke and Revoke all of
+  page, View certificate (`ui:CertificateWindow`, a double click too; its "ends soon" uses `CertificatesReply.WarningDays`,
+  the same days as the list); the page adds Revoke and Revoke all of
   this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
   "manage". The tab reads only when shown; an event while the other tab is shown marks it to read when opened.
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;

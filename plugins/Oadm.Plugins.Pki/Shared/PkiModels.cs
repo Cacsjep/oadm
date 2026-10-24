@@ -279,6 +279,15 @@ public sealed record IssuedCertificate
 
     /// <summary>Which plugin asked for it through the OADM CA service ("EST"); null = PKI's own tasks.</summary>
     public string? Source { get; init; }
+
+    /// <summary>
+    /// OADM keeps no copy (DER) of it: an entry moved from OADM 4.1. The next read of the device's certificate list that finds
+    /// it stores the copy and clears this.
+    /// </summary>
+    public bool NoCopy { get; init; }
+
+    /// <summary>When a PKI task deleted it from the device; null while it is there. Listed as Replaced (a copy could be in use).</summary>
+    public DateTime? RemovedFromDeviceUtc { get; init; }
 }
 
 /// <summary>The active CA as the page shows it.</summary>
@@ -374,14 +383,14 @@ public sealed record PkiState
     /// <summary>Why the server store could not be checked or written.</summary>
     public string? ServerTrustError { get; init; }
 
-    /// <summary>Devices with a certificate OADM issued.</summary>
+    /// <summary>Devices with a certificate OADM issued that is still in use (not ended, revoked or deleted from the device).</summary>
     public int IssuedDevices { get; init; }
 
     public int DevicesWithCurrentCa { get; init; }
 
     public int DevicesWithPreviousCa { get; init; }
 
-    /// <summary>Devices whose certificate expires within <see cref="PkiConfig.ExpiryWarningDays"/> (or expired).</summary>
+    /// <summary>Devices whose certificate in use ends within <see cref="PkiConfig.ExpiryWarningDays"/> (ended ones are not counted).</summary>
     public int ExpiringSoon { get; init; }
 
     /// <summary>The imported RADIUS server CA of the stored configuration.</summary>

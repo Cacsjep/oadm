@@ -2055,7 +2055,7 @@ public static class RadiusTexts
     public const string RevokeCount = "Choose 1 to 5,000 certificates.";
     public const string ChooseReason = "Choose a reason.";
     public const string NotRunning = "The 802.1X server is not running.";
-    public const string CertificateGone = "This certificate is not in the list.";
+    public const string CertificateGone = Oadm.Sdk.Certificates.IssuedCertificateMessages.NotListed;
     public const string OnlyDot1x = "Only IEEE 802.1X certificates can be revoked here.";
 
     /// <summary>The plugin id of PKI, whose permission "Manage the certificate authority" Revoke needs too.</summary>

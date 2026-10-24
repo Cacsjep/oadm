@@ -169,17 +169,39 @@ internal sealed class FakeRadiusBackend
         }
     }
 
-    public Task<string?> InvokeAsync(string method, string? payload, CancellationToken ct)
+    /// <summary>Methods whose answer waits until the test completes the source (a read still running).</summary>
+    public Dictionary<string, TaskCompletionSource> Holds { get; } = [];
+
+    /// <summary>Holds the answers of <paramref name="method"/> until the returned source is completed.</summary>
+    public TaskCompletionSource Hold(string method)
+    {
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Holds[method] = hold;
+        return hold;
+    }
+
+    public async Task<string?> InvokeAsync(string method, string? payload, CancellationToken ct)
     {
         lock (_gate)
         {
             Calls.Add((method, payload));
         }
 
+        if (Holds.TryGetValue(method, out var hold))
+        {
+            await hold.Task.WaitAsync(ct);
+        }
+
         if (Failures.TryGetValue(method, out var failure))
         {
-            return Task.FromException<string?>(failure);
+            throw failure;
         }
+
+        return Answer(method, payload);
+    }
+
+    private string? Answer(string method, string? payload)
+    {
 
         object? answer = method switch
         {
@@ -195,14 +217,24 @@ internal sealed class FakeRadiusBackend
             RadiusMethods.ListLog => ListLog(RadiusJson.Deserialize<LogQuery>(payload)),
             RadiusMethods.DeleteLog => DeleteLog(),
             RadiusMethods.GetLogCertificate => new LogCertificate(Convert.ToBase64String(CameraCertificate)),
-            RadiusMethods.ListRevoked => new RevokedPage(Revoked) { Total = Revoked.Count },
+            RadiusMethods.ListRevoked => ListRevoked(payload is null ? new RevokedQuery(null, 0, RevokedViewModel.PageSize) : RadiusJson.Deserialize<RevokedQuery>(payload)),
             RadiusMethods.Revoke => Revoke(RadiusJson.Deserialize<RevokeRequest>(payload)),
             RadiusPageMethods.ListSites => new SiteList(Sites),
             RadiusPageMethods.ListCertificates => ListCertificates(RadiusJson.Deserialize<CertificateListQuery>(payload)),
             RadiusPageMethods.GetIssuedCertificate => new LogCertificate(Convert.ToBase64String(CameraCertificate)),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
-        return Task.FromResult<string?>(answer is null ? null : RadiusJson.Serialize(answer));
+        return answer is null ? null : RadiusJson.Serialize(answer);
+    }
+
+    /// <summary>The server part with pages: newest first, the search over device, serial, reason and user.</summary>
+    private RevokedPage ListRevoked(RevokedQuery query)
+    {
+        var matching = Revoked
+            .Where(r => string.IsNullOrEmpty(query.Search) || new RevokedRowViewModel(r).Matches(query.Search))
+            .OrderByDescending(r => r.RevokedUtc)
+            .ToList();
+        return new RevokedPage([.. matching.Skip(query.Offset).Take(Math.Clamp(query.Limit, 1, 500))]) { Total = matching.Count };
     }
 
     public void Publish(string topic, object payload) => Events.Writer.TryWrite(new PluginEvent(topic, RadiusJson.Serialize(payload)));
@@ -372,7 +404,11 @@ internal sealed class FakePageContext(FakeRadiusBackend backend) : ICorePluginCl
 
     public void RaisePermissionsChanged() => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => backend.InvokeAsync(method, payloadJson, ct);
+    /// <summary>Answers a method itself instead of the fake server (an older server part); null = the fake server answers.</summary>
+    public Func<string, string?, string?>? Answer { get; set; }
+
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+        Answer?.Invoke(method, payloadJson) is { } answer ? Task.FromResult<string?>(answer) : backend.InvokeAsync(method, payloadJson, ct);
 
     public IAsyncEnumerable<PluginEvent> WatchEventsAsync(CancellationToken ct) => backend.Events.Reader.ReadAllAsync(ct);
 

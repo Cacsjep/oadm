@@ -124,6 +124,16 @@ public static class CertificateSerials
     }
 }
 
+/// <summary>The answers about one certificate of the list of issued certificates (SDK 0.4.0), the same on every page and server.</summary>
+public static class IssuedCertificateMessages
+{
+    /// <summary>A serial that is not listed, or a certificate of a device outside the user's group (the same answer).</summary>
+    public const string NotListed = "This certificate is not in the list.";
+
+    /// <summary>A certificate listed before OADM kept a copy of each one (4.1 and older), until a read of its device finds it.</summary>
+    public const string NoCopy = "OADM keeps no copy of this certificate.";
+}
+
 /// <summary>One revoked certificate (SDK 0.4.0): kept while the certificate could still be valid.</summary>
 /// <param name="SerialNumber">The serial number (<see cref="CertificateSerials.Normalize"/>).</param>
 /// <param name="RevokedUtc">When it was revoked.</param>
@@ -131,7 +141,7 @@ public static class CertificateSerials
 /// <param name="UserName">Who revoked it.</param>
 public sealed record CertificateRevocation(string SerialNumber, DateTime RevokedUtc, RevocationReason Reason, string UserName)
 {
-    /// <summary>The device the certificate was issued for; null when not known.</summary>
+    /// <summary>The device the certificate was issued for; null when not known (a serial the list did not hold).</summary>
     public Guid? DeviceId { get; init; }
 
     /// <summary>The end of the certificate's validity: the entry leaves the list after it.</summary>
@@ -231,5 +241,5 @@ public sealed record IssuedCertificatePage(IReadOnlyList<IssuedCertificateInfo> 
 /// <summary>The result of <see cref="IDeviceCertificateAuthority.RevokeAsync"/>.</summary>
 /// <param name="Revoked">Newly revoked.</param>
 /// <param name="AlreadyRevoked">Were revoked before (a revocation is never changed).</param>
-/// <param name="NotFound">Not in the list of issued certificates, or already expired (no need to revoke).</param>
+/// <param name="NotFound">Already expired (no need to revoke), or not a serial number. A serial the list does not hold is revoked.</param>
 public sealed record RevokeResult(int Revoked, int AlreadyRevoked, int NotFound);

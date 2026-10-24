@@ -132,6 +132,7 @@ public static class CertificateInventory
                     || (ca && (certificate.Alias.StartsWith(CertificateDeployment.CaAliasPrefix, StringComparison.Ordinal) || certificate.Alias.StartsWith(CertificateDeployment.RadiusCaAliasPrefix, StringComparison.Ordinal))),
                 Factory = !ca && factory,
                 Fingerprint = CaCertificates.Fingerprint(x509),
+                SerialNumber = x509.SerialNumber.ToUpperInvariant(),
             };
         }
         catch (CryptographicException)
@@ -283,6 +284,10 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
                 else
                 {
                     await CertApi.DeleteCertificateAsync(ctx.Vapix, choice.Alias, ct).ConfigureAwait(false);
+                    if (installed.FirstOrDefault(c => c.Kind != CertificateKind.Ca && string.Equals(c.Alias, choice.Alias, StringComparison.Ordinal)) is { SerialNumber.Length: > 0 } gone)
+                    {
+                        service?.Issued.MarkRemovedFromDevice(gone.SerialNumber); // stays listed, as Replaced
+                    }
                 }
 
                 step.Complete(choice.Ca ? "CA certificate deleted" : "Certificate and key deleted");

@@ -249,8 +249,11 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 - **Revoke** (red toolbar button and row menu; one or several rows, at most 5,000 at once; the confirmation
   `ui:MessageWindow` with the choice **Reason**: Key compromised, Device replaced, Device removed, Other; red Revoke):
   the serials go into the revocation list with time, reason and user; **Revoke all of this device** (row menu, last):
-  every certificate of the row's device that is still valid. Expired and unknown serials are skipped and counted, an
-  existing revocation is never changed. No undo (the device gets a new certificate by Enable IEEE 802.1X or Certificate
+  every certificate of the row's device that is still valid; a device that answers has its certificate list read first
+  (read only, at most 20 s), so OADM certificates on it from before the list are revoked too. Expired serials (and text
+  that is no serial number) are skipped and counted, an existing revocation is never changed. A serial the list does not
+  hold (decision 2026-10-24: a certificate of the OADM CA from before the list that no read found) is revoked too, without
+  a device, and kept until the latest end of the OADM CAs (the 802.1X Revoked tab shows "Unknown device"). No undo (the device gets a new certificate by Enable IEEE 802.1X or Certificate
   enrollment). Methods `revoke` and `revokeDevice`: Admin with "Manage the certificate authority", `RequiresAllDevices`,
   audited by the host (Admin methods), and logged with the count, reason and user.
 - **Device groups:** a user with a group sees the tab with the certificates of the group's devices only (none of removed
@@ -261,17 +264,20 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   source, CA id, valid from, valid until, issued, alias), `issuedDer` (the DER, read one at a time) and `revoked`
   (serial, time, reason, user, device, valid until). A certificate leaves the list a year after it ended; a revocation
   when its certificate ended (it can no longer be used). Checked at the start and every hour. The plugin setting `issued`
-  of OADM 4.1 moves into the records at the first start and is deleted (those entries have no DER: View certificate says
-  "OADM keeps no copy of this certificate."). A certificate a task deletes from the device stays listed (as Replaced):
-  a copy could still be in use.
+  of OADM 4.1 moves into the records at the first start and is deleted (those entries have no DER, `noCopy`: View
+  certificate says "OADM keeps no copy of this certificate." until a read of the device's certificate list finds the
+  certificate, which stores its copy). A certificate a task deletes from the device stays listed as Replaced
+  (`removedFromDeviceUtc`): a copy could still be in use. The PKI page's device counts (and the Replace CA question) count
+  only certificates still in use: not ended, not revoked, not deleted.
 - **Existing certificates** (decision 2026-10-24, the cheapest robust way without a new hook in the host's full refresh):
   (1) whenever PKI reads a device's certificate list (View / Delete certificates, Renew certificates), every certificate
   there that one of the OADM CAs (active or previous) signed (checked by a chain build to that CA) and that names this
   device's `axis-<serial>.local` is added once (use: IEEE 802.1X for clientAuth, else HTTPS; issued by EST for the
   `oadm_` / `oadm2_` EST profile names, else Task; issued = its valid-from); (2) once per server, 5 minutes after the
   start, one background pass reads the certificate list (REST `cert` v1, read only) of every device that answers and has
-  AXIS OS 11.11 or later, 4 at a time (plugin setting `existingImported` when it ran to its end; a stop runs it again at
-  the next start). Devices that did not answer come in by (1) or when renewed.
+  AXIS OS 11.11 or later, 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
+  read, or nothing to read; a round that read no device runs again an hour later, a stop at the next start). Devices that
+  did not answer come in by (1) or when renewed.
 - **EST:** `simpleenroll` and `simplereenroll` with a revoked client certificate are refused (403, "Certificate revoked
   on 2026-11-02 (Key compromised)"), listed in Enrollments; the camera's Axis device ID is never revoked, so Set up still
   works. A revoked certificate is never flagged "Not renewed".
@@ -524,7 +530,10 @@ data, also for the screenshots). Built 2026-10-24.
   time it opens, the overlay over the cards; the lists the first time, then the events keep them).
 - **One Save** at the end of the VLANs card saves General with Advanced (`saveSettings`) and then the VLANs (`saveVlans`),
   the status chip and the server certificate's end directly left of it, the sites that did not allow the port and a save
-  error without a field below it (one accent button per view). Switches apply in their dialog at once.
+  error without a field below it (one accent button per view). Both parts are checked with `RadiusRules` before the first
+  call (an error below its field, else below Save), so a refusal leaves nothing half saved; a `saveVlans` refused for
+  another reason still shows the saved General. While Assign VLANs is off the collapsed card blocks nothing: Save sends
+  the card when it is valid, else the saved rules with Assign VLANs off. Switches apply in their dialog at once.
 - **Advanced** is a chevron (`ToggleButton.sectionExpander`) and starts collapsed; the old CBC suites are listed and checked
   only while the minimum is below TLS 1.2; the page sends only the listed checked suites; the error "Check at least one
   cipher suite." below the list.
@@ -535,6 +544,9 @@ data, also for the screenshots). Built 2026-10-24.
   address, the site node's address for a site). A refusal of the server goes below the field it names, else into a message.
 - **VLANs**: Assign VLANs (check box), the rules (Match Site or Tag, the site or tag, VLAN ID 1..4094, move up and down,
   Remove), Default VLAN (optional). Tags: the server's list plus the tags of the devices this client knows.
+- **Reads and events**: a list read while the page was away is stale (`MarkStale` on `Activate`) and read again when its
+  tab opens (the progress row, the rows stay). Events that arrive during a read wait and apply after it: session batches
+  in order (an update older than the read row, a shorter duration, is left out), log rows once each.
 - **Sessions**: rows by id in a dictionary, a `sessions` batch updates rows in place and adds new ones on top in one step;
   an ended row leaves 10 s after it ended (one step per second, the page's one-second tick also moves the durations of the
   open rows); the device in italics while it is a guess from the MAC (`TextBlock.guess`); the state chip running (violet),
@@ -544,8 +556,17 @@ data, also for the screenshots). Built 2026-10-24.
   DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed.
 - **Revoked**: `listRevoked` pages of 500 with the search on the server (`RevokedQuery`, review round 1); **Revoke** opens the shared certificate list
   (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
+  they match the search (the chosen row stays chosen when they push the full page), the reason or the warning in the
+  Result chip (a warning is amber), View certificate describes the DER of `getLogCertificate` with the SDK's
+  `CertificateDescriber` in the client, Delete all red and confirmed.
+- **Revoked**: pages of 500 from the server: `listRevoked` with `{offset, limit (at most 500), search}` (search over device,
+  serial, reason and user, 300 ms after the last key) -> `{total, rows}` newest first, Previous / Next and "1-500 of
+  1,202" below the table; a server part that answers only `{rows}` gets the search and the pages in the client. A row
+  without a device id says "Unknown device", a removed device "Device (removed)". **Revoke** opens the shared certificate
+  list (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
   (`IssuedCertificateList.ConfirmRevokeAsync`), then `revoke`; "Nothing was revoked ..." when every chosen one was revoked
-  already.
+  already. View certificate in the choice shows the row's revocation and "ends soon" as the row's state says (the list
+  sends no warning days; PKI's own tab uses the days of its answer).
 - **Device groups**: a user with a group sees only Sessions and Log (the server filters the rows); users without "manage"
   or without all devices see no Save, Add switch, Edit, Delete, Delete all or Revoke, and the inputs are read only.
 - **Contract**: the server part's `plugins/Oadm.Plugins.Radius/Api/RadiusApi.cs` (methods, `RadiusTopics`, DTOs and
