@@ -4,7 +4,7 @@ using Oadm.Plugins.Radius.Protocol.Radius;
 
 namespace Oadm.Plugins.Radius.Tests;
 
-/// <summary>The duplicate cache (RFC 5080 2.2.2; docs/spec/radius-server.md "Duplicates": 4,096 answers, 30 s each).</summary>
+/// <summary>The duplicate cache (RFC 5080 2.2.2; docs/spec/radius-server.md "Duplicates": 20,000 answers or 32 MB, 30 s each, the final answers apart).</summary>
 public sealed class DuplicateCacheTests
 {
     private static readonly IPEndPoint Source = new(IPAddress.Parse("10.0.0.2"), 1645);
@@ -67,20 +67,73 @@ public sealed class DuplicateCacheTests
     }
 
     [Fact]
-    public void AtMost4096EntriesTheOldestGoFirst()
+    public void AtMostTheCapacityTheOldestAnsweredGoFirst()
     {
-        var cache = new RadiusDuplicateCache(new FakeTimeProvider());
-        Assert.Equal(4096, cache.Capacity);
-        for (var i = 0; i < 4096 + 10; i++)
+        // docs/spec "Duplicates": 20,000 answers (twice the open sessions allowed), so the cache keeps up with 30,000 devices.
+        Assert.Equal(20_000, new RadiusDuplicateCache(new FakeTimeProvider()).Capacity);
+        var cache = new RadiusDuplicateCache(new FakeTimeProvider(), capacity: 100);
+        for (var i = 0; i < 110; i++)
         {
             var source = new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1000 + i);
             cache.Begin("sw", source, 1, AuthenticatorA);
             cache.Complete("sw", source, 1, AuthenticatorA, [1]);
         }
 
-        Assert.Equal(4096, cache.Count);
+        Assert.Equal(100, cache.Count);
         Assert.Equal(DuplicateState.New, cache.Begin("sw", new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1000), 1, AuthenticatorA).State);
-        Assert.Equal(DuplicateState.Answered, cache.Begin("sw", new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1000 + 4105), 1, AuthenticatorA).State);
+        Assert.Equal(DuplicateState.Answered, cache.Begin("sw", new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1000 + 109), 1, AuthenticatorA).State);
+    }
+
+    [Fact]
+    public void ARequestInWorkIsNeverEvicted()
+    {
+        // RFC 5080 2.2.2: a retransmission of a request still in work is discarded, never processed a second time.
+        var cache = new RadiusDuplicateCache(new FakeTimeProvider(), capacity: 10);
+        var inWork = new IPEndPoint(IPAddress.Parse("10.0.0.9"), 1);
+        cache.Begin("sw", inWork, 1, AuthenticatorA);
+        for (var i = 0; i < 50; i++)
+        {
+            var source = new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1000 + i);
+            cache.Begin("sw", source, 1, AuthenticatorA);
+            cache.Complete("sw", source, 1, AuthenticatorA, [1]);
+        }
+
+        Assert.Equal(DuplicateState.InProgress, cache.Begin("sw", inWork, 1, AuthenticatorA).State);
+    }
+
+    [Fact]
+    public void TheAnswersStayWithinTheirBytes()
+    {
+        var cache = new RadiusDuplicateCache(new FakeTimeProvider(), capacity: 1000, maxBytes: 4096);
+        for (var i = 0; i < 10; i++)
+        {
+            var source = new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1000 + i);
+            cache.Begin("sw", source, 1, AuthenticatorA);
+            cache.Complete("sw", source, 1, AuthenticatorA, new byte[1000]);
+        }
+
+        Assert.Equal(4, cache.Count); // 4 x 1,000 bytes fit, the oldest went
+        Assert.Equal(DuplicateState.Answered, cache.Begin("sw", new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1009), 1, AuthenticatorA).State);
+    }
+
+    [Fact]
+    public void TheFinalAnswerOfASessionIsKeptByStateFor30Seconds()
+    {
+        // RFC 5080 2.2.2: the retransmission of the request that ended a session gets the same answer.
+        var time = new FakeTimeProvider();
+        var cache = new RadiusDuplicateCache(time);
+        byte[] state = [7, 7, 7];
+        cache.RememberFinal("sw", state, AuthenticatorA, [9, 9]);
+
+        Assert.Equal(new byte[] { 9, 9 }, cache.FindFinal("sw", state, AuthenticatorA));
+        Assert.Null(cache.FindFinal("sw", state, AuthenticatorB)); // another request with that State: not a retransmission
+        Assert.Null(cache.FindFinal("other", state, AuthenticatorA));
+        time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Null(cache.FindFinal("sw", state, AuthenticatorA));
+
+        cache.RememberFinal("sw", state, AuthenticatorA, [9]);
+        cache.Forget("sw");
+        Assert.Equal(0, cache.FinalCount);
     }
 
     [Fact]

@@ -49,18 +49,53 @@ internal sealed class EapTlsServer : DefaultTlsServer
     /// <summary>The negotiated version (valid after the server hello).</summary>
     public TlsVersion? NegotiatedVersion => m_context?.ServerVersion is { } v ? ToVersion(v) : null;
 
+    /// <summary>Only the versions with a checked cipher suite the server key can use: no version is offered that could only fail.</summary>
     protected override ProtocolVersion[] GetSupportedVersions() =>
-        [.. _settings.Versions.Select(ToProtocolVersion)];
+        [.. _settings.VersionsFor(_identity.Kind).Select(ToProtocolVersion)];
 
     protected override int[] GetSupportedCipherSuites() =>
         TlsUtilities.GetSupportedCipherSuites(Crypto, [.. _settings.Offered(_identity.Kind)]);
 
+    /// <summary>The minimum version is TLS 1.0 or 1.1: SHA-1 signatures are allowed for those old devices only.</summary>
+    private bool Legacy => _settings.MinimumVersion < TlsVersion.Tls12;
+
+    /// <summary>
+    /// The signature schemes OADM accepts from the device (CertificateVerify and its certificates): ECDSA, RSA-PSS, EdDSA
+    /// and RSA PKCS#1 with SHA-256 or stronger; never SHA-224, and SHA-1 only when the minimum is TLS 1.0 or 1.1
+    /// (RFC 9155 2, RFC 8446 4.2.3).
+    /// </summary>
+    internal static IList<SignatureAndHashAlgorithm> AcceptedSignatures(bool legacy)
+    {
+        List<SignatureAndHashAlgorithm> list =
+        [
+            SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha256, SignatureAlgorithm.ecdsa),
+            SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha384, SignatureAlgorithm.ecdsa),
+            SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha512, SignatureAlgorithm.ecdsa),
+            SignatureAndHashAlgorithm.ed25519,
+            SignatureAndHashAlgorithm.ed448,
+            SignatureAndHashAlgorithm.rsa_pss_rsae_sha256,
+            SignatureAndHashAlgorithm.rsa_pss_rsae_sha384,
+            SignatureAndHashAlgorithm.rsa_pss_rsae_sha512,
+            SignatureAndHashAlgorithm.rsa_pss_pss_sha256,
+            SignatureAndHashAlgorithm.rsa_pss_pss_sha384,
+            SignatureAndHashAlgorithm.rsa_pss_pss_sha512,
+            SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha256, SignatureAlgorithm.rsa),
+            SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha384, SignatureAlgorithm.rsa),
+            SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha512, SignatureAlgorithm.rsa),
+        ];
+        if (legacy)
+        {
+            list.Add(SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, SignatureAlgorithm.ecdsa));
+            list.Add(SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, SignatureAlgorithm.rsa));
+        }
+
+        return list;
+    }
+
     public override CertificateRequest GetCertificateRequest()
     {
         var version = m_context.ServerVersion;
-        IList<SignatureAndHashAlgorithm>? algorithms = TlsUtilities.IsSignatureAlgorithmsExtensionAllowed(version)
-            ? TlsUtilities.GetDefaultSupportedSignatureAlgorithms(m_context)
-            : null;
+        var algorithms = TlsUtilities.IsSignatureAlgorithmsExtensionAllowed(version) ? AcceptedSignatures(Legacy) : null;
         if (TlsUtilities.IsTlsV13(version))
         {
             return new CertificateRequest(TlsUtilities.EmptyBytes, algorithms, null, null);
@@ -70,8 +105,9 @@ internal sealed class EapTlsServer : DefaultTlsServer
     }
 
     /// <summary>
-    /// The device's certificate (RFC 5216 2.1.1, RFC 9190 2.1.1): none refuses it (TLS 1.3: alert 116 certificate required;
-    /// earlier: 40 handshake failure); else the validator decides and a refusal raises its alert.
+    /// The device's certificate (RFC 5216 2.1.1, RFC 9190 2.1.1): none refuses it (TLS 1.3: alert 116 certificate required,
+    /// RFC 8446 4.4.2.4; earlier: 40 handshake failure, RFC 5246 7.4.6), the reason names the alert sent; else the validator
+    /// decides and a refusal raises its alert.
     /// </summary>
     public override void NotifyClientCertificate(Certificate clientCertificate)
     {
@@ -79,8 +115,8 @@ internal sealed class EapTlsServer : DefaultTlsServer
         var version = NegotiatedVersion ?? TlsVersion.Tls12;
         if (clientCertificate is null || clientCertificate.IsEmpty)
         {
-            Verdict = ClientCertificateVerdict.Refuse(TlsAlertTexts.Text((byte)AlertDescription.certificate_required, TlsAlertDirection.SentByOadm),
-                (byte)(version == TlsVersion.Tls13 ? AlertDescription.certificate_required : AlertDescription.handshake_failure));
+            var alert = (byte)(version == TlsVersion.Tls13 ? AlertDescription.certificate_required : AlertDescription.handshake_failure);
+            Verdict = ClientCertificateVerdict.Refuse(TlsAlertTexts.NoClientCertificate(alert), alert);
             throw new TlsFatalAlert(Verdict.Alert);
         }
 
@@ -188,20 +224,23 @@ internal sealed class EapTlsServer : DefaultTlsServer
 
     /// <summary>
     /// The signature scheme for the server key from the client's list (RFC 8446 4.2.3, RFC 5246 7.4.1.4.1): ECDSA with the
-    /// hash of the curve first (TLS 1.3 binds it), RSA-PSS before PKCS#1 (TLS 1.3 allows only PSS). Without a list in
-    /// TLS 1.2 the RFC default is SHA-1.
+    /// hash of the curve first (TLS 1.3 binds it), RSA-PSS before PKCS#1 (TLS 1.3 allows only PSS). SHA-1 only when the
+    /// minimum is TLS 1.0 or 1.1 (RFC 9155 2: TLS 1.2 servers MUST NOT sign with SHA-1); then a TLS 1.2 client without a
+    /// list gets the RFC 5246 7.4.1.4.1 default SHA-1, else it is refused.
     /// </summary>
     private SignatureAndHashAlgorithm? ChooseSignature(IList<SignatureAndHashAlgorithm>? offered, bool tls13)
     {
         List<SignatureAndHashAlgorithm> preferred = [];
+        short[] hashes = Legacy
+            ? [HashAlgorithm.sha256, HashAlgorithm.sha384, HashAlgorithm.sha512, HashAlgorithm.sha1]
+            : [HashAlgorithm.sha256, HashAlgorithm.sha384, HashAlgorithm.sha512];
         if (_identity.Kind == ServerKeyKind.Ecdsa)
         {
             var curveHash = _identity.KeyBits switch { <= 256 => HashAlgorithm.sha256, <= 384 => HashAlgorithm.sha384, _ => HashAlgorithm.sha512 };
             preferred.Add(SignatureAndHashAlgorithm.GetInstance(curveHash, SignatureAlgorithm.ecdsa));
             if (!tls13)
             {
-                preferred.AddRange([.. new[] { HashAlgorithm.sha256, HashAlgorithm.sha384, HashAlgorithm.sha512, HashAlgorithm.sha1 }
-                    .Where(h => h != curveHash).Select(h => SignatureAndHashAlgorithm.GetInstance(h, SignatureAlgorithm.ecdsa))]);
+                preferred.AddRange([.. hashes.Where(h => h != curveHash).Select(h => SignatureAndHashAlgorithm.GetInstance(h, SignatureAlgorithm.ecdsa))]);
             }
         }
         else
@@ -209,14 +248,13 @@ internal sealed class EapTlsServer : DefaultTlsServer
             preferred.AddRange([SignatureAndHashAlgorithm.rsa_pss_rsae_sha256, SignatureAndHashAlgorithm.rsa_pss_rsae_sha384, SignatureAndHashAlgorithm.rsa_pss_rsae_sha512]);
             if (!tls13)
             {
-                preferred.AddRange([.. new[] { HashAlgorithm.sha256, HashAlgorithm.sha384, HashAlgorithm.sha512, HashAlgorithm.sha1 }
-                    .Select(h => SignatureAndHashAlgorithm.GetInstance(h, SignatureAlgorithm.rsa))]);
+                preferred.AddRange([.. hashes.Select(h => SignatureAndHashAlgorithm.GetInstance(h, SignatureAlgorithm.rsa))]);
             }
         }
 
         if (offered is null || offered.Count == 0)
         {
-            return tls13 ? null : SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, _identity.Kind == ServerKeyKind.Ecdsa ? SignatureAlgorithm.ecdsa : SignatureAlgorithm.rsa);
+            return tls13 || !Legacy ? null : SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, _identity.Kind == ServerKeyKind.Ecdsa ? SignatureAlgorithm.ecdsa : SignatureAlgorithm.rsa);
         }
 
         return preferred.FirstOrDefault(p => offered.Any(o => o.Equals(p)));

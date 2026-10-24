@@ -57,6 +57,8 @@ internal sealed class EapTlsSession
     private int _outgoingIndex;
     private bool _outgoingFinal;
     private int _maxFragment;
+    private int? _framedMtu;
+    private bool _wireless;
 
     private EapTlsServer? _server;
     private TlsServerProtocol? _tls;
@@ -105,6 +107,8 @@ internal sealed class EapTlsSession
         AwaitFinalAck,
         /// <summary>OADM's alert sent; any response leads to EAP-Failure (RFC 5216 2.1.3 "MUST wait for the peer").</summary>
         AwaitFailureAck,
+        /// <summary>EAP-Success decided; the session ends with <see cref="CompleteAccept"/> once the Access-Accept is built.</summary>
+        AcceptPending,
         Ended,
     }
 
@@ -137,6 +141,9 @@ internal sealed class EapTlsSession
             return AskIdentity(); // EAP-Start (RFC 3579 2.1)
         }
 
+        // The switch sent its own request with this Identifier (its Identity request, or a method it started): OADM's first
+        // request must use another one, else the switch and the device take it for a retransmission (RFC 3748 4.1).
+        _nextIdentifier = unchecked((byte)(first.Identifier + 1));
         switch (first.Type)
         {
             case EapType.Identity:
@@ -152,7 +159,7 @@ internal sealed class EapTlsSession
     /// <summary>A response within the session (with OADM's State).</summary>
     public EapStep Handle(EapPacket response, AccessRequest request)
     {
-        if (_phase == Phase.Ended)
+        if (_phase is Phase.Ended or Phase.AcceptPending)
         {
             return new EapStep(EapStepKind.Drop, null);
         }
@@ -205,7 +212,15 @@ internal sealed class EapTlsSession
 
     private void Touch(AccessRequest request)
     {
-        _maxFragment = FragmentSize(request);
+        // Switches may send Framed-MTU and NAS-Port-Type only in the first request: the smallest MTU of the session counts
+        // (RFC 3579 2.4, RFC 3580 3.10).
+        if (request.FramedMtu is { } mtu)
+        {
+            _framedMtu = _framedMtu is { } known ? Math.Min(known, mtu) : mtu;
+        }
+
+        _wireless |= request.NasPortType == NasPortTypes.Wireless80211;
+        _maxFragment = FragmentSize();
         Update(_snapshot with
         {
             LastMessage = _time.GetUtcNow(),
@@ -218,13 +233,13 @@ internal sealed class EapTlsSession
     /// TLS data per EAP-TLS message: the Largest fragment setting, at most Framed-MTU minus 4 octets of 802.1X header
     /// (RFC 3580 3.10, RFC 3579 2.4) and 10 of EAP and EAP-TLS header; an 802.11 port at most 1,496 EAP octets (RFC 3580 3.10).
     /// </summary>
-    private int FragmentSize(AccessRequest request)
+    private int FragmentSize()
     {
         var size = _options.LargestFragment;
-        if (request.FramedMtu is { } mtu)
+        if (_framedMtu is { } mtu)
         {
             var eapLimit = mtu - 4;
-            if (request.NasPortType == NasPortTypes.Wireless80211)
+            if (_wireless)
             {
                 eapLimit = Math.Min(eapLimit, 1496);
             }
@@ -537,14 +552,45 @@ internal sealed class EapTlsSession
         return new EapStep(EapStepKind.Challenge, request);
     }
 
+    /// <summary>
+    /// The device acknowledged OADM's last flight: EAP-Success, but only with an accepting verdict of the validator and the
+    /// keys (fail closed). The session ends with <see cref="CompleteAccept"/> once the processor knows the Access-Accept can
+    /// be sent, so it is never logged Authenticated without one.
+    /// </summary>
     private EapStep Succeed(byte responseIdentifier)
     {
-        var msk = _msk!;
+        if (_server?.Verdict is not { Accepted: true } verdict || _msk is null)
+        {
+            return Fail(responseIdentifier, TlsAlertTexts.Text(80, TlsAlertDirection.SentByOadm));
+        }
+
+        var msk = _msk;
         _msk = null;
-        var verdict = _server?.Verdict;
-        Update(_snapshot with { VlanId = verdict?.VlanId, Warning = verdict?.Warning, Tag = verdict?.Tag }, notify: false);
-        Finish(EapSessionState.Authenticated, null);
+        Update(_snapshot with { VlanId = verdict.VlanId, Warning = verdict.Warning, Tag = verdict.Tag }, notify: false);
+        _phase = Phase.AcceptPending;
         return new EapStep(EapStepKind.Accept, EapPacket.Success(responseIdentifier), msk);
+    }
+
+    /// <summary>
+    /// Ends a session whose EAP-Success was decided: Authenticated when the Access-Accept goes out, else Failed "Answer too
+    /// large" (the switch gets nothing and its retransmission finds no session).
+    /// </summary>
+    public void CompleteAccept(bool sent)
+    {
+        if (_phase != Phase.AcceptPending)
+        {
+            return;
+        }
+
+        if (sent)
+        {
+            Finish(EapSessionState.Authenticated, null);
+        }
+        else
+        {
+            Update(_snapshot with { VlanId = null }, notify: false);
+            Finish(EapSessionState.Failed, EapSessionTexts.AnswerTooLarge);
+        }
     }
 
     private EapStep Fail(byte responseIdentifier, string reason)

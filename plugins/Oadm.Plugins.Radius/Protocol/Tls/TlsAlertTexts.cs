@@ -63,6 +63,14 @@ public static class TlsAlertTexts
             ? (direction == TlsAlertDirection.SentByDevice ? entry.DeviceText : entry.OadmText) ?? entry.Text
             : "TLS alert " + description.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// "No client certificate sent (TLS alert 40, handshake failure)": OADM refused a device that sent no certificate, with
+    /// the alert it really sent (TLS 1.3: 116 certificate required, RFC 8446 4.4.2.4; earlier: 40 handshake failure,
+    /// RFC 5246 7.4.6).
+    /// </summary>
+    public static string NoClientCertificate(byte alert) =>
+        string.Create(CultureInfo.InvariantCulture, $"{Table[116].Text} (TLS alert {alert}, {Name(alert) ?? "unknown"})");
+
     /// <summary>"&lt;text&gt; (TLS alert &lt;n&gt;, &lt;name&gt;)", or "TLS alert &lt;n&gt;" for a number without an entry.</summary>
     public static string Describe(byte description, TlsAlertDirection direction) =>
         Table.TryGetValue(description, out var entry)

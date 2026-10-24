@@ -42,7 +42,7 @@ public sealed class FuzzTests
 
             var result = processor.Process(bytes, Client, Source);
             Assert.Equal(RadiusOutcome.Dropped, result.Outcome);
-            Assert.Contains(result.Drop, new[] { RadiusDropReason.Malformed, RadiusDropReason.NotARequest, RadiusDropReason.WrongSecret });
+            Assert.Contains(result.Drop, new[] { RadiusDropReason.Malformed, RadiusDropReason.NotARequest, RadiusDropReason.WrongSecret, RadiusDropReason.NotEap });
         }
 
         Assert.Equal(0, processor.SessionCount);

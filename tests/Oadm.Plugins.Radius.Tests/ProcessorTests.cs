@@ -72,9 +72,11 @@ public sealed class ProcessorTests
     [Fact]
     public void ThePasswordRequestWithoutMessageAuthenticatorIsDroppedNotChecked()
     {
-        // Blast-RADIUS: the Message-Authenticator is required on every Access-Request, PAP included.
+        // Blast-RADIUS: never answered without a Message-Authenticator, PAP included; without EAP-Message it is no 802.1X
+        // request (RFC 3579 3.2 requires the attribute with EAP-Message), so it counts apart from a wrong secret.
         var result = NewProcessor().Process(Request(1, [RadiusAttribute.Text(RadiusAttributeType.UserName, "u"), new RadiusAttribute(RadiusAttributeType.UserPassword, new byte[16])], messageAuthenticator: false), Client, Source);
-        Assert.Equal(RadiusDropReason.WrongSecret, result.Drop);
+        Assert.Equal(RadiusOutcome.Dropped, result.Outcome);
+        Assert.Equal(RadiusDropReason.NotEap, result.Drop);
     }
 
     [Fact]
@@ -312,5 +314,110 @@ public sealed class ProcessorTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new RadiusProtocolOptions { LargestFragment = 1401 });
         Assert.Throws<ArgumentException>(() => new RadiusClient("x", ReadOnlyMemory<byte>.Empty));
         Assert.Equal("switch-1", Client.ToString());
+    }
+
+    [Fact]
+    public void TheFirstEapRequestNeverReusesTheIdentifierOfTheSwitch()
+    {
+        // RFC 3748 4.1: the switch's Identity request had this Identifier; OADM's EAP-TLS Start must use another one, else the
+        // device and the switch take it for a retransmission. Every value, the wrap from 255 to 0 included.
+        var processor = NewProcessor();
+        for (var id = 0; id < 256; id++)
+        {
+            var result = processor.Process(Request((byte)id, [.. RadiusAttribute.EapMessages(Identity((byte)id))]), Client, Source);
+
+            var answer = RadiusPacket.Parse(result.Response!).Packet!;
+            var start = EapPacket.Parse(TestSwitch.Join(answer)).Packet!;
+            Assert.Equal(EapType.Tls, start.Type);
+            Assert.Equal((byte)(id + 1), start.Identifier);
+        }
+    }
+
+    [Fact]
+    public void StatusServerIsDroppedWhileTheServerHasNoCertificate()
+    {
+        // RFC 5997 4.2: "a server that is running but is unable to perform its normal activities MAY silently discard
+        // Status-Server packets": without a certificate of the OADM CA nobody can authenticate, so the switch fails over.
+        var processor = new RadiusProcessor(new RadiusProtocolOptions(), new TestValidator());
+        var result = processor.Process(Request(9, [], code: RadiusCode.StatusServer), Client, Source);
+
+        Assert.Equal(RadiusOutcome.Dropped, result.Outcome);
+        Assert.Equal(RadiusDropReason.NotReady, result.Drop);
+        Assert.Null(result.Response);
+    }
+
+    [Fact]
+    public void AMacAddressCheckWithoutEapIsCountedApartFromAWrongSecret()
+    {
+        // MAC authentication bypass: User-Name and Calling-Station-Id only, no EAP-Message and no Message-Authenticator
+        // (RFC 3579 3.2 requires it only with EAP-Message). Not answered, never "Wrong secret".
+        var result = NewProcessor().Process(Request(4, [RadiusAttribute.Text(RadiusAttributeType.UserName, "accc8e123456"),
+            RadiusAttribute.Text(RadiusAttributeType.CallingStationId, "AC-CC-8E-12-34-56")], messageAuthenticator: false), Client, Source);
+
+        Assert.Equal(RadiusDropReason.NotEap, result.Drop);
+        Assert.Null(result.Response);
+    }
+
+    [Fact]
+    public void AnAcceptTooLargeForRadiusEndsTheSessionFailedNeverAuthenticated()
+    {
+        // The last request carries Proxy-States that fill it to 4,096 bytes: the Access-Accept (keys on top) cannot be sent
+        // (RFC 2865 3: at most 4,096 octets), so the session must not be logged as passed.
+        var processor = NewProcessor();
+        var changes = new List<EapSessionSnapshot>();
+        processor.SessionChanged += s =>
+        {
+            lock (changes)
+            {
+                changes.Add(s);
+            }
+        };
+        var radiusSwitch = new TestSwitch(processor);
+        var camera = new TestSupplicant();
+        radiusSwitch.Run(camera, stopWhen: r => r.Session?.State == EapSessionState.SendingResult);
+        var eap = radiusSwitch.NextEap!;
+        var room = RadiusPacket.MaxLength - radiusSwitch.Build(eap, new byte[16]).Length;
+        var proxies = new List<RadiusAttribute>();
+        while (room >= 3)
+        {
+            var size = room <= 255 ? room : room - 255 >= 3 ? 255 : room - 3;
+            proxies.Add(new RadiusAttribute(RadiusAttributeType.ProxyState, new byte[size - 2]));
+            room -= size;
+        }
+
+        radiusSwitch.EditEach = attributes => attributes.AddRange(proxies);
+        var (result, answer, _) = radiusSwitch.Send(eap);
+
+        Assert.Null(answer);
+        Assert.Equal(RadiusDropReason.AnswerTooLarge, result.Drop);
+        Assert.Equal(EapSessionState.Failed, result.Session!.State);
+        Assert.Equal(EapSessionTexts.AnswerTooLarge, result.Session.Reason);
+        lock (changes)
+        {
+            Assert.DoesNotContain(changes, c => c.State == EapSessionState.Authenticated);
+        }
+
+        Assert.Equal(0, processor.SessionCount);
+    }
+
+    [Fact]
+    public void TheFinalAnswerIsSentAgainWhenTheDuplicateCacheNoLongerHasIt()
+    {
+        // RFC 5080 2.2.2: a retransmission gets the same answer. The ended session is gone; the busy cache may have dropped
+        // the entry (here: the retransmission comes from another source port, so it misses the cache too).
+        var processor = NewProcessor();
+        var radiusSwitch = new TestSwitch(processor);
+        var camera = new TestSupplicant();
+        radiusSwitch.Run(camera, stopWhen: r => r.Session?.State == EapSessionState.SendingResult);
+        var request = radiusSwitch.Build(radiusSwitch.NextEap!, RandomNumberGenerator.GetBytes(16));
+
+        var accept = processor.Process(request, Client, Source);
+        var again = processor.Process(request, Client, new IPEndPoint(Source.Address, Source.Port + 1));
+
+        Assert.Equal(RadiusOutcome.Answered, accept.Outcome);
+        Assert.Equal(RadiusCode.AccessAccept, RadiusPacket.Parse(accept.Response!).Packet!.Code);
+        Assert.Equal(RadiusOutcome.AnsweredFromCache, again.Outcome);
+        Assert.Equal(accept.Response, again.Response);
+        Assert.Equal(1, processor.Duplicates.FinalCount);
     }
 }

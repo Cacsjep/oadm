@@ -98,8 +98,8 @@ public sealed class PerfTests(ITestOutputHelper output)
         }
 
         watch.Stop();
-        output.WriteLine($"200,000 requests through the cache at 4,096 entries: {watch.ElapsedMilliseconds} ms");
-        Assert.Equal(4096, cache.Count);
+        output.WriteLine($"200,000 requests through the cache at 20,000 entries: {watch.ElapsedMilliseconds} ms");
+        Assert.Equal(RadiusDuplicateCache.DefaultCapacity, cache.Count);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"{watch.ElapsedMilliseconds} ms");
     }
 

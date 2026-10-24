@@ -35,6 +35,14 @@ public enum RadiusDropReason
     AnswerTooLarge,
     /// <summary>A fault of the server itself while processing (never expected; the session ends, the request is dropped).</summary>
     InternalError,
+    /// <summary>
+    /// An Access-Request with neither EAP-Message nor Message-Authenticator: a MAC address check (MAC authentication bypass)
+    /// or a password check, not 802.1X. Counted apart from a wrong secret (RFC 3579 3.2 requires the Message-Authenticator
+    /// only with EAP-Message).
+    /// </summary>
+    NotEap,
+    /// <summary>A Status-Server while the server cannot authenticate (no server certificate): silently discarded (RFC 5997 4.2).</summary>
+    NotReady,
 }
 
 /// <summary>The result of one datagram.</summary>
@@ -85,7 +93,7 @@ public sealed class RadiusProcessor
         set => _options = value ?? throw new ArgumentNullException(nameof(value));
     }
 
-    /// <summary>The duplicate cache (4,096 answers, 30 s each).</summary>
+    /// <summary>The duplicate cache (20,000 answers or 32 MB, 30 s each, and the final answers of ended sessions).</summary>
     public RadiusDuplicateCache Duplicates { get; }
 
     /// <summary>
@@ -135,6 +143,12 @@ public sealed class RadiusProcessor
         }
 
         var secret = client.Secret.Span;
+        if (packet.Code == RadiusCode.AccessRequest && packet.Count(RadiusAttributeType.MessageAuthenticator) == 0
+            && packet.Count(RadiusAttributeType.EapMessage) == 0)
+        {
+            return RadiusResult.Dropped(RadiusDropReason.NotEap, "No EAP-Message (MAC address or password check)");
+        }
+
         if (!RadiusAuthenticators.VerifyRequest(packet, secret))
         {
             return RadiusResult.Dropped(RadiusDropReason.WrongSecret,
@@ -144,6 +158,13 @@ public sealed class RadiusProcessor
         var proxyStates = packet.All(RadiusAttributeType.ProxyState);
         if (packet.Code == RadiusCode.StatusServer)
         {
+            if (_options.ServerIdentity is null)
+            {
+                // Running but unable to authenticate (no certificate from the OADM CA): silently discarded, so the switch
+                // fails over (RFC 5997 4.2).
+                return RadiusResult.Dropped(RadiusDropReason.NotReady, "Status-Server without a server certificate");
+            }
+
             // RFC 5997 3: Access-Accept with the Message-Authenticator; no duplicate cache, no other work.
             var status = RadiusPacketWriter.Response(RadiusCode.AccessAccept, packet.Identifier, packet.Authenticator.Span, secret, proxyStates);
             return status is null
@@ -296,10 +317,15 @@ public sealed class RadiusProcessor
             var session = Find(client, stateValue);
             if (session is null)
             {
-                return Reject(request, client, eap, null, EapSessionTexts.SessionNotFound);
+                // A retransmission of the request that ended a session gets that answer again, also when the busy duplicate
+                // cache dropped it meanwhile (RFC 5080 2.2.2).
+                return Duplicates.FindFinal(client.Key, stateValue, request.Packet.Authenticator.Span) is { } final
+                    ? new RadiusResult(RadiusOutcome.AnsweredFromCache, final, RadiusDropReason.None, "Retransmission of the final answer", null)
+                    : Reject(request, client, eap, null, EapSessionTexts.SessionNotFound);
             }
 
             EapStep? step = null;
+            RadiusResult? accepted = null;
             string? refusal = null;
             EapSessionSnapshot snapshot;
             lock (session)
@@ -322,6 +348,13 @@ public sealed class RadiusProcessor
                 else
                 {
                     step = session.Handle(eap, request);
+                    if (step is { Kind: EapStepKind.Accept } success)
+                    {
+                        // The session is Authenticated only when the Access-Accept can go out (never logged as passed without it).
+                        accepted = Respond(request, client, success, session.Snapshot, session.State);
+                        session.CompleteAccept(accepted.Outcome == RadiusOutcome.Answered);
+                        accepted = accepted with { Session = session.Snapshot };
+                    }
                 }
 
                 snapshot = session.Snapshot;
@@ -332,7 +365,14 @@ public sealed class RadiusProcessor
                 Remove(session);
             }
 
-            return step is { } done ? Respond(request, client, done, snapshot, session.State) : Reject(request, client, eap, snapshot, refusal!);
+            var result = accepted
+                ?? (step is { } done ? Respond(request, client, done, snapshot, session.State) : Reject(request, client, eap, snapshot, refusal!));
+            if (snapshot.IsEnded && result is { Outcome: RadiusOutcome.Answered, Response: { } response })
+            {
+                Duplicates.RememberFinal(client.Key, session.State, request.Packet.Authenticator.Span, response);
+            }
+
+            return result;
         }
 
         // A new session (no State, RFC 5080 2.1.1).

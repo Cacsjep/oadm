@@ -33,6 +33,9 @@ public sealed record SupplicantOptions
     /// <summary>Answer an EAP-TLS Start with a NAK asking for these methods instead.</summary>
     public byte[]? NakWith { get; init; }
 
+    /// <summary>The signature schemes the camera offers (signature_algorithms); null for BouncyCastle's defaults.</summary>
+    public IList<SignatureAndHashAlgorithm>? SignatureAlgorithms { get; init; }
+
     /// <summary>Send the second flight in two unfragmented messages: its first TLS record, then the rest when asked.</summary>
     public bool SplitFlightAfterFirstRecord { get; init; }
 }
@@ -281,6 +284,9 @@ public sealed class TestSupplicant
         public SupplicantOptions Options => options;
 
         protected override ProtocolVersion[] GetSupportedVersions() => options.Versions;
+
+        protected override IList<SignatureAndHashAlgorithm> GetSupportedSignatureAlgorithms() =>
+            options.SignatureAlgorithms ?? base.GetSupportedSignatureAlgorithms();
 
         protected override int[] GetSupportedCipherSuites() =>
             options.CipherSuites is { } suites ? TlsUtilities.GetSupportedCipherSuites(Crypto, suites) : base.GetSupportedCipherSuites();
