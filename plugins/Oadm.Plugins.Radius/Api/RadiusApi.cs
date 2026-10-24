@@ -612,6 +612,7 @@ public static class RadiusRules
     public const string ChoosePolicyKind = "Choose a kind.";
     public const string ChoosePolicyDevices = "Choose sites, tags or devices.";
     public const string TooManyPolicies = "Use at most 100 policies.";
+    public const string RevokeNoTags = "Revoke policies choose devices and sites, not tags.";
     public const string PolicyListedTwice = "A policy is in the list twice. Reload the page and change it again.";
 
     /// <summary>The first error of the policies (field "policies[2].vlan", "defaultVlan"); null when they are fine.</summary>
@@ -672,7 +673,13 @@ public static class RadiusRules
             return new("vlan", VlanRange);
         }
 
-        return policy.Devices is null || policy.Devices.IsEmpty ? new("devices", ChoosePolicyDevices) : null;
+        if (policy.Devices is null || policy.Devices.IsEmpty)
+        {
+            return new("devices", ChoosePolicyDevices);
+        }
+
+        // A tag could revoke the certificates of every device that gets it later, without undo.
+        return policy.Kind == PolicyKinds.Revoke && (policy.Devices.Tags?.Any(t => !string.IsNullOrWhiteSpace(t)) ?? false) ? new("devices", RevokeNoTags) : null;
     }
 
     /// <summary>The first error of the settings; null when they are fine. <paramref name="listed"/>: the state's cipher suites.</summary>

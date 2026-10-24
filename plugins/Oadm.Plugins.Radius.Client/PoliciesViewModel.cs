@@ -539,7 +539,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             {
                 RadiusRules.EnterName or RadiusRules.NameTooLong or RadiusRules.PolicyNameTaken => "name",
                 RadiusRules.VlanRange => "vlan",
-                RadiusRules.ChoosePolicyDevices => "devices",
+                RadiusRules.ChoosePolicyDevices or RadiusRules.RevokeNoTags => "devices",
                 _ => null,
             };
             if (field is not null)
@@ -586,7 +586,24 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         }
     }
 
-    partial void OnKindChanged(Choice<string> value) => Validation.Validate();
+    partial void OnKindChanged(Choice<string> value)
+    {
+        Validation.Validate();
+        if (Picker is null)
+        {
+            return;
+        }
+
+        // Revoke policies choose devices and sites only: said below the device choice at once.
+        if (value.Value == PolicyKinds.Revoke && Picker.GroupChoice.TagIds.Count > 0)
+        {
+            Picker.ErrorText = RadiusRules.RevokeNoTags;
+        }
+        else if (Picker.ErrorText == RadiusRules.RevokeNoTags)
+        {
+            Picker.ErrorText = null;
+        }
+    }
 
     protected override void OnValidationChanged()
     {

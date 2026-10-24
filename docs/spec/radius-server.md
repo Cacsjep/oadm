@@ -54,7 +54,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     - **Revoke policy:** saving it revokes the current IEEE 802.1X certificates of its devices in PKI (permanent, audited,
       needs PKI's "Manage the certificate authority"; the confirmation names how many), and every new IEEE 802.1X
       certificate of those devices too while the policy exists. Removing it revokes nothing back; the devices need new
-      certificates.
+      certificates. Revoke policies choose devices and sites only: a tag could revoke certificates of every device that
+      gets it later, without undo (decision 2026-10-24; a save with tags is refused, the tags of an older stored one match
+      nothing).
     - Tags used by a policy's selection are protected as VLAN tags were (`docs/spec/tags.md` "Protected tags").
   - **Sessions** (full width, live): as before.
   - **Log** (full width): as before, without **Add switch** (decision 2026-10-24).
@@ -364,7 +366,7 @@ who may tag devices but has a group could otherwise choose a device's VLAN or ta
 hands the policies' tag names to the host (`ctx.ProtectedTags.Protect`, SDK 0.4.0) at its start and with every save (the
 old and the new names while the save runs); `DeviceTagStore` refuses them for a group user in the tagging transaction. On
 a host without `ProtectedTags` the tag parts of VLAN policies match no device (fail closed; sites, devices and the
-default VLAN apply), those of block and revoke policies still match. The host keeps the protected names while the plugin
+default VLAN apply), those of block policies still match (revoke policies never match by tag). The host keeps the protected names while the plugin
 is installed (round 3): a stopped or turned-off 802.1X server still protects the tags of its stored policies; the names
 are forgotten only when the plugin is removed (docs/spec/tags.md "Protected tags"). While the 802.1X server runs, a rename
 or delete of such a tag is refused for every user (`Protect(names, RadiusTexts.VlanTag, RadiusTexts.VlanTagChange)`: "The

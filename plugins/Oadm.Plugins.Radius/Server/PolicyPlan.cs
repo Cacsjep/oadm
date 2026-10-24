@@ -9,7 +9,9 @@ namespace Oadm.Plugins.Radius.Server;
 /// block policy that holds it refuses it, any revoke policy refuses it and revokes its certificate. Immutable; a save
 /// replaces it, so it applies to the next authentication of each device. The tag parts of VLAN policies apply only while
 /// the host protects the tags (<see cref="IProtectedTags"/>); without it they match no device (fail closed: a group user
-/// could tag a device into a VLAN). Block and revoke policies keep their tag parts (fail closed the other way).
+/// could tag a device into a VLAN). Block policies keep their tag parts (fail closed the other way). Revoke policies never
+/// match by tag, also stored ones from before the rule: a tag could revoke the certificates of every device that gets it
+/// later, without undo.
 /// </summary>
 public sealed class PolicyPlan
 {
@@ -18,7 +20,7 @@ public sealed class PolicyPlan
     public PolicyPlan(PolicySettings settings, bool tagsProtected = true)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        _policies = [.. (settings.Policies ?? []).Select(p => new Compiled(p, tagsProtected || p.Kind != PolicyKinds.Vlan))];
+        _policies = [.. (settings.Policies ?? []).Select(p => new Compiled(p, UsesTags(p, tagsProtected)))];
         VlansEnabled = _policies.Any(p => p.Policy.Kind == PolicyKinds.Vlan);
         DefaultVlan = VlansEnabled ? settings.DefaultVlan : null;
         RevokePolicies = [.. _policies.Where(p => p.Policy.Kind == PolicyKinds.Revoke).Select(p => p.Policy)];
@@ -80,8 +82,12 @@ public sealed class PolicyPlan
         return null;
     }
 
-    /// <summary><paramref name="policy"/>'s devices hold <paramref name="device"/> (tags always count: used for revoke policies).</summary>
-    public static bool Holds(RadiusPolicy policy, IDeviceInfo device) => new Compiled(policy, true).Holds(device);
+    /// <summary><paramref name="policy"/>'s devices hold <paramref name="device"/> (used for revoke policies: never by tag).</summary>
+    public static bool Holds(RadiusPolicy policy, IDeviceInfo device) => new Compiled(policy, UsesTags(policy, tagsProtected: true)).Holds(device);
+
+    /// <summary>A revoke policy never matches by tag; a VLAN policy only while the host protects the tags.</summary>
+    private static bool UsesTags(RadiusPolicy policy, bool tagsProtected) =>
+        policy.Kind != PolicyKinds.Revoke && (tagsProtected || policy.Kind != PolicyKinds.Vlan);
 
     private sealed class Compiled
     {

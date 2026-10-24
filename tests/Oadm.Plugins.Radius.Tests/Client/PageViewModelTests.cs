@@ -243,6 +243,32 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    public async Task A_revoke_policy_with_a_tag_says_so_below_the_device_choice_and_sends_nothing()
+    {
+        var dialogs = new FakeDialogs();
+        using var vm = new RadiusViewModel(_ctx);
+        vm.Policies.Dialogs = dialogs;
+        await vm.LoadServerAsync(CancellationToken.None);
+        dialogs.Policy = async editor =>
+        {
+            editor.Name = "Lost";
+            editor.Picker.Tags.Single(t => t.Name == "Lobby").IsChecked = true;
+            editor.Kind = editor.KindChoices[2];
+            Assert.Equal(RadiusRules.RevokeNoTags, editor.Picker.ErrorText);
+            editor.Kind = editor.KindChoices[1];
+            Assert.Null(editor.Picker.ErrorText); // Block keeps tags
+            editor.Kind = editor.KindChoices[2];
+            Assert.False(await editor.SaveAsync());
+            Assert.Equal(RadiusRules.RevokeNoTags, editor.Picker.ErrorText);
+            return false;
+        };
+
+        await vm.Policies.AddCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, _server.CountOf(RadiusMethods.SavePolicies));
+    }
+
+    [Fact]
     public async Task A_revoke_policy_asks_with_the_count_and_a_block_policy_does_not()
     {
         var dialogs = new FakeDialogs();

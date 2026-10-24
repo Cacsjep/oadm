@@ -950,6 +950,11 @@ public sealed partial class RadiusService : IAsyncDisposable
     {
         if (await _store.PoliciesAsync(ct).ConfigureAwait(false) is { } stored)
         {
+            foreach (var tagged in (stored.Policies ?? []).Where(p => p.Kind == PolicyKinds.Revoke && (p.Devices?.Tags?.Count ?? 0) > 0))
+            {
+                LogRevokeTagsIgnored(tagged.Name); // stored before revoke policies refused tags: they match by device and site only
+            }
+
             return WithUniqueIds(stored);
         }
 
@@ -2340,6 +2345,9 @@ public sealed partial class RadiusService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} policies saved by {User}")]
     private partial void LogPoliciesSaved(int count, string user);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: the revoke policy {Name} chooses tags; it revokes by its devices and sites only")]
+    private partial void LogRevokeTagsIgnored(string name);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} VLAN rules moved into VLAN policies")]
     private partial void LogPoliciesMigrated(int count);

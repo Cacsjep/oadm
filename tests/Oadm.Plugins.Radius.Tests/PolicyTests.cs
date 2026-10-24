@@ -231,4 +231,48 @@ public sealed class PolicyTests
         Assert.Equal(["A", "B", "C"], saved.Policies.Select(p => p.Name));
         Assert.Equal(id, saved.Policies[0].Id);
     }
+
+    [Fact]
+    public void RevokePoliciesChooseDevicesAndSitesNotTags()
+    {
+        var tagged = new PolicyDevices { Tags = ["Lost"], Serials = [Serial] };
+        Assert.Equal(new RadiusFieldError("devices", RadiusRules.RevokeNoTags),
+            RadiusRules.Validate(new RadiusPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = tagged }));
+        Assert.Null(RadiusRules.Validate(new RadiusPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = tagged with { Tags = [] } }));
+        Assert.Null(RadiusRules.Validate(new RadiusPolicy { Name = "Lost", Kind = PolicyKinds.Block, Devices = tagged }));
+        Assert.Null(RadiusRules.Validate(Vlan("Lost", 20, tagged)));
+    }
+
+    [Fact]
+    public async Task AStoredRevokePolicyWithATagNeverRevokesANewlyTaggedDeviceAndBlockAndVlanStillMatchTags()
+    {
+        await using var harness = await PluginHarness.CreateAsync(h =>
+        {
+            h.AddDevice(Serial);
+            h.AddDevice(Other, tags: ["Lost"]); // tagged after the policy was stored
+        }, start: false);
+        var tagged = harness.Ctx.DeviceList.Single(d => d.Serial == Other);
+        var stored = new PolicySettings
+        {
+            Policies = [new RadiusPolicy { Id = Guid.NewGuid(), Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = new PolicyDevices { Tags = ["Lost"], Serials = [Serial] }, SavedBy = "admin" }],
+        };
+        await harness.Ctx.PluginSettings.SetAsync(RadiusStore.PoliciesKey, RadiusJson.Serialize(stored), CancellationToken.None);
+        var current = harness.Ca.Camera(Other);
+        harness.Ca.List(current, tagged.Id);
+        await harness.StartAsync();
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Other)))).Final);
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final); // its serial still counts
+        Assert.Equal(0, (await harness.CallAsync<RevocationCount>(RadiusMethods.CountRevocations, new PolicyDevices { Tags = ["Lost"] })).Count);
+        Assert.DoesNotContain(harness.Ca.RevokeCalls, c => c.Serials.Contains(TestAuthority.SerialOf(current)));
+        Assert.False(harness.Ca.IsRevoked(TestAuthority.SerialOf(current)));
+
+        var plan = new PolicyPlan(new PolicySettings
+        {
+            Policies = [new RadiusPolicy { Name = "Lost", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Lost"] } }, Vlan("Lost VLAN", 20, new PolicyDevices { Tags = ["Lost"] })],
+        });
+        Assert.Equal("Lost", plan.RefusalFor(tagged)?.Name);
+        Assert.Equal(20, plan.VlanFor(tagged));
+    }
 }
