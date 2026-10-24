@@ -135,8 +135,10 @@ public sealed class RevokeProgressHeadlessTests
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, "pki-revoking.png");
             var during = Visible(window);
-            var revoke = window.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && b.Classes.Contains("danger") && b.Content is "Revoke");
-            var enabledDuring = revoke.IsEffectivelyEnabled;
+            // The row's Revoke (its actions menu) is off while the write runs.
+            var row = RevokeProgressTests.DeviceRows(vm.Certificates)[1];
+            var revoke = vm.Certificates.MenuOf(row).First(a => a.Text == "Revoke");
+            var enabledDuring = revoke.Command!.CanExecute(revoke.Parameter);
             gate.SetResult();
             await revoking;
             HeadlessPageTests.Pump();
