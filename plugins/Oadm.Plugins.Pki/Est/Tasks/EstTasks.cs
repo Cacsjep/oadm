@@ -881,7 +881,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         var est = Service;
         if (est is null && present.Any(p => EstTaskIds.IsOadm(p.Id)))
         {
-            throw new InvalidOperationException(EstTaskIds.NotRunning); // it has to stop the renewal check of their certificates
+            throw new InvalidOperationException(ctx.Pro?.IsActive == true ? EstTaskIds.NotRunning : EstTaskIds.NoPro); // it has to stop the renewal check of their certificates
         }
 
         await ctx.StepAsync(EstTaskIds.RemoveStep, async step =>

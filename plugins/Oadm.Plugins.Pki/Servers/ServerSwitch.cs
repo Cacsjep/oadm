@@ -189,6 +189,11 @@ public sealed class ServerSwitch<TService> : IAsyncDisposable
 
     private async Task FollowProAsync()
     {
+        if (_disposed)
+        {
+            return; // a license change that raced the shutdown
+        }
+
         try
         {
             await ApplyAsync(_stopping.Token).ConfigureAwait(false);
@@ -196,6 +201,9 @@ public sealed class ServerSwitch<TService> : IAsyncDisposable
             Publish();
         }
         catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException) when (_disposed)
         {
         }
 #pragma warning disable CA1031 // Logged; the next change or start applies it.

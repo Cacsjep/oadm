@@ -106,6 +106,21 @@ public sealed class ServerSwitchTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task WithoutOadmProTheKeptChoiceCanBeTurnedOffSoALaterLicenseStartsNothing()
+    {
+        var pro = new FakeProLicense(); // a 4.1 choice "on" on a server whose license ran out
+        await StartAsync(pro, on: true);
+
+        await _plugin.InvokeAsync(ServerSwitchMethods.TurnOff, null, CancellationToken.None);
+        Assert.Equal("false", await _core.Settings.GetAsync(ServerSwitch<EstService>.SettingKey, CancellationToken.None));
+
+        pro.Current = FakeProLicense.ActivePro().Current;
+        await Eventually.TrueAsync(async () => (await CallAsync(ServerSwitchMethods.Get)).ProActive, "the page sees the license");
+        Assert.Null(_plugin.Service);
+        Assert.Empty(OpenListeners);
+    }
+
+    [Fact]
     public async Task TheDataOf41IsTakenOverTheChoiceTheSettingsAndTheRecords()
     {
         // As a 4.1 server stored it under the core plugin id oadm.est, plus the choice the host took over from Plugins.Enabled.

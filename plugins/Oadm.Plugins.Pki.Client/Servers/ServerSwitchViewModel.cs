@@ -81,11 +81,11 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     /// <summary>The role may change the server and the user has all devices (the server is server-wide).</summary>
     public bool MayManage => _ctx.HasAllDevices && _ctx.Has(PermissionKeys.Of(_pluginId, PermissionKeys.Manage));
 
-    /// <summary>Turn on: while it is off, and always without OADM PRO (then disabled, the tooltip says why).</summary>
-    public bool ShowTurnOn => MayManage && IsLoaded && ReadError is null && (!On || !ProActive);
+    /// <summary>Turn on: while it is off (without OADM PRO disabled, the tooltip says why).</summary>
+    public bool ShowTurnOn => MayManage && IsLoaded && ReadError is null && !On;
 
-    /// <summary>Turn off: while it is on with OADM PRO (running, or failed to start).</summary>
-    public bool ShowTurnOff => MayManage && IsLoaded && ReadError is null && On && ProActive;
+    /// <summary>Turn off: while it is on, also without OADM PRO (so a lapsed license never brings a server back unasked).</summary>
+    public bool ShowTurnOff => MayManage && IsLoaded && ReadError is null && On;
 
     /// <summary>The tooltip of a disabled Turn on.</summary>
     public string? TurnOnTip => ProActive ? null : ProLicenseTexts.NeedsPro;
