@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Radius.Client"
+        x:Class="Oadm.Plugins.Radius.Client.SwitchWindow"
+        x:DataType="vm:SwitchDialogViewModel"
+        Title="{Binding Title}"
+        Width="640" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A single form: no card, the form in the dialog body between title bar and footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="Name">
+          <TextBox Text="{Binding Name}" PlaceholderText="e.g. Building A, floor 2" />
+        </ui:FormField>
+        <ui:FormField Label="Address">
+          <TextBox Text="{Binding Address}" PlaceholderText="e.g. 10.0.0.2 or switch-a.example.com" />
+        </ui:FormField>
+        <ui:FormField Label="Site" IsVisible="{Binding HasSites}">
+          <ComboBox ItemsSource="{Binding SiteChoices}" SelectedItem="{Binding Site}" HorizontalAlignment="Stretch" />
+        </ui:FormField>
+        <ui:FormField Label="Shared secret" Hint="{Binding SecretHint}">
+          <Grid ColumnDefinitions="*,Auto">
+            <ui:PasswordBox Grid.Column="0" Text="{Binding Secret}" RevealPassword="{Binding ShowSecret}" />
+            <Button Grid.Column="1" Classes="secondary" Margin="10,0,0,0" VerticalAlignment="Top" Command="{Binding GenerateCommand}"
+                    ToolTip.Tip="A random secret of 32 characters">
+              <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Generate" />
+            </Button>
+          </Grid>
+        </ui:FormField>
+        <ui:FormField Classes="wide">
+          <TextBlock Classes="secondary" Text="{Binding RadiusServerHint}" TextWrapping="Wrap" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

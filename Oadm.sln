@@ -249,6 +249,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.Radius", "plug
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.Radius.Tests", "tests\Oadm.Plugins.Radius.Tests\Oadm.Plugins.Radius.Tests.csproj", "{701FB014-F58F-4B03-9FF8-C5C2D5762710}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.Radius.Client", "plugins\Oadm.Plugins.Radius.Client\Oadm.Plugins.Radius.Client.csproj", "{1BD06346-B098-4756-AF99-890979B67BDE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1651,6 +1653,18 @@ Global
 		{701FB014-F58F-4B03-9FF8-C5C2D5762710}.Release|x64.Build.0 = Release|Any CPU
 		{701FB014-F58F-4B03-9FF8-C5C2D5762710}.Release|x86.ActiveCfg = Release|Any CPU
 		{701FB014-F58F-4B03-9FF8-C5C2D5762710}.Release|x86.Build.0 = Release|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Debug|x64.Build.0 = Debug|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Debug|x86.Build.0 = Debug|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Release|x64.ActiveCfg = Release|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Release|x64.Build.0 = Release|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Release|x86.ActiveCfg = Release|Any CPU
+		{1BD06346-B098-4756-AF99-890979B67BDE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1773,5 +1787,6 @@ Global
 		{960D0D86-0F40-45F5-A1FE-469FF1B5ABB1} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{1DD73B04-3729-462B-BC4A-C7C4195FD535} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 		{701FB014-F58F-4B03-9FF8-C5C2D5762710} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{1BD06346-B098-4756-AF99-890979B67BDE} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 	EndGlobalSection
 EndGlobal

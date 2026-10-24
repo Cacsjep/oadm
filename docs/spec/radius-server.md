@@ -393,6 +393,52 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
 - **RFC vectors**: RFC 2865 7 and RFC 5997 6 (Message-Authenticator). The second request of RFC 2865 7.3 is printed with
   a State length of 0x10 for 8 octets and is malformed as printed (a test shows the parser drops it).
 
+## Code (page)
+
+`plugins/Oadm.Plugins.Radius.Client` (namespace `Oadm.Plugins.Radius.Client`, `RadiusPage`, `HasOwnCards`); tests in
+`tests/Oadm.Plugins.Radius.Tests/Client` against a fake server (`FakeRadiusBackend`: every method of the contract with demo
+data, also for the screenshots). Built 2026-10-24.
+
+- **Fixed tabs** (`ui:PageTab`): **Server** (General with Advanced left, Switches right, VLANs below), **Sessions**, **Log**,
+  **Revoked**. Nothing of a tab is read before it opens (the Server tab reads `getState`, `listSwitches`, `getVlans` each
+  time it opens, the overlay over the cards; the lists the first time, then the events keep them).
+- **One Save** at the end of the VLANs card saves General with Advanced (`saveSettings`) and then the VLANs (`saveVlans`),
+  the status chip and the server certificate's end directly left of it, the sites that did not allow the port and a save
+  error without a field below it (one accent button per view). Switches apply in their dialog at once.
+- **Advanced** is a chevron (`ToggleButton.sectionExpander`) and starts collapsed; the old CBC suites are listed and checked
+  only while the minimum is below TLS 1.2; the page sends only the listed checked suites; the error "Check at least one
+  cipher suite." below the list.
+- **Switch dialog**: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per site), Site (only when
+  the server has sites), Shared secret (`ui:PasswordBox`, 16..128 characters; **Generate** asks `generateSecret` and shows
+  the secret in plain text once with "Copy it now into the switch: OADM does not show it again."; on Edit empty keeps it),
+  the line "RADIUS server for this switch: <address>, port <port>" (the row's `radiusServerAddress`, else the Listen on
+  address, the site node's address for a site). A refusal of the server goes below the field it names, else into a message.
+- **VLANs**: Assign VLANs (check box), the rules (Match Site or Tag, the site or tag, VLAN ID 1..4094, move up and down,
+  Remove), Default VLAN (optional). Tags: the server's list plus the tags of the devices this client knows.
+- **Sessions**: rows by id in a dictionary, a `sessions` batch updates rows in place and adds new ones on top in one step;
+  an ended row leaves 10 s after it ended (one step per second, the page's one-second tick also moves the durations of the
+  open rows); the device in italics while it is a guess from the MAC (`TextBlock.guess`); the state chip running (violet),
+  ok or error with the text of the server ("Sending server certificate: fragment 2 of 4").
+- **Log**: pages of 500 from the server with the search (300 ms after the last key), live `log` rows on the first page when
+  they match the search, the reason or the warning in the Result chip (a warning is amber), View certificate describes the
+  DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed.
+- **Revoked**: `listRevoked` with a search in the client; **Revoke** opens the shared certificate list
+  (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
+  (`IssuedCertificateList.ConfirmRevokeAsync`), then `revoke`; "Nothing was revoked ..." when every chosen one was revoked
+  already.
+- **Device groups**: a user with a group sees only Sessions and Log (the server filters the rows); users without "manage"
+  or without all devices see no Save, Add switch, Edit, Delete, Delete all or Revoke, and the inputs are read only.
+- **Contract**: the server part's `plugins/Oadm.Plugins.Radius/Api/RadiusApi.cs` (methods, `RadiusTopics`, DTOs and
+  `RadiusRules`, whose texts and checks the page uses for its errors below the fields); the client project references the
+  server project like EST (a linked copy would give the tests every type twice). A session event row with `removed` leaves
+  the tab at once; the page also drops ended rows 10 s after their end. **Page additions** for the server part
+  (`Api/RadiusPageApi.cs` of the client, `RadiusPageMethods`): `listSites` (-> `{sites: [{siteId, siteName}]}`, every site
+  of the server; without it the page takes the sites of the devices and switches it knows), `listCertificates` (PKI's
+  list through `IDeviceCertificateAuthority.ListIssuedAsync`: `{state, purpose, source, search, offset, limit}` ->
+  `{rows: [IssuedCertificateInfo], total, offset}`, rows of the caller's devices) and `getIssuedCertificate`
+  (`{serialNumber}` -> `{der}`, empty when OADM kept no copy). VLAN tag choices: the tags of the devices the client knows
+  and those of the saved rules.
+
 ## Stages
 
 1. **Built 2026-10-24:** PKI: the list of issued certificates and the revocation list (Certificates tab, Revoke, the SDK

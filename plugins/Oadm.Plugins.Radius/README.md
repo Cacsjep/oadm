@@ -23,3 +23,10 @@ Apache 2.0).
   server ships the same version and the plugin load context falls back to it.
 - Tests: `tests/Oadm.Plugins.Radius.Tests` (a BouncyCastle client as the camera through an in-memory switch, RFC vectors,
   parsing rules, fuzzing, fragmentation, alerts, timeouts; `Category=Perf` for many parallel sessions).
+- Client part (`Oadm.Plugins.Radius.Client.dll`, `plugins/Oadm.Plugins.Radius.Client`): the page "802.1X server" with the
+  fixed tabs Server (General with Advanced, Switches with the switch dialog, VLANs, one Save), Sessions (live), Log (search,
+  View certificate, Delete all) and Revoked (Revoke through the shared `ui:IssuedCertificateList` of the client SDK); code
+  map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (project reference, like EST) and its own
+  additions in `Api/RadiusPageApi.cs`. Tests: `tests/Oadm.Plugins.Radius.Tests/Client` against `FakeRadiusBackend`
+  (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `Category=Perf` for 10,000 sessions and
+  30,000 devices).

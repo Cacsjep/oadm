@@ -1159,6 +1159,10 @@
   <Style Selector="DataGridCell TextBlock.besideChips">
     <Setter Property="Margin" Value="34,0,10,0" />
   </Style>
+  <!-- A value that is only a guess (the 802.1X Sessions tab: the device from the MAC before the certificate decides) -->
+  <Style Selector="DataGridCell TextBlock.guess">
+    <Setter Property="FontStyle" Value="Italic" />
+  </Style>
   <Style Selector="TextBlock.numberHeader">
     <Setter Property="TextAlignment" Value="Right" />
     <Setter Property="Margin" Value="0,0,10,0" />
@@ -2119,6 +2123,25 @@
   </Style>
   <Style Selector="TextBlock.groupHeader">
     <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- A collapsed part of a card (Advanced of the 802.1X server): the chevron of a group and the section's name -->
+  <Style Selector="ToggleButton.sectionExpander">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{StaticResource Oadm.TransparentBrush}" Padding="0,4">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ui:OadmIcon Name="PART_Chevron" Data="{StaticResource Icon.chevronRight}" Width="14" Height="14" Foreground="{StaticResource Oadm.TextSecondaryBrush}"
+                         VerticalAlignment="Center" />
+            <ContentPresenter Content="{TemplateBinding Content}" VerticalAlignment="Center" FontWeight="SemiBold" />
+          </StackPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.sectionExpander:checked /template/ ui|OadmIcon#PART_Chevron">
+    <Setter Property="Data" Value="{StaticResource Icon.chevronDown}" />
   </Style>
   <!-- Parts of a list row that line up with the row's input (check box, name, hint): the height of an input, centered -->
   <Style Selector=":is(Control).inputHeight">
