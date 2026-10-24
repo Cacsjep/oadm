@@ -498,6 +498,33 @@ public sealed record LogRow
 
     /// <summary>View certificate has a certificate to show.</summary>
     public bool HasCertificate { get; init; }
+
+    /// <summary>
+    /// A row of dropped requests (a sender that is no switch, a wrong shared secret): how many requests it stands for, at
+    /// least 1; 0 for a row of a session.
+    /// </summary>
+    public int Requests { get; init; }
+
+    /// <summary>The address of a sender that is no switch (Add switch of the log row fills it in); null otherwise.</summary>
+    public string? Sender { get; init; }
+
+    /// <summary>The site the sender that is no switch reached (null: this server's network).</summary>
+    public Guid? SenderSiteId { get; init; }
+}
+
+/// <summary>The texts of the log rows of dropped requests (docs/spec/radius-server.md "Log").</summary>
+public static class DroppedRequestTexts
+{
+    public const string NotAdded = "Request from a switch that is not added. Add it under Switches.";
+    public const string WrongSecret = "Wrong shared secret: the request's check value does not match.";
+
+    /// <summary>"10.0.0.9 (not added)", at a site "10.0.0.9 at Building B (not added)".</summary>
+    public static string Sender(string address, string? siteName) =>
+        siteName is { Length: > 0 } ? $"{address} at {siteName} (not added)" : $"{address} (not added)";
+
+    /// <summary>The reason with the count of a row that stands for more than one request.</summary>
+    public static string Reason(string reason, int requests) =>
+        requests > 1 ? string.Create(CultureInfo.InvariantCulture, $"{reason} {requests:N0} requests in the last minute.") : reason;
 }
 
 /// <param name="Total">Rows matching the search.</param>

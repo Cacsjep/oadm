@@ -93,6 +93,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     private readonly RadiusHost _host;
     private readonly RadiusStore _store;
     private readonly RadiusLog _log;
+    private readonly DroppedRequests _dropped = new();
     private readonly SessionBoard _board;
     private readonly DeviceIndex _index;
     private readonly ServerIdentityKeeper _identity;
@@ -164,6 +165,8 @@ public sealed partial class RadiusService : IAsyncDisposable
     internal RadiusProcessor Processor => _processor;
 
     internal RadiusLog Log => _log;
+
+    internal DroppedRequests Dropped => _dropped;
 
     internal SessionBoard Board => _board;
 
@@ -395,6 +398,11 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         if (result.Outcome == RadiusOutcome.Dropped)
         {
+            if (result.Drop == RadiusDropReason.WrongSecret)
+            {
+                _dropped.Count(DroppedRequests.Kind.WrongSecret, entry.SiteId, RadiusRules.Normalize(work.Datagram.Remote.Address), entry.Name, _host.Time.GetUtcNow().UtcDateTime);
+            }
+
             LogDropped(entry.Name, work.Datagram.Remote, result.Drop, result.Detail ?? string.Empty);
             return;
         }
@@ -407,7 +415,6 @@ public sealed partial class RadiusService : IAsyncDisposable
 
     private void CountUnknown(IPEndPoint remote, Guid? siteId)
     {
-        var count = Interlocked.Increment(ref _unknownCount);
         string? site = null;
         if (siteId is { } id)
         {
@@ -417,11 +424,15 @@ public sealed partial class RadiusService : IAsyncDisposable
             }
         }
 
+        var address = RadiusRules.Normalize(remote.Address);
+        var now = _host.Time.GetUtcNow().UtcDateTime;
+        _dropped.Count(DroppedRequests.Kind.NotAdded, siteId, address, DroppedRequestTexts.Sender(address.ToString(), site), now); // a log row at the next tick
         lock (_unknownGate)
         {
-            _lastUnknown = (RadiusRules.Normalize(remote.Address).ToString(), site, _host.Time.GetUtcNow().UtcDateTime);
+            _lastUnknown = (address.ToString(), site, now);
         }
 
+        var count = Interlocked.Increment(ref _unknownCount);
         Volatile.Write(ref _stateStale, 1);
         if (count <= 20 || count % 1000 == 0)
         {
@@ -489,6 +500,8 @@ public sealed partial class RadiusService : IAsyncDisposable
                 PublishRows(RadiusTopics.Sessions, changed, r => r.DeviceId);
             }
 
+            RecordDropped();
+
             var now = _host.Time.GetTimestamp();
             if (Interlocked.Exchange(ref _switchesDirty, 0) == 1
                 || (Volatile.Read(ref _switchesStale) == 1 && _host.Time.GetElapsedTime(_lastSwitchesPublish) >= QuietPublish))
@@ -555,6 +568,28 @@ public sealed partial class RadiusService : IAsyncDisposable
             {
                 LogFailed(session.SwitchName, snapshot.Port, row.DeviceName.Length > 0 ? row.DeviceName : snapshot.Mac.Display, row.Reason ?? string.Empty);
             }
+        }
+
+        rows.Reverse(); // newest first
+        PublishRows(RadiusTopics.Log, rows, r => r.DeviceId);
+    }
+
+    /// <summary>
+    /// The rows of dropped requests that are due (a sender that is no switch, a wrong shared secret; at most one per sender
+    /// and reason per minute): no device, so only users with all devices get them. No event rule fires: no device tried.
+    /// </summary>
+    private void RecordDropped()
+    {
+        var due = _dropped.Drain(_host.Time.GetUtcNow().UtcDateTime);
+        if (due.Count == 0)
+        {
+            return;
+        }
+
+        var rows = new List<LogRow>(due.Count);
+        foreach (var row in due)
+        {
+            rows.Add(_log.Add(row, null));
         }
 
         rows.Reverse(); // newest first
