@@ -294,14 +294,25 @@ public sealed class CertificateListTests
         Task<DeleteCertificatesReply> DeleteAsync(params string[] ids) => pki.InvokeAsync<DeleteCertificatesReply>(CertificateMethods.Delete, new DeleteCertificatesRequest(ids));
 
         // A device certificate that is still valid, a CA: refused with the reason, nothing deleted.
-        Assert.Equal("The certificate of B8A44F631339 is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(created, valid)).Error);
+        Assert.Equal("The certificate of B8A44F631339 is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(valid, created)).Error);
         Assert.Equal("Remove CAs in Certificate authorities. Nothing was deleted.", (await DeleteAsync(ca)).Error);
         Assert.Equal(PkiCertificateTexts.ChooseOne, (await DeleteAsync()).Error);
         Assert.NotNull(pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..]));
 
-        // The revoked device certificate and the created one go; the revocation stays in force.
+        // A created certificate that is still valid neither (the OADM CA issued it); an imported one goes at once.
+        Assert.Equal("The certificate of nvr.example.com is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(revoked, created)).Error);
+        Assert.NotNull(pki.Service.Issued.Find(revoked));
+        using var root = TestCa.Root("Contoso Root");
+        using var leaf = TestCa.Leaf(root, "10.0.0.30");
+        var imported = await pki.InvokeAsync<CertificateActionReply>(CertificateMethods.Import, new ImportCertificateRequest(Convert.ToBase64String(TestCa.Pem(leaf)), "leaf.crt", null));
+        Assert.Equal(1, (await DeleteAsync(imported.Id!)).Deleted);
+        var createdSerial = pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..])!.Serial;
+        await authority.RevokeAsync([createdSerial], RevocationReason.Other, "admin", CancellationToken.None);
+
+        // The revoked device certificate and the revoked created one go; the revocations stay in force.
         var deleted = await DeleteAsync(created, revoked);
         Assert.Equal((2, (string?)null), (deleted.Deleted, deleted.Error));
+        Assert.True(authority.IsRevoked(createdSerial));
         Assert.Null(pki.Service.Issued.Find(revoked));
         Assert.True(authority.IsRevoked(revoked));
         Assert.Empty(pki.Service.Local.List);
@@ -512,7 +523,7 @@ public sealed class CertificateListTests
 
             await Eventually.TrueAsync(() => tab.Rows.Any(r => r.Name == "nvr.example.com"), "the new row");
             var row = tab.Rows.Single(r => r.Name == "nvr.example.com");
-            Assert.True(row.HasKey && row.CanDelete && !row.CanRevoke == false);
+            Assert.True(row.HasKey && !row.CanDelete && row.CanRevoke); // the OADM CA's and still valid: revoked first
 
             // Export with key: the password dialog, then the file; PEM at once.
             dialogs.Drive = async d =>

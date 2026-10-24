@@ -411,8 +411,8 @@ public sealed partial class PkiService
     }
 
     /// <summary>
-    /// Deletes rows nothing uses: device certificates that are revoked or expired, certificates created, signed or imported
-    /// here, ended server certificates. All or nothing: the first row that cannot go says why. Revocations stay.
+    /// Deletes rows nothing uses: device certificates and certificates created or signed here that are revoked or expired,
+    /// imported certificates, ended server certificates. All or nothing: the first row that cannot go says why. Revocations stay.
     /// </summary>
     internal async Task<DeleteCertificatesReply> DeleteCertificatesAsync(DeleteCertificatesRequest request, string userName, CancellationToken ct)
     {
@@ -457,7 +457,15 @@ public sealed partial class PkiService
 
             if (id.StartsWith(LocalCertificates.RowPrefix, StringComparison.Ordinal))
             {
-                locals.Add(id[LocalCertificates.RowPrefix.Length..]);
+                // The OADM CA issued created and signed ones: still valid, they would be accepted without a trace. Revoke first.
+                var localId = id[LocalCertificates.RowPrefix.Length..];
+                if (_local.Find(localId) is { Stored.Kind: ListedCertificateKind.Created or ListedCertificateKind.SignedRequest } local
+                    && local.NotAfterUtc > now && !_issued.IsRevoked(local.Serial))
+                {
+                    return Refused(CertificateRules.StillValid(local.Stored.Name));
+                }
+
+                locals.Add(localId);
                 continue;
             }
 

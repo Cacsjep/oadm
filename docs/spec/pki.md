@@ -144,7 +144,7 @@ devices with two certificates each stay fast.
   - **Export**: PEM, DER; PKCS#12 only where OADM holds the key (created, imported with key, server certificates), with
     a password. Device certificates have no key in OADM (the camera made it). Every export with a key is audited.
   - **View** (`ui:CertificateWindow`), **Revoke** (as today), **Delete** (only certificates nothing uses; revoked or
-    expired ones, or created ones no longer needed).
+    expired ones, or imported ones no longer needed).
   - Create and Sign request never name an Axis camera (`axis-<12 hex>`, any domain): only device certificates do.
 
 ## Converting existing settings
@@ -391,8 +391,9 @@ fits the spec; to be confirmed by the maintainer).
   certificate only (no chain); PKCS#12 only of certificates created or imported with a key, with the issuing CA, AES-256,
   100,000 iterations. Never a CA key or a device's key.
 - **Delete** (`deleteCertificates`): all or nothing, the first refusal says why ("The certificate of 10.0.0.48 is still
-  valid. Revoke it first. Nothing was deleted."). Device certificates only revoked or expired; CAs never ("Remove CAs in
-  Certificate authorities."); server certificates only ended; created, signed and imported ones always. A revocation stays.
+  valid. Revoke it first. Nothing was deleted."). Device certificates and created and signed ones (the OADM CA issued them:
+  deleted while valid, they would still be accepted without a trace) only revoked or expired; CAs never ("Remove CAs in
+  Certificate authorities."); server certificates only ended; imported ones always. A revocation stays.
 - **Revoke** also takes created and signed certificates (the OADM CA issued them; decision of stage 5).
 - **Limits** (decision of stage 5): at most 1,000 certificates created, signed or imported; files up to 1 MB. The upload of
   a file goes through `InvokeAsync` as base64 (core plugins have no upload path), within the server's 16 MB message limit.

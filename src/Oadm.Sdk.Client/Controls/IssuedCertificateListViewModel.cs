@@ -72,13 +72,13 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
         && Source.State is IssuedCertificateState.Valid or IssuedCertificateState.ExpiresSoon or IssuedCertificateState.Replaced;
 
     /// <summary>
-    /// Nothing uses it: a revoked or expired certificate, or one created, signed or imported here that no server uses. CAs are
-    /// removed in their own list. The server checks again.
+    /// Nothing uses it: a revoked or expired certificate, or one imported here that no server uses (created and signed ones
+    /// are the OADM CA's: revoked first). CAs are removed in their own list. The server checks again.
     /// </summary>
     public bool CanDelete => Source.Kind switch
     {
         ListedCertificateKind.Authority => false,
-        ListedCertificateKind.Created or ListedCertificateKind.SignedRequest or ListedCertificateKind.Imported => string.IsNullOrEmpty(Source.UsedBy) || IsEnded,
+        ListedCertificateKind.Imported => string.IsNullOrEmpty(Source.UsedBy) || IsEnded,
         _ => IsEnded,
     };
 
