@@ -497,31 +497,72 @@ public sealed partial class PolicyStore : IDisposable
         return [.. tags.Order(StringComparer.OrdinalIgnoreCase)];
     }
 
-    /// <summary>The row's summary: "VLAN 30", "OADM CA, only devices OADM manages", "TLS 1.2, 1,020 bytes, switch decides reauthentication", "30 days".</summary>
+    /// <summary>
+    /// The row's summary (and the editor's preview line): one plain sentence that says what the policy does, with its values;
+    /// the Devices column says which devices ("these devices"). One builder per kind (docs/spec/pki.md "Policies").
+    /// </summary>
     public static string Summary(PkiPolicy policy, IReadOnlyDictionary<string, string> caNames)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(caNames);
+        var ca = CaName(policy.CaId, caNames);
         return policy.Kind switch
         {
-            PolicyKinds.Vlan => string.Create(CultureInfo.InvariantCulture, $"VLAN {policy.Vlan}"),
-            PolicyKinds.Block => "Refused by the 802.1X server",
-            PolicyKinds.Revoke => "IEEE 802.1X certificates revoked",
-            PolicyKinds.ExpiryWarning => string.Create(CultureInfo.CurrentCulture, $"{policy.Days:N0} {(policy.Days == 1 ? "day" : "days")}"),
-            PolicyKinds.AllowCa => (policy.CaId is { } id && caNames.TryGetValue(id, out var name) ? name : PolicyTexts.RemovedCa) + ", "
-                + PolicyTexts.AllowCaScope(policy.OnlyManaged ?? true),
+            PolicyKinds.ExpiryWarning => string.Create(CultureInfo.CurrentCulture,
+                $"Certificates with {PolicyTexts.DaysText(policy.Days ?? 0)} or less left show a warning and raise Certificate expires soon."),
+            PolicyKinds.HttpsCertificate => $"Enable HTTPS issues certificates from {ca}, {Issued(policy)}.",
+            PolicyKinds.Dot1xCertificate => $"Enable IEEE 802.1X issues certificates from {ca}, {Issued(policy)}. {SignsInAs(policy)}",
+            PolicyKinds.ServerCertificate => $"The {PolicyServers.Name(policy.Server)} uses a certificate from {ca}, {Issued(policy)}, renewed 30 days before it ends.",
             PolicyKinds.Dot1xServer => string.Create(CultureInfo.CurrentCulture,
-                $"TLS {policy.MinimumTls} or later, {policy.LargestEapPacket:N0} bytes, {PolicyTexts.Reauth(policy.ReauthMinutes)}"),
-            PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate => IssuingSummary(policy, caNames),
-            PolicyKinds.ServerCertificate => IssuingSummary(policy, caNames) + ", " + PolicyServers.Name(policy.Server),
-            PolicyKinds.Enrollment => PolicyTexts.EnrollmentSummary(policy),
-            PolicyKinds.SignInCa => (policy.CaId is { } signIn && caNames.TryGetValue(signIn, out var signInName) ? signInName
-                : string.Equals(policy.CaId, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase) ? AxisDeviceIdName
-                : string.Equals(policy.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase) ? IssuingCaName
-                : PolicyTexts.RemovedCa) + ", " + PolicyTexts.SignInForText(policy.SignInFor),
+                $"The 802.1X server accepts TLS {policy.MinimumTls} or later, sends EAP packets of up to {policy.LargestEapPacket ?? 0:N0} bytes and ")
+                + (policy.ReauthMinutes is { } minutes
+                    ? string.Create(CultureInfo.CurrentCulture, $"asks cameras to sign in again every {minutes:N0} minutes.")
+                    : "lets the switch decide when cameras sign in again."),
+            PolicyKinds.AllowCa => policy.OnlyManaged ?? true
+                ? $"The 802.1X server lets in devices OADM manages that have a certificate from {ca}."
+                : $"The 802.1X server lets in any device with a valid certificate from {ca}.",
+            PolicyKinds.Vlan => string.Create(CultureInfo.InvariantCulture, $"The 802.1X server puts these devices in VLAN {policy.Vlan}."),
+            PolicyKinds.Block => "The 802.1X server refuses these devices.",
+            PolicyKinds.Revoke => "Certificates of these devices are revoked, new ones too.",
+            PolicyKinds.Enrollment => PolicyTexts.EnrollmentSentence(policy),
+            PolicyKinds.SignInCa => SignInSentence(policy, caNames),
             _ => PolicyKinds.Name(policy.Kind),
         };
+
+        static string Issued(PkiPolicy policy) => $"valid {PolicyTexts.DaysText(policy.ValidDays ?? 0)}, with an {PolicyKeys.Name(policy.Key)} key";
     }
+
+    /// <summary>"Cameras sign in with their MAC address." (the EAP identity of an IEEE 802.1X certificate policy).</summary>
+    private static string SignsInAs(PkiPolicy policy) => policy.Identity switch
+    {
+        Dot1xIdentity.HostName => "Cameras sign in with their host name.",
+        Dot1xIdentity.Custom => $"Cameras sign in as {policy.CustomIdentity}.",
+        _ => "Cameras sign in with their MAC address.",
+    };
+
+    /// <summary>The sentence of a Sign-in CA policy: the Axis device ID, or a CA whose certificates cameras sign in with.</summary>
+    private static string SignInSentence(PkiPolicy policy, IReadOnlyDictionary<string, string> caNames)
+    {
+        var renewals = policy.SignInFor == PolicySignIn.Renewal;
+        if (string.Equals(policy.CaId, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase))
+        {
+            return renewals
+                ? "Cameras sign in to the EST server with their Axis device ID to renew their certificates."
+                : "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.";
+        }
+
+        var ca = CaName(policy.CaId, caNames);
+        return renewals
+            ? $"Cameras with a certificate from {ca} may sign in to renew it."
+            : $"Cameras with a certificate from {ca} may sign in to the EST server for new certificates and renewals.";
+    }
+
+    /// <summary>The name of a CA in a sentence: its name in PKI, "Axis device ID", "OADM CA" while it is being made, or that it was removed.</summary>
+    private static string CaName(string? caId, IReadOnlyDictionary<string, string> caNames) =>
+        caId is { } id && caNames.TryGetValue(id, out var name) ? name
+        : string.Equals(caId, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase) ? AxisDeviceIdName
+        : string.Equals(caId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase) ? IssuingCaName
+        : PolicyTexts.RemovedCa;
 
     /// <summary>"OADM Root CA SERVER01, 365 days, ECC".</summary>
     public static string IssuingSummary(PkiPolicy policy, IReadOnlyDictionary<string, string> caNames)

@@ -148,7 +148,6 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.Equal("Not installed on the server", vm.ServerTrustText);
         await Wait.UntilAsync(() => vm.ClientTrustText == "Not installed on this computer");
         Assert.Empty(vm.PreviousCas);
-        Assert.DoesNotContain(vm.Authorities, a => a.IsPrevious);
         Assert.False(vm.HasChain);
         Assert.False(vm.HasErrors);
         vm.Deactivate();
@@ -317,22 +316,26 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     {
         await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
         using var vm = CreateViewModel();
+        var certificateDialogs = new FakeCertificateDialogs();
+        vm.Certificates.Dialogs = certificateDialogs;
         await vm.LoadAsync();
+        await vm.Certificates.LoadAsync();
         Assert.Equal("OADM Root CA SERVER01", Assert.Single(vm.PreviousCas).Name);
-        var row = Assert.Single(vm.Authorities, a => a.IsPrevious); // once: a row of the list of CAs
-        Assert.Equal(("OADM Root CA SERVER01", true, true), (row.Name, row.IsExportable, row.IsRemovable));
-        Assert.False(vm.Authorities.Single(a => a.Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm).IsRemovable);
+        var row = Assert.Single(vm.Certificates.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // once: a row of the list
+        Assert.Equal(("OADM Root CA SERVER01", true, false), (row.Name, row.IsRemovableCa, row.IsOadmCa));
+        Assert.Equal(["Root CA", "Previous OADM CA"], row.Badges);
+        Assert.False(vm.Certificates.Rows.Single(r => r.IsOadmCa).IsRemovableCa);
 
-        await vm.ExportAuthorityCommand.ExecuteAsync(row);
-        Assert.Equal("OADM Root CA SERVER01.crt", Assert.Single(_dialogs.FakeFiles.Saved).FileName);
+        await vm.Certificates.ExportPemCommand.ExecuteAsync(row);
+        Assert.Equal("OADM Root CA SERVER01.crt", Assert.Single(certificateDialogs.Files.Saved).FileName);
 
         _ctx.ConfirmAnswer = false;
-        await vm.RemoveAuthorityCommand.ExecuteAsync(row);
+        await vm.RemoveCaCommand.ExecuteAsync(row);
         Assert.Single(vm.PreviousCas);
         _ctx.ConfirmAnswer = true;
-        await vm.RemoveAuthorityCommand.ExecuteAsync(row);
+        await vm.RemoveCaCommand.ExecuteAsync(row);
         Assert.Empty(vm.PreviousCas);
-        Assert.DoesNotContain(vm.Authorities, a => a.IsPrevious);
+        Assert.DoesNotContain(vm.Certificates.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // the list was read again
         Assert.Equal(2, _ctx.Confirmations.Count);
     }
 

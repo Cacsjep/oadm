@@ -46,13 +46,13 @@ public sealed class PolicyPageTests
         Assert.Equal(
             ["Expiry warning", "HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
             card.Rows.Select(r => r.Kind));
-        Assert.Equal("30 days", card.Rows[0].Summary);
-        Assert.Equal("OADM Root CA SERVER01, 365 days, ECC", card.Rows[1].Summary); // the defaults of a new server
-        Assert.Equal("OADM Root CA SERVER01, 365 days, ECC, 802.1X server", card.Rows[3].Summary);
-        Assert.Equal("OADM Root CA SERVER01, 90 days, ECC, EST server", card.Rows[4].Summary);
-        Assert.Equal("TLS 1.2 or later, 1,020 bytes, switch decides reauthentication", card.Rows[5].Summary);
-        Assert.Equal("OADM Root CA SERVER01, only devices OADM manages", card.Rows[6].Summary); // the CA's name in PKI
-        Assert.Equal("VLAN 30", card.Rows[8].Summary);
+        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[0].Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", card.Rows[1].Summary); // the defaults of a new server
+        Assert.Equal("The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends.", card.Rows[3].Summary);
+        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[4].Summary);
+        Assert.Equal("The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide when cameras sign in again.", card.Rows[5].Summary);
+        Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01.", card.Rows[6].Summary); // the CA's name in PKI
+        Assert.Equal("The 802.1X server puts these devices in VLAN 30.", card.Rows[8].Summary);
         Assert.Equal(["All devices", "-", "-", "-", "-", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
         Assert.True(card.MayManage);
         Assert.True(card.AddCommand.CanExecute(null));
@@ -269,9 +269,9 @@ public sealed class PolicyPageTests
 public sealed class PolicyHeadlessTests
 {
     [Theory]
-    [InlineData(1700, 2)]
-    [InlineData(1000, 1)]
-    public async Task The_page_shows_cas_and_policies_side_by_side_or_stacked_and_the_certificates_below(int width, int columns)
+    [InlineData(1700)]
+    [InlineData(1000)]
+    public async Task The_page_shows_the_policies_and_below_them_the_certificates_with_the_cas(int width)
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         await using var pki = await PolicyPageTests.StartAsync();
@@ -285,6 +285,8 @@ public sealed class PolicyHeadlessTests
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var checks = await HeadlessEntry.Session.Dispatch(async () =>
         {
+            // The page as the user sees it: with the server tabs (stand-ins; their tests render them on their tab).
+            ctx.Tabs = [new Oadm.Sdk.Client.CorePluginTab("oadm.radius", "802.1X server", new TextBlock()), new Oadm.Sdk.Client.CorePluginTab("oadm.est", "EST server", new TextBlock())];
             var view = new PkiView();
             using var vm = new PkiViewModel(ctx, new FakeClientTrust());
             var window = HeadlessPageTests.Host(view, width, 1500);
@@ -299,7 +301,6 @@ public sealed class PolicyHeadlessTests
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Count(t => t.IsEffectivelyVisible);
             var primaries = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
             var segments = window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("segment")).Select(b => b.Content as string).ToList();
-            var count = view.CardColumnCount;
 
             // The certificates' search box lies whole inside its list (the filters wrap on a narrow card).
             var list = window.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
@@ -307,16 +308,19 @@ public sealed class PolicyHeadlessTests
             var searchRight = Avalonia.VisualExtensions.TranslatePoint(search, new Avalonia.Point(search.Bounds.Width, 0), list)!.Value.X;
             var searchFits = searchRight <= list.Bounds.Width + 0.5;
             window.Close();
-            return (texts, tabs, primaries, segments, count, searchFits);
+            return (texts, tabs, primaries, segments, searchFits);
         }, CancellationToken.None);
 
-        Assert.Equal(columns, checks.count);
         Assert.True(checks.searchFits);
-        Assert.Equal(0, checks.tabs); // one page, no tabs
-        foreach (var title in new[] { "Certificate authorities", "Policies", "Certificates", "Add policy", "Generate new CA", "Import CA", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server" })
+        Assert.Equal(3, checks.tabs); // Certificates, 802.1X server, EST server
+        foreach (var title in new[] { "Policies", "Certificates", "Add policy", "Create", "Sign request", "Import", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server", "Root CA", "OADM CA" })
         {
             Assert.Contains(title, checks.texts);
         }
+
+        Assert.DoesNotContain("Certificate authorities", checks.texts); // no card of the CAs: they are rows ("Certificate authorities · 7" heads their group)
+        Assert.Contains(checks.texts, t => t?.StartsWith("Certificate authorities · ", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain("Generate new CA", checks.texts); // Create, New OADM CA
 
         Assert.DoesNotContain("Previous certificate authorities", checks.texts); // previous CAs once: rows of the list
         Assert.Contains("Previous OADM CA", checks.texts);

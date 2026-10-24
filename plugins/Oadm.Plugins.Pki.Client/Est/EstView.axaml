@@ -53,7 +53,7 @@
              there, like the 802.1X page. Not for users limited to a device group (the policies are server-wide). -->
         <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding ShowsPolicies}">
           <TextBlock Classes="secondary" Text="{Binding PoliciesText}" VerticalAlignment="Center" />
-          <Button Classes="link" Content="Edit in PKI" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center" />
+          <Button Classes="link" Content="Edit policies" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center" />
         </StackPanel>
         <TextBlock Classes="warning" Text="{Binding PolicyProblem}" TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"
                    IsVisible="{Binding PolicyProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

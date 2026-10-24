@@ -44,9 +44,10 @@ License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `
   sessions and 30,000 authentications through the plugin).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
-- Client part (in `Oadm.Plugins.Pki.Client.dll`, `plugins/Oadm.Plugins.Pki.Client/Radius`): the page "802.1X server"; while
+- Client part (in `Oadm.Plugins.Pki.Client.dll`, `plugins/Oadm.Plugins.Pki.Client/Radius`): the page "802.1X server", the tab
+  of the PKI page (`RadiusPage.TabOf`; Edit policies opens the Certificates tab); while
   the server does not run only the Server card with its status and Turn on (`Servers/ServerSwitchView`), else the
-  cards Server (Turn off left of Save, "6 policies apply" with Edit in PKI) and Switches (with the switch dialog) in two or
+  cards Server (Turn off left of Save, "6 policies apply" with Edit policies) and Switches (with the switch dialog) in two or
   one column by the page width, then Sessions (live) and Log (search, View certificate, Delete all) with a splitter
   between them; code
   map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (the client part references the server assembly).

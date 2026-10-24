@@ -71,16 +71,40 @@ public sealed class CertificateListPerfTests(ITestOutputHelper output)
         var searchUse = await TimedAsync(new CertificatesRequest { Search = "IEEE 802.1X" });
         var soon = await TimedAsync(new CertificatesRequest { State = IssuedCertificateState.ExpiresSoon });
         var issuer = await TimedAsync(new CertificatesRequest { IssuedBy = PkiService.OtherIssuerId });
-        output.WriteLine($"first page {first.Ms} ms, offset 59,500 {deep.Ms} ms, search address {search.Ms} ms, search use {searchUse.Ms} ms, state filter {soon.Ms} ms, issuer filter {issuer.Ms} ms");
+        var byIssuer = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.Issuer });
+        var byIssuerDeep = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.Issuer, Offset = 59_500 });
+        var noGroups = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.None });
+        output.WriteLine($"first page {first.Ms} ms, offset 59,500 {deep.Ms} ms, search address {search.Ms} ms, search use {searchUse.Ms} ms, state filter {soon.Ms} ms, issuer filter {issuer.Ms} ms, "
+            + $"by issuer {byIssuer.Ms} ms, by issuer offset 59,500 {byIssuerDeep.Ms} ms, no groups {noGroups.Ms} ms");
+
+        // The page's list: one grouped page of 500 rows with badges, second lines and group headers.
+        var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
+        var list = new Oadm.Plugins.Pki.Client.IssuedCertificatesViewModel(ctx);
+        var watch = Stopwatch.StartNew();
+        await list.LoadAsync();
+        var badges = list.Rows.Sum(r => r.Badges.Count + (r.Detail?.Length ?? 0) + r.StateText.Length);
+        var client = watch.ElapsedMilliseconds;
+        output.WriteLine($"page list: first grouped page with badges {client} ms");
+        Assert.Equal(500, list.Rows.Count);
+        Assert.True(badges > 0);
+        Assert.Contains(list.GroupTitles, t => t.StartsWith("Device certificates · 60,000", StringComparison.Ordinal));
+        Assert.True(client < 1000, $"page list: {client} ms (budget 1,000 ms)");
+
+        Assert.Equal(first.Reply.Total, first.Reply.Groups.Sum(g => g.Count));
+        Assert.Equal(Devices * 2, first.Reply.Groups.Single(g => g.Key == IssuedCertificateGroups.Devices).Count);
+        Assert.Equal(first.Reply.Total, byIssuer.Reply.Total);
+        Assert.Equal(Devices * 2, byIssuer.Reply.Groups.Single(g => g.Key == PkiService.OtherIssuerId).Count); // the test rows name no CA PKI lists
+        Assert.Equal(500, byIssuerDeep.Reply.Rows.Count);
+        Assert.Empty(noGroups.Reply.Groups);
 
         Assert.True(first.Reply.Total > Devices * 2 + 50);
         Assert.Equal(500, first.Reply.Rows.Count);
         Assert.Equal(59_500, deep.Reply.Offset);
         Assert.Contains(search.Reply.Rows, r => r.Device == "10.0.117.3");
-        Assert.Equal(Devices, searchUse.Reply.Total);
+        Assert.Equal(Devices + 1, searchUse.Reply.Total); // and the OADM CA by its Used by ("Issuing: HTTPS, IEEE 802.1X, ...")
         Assert.Equal(Devices / 100 * 2, soon.Reply.Total);
         Assert.Equal(Devices * 2, issuer.Reply.Total); // the test rows name no CA PKI lists
-        foreach (var (name, ms) in new[] { ("first", first.Ms), ("deep", deep.Ms), ("search", search.Ms), ("use", searchUse.Ms), ("state", soon.Ms), ("issuer", issuer.Ms) })
+        foreach (var (name, ms) in new[] { ("first", first.Ms), ("deep", deep.Ms), ("search", search.Ms), ("use", searchUse.Ms), ("state", soon.Ms), ("issuer", issuer.Ms), ("by issuer", byIssuer.Ms), ("by issuer deep", byIssuerDeep.Ms), ("no groups", noGroups.Ms) })
         {
             Assert.True(ms < 1000, $"{name}: {ms} ms (budget 1,000 ms)");
         }

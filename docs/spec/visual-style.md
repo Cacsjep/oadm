@@ -75,7 +75,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
-  show no progress bar. Count badges stay a small solid violet pill.
+  show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and Used by: Root
+  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: a grey pill, normal text), never a status.
+  Menu entries that delete, revoke or remove are red (`MenuItem.danger`), last after a separator.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.
 - **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
@@ -93,7 +95,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   (`CanResize="False"`: a resizable border-only window shows a white resize strip on top on Windows), like a dialog on a
   web page. The main window and plugin windows keep the custom title bar.
 - Text fields, number fields and select fields: text vertically centered (measured; select
-  fields need the Inter correction, text boxes do not). A focused field has the accent border (select and number
+  fields and text boxes alike, no Inter correction: `Padding` 10,0,8,0, the placeholder of a select at the height of a chosen item). A focused field has the accent border (select and number
   fields too, also after a click). The mouse wheel over a closed select field or a number field scrolls the page and never
   changes the value (`Infrastructure/WheelScroll`, attached in `App`, so plugin views too; test `WheelScrollTests`).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
@@ -117,12 +119,17 @@ inline "I understand" risk sections; line breaks start a new line, text between 
 select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
 `CertificateWindow` + `CertificateDetails` (every certificate shown in OADM's own window: EST enrollments, PKI's list of
 issued certificates, the 802.1X log; validity chip or the revocation, issued to and by, key and signature, serial,
-fingerprint, uses, names, all selectable; the server describes the certificate with the SDK's `CertificateDescriber`, the
+fingerprint, uses, names, what uses it (`UsedBy`, when the page says), all selectable; the server describes the certificate with the SDK's `CertificateDescriber`, the
 802.1X log describes the DER it reads with it in the client),
-`IssuedCertificateList` + `IssuedCertificateListViewModel` (the PKI Certificates card: every certificate OADM knows; columns
-name or device, use, issued by, valid until, used by, state and the page's row buttons (`RowActions`, a fixed width); the
-page's buttons left, the filters state, use, issued by (the CAs the server lists, else Task and EST) and the search right (it waits 300 ms for the typing to stop), progress row, virtualized grid with several
-rows chosen in one step and a double click for View certificate, the empty line, the overlay of the first read, the error
+`IssuedCertificateList` + `IssuedCertificateListViewModel` (the PKI Certificates card: every certificate OADM knows, the CAs
+among them; columns name or device with the key and issuer below, type as neutral badges (the page's statuses below them,
+`MoreStatesOf`), valid until with a status only when it needs attention, used by as badges or the device (the full list as
+tooltip and in View), one narrow column with the row's ⋯ actions button (`MenuOf`: the same menu as the right click,
+everyday entries, a separator, the red ones last); one toolbar row (`ToolbarRow`): the page's `Toolbar` left, Group by
+(`CanGroup`, groups counted on the server, `DataGrid.groups` headers), the filters state, use, issued by (the CAs the server
+lists, else Task and EST) and the search right, below as a whole on a narrow card (the search waits 300 ms for the typing to
+stop); the page's `Banner` below that row, progress row, virtualized grid with several rows chosen in one step and a double
+click for View certificate, the empty line, the overlay of the first read, the error
 and the pages of 500 below; `WorkText` (set by the page) shows a write such as "Revoking the certificates" in the progress row and `IsWorking` keeps the page's buttons off; `IIssuedCertificateSource` says where it reads, `IssuedCertificateList.ConfirmRevokeAsync` is
 the revoke confirmation with the reason, `IssuedCertificateTexts` the texts (with the SDK's `IssuedCertificateMessages`);
 View certificate shows the row's revocation and its "ends soon" uses the page's warning days, else the row's state),

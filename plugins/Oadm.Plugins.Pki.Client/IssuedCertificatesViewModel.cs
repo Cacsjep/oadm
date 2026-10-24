@@ -42,11 +42,17 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
             Source = query.Source,
             IssuedBy = query.IssuedBy,
             Search = query.Search,
+            GroupBy = query.GroupBy,
             Offset = query.Offset,
             Limit = query.Limit,
         };
         var reply = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(PkiMethods.GetCertificates, PkiJson.Serialize(request), ct).ConfigureAwait(true));
-        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset) { WarningDays = reply.WarningDays, Issuers = reply.Issuers.Count == 0 ? null : reply.Issuers };
+        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset)
+        {
+            WarningDays = reply.WarningDays,
+            Issuers = reply.Issuers.Count == 0 ? null : reply.Issuers,
+            Groups = reply.Groups,
+        };
     }
 
     public async Task<IssuedCertificateDetails> GetCertificateAsync(string serialNumber, CancellationToken ct)
@@ -58,10 +64,11 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
 
 /// <summary>
 /// The Certificates card of the PKI page (docs/spec/pki.md "Certificates"): the shared list (<see cref="IssuedCertificateListViewModel"/>:
-/// pages of 500, filters, search, View certificate) read from PKI, plus, for users with all devices who may manage the CA,
-/// Create, Sign request and Import (toolbar), Export, Revoke and Delete (row buttons and the row menu; Revoke and Delete
-/// also for several chosen rows) and Revoke all of this device. A change on the server (topic <c>certificates</c>) reads
-/// the shown page again.
+/// pages of 500, Group by (kept on this computer), filters, search, View certificate) read from PKI, plus, for users with
+/// all devices who may manage the CA, Create, Sign request and Import (toolbar), Export, Revoke and Delete (row buttons and
+/// the row menu; Revoke and Delete also for several chosen rows) and Revoke all of this device. The CA rows' own actions
+/// (the OADM CA's Export, Install, Back up; Remove of other CAs) are the page's (<see cref="PkiViewModel"/>). A change on
+/// the server (topic <c>certificates</c>) reads the shown page again.
 /// </summary>
 public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListViewModel
 {
@@ -85,6 +92,12 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         _ctx = ctx;
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
         PageSize = PkiPluginInfo.CertificatesPageSize;
+        CanGroup = true;
+        if (ctx.GetLocalSetting(GroupBySetting) is { } kept && GroupChoices.FirstOrDefault(c => c.Value.ToString() == kept) is { } choice)
+        {
+            GroupBy = choice;
+        }
+
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayRevoke));
@@ -92,6 +105,77 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
             NotifyCommands();
         };
     }
+
+    /// <summary>The key of the kept Group by on this computer.</summary>
+    public const string GroupBySetting = "certificates.groupBy";
+
+    /// <summary>The statuses below the state of a row (the OADM CA's trust, from the page); none without.</summary>
+    public Func<IssuedCertificateInfo, IReadOnlyList<IssuedCertificateStatus>>? TrustStates { get; set; }
+
+    /// <summary>Export of the OADM CA's row: the page's Export public certificate ("pem" or "der"); null: the row's download.</summary>
+    public Func<string?, Task>? ExportOadmCa { get; set; }
+
+    protected override IReadOnlyList<IssuedCertificateStatus> MoreStatesOf(IssuedCertificateInfo row) => TrustStates?.Invoke(row) ?? [];
+
+    protected override void OnGroupingChanged(IssuedCertificateGrouping grouping) => _ctx.SetLocalSetting(GroupBySetting, grouping.ToString());
+
+    /// <summary>
+    /// The page's actions of a CA row (the OADM CA's Install in trusted root store and Back up; Remove of a previous or
+    /// imported CA): everyday entries and red ones. Set by the page (the CA's commands are the page's).
+    /// </summary>
+    public Func<IssuedCertificateRow, (IReadOnlyList<IssuedCertificateAction> Everyday, IReadOnlyList<IssuedCertificateAction> Danger)>? CaActions { get; set; }
+
+    /// <summary>
+    /// A row's menu: View, Export (PEM, DER, with its key where OADM holds it), the CA's own actions, then a separator and the
+    /// red ones: Revoke, Revoke all of this device, Remove, Delete. Users who may not manage the CA get View only.
+    /// </summary>
+    protected override IReadOnlyList<IssuedCertificateAction> ActionsOf(IssuedCertificateRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        List<IssuedCertificateAction> everyday = [new("View", ViewRowCommand, row)];
+        List<IssuedCertificateAction> danger = [];
+        if (MayManage)
+        {
+            everyday.Add(new("Export", Items:
+            [
+                new("PEM (.crt)", ExportPemCommand, row),
+                new("DER (.cer)", ExportDerCommand, row),
+                .. row.HasKey ? [new IssuedCertificateAction("With its key (.p12)", ExportKeyCommand, row)] : Array.Empty<IssuedCertificateAction>(),
+            ]));
+            if (row.CanRevoke)
+            {
+                danger.Add(new("Revoke", RevokeRowCommand, row, IsDanger: true));
+            }
+
+            if (row.Source.Kind == ListedCertificateKind.Device)
+            {
+                danger.Add(new("Revoke all of this device", RevokeDeviceCommand, row, IsDanger: true));
+            }
+
+            if (row.CanDelete)
+            {
+                danger.Add(new("Delete", DeleteRowCommand, row, IsDanger: true));
+            }
+        }
+
+        if (CaActions?.Invoke(row) is { } ca)
+        {
+            everyday.AddRange(ca.Everyday);
+            danger.InsertRange(0, ca.Danger);
+        }
+
+        return danger.Count == 0 ? everyday : [.. everyday, IssuedCertificateAction.Separator, .. danger];
+    }
+
+    /// <summary>Several chosen rows: Revoke and Delete of all of them (red).</summary>
+    protected override IReadOnlyList<IssuedCertificateAction> SelectionActions() => !MayManage ? [] :
+    [
+        new($"Revoke {Selected.Count:N0} certificates", RevokeCommand, IsDanger: true),
+        new($"Delete {Selected.Count:N0} certificates", DeleteCommand, IsDanger: true),
+    ];
+
+    /// <summary>The OADM CA's trust changed: its row shows it.</summary>
+    public void RefreshTrust() => RefreshRows();
 
     /// <summary>The policies of the page (the issuing policies of Create and Sign request); empty without.</summary>
     public Func<IReadOnlyList<PkiPolicy>> PolicySource { get; set; } = () => [];
@@ -384,6 +468,12 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
     private async Task ExportAsync(IssuedCertificateRow? row, string format, PkiFileKind kind)
     {
         row ??= Selected.Count == 1 ? Selected[0] : null;
+        if (row is { IsOadmCa: true } && ExportOadmCa is { } exportCa)
+        {
+            await exportCa(format == CertificateFormats.Der ? "der" : "pem").ConfigureAwait(true); // the public certificate, as Export public certificate
+            return;
+        }
+
         if (row is null || Dialogs is not IIssuedCertificatesDialogs dialogs)
         {
             return;

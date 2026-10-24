@@ -42,7 +42,7 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   2026-10-24, stage 3). Revocation is PKI's (its Certificates list).
   - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
   - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the line
-    "6 policies apply" (802.1X server, Allow CA, VLAN, Block and Revoke policies) with **Edit in PKI** (opens the PKI page),
+    "6 policies apply" (802.1X server, Allow CA, VLAN, Block and Revoke policies) with **Edit policies** (opens the PKI page),
     the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "Port 1812
     is used by another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
     certificate's end.
@@ -604,7 +604,7 @@ data, also for the screenshots; the four, two and one column layout and the rows
   over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
 - **Server**: Listen on, Port, Log entries kept, "6 policies apply" (`RadiusState.PoliciesApply`,
-  `RadiusViewModel.PoliciesApplyText`) with the link **Edit in PKI** (`ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`),
+  `RadiusViewModel.PoliciesApplyText`) with the link **Edit policies** (`ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`),
   the status chip and Turn off directly left of **Save** (the one accent button of the page), the server certificate's end,
   the sites that did not allow the port and a save error without a field below it.
 - **Switches**: as before; the switch dialog: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per
@@ -640,7 +640,7 @@ data, also for the screenshots; the four, two and one column layout and the rows
    rules and the Revoked tab, Advanced as a dialog, Largest EAP packet 1,020 by default.
 6. **Built 2026-10-24 (stage 3 of `docs/spec/pki.md`):** the rules are PKI's policies (802.1X server with reauthentication,
    Allow CA, VLAN, Block, Revoke), converted once from the stored settings; the page: Server | Switches, Sessions and Log
-   with a splitter, "N policies apply" with Edit in PKI, the shared secret from 8 characters.
+   with a splitter, "N policies apply" with Edit policies, the shared secret from 8 characters.
 
 The switches, settings, PKI's policies, the issued certificates and the revocation list are part of the encrypted backup
 (plugin settings and records, `docs/spec/settings-backup.md`); a restore brings back the revocation list with the CA.

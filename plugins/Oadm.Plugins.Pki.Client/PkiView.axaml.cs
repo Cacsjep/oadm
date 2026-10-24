@@ -7,20 +7,33 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Pki.Client;
 
 /// <summary>
-/// Page view. View only: activates the view model while shown, places the top cards by the page's width, opens the dialogs,
-/// the policy editor and the file pickers; the shared certificate list (<see cref="IssuedCertificateList"/>) hands its grid's
-/// selection and double clicks to its view model.
+/// Page view. View only: activates the view model while shown, opens the dialogs, the policy editor and the file pickers;
+/// the shared certificate list (<see cref="IssuedCertificateList"/>) hands its grid's selection and double clicks to its
+/// view model.
 /// </summary>
 public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDialogs, IPolicyDialogs
 {
-    /// <summary>From this width of the page Certificate authorities and Policies stand side by side; below it one column.</summary>
-    public const double TwoColumnWidth = 1280;
-
-    private int _columns;
+    /// <summary>The lowest the Certificates card gets; on a lower page the page scrolls.</summary>
+    public const double MinListHeight = 480;
 
     public PkiView()
     {
         InitializeComponent();
+        CertificatesPage.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ViewportProperty)
+            {
+                FitList();
+            }
+        };
+        PoliciesCard.SizeChanged += (_, _) => FitList();
+        PoliciesCard.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty)
+            {
+                FitList();
+            }
+        };
         Files = new PkiFilePicker(() => TopLevel.GetTopLevel(this));
         PoliciesGrid.DoubleTapped += (_, _) =>
         {
@@ -31,36 +44,24 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
         };
     }
 
-    /// <summary>The columns of the top cards now: 2 or 1 (tests; 2 before the first layout, as in the XAML).</summary>
-    public int CardColumnCount => _columns == 0 ? 2 : _columns;
-
-    /// <summary>The columns follow the width before the cards are measured (a grid measured once too narrow keeps its columns shrunk).</summary>
-    protected override Size MeasureOverride(Size availableSize)
+    /// <summary>
+    /// The Certificates card takes the height the page has left below Policies, like the 802.1X Log, never less than
+    /// <see cref="MinListHeight"/> (its grid needs a bounded height to stay virtualized). Layout only.
+    /// </summary>
+    private void FitList()
     {
-        if (double.IsFinite(availableSize.Width))
-        {
-            Arrange(availableSize.Width);
-        }
-
-        return base.MeasureOverride(availableSize);
-    }
-
-    /// <summary>Two columns (Certificate authorities | Policies) or one, by the width of the page. Layout only.</summary>
-    private void Arrange(double width)
-    {
-        var columns = width >= TwoColumnWidth ? 2 : 1;
-        if (columns == _columns)
+        var viewport = CertificatesPage.Viewport.Height;
+        if (!double.IsFinite(viewport) || viewport <= 0)
         {
             return;
         }
 
-        _columns = columns;
-        var definitions = TopCards.ColumnDefinitions;
-        definitions[1].Width = columns == 2 ? new GridLength(16) : new GridLength(0);
-        definitions[2].Width = columns == 2 ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetRow(PoliciesCard, columns == 2 ? 0 : 1);
-        Grid.SetColumn(PoliciesCard, columns == 2 ? 2 : 0);
-        PoliciesCard.Margin = columns == 2 ? default : new Thickness(0, 16, 0, 0);
+        var above = PoliciesCard.IsVisible ? PoliciesCard.Bounds.Height + 16 : 0;
+        var height = Math.Max(MinListHeight, Math.Floor(viewport - above));
+        if (Math.Abs(CertificatesCard.Height - height) >= 1)
+        {
+            CertificatesCard.Height = height;
+        }
     }
 
     public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)

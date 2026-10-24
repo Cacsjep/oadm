@@ -2,7 +2,8 @@
 
 Core plugin (+ `.Client`), rail page **PKI** (group Security, icon `shield`), always on. Since OADM 4.5 the package also
 holds the core plugins **EST server** (`oadm.est`, `Est/`, README there) and **802.1X server** (`oadm.radius`, `Radius/`,
-README there), each with its rail page and its own source-available `LICENSE`; the rest stays Apache 2.0
+README there), whose pages are the tabs **802.1X server** and **EST server** of the PKI page (`TabOf`), each with its
+own source-available `LICENSE`; the rest stays Apache 2.0
 (`docs/spec/pki.md` "One plugin"). One server assembly (`Oadm.Plugins.Pki.Server.dll`, namespaces `Oadm.Plugins.Pki`,
 `Oadm.Plugins.Est`, `Oadm.Plugins.Radius`), one client assembly, one `plugin.json`. Only the two servers need OADM PRO
 (`Servers/ServerSwitch.cs`: Turn on / Turn off, the stored choice `serverOn`, started and stopped with the license); PKI's
@@ -58,14 +59,16 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
   `importRadiusCa`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
   after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
-- Page (since stage 3 of `docs/spec/pki.md`, one page without tabs, `HasOwnCards`, subtitle "Issues device certificates
-  for HTTPS and IEEE 802.1X."): Certificate authorities | Policies side by side from 1,280 px of page width (stacked
-  below), then Certificates (below); no Save: the settings of device certificates and IEEE 802.1X are issuing policies. Certificate authorities: Generate new CA and Import CA (a menu: "Own CA with its key" replaces the OADM CA,
-  "CA certificate only" adds a row) in the header; the OADM CA's chips (status "CA valid until <date>" ok / "CA expires in
-  N days" warning (within the longest Expiry warning) / "CA expired", "CA key cannot be read" error; the trusted root store
-  of the server and of this computer); the list (Name, Kind, Valid until, Used by: the Allow CA policies "802.1X: OADM CA
-  (only devices OADM manages)" and the services; View for every row, Export for a previous CA, Remove red for imported and previous
-  CAs, confirmed); Install in trusted root store, Export public certificate (PEM / DER menu) and Back up below it.
+- Page (stage 7 of `docs/spec/pki.md`, `HasOwnCards`, subtitle "Certificates, their policies, and the 802.1X and EST
+  servers."): fixed tabs Certificates | 802.1X server | EST server (`PkiViewModel.Tabs`, the server pages from
+  `ICorePluginClientContext.Tabs`, `OpenTabRequested`). Certificates: Policies, then the Certificates card as high as the
+  rest of the page (`PkiView.FitList`): one toolbar row with the title, Create (Certificate, New OADM CA = the former
+  Generate new CA), Sign request, Import (Certificate; CA: "Own CA with its key" replaces the OADM CA, "CA certificate
+  only" adds a row) and Group by, the filters and the search; the OADM CA's status below it only when it needs attention.
+  The CAs are rows: the OADM CA's menu has View, Export (PEM / DER: Export public certificate), Install in trusted root
+  store and Back up, its Type cell where it is installed; previous and imported CAs Remove (red, confirmed); Used by as
+  badges (802.1X, EST, Issuing) with the policies in the tooltip and View. No Save: the settings of device certificates and
+  IEEE 802.1X are issuing policies.
   Policies: see "Policies". Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
   FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
   confirmation popups owned by the dialog. Last export folder per client in
@@ -95,7 +98,7 @@ the only writers of the list of issued certificates (see "Issued certificates an
   one certificate; errors under the file `AuthorityFile`: not a certificate, larger than 1 MB, contains a private key, not
   a CA, expired, already in the list) and `removeAuthority` (imported only; refused while used: "Used by the 802.1X
   server. Remove it there first."). Both Admin ("manage", all devices, audited).
-- Page: the card **Certificate authorities** (see "Page" above; **Import CA** > "CA certificate only" opens
+- Page: the CA rows of the Certificates list (see "Page" above; **Import** > CA > "CA certificate only" opens
   `ImportAuthorityWindow`). `removeAuthority` is also refused while a policy names the CA ("Used by the policy Contoso.
   Change or delete the policy first."). Tests: `AuthorityTests`, `PolicyStoreTests`.
 

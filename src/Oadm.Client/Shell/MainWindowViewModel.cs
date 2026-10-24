@@ -162,10 +162,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 _ = RefreshMyDevicesAsync();
             }
         };
-        devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
+        devices.NavigateRequested += (_, key) => NavigateTo(key);
         if (pluginList is not null)
         {
-            pluginList.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
+            pluginList.NavigateRequested += (_, key) => NavigateTo(key);
         }
 
         devices.OpenInWebViewRequested += (_, deviceId) => OpenInWebView(deviceId);
@@ -327,10 +327,46 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void OpenStartPage()
     {
-        if (_pendingStartPage is { } key && NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key) is { } item)
+        if (_pendingStartPage is { } key && FindTarget(key) is { } target)
         {
             _pendingStartPage = null;
-            OpenItem(item);
+            OpenTarget(target);
+        }
+    }
+
+    /// <summary>
+    /// A page opened by its key (<c>OpenAsync</c>, the Plugins page): a rail entry, or the page of a tab
+    /// (<see cref="ICorePluginPage.TabOf"/>) on that tab; a page with tabs opens on its own first tab. Unknown keys do nothing.
+    /// </summary>
+    internal void NavigateTo(string key)
+    {
+        if (FindTarget(key) is { } target)
+        {
+            _pendingStartPage = null;
+            OpenTarget(target);
+        }
+    }
+
+    /// <summary>The rail entry of a key and the tab to show on it (null: none).</summary>
+    private (NavItemViewModel Item, string? Tab)? FindTarget(string key)
+    {
+        if (NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key) is { } item)
+        {
+            return item.Page is CorePluginPageViewModel page && _tabPages.Any(t => t.HostId == page.PluginId) ? (item, page.PluginId) : (item, null);
+        }
+
+        return _tabPages.FirstOrDefault(t => "plugin:" + t.PluginId == key) is { } tab
+            && NavItems.FirstOrDefault(n => n.Key == "plugin:" + tab.HostId) is { } host
+            ? (host, tab.PluginId)
+            : null;
+    }
+
+    private void OpenTarget((NavItemViewModel Item, string? Tab) target)
+    {
+        OpenItem(target.Item);
+        if (target.Tab is { } tab && target.Item.Page is CorePluginPageViewModel { PluginContext: { } context })
+        {
+            context.RequestOpenTab(tab);
         }
     }
 
@@ -363,6 +399,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
         try
         {
+            // The window's own copies of the tab views (a control has one parent); disposed with the window's context.
+            var copies = _tabPages.Where(t => t.HostId == rail.PluginId).Select(t => CreateTabPage(t.PluginId, t.Title)).ToList();
+            context.SetTabs([.. copies.Select(c => c.Tab)], [.. copies.Select(c => c.Page)]);
             var view = page.CreateView(context);
             return new CorePluginPageViewModel(rail.PluginId, rail.Title, view, page.HasOwnCards,
                 page.ShowTasksPane ? Devices.Tasks : null, context: context);
@@ -632,9 +671,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _pageSyncGeneration++;
         corePlugins = RemoveStalePluginPages(corePlugins);
-        foreach (CorePluginInfo plugin in corePlugins.Where(p => NavItems.All(n => n.Key != "plugin:" + p.Id)))
+        foreach (CorePluginInfo plugin in corePlugins.Where(p => !IsShown(p.Id)))
         {
-            AddCorePluginPage(plugin);
+            AddCorePluginPage(plugin, corePlugins);
         }
 
         OrderCorePluginPages();
@@ -663,9 +702,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             await _ui.RunInBackgroundAsync(() =>
             {
-                if (generation == _pageSyncGeneration && NavItems.All(n => n.Key != "plugin:" + plugin.Id))
+                if (generation == _pageSyncGeneration && !IsShown(plugin.Id))
                 {
-                    AddCorePluginPage(plugin);
+                    AddCorePluginPage(plugin, corePlugins);
                     OrderCorePluginPages();
                     SyncWebViewAccess();
                     OpenStartPage();
@@ -678,11 +717,57 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Removes the rail pages of plugins not in the list; returns the plugins with a page.</summary>
+    /// <summary>The plugin's page is in the rail or a tab of another page.</summary>
+    private bool IsShown(string pluginId) => NavItems.Any(n => n.Key == "plugin:" + pluginId) || _tabPages.Any(t => t.PluginId == pluginId);
+
+    /// <summary>The page the plugin's page is a tab of (<see cref="ICorePluginPage.TabOf"/>) when that page is listed; else null (a rail page).</summary>
+    private string? HostOf(string pluginId, IReadOnlyList<CorePluginInfo> listed)
+    {
+        string? host;
+        try
+        {
+            host = _plugins.FindPage(pluginId)?.TabOf;
+        }
+#pragma warning disable CA1031 // A plugin that throws here gets a rail page.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+
+        return host is { Length: > 0 } && !string.Equals(host, pluginId, StringComparison.Ordinal)
+            && listed.Any(p => p.Id == host) && _plugins.FindPage(host) is not null
+            ? host
+            : null;
+    }
+
+    /// <summary>Pages of core plugins shown as tabs of another plugin's page (tests).</summary>
+    internal IReadOnlyList<TabPage> TabPages => _tabPages;
+
+    private readonly List<TabPage> _tabPages = [];
+
+    /// <summary>A page shown as a tab: its plugin, the page it is a tab of, its title, its page (view and context) and the tab the host page gets.</summary>
+    internal sealed record TabPage(string PluginId, string HostId, string Title, CorePluginPageViewModel Page, CorePluginTab Tab);
+
+    /// <summary>Removes the rail pages and tabs of plugins not in the list (or now in the other place); returns the plugins with a page.</summary>
     private List<CorePluginInfo> RemoveStalePluginPages(IReadOnlyList<CorePluginInfo> all)
     {
         List<CorePluginInfo> corePlugins = [.. all.Where(p => !p.NoPage)];
-        foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel && !corePlugins.Any(p => "plugin:" + p.Id == n.Key)).ToList())
+        var changedHosts = new HashSet<string>(StringComparer.Ordinal);
+        foreach (TabPage stale in _tabPages.Where(t => !corePlugins.Any(p => p.Id == t.PluginId) || HostOf(t.PluginId, corePlugins) != t.HostId).ToList())
+        {
+            _tabPages.Remove(stale);
+            changedHosts.Add(stale.HostId);
+            stale.Page.Dispose();
+        }
+
+        foreach (string host in changedHosts)
+        {
+            PushTabs(host);
+        }
+
+        foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel page
+                     && (!corePlugins.Any(p => "plugin:" + p.Id == n.Key) || HostOf(page.PluginId, corePlugins) is not null)).ToList())
         {
             NavItems.Remove(stale);
             var stalePage = (CorePluginPageViewModel)stale.Page;
@@ -699,9 +784,54 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return corePlugins;
     }
 
-    /// <summary>Creates the page of one core plugin (its view, or the error) and adds it to the rail.</summary>
-    private void AddCorePluginPage(CorePluginInfo plugin)
+    /// <summary>The host page's context gets its tabs now (in the server's order); its windows close, their tabs changed.</summary>
+    private void PushTabs(string hostId)
     {
+        if (NavItems.FirstOrDefault(n => n.Key == "plugin:" + hostId)?.Page is CorePluginPageViewModel { PluginContext: { } context })
+        {
+            context.SetTabs([.. _tabPages.Where(t => t.HostId == hostId).Select(t => t.Tab)]);
+        }
+
+        ClosePluginWindowsRequested?.Invoke(this, hostId);
+    }
+
+    /// <summary>The page of a plugin shown as a tab: its view with its own context, or the error in its place.</summary>
+    private (CorePluginPageViewModel Page, CorePluginTab Tab) CreateTabPage(string pluginId, string title)
+    {
+        var context = new CorePluginClientContext(_api, pluginId, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
+        Avalonia.Controls.Control view;
+        CorePluginPageViewModel page;
+        try
+        {
+            view = _plugins.FindPage(pluginId)!.CreateView(context);
+            page = new CorePluginPageViewModel(pluginId, title, view, context: context);
+        }
+        catch (Exception ex)
+        {
+            context.Dispose();
+            LogPageFailed(_logger, ex, pluginId);
+            _ = ReportPageFailureAsync(title, ex);
+            page = new CorePluginPageViewModel(pluginId, title, null, error: ex.Message);
+            var text = new Avalonia.Controls.TextBlock { Text = page.NoViewText, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+            text.Classes.Add("secondary");
+            view = text;
+        }
+
+        return (page, new CorePluginTab(pluginId, title, view));
+    }
+
+    /// <summary>Creates the page of one core plugin (its view, or the error) and adds it to the rail, or as a tab of its host page.</summary>
+    private void AddCorePluginPage(CorePluginInfo plugin, IReadOnlyList<CorePluginInfo> listed)
+    {
+        if (HostOf(plugin.Id, listed) is { } hostId)
+        {
+            var (tabPage, tab) = CreateTabPage(plugin.Id, plugin.DisplayName);
+            _tabPages.Add(new TabPage(plugin.Id, hostId, plugin.DisplayName, tabPage, tab));
+            _tabPages.Sort((a, b) => IndexIn(listed, a.PluginId).CompareTo(IndexIn(listed, b.PluginId)));
+            PushTabs(hostId);
+            return;
+        }
+
         object? view = null;
         string? error = null;
         CorePluginClientContext? context = null;
@@ -709,6 +839,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (page is not null)
         {
             context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
+            context.SetTabs([.. _tabPages.Where(t => t.HostId == plugin.Id).Select(t => t.Tab)]);
             try
             {
                 view = page.CreateView(context);
@@ -736,6 +867,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
             GroupOrder = (int)group,
             OpenInWindow = OpenPluginWindow,
         });
+    }
+
+    private static int IndexIn(IReadOnlyList<CorePluginInfo> listed, string pluginId)
+    {
+        for (var i = 0; i < listed.Count; i++)
+        {
+            if (listed[i].Id == pluginId)
+            {
+                return i;
+            }
+        }
+
+        return int.MaxValue;
     }
 
     /// <summary>The permission to open devices in Web View.</summary>
@@ -881,6 +1025,46 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
     public event EventHandler<string>? OpenDeviceRequested;
 
+    private IReadOnlyList<CorePluginTab> _tabs = [];
+    private IReadOnlyList<IDisposable> _ownedTabs = [];
+
+    public IReadOnlyList<CorePluginTab> Tabs => _tabs;
+
+    public event EventHandler? TabsChanged;
+
+    public event EventHandler<string>? OpenTabRequested;
+
+    /// <summary>
+    /// The pages shown as tabs of this page (<see cref="ICorePluginPage.TabOf"/>); <paramref name="owned"/> are disposed with
+    /// this context or the next call (the copies of a plugin window). Raises <see cref="TabsChanged"/> when the list changed.
+    /// </summary>
+    internal void SetTabs(IReadOnlyList<CorePluginTab> tabs, IReadOnlyList<IDisposable>? owned = null)
+    {
+        var old = _ownedTabs;
+        _ownedTabs = owned ?? [];
+        foreach (IDisposable page in old)
+        {
+            page.Dispose();
+        }
+
+        if (_disposed || _tabs.SequenceEqual(tabs))
+        {
+            return;
+        }
+
+        _tabs = tabs;
+        TabsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The host asks the page to show a tab (a key of the tab's plugin, or the page's own id).</summary>
+    internal void RequestOpenTab(string pluginId)
+    {
+        if (!_disposed)
+        {
+            OpenTabRequested?.Invoke(this, pluginId);
+        }
+    }
+
     /// <summary>The host asks the page to open a device (Web View: a device at a site, from the Devices page).</summary>
     internal void RequestOpenDevice(string deviceId)
     {
@@ -983,6 +1167,15 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
         _disposed = true;
         _devicesChanged = null;
+        TabsChanged = null;
+        OpenTabRequested = null;
+        foreach (IDisposable page in _ownedTabs)
+        {
+            page.Dispose();
+        }
+
+        _ownedTabs = [];
+        _tabs = [];
         foreach (EventHandler? handler in _permissionHandlers)
         {
             _host.PermissionsChanged -= handler;

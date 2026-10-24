@@ -9,7 +9,7 @@
              ui:PageHeader.Subtitle="Switches ask OADM which cameras may use their ports.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only. One page, no tabs: Server | Switches
        side by side (one column on narrower pages, RadiusView.Arrange), then Sessions and Log full width with a splitter
-       between them. The rules are PKI's policies ("6 policies apply", Edit in PKI). Users limited to a device group see
+       between them. The rules are PKI's policies ("6 policies apply", Edit policies). Users limited to a device group see
        Sessions and Log only. Card headers: the title and its buttons in one row. -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
@@ -56,7 +56,7 @@
               <!-- The rules are PKI's policies: how many apply, and the way there. -->
               <StackPanel Orientation="Horizontal" Spacing="12">
                 <TextBlock Classes="secondary" Text="{Binding PoliciesText}" VerticalAlignment="Center" />
-                <Button Classes="link" Content="Edit in PKI" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center" />
+                <Button Classes="link" Content="Edit policies" Command="{Binding EditInPkiCommand}" VerticalAlignment="Center" />
               </StackPanel>
               <!-- The status directly left of the Save it reports on. -->
               <DockPanel>

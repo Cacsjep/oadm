@@ -100,6 +100,17 @@ The page's context, `ICorePluginClientContext`:
 | `GetLocalSetting(key)`, `SetLocalSetting(key, value)` | Short texts the page keeps on this computer (at most 64 KB each), e.g. the last device choice |
 | `OpenDeviceRequested` | The host asks the page to open a device (the argument is its id); Web View opens devices at a site this way |
 | `LicenseOf(packageId)` | The package's license as the server checked it, e.g. to say "No license" on the page; null when the host cannot tell |
+| `Tabs`, `TabsChanged`, `OpenTabRequested` | Pages of other core plugins shown as tabs of this page, see [Pages as tabs](#pages-as-tabs) |
+
+### Pages as tabs
+
+A core plugin page can be a tab of another plugin's page instead of a rail entry: its `ICorePluginPage` returns the other
+plugin's id from `TabOf`. The host creates its view as usual, with its own context, and hands it to the other page, whose
+context lists it in `Tabs` (plugin id, title, view; only pages the user's role may show) and raises `TabsChanged` when the
+list changes. The other page shows a fixed `ui:PageTab` per tab and puts the chosen tab's view into its content.
+`OpenAsync("plugin:" + id)` of a tab opens the page on that tab (`OpenTabRequested` with the tab's id); the page's own id
+means its first tab. While the other page is not there for the user, the tab page gets its rail entry back. PKI shows the
+802.1X and EST servers this way.
 
 ### Read, then watch
 

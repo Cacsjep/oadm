@@ -13,7 +13,7 @@ namespace Oadm.Plugins.Radius.Client;
 
 /// <summary>
 /// The 802.1X server page (docs/spec/radius-server.md "What the user sees"), one page without tabs: Server (with Save and
-/// "N policies apply" with Edit in PKI: the rules are PKI's policies) and Switches, then Sessions (live) and Log. Users
+/// "N policies apply" with Edit policies: the rules are PKI's policies) and Switches, then Sessions (live) and Log. Users
 /// limited to a device group see only Sessions and Log (with their devices' rows; the server filters); users with all
 /// devices whose role may manage the plugin change the settings, the switches and the log. <see cref="Activate"/> reads
 /// everything and watches the live events while the page is shown.
@@ -128,7 +128,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies apply"),
     };
 
-    /// <summary>Edit in PKI: the policies are on the PKI page.</summary>
+    /// <summary>Edit policies: the policies are on the PKI page.</summary>
     [RelayCommand]
     private Task EditInPkiAsync() => _ctx.OpenAsync("plugin:" + PkiPluginId);
 

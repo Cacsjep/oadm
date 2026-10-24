@@ -14,7 +14,7 @@ public static class RadiusPluginInfo
     public const string Subtitle = "Switches ask OADM which cameras may use their ports.";
 }
 
-/// <summary>Navigation rail page of the "802.1X server" core plugin (group Security): fixed tabs with their own cards.</summary>
+/// <summary>The page of the "802.1X server" core plugin: its own cards. A tab of the PKI page (<see cref="TabOf"/>), no rail entry of its own.</summary>
 public sealed class RadiusPage : ICorePluginPage
 {
     public string PluginId => RadiusPluginInfo.PluginId;
@@ -22,6 +22,9 @@ public sealed class RadiusPage : ICorePluginPage
     public string Title => RadiusPluginInfo.DisplayName;
 
     public bool HasOwnCards => true;
+
+    /// <summary>The page is the "802.1X server" tab of the PKI page (docs/spec/pki.md "The PKI page").</summary>
+    public string? TabOf => Oadm.Plugins.Pki.PkiPluginInfo.PluginId;
 
     public Control CreateView(ICorePluginClientContext ctx)
     {

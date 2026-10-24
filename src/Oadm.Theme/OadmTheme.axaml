@@ -150,6 +150,7 @@
       <SolidColorBrush x:Key="Oadm.Tag.VioletBrush" Color="{StaticResource Oadm.Tag.VioletColor}" />
       <SolidColorBrush x:Key="Oadm.Tag.NeutralBrush" Color="{StaticResource Oadm.Tag.NeutralColor}" />
       <SolidColorBrush x:Key="Oadm.Tag.ChipBackgroundBrush" Color="{StaticResource Oadm.Tag.ChipBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.BadgeNeutralBrush" Color="{StaticResource Oadm.BadgeNeutralColor}" />
 
       <!-- Sizes -->
       <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
@@ -554,6 +555,15 @@
     <Setter Property="HorizontalAlignment" Value="Center" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
+  <!-- A neutral badge: what a row is (the PKI list's Type: Root CA, HTTPS, Imported), never a status (that is ui:StatusChip) -->
+  <Style Selector="Border.badge.neutral">
+    <Setter Property="Background" Value="{StaticResource Oadm.BadgeNeutralBrush}" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+  <Style Selector="Border.badge.neutral TextBlock, DataGridCell Border.badge.neutral TextBlock">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
 
   <!-- Navigation rail -->
   <Style Selector="Button.nav">
@@ -848,10 +858,10 @@
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
-    <!-- Selected item vertically centered. It is a plain TextBlock, so it needs the measured
-         Inter correction (top padding 3 moves the centered line 1.5 px down), unlike text boxes. -->
+    <!-- Selected item vertically centered by the alignment alone, no top padding (measured headless: the text's center
+         is the box's center; a top padding of 3 put it 1.5 px low). -->
     <Setter Property="VerticalContentAlignment" Value="Center" />
-    <Setter Property="Padding" Value="10,3,8,0" />
+    <Setter Property="Padding" Value="10,0,8,0" />
   </Style>
   <!-- Date and time pickers: the height, corners and text size of every input; narrower than Fluent's 296 px default -->
   <Style Selector="DatePicker, TimePicker">
@@ -871,11 +881,8 @@
     <Setter Property="MinWidth" Value="0" />
     <Setter Property="Width" Value="110" />
   </Style>
-  <!-- The placeholder ("Presets", "Choose a camera") sits at the height of a chosen item's text (measured: 1 px lower
-       without). Its margin is bound to the padding in the template, so it is moved by a transform. -->
-  <Style Selector="ComboBox /template/ TextBlock#PlaceholderTextBlock">
-    <Setter Property="RenderTransform" Value="translate(0px, -1px)" />
-  </Style>
+  <!-- The placeholder ("Presets", "Choose a camera") takes the same padding (template binding): measured at the height of a
+       chosen item's text without a transform of its own. -->
   <Style Selector="ComboBox:pointerover /template/ Border#Background">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
@@ -1780,6 +1787,10 @@
   <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Margin" Value="0" />
+  </Style>
+  <!-- An entry that deletes, revokes or removes: red, last in its menu after a separator -->
+  <Style Selector="MenuItem.danger /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
   <!-- The entry whose submenu is open stays highlighted, so the user sees where the submenu belongs -->
   <Style Selector="MenuItem:open /template/ Border#PART_LayoutRoot">

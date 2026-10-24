@@ -4,7 +4,7 @@ A PRO part of the PKI plugin (`../README.md`, `docs/spec/pki.md` "One plugin"; O
 Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-available, not Apache 2.0), also for
 `plugins/Oadm.Plugins.Pki.Client/Est`.
 
-- Core plugin `oadm.est` of the PKI package, rail page **EST server** (group Security, icon `lock`). The core plugin always
+- Core plugin `oadm.est` of the PKI package, its page the tab **EST server** of the PKI page (`EstPage.TabOf`). The core plugin always
   runs; the server (`EstService`) runs only while it is turned on (`ServerSwitch`, plugin setting `serverOn`, off by
   default) and OADM PRO is active; every request checks the license again (503 "OADM PRO is not active.").
   Page methods `getServer`, `turnOn`, `turnOff` (`../Servers/ServerSwitch.cs`) besides `EstMethods`.
@@ -34,7 +34,7 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     certificates also renews, for renewals only `simplereenroll`; only those PKI still lists count; no store, an unreadable
     one or none: nothing signs in); Enrollment policies hold the devices and their profiles (`Check(device, profile)`: none
     holds it 403 "No enrollment policy for this device.", a profile not allowed the 404 of an unknown profile, listed with
-    the policy). `EstState.PoliciesApply` ("3 policies apply", Edit in PKI) and `PolicyProblem` (null for group users);
+    the policy). `EstState.PoliciesApply` ("3 policies apply", Edit policies) and `PolicyProblem` (null for group users);
     "Issued by" (the OADM CA by its name in PKI, else the name in its certificate). EST reports
     `SetUsedBy("oadm.est", "EST server", sign-in CAs ∩ listed + oadm)` at the start, on a policy change and on PKI's
     `Changed`, and clears it when it stops. `config.signInWith` ("Sign in with" of before) is read only by the conversion

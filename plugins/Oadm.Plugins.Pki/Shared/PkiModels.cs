@@ -115,6 +115,9 @@ public sealed record CertificatesRequest
 
     public string? Search { get; init; }
 
+    /// <summary>The order of the rows by group (type, issuer or none); the reply counts the groups.</summary>
+    public Oadm.Sdk.Certificates.IssuedCertificateGrouping GroupBy { get; init; }
+
     public int Offset { get; init; }
 
     public int Limit { get; init; } = PkiPluginInfo.CertificatesPageSize;
@@ -139,6 +142,9 @@ public sealed record CertificatesReply
 
     /// <summary>The choices of the "Issued by" filter: the CAs of PKI and "Other CA".</summary>
     public IReadOnlyList<Oadm.Sdk.Certificates.CertificateIssuerChoice> Issuers { get; init; } = [];
+
+    /// <summary>The groups of every page in their order with their counts (none without a grouping or without rows).</summary>
+    public IReadOnlyList<Oadm.Sdk.Certificates.IssuedCertificateGroup> Groups { get; init; } = [];
 }
 
 /// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>: a serial number, or the id of a row that is no device certificate.</summary>

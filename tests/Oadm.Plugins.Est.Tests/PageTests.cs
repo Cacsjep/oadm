@@ -484,6 +484,72 @@ public sealed class PageTests : IAsyncLifetime
         Assert.True(new Oadm.Plugins.Est.Client.EstPage().HasOwnCards);
     }
 
+    [Theory]
+    [InlineData(1700)]
+    [InlineData(1000)]
+    public async Task The_est_server_is_a_tab_of_the_pki_page(int width)
+    {
+        // docs/spec/pki.md "The PKI page": the EST server's own view on its tab of the PKI page, as the user sees it.
+        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var checks = await session.Dispatch(async () =>
+        {
+            var est = new EstView();
+            using var vm = new EstViewModel(_ctx);
+            var pkiCtx = new TabHostContext([new CorePluginTab("oadm.radius", "802.1X server", new TextBlock()), new CorePluginTab(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, est)]);
+            var page = new Oadm.Plugins.Pki.Client.PkiView();
+            using var pkiVm = new Oadm.Plugins.Pki.Client.PkiViewModel(pkiCtx, new NoTrust());
+            pkiCtx.RequestTab(EstPluginInfo.PluginId); // OpenAsync("plugin:oadm.est")
+            var host = new Oadm.Client.Shell.CorePluginPageView
+            {
+                DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(Oadm.Plugins.Pki.PkiPluginInfo.PluginId, Oadm.Plugins.Pki.PkiPluginInfo.DisplayName, page, hasOwnCards: true),
+            };
+            var window = new Window { Width = width, Height = 1000, Content = new Border { Padding = new Thickness(16), Child = host } };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            page.DataContext = pkiVm;
+            Pump();
+            est.DataContext = vm; // after attaching: no live watch, deterministic content
+            await vm.LoadServerAsync(CancellationToken.None);
+            Pump();
+            Capture(window, outDir, $"pki-tab-est-{width}.png");
+            var tabs = window.GetVisualDescendants().OfType<PageTab>().Where(t => t.IsEffectivelyVisible).Select(t => (t.Title, t.IsActive)).ToList();
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+            window.Close();
+            return (tabs, texts);
+        }, CancellationToken.None);
+        GC.KeepAlive(session);
+
+        Assert.Equal([("Certificates", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
+        foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments", "Edit policies" })
+        {
+            Assert.Contains(title, checks.texts);
+        }
+    }
+
+    /// <summary>The PKI page's context: it hands over the server tabs; PKI's own calls answer nothing (the tab is not Certificates).</summary>
+    private sealed class TabHostContext(IReadOnlyList<CorePluginTab> tabs) : ICorePluginClientContext
+    {
+        public IReadOnlyList<CorePluginTab> Tabs => tabs;
+
+        public event EventHandler<string>? OpenTabRequested;
+
+        public void RequestTab(string id) => OpenTabRequested?.Invoke(this, id);
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
+    }
+
+    private sealed class NoTrust : Oadm.Plugins.Pki.TrustStore.ITrustStoreInstaller
+    {
+        public Task<bool> IsInstalledAsync(System.Security.Cryptography.X509Certificates.X509Certificate2 ca, CancellationToken ct) => Task.FromResult(false);
+
+        public Task<Oadm.Plugins.Pki.TrustStore.TrustStoreResult> InstallAsync(System.Security.Cryptography.X509Certificates.X509Certificate2 ca, CancellationToken ct) =>
+            Task.FromResult(new Oadm.Plugins.Pki.TrustStore.TrustStoreResult(false));
+
+        public Task<Oadm.Plugins.Pki.TrustStore.TrustStoreResult> RemoveAsync(System.Security.Cryptography.X509Certificates.X509Certificate2 ca, CancellationToken ct) =>
+            Task.FromResult(new Oadm.Plugins.Pki.TrustStore.TrustStoreResult(false));
+    }
+
     [Fact]
     public async Task The_dialog_lists_the_chosen_cameras_profiles_and_removes_one_after_a_confirmation()
     {
@@ -843,7 +909,7 @@ public sealed class PageTests : IAsyncLifetime
             return Task.FromResult(Confirm);
         }
 
-        /// <summary>The host pages the page opened (Edit in PKI).</summary>
+        /// <summary>The host pages the page opened (Edit policies).</summary>
         public List<string> Opened { get; } = [];
 
         public Task OpenAsync(string hostPage)

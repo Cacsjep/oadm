@@ -289,11 +289,17 @@ public sealed partial class PkiService
             Kind = a.Kind,
             NotAfterUtc = a.NotAfterUtc,
             Fingerprint = a.Certificates.Count > 0 ? CaCertificates.ColonFingerprint(Convert.ToHexString(SHA256.HashData(a.Certificates[0]))) : string.Empty,
-            // One prefix per group ("802.1X: ...", "Issuing: HTTPS, IEEE 802.1X"), then the services: fits the column in two lines.
-            UsedBy = [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)],
+            UsedBy = AuthorityUsedBy(a),
             CertificatesPem = [.. a.Certificates.Select(der => new string(PemEncoding.Write("CERTIFICATE", der)) + "\n")],
         }),
     ];
+
+    /// <summary>
+    /// What uses a CA, for its Used by: one prefix per group ("802.1X: ...", "Issuing: HTTPS, IEEE 802.1X"), then the
+    /// services; fits the column in two lines.
+    /// </summary>
+    private List<string> AuthorityUsedBy(CertificateAuthorityInfo a) =>
+        [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)];
 
     /// <summary>The names of the issuing policies that name the CA (only the OADM CA issues; its previous ones never do).</summary>
     private IEnumerable<string> IssuingPoliciesOf(CertificateAuthorityInfo authority) =>

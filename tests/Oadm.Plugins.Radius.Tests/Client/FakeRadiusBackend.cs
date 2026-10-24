@@ -305,7 +305,7 @@ internal sealed class FakePageContext(FakeRadiusBackend backend) : ICorePluginCl
 
     public List<(string Title, string Message)> Messages { get; } = [];
 
-    /// <summary>The pages the page opened (Edit in PKI).</summary>
+    /// <summary>The pages the page opened (Edit policies).</summary>
     public List<string> Opened { get; } = [];
 
     public Task OpenAsync(string hostPage)

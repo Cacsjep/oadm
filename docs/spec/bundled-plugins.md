@@ -130,8 +130,8 @@ setup and the manual test plan: plugin `README.md`.
 
 `plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (group Security, icon `shield`), always on.
 The package (one server and one client assembly, one `plugin.json`) also holds the core plugins **EST server**
-(`oadm.est`, `Est/`) and **802.1X server** (`oadm.radius`, `Radius/`) with their own rail pages (`docs/spec/pki.md` "One
-plugin"); only these two servers need OADM PRO, PKI itself never does (Plugins page: no PRO chip, the description says
+(`oadm.est`, `Est/`) and **802.1X server** (`oadm.radius`, `Radius/`), whose pages are tabs of the PKI page
+(`ICorePluginPage.TabOf`, `docs/spec/pki.md` "One plugin" and "The PKI page"); only these two servers need OADM PRO, PKI itself never does (Plugins page: no PRO chip, the description says
 "802.1X and EST servers need OADM PRO.").
 One certificate authority for device certificates (generated on first start or imported), the server's trust in it, and
 the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
@@ -503,8 +503,8 @@ or on their own, matched by the MAC address in the key). Decision table and rese
 ## EST server (core plugin of PKI, OADM PRO)
 
 Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugins/Oadm.Plugins.Pki/Est` (+
-`Oadm.Plugins.Pki.Client/Est`), core plugin id `oadm.est`, rail page **EST server** (group Security, icon `lock`), its own
-source-available `Est/LICENSE`. The server is off by default: **Turn on** / **Turn off** on its page (stored choice); it runs,
+`Oadm.Plugins.Pki.Client/Est`), core plugin id `oadm.est`, its page the tab **EST server** of the PKI page, its own
+source-available `Est/LICENSE`. The server is off by default: **Turn on** / **Turn off** on its tab (stored choice); it runs,
 and opens TCP 9454, only while it is on and OADM PRO is active. Spec: `docs/spec/est-server.md`; details: `Est/README.md`.
 
 - Rules that must hold: only cameras that sign in with a certificate of a CA a Sign-in CA policy of PKI names (the Axis device ID, or a valid certificate the OADM CA itself issued them, naming exactly one camera), that an Enrollment policy holds for the profile, and that

@@ -343,6 +343,51 @@ internal sealed class PluginPageContext(PkiPlugin plugin, PluginEventHub hub) : 
     /// <summary>The devices this client knows (the policy editor's device picker).</summary>
     public IReadOnlyList<IDeviceInfo> DeviceList { get; set; } = [];
 
+    private IReadOnlyList<CorePluginTab> _tabs = [];
+
+    /// <summary>The server pages the host hands the page as tabs; a set raises TabsChanged.</summary>
+    public IReadOnlyList<CorePluginTab> Tabs
+    {
+        get => _tabs;
+        set
+        {
+            _tabs = value;
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public event EventHandler? TabsChanged;
+
+    public event EventHandler<string>? OpenTabRequested;
+
+    /// <summary>The host asks for a tab (OpenAsync of a tab page or of PKI).</summary>
+    public void RequestTab(string pluginId) => OpenTabRequested?.Invoke(this, pluginId);
+
+    public List<string> Opened { get; } = [];
+
+    private readonly Dictionary<string, string> _local = [];
+
+    /// <summary>What the page keeps on this computer (shared by every page made with this context).</summary>
+    public string? GetLocalSetting(string key) => _local.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            _local.Remove(key);
+        }
+        else
+        {
+            _local[key] = value;
+        }
+    }
+
+    public Task OpenAsync(string hostPage)
+    {
+        Opened.Add(hostPage);
+        return Task.CompletedTask;
+    }
+
     public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)

@@ -6,9 +6,9 @@ The plugin's details: `docs/spec/bundled-plugins.md` (PKI) and `plugins/Oadm.Plu
 **Release (decision 2026-10-24):** all stages below ship together in **OADM 4.5** (with device groups and the 802.1X
 server; there is no 4.2 release). Main may hold a stage in between; nothing is released before stage 6.
 
-**Goal (decisions 2026-10-24):** PKI is the one place for everything about certificates. One page with three parts:
-the **CAs**, the **policies** (every rule: which certificate a device gets, what a certificate lets it do) and the
-**certificates** (every certificate OADM knows). Services that use certificates (802.1X server, EST server, the PKI tasks)
+**Goal (decisions 2026-10-24):** PKI is the one place for everything about certificates. One page with the
+**policies** (every rule: which certificate a device gets, what a certificate lets it do) and the **certificates** (every
+certificate OADM knows, the CAs among them), plus the 802.1X and EST servers as tabs of the same page. Services that use certificates (802.1X server, EST server, the PKI tasks)
 keep no certificate rules of their own: they apply PKI's policies and show only how they run (server state, switches,
 sessions, logs, enrollments).
 
@@ -18,15 +18,15 @@ Decision 2026-10-24: the EST server (`oadm.est`) and the 802.1X server (`oadm.ra
 package (`oadm.pki`). No contract between plugins is needed any more: one settings store, one backup, one set of
 permissions, one policy list in PKI's own code.
 
-- **One package, three core plugins, three rail pages:** PKI, 802.1X server, EST server (a package may hold several core
-  plugins, `docs/spec/plugins.md`). One folder `plugins/Oadm.Plugins.Pki` (+ `.Client`); the EST and 802.1X code keeps its
+- **One package, three core plugins, one rail page:** PKI, 802.1X server, EST server (a package may hold several core
+  plugins, `docs/spec/plugins.md`); the pages of the two servers are tabs of the PKI page (see "The PKI page"). One folder `plugins/Oadm.Plugins.Pki` (+ `.Client`); the EST and 802.1X code keeps its
   own folders inside it (`Est/`, `Radius/`) with its source-available `LICENSE` (`docs/spec/licensing.md`); the rest of PKI
   stays Apache-2.0. THIRD-PARTY-NOTICES and the plugin's license notice name both.
 - **On and off:** PKI is always on (as today). The 802.1X and EST servers are off by default and switched on their own
-  page ("Turn on" in the Server card, the stored choice kept like a plugin's on/off). They open their ports (UDP 1812,
+  tab ("Turn on" in the Server card, the stored choice kept like a plugin's on/off). They open their ports (UDP 1812,
   TCP 9454) only while on.
 - **OADM PRO:** the 802.1X and EST servers start only with an active OADM PRO license (`PluginRegistry.ProActive`); without
-  it their page shows `ProLicenseTexts.NeedsPro` and the Turn on button is disabled; a license that runs out stops them,
+  it their tab shows `ProLicenseTexts.NeedsPro` and the Turn on button is disabled; a license that runs out stops them,
   a new one starts them again with the kept choice. PKI's own parts (CAs, issuing, Revoke, Certificates) never need a key:
   OADM itself is never limited. `licensing.md` changes from "only PRO plugins read it" to "PRO plugins and the PRO parts
   of PKI read it". Plugins page: the PKI row says "802.1X and EST servers need OADM PRO" in its description; no PRO chip
@@ -50,15 +50,29 @@ permissions, one policy list in PKI's own code.
 
 ## The PKI page
 
-One page, no tabs, cards like the 802.1X page:
+Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fixed tabs (`ui:PageTab` without X):
+**Certificates** | **802.1X server** | **EST server**.
 
-- Top row: **Certificate authorities** | **Policies** (side by side on wide screens, stacked on small ones).
-- Below, full width: **Certificates** (search and filters, like the 802.1X Log).
-- The current CA card's actions (Generate new CA, Import CA, Back up, Export public certificate, Install in trusted root
-  store) move into the Certificate authorities card. The Previous certificate authorities card, Device certificates card
-  and IEEE 802.1X card go away (their content becomes rows and policies, see "Converting existing settings").
+- **Certificates** (PKI's own): the **Policies** card on top, full width; the **Certificates** card below it, full width
+  and as high as the rest of the page (at least 480 px, the page scrolls below that; `PkiView.FitList`):
+  every certificate OADM knows, the CAs among them, with all their actions (see "Certificates"). There is no Certificate
+  authorities card any more.
+- **802.1X server** and **EST server**: the pages of the core plugins `oadm.radius` and `oadm.est`, unchanged in content
+  (Turn on / Turn off, the OADM PRO texts, their cards, permissions, events, tasks and audit names). They have no rail
+  entry: their client pages say `ICorePluginPage.TabOf` = `oadm.pki` and the host hands their views to the PKI page
+  (`docs/spec/plugins.md` "Pages shown as tabs"). The server parts keep their pages (`HasPage`), so the "show" and
+  "manage" permissions stay as they are.
+- A server's tab shows only for users whose role has that core plugin's "show" permission (the server lists only the
+  pages the role may show, the host follows role changes). With no server tab the tab row is left out.
+- **Edit policies** on a server tab opens the Certificates tab. Everything that opens `plugin:oadm.radius` or
+  `plugin:oadm.est` (`OpenAsync`, a role's start page, links of the Plugins page) opens the PKI page on that tab;
+  `plugin:oadm.pki` opens it on Certificates. A click on the rail entry keeps the tab that was open.
+- Only the open tab's view is in the window: a server tab reads its state when it is opened (like a page).
+- Decision of stage 7: a role that shows a server but not PKI gets that server's page in the rail as before (there is no
+  PKI page to hold the tab).
 - Managing needs "Manage the certificate authority" and all devices (like Revoke today). Users without it see the page
-  read-only; users limited to a device group do not see the page.
+  read only (no toolbar buttons, no row buttons but View); users limited to a device group see only the device
+  certificates of their devices (no Policies card, no actions).
 
 ## Certificate authorities
 
@@ -69,17 +83,31 @@ One page, no tabs, cards like the 802.1X page:
 | Axis device ID | "Axis device ID" | no | built in (the RSA and ECC roots and intermediates EST ships, `plugins/Shared/DeviceId`) |
 | Imported CA | "Contoso Root" | no | **Import CA** (a root or intermediate certificate, PEM or DER; no key) |
 
-- Each row: name, kind, valid until, **Used by** (the policies that name it, e.g. "802.1X: OADM CA (only devices OADM manages)");
-  **View** (`ui:CertificateWindow`), **Remove** (imported CAs only; refused while a policy names it: "Used by the policy
-  <name>. Change or delete the policy first.").
+- The CAs are rows of the Certificates list (stage 7; before, a card of their own): name, kind, valid until, **Used by**
+  (the policies that name it, e.g. "802.1X: OADM CA (only devices OADM manages)"); **View** (`ui:CertificateWindow`),
+  **Remove** (imported and previous CAs; refused while a policy names it: "Used by the policy <name>. Change or delete the
+  policy first.").
 - The CA key is never exported on its own; it leaves OADM only in the encrypted CA backup (Back up) and the server
   backup. The trusted root store of the server stays as it is (what OADM trusts when it connects to devices).
 - A CA that leaves the list (expired previous CA) drops out of every policy at once (fail closed).
 
 ## Policies
 
-One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a short summary
-("OADM CA, 365 days, ECC", "VLAN 30", "Only devices OADM manages"), devices (where the kind has them); Edit and Delete as
+One list, grouped by what the policies do, with a filter: **All**, **Issuing**, **Certificates**, **802.1X**, **EST**, **Revoke**. Each row: name, kind, a
+summary, devices (where the kind has them). The summary (decision 2026-10-24) is one plain sentence that says what the
+policy does with its values (one builder per kind, `PolicyStore.Summary`, also the editor's preview line below its fields;
+"these devices" stands for the Devices column; up to two lines in the row, the whole sentence as tooltip): "Certificates
+with 30 days or less left show a warning and raise Certificate expires soon.", "Enable HTTPS issues certificates from OADM
+Root CA acs, valid 365 days, with an ECC key.", the IEEE 802.1X one adds "Cameras sign in with their MAC address." (host
+name, or "as <identity>"), "The 802.1X server uses a certificate from ..., renewed 30 days before it ends." (EST server
+likewise), "The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide
+when cameras sign in again." ("... asks cameras to sign in again every 60 minutes."), "The 802.1X server lets in devices
+OADM manages that have a certificate from ..." / "... lets in any device with a valid certificate from Contoso Root.",
+"The 802.1X server puts these devices in VLAN 30.", "The 802.1X server refuses these devices.", "Certificates of these
+devices are revoked, new ones too.", "These cameras may get certificates from the EST server for every profile." ("... for
+the profiles https and dot1x.", "These cameras may not get certificates from the EST server."), "Cameras sign in to the EST
+server with their Axis device ID for new certificates and renewals.", "Cameras with a certificate from ... may sign in to
+renew it."; Edit and Delete as
 row buttons (like the Permissions page), **Add policy** in the card header. The editor is one dialog: name, kind, the
 kind's fields (each kind its own form, e.g. the 802.1X server policy: Minimum TLS version, Cipher suites with
 Reset to default, Largest EAP packet), the shared device selector where the kind has devices.
@@ -130,13 +158,48 @@ Reset to default, Largest EAP packet), the shared device selector where the kind
 ## Certificates
 
 Every certificate OADM knows, paged on the server (search over every column, filters: use, issued by, state), so 30,000
-devices with two certificates each stay fast.
+devices with two certificates each stay fast. The full management view of PKI (stage 7): still a table (the shared
+`ui:IssuedCertificateList`, virtualized, pages of 500), with the CAs and their actions in it.
 
-- Columns: name or device, use (HTTPS, IEEE 802.1X, Server, CA, Other), issued by, valid until, **used by** (the device it
-  is installed on, the 802.1X server, the EST server, "-"), state (Valid, Expires soon, Revoked, Expired).
 - Includes the CAs, the device certificates the OADM CA issued (tasks and EST), OADM's server certificates and the
   certificates created, signed or imported here.
-- Actions (toolbar of the card; row buttons for the row ones):
+- **Columns** (decisions 2026-10-24, one line per row where it fits): **Name** with a second line (the key and the issuer:
+  "RSA 4096 · issued by OADM Root CA SERVER01", a device certificate "Issued by OADM Root CA SERVER01", a root CA its key
+  only); **Type** as badges (neutral pills, `Border.badge.neutral`): Root CA or Intermediate CA plus OADM CA, Previous OADM
+  CA, Axis device ID or Imported for a CA; HTTPS, IEEE 802.1X, MQTT, RTSPS or Server; Created, Signed or Imported for the
+  certificates made here; the OADM CA row adds below its badges where it is installed (`ui:StatusChip`: "Installed on the
+  server" / "Not installed on the server", the same for this computer, "Failed on ..." with the reason, the progress of an
+  install); **Valid until**: the date, and below it a status (`ui:StatusChip`, one line) only when the state needs
+  attention: "Expires in 12 days" (amber, the Expiry warning policy's days), "Expired" and "Revoked" (red, the revocation
+  as tooltip), "Replaced"; a valid certificate shows its date only (there is no State column; the state filter stays);
+  **Used by** in one line: badges, one per user (a CA: one per group, "802.1X", "EST", "Issuing", no policy names; a server
+  certificate "802.1X server" or "EST server"), a device certificate the device as text, "-" when nothing uses it; the full
+  list ("802.1X: OADM CA (only devices OADM manages)", "Issuing: HTTPS, IEEE 802.1X, ...", one per line) is the cell's
+  tooltip and a section "Used by" of View; one narrow fixed column with a ⋯ button (the row's actions menu).
+- **Group by** (a select in the toolbar, decision 2026-10-24): **Type** (default): Certificate authorities, Server
+  certificates, Created, signed and imported, Device certificates; **Issuer**: one group per CA in the order of the CAs
+  (OADM CA, previous OADM CAs, Axis device ID, imported CAs, Other CA); **None**. The server orders and counts the groups
+  (`CertificatesRequest.GroupBy`, `CertificatesReply.Groups`), so a page of 500 cuts across groups and each header names the
+  group's count over every page ("Device certificates · 60,000"). The grid's group headers are the shared `DataGrid.groups`
+  style (collapsible). The choice is kept on this computer.
+- **Toolbar**: one row with the card's title, **Create** (menu: **Certificate**, **New OADM CA**), **Sign request**,
+  **Import** (menu: **Certificate**, **CA** with **Own CA with its key** (replaces the OADM CA) and **CA certificate
+  only** (adds a row)) left, and Group by, the state, use and issuer filters and the search right-aligned in the same row;
+  on a card too narrow for both the filters go below as a whole (`ToolbarRow`), never cut.
+- **Row actions** (decision 2026-10-24): one ⋯ button per row (`Button.toolbar.iconOnly`, `Icon.more`); its menu is the
+  same as the row's right-click menu (one source, `IssuedCertificateListViewModel.MenuOf`): the everyday actions, then a
+  separator and the red ones last (`MenuItem.danger`). A double click is View.
+  - OADM CA: **View**, **Export** (PEM, DER: the public certificate, as Export public certificate before), **Install in
+    trusted root store** (the server and this computer, `oadm.pki:trustServer`), **Back up** (the CA with its key).
+  - Previous OADM CA and imported CA: **View**, **Export** (PEM, DER), then **Remove** (red; refused while a policy names it).
+  - Axis device ID: **View**, **Export** (PEM, DER).
+  - Every other row: **View**, **Export** (PEM, DER; **With its key** where OADM holds it), then the red ones that apply:
+    **Revoke**, **Revoke all of this device** (device certificates), **Delete**.
+  - Several chosen rows: the menu of any of them offers **Revoke N certificates** and **Delete N certificates** (red).
+  - Users who may not manage the CA get View only.
+- No OADM CA, a CA being created, a key that cannot be read or a server that cannot keep a CA: the PKI status
+  (`ui:StatusChip` with its detail) stands below the toolbar row, above the list; nothing when the OADM CA is fine (its row says it).
+- Actions:
   - **Create**: OADM makes the key and the certificate from an issuing policy (name, addresses, use); download as
     PKCS#12 with a password. The key is kept, encrypted with the master key like the CA key, and is part of the backup.
   - **Sign request**: upload a request (PKCS#10, PEM or DER) from another system; its key never leaves it.
@@ -180,15 +243,17 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 
 ## Pages of the services after this
 
+The two pages are tabs of the PKI page since stage 7 ("The PKI page").
+
 - **802.1X server:** Server (Listen on, Port, Log entries kept; no Advanced dialog: its settings are the 802.1X server
-  policy), Switches, Sessions and Log (a splitter between
-  the two), a line "Rules: Policies on the PKI page". No Trusted CAs card, no Policies card, no Default VLAN.
-- **EST server:** General (with "3 policies apply" and Edit in PKI), Profiles (name, issuing policy, on), Enrollments in
+  policy, with "6 policies apply" and Edit policies), Switches, Sessions and Log (a splitter between the two). No Trusted
+  CAs card, no Policies card, no Default VLAN.
+- **EST server:** General (with "3 policies apply" and Edit policies), Profiles (name, issuing policy, on), Enrollments in
   its own card. No Sign in with (stage 6: Sign-in CA policies).
 
 ## Rules for the move (decisions 2026-10-24)
 
-- The 802.1X page shows "4 policies apply" with **Edit in PKI**; Sessions and Log rows name the policy that matched
+- The 802.1X tab shows "4 policies apply" with **Edit policies** (opens the Certificates tab); Sessions and Log rows name the policy that matched
   ("VLAN 30 by Building B", "Blocked by Storage room").
 - OADM PRO: see "One plugin"; PKI's own kinds (issuing, Revoke) always work.
 - The conversion is tested on a copy of real data (a backup of a 4.1 server and of the development server) before the
@@ -272,7 +337,7 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   without devices the device part hides (`DevicePickerWindow.IsPickerVisible`). The Device certificates card kept only the
   validity (gone in stage 4); users limited to a device group still see the page with the Certificates of their devices (decision of stage 3:
   the Certificates list of stage 1 stays; the Policies card is hidden for them).
-- **802.1X page**: Server (with "6 policies apply" and Edit in PKI: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
+- **802.1X page**: Server (with "6 policies apply" and Edit policies: `ICorePluginClientContext.OpenAsync("plugin:oadm.pki")`)
   and Switches side by side from 1,000 px of page width, Sessions and Log below with a `paneSplitter` between them (pixel
   rows inside the page's scroll viewer); every column but the state or result is as wide as its longest text (`MinWidth` =
   `Width`, the grid scrolls sideways on narrow pages). The switch dialog no longer names the RADIUS server's address; the
@@ -446,7 +511,7 @@ fits the spec; to be confirmed by the maintainer).
   policy for this device. Add one on the PKI page. Nothing was changed."; a profile not allowed is skipped with the
   policy's reason as a warning; none left: "The enrollment policies allow none of the profiles the camera supports.
   Nothing was changed." (decision of stage 6).
-- **Page**: the "Sign in with" check boxes are gone; General shows "3 policies apply" with Edit in PKI (`plugin:oadm.pki`)
+- **Page**: the "Sign in with" check boxes are gone; General shows "3 policies apply" with Edit policies (`plugin:oadm.pki`)
   and, in the warning style, why no camera can enroll ("Cameras cannot sign in: there is no Sign-in CA policy.", "No
   camera can enroll: there is no Enrollment policy.", the store's own texts). Users limited to a device group see neither
   (`EstState.PoliciesApply` and `PolicyProblem` null). `config.signInWith` stays stored and is kept by a save (read only
@@ -464,8 +529,40 @@ fits the spec; to be confirmed by the maintainer).
 - **Tests**: `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests` (kinds, defaults, overlaps, rules, conversion with fixtures
   `est-config-4.1.json` and `est-config-stage4.json`, the late merge), `ServerTests` (sign-in per operation and CA, fail
   closed, refused and not allowed devices and profiles over TLS, Used by), `TaskTests` (Set up and the policies), `PageTests`
-  (the page line, Edit in PKI, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
+  (the page line, Edit policies, headless at 1,700 and 1,000 px with and without a Sign-in CA policy); `Oadm.Plugins.Pki.Tests`
   `EstPolicyPageTests` (filter, rows, both editors, headless editors).
+
+## Code (stage 7)
+
+Built 2026-10-24 (branch `feature/pki-tabs`). Rules the sections above leave open are marked "decision of stage 7".
+
+- **Tabs** (`docs/spec/plugins.md` "Pages shown as tabs"): `RadiusPage.TabOf` and `EstPage.TabOf` = `oadm.pki`; the host
+  (`MainWindowViewModel.TabPages`) creates their views with their own contexts and hands them to PKI's context
+  (`Tabs`, `TabsChanged`); `OpenAsync("plugin:oadm.radius" / "plugin:oadm.est")` and a role's start page open PKI on the tab
+  (`OpenTabRequested`), `plugin:oadm.pki` on Certificates. `PkiViewModel.Tabs` (`PkiViewModel.Tabs.cs`): Certificates, then
+  802.1X server, EST server, others in the host's order; only the shown tab's view is in the window (a server tab reads its
+  state when it opens, decision of stage 7). The server parts keep `HasPage`, so permissions and start page choices stay.
+  The page's subtitle: "Certificates, their policies, and the 802.1X and EST servers." (decision of stage 7).
+- **List** (`IssuedCertificateList`, `IssuedCertificateListViewModel`, SDK 0.4.0): `IssuedCertificateInfo` gains `IssuerId`,
+  `KeyText`, `AuthorityKind`, `AuthorityId`, `IsRootCa`, `UsedByBadges`; `IssuedCertificateQuery.GroupBy`
+  (`IssuedCertificateGrouping`), `IssuedCertificateGroups`, `IssuedCertificateGroup`; the page's `MenuOf` / `ActionsOf` /
+  `SelectionActions` (`IssuedCertificateAction`), `MoreStatesOf` (`IssuedCertificateStatus`), `Toolbar` and `Banner`. The
+  `RowActions` and `RowContextMenu` properties of stage 5 are gone (one menu). Server: `PkiService.GetCertificates` orders
+  the parts by the grouping; by issuer one pass over the issued registry per OADM CA (current, previous, Other CA), the
+  other CAs issue no device certificates. Measured at 30,000 devices x 2: first page by type 55 ms, by issuer 72 ms (also
+  at offset 59,500), the page's list of 500 grouped rows 59 ms (`CertificateListPerfTests`).
+- **CA rows**: Remove of a previous CA is `removePrevious`, of an imported one `removeAuthority` (`PkiViewModel.RemoveCa`);
+  Export of the OADM CA's row is `exportPublic` (as before), of other CA rows the row's download (PEM, DER; audited
+  "Export certificate"; decision of stage 7: a previous CA now also as DER). The OADM CA row shows both trust states
+  always ("Not installed on the server" neutral), decision of stage 7.
+- **Group by** is kept with `ICorePluginClientContext.SetLocalSetting("certificates.groupBy")`.
+- **Theme**: `Border.badge.neutral` (`Oadm.BadgeNeutralBrush`, both appearances), `MenuItem.danger`.
+- **Tests**: `Oadm.Client.Tests` `PluginTabTests`; `Oadm.Plugins.Pki.Tests` `PkiTabsTests` (+ headless
+  `pki-tab-certificates-1700.png` / `-1000.png`), `CertificateGroupTests`, `PolicySentenceTests`, `CertificateListPerfTests`
+  (Category=Perf); `Oadm.Plugins.Radius.Tests` `PkiTabHeadlessTests` (`pki-tab-802-1x-*.png`); `Oadm.Plugins.Est.Tests`
+  `PageTests.The_est_server_is_a_tab_of_the_pki_page` (`pki-tab-est-*.png`).
+- **Not built**: sorting by a column (the list never sorted; its order is the server's). The website's screenshots
+  (`pki-page.png`, `est-page.png`, `radius-page.png`) still show the pages before the tabs.
 
 ## Not planned
 
@@ -477,15 +574,18 @@ fits the spec; to be confirmed by the maintainer).
 
 1. Done (on main, 2026-10-24): the CA list with Used by, 802.1X Trusted CAs and policies, EST Sign in with, the clock
    check.
-2. Built (2026-10-24, branch `feature/pki-policies`): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
+2. Done (on main, 2026-10-24): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
    on per server, PRO for the two servers only, taking over the 4.1 data and choices, the site relay), without changing what
    they do.
-3. Built (2026-10-24, branch `feature/pki-policies`): The page with CAs, Policies and Certificates (today's list); 802.1X
+3. Done (on main, 2026-10-24): The page with CAs, Policies and Certificates (today's list); 802.1X
    server, Allow CA, VLAN, Block, Revoke and Expiry warning policies (the expiry events move to PKI) with the conversion; the
    802.1X and EST page changes above. See "Code (stage 3)".
-4. Built (2026-10-24, branch `feature/pki-policies`): Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the
+4. Done (on main, 2026-10-24): Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the
    task dialogs pick a policy; EST profiles point to one. See "Code (stage 4)".
-5. Built (2026-10-24, branch `pp-certs`): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
+5. Done (on main, 2026-10-24): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
    See "Code (stage 5)".
-6. Built (2026-10-24, branch `pp-est`): EST Enrollment and Sign-in CA policies; the EST page's Sign in with goes away. See
+6. Done (on main, 2026-10-24): EST Enrollment and Sign-in CA policies; the EST page's Sign in with goes away. See
    "Code (stage 6)".
+7. Done (on main, 2026-10-24): One rail entry: the 802.1X and EST servers become tabs of the PKI page;
+   the Certificate authorities card goes away, the Certificates list becomes the full management view (badges, Group by,
+   the CA actions). See "The PKI page", "Certificates" and "Code (stage 7)".

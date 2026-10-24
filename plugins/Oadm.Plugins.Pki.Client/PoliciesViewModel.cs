@@ -363,6 +363,13 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         _owner = owner ?? throw new ArgumentNullException(nameof(owner));
         _list = list ?? throw new ArgumentNullException(nameof(list));
         _existing = existing;
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(Preview))
+            {
+                OnPropertyChanged(nameof(Preview)); // the sentence follows every field
+            }
+        };
         var hasServer = list.Rows.Any(r => r.Policy.Kind == PolicyKinds.Dot1xServer && r.Policy.Id != existing?.Id);
 
         // A Server certificate policy per server: a new one only for a server without one.
@@ -814,6 +821,34 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     /// <summary>Why Save is off (its tooltip).</summary>
     public string? SaveBlockedReason => FormError ?? (!ShowsPicker || HasChosenDevices ? null : PolicyTexts.ChooseDevices);
+
+    /// <summary>
+    /// What the policy does, in the sentence of its row (<see cref="PolicyStore.Summary"/>), from the fields as they are now;
+    /// null while the form cannot say it yet.
+    /// </summary>
+    public string? Preview
+    {
+        get
+        {
+            if (_applying || Kind is null)
+            {
+                return null;
+            }
+
+            var names = _list.Cas.Concat(_list.SignInCas).GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                return PolicyStore.Summary(ToPolicy(), names);
+            }
+#pragma warning disable CA1031 // A half-filled form has no sentence yet.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                return null;
+            }
+        }
+    }
 
     /// <summary>The policy of the editor (the fields of its kind).</summary>
     public PkiPolicy ToPolicy()

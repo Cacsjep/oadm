@@ -48,6 +48,9 @@ public sealed class CertificateDetails
         CloseCommand = new RelayCommand(() => CloseRequested?.Invoke(this, EventArgs.Empty));
     }
 
+    /// <summary>What uses the certificate, one use per line (a CA's policies and services); null: no Used by section.</summary>
+    public string? UsedBy { get; init; }
+
     /// <summary>The window closes (Close, Escape).</summary>
     public event EventHandler? CloseRequested;
 
@@ -179,7 +182,13 @@ public sealed class CertificateWindow : Window
         var uses = Section("Icon.check", "Uses", Value(details.Uses));
         var alternative = Section("Icon.globe", "Names in the certificate", Value(details.Names));
 
-        var card = new Border { Child = new StackPanel { Spacing = 20, Children = { validity, names, key, uses, alternative } } };
+        var sections = new StackPanel { Spacing = 20, Children = { validity, names, key, uses, alternative } };
+        if (details.UsedBy is { Length: > 0 } usedBy)
+        {
+            sections.Children.Add(Section("Icon.workflow", "Used by", Value(usedBy)));
+        }
+
+        var card = new Border { Child = sections };
         card.Classes.Add("card");
         var footer = new DialogFooter { CancelText = "Close", CancelCommand = details.CloseCommand };
         var title = new DialogTitleBar { Text = details.Title };
