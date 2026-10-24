@@ -117,7 +117,14 @@ inline "I understand" risk sections; line breaks start a new line, text between 
 select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
 `CertificateWindow` + `CertificateDetails` (every certificate shown in OADM's own window: EST enrollments, PKI's list of
 issued certificates, the 802.1X log; validity chip or the revocation, issued to and by, key and signature, serial,
-fingerprint, uses, names, all selectable; the server describes the certificate with the SDK's `CertificateDescriber`),
+fingerprint, uses, names, all selectable; the server describes the certificate with the SDK's `CertificateDescriber`, the
+802.1X log describes the DER it reads with it in the client),
+`IssuedCertificateList` + `IssuedCertificateListViewModel` (every list of the certificates the OADM CA issued: the PKI
+Certificates tab and the certificate choice of the 802.1X server's Revoke; the page's buttons left, the filters state,
+use, issued by and the search right (it waits 300 ms for the typing to stop), progress row, virtualized grid with several
+rows chosen in one step and a double click for View certificate, the empty line, the overlay of the first read, the error
+and the pages of 500 below; `IIssuedCertificateSource` says where it reads, `IssuedCertificateList.ConfirmRevokeAsync` is
+the revoke confirmation with the reason, `IssuedCertificateTexts` the texts),
 `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
 "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
 (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,

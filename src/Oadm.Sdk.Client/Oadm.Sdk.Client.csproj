@@ -8,6 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />
+    <!-- The list of issued certificates (IssuedCertificateList) is a DataGrid; the host ships it (shared like Avalonia). -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
     <!-- Shared from the host like Avalonia: ValidatingViewModel is an ObservableObject -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>

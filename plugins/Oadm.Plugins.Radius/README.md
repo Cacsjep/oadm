@@ -35,3 +35,10 @@ Apache 2.0).
   sessions and 30,000 authentications through the plugin).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
+- Client part (`Oadm.Plugins.Radius.Client.dll`, `plugins/Oadm.Plugins.Radius.Client`): the page "802.1X server" with the
+  fixed tabs Server (General with Advanced, Switches with the switch dialog, VLANs, one Save), Sessions (live), Log (search,
+  View certificate, Delete all) and Revoked (Revoke through the shared `ui:IssuedCertificateList` of the client SDK); code
+  map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (project reference, like EST).
+  Tests: `tests/Oadm.Plugins.Radius.Tests/Client` against `FakeRadiusBackend`
+  (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `Category=Perf` for 10,000 sessions and
+  30,000 devices).

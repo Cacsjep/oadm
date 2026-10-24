@@ -1,0 +1,153 @@
+---
+title: 802.1X server
+description: Switches ask OADM which cameras may use their ports.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/radius-page.png';
+import sessionsShot from '../../../assets/screens/radius-sessions.png';
+import switchShot from '../../../assets/screens/radius-switch-dialog.png';
+
+With IEEE 802.1X a switch opens a port only for a device that proves who it is. The 802.1X server makes OADM the
+**RADIUS server** of your switches: when a camera plugs in, the switch asks OADM, and OADM checks the camera's certificate.
+Only cameras that OADM manages, with a certificate of the OADM CA, get onto the network.
+
+It completes the certificates of OADM: the [PKI](../pki/) page gives the cameras their certificate, the
+[EST server](../est-server/) renews it, and the 802.1X server checks it at the port.
+
+<Aside type="note" title="OADM PRO">
+The 802.1X server is an OADM PRO plugin. It runs while an OADM PRO license or 30-day trial is active
+([Activate OADM PRO](../../activate/)). When the license ends, OADM stops answering and the switches do what their own
+settings say for that case. Everything else in OADM works the same with or without a license.
+</Aside>
+
+<Image src={shot} alt="The 802.1X server page with General, the switches and the VLANs" class="screen" />
+
+## What you need
+
+- An active OADM PRO license or trial.
+- A certificate authority on the [PKI](../pki/) page (OADM creates one on the first start).
+- Cameras with a network access certificate of the OADM CA: run **Enable IEEE 802.1X** of the PKI page on them, or set
+  them up with the `dot1x` profile of the [EST server](../est-server/).
+- Switches with IEEE 802.1X on their camera ports and OADM as their RADIUS server. The switches must reach the OADM server
+  on **UDP 1812** (you can change the port). On Windows the installed server opens the port in the Windows firewall while
+  the 802.1X server runs; on Linux and macOS open it yourself if a firewall runs.
+
+## Turn it on
+
+<Steps>
+
+1. Open **Plugins** and turn on **802.1X server**. The License column shows **OADM PRO**; without an active license the
+   check box is locked and **Activate** opens Settings > License.
+2. Open the **802.1X server** page in the navigation (group Security). The status left of **Save** shows **Running on
+   port 1812** when it is ready.
+3. Add your switches (below) and set OADM as the RADIUS server on each switch, with the same shared secret.
+
+</Steps>
+
+## The page
+
+The page has four tabs: **Server**, **Sessions**, **Log** and **Revoked**.
+
+### General
+
+- **Listen on**: the network interface the switches reach the server on, or **All interfaces** (default).
+- **Port**: the UDP port the switches send to (default 1812).
+- **Log entries kept**: how many entries the log keeps, 1,000 to 50,000 (default 5,000).
+
+**Advanced** is closed at first: the defaults fit almost every network.
+
+- **Minimum TLS version**: TLS 1.2 (default) or TLS 1.3. TLS 1.0 and 1.1 are there for old devices only; they are no
+  longer considered secure.
+- **Cipher suites**: the secure set is checked. With TLS 1.0 or 1.1 the list also shows the older suites those versions
+  need. At least one suite must stay checked. **Reset to default** checks the secure set again.
+- **Largest fragment (bytes)**: 500 to 1,400 (default 1000). A switch can ask for smaller pieces.
+
+### Switches
+
+Every switch that asks OADM: name, address, site, state and its last request.
+
+| State | Meaning |
+|---|---|
+| **Answered** | OADM answered the switch. |
+| **No requests yet** | The switch has not asked yet. Check its RADIUS settings. |
+| **Wrong secret** | The switch sends with another shared secret. Enter the same secret on both. |
+| **Site offline** | The site node of the switch is not connected. |
+
+<Image src={switchShot} alt="The Add switch dialog with a generated shared secret" class="screen" />
+
+- **Add switch** opens the dialog: **Name**, **Address** (IP address or host name), **Site** (when you have sites) and the
+  **Shared secret**, 16 characters or more. **Generate** fills in a random secret and shows it once: copy it into the
+  switch now. The dialog also names the address and port the switch must send to.
+- **Edit** changes a switch. Leave the secret empty to keep the current one.
+- **Delete** (red, with a confirmation) removes a switch. OADM no longer answers it.
+
+Changes to the switches apply at once, also while cameras sign in on other switches. A server takes up to 500 switches.
+
+### VLANs
+
+Off by default. With **Assign VLANs** on, OADM tells the switch which VLAN to put the camera in:
+
+- Rules in order: a **site** or a **tag** gives a **VLAN ID** (1 to 4094). The first rule that matches the camera counts.
+  Move rules up and down with the arrows.
+- **Default VLAN** (optional): for cameras no rule matches. Empty: no VLAN.
+
+A change applies at the next sign-in of each camera. **Save** stores General, Advanced and VLANs together.
+
+### Sessions
+
+<Image src={sessionsShot} alt="The Sessions tab with cameras signing in" class="screen" />
+
+The cameras signing in right now: started, switch, port, MAC address, EAP identity, device, IP address, state and how
+long it takes. The state says how far the camera got, for example **Sending server certificate: fragment 2 of 4** or
+**Checking client certificate**. Before the certificate is checked, the device is a guess from the MAC address and shows
+in italics; only the certificate decides. Finished sign-ins leave the tab after 10 seconds and stay in the log.
+
+### Log
+
+Every sign-in: time, switch, port, MAC address, EAP identity, device, IP address, the result (**Authenticated** or
+**Failed** with the reason) and the VLAN. A camera that passed with something odd shows amber, for example when its MAC
+address does not match its certificate (a copied certificate shows this way).
+
+- **Search** finds text in every column.
+- **View certificate** shows the certificate the camera sent (also a double click on a row).
+- **Delete all** (red, with a confirmation) empties the log for every client.
+
+### Revoked
+
+The certificates taken out of use, from the list of the [PKI](../pki/) page: device, serial number, date, reason and who
+revoked them. **Revoke** opens the list of certificates of the OADM CA: choose the certificates, click **Revoke** and pick
+the reason. A revoked certificate no longer gets a camera onto the network and is no longer renewed. This cannot be
+undone; the camera gets a new certificate with **Enable IEEE 802.1X** or Certificate enrollment.
+
+## Who gets onto the network
+
+OADM lets a camera in only when its certificate:
+
+- comes from the OADM CA (or a CA in the trusted root store of the PKI page), is valid now and is meant for network access,
+- names a device OADM manages (its `axis-<serial>.local` name or its Axis device ID), at a site a device of that site,
+- is not revoked.
+
+A genuine Axis camera that OADM does not manage stays out. The name the camera sends before its certificate (the EAP
+identity) is shown, never trusted.
+
+## Users with a device group
+
+Users limited to a [device group](../../admin/device-groups/) see the Sessions and Log tabs with the rows of their devices. Only users
+with all devices change the settings, the switches and the log.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| Status **OADM PRO is not active.** | Activate OADM PRO in Settings > License. |
+| Status **The PKI has no certificate authority.** | Create or import a CA on the PKI page. |
+| Status **Port 1812 is used by another program** | Stop the other RADIUS server, or choose another port and change it on the switches. |
+| Switch shows **Wrong secret** | Enter the same shared secret on the switch and in OADM. |
+| Switch shows **No requests yet** | Check the switch's RADIUS server address and port, and that it reaches the OADM server. |
+| **The device does not trust the server certificate** | Run **Enable IEEE 802.1X** of the PKI page on the camera, so it trusts the OADM CA. |
+| **Certificate of a device OADM does not manage** | Add the camera to OADM, or check that it is the right camera. |
+| **Client certificate expired** | Renew the certificate (Renew certificates of the PKI page, or Certificate enrollment). |
+| **Certificate revoked** | Give the camera a new certificate with Enable IEEE 802.1X or Certificate enrollment. |
+| **Timed out** | The camera or the switch stopped answering. Check the cable, the switch port and its 802.1X settings. |

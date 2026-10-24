@@ -1,0 +1,447 @@
+using System.Globalization;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+
+using Oadm.Sdk.Certificates;
+
+namespace Oadm.Sdk.Client.Controls;
+
+/// <summary>A choice of a filter of <see cref="IssuedCertificateListViewModel"/>: the value sent to the server and its label.</summary>
+/// <param name="Value">Empty for "every".</param>
+/// <param name="Label">The text of the choice.</param>
+public sealed record IssuedCertificateFilter(string Value, string Label)
+{
+    public override string ToString() => Label;
+}
+
+/// <summary>One row of the list of issued certificates (texts for the grid; the server's row in <see cref="Source"/>).</summary>
+public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
+{
+    /// <summary>The row as the server sent it.</summary>
+    public IssuedCertificateInfo Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
+
+    /// <summary>The device's address; for a device OADM no longer manages its serial, "B8A44F631339 (removed)".</summary>
+    public string Device => Source.DeviceManaged ? Source.Device : (Source.DeviceSerial.Length > 0 ? Source.DeviceSerial : "Device") + " (removed)";
+
+    /// <summary>"HTTPS", "IEEE 802.1X", "MQTT", "RTSPS".</summary>
+    public string Use => DeviceCertificatePurposes.Text(Source.Purpose);
+
+    /// <summary>"Task" or "EST".</summary>
+    public string IssuedBy => Source.Source;
+
+    /// <summary>Start of validity, "2026-10-24".</summary>
+    public string ValidFrom => Source.NotBeforeUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>End of validity, "2027-10-24".</summary>
+    public string ValidUntil => Source.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>"7D FD 05 ..." (pairs, like the certificate window).</summary>
+    public string SerialNumber => IssuedCertificateTexts.Pairs(Source.SerialNumber);
+
+    /// <summary>"Valid", "Expires soon", "Expired", "Replaced", "Revoked".</summary>
+    public string State => IssuedCertificateTexts.State(Source.State);
+
+    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one; null otherwise.</summary>
+    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName : null;
+
+    /// <summary>Valid: green check.</summary>
+    public bool IsOk => Source.State == IssuedCertificateState.Valid;
+
+    /// <summary>Expires soon: amber.</summary>
+    public bool IsWarning => Source.State == IssuedCertificateState.ExpiresSoon;
+
+    /// <summary>Expired or revoked: red.</summary>
+    public bool IsError => Source.State is IssuedCertificateState.Expired or IssuedCertificateState.Revoked;
+
+    /// <summary>Replaced: grey.</summary>
+    public bool IsNeutral => Source.State == IssuedCertificateState.Replaced;
+
+    /// <summary>Still valid and not revoked: Revoke can take it.</summary>
+    public bool CanRevoke => Source.State is IssuedCertificateState.Valid or IssuedCertificateState.ExpiresSoon or IssuedCertificateState.Replaced;
+}
+
+/// <summary>The texts of the list of issued certificates and of a revocation, one phrase each (PKI, 802.1X server).</summary>
+public static class IssuedCertificateTexts
+{
+    /// <summary>The choices of the reason of Revoke, in the page's order.</summary>
+    public static IReadOnlyList<RevocationReason> Reasons { get; } =
+        [RevocationReason.KeyCompromised, RevocationReason.DeviceReplaced, RevocationReason.DeviceRemoved, RevocationReason.Other];
+
+    /// <summary>The confirmation of several certificates.</summary>
+    public const string ConfirmMessage = "OADM no longer accepts them for network access or renewal. This cannot be undone.";
+
+    /// <summary>The confirmation of one certificate.</summary>
+    public const string ConfirmMessageOne = "OADM no longer accepts it for network access or renewal. This cannot be undone.";
+
+    /// <summary>The answer when every chosen certificate was revoked or expired already.</summary>
+    public const string NothingRevoked = "Nothing was revoked: these certificates are already revoked or expired.";
+
+    /// <summary>The empty list without filters.</summary>
+    public const string NoCertificates = "No certificates yet. Enable HTTPS or IEEE 802.1X on devices, or set up Certificate enrollment.";
+
+    /// <summary>The empty list with a filter or a search.</summary>
+    public const string NoMatch = "No certificate matches.";
+
+    /// <summary>"State" texts.</summary>
+    public static string State(IssuedCertificateState state) => state switch
+    {
+        IssuedCertificateState.ExpiresSoon => "Expires soon",
+        IssuedCertificateState.Expired => "Expired",
+        IssuedCertificateState.Replaced => "Replaced",
+        IssuedCertificateState.Revoked => "Revoked",
+        _ => "Valid",
+    };
+
+    /// <summary>"7DFD05" as "7D FD 05".</summary>
+    public static string Pairs(string hex)
+    {
+        ArgumentNullException.ThrowIfNull(hex);
+        var even = hex.Length % 2 == 1 ? "0" + hex : hex;
+        return string.Join(' ', Enumerable.Range(0, even.Length / 2).Select(i => even.Substring(i * 2, 2)));
+    }
+
+    /// <summary>The title of the revoke confirmation: "Revoke the certificate of 10.0.0.48?" or "Revoke 3 certificates?".</summary>
+    public static string RevokeTitle(IReadOnlyList<IssuedCertificateRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return rows.Count == 1
+            ? $"Revoke the certificate of {rows[0].Device}?"
+            : string.Create(CultureInfo.CurrentCulture, $"Revoke {rows.Count:N0} certificates?");
+    }
+}
+
+/// <summary>One page of the list as the server answered it.</summary>
+/// <param name="Rows">The certificates of the page, newest first.</param>
+/// <param name="Total">How many match the filters and the search.</param>
+/// <param name="Offset">The first row of the page (the server may move it back when the list became shorter).</param>
+public sealed record IssuedCertificateListPage(IReadOnlyList<IssuedCertificateInfo> Rows, int Total, int Offset);
+
+/// <summary>One certificate for View certificate: the description and its revocation, or why it cannot be shown.</summary>
+/// <param name="Certificate">The certificate (<see cref="CertificateDescriber.Describe"/>); null when it cannot be shown.</param>
+/// <param name="Revocation">Its revocation, when it is revoked.</param>
+/// <param name="Error">Why it cannot be shown ("OADM keeps no copy of this certificate.").</param>
+public sealed record IssuedCertificateDetails(CertificateDescription? Certificate, CertificateRevocation? Revocation, string? Error);
+
+/// <summary>Where <see cref="IssuedCertificateListViewModel"/> reads (the PKI page from PKI, the 802.1X page through its server).</summary>
+public interface IIssuedCertificateSource
+{
+    /// <summary>One page with the query's filters, search, offset and limit.</summary>
+    Task<IssuedCertificateListPage> ReadAsync(IssuedCertificateQuery query, CancellationToken ct);
+
+    /// <summary>The certificate of <paramref name="serialNumber"/> for View certificate.</summary>
+    Task<IssuedCertificateDetails> GetCertificateAsync(string serialNumber, CancellationToken ct);
+}
+
+/// <summary>What the list asks of its view: the shared certificate window.</summary>
+public interface IIssuedCertificateListDialogs
+{
+    /// <summary>Shows <paramref name="certificate"/> in the shared <see cref="CertificateWindow"/>.</summary>
+    Task ShowCertificateAsync(CertificateDetails certificate);
+}
+
+/// <summary>
+/// The list of certificates the OADM CA issued (SDK 0.4.0; the PKI Certificates tab and the certificate choice of the
+/// 802.1X server's Revoke): newest first, read from the server one page at a time with the filters (state, use, issued by)
+/// and the search (it waits for the typing to stop), the grid's selection in one step, View certificate. Shown by
+/// <see cref="IssuedCertificateList"/>; the first read shows the overlay, later ones the progress row.
+/// </summary>
+public partial class IssuedCertificateListViewModel : ObservableObject
+{
+    private readonly IIssuedCertificateSource _source;
+    private readonly List<IssuedCertificateRow> _selected = [];
+    private CancellationTokenSource? _searchDelay;
+    private int _readVersion;
+    private bool _loadedOnce;
+    private bool _started;
+
+    /// <summary>A list that reads from <paramref name="source"/>; <paramref name="time"/> for the search delay (tests).</summary>
+    public IssuedCertificateListViewModel(IIssuedCertificateSource source, TimeProvider? time = null)
+    {
+        _source = source ?? throw new ArgumentNullException(nameof(source));
+        Time = time ?? TimeProvider.System;
+        StateFilter = StateChoices[0];
+        UseFilter = UseChoices[0];
+        SourceFilter = SourceChoices[0];
+    }
+
+    /// <summary>The clock of the search delay and the certificate window.</summary>
+    protected TimeProvider Time { get; }
+
+    /// <summary>The certificate window (the view).</summary>
+    public IIssuedCertificateListDialogs? Dialogs { get; set; }
+
+    /// <summary>Wait after typing in the search before the server is asked.</summary>
+    public TimeSpan SearchDelay { get; init; } = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>Rows of one page.</summary>
+    public int PageSize { get; init; } = IssuedCertificateQuery.MaxLimit;
+
+    /// <summary>The rows of the shown page, newest first (bound to the grid).</summary>
+    public Collections.RangeObservableCollection<IssuedCertificateRow> Rows { get; } = [];
+
+    /// <summary>"All states" and every state.</summary>
+    public IReadOnlyList<IssuedCertificateFilter> StateChoices { get; } =
+    [
+        new(string.Empty, "All states"),
+        .. Enum.GetValues<IssuedCertificateState>().Select(s => new IssuedCertificateFilter(s.ToString(), IssuedCertificateTexts.State(s))),
+    ];
+
+    /// <summary>"All uses" and every use.</summary>
+    public IReadOnlyList<IssuedCertificateFilter> UseChoices { get; } =
+    [
+        new(string.Empty, "All uses"),
+        .. DeviceCertificatePurposes.All.Select(p => new IssuedCertificateFilter(p, DeviceCertificatePurposes.Text(p))),
+    ];
+
+    /// <summary>"Issued by any", Task and EST.</summary>
+    public IReadOnlyList<IssuedCertificateFilter> SourceChoices { get; } =
+    [
+        new(string.Empty, "Issued by any"),
+        .. IssuedCertificateSources.All.Select(s => new IssuedCertificateFilter(s, s)),
+    ];
+
+    /// <summary>The chosen state; a change reads the first page again.</summary>
+    [ObservableProperty]
+    public partial IssuedCertificateFilter StateFilter { get; set; }
+
+    /// <summary>The chosen use; a change reads the first page again.</summary>
+    [ObservableProperty]
+    public partial IssuedCertificateFilter UseFilter { get; set; }
+
+    /// <summary>The chosen source; a change reads the first page again.</summary>
+    [ObservableProperty]
+    public partial IssuedCertificateFilter SourceFilter { get; set; }
+
+    /// <summary>Device address, host name, device serial or certificate serial; read 300 ms after the last key.</summary>
+    [ObservableProperty]
+    public partial string? Search { get; set; }
+
+    /// <summary>How many certificates match the filters and the search.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageText), nameof(EmptyText), nameof(HasPages))]
+    [NotifyCanExecuteChangedFor(nameof(PreviousPageCommand), nameof(NextPageCommand))]
+    public partial int Total { get; set; }
+
+    /// <summary>The first row of the shown page.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageText))]
+    [NotifyCanExecuteChangedFor(nameof(PreviousPageCommand), nameof(NextPageCommand))]
+    public partial int Offset { get; set; }
+
+    /// <summary>The first read (the overlay over the grid).</summary>
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    /// <summary>A later read (filter, page, change on the server): the progress row above the grid.</summary>
+    [ObservableProperty]
+    public partial bool IsReloading { get; set; }
+
+    /// <summary>"Cannot read the certificates: ..." directly below the table; null after a good read.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    public partial string? Error { get; set; }
+
+    /// <summary><see cref="Error"/> is set.</summary>
+    public bool HasError => !string.IsNullOrEmpty(Error);
+
+    /// <summary>"1-500 of 12,345"; empty without rows.</summary>
+    public string PageText => Total == 0 ? string.Empty
+        : string.Create(CultureInfo.CurrentCulture, $"{Offset + 1:N0}-{Math.Min(Offset + PageSize, Total):N0} of {Total:N0}");
+
+    /// <summary>More rows than one page: Previous and Next show.</summary>
+    public bool HasPages => Total > PageSize;
+
+    /// <summary>"Previous 500".</summary>
+    public string PreviousText => string.Create(CultureInfo.CurrentCulture, $"Previous {PageSize:N0}");
+
+    /// <summary>"Next 500".</summary>
+    public string NextText => string.Create(CultureInfo.CurrentCulture, $"Next {PageSize:N0}");
+
+    /// <summary>One line when the list is empty: what to do first, or that nothing matches.</summary>
+    public string? EmptyText => Total > 0 || !_loadedOnce ? null
+        : IsFiltered ? IssuedCertificateTexts.NoMatch
+        : IssuedCertificateTexts.NoCertificates;
+
+    private bool IsFiltered => StateFilter.Value.Length > 0 || UseFilter.Value.Length > 0 || SourceFilter.Value.Length > 0 || !string.IsNullOrWhiteSpace(Search);
+
+    /// <summary>The chosen rows (the grid's selection).</summary>
+    public IReadOnlyList<IssuedCertificateRow> Selected => _selected;
+
+    /// <summary>The rows were replaced and the selection kept: the view selects them again in the grid.</summary>
+    public event EventHandler? SelectionRestored;
+
+    /// <summary>The grid's selection changed (one step for many rows).</summary>
+    public void SetSelection(IEnumerable<IssuedCertificateRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        _selected.Clear();
+        _selected.AddRange(rows);
+        ViewCertificateCommand.NotifyCanExecuteChanged();
+        OnSelectionChanged();
+    }
+
+    /// <summary>After every change of <see cref="Selected"/> (commands of a derived list).</summary>
+    protected virtual void OnSelectionChanged()
+    {
+    }
+
+    /// <summary>Reads the page at <see cref="Offset"/> with the filters (the first time with the overlay).</summary>
+    public async Task LoadAsync(CancellationToken ct = default)
+    {
+        _started = true;
+        var version = Interlocked.Increment(ref _readVersion);
+        if (_loadedOnce)
+        {
+            IsReloading = true;
+        }
+        else
+        {
+            IsLoading = true;
+        }
+
+        try
+        {
+            var query = new IssuedCertificateQuery
+            {
+                State = Enum.TryParse<IssuedCertificateState>(StateFilter.Value, out var state) ? state : null,
+                Purpose = UseFilter.Value.Length > 0 ? UseFilter.Value : null,
+                Source = SourceFilter.Value.Length > 0 ? SourceFilter.Value : null,
+                Search = string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(),
+                Offset = Offset,
+                Limit = PageSize,
+            };
+            var page = await _source.ReadAsync(query, ct).ConfigureAwait(true);
+            if (version != Volatile.Read(ref _readVersion))
+            {
+                return; // a newer read (another filter) answers
+            }
+
+            var keep = _selected.Select(r => r.Source.SerialNumber).ToHashSet(StringComparer.Ordinal);
+            Rows.ReplaceAll(page.Rows.Select(r => new IssuedCertificateRow(r)));
+            _loadedOnce = true;
+            Offset = page.Offset;
+            Total = page.Total;
+            Error = null;
+            SetSelection(Rows.Where(r => keep.Contains(r.Source.SerialNumber)));
+            OnPropertyChanged(nameof(EmptyText));
+            SelectionRestored?.Invoke(this, EventArgs.Empty);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // Shown directly below the table.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            if (version == Volatile.Read(ref _readVersion))
+            {
+                Error = "Cannot read the certificates: " + ServerErrors.Message(ex);
+            }
+        }
+        finally
+        {
+            if (version == Volatile.Read(ref _readVersion))
+            {
+                IsLoading = false;
+                IsReloading = false;
+            }
+        }
+    }
+
+    partial void OnStateFilterChanged(IssuedCertificateFilter value) => Refilter();
+
+    partial void OnUseFilterChanged(IssuedCertificateFilter value) => Refilter();
+
+    partial void OnSourceFilterChanged(IssuedCertificateFilter value) => Refilter();
+
+    partial void OnSearchChanged(string? value)
+    {
+        _searchDelay?.Cancel();
+        _searchDelay?.Dispose();
+        var delay = _searchDelay = new CancellationTokenSource();
+        _ = SearchLaterAsync(delay.Token);
+    }
+
+    private async Task SearchLaterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDelay, Time, ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // typed again
+        }
+
+        Refilter();
+    }
+
+    private void Refilter()
+    {
+        if (!_started || StateFilter is null || UseFilter is null || SourceFilter is null)
+        {
+            return; // not shown yet (or the constructor sets them one by one): the first read takes the filters
+        }
+
+        Offset = 0;
+        _ = LoadAsync();
+    }
+
+    private bool CanPrevious() => Offset > 0;
+
+    [RelayCommand(CanExecute = nameof(CanPrevious))]
+    private Task PreviousPageAsync()
+    {
+        Offset = Math.Max(0, Offset - PageSize);
+        return LoadAsync();
+    }
+
+    private bool CanNext() => Offset + PageSize < Total;
+
+    [RelayCommand(CanExecute = nameof(CanNext))]
+    private Task NextPageAsync()
+    {
+        Offset += PageSize;
+        return LoadAsync();
+    }
+
+    private bool CanView() => _selected.Count == 1;
+
+    /// <summary>View certificate (toolbar, row menu, double click): the shared certificate window.</summary>
+    [RelayCommand(CanExecute = nameof(CanView))]
+    private async Task ViewCertificateAsync()
+    {
+        if (_selected.Count != 1)
+        {
+            return;
+        }
+
+        var row = _selected[0];
+        try
+        {
+            var reply = await _source.GetCertificateAsync(row.Source.SerialNumber, CancellationToken.None).ConfigureAwait(true);
+            if (reply.Certificate is not { } certificate)
+            {
+                await ShowMessageAsync("View certificate", reply.Error ?? "This certificate is not in the list.").ConfigureAwait(true);
+                return;
+            }
+
+            var details = new CertificateDetails(certificate, $"Certificate · {row.Device} · {row.Use}", Time.GetUtcNow().UtcDateTime, reply.Revocation);
+            if (Dialogs is { } dialogs)
+            {
+                await dialogs.ShowCertificateAsync(details).ConfigureAwait(true);
+            }
+        }
+#pragma warning disable CA1031 // Shown to the user.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await ShowMessageAsync("View certificate", ServerErrors.Message(ex)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>A message to the user (the page's message window).</summary>
+    protected virtual Task ShowMessageAsync(string title, string message) => Task.CompletedTask;
+}
