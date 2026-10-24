@@ -115,7 +115,8 @@ public sealed class CertificatesTabTests
         Assert.Equal(cas + 2, tab.Total);
         Assert.Equal($"1-{cas + 2} of {cas + 2}", tab.PageText);
         Assert.False(tab.HasPages);
-        Assert.Equal(("OADM Root CA SERVER01", "CA", "OADM Root CA SERVER01", "-"), (tab.Rows[0].Name, tab.Rows[0].Use, tab.Rows[0].IssuedBy, tab.Rows[0].UsedBy));
+        Assert.Equal(("OADM Root CA SERVER01", "CA", "OADM Root CA SERVER01"), (tab.Rows[0].Name, tab.Rows[0].Use, tab.Rows[0].IssuedBy));
+        Assert.StartsWith("Issuing: HTTPS", tab.Rows[0].UsedBy, StringComparison.Ordinal); // a CA names the policies that use it
         var row = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
         Assert.Equal(("B8A44F631339 (removed)", "HTTPS", "OADM Root CA SERVER01", "Valid", "-"), (row.Name, row.Use, row.IssuedBy, row.State, row.UsedBy)); // the harness manages no devices
         Assert.True(row.IsOk);

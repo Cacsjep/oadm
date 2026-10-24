@@ -272,7 +272,71 @@ public sealed record IssuedCertificateInfo
 
     /// <summary>OADM holds its private key (created, imported with its key): it can be exported as PKCS#12.</summary>
     public bool HasKey { get; init; }
+
+    /// <summary>The id of the CA that issued it (<see cref="CertificateIssuerChoice.Id"/>, "other" for a CA PKI does not list); null when the server does not say.</summary>
+    public string? IssuerId { get; init; }
+
+    /// <summary>The key, "RSA 4096", "ECDSA P-256"; null when the server does not say (device certificates).</summary>
+    public string? KeyText { get; init; }
+
+    /// <summary>A CA row: the kind of its CA (<see cref="CertificateAuthorityKind"/>); null for every other row.</summary>
+    public CertificateAuthorityKind? AuthorityKind { get; init; }
+
+    /// <summary>A CA row: the id of its CA (<see cref="CertificateAuthorityInfo.Id"/>); null for every other row.</summary>
+    public string? AuthorityId { get; init; }
+
+    /// <summary>A CA row: a root CA (it issued itself); false for an intermediate CA and every other row.</summary>
+    public bool IsRootCa { get; init; }
 }
+
+/// <summary>How the list of certificates is grouped (SDK 0.4.0): by type (the default), by the CA that issued them, or not.</summary>
+public enum IssuedCertificateGrouping
+{
+    /// <summary>Certificate authorities, server certificates, the ones created, signed and imported, device certificates.</summary>
+    Type = 0,
+
+    /// <summary>One group per CA that issued them, in the order of the CAs, then "Other CA".</summary>
+    Issuer = 1,
+
+    /// <summary>One list.</summary>
+    None = 2,
+}
+
+/// <summary>The groups of <see cref="IssuedCertificateGrouping.Type"/> (SDK 0.4.0): their keys and names.</summary>
+public static class IssuedCertificateGroups
+{
+    public const string Authorities = "authorities";
+
+    public const string Servers = "servers";
+
+    public const string Local = "local";
+
+    public const string Devices = "devices";
+
+    /// <summary>The group of a row by its kind.</summary>
+    public static string OfKind(ListedCertificateKind kind) => kind switch
+    {
+        ListedCertificateKind.Authority => Authorities,
+        ListedCertificateKind.Server => Servers,
+        ListedCertificateKind.Device => Devices,
+        _ => Local,
+    };
+
+    /// <summary>"Certificate authorities", "Server certificates", "Created, signed and imported", "Device certificates".</summary>
+    public static string Title(string key) => key switch
+    {
+        Authorities => "Certificate authorities",
+        Servers => "Server certificates",
+        Local => "Created, signed and imported",
+        _ => "Device certificates",
+    };
+}
+
+/// <summary>One group of the list (SDK 0.4.0) as the server counted it over every page.</summary>
+/// <param name="Key">The group's key: one of <see cref="IssuedCertificateGroups"/>, or the issuer's id.</param>
+/// <param name="Title">The group's name ("Device certificates", "OADM Root CA SERVER01").</param>
+/// <param name="Count">How many rows of every page are in it.</param>
+public sealed record IssuedCertificateGroup(string Key, string Title, int Count);
 
 /// <summary>A query of the list of issued certificates (SDK 0.4.0): filters, search and one page, newest first.</summary>
 public sealed record IssuedCertificateQuery
@@ -297,6 +361,9 @@ public sealed record IssuedCertificateQuery
 
     /// <summary>Only certificates of these devices (a user limited to a device group); null = every device.</summary>
     public IReadOnlySet<Guid>? DeviceIds { get; init; }
+
+    /// <summary>The order of the rows by group; a server without groups ignores it.</summary>
+    public IssuedCertificateGrouping GroupBy { get; init; }
 
     /// <summary>Rows to skip.</summary>
     public int Offset { get; init; }

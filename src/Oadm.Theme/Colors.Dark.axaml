@@ -84,6 +84,8 @@
   <Color x:Key="Oadm.Tag.VioletColor">#A898FA</Color>
   <Color x:Key="Oadm.Tag.NeutralColor">#9A9A9A</Color>
   <Color x:Key="Oadm.Tag.ChipBackgroundColor">#262626</Color>
+  <!-- Neutral badges (what a row is, Border.badge.neutral) -->
+  <Color x:Key="Oadm.BadgeNeutralColor">#2E2E2E</Color>
   <!-- Menus, context menus and flyouts -->
   <Color x:Key="Oadm.MenuBackgroundColor">#2A2A2A</Color>
   <!-- Covers a whole camera picture while it is edited (Live View), lighter than the plates so the picture shows -->

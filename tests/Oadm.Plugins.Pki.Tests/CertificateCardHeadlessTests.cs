@@ -57,6 +57,13 @@ public sealed class CertificateCardHeadlessTests
             HeadlessPageTests.Capture(window, outDir, "pki-certificates-card.png");
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
             var buttons = window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content as string).OfType<string>().ToList();
+
+            // The rows further down (the grid shows only what fits): the servers' and the created ones.
+            list.Table.ScrollIntoView(vm.Certificates.Rows[^1], null);
+            HeadlessPageTests.Pump();
+            HeadlessPageTests.Capture(window, outDir, "pki-certificates-card-end.png");
+            texts.AddRange(window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            buttons.AddRange(window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content as string).OfType<string>());
             window.Close();
 
             // The dialogs, each with an error shown where the user would see it.

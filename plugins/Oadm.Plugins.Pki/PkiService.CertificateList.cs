@@ -42,7 +42,10 @@ public sealed partial class PkiService
 
     /// <summary>
     /// One page for the page: <paramref name="devices"/> are the caller's devices; <paramref name="onlyListed"/> for a user
-    /// limited to a group (only certificates of the group's devices: no CAs, server or local certificates).
+    /// limited to a group (only certificates of the group's devices: no CAs, server or local certificates). The rows come in
+    /// the order of the request's grouping (docs/spec/pki.md "Certificates", Group by): by type the fixed order of the list,
+    /// by issuer one part per CA (the CAs' order, then Other CA), each part in the fixed order; the reply counts the groups
+    /// over every page.
     /// </summary>
     internal CertificatesReply GetCertificates(CertificatesRequest request, IReadOnlyList<IDeviceInfo> devices, bool onlyListed)
     {
@@ -63,17 +66,18 @@ public sealed partial class PkiService
             Source = IssuedCertificateSources.All.Contains(request.Source ?? string.Empty, StringComparer.Ordinal) ? request.Source : null,
             IssuedBy = request.IssuedBy is { Length: > 0 } issuedBy && (issuedBy == OtherIssuerId || issuers.Choices.Any(c => c.Id == issuedBy)) ? issuedBy : null,
             Search = request.Search is { Length: > 100 } text ? text[..100] : request.Search,
+            GroupBy = Enum.IsDefined(request.GroupBy) ? request.GroupBy : IssuedCertificateGrouping.Type,
             Offset = Math.Max(0, request.Offset),
             Limit = limit,
         };
         var warningDays = WarningDaysFor([.. byId.Values]);
         var extras = onlyListed ? [] : ExtraRows(query, issuers);
-        var page = DevicePage(query, byId, onlyListed, warningDays, issuers, extras.Count);
+        var page = ListPage(query, extras, byId, onlyListed, warningDays, issuers);
         if (page.Rows.Count == 0 && page.Total > 0 && query.Offset > 0 && query.Offset >= page.Total)
         {
             // Fewer rows than before (a filter, revoked or deleted rows): the last page.
             query = query with { Offset = (page.Total - 1) / limit * limit };
-            page = DevicePage(query, byId, onlyListed, warningDays, issuers, extras.Count);
+            page = ListPage(query, extras, byId, onlyListed, warningDays, issuers);
         }
 
         // The days follow each device's Expiry warning policy: no one number for the page (the window follows the row's state).
@@ -83,28 +87,78 @@ public sealed partial class PkiService
             Total = page.Total,
             Offset = query.Offset,
             Issuers = onlyListed ? [.. issuers.Choices.Where(c => c.Id == CertificateAuthorityInfo.OadmId || c.Id.StartsWith(PreviousPrefix, StringComparison.Ordinal))] : issuers.Choices,
+            Groups = page.Groups,
         };
+    }
 
-        IssuedCertificatePage DevicePage(IssuedCertificateQuery q, Dictionary<Guid, IDeviceInfo> known, bool only, Func<Guid, int> days, IssuerIndex index, int extraCount)
+    /// <summary>One page of the list in the order of <see cref="IssuedCertificateQuery.GroupBy"/>, with the groups' counts.</summary>
+    private (List<IssuedCertificateInfo> Rows, int Total, List<IssuedCertificateGroup> Groups) ListPage(IssuedCertificateQuery query, List<ExtraRow> extras,
+        Dictionary<Guid, IDeviceInfo> known, bool onlyListed, Func<Guid, int> days, IssuerIndex index)
+    {
+        var deviceRowsWanted = query.Purpose is not (ListedCertificateUses.Server or ListedCertificateUses.Ca or ListedCertificateUses.Other);
+
+        // The parts of the list in their order: rows before the device certificates, then the device certificates of a filter.
+        var parts = new List<(string Key, string Title, List<ExtraRow> Extras, Func<IssuedCertificate, bool>? Devices, bool HasDevices)>();
+        if (query.GroupBy == IssuedCertificateGrouping.Issuer)
         {
-            var rows = new List<IssuedCertificateInfo>(q.Limit);
-            var offset = q.Offset;
-            if (offset < extraCount)
+            var filter = DeviceFilter(query.IssuedBy, index);
+            foreach (var choice in index.Choices)
             {
-                rows.AddRange(extras.Skip(offset).Take(q.Limit).Select(e => e.Row));
+                // Only an OADM CA (the current or a previous one) or a CA PKI no longer lists issued device certificates.
+                var issuesDevices = deviceRowsWanted && (choice.Id == CertificateAuthorityInfo.OadmId || choice.Id == OtherIssuerId || choice.Id.StartsWith(PreviousPrefix, StringComparison.Ordinal));
+                var id = choice.Id;
+                parts.Add((id, choice.Name, [.. extras.Where(e => e.IssuerId == id)], entry => index.Of(entry.CaId).Id == id && (filter is null || filter(entry)), issuesDevices));
             }
-
-            var deviceQuery = q with { Offset = Math.Max(0, offset - extraCount), Limit = Math.Max(1, q.Limit - rows.Count) };
-            var devicePage = q.Purpose is ListedCertificateUses.Server or ListedCertificateUses.Ca or ListedCertificateUses.Other
-                ? IssuedCertificatePage.Empty
-                : _issued.Query(deviceQuery, known, only, days, DeviceFilter(q.IssuedBy, index), DeviceSearch(q.Search, index));
-            if (rows.Count < q.Limit)
-            {
-                rows.AddRange(devicePage.Rows.Take(q.Limit - rows.Count).Select(r => r with { IssuedBy = index.Of(CaIdOf(r.SerialNumber)).Name }));
-            }
-
-            return new IssuedCertificatePage(rows, extraCount + devicePage.Total);
         }
+        else
+        {
+            foreach (var group in new[] { IssuedCertificateGroups.Authorities, IssuedCertificateGroups.Servers, IssuedCertificateGroups.Local })
+            {
+                parts.Add((group, IssuedCertificateGroups.Title(group), [.. extras.Where(e => IssuedCertificateGroups.OfKind(e.Row.Kind) == group)], null, false));
+            }
+
+            parts.Add((IssuedCertificateGroups.Devices, IssuedCertificateGroups.Title(IssuedCertificateGroups.Devices), [], DeviceFilter(query.IssuedBy, index), deviceRowsWanted));
+        }
+
+        var rows = new List<IssuedCertificateInfo>(query.Limit);
+        var groups = new List<IssuedCertificateGroup>();
+        var search = DeviceSearch(query.Search, index);
+        var position = 0;
+        foreach (var part in parts)
+        {
+            var count = part.Extras.Count;
+            var from = Math.Max(0, query.Offset - position); // the first row of this part on the page
+            if (from < part.Extras.Count && rows.Count < query.Limit)
+            {
+                rows.AddRange(part.Extras.Skip(from).Take(query.Limit - rows.Count).Select(e => e.Row));
+            }
+
+            if (part.HasDevices)
+            {
+                // One pass over the issued registry: its rows of the page and its count (a part off the page reads one row).
+                var deviceOffset = Math.Max(0, from - part.Extras.Count);
+                var room = query.Limit - rows.Count;
+                var devicePage = _issued.Query(query with { Offset = deviceOffset, Limit = Math.Max(1, room) }, known, onlyListed, days, part.Devices, search);
+                if (room > 0)
+                {
+                    rows.AddRange(devicePage.Rows.Take(room).Select(r =>
+                    {
+                        var issuer = index.Of(CaIdOf(r.SerialNumber));
+                        return r with { IssuedBy = issuer.Name, IssuerId = issuer.Id };
+                    }));
+                }
+
+                count += devicePage.Total;
+            }
+
+            position += count;
+            if (count > 0)
+            {
+                groups.Add(new IssuedCertificateGroup(part.Key, part.Title, count));
+            }
+        }
+
+        return (rows, position, query.GroupBy == IssuedCertificateGrouping.None ? [] : groups);
     }
 
     /// <summary>The CA (SHA-256) of a listed device certificate.</summary>
@@ -151,9 +205,11 @@ public sealed partial class PkiService
         var now = Now.UtcDateTime;
         var days = Policies.DefaultExpiryDays;
         var all = new List<ExtraRow>();
+        var authorities = issuers.Source.ToDictionary(a => a.Id, StringComparer.Ordinal);
         foreach (var ca in issuers.AuthorityRows)
         {
-            all.Add(Extra(ca.Row with { State = StateOf(ca.Row.NotAfterUtc, revoked: null, now, days) }, ca.IssuerId));
+            var usedBy = ca.Row.AuthorityId is { } authorityId && authorities.TryGetValue(authorityId, out var authority) ? AuthorityUsedBy(authority) : [];
+            all.Add(Extra(ca.Row with { State = StateOf(ca.Row.NotAfterUtc, revoked: null, now, days), UsedBy = usedBy.Count == 0 ? null : string.Join(", ", usedBy) }, ca.IssuerId));
         }
 
         foreach (var server in _local.Servers)
@@ -167,6 +223,8 @@ public sealed partial class PkiService
                 Name = server.Name,
                 Purpose = ListedCertificateUses.Server,
                 IssuedBy = issuer.Id == OtherIssuerId ? server.IssuerName : issuer.Name,
+                IssuerId = issuer.Id,
+                KeyText = server.KeyText,
                 UsedBy = server.Server,
                 NotBeforeUtc = server.NotBeforeUtc,
                 NotAfterUtc = server.NotAfterUtc,
@@ -188,6 +246,8 @@ public sealed partial class PkiService
                 Name = local.Stored.Name,
                 Purpose = local.Stored.Purpose,
                 IssuedBy = issuer.Id == OtherIssuerId ? local.IssuerName : issuer.Name,
+                IssuerId = issuer.Id,
+                KeyText = local.KeyText,
                 NotBeforeUtc = local.NotBeforeUtc,
                 NotAfterUtc = local.NotAfterUtc,
                 IssuedUtc = local.Stored.AddedUtc,
@@ -207,8 +267,8 @@ public sealed partial class PkiService
                 && (search.Length == 0 || e.Text.Contains(search, StringComparison.OrdinalIgnoreCase) || e.Row.SerialNumber.Contains(searchHex, StringComparison.Ordinal))),
         ];
 
-        static ExtraRow Extra(IssuedCertificateInfo row, string issuerId) => new(row, issuerId, string.Join('\n',
-            row.Name, ListedCertificateUses.Text(row.Purpose), row.IssuedBy, row.UsedBy, IssuedCertificateTexts(row.State),
+        static ExtraRow Extra(IssuedCertificateInfo row, string issuerId) => new(row with { IssuerId = issuerId }, issuerId, string.Join('\n',
+            row.Name, ListedCertificateUses.Text(row.Purpose), row.IssuedBy, row.UsedBy, IssuedCertificateTexts(row.State), row.KeyText,
             row.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
     }
 
@@ -306,6 +366,10 @@ public sealed partial class PkiService
                         Id = AuthorityRowPrefix + fingerprint,
                         SerialNumber = CertificateSerials.Normalize(certificate.SerialNumber),
                         Kind = ListedCertificateKind.Authority,
+                        AuthorityKind = authority.Kind,
+                        AuthorityId = authority.Id,
+                        IsRootCa = self,
+                        KeyText = CaCertificates.KeyType(certificate),
                         Name = CaCertificates.CommonName(certificate),
                         Purpose = ListedCertificateUses.Ca,
                         IssuedBy = issuer.Id == OtherIssuerId ? LocalCertificate.IssuerCommonName(certificate) : issuer.Name,

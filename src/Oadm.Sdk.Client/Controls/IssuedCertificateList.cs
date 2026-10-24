@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -13,12 +14,14 @@ namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
 /// The list of certificates (SDK 0.4.0), the Certificates card of the PKI page: the page's buttons (<see cref="Toolbar"/>)
-/// left, the filters (state, use, issued by) and the search right, the progress row of a later read or a write of the page
-/// (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid (name or device, use, issued by, valid
-/// until, used by, state chip with the revocation as tooltip, the page's row buttons of <see cref="RowActions"/>; several
-/// rows can be chosen, a double click is View certificate), the empty line, the overlay of the first read, an error of the
-/// whole table directly below it and the pages (Previous / Next, "1-500 of 12,345"). The DataContext is an
-/// <see cref="IssuedCertificateListViewModel"/>; the grid's selection reaches it in one step.
+/// left, Group by (when the source groups), the filters (state, use, issued by) and the search right, the progress row of a
+/// later read or a write of the page (<see cref="IssuedCertificateListViewModel.WorkText"/>), the virtualized grid (name or
+/// device with the key and issuer below it, the type as badges, valid until, used by, the state chip with the days left or
+/// the revocation as tooltip and the page's statuses below it, the page's row buttons of <see cref="RowActions"/>; rows grow
+/// to two lines, group headers with their counts over every page; several rows can be chosen, a double click is View
+/// certificate), the empty line, the overlay of the first read, an error of the whole table directly below it and the
+/// pages (Previous / Next, "1-500 of 12,345"). The DataContext is an <see cref="IssuedCertificateListViewModel"/>; the
+/// grid's selection reaches it in one step.
 /// </summary>
 public sealed class IssuedCertificateList : UserControl
 {
@@ -49,27 +52,97 @@ public sealed class IssuedCertificateList : UserControl
             SelectionMode = DataGridSelectionMode.Extended,
             MinHeight = 200,
         };
-        Table.Columns.Add(TextColumn("Name", nameof(IssuedCertificateRow.Name), new DataGridLength(1.4, DataGridLengthUnitType.Star)));
-        Table.Columns.Add(TextColumn("Use", nameof(IssuedCertificateRow.Use), new DataGridLength(110)));
-        Table.Columns.Add(TextColumn("Issued by", nameof(IssuedCertificateRow.IssuedBy), new DataGridLength(1, DataGridLengthUnitType.Star)));
-        Table.Columns.Add(TextColumn("Valid until", nameof(IssuedCertificateRow.ValidUntil), new DataGridLength(110)));
-        Table.Columns.Add(TextColumn("Used by", nameof(IssuedCertificateRow.UsedBy), new DataGridLength(1, DataGridLengthUnitType.Star)));
+        Table.Classes.Add("wrapRows"); // a second line of the name, badges and statuses that wrap
+        Table.Columns.Add(new DataGridTemplateColumn
+        {
+            Header = "Name",
+            Width = new DataGridLength(1.4, DataGridLengthUnitType.Star),
+            MinWidth = 160,
+            CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
+            {
+                var name = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+                name.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.Name)));
+                name.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.Name)));
+                var detail = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+                detail.Classes.Add("secondary");
+                detail.Classes.Add("small");
+                detail.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.Detail)));
+                detail.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.Detail)));
+                detail.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.HasDetail)));
+                return new StackPanel { Margin = new Thickness(10, 4), Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { name, detail } };
+            }, supportsRecycling: true),
+        });
+        Table.Columns.Add(new DataGridTemplateColumn
+        {
+            Header = "Type",
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            MinWidth = 130,
+            CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
+            {
+                var badges = new ItemsControl
+                {
+                    Margin = new Thickness(10, 4),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 4, LineSpacing = 4 }),
+                    ItemTemplate = new FuncDataTemplate<string>((_, _) =>
+                    {
+                        var text = new TextBlock();
+                        text.Bind(TextBlock.TextProperty, new Binding("."));
+                        var badge = new Border { Child = text };
+                        badge.Classes.Add("badge");
+                        badge.Classes.Add("neutral");
+                        return badge;
+                    }, supportsRecycling: true),
+                };
+                badges.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(IssuedCertificateRow.Badges)));
+                return badges;
+            }, supportsRecycling: true),
+        });
+        Table.Columns.Add(TextColumn("Valid until", nameof(IssuedCertificateRow.ValidUntil), new DataGridLength(100)));
+        Table.Columns.Add(new DataGridTemplateColumn
+        {
+            Header = "Used by",
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            MinWidth = 110,
+            CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
+            {
+                var text = new TextBlock { Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
+                text.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.UsedBy)));
+                text.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.UsedBy)));
+                return text;
+            }, supportsRecycling: true),
+        });
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "State",
-            Width = new DataGridLength(140),
+            Width = new DataGridLength(175),
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
-                var chip = new StatusChip { Margin = new Thickness(8, 0) };
-                chip.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateRow.State)));
+                var chip = new StatusChip();
+                chip.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateRow.StateText)));
                 chip.Bind(StatusChip.IsOkProperty, new Binding(nameof(IssuedCertificateRow.IsOk)));
                 chip.Bind(StatusChip.IsWarningProperty, new Binding(nameof(IssuedCertificateRow.IsWarning)));
                 chip.Bind(StatusChip.IsErrorProperty, new Binding(nameof(IssuedCertificateRow.IsError)));
                 chip.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateRow.StateTip)));
-                return chip;
+                var more = new ItemsControl
+                {
+                    ItemTemplate = new FuncDataTemplate<IssuedCertificateStatus>((_, _) =>
+                    {
+                        var status = new StatusChip();
+                        status.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateStatus.Text)));
+                        status.Bind(StatusChip.IsOkProperty, new Binding(nameof(IssuedCertificateStatus.IsOk)));
+                        status.Bind(StatusChip.IsWarningProperty, new Binding(nameof(IssuedCertificateStatus.IsWarning)));
+                        status.Bind(StatusChip.IsErrorProperty, new Binding(nameof(IssuedCertificateStatus.IsError)));
+                        status.Bind(StatusChip.IsAccentProperty, new Binding(nameof(IssuedCertificateStatus.IsAccent)));
+                        status.Bind(ToolTip.TipProperty, new Binding(nameof(IssuedCertificateStatus.Tip)));
+                        return status;
+                    }, supportsRecycling: true),
+                };
+                more.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(IssuedCertificateRow.MoreStates)));
+                more.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateRow.HasMoreStates)));
+                return new StackPanel { Margin = new Thickness(8, 4), Spacing = 4, VerticalAlignment = VerticalAlignment.Center, Children = { chip, more } };
             }, supportsRecycling: true),
         });
-        Table.Bind(DataGrid.ItemsSourceProperty, new Binding(nameof(IssuedCertificateListViewModel.Rows)));
         Table.SelectionChanged += (_, _) =>
         {
             if (!_restoring)
@@ -86,6 +159,11 @@ public sealed class IssuedCertificateList : UserControl
         };
 
         var filters = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
+        var groupBy = new ComboBox { Width = 150 };
+        groupBy.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(IssuedCertificateListViewModel.GroupChoices)));
+        groupBy.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(IssuedCertificateListViewModel.GroupBy)) { Mode = BindingMode.TwoWay });
+        groupBy.Bind(IsVisibleProperty, new Binding(nameof(IssuedCertificateListViewModel.CanGroup)));
+        filters.Children.Add(groupBy);
         filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.StateChoices), nameof(IssuedCertificateListViewModel.StateFilter)));
         filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.UseChoices), nameof(IssuedCertificateListViewModel.UseFilter)));
         filters.Children.Add(Filter(nameof(IssuedCertificateListViewModel.SourceChoices), nameof(IssuedCertificateListViewModel.SourceFilter)));
@@ -190,7 +268,7 @@ public sealed class IssuedCertificateList : UserControl
             if (RowActions is { } template)
             {
                 // A fixed width: an Auto column takes the width of the first rows only and cuts off wider buttons further down.
-                _actions = new DataGridTemplateColumn { Width = new DataGridLength(250), CellTemplate = template };
+                _actions = new DataGridTemplateColumn { Width = new DataGridLength(240), CellTemplate = template };
                 Table.Columns.Add(_actions);
             }
         }
@@ -202,13 +280,43 @@ public sealed class IssuedCertificateList : UserControl
         if (_vm is not null)
         {
             _vm.SelectionRestored -= OnSelectionRestored;
+            _vm.GroupsChanged -= OnGroupsChanged;
         }
 
         _vm = DataContext as IssuedCertificateListViewModel;
         if (_vm is not null)
         {
             _vm.SelectionRestored += OnSelectionRestored;
+            _vm.GroupsChanged += OnGroupsChanged;
         }
+
+        Regroup();
+    }
+
+    private void OnGroupsChanged(object? sender, EventArgs e) => Regroup();
+
+    /// <summary>
+    /// The rows, grouped by their group header while the list has groups (the shared <c>DataGrid.groups</c> look: chevron and
+    /// "Device certificates · 60,000"); the server sends them in the groups' order.
+    /// </summary>
+    private void Regroup()
+    {
+        Table.Classes.Set("groups", _vm?.IsGrouped == true);
+        if (_vm is null)
+        {
+            Table.ItemsSource = null;
+            return;
+        }
+
+        if (!_vm.IsGrouped)
+        {
+            Table.ItemsSource = _vm.Rows;
+            return;
+        }
+
+        var view = new DataGridCollectionView(_vm.Rows);
+        view.GroupDescriptions.Add(new DataGridPathGroupDescription(nameof(IssuedCertificateRow.GroupTitle)));
+        Table.ItemsSource = view;
     }
 
     /// <summary>Selects the kept rows again after the page was read (the grid lost them with the rows).</summary>

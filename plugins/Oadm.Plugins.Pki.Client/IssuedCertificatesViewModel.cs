@@ -42,11 +42,17 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
             Source = query.Source,
             IssuedBy = query.IssuedBy,
             Search = query.Search,
+            GroupBy = query.GroupBy,
             Offset = query.Offset,
             Limit = query.Limit,
         };
         var reply = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(PkiMethods.GetCertificates, PkiJson.Serialize(request), ct).ConfigureAwait(true));
-        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset) { WarningDays = reply.WarningDays, Issuers = reply.Issuers.Count == 0 ? null : reply.Issuers };
+        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset)
+        {
+            WarningDays = reply.WarningDays,
+            Issuers = reply.Issuers.Count == 0 ? null : reply.Issuers,
+            Groups = reply.Groups,
+        };
     }
 
     public async Task<IssuedCertificateDetails> GetCertificateAsync(string serialNumber, CancellationToken ct)
@@ -58,10 +64,11 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
 
 /// <summary>
 /// The Certificates card of the PKI page (docs/spec/pki.md "Certificates"): the shared list (<see cref="IssuedCertificateListViewModel"/>:
-/// pages of 500, filters, search, View certificate) read from PKI, plus, for users with all devices who may manage the CA,
-/// Create, Sign request and Import (toolbar), Export, Revoke and Delete (row buttons and the row menu; Revoke and Delete
-/// also for several chosen rows) and Revoke all of this device. A change on the server (topic <c>certificates</c>) reads
-/// the shown page again.
+/// pages of 500, Group by (kept on this computer), filters, search, View certificate) read from PKI, plus, for users with
+/// all devices who may manage the CA, Create, Sign request and Import (toolbar), Export, Revoke and Delete (row buttons and
+/// the row menu; Revoke and Delete also for several chosen rows) and Revoke all of this device. The CA rows' own actions
+/// (the OADM CA's Export, Install, Back up; Remove of other CAs) are the page's (<see cref="PkiViewModel"/>). A change on
+/// the server (topic <c>certificates</c>) reads the shown page again.
 /// </summary>
 public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListViewModel
 {
@@ -85,6 +92,12 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         _ctx = ctx;
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
         PageSize = PkiPluginInfo.CertificatesPageSize;
+        CanGroup = true;
+        if (ctx.GetLocalSetting(GroupBySetting) is { } kept && GroupChoices.FirstOrDefault(c => c.Value.ToString() == kept) is { } choice)
+        {
+            GroupBy = choice;
+        }
+
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayRevoke));
@@ -92,6 +105,22 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
             NotifyCommands();
         };
     }
+
+    /// <summary>The key of the kept Group by on this computer.</summary>
+    public const string GroupBySetting = "certificates.groupBy";
+
+    /// <summary>The statuses below the state of a row (the OADM CA's trust, from the page); none without.</summary>
+    public Func<IssuedCertificateInfo, IReadOnlyList<IssuedCertificateStatus>>? TrustStates { get; set; }
+
+    /// <summary>Export of the OADM CA's row: the page's Export public certificate ("pem" or "der"); null: the row's download.</summary>
+    public Func<string?, Task>? ExportOadmCa { get; set; }
+
+    protected override IReadOnlyList<IssuedCertificateStatus> MoreStatesOf(IssuedCertificateInfo row) => TrustStates?.Invoke(row) ?? [];
+
+    protected override void OnGroupingChanged(IssuedCertificateGrouping grouping) => _ctx.SetLocalSetting(GroupBySetting, grouping.ToString());
+
+    /// <summary>The OADM CA's trust changed: its row shows it.</summary>
+    public void RefreshTrust() => RefreshRows();
 
     /// <summary>The policies of the page (the issuing policies of Create and Sign request); empty without.</summary>
     public Func<IReadOnlyList<PkiPolicy>> PolicySource { get; set; } = () => [];
@@ -384,6 +413,12 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
     private async Task ExportAsync(IssuedCertificateRow? row, string format, PkiFileKind kind)
     {
         row ??= Selected.Count == 1 ? Selected[0] : null;
+        if (row is { IsOadmCa: true } && ExportOadmCa is { } exportCa)
+        {
+            await exportCa(format == CertificateFormats.Der ? "der" : "pem").ConfigureAwait(true); // the public certificate, as Export public certificate
+            return;
+        }
+
         if (row is null || Dialogs is not IIssuedCertificatesDialogs dialogs)
         {
             return;

@@ -16,6 +16,24 @@ public sealed record IssuedCertificateFilter(string Value, string Label, bool Is
     public override string ToString() => Label;
 }
 
+/// <summary>
+/// A status a page adds to a row's State column (SDK 0.4.0), e.g. "Installed on the server" of the OADM CA: a
+/// <see cref="StatusChip"/> below the row's state.
+/// </summary>
+/// <param name="Text">The status in plain words.</param>
+/// <param name="Kind">"ok", "warning", "error", "accent" (running) or anything else for neutral.</param>
+/// <param name="Tip">The tooltip (the reason of a failure); null for none.</param>
+public sealed record IssuedCertificateStatus(string Text, string Kind, string? Tip = null)
+{
+    public bool IsOk => Kind == "ok";
+
+    public bool IsWarning => Kind == "warning";
+
+    public bool IsError => Kind == "error";
+
+    public bool IsAccent => Kind == "accent";
+}
+
 /// <summary>One row of the list of issued certificates (texts for the grid; the server's row in <see cref="Source"/>).</summary>
 public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
 {
@@ -52,8 +70,51 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>"Valid", "Expires soon", "Expired", "Replaced", "Revoked".</summary>
     public string State => IssuedCertificateTexts.State(Source.State);
 
-    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one; null otherwise.</summary>
-    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName : null;
+    /// <summary>The time the row was read (the days left of <see cref="StateText"/>); null: the state alone.</summary>
+    public DateTime? NowUtc { get; init; }
+
+    /// <summary>The State column: "Valid for 245 days" while valid, else <see cref="State"/>.</summary>
+    public string StateText => Source.State == IssuedCertificateState.Valid && DaysLeft is { } days ? IssuedCertificateTexts.ValidFor(days) : State;
+
+    /// <summary>Whole days until the end (0 on the last day); null without <see cref="NowUtc"/> or after the end.</summary>
+    public int? DaysLeft => NowUtc is { } now && Source.NotAfterUtc > now ? (int)Math.Floor((Source.NotAfterUtc - now).TotalDays) : null;
+
+    /// <summary>"Certificate revoked on 2026-11-02 (Key compromised) by admin" for a revoked one, "12 days left" when it expires soon; null otherwise.</summary>
+    public string? StateTip => Source.Revocation is { } r ? r.Describe() + " by " + r.UserName
+        : Source.State == IssuedCertificateState.ExpiresSoon && DaysLeft is { } days ? IssuedCertificateTexts.DaysLeft(days)
+        : null;
+
+    /// <summary>Statuses the page adds below the state (the OADM CA: where it is trusted); empty for most rows.</summary>
+    public IReadOnlyList<IssuedCertificateStatus> MoreStates { get; init; } = [];
+
+    /// <summary><see cref="MoreStates"/> has entries.</summary>
+    public bool HasMoreStates => MoreStates.Count > 0;
+
+    /// <summary>The group header of the row's group ("Device certificates · 60,000"); null without groups.</summary>
+    public string? GroupTitle { get; init; }
+
+    /// <summary>
+    /// The Type column: what the row is, as badges. A CA: Root CA or Intermediate CA and its kind (OADM CA, Previous OADM CA,
+    /// Axis device ID, Imported); a server's certificate: Server; one made here: its use and Created, Signed or Imported; a
+    /// device certificate: its use.
+    /// </summary>
+    public IReadOnlyList<string> Badges => _badges ??= IssuedCertificateTexts.Badges(Source);
+
+    private IReadOnlyList<string>? _badges;
+
+    /// <summary>
+    /// The second line of the name: the key and the issuer ("RSA 4096 · issued by OADM Root CA SERVER01"; a root CA its key
+    /// only; a row without key text "Issued by ..."); null when there is nothing to say.
+    /// </summary>
+    public string? Detail => _detail ??= IssuedCertificateTexts.Detail(Source) ?? string.Empty;
+
+    private string? _detail;
+
+    /// <summary><see cref="Detail"/> has text.</summary>
+    public bool HasDetail => Detail is { Length: > 0 };
+
+    /// <summary>The row's kind of CA; null for a row that is no CA.</summary>
+    public CertificateAuthorityKind? AuthorityKind => Source.Kind == ListedCertificateKind.Authority ? Source.AuthorityKind : null;
 
     /// <summary>Valid: green check.</summary>
     public bool IsOk => Source.State == IssuedCertificateState.Valid;
@@ -66,6 +127,15 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
 
     /// <summary>Replaced: grey.</summary>
     public bool IsNeutral => Source.State == IssuedCertificateState.Replaced;
+
+    /// <summary>A CA row of the OADM CA that issues now.</summary>
+    public bool IsOadmCa => AuthorityKind == CertificateAuthorityKind.Oadm;
+
+    /// <summary>A CA row that can be removed (previous OADM CAs and imported CAs; the server refuses one a policy names).</summary>
+    public bool IsRemovableCa => AuthorityKind is CertificateAuthorityKind.PreviousOadm or CertificateAuthorityKind.Imported;
+
+    /// <summary>A row that is no CA: Export with its key, Revoke and Delete belong to these.</summary>
+    public bool IsCertificate => Source.Kind != ListedCertificateKind.Authority;
 
     /// <summary>Issued by the OADM CA, still valid and not revoked: Revoke can take it.</summary>
     public bool CanRevoke => Source.Kind is ListedCertificateKind.Device or ListedCertificateKind.Created or ListedCertificateKind.SignedRequest
@@ -137,6 +207,57 @@ public static class IssuedCertificateTexts
     /// <summary>A device OADM no longer manages: "B8A44F631339 (removed)", or "Device (removed)" without its serial.</summary>
     public static string RemovedDevice(string? deviceSerial) => (string.IsNullOrEmpty(deviceSerial) ? "Device" : deviceSerial) + " (removed)";
 
+    /// <summary>"Valid for 245 days", "Valid for 1 day".</summary>
+    public static string ValidFor(int days) => days == 1 ? "Valid for 1 day" : string.Create(CultureInfo.CurrentCulture, $"Valid for {days:N0} days");
+
+    /// <summary>"12 days left", "1 day left".</summary>
+    public static string DaysLeft(int days) => days == 1 ? "1 day left" : string.Create(CultureInfo.CurrentCulture, $"{days:N0} days left");
+
+    /// <summary>"Device certificates · 60,000": a group header.</summary>
+    public static string GroupHeader(string title, int count) => string.Create(CultureInfo.CurrentCulture, $"{title} · {count:N0}");
+
+    /// <summary>"OADM CA", "Previous OADM CA", "Axis device ID", "Imported".</summary>
+    public static string AuthorityKindText(CertificateAuthorityKind kind) => kind switch
+    {
+        CertificateAuthorityKind.Oadm => "OADM CA",
+        CertificateAuthorityKind.PreviousOadm => "Previous OADM CA",
+        CertificateAuthorityKind.AxisDeviceId => "Axis device ID",
+        _ => "Imported",
+    };
+
+    /// <summary>The badges of the Type column (<see cref="IssuedCertificateRow.Badges"/>).</summary>
+    public static IReadOnlyList<string> Badges(IssuedCertificateInfo row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var use = row.Purpose is ListedCertificateUses.Other or ListedCertificateUses.Ca ? null : ListedCertificateUses.Text(row.Purpose);
+        return row.Kind switch
+        {
+            ListedCertificateKind.Authority => [row.IsRootCa ? "Root CA" : "Intermediate CA", .. row.AuthorityKind is { } kind ? [AuthorityKindText(kind)] : Array.Empty<string>()],
+            ListedCertificateKind.Server => [ListedCertificateUses.Text(ListedCertificateUses.Server)],
+            ListedCertificateKind.Created => [.. Use(use), "Created"],
+            ListedCertificateKind.SignedRequest => [.. Use(use), "Signed"],
+            ListedCertificateKind.Imported => [.. Use(use), "Imported"],
+            _ => [.. Use(use)],
+        };
+
+        static string[] Use(string? text) => string.IsNullOrEmpty(text) ? [] : [text];
+    }
+
+    /// <summary>The second line of the name (<see cref="IssuedCertificateRow.Detail"/>).</summary>
+    public static string? Detail(IssuedCertificateInfo row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var issuer = row.IssuedBy ?? row.Source;
+        var self = row.Kind == ListedCertificateKind.Authority && row.IsRootCa;
+        return (row.KeyText, self || string.IsNullOrEmpty(issuer)) switch
+        {
+            ({ Length: > 0 } key, true) => key,
+            ({ Length: > 0 } key, false) => key + " · issued by " + issuer,
+            (_, false) => "Issued by " + issuer,
+            _ => null,
+        };
+    }
+
     /// <summary>"State" texts.</summary>
     public static string State(IssuedCertificateState state) => state switch
     {
@@ -190,6 +311,15 @@ public sealed record IssuedCertificateListPage(IReadOnlyList<IssuedCertificateIn
     /// The CAs of the "Issued by" filter; null when the server does not list them (the filter then offers Task and EST).
     /// </summary>
     public IReadOnlyList<CertificateIssuerChoice>? Issuers { get; init; }
+
+    /// <summary>The groups of every page with their counts, in their order; null or empty: no group headers.</summary>
+    public IReadOnlyList<IssuedCertificateGroup>? Groups { get; init; }
+}
+
+/// <summary>A choice of "Group by" (<see cref="IssuedCertificateListViewModel.GroupChoices"/>).</summary>
+public sealed record IssuedCertificateGroupChoice(IssuedCertificateGrouping Value, string Label)
+{
+    public override string ToString() => Label;
 }
 
 /// <summary>One certificate for View certificate: the description and its revocation, or why it cannot be shown.</summary>
@@ -241,6 +371,88 @@ public partial class IssuedCertificateListViewModel : ObservableObject
         UseFilter = UseChoices[0];
         SourceChoices.AddRange(SourceChoicesOfTasks);
         SourceFilter = SourceChoices[0];
+        GroupBy = GroupChoices[0];
+    }
+
+    /// <summary>"Group by type" (the default), "Group by issuer", "No groups".</summary>
+    public IReadOnlyList<IssuedCertificateGroupChoice> GroupChoices { get; } =
+    [
+        new(IssuedCertificateGrouping.Type, "Group by type"),
+        new(IssuedCertificateGrouping.Issuer, "Group by issuer"),
+        new(IssuedCertificateGrouping.None, "No groups"),
+    ];
+
+    /// <summary>
+    /// Whether the list offers Group by (a source that groups on the server, the PKI page); false: the select is hidden and
+    /// the rows have no group headers.
+    /// </summary>
+    public bool CanGroup { get; init; }
+
+    /// <summary>The chosen grouping; a change reads the first page again.</summary>
+    [ObservableProperty]
+    public partial IssuedCertificateGroupChoice GroupBy { get; set; }
+
+    /// <summary>The rows have group headers (<see cref="IssuedCertificateRow.GroupTitle"/>).</summary>
+    [ObservableProperty]
+    public partial bool IsGrouped { get; private set; }
+
+    /// <summary>The group headers of the shown page in their order (the view rebuilds its groups when they change).</summary>
+    public IReadOnlyList<string> GroupTitles { get; private set; } = [];
+
+    /// <summary>The groups of the shown page changed (another grouping, other counts): the view groups the rows again.</summary>
+    public event EventHandler? GroupsChanged;
+
+    private IReadOnlyList<IssuedCertificateGroup> _groups = [];
+
+    partial void OnGroupByChanged(IssuedCertificateGroupChoice value)
+    {
+        if (_started)
+        {
+            OnGroupingChanged(value.Value);
+        }
+
+        Refilter();
+    }
+
+    /// <summary>After the user chose another grouping (a page keeps the choice).</summary>
+    protected virtual void OnGroupingChanged(IssuedCertificateGrouping grouping)
+    {
+    }
+
+    /// <summary>Statuses the page adds below the state of a row (the OADM CA's trust); none by default.</summary>
+    protected virtual IReadOnlyList<IssuedCertificateStatus> MoreStatesOf(IssuedCertificateInfo row) => [];
+
+    /// <summary>Builds the rows of the shown page again (the page's <see cref="MoreStatesOf"/> changed); the selection stays.</summary>
+    protected void RefreshRows()
+    {
+        var keep = _selected.Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
+        var now = Time.GetUtcNow().UtcDateTime;
+        Rows.ReplaceAll([.. Rows.Select(r => Row(r.Source, now))]);
+        SetSelection(Rows.Where(r => keep.Contains(r.Key)));
+        GroupsChanged?.Invoke(this, EventArgs.Empty);
+        SelectionRestored?.Invoke(this, EventArgs.Empty);
+    }
+
+    private IssuedCertificateRow Row(IssuedCertificateInfo source, DateTime nowUtc) => new(source)
+    {
+        NowUtc = nowUtc,
+        MoreStates = MoreStatesOf(source),
+        GroupTitle = IsGrouped ? GroupTitleOf(source) : null,
+    };
+
+    /// <summary>The header of a row's group: the type by its kind, or its issuer.</summary>
+    private string? GroupTitleOf(IssuedCertificateInfo row)
+    {
+        var key = GroupBy.Value == IssuedCertificateGrouping.Issuer ? row.IssuerId ?? "other" : IssuedCertificateGroups.OfKind(row.Kind);
+        foreach (var group in _groups)
+        {
+            if (group.Key == key)
+            {
+                return IssuedCertificateTexts.GroupHeader(group.Title, group.Count);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>The clock of the search delay and the certificate window.</summary>
@@ -414,6 +626,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
                 Source = SourceFilter.Value.Length > 0 && !SourceFilter.IsIssuer ? SourceFilter.Value : null,
                 IssuedBy = SourceFilter.Value.Length > 0 && SourceFilter.IsIssuer ? SourceFilter.Value : null,
                 Search = string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(),
+                GroupBy = CanGroup ? GroupBy.Value : IssuedCertificateGrouping.None,
                 Offset = Offset,
                 Limit = PageSize,
             };
@@ -424,7 +637,13 @@ public partial class IssuedCertificateListViewModel : ObservableObject
             }
 
             var keep = _selected.Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
-            Rows.ReplaceAll(page.Rows.Select(r => new IssuedCertificateRow(r)));
+            _groups = CanGroup && page.Groups is { Count: > 0 } groups ? groups : [];
+            IsGrouped = _groups.Count > 0;
+            var now = Time.GetUtcNow().UtcDateTime;
+            Rows.ReplaceAll(page.Rows.Select(r => Row(r, now)));
+            var titles = IsGrouped ? Rows.Select(r => r.GroupTitle ?? string.Empty).Distinct(StringComparer.Ordinal).ToList() : [];
+            var regroup = !titles.SequenceEqual(GroupTitles, StringComparer.Ordinal);
+            GroupTitles = titles;
             _loadedOnce = true;
             Offset = page.Offset;
             Total = page.Total;
@@ -433,6 +652,11 @@ public partial class IssuedCertificateListViewModel : ObservableObject
             Error = null;
             SetSelection(Rows.Where(r => keep.Contains(r.Key)));
             OnPropertyChanged(nameof(EmptyText));
+            if (regroup)
+            {
+                GroupsChanged?.Invoke(this, EventArgs.Empty);
+            }
+
             SelectionRestored?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -520,7 +744,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
     private void Refilter()
     {
-        if (!_started || _applyingChoices || StateFilter is null || UseFilter is null || SourceFilter is null)
+        if (!_started || _applyingChoices || StateFilter is null || UseFilter is null || SourceFilter is null || GroupBy is null)
         {
             return; // not shown yet (or the constructor sets them one by one): the first read takes the filters
         }

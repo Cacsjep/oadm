@@ -6,6 +6,7 @@ using Oadm.Core.Plugins;
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Client;
 using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
 
@@ -200,15 +201,20 @@ public sealed class AuthorityTests
         try
         {
             using var vm = new PkiViewModel(ctx, new FakeClientTrust(), new PkiClientSettingsStore(settingsFile)) { Dialogs = dialogs };
+            var certificateDialogs = new FakeCertificateDialogs();
+            vm.Certificates.Dialogs = certificateDialogs;
             await vm.LoadAsync();
-            Assert.Equal(["OADM CA", "Axis device ID"], vm.Authorities.Select(a => a.KindText));
+            await vm.Certificates.LoadAsync();
+            IssuedCertificateRow[] Cas() => [.. vm.Certificates.Rows.Where(r => r.AuthorityKind is not null)];
+            Assert.Equal(["OADM CA", "Axis device ID"], Cas().Select(r => r.Badges[1]).Distinct());
             // Used by: the issuing policies name the OADM CA (they issue with it); the Axis device ID is used by nothing yet.
-            Assert.Equal(["Issuing: HTTPS, IEEE 802.1X, 802.1X server, EST server", "-"], vm.Authorities.Select(a => a.UsedBy)); // one prefix per group
-            Assert.All(vm.Authorities, row => Assert.False(row.IsRemovable));
+            Assert.Equal("Issuing: HTTPS, IEEE 802.1X, 802.1X server, EST server", Cas()[0].UsedBy); // one prefix per group
+            Assert.All(Cas().Skip(1), row => Assert.Equal("-", row.UsedBy));
+            Assert.All(Cas(), row => Assert.False(row.IsRemovableCa));
 
             // View: the shared certificate window with the CA.
-            await vm.ViewAuthorityCommand.ExecuteAsync(vm.Authorities[0]);
-            Assert.Equal("OADM Root CA SERVER01", Assert.Single(dialogs.Shown).Title);
+            await vm.Certificates.ViewRowCommand.ExecuteAsync(Cas()[0]);
+            Assert.StartsWith("Certificate · OADM Root CA SERVER01", Assert.Single(certificateDialogs.Shown).Title, StringComparison.Ordinal);
 
             // Import CA: a wrong file shows its error below the field, the dialog stays open.
             using var root = TestCa.Root("Contoso Root");
@@ -232,23 +238,23 @@ public sealed class AuthorityTests
             };
             await vm.ImportAuthorityCommand.ExecuteAsync(null);
             Assert.True(dialog!.Completed);
-            var imported = vm.Authorities.Single(a => a.IsImported);
-            Assert.Equal("Contoso Root", imported.Name);
-            Assert.Equal("Imported CA", imported.KindText);
-            Assert.True(imported.IsRemovable);
+            await vm.Certificates.LoadAsync();
+            IssuedCertificateRow Imported() => Cas().Single(r => r.AuthorityKind == CertificateAuthorityKind.Imported);
+            Assert.Equal("Contoso Root", Imported().Name);
+            Assert.Equal(["Root CA", "Imported"], Imported().Badges);
+            Assert.True(Imported().IsRemovableCa);
 
             // Remove: refused while a service uses it, with the reason.
-            Offer(pki).SetUsedBy("oadm.radius", "802.1X server", [imported.Id]);
-            await vm.LoadAsync();
-            imported = vm.Authorities.Single(a => a.IsImported);
-            Assert.Equal("802.1X server", imported.UsedBy);
-            await vm.RemoveAuthorityCommand.ExecuteAsync(imported);
+            Offer(pki).SetUsedBy("oadm.radius", "802.1X server", [Imported().Source.AuthorityId!]);
+            await vm.Certificates.LoadAsync();
+            Assert.Equal("802.1X server", Imported().UsedBy);
+            await vm.RemoveCaCommand.ExecuteAsync(Imported());
             Assert.Equal(("Remove CA", "Used by the 802.1X server. Remove it there first."), ctx.Messages[^1]);
-            Assert.Contains(vm.Authorities, a => a.IsImported);
+            Assert.Single(Cas(), r => r.AuthorityKind == CertificateAuthorityKind.Imported);
 
             Offer(pki).SetUsedBy("oadm.radius", "802.1X server", []);
-            await vm.RemoveAuthorityCommand.ExecuteAsync(vm.Authorities.Single(a => a.IsImported));
-            Assert.DoesNotContain(vm.Authorities, a => a.IsImported);
+            await vm.RemoveCaCommand.ExecuteAsync(Imported());
+            Assert.DoesNotContain(Cas(), r => r.AuthorityKind == CertificateAuthorityKind.Imported);
         }
         finally
         {

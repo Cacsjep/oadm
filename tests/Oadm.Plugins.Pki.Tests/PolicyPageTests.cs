@@ -269,9 +269,9 @@ public sealed class PolicyPageTests
 public sealed class PolicyHeadlessTests
 {
     [Theory]
-    [InlineData(1700, 2)]
-    [InlineData(1000, 1)]
-    public async Task The_page_shows_cas_and_policies_side_by_side_or_stacked_and_the_certificates_below(int width, int columns)
+    [InlineData(1700)]
+    [InlineData(1000)]
+    public async Task The_page_shows_the_policies_and_below_them_the_certificates_with_the_cas(int width)
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         await using var pki = await PolicyPageTests.StartAsync();
@@ -299,7 +299,6 @@ public sealed class PolicyHeadlessTests
             var tabs = window.GetVisualDescendants().OfType<PageTab>().Count(t => t.IsEffectivelyVisible);
             var primaries = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
             var segments = window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.Classes.Contains("segment")).Select(b => b.Content as string).ToList();
-            var count = view.CardColumnCount;
 
             // The certificates' search box lies whole inside its list (the filters wrap on a narrow card).
             var list = window.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
@@ -307,16 +306,19 @@ public sealed class PolicyHeadlessTests
             var searchRight = Avalonia.VisualExtensions.TranslatePoint(search, new Avalonia.Point(search.Bounds.Width, 0), list)!.Value.X;
             var searchFits = searchRight <= list.Bounds.Width + 0.5;
             window.Close();
-            return (texts, tabs, primaries, segments, count, searchFits);
+            return (texts, tabs, primaries, segments, searchFits);
         }, CancellationToken.None);
 
-        Assert.Equal(columns, checks.count);
         Assert.True(checks.searchFits);
         Assert.Equal(0, checks.tabs); // one page, no tabs
-        foreach (var title in new[] { "Certificate authorities", "Policies", "Certificates", "Add policy", "Generate new CA", "Import CA", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server" })
+        foreach (var title in new[] { "Policies", "Certificates", "Add policy", "Create", "Sign request", "Import", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server", "Root CA", "OADM CA" })
         {
             Assert.Contains(title, checks.texts);
         }
+
+        Assert.DoesNotContain("Certificate authorities", checks.texts); // no card of the CAs: they are rows ("Certificate authorities · 7" heads their group)
+        Assert.Contains(checks.texts, t => t?.StartsWith("Certificate authorities · ", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain("Generate new CA", checks.texts); // Create, New OADM CA
 
         Assert.DoesNotContain("Previous certificate authorities", checks.texts); // previous CAs once: rows of the list
         Assert.Contains("Previous OADM CA", checks.texts);

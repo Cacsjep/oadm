@@ -150,6 +150,7 @@
       <SolidColorBrush x:Key="Oadm.Tag.VioletBrush" Color="{StaticResource Oadm.Tag.VioletColor}" />
       <SolidColorBrush x:Key="Oadm.Tag.NeutralBrush" Color="{StaticResource Oadm.Tag.NeutralColor}" />
       <SolidColorBrush x:Key="Oadm.Tag.ChipBackgroundBrush" Color="{StaticResource Oadm.Tag.ChipBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.BadgeNeutralBrush" Color="{StaticResource Oadm.BadgeNeutralColor}" />
 
       <!-- Sizes -->
       <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
@@ -553,6 +554,15 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.ChipTextBrush}" />
     <Setter Property="HorizontalAlignment" Value="Center" />
     <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- A neutral badge: what a row is (the PKI list's Type: Root CA, HTTPS, Imported), never a status (that is ui:StatusChip) -->
+  <Style Selector="Border.badge.neutral">
+    <Setter Property="Background" Value="{StaticResource Oadm.BadgeNeutralBrush}" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+  <Style Selector="Border.badge.neutral TextBlock, DataGridCell Border.badge.neutral TextBlock">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
   </Style>
 
   <!-- Navigation rail -->

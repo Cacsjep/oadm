@@ -10,6 +10,7 @@ using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.TrustStore;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
@@ -39,53 +40,10 @@ public sealed class PreviousCaRowViewModel(PreviousCaInfo info)
 }
 
 /// <summary>
-/// One row of "Certificate authorities": name, kind, valid until, used by; View, Export for a previous OADM CA, Remove for
-/// imported and previous CAs (previous CAs are rows of this list only, with their device counts in the tooltip).
-/// </summary>
-public sealed class AuthorityRowViewModel(AuthorityRow row, bool mayManage = true, PreviousCaRowViewModel? previous = null)
-{
-    public AuthorityRow Row { get; } = row;
-
-    public string Id => Row.Id;
-
-    public string Name => Row.Name;
-
-    public string KindText { get; } = KindName(row.Kind);
-
-    public string ValidUntil { get; } = row.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    public string UsedBy { get; } = row.UsedBy.Count == 0 ? "-" : string.Join(", ", row.UsedBy);
-
-    public string Tooltip { get; } = previous is { } old ? old.Tooltip + " · SHA-256 " + row.Fingerprint : "SHA-256 " + row.Fingerprint;
-
-    public bool IsImported => Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported;
-
-    /// <summary>A replaced OADM CA (kept while its certificates live).</summary>
-    public bool IsPrevious => Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm;
-
-    /// <summary>The previous CA's own row data (its id for Export and Remove); null for the other kinds.</summary>
-    public PreviousCaRowViewModel? Previous { get; } = previous;
-
-    /// <summary>Export is shown: a previous OADM CA (the current one: Export public certificate below the list).</summary>
-    public bool IsExportable { get; } = mayManage && previous is not null;
-
-    /// <summary>Remove is shown: an imported or a previous CA and the user may manage the CA.</summary>
-    public bool IsRemovable { get; } = mayManage && (row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported || previous is not null);
-
-    public static string KindName(Oadm.Sdk.Certificates.CertificateAuthorityKind kind) => kind switch
-    {
-        Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm => "OADM CA",
-        Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm => "Previous OADM CA",
-        Oadm.Sdk.Certificates.CertificateAuthorityKind.AxisDeviceId => "Axis device ID",
-        _ => "Imported CA",
-    };
-}
-
-/// <summary>
-/// The PKI page (docs/spec/pki.md "The PKI page"), one page without tabs: Certificate authorities (the CAs with the OADM CA's
-/// actions: trusted root store, export, backup, generate, import) and Policies side by side, then Certificates (every
-/// certificate the OADM CA issued, revoke), then the settings of device certificates and IEEE 802.1X. <see cref="Activate"/>
-/// while the page is shown (reads everything and watches the live events).
+/// The PKI page (docs/spec/pki.md "The PKI page"): the tab Certificates with Policies and the list of every certificate,
+/// the CAs among them with the OADM CA's actions (trusted root store, export, backup, new CA, import, remove), and the server
+/// tabs the host hands over (<see cref="Tabs"/>). <see cref="Activate"/> while the page is shown (reads everything and
+/// watches the live events).
 /// </summary>
 public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 {
@@ -124,7 +82,12 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         };
         _clientTrust = clientTrust ?? throw new ArgumentNullException(nameof(clientTrust));
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
-        Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings) { PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)] };
+        Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings)
+        {
+            PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)],
+            TrustStates = TrustStatesOf,
+            ExportOadmCa = ExportAsync,
+        };
         InitTabs();
     }
 
@@ -132,9 +95,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public IPkiDialogs? Dialogs { get; set; }
 
     public ObservableCollection<PreviousCaRowViewModel> PreviousCas { get; } = [];
-
-    /// <summary>Every CA PKI holds (the Certificate authorities card).</summary>
-    public ObservableCollection<AuthorityRowViewModel> Authorities { get; } = [];
 
     /// <summary>The last state of the server.</summary>
     public PkiState? State { get; private set; }
@@ -148,8 +108,14 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public partial string? StatusDetail { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsStatusOk), nameof(IsStatusWarning), nameof(IsStatusError), nameof(IsStatusAccent))]
+    [NotifyPropertyChangedFor(nameof(IsStatusOk), nameof(IsStatusWarning), nameof(IsStatusError), nameof(IsStatusAccent), nameof(ShowCaStatus))]
     public partial string StatusKind { get; set; } = "accent";
+
+    /// <summary>
+    /// The PKI status stands above the list: a CA whose key cannot be read, that expired or ends soon, a failed start. Not
+    /// while it is fine (its row says it), without a CA (<see cref="NoCaText"/>) or while one is created (the progress row).
+    /// </summary>
+    public bool ShowCaStatus => HasCa && !IsGenerating && StatusKind is ServiceStatus.Warning or ServiceStatus.Error;
 
     public bool IsStatusOk => StatusKind == ServiceStatus.Ok;
 
@@ -162,7 +128,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     // ---------------------------------------------------------------- certificate authority card
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasNoCa))]
+    [NotifyPropertyChangedFor(nameof(HasNoCa), nameof(ShowCaStatus))]
     [NotifyCanExecuteChangedFor(nameof(InstallTrustCommand), nameof(ExportCommand), nameof(BackupCommand))]
     public partial bool HasCa { get; set; }
 
@@ -197,6 +163,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public partial bool IsKeyUnreadable { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowCaStatus))]
     [NotifyCanExecuteChangedFor(nameof(GenerateCommand), nameof(ImportCommand), nameof(InstallTrustCommand), nameof(BackupCommand))]
     public partial bool IsGenerating { get; set; }
 
@@ -344,7 +311,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             HasCa = false;
             NoCaText = state.Unavailable ? "The server cannot keep a certificate authority (no secret protection)."
                 : state.IsGenerating ? "Creating the certificate authority."
-                : "There is no certificate authority yet. Generate one or import your own.";
+                : NoCaYet;
         }
 
         ApplyServerTrust(state.ServerTrustInstalled, state.ServerTrustError);
@@ -353,14 +320,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         foreach (var previous in state.PreviousCas)
         {
             PreviousCas.Add(new PreviousCaRowViewModel(previous));
-        }
-
-        // The previous CAs once: rows of the list of CAs (their device counts in the tooltip, Export and Remove in the row).
-        var previousById = PreviousCas.GroupBy(p => PkiService.PreviousAuthorityId(p.Id), StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-        Authorities.Clear();
-        foreach (var authority in state.Authorities)
-        {
-            Authorities.Add(new AuthorityRowViewModel(authority, MayManage, previousById.GetValueOrDefault(authority.Id)));
         }
 
 
@@ -523,19 +482,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     }
 
     [RelayCommand]
-    private async Task ViewAuthorityAsync(AuthorityRowViewModel? row)
-    {
-        if (row is null || Dialogs is null || row.Row.CertificatesPem.Count == 0)
-        {
-            return;
-        }
-
-        using var certificate = X509Certificate2.CreateFromPem(row.Row.CertificatesPem[0]);
-        var description = Oadm.Sdk.Certificates.CertificateDescriber.Describe(certificate.RawData);
-        await Dialogs.ShowCertificateAsync(new Oadm.Sdk.Client.Controls.CertificateDetails(description, row.Name, DateTime.UtcNow)).ConfigureAwait(true);
-    }
-
-    [RelayCommand]
     private async Task ImportAuthorityAsync()
     {
         if (Dialogs is null)
@@ -565,40 +511,76 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         return true;
     }
 
-    [RelayCommand]
-    private Task ExportAuthorityAsync(AuthorityRowViewModel? row) => row?.Previous is { } previous ? ExportPreviousAsync(previous) : Task.CompletedTask;
+    private bool CanRemoveCa(IssuedCertificateRow? row) => MayManage && row is { IsRemovableCa: true };
 
-    [RelayCommand]
-    private async Task RemoveAuthorityAsync(AuthorityRowViewModel? row)
+    /// <summary>
+    /// Remove of a CA row (red): a previous OADM CA (its certificates are no longer trusted) or an imported CA, confirmed;
+    /// the server refuses one a policy or a service uses, with the reason. The list is read again.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveCa))]
+    private async Task RemoveCaAsync(IssuedCertificateRow? row)
     {
-        if (row?.Previous is { } previous)
-        {
-            await RemovePreviousAsync(previous).ConfigureAwait(true);
-            return;
-        }
-
-        if (row is not { IsImported: true })
+        if (row is not { IsRemovableCa: true } || row.Source.AuthorityId is not { } id)
         {
             return;
         }
 
-        if (!await _ctx.ConfirmAsync("Remove CA", $"Services can no longer use {row.Name}. Remove {row.Name}?", "Remove").ConfigureAwait(true))
+        if (row.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm)
         {
-            return;
+            if (PreviousCas.FirstOrDefault(p => string.Equals(PkiService.PreviousAuthorityId(p.Id), id, StringComparison.OrdinalIgnoreCase)) is { } previous)
+            {
+                await RemovePreviousAsync(previous).ConfigureAwait(true);
+            }
+        }
+        else if (await _ctx.ConfirmAsync("Remove CA", $"Services can no longer use {row.Name}. Remove {row.Name}?", "Remove").ConfigureAwait(true))
+        {
+            var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemoveAuthority, PkiJson.Serialize(new RemoveAuthorityRequest(id)), CancellationToken.None).ConfigureAwait(true));
+            if (reply.Error is { } error)
+            {
+                await _ctx.ShowMessageAsync("Remove CA", error).ConfigureAwait(true);
+            }
+
+            if (reply.State is { } state)
+            {
+                await ApplyStateAsync(state).ConfigureAwait(true);
+            }
         }
 
-        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemoveAuthority, PkiJson.Serialize(new RemoveAuthorityRequest(row.Id)), CancellationToken.None).ConfigureAwait(true));
-        if (reply.Error is { } error)
-        {
-            await _ctx.ShowMessageAsync("Remove CA", error).ConfigureAwait(true);
-        }
-
-        if (reply.State is { } state)
-        {
-            await ApplyStateAsync(state).ConfigureAwait(true);
-        }
+        await Certificates.LoadAsync().ConfigureAwait(true);
     }
 
+    /// <summary>The line without a CA: what to do first.</summary>
+    public const string NoCaYet = "There is no OADM CA yet. Choose New OADM CA under Create, or import one under Import.";
+
+    /// <summary>The OADM CA row's statuses: where it is trusted, once it is installed there (or an install failed or runs).</summary>
+    private List<IssuedCertificateStatus> TrustStatesOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row)
+    {
+        if (row is not { Kind: Oadm.Sdk.Certificates.ListedCertificateKind.Authority, AuthorityKind: Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm })
+        {
+            return [];
+        }
+
+        List<IssuedCertificateStatus> states = [];
+        if (ServerTrustKind != ServiceStatus.Neutral)
+        {
+            states.Add(new IssuedCertificateStatus(ServerTrustText, ServerTrustKind, ServerTrustTip));
+        }
+
+        if (ClientTrustKind != ServiceStatus.Neutral)
+        {
+            states.Add(new IssuedCertificateStatus(ClientTrustText, ClientTrustKind, ClientTrustTip));
+        }
+
+        return states;
+    }
+
+    partial void OnServerTrustTextChanged(string value) => Certificates?.RefreshTrust();
+
+    partial void OnClientTrustTextChanged(string value) => Certificates?.RefreshTrust();
+
+    partial void OnServerTrustTipChanged(string? value) => Certificates?.RefreshTrust();
+
+    partial void OnClientTrustTipChanged(string? value) => Certificates?.RefreshTrust();
 
     // ---------------------------------------------------------------- dialog backends
 

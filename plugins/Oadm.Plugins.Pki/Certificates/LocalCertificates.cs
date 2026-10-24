@@ -43,6 +43,9 @@ public sealed record StoredLocalCertificate
 /// <summary>A listed certificate read once: its stored row and what the list shows of it.</summary>
 public sealed record LocalCertificate(StoredLocalCertificate Stored, byte[] Der, string Serial, string Fingerprint, DateTime NotBeforeUtc, DateTime NotAfterUtc, string IssuerName)
 {
+    /// <summary>The key, "RSA 2048", "ECDSA P-256".</summary>
+    public string? KeyText { get; init; }
+
     public bool HasKey => Stored.KeyProtected is not null;
 
     public string RowId => LocalCertificates.RowPrefix + Stored.Id;
@@ -56,7 +59,10 @@ public sealed record LocalCertificate(StoredLocalCertificate Stored, byte[] Der,
             var der = Convert.FromBase64String(stored.Der);
             using var certificate = X509CertificateLoader.LoadCertificate(der);
             return new LocalCertificate(stored, der, CertificateSerials.Normalize(certificate.SerialNumber), CaCertificates.Fingerprint(certificate),
-                certificate.NotBefore.ToUniversalTime(), certificate.NotAfter.ToUniversalTime(), IssuerCommonName(certificate));
+                certificate.NotBefore.ToUniversalTime(), certificate.NotAfter.ToUniversalTime(), IssuerCommonName(certificate))
+            {
+                KeyText = CaCertificates.KeyType(certificate),
+            };
         }
         catch (Exception ex) when (ex is FormatException or CryptographicException)
         {
@@ -80,6 +86,9 @@ public sealed record ServerCertificate(string Slot, string Server, string Name, 
     string? IssuerFingerprint, DateTime SeenUtc)
 {
     public string RowId => LocalCertificates.ServerPrefix + Slot;
+
+    /// <summary>The key, "ECDSA P-256".</summary>
+    public string? KeyText { get; init; }
 }
 
 /// <summary>
@@ -263,7 +272,10 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
             var name = CaCertificates.CommonName(certificate);
             entry = new ServerCertificate(server + "|" + name, server, name, der, CertificateSerials.Normalize(certificate.SerialNumber), CaCertificates.Fingerprint(certificate),
                 certificate.NotBefore.ToUniversalTime(), certificate.NotAfter.ToUniversalTime(), LocalCertificate.IssuerCommonName(certificate), issuerFingerprint,
-                time.GetUtcNow().UtcDateTime);
+                time.GetUtcNow().UtcDateTime)
+            {
+                KeyText = CaCertificates.KeyType(certificate),
+            };
         }
         catch (CryptographicException)
         {

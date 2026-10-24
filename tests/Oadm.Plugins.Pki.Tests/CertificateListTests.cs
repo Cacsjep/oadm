@@ -379,8 +379,9 @@ public sealed class CertificateListTests
 
         Assert.Equal(1, await CountAsync("nvr.example"));
         Assert.Equal(1, await CountAsync("10.0.0.48")); // the device (name and used by)
-        Assert.Equal(2, await CountAsync("HTTPS"));
-        Assert.Equal(1, await CountAsync("HTTPS", ListedCertificateUses.Ca) + await CountAsync("Axis device ID", DeviceCertificatePurposes.Https) + 1); // nothing of another use
+        Assert.Equal(3, await CountAsync("HTTPS")); // the two certificates and the OADM CA (Used by: "Issuing: HTTPS, ...")
+        Assert.Equal(1, await CountAsync("HTTPS", ListedCertificateUses.Ca)); // the OADM CA by its Used by, nothing of another use
+        Assert.Equal(0, await CountAsync("Axis device ID", DeviceCertificatePurposes.Https));
         Assert.True(await CountAsync("Axis device ID") >= 2); // every Axis CA certificate is issued by the Axis device ID
         Assert.True(await CountAsync("OADM Root CA SERVER01") >= 3);
         Assert.Equal(await CountAsync("Valid"), await CountAsync("valid")); // case-insensitive
