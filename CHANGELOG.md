@@ -14,7 +14,8 @@ version and date, and the release workflow copies it into the GitHub release.
   Its page lists the switches, the VLAN rules, the cameras signing in right now, the log of sign-ins and the revoked
   certificates; **Revoke** there picks from the PKI list of IEEE 802.1X certificates and
   needs the PKI permission "Manage the certificate authority" too. Only users with all devices can add or remove a tag
-  that sets a VLAN. With Listen on "All interfaces" a new address of the server is answered on within 5 seconds.
+  that sets a VLAN, also while the 802.1X server is stopped or off; nobody renames or deletes it before changing the VLAN
+  rule. With Listen on "All interfaces" a new address of the server is answered on within 5 seconds.
 - PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST, with its use: HTTPS,
   IEEE 802.1X, MQTT or RTSPS), with filters, search and View certificate. **Revoke** takes certificates out of use for
   good; EST no longer renews a revoked certificate. A certificate stays in the list until a year after it ended; one that
@@ -60,6 +61,11 @@ version and date, and the release workflow copies it into the GitHub release.
   name, never a host name or address set on the camera.
 - Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
   built with SDK 0.3.0 keep working for users with all devices.
+- Plugin SDK 0.4.0 (802.1X server): `ICorePluginContext.ProtectedTags` / `IProtectedTags` (tags only users with all
+  devices add or remove, never renamed or deleted); `IDeviceCertificateAuthority` lists issued certificates
+  (`ListIssuedAsync`, `GetIssuedCertificateAsync`), revokes them (`RevokeAsync`, `IsRevoked`, `FindRevocation`,
+  `Revocations`), `PurposeOf` and `PreviousChains`; `IPluginNetwork.ListenUdpAsync` on chosen addresses; client SDK
+  `IssuedCertificateList` and `CertificateWindow`; `Oadm.Sdk.Testing.FakeProtectedTags`.
 - Device groups: users with a group see only plugin pages built for device groups, and plugin pages show them only
   their own devices, reports and live updates.
 - Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
