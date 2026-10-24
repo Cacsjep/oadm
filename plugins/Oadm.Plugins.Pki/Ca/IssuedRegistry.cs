@@ -530,8 +530,13 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, int warningDays) =>
         Query(query, devices, onlyListedDevices, _ => warningDays);
 
-    /// <summary>The page with the warning days of each device (its Expiry warning policy).</summary>
-    public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, Func<Guid, int> warningDays)
+    /// <summary>
+    /// The page with the warning days of each device (its Expiry warning policy). <paramref name="filter"/> leaves out more
+    /// (the "Issued by" filter); <paramref name="searchMore"/> matches the search in more columns (use, issuer, valid until,
+    /// state) for an entry the address, serial and device serial did not match.
+    /// </summary>
+    public IssuedCertificatePage Query(IssuedCertificateQuery query, IReadOnlyDictionary<Guid, IDeviceInfo> devices, bool onlyListedDevices, Func<Guid, int> warningDays,
+        Func<IssuedCertificate, bool>? filter = null, Func<IssuedCertificate, IssuedCertificateState, bool>? searchMore = null)
     {
         ArgumentNullException.ThrowIfNull(warningDays);
         ArgumentNullException.ThrowIfNull(query);
@@ -559,7 +564,8 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                 if ((onlyListedDevices && device is null)
                     || (query.DeviceIds is { } ids && !ids.Contains(entry.DeviceId))
                     || (query.Purpose is { } purpose && !string.Equals(entry.Purpose, purpose, StringComparison.Ordinal))
-                    || (query.Source is { } source && !string.Equals(SourceOf(entry), source, StringComparison.Ordinal)))
+                    || (query.Source is { } source && !string.Equals(SourceOf(entry), source, StringComparison.Ordinal))
+                    || (filter is not null && !filter(entry)))
                 {
                     continue;
                 }
@@ -574,7 +580,8 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                 if (search.Length > 0
                     && !(device is not null && (device.Address.Contains(search, StringComparison.OrdinalIgnoreCase) || (device.HostName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)))
                     && !deviceSerial.Contains(searchHex, StringComparison.OrdinalIgnoreCase)
-                    && !key.Contains(searchHex, StringComparison.Ordinal))
+                    && !key.Contains(searchHex, StringComparison.Ordinal)
+                    && !(searchMore?.Invoke(entry, state) ?? false))
                 {
                     continue;
                 }
@@ -598,11 +605,53 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                     IssuedUtc = entry.IssuedUtc,
                     State = state,
                     Revocation = _revoked.GetValueOrDefault(key),
+                    Kind = ListedCertificateKind.Device,
+                    UsedBy = device is not null && IsOnDeviceLocked(key, entry) ? device.Address : null,
                 });
             }
         }
 
         return new IssuedCertificatePage(rows, total);
+    }
+
+    /// <summary>
+    /// Deletes certificates that ended or are revoked from the list (Delete on the page); their revocations stay. Serials that
+    /// are not listed or still valid are left. Written before it returns.
+    /// </summary>
+    /// <returns>How many left the list.</returns>
+    public async Task<int> DeleteEndedAsync(IReadOnlyCollection<string> serialNumbers, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(serialNumbers);
+        var now = Now;
+        var removed = 0;
+        lock (_gate)
+        {
+            var gone = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var key in serialNumbers.Select(CertificateSerials.Normalize).Distinct(StringComparer.Ordinal))
+            {
+                if (_bySerial.TryGetValue(key, out var entry) && (_revoked.ContainsKey(key) || entry.NotAfterUtc <= now))
+                {
+                    Unindex(key);
+                    _dirtyIssued.Add(key);
+                    _pendingDer[key] = null;
+                    gone.Add(key);
+                }
+            }
+
+            removed = gone.Count;
+            if (removed > 0)
+            {
+                _ordered = [.. _ordered.Where(k => !gone.Contains(k))];
+            }
+        }
+
+        if (removed > 0)
+        {
+            await FlushAsync(ct).ConfigureAwait(false);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return removed;
     }
 
     /// <summary>Task (PKI's own) or EST.</summary>
@@ -845,6 +894,12 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
 
         return entry.NotAfterUtc <= nowUtc.AddDays(warningDays) ? IssuedCertificateState.ExpiresSoon : IssuedCertificateState.Valid;
     }
+
+    /// <summary>Still on its device as far as OADM knows: not deleted there and no newer one of the device and use (inside the gate).</summary>
+    private bool IsOnDeviceLocked(string key, IssuedCertificate entry) =>
+        entry.RemovedFromDeviceUtc is null
+        && (!_newest.TryGetValue((entry.DeviceId, entry.Purpose ?? string.Empty), out var newest)
+            || string.Equals(CertificateSerials.Normalize(newest.SerialNumber), key, StringComparison.Ordinal));
 
     /// <summary>Adds to the indexes (inside the gate; not to the ordered list).</summary>
     private void Index(IssuedCertificate entry)

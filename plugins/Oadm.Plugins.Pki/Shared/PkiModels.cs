@@ -110,6 +110,9 @@ public sealed record CertificatesRequest
 
     public string? Source { get; init; }
 
+    /// <summary>Only certificates of this CA (<see cref="Oadm.Sdk.Certificates.CertificateIssuerChoice.Id"/>).</summary>
+    public string? IssuedBy { get; init; }
+
     public string? Search { get; init; }
 
     public int Offset { get; init; }
@@ -133,9 +136,12 @@ public sealed record CertificatesReply
     /// certificate window then follows the row's state).
     /// </summary>
     public int? WarningDays { get; init; }
+
+    /// <summary>The choices of the "Issued by" filter: the CAs of PKI and "Other CA".</summary>
+    public IReadOnlyList<Oadm.Sdk.Certificates.CertificateIssuerChoice> Issuers { get; init; } = [];
 }
 
-/// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>.</summary>
+/// <summary>The payload of <see cref="PkiMethods.GetCertificate"/>: a serial number, or the id of a row that is no device certificate.</summary>
 public sealed record CertificateDetailsRequest(string SerialNumber);
 
 /// <summary>One issued certificate; <see cref="Error"/> when it is not listed (or not one of the user's devices).</summary>
