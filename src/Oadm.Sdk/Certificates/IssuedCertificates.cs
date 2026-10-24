@@ -314,12 +314,16 @@ public enum IssuedCertificateGrouping
 /// <summary>The groups of <see cref="IssuedCertificateGrouping.Type"/> (SDK 0.4.0): their keys and names.</summary>
 public static class IssuedCertificateGroups
 {
+    /// <summary>The certificate authorities.</summary>
     public const string Authorities = "authorities";
 
+    /// <summary>The certificates of the servers (802.1X server, EST server, the OADM server).</summary>
     public const string Servers = "servers";
 
+    /// <summary>The certificates created, signed or imported on the PKI page.</summary>
     public const string Local = "local";
 
+    /// <summary>The device certificates.</summary>
     public const string Devices = "devices";
 
     /// <summary>The group of a row by its kind.</summary>

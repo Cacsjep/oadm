@@ -25,12 +25,16 @@ public sealed record IssuedCertificateFilter(string Value, string Label, bool Is
 /// <param name="Tip">The tooltip (the reason of a failure); null for none.</param>
 public sealed record IssuedCertificateStatus(string Text, string Kind, string? Tip = null)
 {
+    /// <summary>Green.</summary>
     public bool IsOk => Kind == "ok";
 
+    /// <summary>Amber.</summary>
     public bool IsWarning => Kind == "warning";
 
+    /// <summary>Red.</summary>
     public bool IsError => Kind == "error";
 
+    /// <summary>Running (the accent color).</summary>
     public bool IsAccent => Kind == "accent";
 }
 
@@ -39,12 +43,18 @@ public sealed record IssuedCertificateStatus(string Text, string Kind, string? T
 /// <see cref="IssuedCertificateListViewModel.MenuOf"/>): its text, command and parameter, red for one that deletes, revokes or
 /// removes, or a submenu (<see cref="Items"/>). <see cref="Separator"/> is the line between the everyday and the red ones.
 /// </summary>
+/// <param name="Text">The entry's text ("Export", "Revoke").</param>
+/// <param name="Command">What the entry runs; null for a submenu.</param>
+/// <param name="Parameter">The command's parameter (the row).</param>
+/// <param name="IsDanger">Red: the entry deletes, revokes or removes.</param>
+/// <param name="Items">The entries of a submenu; null for a plain entry.</param>
 public sealed record IssuedCertificateAction(string Text, System.Windows.Input.ICommand? Command = null, object? Parameter = null, bool IsDanger = false,
     IReadOnlyList<IssuedCertificateAction>? Items = null)
 {
     /// <summary>The line between groups of entries.</summary>
     public static IssuedCertificateAction Separator { get; } = new("-");
 
+    /// <summary>The entry is <see cref="Separator"/>.</summary>
     public bool IsSeparator => ReferenceEquals(this, Separator);
 }
 
@@ -356,6 +366,8 @@ public sealed record IssuedCertificateListPage(IReadOnlyList<IssuedCertificateIn
 }
 
 /// <summary>A choice of "Group by" (<see cref="IssuedCertificateListViewModel.GroupChoices"/>).</summary>
+/// <param name="Value">The grouping sent to the server.</param>
+/// <param name="Label">The text of the choice ("Group by type").</param>
 public sealed record IssuedCertificateGroupChoice(IssuedCertificateGrouping Value, string Label)
 {
     public override string ToString() => Label;
